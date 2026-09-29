@@ -22,10 +22,11 @@ A user who wants all four must learn four sets of steps. This repository
 holds the coordinator that removes that work. It has one thin command
 line tool, `trellis`, and one config file, `trellis.yml`.
 
-The coordinator does three things:
+The coordinator does four things:
 
 - `trellis init` sets up the parts that a project uses.
 - `trellis up` starts them in the right order.
+- `trellis down` stops the parts that `up` started.
 - `trellis doctor` checks them.
 
 The coordinator holds no part's logic. Each capability stays in its own
@@ -52,8 +53,8 @@ Terms used below:
 - The crew part is the enabled part named `crew` in `trellis.yml`.
 - The project root is the folder that holds `trellis.yml`.
 - The user state folder is `$TRELLIS_HOME`, or `~/.trellis` when that
-  variable is unset. The coordinator creates it with mode 0700. It sits
-  outside every project.
+  variable is unset. It sits outside every project. Section 8 gives the
+  rules that it must meet.
 - The front part is the one part that runs in the foreground, in the
   terminal where the user ran `trellis up`.
 - To read a file as data means to open it and parse it. Reading as data
@@ -61,6 +62,8 @@ Terms used below:
 - To run a part means to start any program that a part or its manifest
   names. That includes `manifest`, `version`, `health`, and every other
   operation in section 5.
+- An HMAC (keyed hash) is a value made from a key and some content. Only
+  a holder of the key can make a value that matches the content.
 
 ## 1. How this spec splits from the crew addendum
 
@@ -73,7 +76,7 @@ a change.
 |---|---|---|---|
 | `trellis.yml`, the list of parts, their order | coordinator | sections 3 and 6 | not applicable |
 | Finding `trellis.yml` from a project folder | coordinator | section 4 | not applicable |
-| Starting more than one part | coordinator | section 6 | matches: it starts no other part |
+| Starting and stopping more than one part | coordinator | sections 6 and 6.1 | matches: it starts no other part |
 | The part contract: install, configure, health, version | coordinator defines it, each part implements it | section 5 | change 3 |
 | `crew.yml`: schema and checks | crew | addendum section 2 | matches |
 | Crew repository, role modules, catalog | crew | addendum sections 3 and 4 | change 2 |
@@ -81,7 +84,7 @@ a change.
 | Stage folder, skill conversion, harness check | crew | section 10.4 and addendum section 7 | change 4 |
 | Front session, background sessions, `spawn`, `down` | crew | addendum sections 1, 5, and 6 | matches |
 | Project root when `crew up` runs alone | crew: the folder of its `crew.yml` | section 7 | change 1 |
-| Benchmarks and self-improvement loops | `trellis-workbench`, later | section 9.1 | not applicable |
+| Benchmarks and self-improvement loops | `trellis-workbench`, later. Pending decision 11 | section 9.1 | not applicable |
 | The skill source files of each part | that part | section 10.1 | not applicable |
 | The marketplace file and the `trellis` plugin | coordinator | sections 10.2 and 10.3 | not applicable |
 
@@ -98,8 +101,10 @@ states the boundary from the coordinator's side only.
    clone `crew.git` and lets `up --update` fetch. The change moves the
    `crew.git` clone and the `--update` fetch into `install`. When the
    cached clone is missing, `up` stops with a message that names the fix.
-   Section 5.4 states the contract rule. Tracking issue: none exists yet.
-   That is a gap.
+   Section 5.4 states the contract rule. Tracked as slice D6, "No
+   download in `up`: the clone moves to install", in
+   `docs/crew-build-plan.md` of
+   https://github.com/sageadvicellc/trellis-crew/pull/18 (an open draft).
 3. The contract. The crew repository adds a `trellis-part.yml`, and the
    crew CLI adds `version --json` and `health --json` (section 9).
 4. Skill conversion and the harness check. The crew CLI adds
@@ -115,8 +120,9 @@ Both specs call the person who approves a design the maintainer.
 ```
 trellis init   [--dir <folder>] [--parts <name,...>]
                [--use <part>=path:<folder> | <part>=bin:<name> ...]
-               [--harness <name>] [--yes]
+               [--harness <name>|none] [--yes]
 trellis up     [--config <file>] [--only <name,...>] [--dry-run] [--yes]
+trellis down   [--config <file>] [--only <name,...>] [--yes]
 trellis doctor [--config <file>] [--json] [--yes]
 ```
 
@@ -128,15 +134,16 @@ folder. The coordinator never assumes a fixed project root.
   configures each part. Section 2.1 gives the steps.
 - `up` starts the parts in dependency order and ends with the front part
   in the foreground. Section 6 gives the steps.
+- `down` stops the parts that `up` started. Section 6.1 gives the steps.
 - `doctor` changes nothing. It reads the config and reports on each part.
   Section 2.2 gives the checks.
 
 Exit codes:
 
-| Code | Meaning for `init` and `up` | Meaning for `doctor` |
+| Code | Meaning for `init`, `up`, and `down` | Meaning for `doctor` |
 |---|---|---|
-| 0 | Done. Every part was `ok` or `degraded`, and each `degraded` part was printed as a warning. | Every check passed and every part is `ok`. |
-| 1 | A part failed, is down, or is not set up. | Any static check failed, or any part checked is `degraded`, `down`, or `unconfigured`. |
+| 0 | Done. Every part was `ok` or `degraded` (`down`: every recorded part stopped). Each `degraded` part was printed as a warning. | Every check passed and every part is `ok`. |
+| 1 | A part failed, is down, or is not set up (`down`: a `down` operation failed, or a recorded part has no `down`). | Any static check failed, or any part checked is `degraded`, `down`, or `unconfigured`. |
 | 2 | A config or usage error. Nothing ran. | The same. |
 | 3 | The user did not confirm, or no terminal was present and `--yes` was not given. Nothing ran. | Every static check passed, and the runtime checks were skipped because nothing was confirmed. |
 
@@ -144,12 +151,16 @@ Exit codes:
 
 1. The folder is `--dir`, or the current folder. If `trellis.yml` exists
    there, `init` does not change it. It only sets up parts the file
-   already names. `init` then checks data only. If a crew part exists and
-   has `use.path`, `init` reads its manifest as data now. For a
-   `--harness` other than `claude-code`, it needs a crew part, and it
-   exits with code 2 when that manifest has no `export-skills`. If the
-   crew part has `use.bin`, its manifest exists only as the output of
-   `<bin> manifest`, so `init` defers these checks to step 5.
+   already names. `init` then checks data only. `--harness` names the
+   harness for skill setup, or `none` to skip skill setup. There is no
+   default. In a terminal with no `--harness`, `init` asks. With no
+   terminal and no `--harness`, it exits with code 2. If a crew part
+   exists and has `use.path`, `init` reads its manifest as data now. For
+   a `--harness` other than `claude-code` and `none`, `init` needs a crew
+   part, and it exits with code 2 when that manifest has no
+   `export-skills`. If the crew part has `use.bin`, its manifest exists
+   only as the output of `<bin> manifest`, so `init` defers these checks
+   to step 5.
 2. The parts come from `--parts`. In a terminal with no `--parts`, `init`
    shows a checklist. With no terminal and no `--parts`, it exits with
    code 2.
@@ -158,10 +169,15 @@ Exit codes:
    `init` asks for any source that is missing. With no terminal and a
    missing source, it exits with code 2.
 4. `init` writes `trellis.yml` for the chosen parts. It creates
-   `.trellis/` in the project root under the rules of section 4, and adds
-   `.trellis/` to the git exclude file. It finds that file with
-   `git rev-parse --git-path info/exclude`, because `.git` is a file in a
-   git worktree. Outside a git work tree it skips the exclude step.
+   `.trellis/` in the project root when that folder does not exist. If
+   `.trellis/` exists and breaks a rule of section 4 (a symbolic link, a
+   wrong mode or owner, or tracked by git), `init` exits with code 2 and
+   touches nothing in it. `init` adds `.trellis/` to the git exclude
+   file, which it finds with `git rev-parse --git-path info/exclude`,
+   because `.git` is a file in a git worktree. It opens that file without
+   following symbolic links. If the file is a symbolic link, `init` skips
+   the step and prints a warning. Outside a git work tree it skips the
+   exclude step.
 5. First confirm screen, only when a part has `use.bin`. `init` shows
    the same screen as `up` step 3 (section 6): each absolute path, its
    SHA-256, and the exact `manifest` command. After yes, it runs each
@@ -170,26 +186,31 @@ Exit codes:
    with code 2 before any `install` runs when the manifest has no
    `export-skills`. Without a terminal and without `--yes`, it exits with
    code 3.
-6. With a crew part, `init` runs its `check-harness` operation for the
-   chosen harness, including `claude-code`. It exits with code 2 before
-   any `install` runs when crew refuses the harness. With no crew part,
+6. Second confirm screen: `init` prints the plan (section 8) and asks. The
+   plan lists every operation that `init` will run, including
+   `check-harness`, `export-skills`, `install`, `configure`, and
+   `health`. It also names the store path. With `--yes`, `init` prints
+   the plan and does not ask, so the log keeps an audit trail. After an
+   interactive yes, `init` writes its entry in the trust record. `--yes`
+   writes none. A valid trust record skips both screens.
+7. With a crew part and a `--harness` other than `none`, `init` runs the
+   crew part's `check-harness` operation, including for `claude-code`.
+   It runs after the yes in step 6 and before any `install`. It exits
+   with code 2 when crew refuses the harness. With no crew part,
    `claude-code` needs no check.
-7. Second confirm screen: `init` prints the plan (section 8) and asks,
-   unless `--yes` is given. After an interactive yes, `init` writes the
-   trust record, as `up` does. `--yes` writes none. Then, for each part
-   in dependency order, `init` runs the part's `install` and `configure`,
-   then its `health`, and prints each result. A valid trust record skips
-   both screens.
-8. `init` sets up the parts' skills for the chosen harness, as section
+8. For each part in dependency order, `init` runs the part's `install`
+   and `configure`, then its `health`, and prints each result.
+9. `init` sets up the parts' skills for the chosen harness, as section
    10.4 describes.
-9. `init` never starts a part.
+10. `init` never starts a part.
 
 ### 2.2 `doctor`
 
 `doctor` runs no part unless a valid trust record exists (section 8), or
 the user gives `--yes`. With `--yes`, it runs for that call only, writes
 no record, and prints both screens without asking. It never writes a
-trust record.
+trust record. A record is valid for `doctor` when its `up` entry is valid,
+because `doctor` runs only `manifest`, `version`, and `health`.
 
 Static checks. These read data only, and always run.
 
@@ -200,6 +221,8 @@ Static checks. These read data only, and always run.
 - Each part's dependencies are present in the file.
 - Each env var name that a part lists in `env` is set. `doctor` prints
   the name and whether it is set. It never prints a value.
+- The user state folder meets the section 8 rules. `doctor` prints the
+  store path, and the deny rule that section 8 recommends for it.
 
 Runtime checks. These run only with a valid trust record or `--yes`.
 
@@ -245,7 +268,7 @@ The values above are examples. The example port is not a decision.
 | `parts.<name>.use` | yes | Where the part comes from. Exactly one of `path` or `bin`. |
 | `parts.<name>.use.path` | one of the two | A local folder that holds `trellis-part.yml`. A relative path resolves against the project root. |
 | `parts.<name>.use.bin` | one of the two | The name of a command on `PATH`. The coordinator resolves it to an absolute path. Section 5.1 says how it reads the manifest. |
-| `parts.<name>.config` | no | The part's own config file, as a path relative to the project root. The coordinator checks that the file exists. It never reads the file. |
+| `parts.<name>.config` | no | The part's own config file, as a path relative to the project root. The coordinator checks that the file exists and hashes its bytes into the plan. It never parses the file. |
 | `parts.<name>.settings` | no | A map that the coordinator does not read. It passes the map to the part's `configure` step. The part validates it. |
 | `parts.<name>.env` | no | A list of env var names that the part needs. The file never holds a value. |
 | `parts.<name>.enabled` | no | `true` or `false`. Default `true`. A part with `false` is ignored by every command. |
@@ -291,8 +314,9 @@ coordinator does the following.
   directory. The one exception is `manifest` (section 5.1).
 - It writes only these things: `trellis.yml` (only in `init`), the folder
   `.trellis/` in the project root, the git exclude file (only in `init`),
-  and the trust store in the user state folder (section 8). A part writes
-  only what its `effects` lines declare (section 5.1).
+  the temporary folder that `manifest` uses (section 5.1), and the trust
+  store in the user state folder (section 8). A part writes only what its
+  `effects` lines declare (section 5.1).
 - It contains no default project path. A user can write an absolute path
   in their own file. The coordinator never supplies one.
 
@@ -330,7 +354,9 @@ A part ships one file, `trellis-part.yml`, in the root of its repository.
   coordinator hashes the executable again right before it runs, and
   refuses if the hash changed. It runs the command in a new empty
   temporary folder, with mode 0700, that it removes afterward. So a file
-  in the project cannot change what the command sees.
+  in the project cannot change what the command sees. The command gets
+  only `PATH`, `HOME`, `TERM`, `LANG`, `TMPDIR`, and `TRELLIS_CONTRACT`.
+  It gets no other `TRELLIS_*` variable and no part variable.
 
 ```yaml
 contract: 1
@@ -375,8 +401,8 @@ Rules for the manifest. Each failed rule exits with code 2.
   `{config}` fails the manifest check when the part has no `config`.
 - `version`, `install`, `configure`, and `health` are required. `up`,
   `down`, `export-skills`, and `check-harness` are optional. A part with
-  `up` and no `down` is allowed, and the coordinator reports that it
-  cannot stop it (section 11, decision 1).
+  `up` and no `down` is allowed. `trellis down` reports it as not
+  stoppable (section 6.1).
 - `up.mode` is `foreground` or `background`. At most one enabled part can
   be foreground, and it must be the `front` part.
 - `requires` lists part names. Each must be an enabled part in
@@ -398,6 +424,13 @@ success for every operation. Any other exit code is a failure, except the
 `health` codes below. Each operation has a timeout. The manifest can raise
 it up to the maximum. A timeout counts as a failure. A foreground `up` has
 no timeout, because the coordinator replaces its own process with it.
+
+Right before it starts any operation, the coordinator hashes the
+executable, and each regular file that an argument names, again. It
+refuses the operation when a hash differs from the confirmed plan. One
+window stays open: another file in the part's tree that the operation
+imports can change between the plan and the run. Section 8 states this
+limit.
 
 | Operation | What it does | Standard input | Standard output | Default timeout, maximum |
 |---|---|---|---|---|
@@ -447,7 +480,8 @@ user's shell:
   values.
 - `TRELLIS_CONTRACT` (the integer), `TRELLIS_PART` (the name),
   `TRELLIS_PROJECT_ROOT`, `TRELLIS_CONFIG` (the absolute path of
-  `trellis.yml`), and `TRELLIS_STATE_DIR`.
+  `trellis.yml`), and `TRELLIS_STATE_DIR`. The `manifest` command gets
+  only `TRELLIS_CONTRACT` (section 5.1).
 
 A secret never travels on a command line. The coordinator does not log
 an env value. It replaces any value of a declared env var that appears
@@ -489,8 +523,8 @@ in steps 3 and 5.
 5. Second confirm screen: print the plan (section 8) and ask, unless
    `--yes` is given. With `--yes`, it prints the plan and does not ask,
    so the log keeps an audit trail. Without a terminal and without
-   `--yes`, exit with code 3. After an interactive yes, write the trust
-   record.
+   `--yes`, exit with code 3. After an interactive yes, write the `up`
+   entry in the trust record.
 6. For each part in order, run `version` and check its `contract`, then
    run `health`, and act as this table says.
 
@@ -522,6 +556,35 @@ The coordinator records each part that it started in
 `.trellis/run/<part>.json`, with the time, the reported `pid`, and the
 contract version. The file has mode 0600.
 
+### 6.1 Stopping parts: `trellis down`
+
+`trellis down` runs part code, so the main rule of section 8 covers it.
+It runs these steps and stops at the first refusal.
+
+1. Find and check `trellis.yml` (sections 3 and 4), and read the records
+   in `.trellis/run/`. With no record, print that nothing is running and
+   exit with code 0. `--only` limits the parts to the named ones.
+2. Resolve each recorded part as data, as `up` step 2 does. Run the
+   first confirm screen for a `bin` part, as `up` step 3 does.
+3. Print the plan for `down`. It lists each recorded part's `down`
+   operation and the hashes of its executable. Ask, unless `--yes` is
+   given. `--yes` prints the plan and does not ask. Without a terminal
+   and without `--yes`, exit with code 3. After an interactive yes, write
+   the `down` entry in the trust record.
+4. Take the recorded parts in the reverse of the order in which `up`
+   started them. For each part that has a `down` operation, run it. On
+   success, delete that part's record. On failure, keep the record, print
+   the reason, and go on to the next part.
+5. A recorded part with no `down` operation is reported as not
+   stoppable. Its record stays.
+6. Exit with code 0 when every recorded part stopped. Exit with code 1
+   when any `down` failed or any part is not stoppable.
+
+The front part is not recorded, because the coordinator replaces its own
+process with it. The user ends it in the terminal, or by its own stop
+command. Crew stops its own background sessions with `crew down`, which
+its manifest names as its `down` operation.
+
 ## 7. `crew up` alone, and under `trellis up`
 
 `trellis-crew` implements the part contract with its own
@@ -535,10 +598,10 @@ does not read `trellis.yml`, does not search upward, and does not call
 `trellis`.
 
 Under the coordinator. The crew entry in `trellis.yml` gives the path of
-the `crew.yml`. The coordinator checks that the file exists and never
-reads it. The crew manifest runs the same `crew up` as its foreground
-`up`, with the config path as the placeholder `{config}`. The result is
-the same command that a user types by hand.
+the `crew.yml`. The coordinator checks that the file exists, hashes its
+bytes into the plan, and never parses it. The crew manifest runs the same
+`crew up` as its foreground `up`, with the config path as the placeholder
+`{config}`. The result is the same command that a user types by hand.
 
 Who writes `crew.yml`. The user writes it, or a crew skill such as
 `new-crew-spec` writes it at the user's request. The coordinator never
@@ -552,7 +615,7 @@ Two rules keep the parts independent:
   keep their meaning. The only effect of running under the coordinator is
   that the command line and the working directory are the ones the
   manifest gives.
-- The coordinator never reads `crew.yml`. A crew can change its schema
+- The coordinator never parses `crew.yml`. A crew can change its schema
   with no change here.
 
 ## 8. Security
@@ -561,8 +624,8 @@ Everything the coordinator runs, it runs as the user. The controls below
 limit what a cloned or copied project can make it run.
 
 The main rule: no part runs before a confirmation or a valid trust
-record. This holds for `up`, `init`, `doctor`, and `--dry-run`. Reading
-data never counts as running.
+record. This holds for `init`, `up`, `down`, `doctor`, and `--dry-run`.
+Reading data never counts as running.
 
 - A part manifest and `trellis.yml` are trusted input, as a script is. A
   cloned repository can hold both, written by another author. A cloned
@@ -571,56 +634,103 @@ data never counts as running.
 - The tree hash. It stands for everything a part runs. For a part with
   `use.path`, it is the SHA-256 over the sorted list of each regular
   file's relative path and content hash in the part's folder. The list
-  leaves out `.git/` and every path that git ignores. When the folder is
-  a git work tree, the coordinator also records the commit id and refuses
-  a tree with uncommitted changes. For a part with `use.bin`, the tree is
-  the resolved package root: the folder that holds the executable, after
-  the coordinator resolves symbolic links, at the nearest parent that
-  holds a `package.json`. With no such parent, the tree is the executable
-  file alone, and the confirm screen says so. A symbolic link inside a
-  tree is hashed by the content of its target. A link that leaves the
-  tree is listed on the screen.
-- The limit of the tree hash, stated plainly: it does not cover paths that
-  git ignores, such as `node_modules`. Code installed there is trusted as
-  `install` left it, and a change there runs with no prompt. A part that
-  needs stronger cover pins its dependencies in a tracked lockfile.
+  includes every path under a folder named `dist` or `build`, even when
+  git ignores it, because build output is what a Node part runs. It
+  leaves out `.git/`, `node_modules/`, and every other path that git
+  ignores. When the folder is a git work tree, the coordinator also
+  records the commit id and refuses a tree with uncommitted changes to
+  files that git does not ignore. For a part with `use.bin`, the tree is
+  the resolved package root: the outermost folder that holds a
+  `package.json`, found from the executable, after the coordinator
+  resolves symbolic links, by walking up until a folder that holds `.git`
+  or the file system root. With no `package.json` on that walk, the tree
+  is the executable file alone, and the confirm screen says so. A
+  symbolic link inside a tree is hashed by the content of its target. A
+  link that leaves the tree is listed on the screen.
+- The argument files. For each operation, the plan also holds the SHA-256
+  of the executable and of each regular file that an argument names,
+  whatever its ignore status. So `["node", "dist/main.js"]` ties both
+  `node` and `dist/main.js` to the plan. The coordinator hashes them again
+  right before the operation (section 5.2).
+- The config bytes. For each part that has a `config`, the plan holds the
+  SHA-256 of that file's bytes. Hashing the bytes is not parsing them. So
+  a pulled change to `crew.yml` changes the plan hash, and the coordinator
+  asks again.
+- The limit of the tree hash, stated plainly: it does not cover
+  `node_modules`, a build folder with another name (such as `out`), or any
+  other path that git ignores. A module that a part imports from those
+  paths is trusted as `install` and the build left it, and a change there
+  runs with no prompt. A part that needs stronger cover pins its
+  dependencies in a tracked lockfile.
 - The plan. The plan is the data that the second confirm screen prints,
   for each enabled part in order: the part name, its source (the real
   path of a `path` folder, or the absolute path of a `bin`), the SHA-256
-  of the manifest, the tree hash, each operation's argument list with
-  placeholders expanded, the working directory, the env var names, and
-  the `effects` lines. It also gives the SHA-256 of each executable that
-  an operation runs (the file that the first element resolves to). For
-  `init`, it also lists what each `claude` command from section 10.4
-  changes, including the project's `.claude/settings.json`. The plan hash
-  is the SHA-256 of the plan in a fixed order, together with the SHA-256
-  of the `trellis.yml` content.
+  of the manifest, the tree hash, the config hash, each operation's
+  argument list with placeholders expanded, the argument-file hashes, the
+  working directory, the env var names, and the `effects` lines. The plan
+  holds the operations of the command that is running: `init` lists
+  `check-harness`, `export-skills`, `install`, `configure`, and `health`.
+  `up` lists `version`, `health`, `up`, and `down`. `down` lists `down`.
+  For `init`, it also lists what each `claude` command from section 10.4
+  changes, including the project's `.claude/settings.json`. Every screen
+  prints the store path. The plan hash is the SHA-256 of the plan in a
+  fixed order, together with the SHA-256 of the `trellis.yml` content.
 - The first confirm screen is the one in section 6 step 3. It covers only
   the `bin` executables, so the coordinator can run `manifest`.
-- The trust store. Trust records live in the user state folder, in
-  `trust/`, outside every project. The folder holds one key file, made of
-  32 random bytes with mode 0600, created the first time a record is
-  written. Each record is the file `trust/<SHA-256 of the real project
-  root>.json` with mode 0600. It holds the real project root, the plan
-  hash, and, for each part, its source, its manifest hash, its tree hash,
-  and its executable hash. It ends with an HMAC-SHA-256 over that content,
-  made with the key file. A record is valid only when all of these hold:
-  the file has mode 0600 and belongs to the current user, the HMAC
-  verifies, the project root equals the current real path, the hashes that
-  the coordinator recomputes now equal the stored ones, and `.trellis/` is
-  not tracked by git. So a clone, an archive, and any process that can
-  write only the project never carry trust with them. A `git pull` in a
-  `path` part's folder, or a new build of a `bin`, changes a hash, and the
-  coordinator asks again.
-- The limit of the trust store, stated plainly: a process that already
-  runs as the user and can write the user state folder can forge a record.
-  The store stops trust from arriving with a project. It does not stop
-  code that already runs as the user.
-- The coordinator writes a record only after an interactive yes to the
-  second screen, in `init` or `up`. `doctor` and `--dry-run` never write
-  one. `--yes` skips the questions for that one call and writes no
-  record. A later call without `--yes` asks again (section 11, decision
-  8).
+- The user state folder. `$TRELLIS_HOME` must be an absolute path. Its
+  real path, after the coordinator resolves symbolic links, must lie
+  outside the project root and outside every git work tree. The folder
+  must be a real directory, owned by the current user, with mode 0700.
+  The coordinator checks all of this on every run that reads or writes
+  the store, and exits with code 2 when a check fails. The reason is that
+  a tool that sets the shell environment from project files (such as
+  direnv, mise, a devcontainer, or an editor setting) can point
+  `$TRELLIS_HOME` at a key and a record that ship with the project. The
+  default `~/.trellis` meets the same rule. When the home folder is a git
+  work tree, the default fails, and the user sets `$TRELLIS_HOME` to
+  another folder. The coordinator creates the folder, with mode 0700, the
+  first time `init`, `up`, or `down` writes a record after an interactive
+  yes. `doctor` and `--dry-run` never create it.
+- The trust store. Trust records live in `$TRELLIS_HOME/trust/`, which
+  must be a real directory owned by the user, with mode 0700. The folder
+  holds one key file, `key`. It is 32 bytes from the operating system's
+  cryptographic random source, written with mode 0600 the first time a
+  record is written. Before each use, the coordinator checks that `key` is
+  a regular file, not a link, owned by the user, with mode 0600 and
+  exactly 32 bytes. Each record is the file `<SHA-256 of the real project
+  root>.json`, with mode 0600, with the same checks. It holds the real
+  project root, and, for each command (`init`, `up`, and `down`), a plan
+  hash and, for each part, its source, its manifest hash, its tree hash,
+  its config hash, and its executable and argument-file hashes. It ends
+  with an HMAC-SHA-256 over that content, made with `key`. A command
+  writes only its own entry, and rewrites the file whole and atomically.
+  A command's entry is valid only when all of these hold: the file and
+  `key` pass their checks, the HMAC verifies, the project root equals the
+  current real path, the hashes that the coordinator recomputes now equal
+  that command's stored ones, and `.trellis/` is not tracked by git. So a
+  clone, an archive, and any process that can write only the project never
+  carry trust with them. A `git pull` in a `path` part's folder, a new
+  build of a `bin`, or a change to a `config` file changes a hash, and
+  the coordinator asks again.
+- The limit of the trust store, stated plainly: a process that runs as the
+  user and can write the user state folder can forge a record. The store
+  stops trust from arriving with a project. It does not stop code that
+  already runs as the user.
+- The agent case. An agent session that runs as the user can read `key`
+  and write a record. That skips the user's next review of changed part
+  code. The mitigation is a deny rule for the store path, in the harness
+  settings: `sandbox.filesystem.denyRead` and
+  `sandbox.filesystem.denyWrite` with the value of `$TRELLIS_HOME`. Claude
+  Code documents these settings as blocks on subprocess access to specific
+  paths, and the operating system enforces them for shell commands and
+  their child processes. `doctor` prints the rule with the real store path.
+  The spec does not use an operating system keychain. Its access list names
+  the `node` program, which every session runs, so it adds little.
+- The coordinator writes a record entry only after an interactive yes to
+  a second screen, in `init`, `up`, or `down`. `doctor` and `--dry-run`
+  never write one. `--yes` skips the questions for that one call, prints
+  the screens, and writes no record. A later call without `--yes` asks
+  again (section 11, decision 8).
 - No download by the coordinator. `up`, `doctor`, and `--dry-run` never
   download code. The contract forbids every operation except `install`
   from downloading (section 5.4). `init` is the only command that can
@@ -632,9 +742,6 @@ data never counts as running.
   lists.
 - No secret in any file the coordinator writes. `trellis.yml` holds env
   var names only.
-- The folder `.trellis/`, the user state folder, and the trust store
-  follow the mode, owner, and symbolic link rules of section 4 and of
-  this section.
 - Every operation has a timeout, and its captured output is bounded.
 - The coordinator adds no permission flag, no bypass flag, and no
   harness flag to any command. It starts no harness itself. Harness
@@ -683,12 +790,11 @@ for the Trellis framework". This spec treats it as follows.
   tests for constant improvement run there.
 - It is the future home of the benchmarks of the Benchmarking role, the
   crew role that measures how the crew works, and of the self-improvement
-  loops. Pending maintainer decision: the trellis v3 spec in
+  loops. The loops part is pending decision 11: the trellis v3 spec in
   `sageadvicellc/workbench` names `trellis-workbench` as the public
   framework template that every install sets up, and keeps the
   self-improvement routines in Sagespec. So this line can conflict with
-  that spec. It follows the maintainer's instruction of 2026-09-29 and
-  awaits that decision.
+  that spec. It follows the maintainer's instruction of 2026-09-29.
 - It is not a runtime part. `trellis.yml` never composes it, and it has no
   `trellis-part.yml`. `init` and `up` never install it, start it, or check
   its health.
@@ -807,7 +913,8 @@ Gaps to close in each part's repository before the marketplace works:
 
 The `trellis` plugin lives in this repository at `plugins/trellis/`. It
 holds a `.claude-plugin/plugin.json` named `trellis` and a `skills/`
-folder with the coordinator's own skills. It holds nothing else.
+folder with the coordinator's own skills. It holds nothing else. The
+same checks as every other plugin apply to it (section 10.5).
 
 ### 10.4 Other harnesses: one source, many harnesses
 
@@ -823,8 +930,8 @@ The crew part implements two optional operations with that adapter layer.
 - `check-harness` writes nothing. It exits with code 0 when its
   `--harness` value matches the `harness` in `crew.yml`, and prints
   `{"harness":"<name>","ok":true}`. Otherwise it exits nonzero. `init`
-  runs it for every chosen harness, including `claude-code`, before any
-  `install` (section 2.1, step 6).
+  runs it for every chosen harness, including `claude-code`, after the
+  second confirm screen and before any `install` (section 2.1, step 7).
 - `export-skills` converts skills. `init` checks first that a crew part
   is enabled and has `export-skills` (section 2.1, steps 1 and 5). Then,
   for each enabled part that has a skills folder, it runs the crew part's
@@ -840,7 +947,7 @@ The crew part implements two optional operations with that adapter layer.
   scope.
 - refuses, with a nonzero exit, when `--harness` differs from the
   `harness` in `crew.yml`, so the two cannot disagree. Crew owns the
-  harness choice, and the coordinator never reads `crew.yml`.
+  harness choice, and the coordinator never parses `crew.yml`.
 - lists every place it writes under `effects` in the manifest, so the
   confirm screen shows them before it runs.
 - is safe to run again, and prints one JSON object:
@@ -883,21 +990,34 @@ Three checks keep both rules. None is built.
 
 - Each entry's `source` is `./plugins/trellis` or a repository in a fixed
   list of part repositories kept in this repository. Adding to the list
-  needs a reviewed change. Each part entry is pinned to a `sha`.
+  needs a reviewed change. Each entry holds only the keys `name`,
+  `source`, and `description`. Each `github` source holds only the keys
+  `source`, `repo`, `ref`, and `sha`. Each part entry is pinned to a
+  `sha`.
 - A check in this repository's CI reads each part's plugin at the pinned
-  `sha`. It passes only when all of these hold. Each top-level path of
-  the plugin is in the allowlist kept here for that part. The
-  `plugin.json` holds only allowed keys: `name`, `displayName`,
-  `version`, `description`, `author`, `license`, `keywords`, and
-  `skills`, with each `skills` entry under `skills/`. Each folder in
-  `skills/` holds regular files only, and no `SKILL.md` body holds either
-  form that runs a shell command in a Claude Code skill: an exclamation
-  mark followed by a backtick, or a fenced block that opens with three
-  backticks and an exclamation mark. The skills documentation names both
-  forms.
+  `sha`, and reads `plugins/trellis/` in this repository the same way. It
+  passes only when all of these hold. Each top-level path of the plugin is
+  in the allowlist kept here for that part. The `plugin.json` holds only
+  allowed keys: `name`, `displayName`, `version`, `description`,
+  `author`, `license`, `keywords`, and `skills`, with each `skills` entry
+  under `skills/`. Each folder in `skills/` holds regular files only. The
+  frontmatter of each `SKILL.md` holds only the keys `name`,
+  `description`, `license`, `compatibility`, and `metadata`. So a skill
+  cannot carry `hooks`, `shell`, `agent`, `allowed-tools`, or any other
+  Claude Code extra. No `SKILL.md` body holds either form that runs a
+  shell command in a Claude Code skill: an exclamation mark followed by a
+  backtick, or a fenced block that opens with three backticks and an
+  exclamation mark. The skills documentation names both forms.
 - A check in the same job fails when any plugin folder here holds a
   `roles/` or `memory/` folder. The same job runs
   `claude plugin validate` on the marketplace.
+
+The allowlist for a part lists exactly the top-level paths that its
+repository holds at the pinned `sha` and that Claude Code does not load as
+a plugin component. Examples are `src`, `docs`, `tests`, and
+`package.json`. A reviewer adds a name only after checking the components
+documentation, and any new top-level path in a part fails the check until
+then.
 
 ## 11. Decisions for the maintainer
 
@@ -908,9 +1028,8 @@ Lead's answer, given 2026-09-29.
 
 ### Decision 1. `trellis down` in v1. Owner: tech lead.
 
-- (a) Add `trellis down`. It runs each recorded part's `down` in reverse
-  order. A part with `up` and no `down` is reported as not stoppable.
-  Cost: a fourth command to build and test.
+- (a) Add `trellis down`. Section 6.1 specifies it. Cost: a fourth
+  command to build and test.
 - (b) No `down` in v1. A background part that `up` starts keeps running
   until the user stops it by that part's own command. Cost: the user
   needs to know every part's stop command.
@@ -992,8 +1111,9 @@ first public release.
 
 ### Decision 8. What `--yes` does. Owner: tech lead.
 
-- (a) `--yes` skips the questions for that call and writes no trust
-  record. Cost: a script that runs often passes `--yes` every time.
+- (a) `--yes` skips the questions for that call, prints the plan, and
+  writes no trust record. Cost: a script that runs often passes `--yes`
+  every time.
 - (b) `--yes` also writes a trust record. Cost: one unattended run
   trusts that plan for later runs, until a hash changes.
 
@@ -1022,13 +1142,31 @@ as section 10.5 now states.
   is also in the project. Cost: anything that can write the project can
   forge the record, so the confirm screens can be skipped.
 
-Default: (a). Ruling: (a). A user-scope store, keyed per user.
+Default: (a). Ruling: (a). A user-scope store, keyed per user. Section 8
+adds the rules for `$TRELLIS_HOME`, the agent case, and the deny rule.
+
+### Decision 11. Where the self-improvement loops live. Owner: maintainer.
+
+The trellis v3 spec in `sageadvicellc/workbench` keeps the
+self-improvement routines in Sagespec, and names `trellis-workbench` the
+public framework template. The maintainer's instruction of 2026-09-29
+puts the loops in `trellis-workbench`.
+
+- (a) `trellis-workbench` hosts both the benchmarks and the
+  self-improvement loops, as section 9.1 now states. Cost: the v3 spec
+  changes, and the loops become part of a repository that the v3 spec
+  makes public.
+- (b) `trellis-workbench` hosts the benchmarks only, and the loops stay in
+  Sagespec, as the v3 spec says. Cost: the loops need a home outside the
+  framework, and section 9.1 loses its loops line.
+
+Default: (b), because it matches the spec that the maintainer already
+approved.
 
 ## Later work
 
 - Fetching parts from `npm` or `git`, with a pinned version and a hash.
-- `trellis down` and `trellis status`, if decision 1 says yes. The
-  ruling on decision 1 says yes, so `down` moves into the first build.
+- `trellis status`.
 - A shared structure for the trace records that each part writes to
   `trellis-vines`.
 - A `trellis part check` command that a part author runs to test their
@@ -1047,6 +1185,8 @@ Read 2026-09-29.
   at `afb827d`, the head of pull request 17, which has merged. It is the
   source for the four changes in section 1 and for the crew facts in
   sections 7 and 10.4.
+- The crew build plan: `docs/crew-build-plan.md` in pull request 18 of
+  `sageadvicellc/trellis-crew`, an open draft, for slice D6 in section 1.
 - `sageadvicellc/trellis-crew`: `README.md`, `package.json`, and
   `docs/cli-addendum.md`, for the command list, `install.yml`, and Node
   version.
@@ -1058,8 +1198,8 @@ Read 2026-09-29.
 - `sageadvicellc/trellis-workbench`: the repository description, and the
   file list (`README.md` only), for section 9.1.
 - The trellis v3 spec: `docs/specs/2026-09-27-trellis-v3-spec.md` in
-  `sageadvicellc/workbench`, on `main`, for the conflict noted in section
-  9.1.
+  `sageadvicellc/workbench`, on `main`, for the conflict in section 9.1
+  and decision 11.
 - The file lists of the three part repositories and of `trellis-crew`'s
   `.claude-plugin/plugin.json`, for the skills and plugin-manifest facts
   in section 10. The public or private state of each repository was read
@@ -1081,14 +1221,21 @@ Read 2026-09-29.
   `claude plugin marketplace add --help`, Claude Code 2.1.285, run
   2026-09-29, for `-s, --scope <scope>` with `user`, `project`, or
   `local`, default `user`.
-- Claude Code skills, for the Agent Skills open standard and the fields
-  that carry over to other tools: https://code.claude.com/docs/en/skills
-  and https://agentskills.io
+- Claude Code skills, for the Agent Skills open standard, the frontmatter
+  fields, and the two shell forms (the field table lists `hooks`, `shell`,
+  `agent`, and `allowed-tools`; the spec fields are `name`,
+  `description`, `license`, `compatibility`, `metadata`, and
+  `allowed-tools`): https://code.claude.com/docs/en/skills and
+  https://agentskills.io
+- Claude Code, configure the sandboxed Bash tool, for
+  `sandbox.filesystem.denyRead`, `sandbox.filesystem.denyWrite`, and the
+  operating-system enforcement for shell commands and their child
+  processes: https://code.claude.com/docs/en/sandboxing
 
 Gap: the maintainer's own local marketplace served as a model for the
 layout in section 10.2. It is not in any repository, so it is not a
 source. A reader needs only the Claude Code documentation above.
 
-The Claude Code commands in section 10 are the only harness flags in this
-spec. Every other harness flag, and its vendor source, is in the crew
-addendum.
+The Claude Code commands and settings named in sections 8 and 10 are the
+only harness flags in this spec. Every other harness flag, and its
+vendor source, is in the crew addendum.
