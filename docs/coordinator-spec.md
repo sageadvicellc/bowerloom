@@ -245,7 +245,9 @@ Without a valid record or `--yes`, `doctor` skips the runtime checks and
 prints which ones it skipped and why. Its exit code follows the table in
 section 2: 2 for a config error, 1 when a static check failed, 3 when
 only the runtime checks were skipped. `--json` prints the same report as
-one JSON object.
+one JSON object. Every string field in it holds either a plain string or
+an object with two fields, `lossy` and `hex`, which section 8 defines for
+a string that holds an invalid byte. A consumer handles both forms.
 
 ## 3. The config file: `trellis.yml`
 
@@ -655,10 +657,13 @@ Reading data never counts as running.
   next bullet. A user or a part often reaches a file through a link: an
   entry in `node_modules/.bin`, a Homebrew `node`, or a linked config. So,
   for every file except a git file, the coordinator first resolves the
-  path to its real path, and the plan shows both. A git file skips this
-  step. A link anywhere below the base of its path is refused, as the next
-  bullet says. For a link inside a part's tree, the real path must lie
-  inside the tree (the tree hash below says what happens otherwise).
+  path to its real path, and the plan shows both. A git file takes a
+  different path. It resolves only the part above its base folder, which
+  the next bullet names. That resolve follows the links above the base,
+  such as `/tmp` and `/var` on macOS, so a project there works. Below the
+  base, a link is refused. For a link inside a part's tree, the real path
+  must lie inside the tree (the tree hash below says what happens
+  otherwise).
   "Inside the tree" means a whole-component prefix: the real path equals
   the tree's real path, or starts with it and a slash. So `/a/tree-evil`
   does not match `/a/tree`. The coordinator then checks the type of the
@@ -666,8 +671,11 @@ Reading data never counts as running.
   not a regular file. It opens the real path with no link followed in any
   component: `O_NOFOLLOW_ANY` on macOS, `openat2` with
   `RESOLVE_NO_SYMLINKS` on Linux, or an `openat` walk that opens each
-  component with `O_NOFOLLOW`. So a parent folder that turns into a link
-  between the resolve and the open makes the open fail. The open uses a
+  component with `O_NOFOLLOW`. For a git file, the open is an `openat`
+  walk from the resolved base folder. It opens each component below the
+  base with `O_NOFOLLOW`, and it does not check the components above the
+  base. So a parent folder that turns into a link between the resolve and
+  the open makes the open fail. The open uses a
   non-blocking flag. On the open handle, the coordinator checks that the
   type is still a regular file and that the device and inode numbers equal
   those from the `lstat`. It then reads at most the cap for that kind of
