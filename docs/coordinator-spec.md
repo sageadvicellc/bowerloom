@@ -653,16 +653,25 @@ Reading data never counts as running.
   file that it hashes (including a program that `PATH` names, such as
   `node` or `claude`), each file in a tree hash, and each git file in the
   next bullet. A user or a part often reaches a file through a link: an
-  entry in `node_modules/.bin`, a Homebrew `node`, or a linked config. So
-  the coordinator first resolves the path to its real path, and the plan
-  shows both. For a link inside a part's tree, the real path must lie
-  inside the tree (the tree hash below says what happens otherwise). A git
-  file follows the stricter rules of the next bullet, which refuse a link.
-  The coordinator then checks the type of the real path before it opens it,
-  and refuses anything that is not a regular file. It opens the real path
-  without following a link in its last component and with a non-blocking
-  flag, checks the type again on the open handle, and reads at most the
-  cap for that kind of file:
+  entry in `node_modules/.bin`, a Homebrew `node`, or a linked config. So,
+  for every file except a git file, the coordinator first resolves the
+  path to its real path, and the plan shows both. A git file skips this
+  step. A link anywhere below the base of its path is refused, as the next
+  bullet says. For a link inside a part's tree, the real path must lie
+  inside the tree (the tree hash below says what happens otherwise).
+  "Inside the tree" means a whole-component prefix: the real path equals
+  the tree's real path, or starts with it and a slash. So `/a/tree-evil`
+  does not match `/a/tree`. The coordinator then checks the type of the
+  real path with `lstat` before it opens it, and refuses anything that is
+  not a regular file. It opens the real path with no link followed in any
+  component: `O_NOFOLLOW_ANY` on macOS, `openat2` with
+  `RESOLVE_NO_SYMLINKS` on Linux, or an `openat` walk that opens each
+  component with `O_NOFOLLOW`. So a parent folder that turns into a link
+  between the resolve and the open makes the open fail. The open uses a
+  non-blocking flag. On the open handle, the coordinator checks that the
+  type is still a regular file and that the device and inode numbers equal
+  those from the `lstat`. It then reads at most the cap for that kind of
+  file:
   - 1 MiB for `trellis.yml`, `trellis-part.yml`, and a `config` file.
   - 4 KiB for the git pointer files (the `.git` file, `gitdir`, and
     `commondir`), `HEAD`, and each ref file.
@@ -705,9 +714,10 @@ Reading data never counts as running.
     to the git directory (an absolute path is also accepted). It must be a
     real folder that holds `objects/`, and the git directory must lie at
     `<common directory>/worktrees/<name>`. The coordinator compares the two
-    real paths as bytes, after it resolves links. On a case-insensitive
-    file system it compares the device and inode numbers instead. With no
-    `commondir` file, the common directory is the git directory itself.
+    folders by device and inode numbers, always. That needs no test for a
+    case-insensitive file system, and it also covers Unicode normalization
+    on APFS. With no `commondir` file, the common directory is the git
+    directory itself.
   - No symbolic link in the path. The coordinator checks the components of
     a path below a base folder, one at a time, without following any of
     them. It does not check the components above the base, so a project
@@ -726,8 +736,8 @@ Reading data never counts as running.
     screen (section 2.1, step 6). This write asks for more than the index
     read does. The git directory must also hold a `gitdir` file that names
     this `.git` file, which is the back-pointer. Git writes an absolute path
-    in that file, and the coordinator compares it with the real path of the
-    `.git` file by the rule above. A submodule or a
+    in that file, and the coordinator compares the file that it names with
+    the `.git` file by device and inode numbers, as above. A submodule or a
     `--separate-git-dir` repository has no such file, so `init` skips the
     write there and prints a warning. The exclude file is `info/exclude`
     in the common directory, and the plan lists its path. No symbolic link
@@ -737,7 +747,9 @@ Reading data never counts as running.
     append, without following symbolic links, with a non-blocking flag,
     and checks the type and the owner on the open handle. A missing file
     is created with an exclusive flag, only inside `info/`. Any failure
-    skips the write and prints a warning.
+    skips the write and prints a warning. That includes an exclude file that
+    is unreadable or over the 1 MiB cap when `init` reads it to see whether
+    it already lists `.trellis/`. `init` does not exit with code 2 for it.
   - The index, read to learn whether `.trellis/` is tracked. It is
     `index` in the git directory. In a git worktree that is the
     worktree's own index, so the reader resolves it through the `gitdir:`
@@ -757,12 +769,19 @@ Reading data never counts as running.
     `index.skipHash` is `true`, and `feature.manyFiles` turns that on. The
     checksum gives no security here, because a hostile index can carry a
     valid one too. Any other checksum must equal the SHA-1 of the bytes
-    before it. An index that fails this check, or is truncated, or is of
-    another version, or holds a required extension, counts as tracking
-    `.trellis/`, and the command exits with code 2. A SHA-256 repository
-    ends here too. Its message names the cause: the index is not a readable
-    SHA-1 index, because the repository uses SHA-256 or the file is
-    damaged. An extension is optional when its first byte is an uppercase
+    before it. The parse must also end exactly where the checksum starts.
+    The reader walks the header, each entry with its padding, and each
+    extension, and every size must fit inside the file. A parse that ends
+    before that offset, or runs past it, makes the index unreadable. This
+    check comes first. It stops a SHA-256 index that ends in 32 zero bytes
+    from passing the all-zero rule on its last 20 bytes, and stops a
+    20-byte parse from misreading a version 4 index and reporting
+    `.trellis/` as untracked. An index that fails any check, or is
+    truncated, or is of another version, or holds a required extension,
+    counts as tracking `.trellis/`, and the command exits with code 2. A
+    SHA-256 repository ends here too. Its message names the cause: the
+    index is not a readable SHA-1 index, because the repository uses
+    SHA-256 or the file is damaged. An extension is optional when its first
     ASCII letter, and required otherwise. The reader handles no required
     extension. So it stops at the first one, such as `link` (a split
     index) or `sdir` (a sparse index), and counts `.trellis/` as tracked.
@@ -795,18 +814,25 @@ Reading data never counts as running.
   form, for example `\u{e0001}` (U+E0001, category Cf, the language tag).
   The escape uses a table built into the coordinator from the Unicode 16.0
   data file `UnicodeData.txt`, not the tables of the runtime, so its result
-  does not change when the runtime changes. The escape writes a backslash
-  as `\\`. A
-  byte sequence that is not valid UTF-8 has no code point, so the escape
-  writes each invalid byte as `\xhh`, in lowercase hex. So a raw byte 0x9B,
+  does not change when the runtime changes. In that file, a `First` line
+  and a `Last` line form a pair that covers every code point between them,
+  as for the CJK, Hangul, private use, and surrogate ranges. A code point
+  that the file does not list is Cn (unassigned). The escape writes a
+  backslash as `\\`. A byte sequence that is not valid UTF-8 has no code
+  point, so the escape writes each invalid byte as `\xhh`, in lowercase
+  hex. So a raw byte 0x9B,
   which some terminals read as an 8-bit control sequence introducer, shows
   as `\x9b`. A newline in a value shows as `\u{a}`, so a value cannot
   start a fake line or redraw the screen. The `--json` output does not
   apply the screen escape first. The JSON encoder applies its own rules to
   the original text. It writes each code point in those categories as
-  `\uXXXX` with lowercase hex digits (a pair of such escapes above U+FFFF),
-  and each invalid byte as the four characters `\xhh`, with the backslash
-  escaped as JSON requires. No string holds a raw control byte.
+  `\uXXXX` with lowercase hex digits (a pair of such escapes above U+FFFF).
+  A string that holds an invalid byte is not written as a plain string,
+  because the four characters `\x9b` decode to the same text as an
+  original string that holds that literal text. It is written as an object
+  with two fields: `lossy`, the text with U+FFFD in place of each invalid
+  byte, and `hex`, the original bytes in lowercase hex. No string holds a
+  raw control byte.
 - The tree hash. It stands for everything a part runs. For a part with
   `use.path`, it is the SHA-256 over the sorted list of each regular
   file's relative path and content hash in the part's folder. The list
@@ -822,27 +848,28 @@ Reading data never counts as running.
   loop of links, or a denied path. The screen lists it with its target
   text, and the hash holds that text. So a link loop cannot hang or fail
   the walk. A special file, such as a FIFO, a socket, or a device, is never
-  opened. Its path and type go into the hash, and the screen lists it. The
+  opened. Its path and type go into the hash, and the screen lists it. A
+  link whose real path is a special file counts as that special file. The
   walk refuses at 50,000 files, 10,000 folders, a depth of 64, or 512 MiB
   of content in total. A part folder over any cap makes the command exit
   with code 2 with a message. For a large package root, the user can raise
-  the content cap with `--hash-limit-mib <n>`. This flag follows five
+  the content cap with `--hash-limit-mib <n>`. This flag follows six
   rules. It is a command-line flag only: no env var, `trellis.yml` field,
   or manifest field sets it, so a cloned project cannot raise it. It takes
   a whole number from 1 to 4096, and any other value exits with code 2. It
   is not part of the plan hash or the record, because it changes whether a
-  full hash is made and never the hash value. The confirm screen prints it
-  when it is not 512. It covers `path` parts as well as `bin` parts, on
-  `init`, `up`, `down`, and `doctor`. The per-file cap is 256 MiB, or the
-  flag value when that is larger. The other caps have no override. For a
-  part with `use.bin`, the tree is the resolved package root. The
-  coordinator finds it from the executable, after it resolves symbolic
-  links, by walking up. The walk
-  stops at the first of these. A folder named `node_modules`: the walk
-  stops below it, and the folder just below it can be the package root.
-  The user's home folder, or the file system root: the walk stops below
-  it, and that folder never counts. A folder that holds a `.git` entry: the
-  walk stops there, and that folder counts when it holds a `package.json`.
+  full hash is made and never the hash value. Every confirm screen prints
+  it, outside the plan, when it is not 512. It covers `path` parts as well
+  as `bin` parts, on `init`, `up`, `down`, and `doctor`. The per-file cap
+  is 256 MiB, or the flag value when that is larger. The other caps have no
+  override. For a part with `use.bin`, the tree is the resolved package
+  root. The coordinator finds it from the executable, after it resolves
+  symbolic links, by walking up. The walk stops at the first of these. A
+  folder named `node_modules`: the walk stops below it, and the folder
+  just below it can be the package root. The user's home folder, or the
+  file system root: the walk stops below it, and that folder never counts.
+  A folder that holds a `.git` entry: the walk stops there, and that
+  folder counts when it holds a `package.json`.
   The package root is the outermost folder on the walk that holds a
   `package.json`. With no `package.json` on the walk, the tree is the
   executable file alone, and the confirm screen says so. The same rules
@@ -871,8 +898,9 @@ Reading data never counts as running.
   for each enabled part in order: the part name, its source (the real
   path of a `path` folder, or the absolute path of a `bin`), the SHA-256
   of the manifest, the tree hash, the config hash, each operation's
-  argument list with placeholders expanded, the argument-file hashes, the
-  working directory, the env var names, and the `effects` lines. The plan
+  argument list with placeholders expanded, the path and the real path of
+  each executable and argument file with its hash, the working directory,
+  the env var names, and the `effects` lines. The plan
   holds the operations of the command that is running: `init` lists
   `check-harness`, `export-skills`, `install`, `configure`, and `health`.
   `up` lists `version`, `health`, `up`, and `down`. `down` lists `down`.
@@ -880,10 +908,11 @@ Reading data never counts as running.
   changes, including the project's `.claude/settings.json`, and the
   resolved absolute path and SHA-256 of the `claude` program that runs
   them. It also shows the path of the git exclude file that `init` will
-  write, when there is one. Every screen prints the store path, and the
-  `--hash-limit-mib` value when it is not 512. The plan
-  hash is the SHA-256 of the plan in a fixed order, together with the
-  SHA-256 of the `trellis.yml` content.
+  write, when there is one. Every confirm screen also prints the store
+  path, and the `--hash-limit-mib` value when it is not 512. These print
+  outside the plan, so neither is in the plan hash. The plan hash is the
+  SHA-256 of the plan in a fixed order, together with the SHA-256 of the
+  `trellis.yml` content.
 - The first confirm screen is the one in section 6 step 3. It covers only
   the `bin` executables, so the coordinator can run `manifest`.
 - The user state folder. `$TRELLIS_HOME` must be an absolute path. Its
