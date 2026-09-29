@@ -172,16 +172,8 @@ Exit codes:
    `.trellis/` in the project root when that folder does not exist. If
    `.trellis/` exists and breaks a rule of section 4 (a symbolic link, a
    wrong mode or owner, or tracked by git), `init` exits with code 2 and
-   touches nothing in it. `init` adds `.trellis/` to the git exclude
-   file. It finds that file by reading data only, and runs no `git`
-   program (section 8). When `.git` is a folder, the file is
-   `.git/info/exclude`. When `.git` is a file, as in a git worktree, `init`
-   reads its `gitdir:` line. If the folder that line names holds a
-   `commondir` file, the exclude file is `info/exclude` in the folder that
-   `commondir` names. Otherwise it is `info/exclude` in the `gitdir`
-   folder. `init` opens the exclude file without following symbolic links.
-   If the file is a symbolic link, `init` skips the step and prints a
-   warning. Outside a git work tree it skips the exclude step.
+   touches nothing in it. `init` does not touch the git exclude file yet.
+   That write waits for step 6.
 5. First confirm screen, only when a part has `use.bin`. `init` shows
    the same screen as `up` step 3 (section 6): each absolute path, its
    SHA-256, and the exact `manifest` command. After yes, it runs each
@@ -196,7 +188,12 @@ Exit codes:
    `health`. It also names the store path. With `--yes`, `init` prints
    the plan and does not ask, so the log keeps an audit trail. After an
    interactive yes, `init` writes its entry in the trust record. `--yes`
-   writes none. A valid trust record skips both screens.
+   writes none. A valid trust record skips both screens. The plan also
+   shows the path of the git exclude file, if the folder is inside a git
+   work tree. After the yes, or with `--yes`, and before step 7, `init`
+   adds `.trellis/` to that file under the rules of section 8. If any
+   rule fails, `init` skips the step and prints a warning. Outside a git
+   work tree it skips the step.
 7. With a crew part and a `--harness` other than `none`, `init` runs the
    crew part's `check-harness` operation, including for `claude-code`.
    It runs after the yes in step 6 and before any `install`. It exits
@@ -321,8 +318,9 @@ coordinator does the following.
 - It runs every part operation with the project root as its working
   directory. The one exception is `manifest` (section 5.1).
 - It writes only these things: `trellis.yml` (only in `init`), the folder
-  `.trellis/` in the project root, the git exclude file (only in `init`),
-  the temporary folder that `manifest` uses (section 5.1), and the trust
+  `.trellis/` in the project root, the git exclude file (only in `init`,
+  and only after its second confirm screen), the temporary folder that
+  `manifest` uses (section 5.1), and the trust
   store in the user state folder (section 8). A part writes only what its
   `effects` lines declare (section 5.1).
 - It contains no default project path. A user can write an absolute path
@@ -339,8 +337,8 @@ trust record.
   never follows a symbolic link when it writes.
 - A `.trellis/` that git tracks is refused. Any command that needs to
   read or write it exits with code 2 and says so. The coordinator learns
-  this by reading the git index as data, and runs no `git` program
-  (section 8).
+  this by reading the git index as data, found through the git directory
+  of the work tree, and runs no `git` program (section 8).
 
 ## 5. The part contract
 
@@ -649,30 +647,97 @@ Reading data never counts as running.
   fsmonitor hook or a clean filter. So an extracted archive, or a part
   folder that carries a `.git/` folder, can run code under a single
   `git` call, even before a confirm screen. The coordinator never runs
-  `git`. Where it needs a git fact, it reads git's files as data:
-  - A folder is inside a git work tree when it or an ancestor holds a
-    `.git` entry, a folder or a file. The coordinator finds it by walking
-    up.
-  - The exclude file comes from the `.git` folder, or from the `gitdir:`
-    line and the `commondir` file of a `.git` file (section 2.1, step 4).
-  - Whether `.trellis/` is tracked comes from reading `.git/index` with an
-    in-process reader that runs no program. The reader handles index
-    versions 2 to 4. An index that is unreadable, truncated, or of an
-    unknown version counts as tracking `.trellis/`, and the command exits
-    with code 2.
-  - The commit id on a confirm screen comes from reading `HEAD` and the
-    ref file that it names. The screen shows it and no check depends on
-    it.
+  `git`. Where it needs a git fact, it reads git's files as data, under
+  these rules:
+  - Safe reads. The coordinator checks the type of each of these files
+    before it opens it, and refuses anything that is not a regular file.
+    It opens the file without following symbolic links and with a
+    non-blocking flag, checks the type again on the open handle, and reads
+    at most a size cap: 4 KiB for the `.git` file, `commondir`, `gitdir`,
+    `HEAD`, and each ref file, 16 MiB for `packed-refs`, and 256 MiB for
+    the index. A file that fails a check or exceeds its cap counts as
+    unreadable. So a FIFO or a device in one of those places cannot hang a
+    command.
+  - The work tree. A folder is inside a git work tree when it or an
+    ancestor holds a `.git` entry, a folder or a file. The coordinator
+    finds it by walking up. The top level is the folder that holds the
+    entry.
+  - The git directory. For a `.git` folder, it is that folder. For a
+    `.git` file, the `gitdir:` line names it, relative to the folder that
+    holds the file. The coordinator accepts that pointer only when all of
+    these hold: the path has no symbolic link in it, the target is a real
+    folder, it holds a `HEAD` file, the file `gitdir` inside it names this
+    `.git` file (the back-pointer), and either it holds `objects/` or the
+    folder that its `commondir` file names holds `objects/`. The common
+    directory is the folder that `commondir` names, under the same checks
+    for links and `objects/`, or the git directory itself when there is no
+    `commondir` file. A pointer that fails a check is unreadable.
+  - The exclude file, written only by `init` after its second confirm
+    screen (section 2.1, step 6). It is `info/exclude` in the common
+    directory. The plan shows its path first. The path must hold no
+    symbolic link, `info/` must already be a real folder, and the
+    coordinator never creates a folder. An existing exclude file must be a
+    regular file owned by the current user. A missing one is created, with
+    an exclusive flag, only inside that folder. Any failure skips the
+    write and prints a warning.
+  - The index, read to learn whether `.trellis/` is tracked. It is
+    `index` in the git directory. In a git worktree that is the
+    worktree's own index, so the reader resolves it through the `gitdir:`
+    line and does not look at `.git/index` literally. A missing index means
+    nothing is tracked, as in a fresh repository. The reader follows the
+    documented index format, versions 2, 3, and 4. Index paths are
+    relative to the top level of the work tree. The coordinator builds the
+    path of `.trellis/` relative to that top level, because the project
+    root can be a subfolder of the work tree. It counts `.trellis/` as
+    tracked when any entry equals that path or starts with it and a slash.
+    An index that is unreadable, truncated, of another version, or that
+    holds a required extension counts as tracking `.trellis/`, and the
+    command exits with code 2. An extension is optional when its first
+    byte is an uppercase ASCII letter, and required otherwise. The reader
+    handles no required extension. So it stops at the first one, such as
+    `link` (a split index) or `sdir` (a sparse index), and counts
+    `.trellis/` as tracked. The message says that the index uses an
+    extension the coordinator cannot read.
+  - The commit id on a confirm screen, which no check depends on. The
+    coordinator reads `HEAD` in the git directory. A `HEAD` that holds
+    `ref: <name>` counts only when the name starts with `refs/` and has no
+    `..` segment, no leading slash, and no NUL byte. The coordinator then
+    reads the loose ref file in the common directory. If that file is
+    missing, it looks the name up in `packed-refs` in the common
+    directory. A `HEAD` that holds a bare id, a detached `HEAD`, prints
+    that id when it is valid. A valid id is 40 or 64 lowercase hex
+    characters. Any other value, a missing ref, an invalid id, or a
+    repository in the `reftable` format prints `unknown`.
 
   The coordinator reads no `.git/config` and no `.gitattributes`. A part's
   own operations can run `git`, and they are gated like every other
   operation.
+- Screen text. Every string that a screen, a warning, an error, or the
+  `--json` output prints from outside the coordinator passes through one
+  escape. That covers a path, an argument, an `effects` line, a part name,
+  an env var name, a ref name, a commit id, and any output of a part. The
+  escape replaces each code point that is a control character, a format
+  character (such as the right-to-left override), a line or paragraph
+  separator, or unassigned with `\u{hex}`, and it writes a backslash as
+  `\\`. A newline in a value shows as `\u{a}`, so a value cannot start a
+  fake line or redraw the screen. In `--json`, the coordinator writes those
+  code points as `\uXXXX`, and no string holds a raw control byte.
 - The tree hash. It stands for everything a part runs. For a part with
   `use.path`, it is the SHA-256 over the sorted list of each regular
   file's relative path and content hash in the part's folder. The list
-  leaves out `.git/` and `node_modules/`, and nothing else. So build
-  output such as `dist/`, and every file that git ignores, is in the
-  hash, and a change to any of them changes it. For a part with `use.bin`,
+  leaves out every `.git` entry, a folder or a file, and every folder
+  named `node_modules`, at any depth, and nothing else. So build output
+  such as `dist/`, and every file that git ignores, is in the hash, and a
+  change to any of them changes it. The coordinator reads only regular
+  files. A symbolic link to a file is hashed by the content of its
+  target when the target lies inside the tree. A link that leaves the tree,
+  and every link to a folder, is not followed. The screen lists it with its
+  target path, and the hash holds that path text. So a link loop cannot
+  occur. A special file, such as a FIFO, a socket, or a device, is never
+  opened. Its path and type go into the hash, and the screen lists it. The
+  hash stops at 50,000 files or 512 MiB of content, and a part folder over
+  either cap makes the command exit with code 2 with a message. For a part
+  with `use.bin`,
   the tree is the resolved package root. The coordinator finds it from the
   executable, after it resolves symbolic links, by walking up. The walk
   stops at the first of these. A folder named `node_modules`: the walk
@@ -682,9 +747,8 @@ Reading data never counts as running.
   walk stops there, and that folder counts when it holds a `package.json`.
   The package root is the outermost folder on the walk that holds a
   `package.json`. With no `package.json` on the walk, the tree is the
-  executable file alone, and the confirm screen says so. A symbolic link
-  inside a tree is hashed by the content of its target. A link that leaves
-  the tree is listed on the screen.
+  executable file alone, and the confirm screen says so. The same rules
+  for links, special files, and caps apply to that tree.
 - The argument files. For each operation, the plan also holds the SHA-256
   of the executable and of each regular file that an argument names,
   wherever the file sits. So `["node", "dist/main.js"]` ties both
@@ -694,11 +758,14 @@ Reading data never counts as running.
   SHA-256 of that file's bytes. Hashing the bytes is not parsing them. So
   a pulled change to `crew.yml` changes the plan hash, and the coordinator
   asks again.
-- The limits of the tree hash, stated plainly. It does not cover
-  `node_modules`. A module that a part imports from there is trusted as
-  `install` left it, and a change there runs with no prompt. A part that
-  needs stronger cover pins its dependencies in a lockfile inside its
-  folder, which the hash does cover. Second, the coordinator hashes the
+- The limits of the tree hash, stated plainly. First, it does not cover
+  `node_modules` or any `.git` entry, at any depth. A module that a part
+  imports from `node_modules` is trusted as `install` left it, and a
+  change there runs with no prompt. A part that needs stronger cover pins
+  its dependencies in a lockfile inside its folder, which the hash does
+  cover. The coordinator never runs a hook or a config in a `.git` entry,
+  and a part operation that runs `git` is gated like any other operation.
+  Second, the coordinator hashes the
   executable and the argument files again right before each operation
   (section 5.2), and does not hash the rest of the tree again. So another
   file in the tree that the operation imports can change between the plan
@@ -715,8 +782,10 @@ Reading data never counts as running.
   For `init`, it also lists what each `claude` command from section 10.4
   changes, including the project's `.claude/settings.json`, and the
   resolved absolute path and SHA-256 of the `claude` program that runs
-  them. Every screen prints the store path. The plan hash is the SHA-256 of the plan in a
-  fixed order, together with the SHA-256 of the `trellis.yml` content.
+  them. It also shows the path of the git exclude file that `init` will
+  write, when there is one. Every screen prints the store path. The plan
+  hash is the SHA-256 of the plan in a fixed order, together with the
+  SHA-256 of the `trellis.yml` content.
 - The first confirm screen is the one in section 6 step 3. It covers only
   the `bin` executables, so the coordinator can run `manifest`.
 - The user state folder. `$TRELLIS_HOME` must be an absolute path. Its
@@ -773,23 +842,30 @@ Reading data never counts as running.
   real path of `$TRELLIS_HOME`. Claude Code documents these settings as
   blocks on subprocess access to specific paths, and the operating system
   enforces them for shell commands and their child processes. They bind
-  only when `sandbox.enabled` is `true` and `allowUnsandboxedCommands` is
-  `false`. With the second setting `true`, a command that fails in the
-  sandbox can run again outside it. For the harness's own file tools, use
-  the two permission rules `Read(//<real path of $TRELLIS_HOME>/**)` and
-  `Edit(//<real path of $TRELLIS_HOME>/**)` in `permissions.deny`. The
-  double slash marks an absolute path. A `Read` deny rule also blocks the
-  Edit and Write tools on that path. The `Edit` rule covers the notebook
-  edit tool as well. `doctor` prints all four rules and both sandbox
-  settings, with the real store path. The user installs them in user
-  settings or managed settings. The coordinator never writes them. The
-  spec does not use an operating system keychain. Its access list names the
-  `node` program, which every session runs, so it adds little.
+  only when `sandbox.enabled` is `true` and
+  `sandbox.allowUnsandboxedCommands` is `false`. With the second setting
+  `true`, a command that fails in the sandbox can run again outside it.
+  Two other settings defeat the shell rule: an `excludedCommands` entry
+  such as `node` or `bash`, which runs that command outside the sandbox,
+  and `filesystem.disabled` set to `true`. The user must leave both
+  alone. For the harness's own file tools, use the two permission rules
+  `Read(//<store path without its leading slash>/**)` and
+  `Edit(//<store path without its leading slash>/**)` in
+  `permissions.deny`. The double slash marks an absolute path, so the real
+  path `/Users/alice/.trellis` gives `Read(//Users/alice/.trellis/**)`.
+  A `Read` deny rule also blocks the Edit and Write tools on that path.
+  The `Edit` rule covers the notebook edit tool as well. `doctor` prints
+  all four rules and both required sandbox settings, with the real store
+  path. The user installs them in user settings or managed settings. The
+  coordinator never writes them. With the rules in place, `trellis` run by
+  an agent inside the sandbox cannot read the store, and exits with code 2.
+  That is the intended result: the agent cannot review or trust changed
+  code. The spec does not use an operating system keychain. Its access
+  list names the `node` program, which every session runs, so it adds
+  little.
 - The coordinator writes a record entry only after an interactive yes to
-  a second screen, in `init`, `up`, or `down`. `doctor` and `--dry-run`
-  never write one. `--yes` skips the questions for that one call, prints
-  the screens, and writes no record. A later call without `--yes` asks
-  again (section 11, decision 8).
+  a second screen, in `init`, `up`, or `down`. `doctor`, `--dry-run`, and
+  `--yes` write none (section 11, decision 8).
 - No download by the coordinator. `up`, `doctor`, and `--dry-run` never
   download code. The contract forbids every operation except `install`
   from downloading (section 5.4). `init` is the only command that can
