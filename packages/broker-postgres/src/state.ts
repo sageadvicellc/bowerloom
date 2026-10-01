@@ -29,7 +29,8 @@ const ajv = new Ajv({ strict: true, allErrors: false, ownProperties: true }).add
 const scopeValidator = ajv.compile<Scope>(scopeSchema);
 const stateValidator = ajv.compile<TaskState>(object({ scope: scopeSchema, candidateRevision: sha,
   task: { $ref: `${CREW_FORMAT}#/properties/tasks/items` }, ownerSubject: id, ownerEpoch: epoch,
-  approverSubjects: { ...ids, minItems: 1 }, readyAtMs: time, leaseExpiresAtMs: time,
+  // Initial creation requires an approver; later revocation may remove the last one.
+  approverSubjects: ids, readyAtMs: time, leaseExpiresAtMs: time,
   completedDependencies: ids, cancelRequested: { type: 'boolean' },
   actions: { type: 'object', propertyNames: id, maxProperties: BROKER_LIMITS.actionsPerTask, additionalProperties: action } }));
 

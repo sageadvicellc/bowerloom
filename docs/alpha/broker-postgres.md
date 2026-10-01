@@ -14,6 +14,8 @@ Call `createSchema()` once to provision a new namespace. It refuses an existing 
 
 Each operation checks schema version 1. Each row carries state version 1 and a checksum. Unknown versions, missing metadata, malformed fields, unknown action statuses, invalid scopes, and checksum mismatches are refused. Validation reuses the exported task schema and checks proposal digests, request and scope links, approval bindings, receipt contents, and action-state consistency. JSON state and callback results are capped at 40 MiB, with bounded structure depth and width. The broker's smaller per-action limits still apply.
 
+An empty persisted approver list is valid after the last approver is revoked. Existing approval records remain auditable, but cannot authorize dispatch once their subject is absent from that list. The initial task factory still requires an approver; persistence does not reapply that creation requirement to later revocation states. Identifier validation and positive lease intervals remain required.
+
 All statements for an operation use one checked-out client. Mutations use `FOR UPDATE`; reads use `FOR SHARE`. The adapter requests `READ COMMITTED`, synchronous commit, a 5-second lock timeout, and 10-second statement and idle-transaction timeouts. A thrown callback, unsupported asynchronous result, serialization error, or pre-commit SQL failure rolls the transaction back. A failed rollback discards the connection. There is no automatic transaction retry.
 
 Any exception after issuing `COMMIT` produces `COMMIT_UNKNOWN` and discards that connection. The transaction may already be durable. The caller must inspect the scoped durable record and reconcile the operation; it must not automatically rerun the callback or external effect. A lost acknowledgement is not proof that rollback occurred.
@@ -38,9 +40,11 @@ The fixed test target is loopback port 56582. The test requires an account capab
 
 ## Observed result and remaining gates
 
-On October 1, 2026, the full test command with the target enabled passed 147 tests with no skips. The PostgreSQL parent case and its 10 subcases completed in about 0.94 seconds; the whole Node test run took about 1.17 seconds, excluding TypeScript compilation. These are single-run observations, not throughput or latency guarantees.
+On October 1, 2026, the full test command with the target enabled passed 148 tests with no skips after the PG1 repair. The PostgreSQL parent case and its 11 subcases completed in about 1.18 seconds; the whole Node test run took about 1.35 seconds, excluding TypeScript compilation. These are single-run observations, not throughput or latency guarantees.
 
 Two distinct database clients performed 40 same-scope increments without lost updates. A held row lock blocked the matching callback while another scope progressed. Callback throws, async rejection, malformed state, non-detachable results, and an injected PostgreSQL serialization failure rolled back. An injected lost acknowledgement after a real commit produced one callback and one commit attempt; durable state was visible afterward. Fresh processes retained a committed ownership epoch of 7 and discarded a killed uncommitted change to 99. The synthetic approval and receipt lifecycle also persisted successfully. The temporary database occupied about 7.5 MiB and was removed.
+
+The revocation regression removed the final approver from an already approved action. Another client and a fresh process read the empty list. Dispatch in that fresh process returned `APPROVAL_REQUIRED`, left the action prepared, and called no effect adapter. Invalid approver types, malformed subjects, and an invalid lease interval still rolled back. The pre-repair reports are retained under the ignored `.trellis/history/10f217c5b7a856de8707ff3f8f06cf3a4c9570bd/` directory within this package.
 
 Real side-effect replay, complete broker enforcement, live Codex operation, server restart/failover, production credentials and role provisioning, and complete alpha acceptance remain open. This slice adds no DBOS wrapper and no filesystem adapter.
 

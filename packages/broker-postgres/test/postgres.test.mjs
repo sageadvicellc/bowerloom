@@ -45,6 +45,16 @@ test('dedicated local PostgreSQL transaction proof', { skip: !enabled, timeout: 
   });
   const values = scope => [scope.workspaceId, scope.runId, scope.taskId];
   const rawState = async scope => (await poolB.query(`SELECT state FROM ${table} WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3`, values(scope))).rows[0].state;
+  const startProcess = (mode, scope) => {
+    const child = fork(new URL('./restart-worker.mjs', import.meta.url), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      env: { PATH: process.env.PATH, HOME: process.env.HOME }, execArgv: [] });
+    children.add(child);
+    child.once('exit', () => children.delete(child));
+    const message = Promise.race([once(child, 'message').then(([message]) => message),
+      once(child, 'exit').then(() => { throw new Error('Synthetic process exited before its observation'); })]);
+    child.send({ config: { ...config, database }, schema, scope, mode });
+    return { child, message };
+  };
   try {
     await admin.connect();
     report.serverVersion = (await admin.query('SHOW server_version')).rows[0].server_version;
@@ -191,18 +201,35 @@ test('dedicated local PostgreSQL transaction proof', { skip: !enabled, timeout: 
       assert.equal((await broker.dispatch(initial.scope, 'write-one', 'agent:coda')).status, 'COMPLETED');
       assert.equal((await b.read(initial.scope)).actions['write-one'].receipt.afterDigest, digest(proposal.edit.content));
     });
+    await run('revoking the last approver persists and denies an existing approval in a fresh process', async () => {
+      const initial = state('revoked-approver'); await a.seed(initial);
+      const broker = new ActionBroker({ store: a, clock: { now: () => 1000, alarm: () => () => {} },
+        identity: { async authenticate(subject) { return { subject, proofRef: 'synthetic-proof', expiresAtMs: 1_000_000 }; } },
+        effects: { async apply() { throw new Error('Preparation must not call effects'); }, async lookup() { return null; } } });
+      const proposal = { format: 'trellis/action/v0.7-alpha', scope: initial.scope, requestId: 'write-one', candidateRevision: plan.candidateRevision,
+        ownerEpoch: 1, edit: { operation: 'workspace.write', path: 'output/job-board/index.html', expectedDigest: null, content: '<p>Synthetic revocation</p>' } };
+      const prepared = await broker.prepare(JSON.stringify(proposal), 'agent:coda');
+      await broker.approve(initial.scope, 'write-one', { candidateRevision: prepared.proposal.candidateRevision,
+        actionDigest: prepared.actionDigest, ownerEpoch: 1, expiresAtMs: 60_000 }, 'founder:reviewer');
+      await a.transaction(initial.scope, draft => { draft.approverSubjects = []; });
+      assert.deepEqual((await b.read(initial.scope)).approverSubjects, []);
+      const fresh = startProcess('revocation', initial.scope);
+      const exited = once(fresh.child, 'exit'); const observed = await fresh.message;
+      assert.equal(observed.type, 'revocation'); assert.deepEqual(observed.approverSubjects, []);
+      assert.equal(observed.approvalRetained, true); assert.equal(observed.dispatchError, 'APPROVAL_REQUIRED');
+      assert.equal(observed.effectCalls, 0); assert.equal(observed.status, 'PREPARED');
+      assert.notEqual(observed.pid, process.pid); await exited;
+      report.lastApproverRevocation = { persistedEmptyList: true, approvalRetained: true, freshProcess: true,
+        dispatchError: observed.dispatchError, effectCalls: observed.effectCalls };
+      for (const invalid of [null, 'founder:reviewer', ['__proto__'], [null]]) {
+        await assert.rejects(a.transaction(initial.scope, draft => { draft.approverSubjects = invalid; }), { code: 'INVALID_STATE' });
+      }
+      await assert.rejects(a.transaction(initial.scope, draft => { draft.leaseExpiresAtMs = draft.readyAtMs; }), { code: 'INVALID_STATE' });
+      assert.deepEqual((await b.read(initial.scope)).approverSubjects, []);
+    });
     await run('fresh processes retain committed state and discard killed uncommitted state', async () => {
       const initial = state('restart'); await a.seed(initial);
-      const start = mode => {
-        const child = fork(new URL('./restart-worker.mjs', import.meta.url), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-          env: { PATH: process.env.PATH, HOME: process.env.HOME }, execArgv: [] });
-        children.add(child);
-        child.once('exit', () => children.delete(child));
-        const message = Promise.race([once(child, 'message').then(([message]) => message),
-          once(child, 'exit').then(() => { throw new Error('Synthetic process exited before its observation'); })]);
-        child.send({ config: { ...config, database }, schema, scope: initial.scope, mode });
-        return { child, message };
-      };
+      const start = mode => startProcess(mode, initial.scope);
       const committed = start('commit');
       assert.equal((await committed.message).ownerEpoch, 7);
       const committedExit = once(committed.child, 'exit'); committed.child.kill('SIGKILL'); await committedExit;
