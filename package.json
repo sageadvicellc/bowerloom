@@ -17,14 +17,15 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/tests/*.test.js dist/packages/codex-adapter/test/*.test.js dist/packages/roots/test/*.test.js packages/broker-postgres/test/*.test.mjs packages/workspace-effects/test/*.test.mjs packages/admission/test/*.test.mjs packages/runtime/test/*.test.mjs packages/graph/test/*.test.mjs",
+    "test": "npm run build && node --test dist/tests/*.test.js dist/packages/codex-adapter/test/*.test.js dist/packages/roots/test/*.test.js packages/broker-postgres/test/*.test.mjs packages/workspace-effects/test/*.test.mjs packages/admission/test/*.test.mjs packages/runtime/test/*.test.mjs packages/graph/test/*.test.mjs packages/runtime-bridge/test/*.test.mjs",
     "trellis": "node dist/apps/cli/src/main.js",
     "test:broker-postgres": "npm run build && node --test packages/broker-postgres/test/*.test.mjs",
     "test:workspace-effects": "npm run build && node --test packages/workspace-effects/test/*.test.mjs",
     "test:admission": "npm run build && node --test packages/admission/test/*.test.mjs",
     "test:runtime": "npm run build && node --test packages/runtime/test/*.test.mjs",
     "test:roots": "npm run build && node --test dist/packages/roots/test/*.test.js",
-    "test:graph": "npm run build && node --test packages/graph/test/*.test.mjs"
+    "test:graph": "npm run build && node --test packages/graph/test/*.test.mjs",
+    "test:runtime-bridge": "npm run build && node --test packages/runtime-bridge/test/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.11.0",

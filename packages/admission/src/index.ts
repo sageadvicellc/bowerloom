@@ -89,6 +89,9 @@ export class PostgresAdmission {
     const snapshot = observationSnapshot(observation);
     return this.#account(accountAlias, state => this.#observe(state, snapshot, this.#now()));
   }
+  policy(accountAlias: string): Promise<AdmissionPolicy> {
+    return this.#account(accountAlias, state => structuredClone(state.policy));
+  }
   reserve(input: ReservationRequest, observation: unknown): Promise<ReserveResult> {
     // The alias alone identifies the trusted account even if the rest of a request is refused.
     const alias = identifier(Object.getOwnPropertyDescriptor(input ?? {}, 'accountAlias')?.value);
