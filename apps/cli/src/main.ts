@@ -4,12 +4,14 @@ import { localInstallation, privateJson, openLocalSession } from './controller.j
 import { executeSession, parseSessionCommand } from './session.js';
 import type { TestExecutor } from '../../../packages/controlled-tests/src/index.js';
 import { compileCrew } from '../../../packages/crew/src/index.js';
+import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
 const HELP = `Trellis v0.7-alpha: local controlled workflows
 
 Usage:
   trellis validate <crew.yaml> [--root <directory>]
   trellis plan <crew.yaml> [--root <directory>]
+  trellis authoring validate|export <authoring.json> --scenario <frozen-scenario.json> [--root <directory>]
   trellis up --demo --pro|--5x|--20x --installation <private.json>
   trellis status|review|cancel --installation <private.json>
   trellis approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
@@ -24,6 +26,19 @@ The plan records declarations. It grants no runtime permission.
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'authoring') {
+    const [, command, file, flag, scenario, rootFlag, root] = args;
+    if (!['validate','export'].includes(command ?? '') || !file || file.startsWith('-') || flag !== '--scenario'
+      || !scenario || scenario.startsWith('-') || (args.length !== 5 && (args.length !== 7 || rootFlag !== '--root' || !root || root.startsWith('-')))) {
+      throw new DefinitionError('USAGE', 'Use trellis authoring validate|export <authoring.json> --scenario <frozen-scenario.json>, with optional --root.');
+    }
+    const bundle = await compileAuthoring(file, { scenarioFile: scenario, ...(root ? { root } : {}) });
+    process.stdout.write(`${canonicalJson(command === 'export' ? bundle : {
+      valid: true, authoringRevision: bundle.authoringRevision, candidateRevision: bundle.plan.candidateRevision,
+      scenarioDigest: bundle.scenarioDigest, tasks: bundle.plan.taskOrder.length, executionAuthorized: false,
+    })}\n`);
+    return;
+  }
   if (['up','status','review','approve','cancel'].includes(args[0] ?? '')) {
     const command=parseSessionCommand(args),config=localInstallation(await privateJson(command.installation));
     const readOnly=command.command==='status'||command.command==='review';

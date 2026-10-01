@@ -1,0 +1,22 @@
+{
+  "format": "trellis/relay-map/v0.7-alpha",
+  "participants": [
+    "emery",
+    "coda"
+  ],
+  "routes": [
+    {
+      "fromOwner": "emery",
+      "fromTask": "design",
+      "toOwner": "coda",
+      "toTask": "build",
+      "delivery": "accepted-output",
+      "bindings": [
+        {
+          "output": "draft",
+          "input": "draft"
+        }
+      ]
+    }
+  ]
+}

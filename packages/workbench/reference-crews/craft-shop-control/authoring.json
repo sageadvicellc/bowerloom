@@ -1,0 +1,13 @@
+{
+  "format": "trellis/authoring/v0.7-alpha",
+  "id": "craft-shop-control",
+  "crew": "crew.yaml",
+  "classification": "synthetic",
+  "brief": "project-brief",
+  "skills": [
+    "craft-ui-definition"
+  ],
+  "relay": "relay-map",
+  "vines": "vines-map",
+  "scenario": "scenario"
+}
