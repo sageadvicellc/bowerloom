@@ -30,7 +30,7 @@ export interface AcceptanceContext {
 export interface AcceptanceReader {
   read(input: RunInput, receipt: Receipt, context: AcceptanceContext): Promise<Acceptance>;
   // Controller-owned cleanup hooks; never authorize a new execution.
-  cancel?(input: RunInput): Promise<void>;
+  cancel?(input: RunInput, receipt?: Receipt): Promise<void>;
   close?(): Promise<void>;
 }
 export interface ModelOutcome { processRef: string; completedAtMs: number; proofRef: string }

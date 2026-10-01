@@ -12,6 +12,9 @@ import { GraphDriver, PostgresGraphStore, pinGraph } from '../../../packages/gra
 import type { GraphInput, GraphView } from '../../../packages/graph/src/index.js';
 import { RuntimeTaskBridge, pinBridgePolicy } from '../../../packages/runtime-bridge/src/index.js';
 import type { BridgePolicy } from '../../../packages/runtime-bridge/src/index.js';
+import { PostgresAdmission } from '../../../packages/admission/src/index.js';
+import type { AdmissionPolicy } from '../../../packages/admission/src/index.js';
+import { provisionalMargin } from '../../../packages/codex-adapter/src/observation.js';
 import { RuntimeLedger, SupervisedRuntime, RuntimeError } from '../../../packages/runtime/src/index.js';
 import { PostgresTestStore, RegisteredTestAcceptance, validateTestManifestPlan } from '../../../packages/controlled-tests/src/index.js';
 import type { TestExecutor } from '../../../packages/controlled-tests/src/index.js';
@@ -25,7 +28,7 @@ export interface LocalInstallation {
   graph:GraphInput;
   bridge:BridgePolicy;
   workspaceRoot:string;
-  codex:{installation:Installation;binding:AccountBinding;stopUsedPercent:number};
+  codex:{installation:Installation;binding:AccountBinding;stopUsedPercent:number;provisionalPercent?:number};
   browser:unknown;
 }
 function fail(code:string):never{throw new DefinitionError(code,'The local installation does not meet the declared alpha contract.');}
@@ -33,7 +36,7 @@ const exact=(value:unknown,keys:string[]):value is Record<string,unknown>=>value
   &&Object.keys(value).sort().join()===keys.sort().join();
 export async function privateJson(file:string,limit=2*1024*1024):Promise<unknown>{
   const path=resolve(file);if(await realpath(path)!==path)fail('INSTALLATION_PATH');
-  const fd=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);
+  const fd=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try{
     const before=await fd.stat();
     if(!before.isFile()||before.nlink!==1||before.size>limit||(before.mode&0o077)!==0||before.uid!==process.getuid?.())fail('PRIVATE_FILE_REQUIRED');
@@ -56,12 +59,20 @@ export function localInstallation(value:unknown):LocalInstallation{
     ||Object.values(value.schemas).some(name=>typeof name!=='string'||!/^trellis_[a-z][a-z0-9_]{0,46}$/.test(name)))fail('INSTALLATION_SCHEMA');
   if(new Set(Object.values(value.schemas)).size!==6)fail('INSTALLATION_SCHEMA');
   if(typeof value.workspaceRoot!=='string'||!isAbsolute(value.workspaceRoot))fail('WORKSPACE_ROOT');
-  if(!exact(value.codex,['installation','binding','stopUsedPercent'])||typeof value.codex.stopUsedPercent!=='number'
+  if((!exact(value.codex,['installation','binding','stopUsedPercent'])&&!exact(value.codex,['installation','binding','stopUsedPercent','provisionalPercent']))||typeof value.codex.stopUsedPercent!=='number'
     ||!Number.isFinite(value.codex.stopUsedPercent)||value.codex.stopUsedPercent>95||value.codex.stopUsedPercent<=10)fail('CAPACITY_POLICY');
+  if(value.codex.provisionalPercent!==undefined)provisionalMargin(value.codex.provisionalPercent as number);
   const graph=pinGraph(value.graph as GraphInput);
   if(graph.plan.definition.tasks.some(task=>!task.effects.some(effect=>effect.operation==='command.test')))fail('TEST_GATE_REQUIRED');
   pinBridgePolicy(value.bridge as BridgePolicy);
   return structuredClone(value) as unknown as LocalInstallation;
+}
+export function enforceLocalBudget(config:LocalInstallation,policy:AdmissionPolicy):void{
+  const margin=provisionalMargin(config.codex.provisionalPercent);
+  const allowance=Math.max(...Object.values(config.bridge.allowancePercent));
+  if(policy.thresholdPercent>config.codex.stopUsedPercent||policy.thresholdPercent>100-config.graph.plan.definition.budget.reservePercent
+    ||policy.maxWorkers>config.graph.plan.definition.budget.maxActiveWorkers||!policy.admittedRoutes.includes(config.bridge.modelRoute)
+    ||margin<policy.headroomPercent+allowance)fail('CREW_BUDGET_NOT_ENFORCED');
 }
 export async function openLocalSession(config:LocalInstallation,executor:TestExecutor,mode:'start'|'read'|'cancel'):Promise<SessionPort>{
   config=localInstallation(config);
@@ -86,6 +97,7 @@ export async function openLocalSession(config:LocalInstallation,executor:TestExe
   }};
   try{
     let driver:GraphDriver;
+    if(mode==='start')enforceLocalBudget(config,await new PostgresAdmission(pool,{schema:config.schemas.admission,launcherId:'local-preflight'}).policy(config.bridge.accountAlias));
     const stored=new GraphDriver(store,{async submit(){fail('NO_DISPATCH');},async inspect(){fail('NO_DISPATCH');}});
     if(mode==='start')await stored.submit(graph);
     else if(canonicalJson((await stored.status(id)).state.input)!==canonicalJson(graph))fail('GRAPH_BINDING');
@@ -105,7 +117,7 @@ export async function openLocalSession(config:LocalInstallation,executor:TestExe
       const uri=new URL(`postgresql://127.0.0.1:${config.database.port}/${config.database.name}`);uri.username='postgres';uri.password=password;
       runtime=await SupervisedRuntime.open({pool,brokerStore:new PostgresBrokerStore(pool,{schema:config.schemas.broker}),effects,identity,
         ownerCredential:null,ownerCredentialFor:input=>ownerTokens.get(input.task.ownerSubject),recoveryCredential:approver,
-        observations:new CodexObservationReader(config.codex.installation,config.codex.binding,config.codex.stopUsedPercent),
+        observations:new CodexObservationReader(config.codex.installation,config.codex.binding,config.codex.stopUsedPercent,config.codex.provisionalPercent),
         models:new CodexAdapter({...config.codex,accountAlias:config.bridge.accountAlias}),acceptance},
         {installationId:config.installationId,schema:config.schemas.runtime,admissionSchema:config.schemas.admission,systemDatabaseUrl:uri.href});
       driver=new GraphDriver(store,new RuntimeTaskBridge(graph,config.bridge,store,runtime,manifest));

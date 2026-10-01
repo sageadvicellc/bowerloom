@@ -230,7 +230,7 @@ export class SupervisedRuntime {
     const state = await this.#ledger.change(id, current => { current.cancelled = true; current.status = 'CANCELLED'; current.reason = 'CANCELLED'; });
     await this.#broker.cancel({ workspaceId: state.input.task.workspaceId, runId: state.input.task.runId, taskId: state.input.task.taskId }, this.#owner(state.input));
     if (inflight) await inflight.done;
-    await this.#deps.acceptance.cancel?.(state.input);
+    await this.#deps.acceptance.cancel?.(state.input, state.receipt ?? undefined);
     if (accepting && this.#deps.acceptance.cancel) await accepting.done;
     const reservation = await this.#admission.lookup(state.input.reservation.accountAlias, state.input.reservation.jobId);
     if (reservation?.status === 'RESERVED') await this.#admission.reconcile(state.input.reservation, {

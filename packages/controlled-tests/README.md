@@ -50,7 +50,7 @@ Before claiming, immediately before dispatch, and before publishing results, the
 
 ## Runtime cancellation and evidence reading
 
-The runtime calls `read(input, receipt, context)` with a controller-owned context containing `signal`, `guard`, `launcherId`, and the current owner credential. It registers that active acceptance call before its last guard. Runtime cancellation signals it, persists cancellation, invokes `acceptance.cancel(input)`, and waits for the hook and active read. Runtime close also signals active acceptance and invokes `acceptance.close()`. Coordinator lock loss reaches the same signal. Optional hooks keep existing read-only acceptance fixtures compatible; executors that can create processes must implement both lifecycle hooks, as `RegisteredTestAcceptance` does.
+The runtime calls `read(input, receipt, context)` with a controller-owned context containing `signal`, `guard`, `launcherId`, and the current owner credential. It registers that active acceptance call before its last guard. Runtime cancellation signals it, persists cancellation, invokes `acceptance.cancel(input, receipt)`, and waits for the hook and active read. Runtime close also signals active acceptance and invokes `acceptance.close()`. Coordinator lock loss reaches the same signal. Optional hooks keep existing read-only acceptance fixtures compatible; executors that can create processes must implement both lifecycle hooks, as `RegisteredTestAcceptance` does.
 
 A result is `{accepted, evidenceRef}`. Retrieve its full immutable evidence with authenticated scope:
 
@@ -72,3 +72,5 @@ npm run test:controlled-tests
 ```
 
 Those tests create and remove only a unique `trellis_registered_test_*` database, reuse no production state, and make no model/browser calls. Runtime acceptance lifecycle regressions use the existing isolated DBOS/PostgreSQL proof suite. Production executor packaging, CLI provisioning/receipt presentation, and the real craft-shop browser acceptance remain separate integration work.
+
+A fresh controller uses the persisted write receipt to find an unfinished test. It reaps that exact operation without another execution. Unknown cleanup remains an error.

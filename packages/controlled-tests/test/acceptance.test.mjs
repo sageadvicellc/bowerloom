@@ -60,3 +60,21 @@ test('registry helpers reject changed manifests, duplicate keys and executable d
 test('context cancellation before claim and coordinator loss never dispatch',async()=>{const f=await fixture();f.abort.abort();await assert.rejects(read(f),{code:'CANCELLED'});assert.equal(f.executor.calls.length,0);const g=await fixture();g.context.guard=async()=>{throw new TestError('COORDINATOR_FENCED');};await assert.rejects(read(g),{code:'COORDINATOR_FENCED'});assert.equal(g.executor.calls.length,0);});
 
 test('missing write receipt refuses before claim or execution',async()=>{const f=await fixture();await assert.rejects(f.make().read(f.input,null,f.context),{code:'WRITE_RECEIPT_REQUIRED'});assert.equal(f.executor.calls.length,0);assert.equal(f.store.records.size,0);});
+
+for(const status of ['CLAIMED','HOLD','CANCELLED'])test(`fresh cancellation reaps persisted ${status} operation without execution`,async()=>{
+  const f=await fixture();f.store.afterCommit=()=>{throw new TestError('TEST_COMMIT_UNKNOWN');};await assert.rejects(read(f));f.store.afterCommit=null;
+  const saved=f.store.records.get(key(f));saved.status=status;saved.reason=status==='CLAIMED'?null:'CANCELLED';
+  const restarted=new Executor();await f.make(f.store,restarted).cancel(f.input,f.receipt);
+  assert.deepEqual(restarted.reaped,[key(f)]);assert.equal(restarted.calls.length,0);assert.equal(f.store.records.get(key(f)).status,'CANCELLED');
+});
+test('fresh cancellation never reaps an absent or completed test and refuses changed receipts',async()=>{
+  const f=await fixture();await f.make().cancel(f.input,f.receipt);assert.deepEqual(f.executor.reaped,[]);
+  await read(f);const count=f.executor.reaped.length;await f.make().cancel(f.input,f.receipt);assert.equal(f.executor.reaped.length,count);
+  await assert.rejects(f.make().cancel(f.input,{...f.receipt,afterDigest:digest('changed')}),{code:'TEST_BINDING_CONFLICT'});assert.equal(f.executor.reaped.length,count);
+});
+test('fresh cancellation retains unknown cleanup as an error and retries only owned reap',async()=>{
+  const f=await fixture();f.store.afterCommit=()=>{throw new TestError('TEST_COMMIT_UNKNOWN');};await assert.rejects(read(f));f.store.afterCommit=null;
+  const executor=new Executor();executor.reap=async()=>{throw Error('unknown');};const restarted=f.make(f.store,executor);
+  await assert.rejects(restarted.cancel(f.input,f.receipt),{code:'TEST_CLEANUP_UNKNOWN'});assert.equal(f.store.records.get(key(f)).status,'CANCELLED');
+  executor.reap=async id=>{executor.reaped.push(id);};await restarted.cancel(f.input,f.receipt);assert.deepEqual(executor.reaped,[key(f)]);assert.equal(executor.calls.length,0);
+});

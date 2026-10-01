@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,verifyModel,verifyProvenance } from '../src/observation.js';
+import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,verifyModel,verifyProvenance } from '../src/observation.js';
 import { CONTROLS,MODEL_ROUTE } from '../src/policy.js';
 import { strictJson } from '../src/safe.js';
 import type { AccountBinding } from '../src/types.js';
@@ -94,4 +94,16 @@ test('invalid observer ceiling is refused before any native request',async()=>{
   const {readAuthenticatedObservation}=await import('../src/reader.js');let calls=0;
   await assert.rejects(readAuthenticatedObservation(async()=>{calls++;return {};},()=>{},binding,'/synthetic',now,()=>now,96));
   assert.equal(calls,0);
+});
+
+test('explicit provisional margin changes no default and retains the configured hard stop',()=>{
+ for(const bad of [0,1,11,NaN,Infinity])assert.throws(()=>provisionalMargin(bad),{code:'CAPACITY_POLICY'});
+ for(const used of [84,85,89.99,90,95]){const f=fixture();f.usage.rateLimitsByLimitId.codex.primary.usedPercent=used;const out=observe(f);
+ if(used<90)requireHeadroom(out,95,5);else assert.throws(()=>requireHeadroom(out,95,5),{code:'RESERVE_AND_PROVISIONAL_HOLD'});
+ if(used>=85)assert.throws(()=>requireHeadroom(out,95));
+ }
+});
+test('invalid explicit margin fails before authenticated observer RPC',async()=>{
+ const {readAuthenticatedObservation}=await import('../src/reader.js');let calls=0;
+ await assert.rejects(readAuthenticatedObservation(async()=>{calls++;return {};},()=>{},binding,'/synthetic',now,()=>now,95,1),{code:'CAPACITY_POLICY'});assert.equal(calls,0);
 });

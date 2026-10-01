@@ -92,7 +92,21 @@ export class RegisteredTestAcceptance {
   async readEvidence(s:Scope,operationId:string,evidenceRef:string,credential:unknown):Promise<TestEvidence>{
     const stored=await this.inspect(s,operationId,credential);if(!stored?.evidence||stored.evidenceRef!==evidenceRef)fail('TEST_EVIDENCE_NOT_FOUND');return copy(stored.evidence);
   }
-  async cancel(input:RunInput):Promise<void>{const s=scope({workspaceId:input.task.workspaceId,runId:input.task.runId,taskId:input.task.taskId});
+  async cancel(value:RunInput,receiptValue?:Receipt):Promise<void>{
+    const input=pin(copy(value)),s=scope({workspaceId:input.task.workspaceId,runId:input.task.runId,taskId:input.task.taskId});
+    if(receiptValue){
+      const receipt=copy(receiptValue),operationId=testOperationId(s,receipt);
+      const pending=await this.#deps.store.transaction(s,operationId,current=>{
+        if(!current)return{record:null,result:false};const stored=record(current);
+        if(stored.request.candidateRevision!==input.plan.candidateRevision||stored.request.writeActionDigest!==receipt.actionDigest
+          ||stored.request.artifact.digest!==receipt.afterDigest||stored.request.artifact.path!==receipt.path
+          ||receipt.workspaceId!==s.workspaceId)fail('TEST_BINDING_CONFLICT');
+        if(stored.evidence)return{record:stored,result:false};
+        if(stored.status==='CLAIMED'||stored.status==='HOLD'){stored.status='CANCELLED';stored.reason='CANCELLED';}
+        return{record:stored,result:true};
+      });
+      if(pending&&!this.#active.has(operationId))this.#active.set(operationId,{scope:s,abort:new AbortController(),reap:null});
+    }
     const targets=[...this.#active].filter(([,a])=>same(a.scope,s));for(const [,a] of targets)a.abort.abort();
     const results=await Promise.allSettled(targets.map(async([key])=>{await this.#stop(s,key,'CANCELLED');await this.#reap(key);}));
     if(results.some(r=>r.status==='rejected'))fail('TEST_CLEANUP_UNKNOWN');
