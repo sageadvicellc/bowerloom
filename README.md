@@ -10,8 +10,9 @@ The framework releases are `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. Al
 
 ## Current development
 
-The first campaign prepares a specification and implementation queue for founder review. This repository does not yet contain a working framework release.
+Hanna approved the Codex-first alpha build on October 1, 2026. The team is assembling the monorepo and implementing its first working release. Release acceptance remains pending.
 
+- [Approved alpha build](docs/transition/alpha-build-approval.md)
 - [Founder requirements](docs/transition/founder-requirements.md)
 - [Branch coordination and merge authority](docs/transition/working-order.md)
 - [Approved monorepo cutover](docs/transition/monorepo-cutover.md)

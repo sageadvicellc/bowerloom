@@ -102,4 +102,4 @@ The founder reports that the handoff is complete and the old team is stopped. Pr
 
 Prepare one daily review at 9 a.m. America/New_York. Include completed outcomes, acceptance instructions, test evidence, remaining risks, and required founder decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
 
-The first campaign is authorized and ends at the specification approval gate. It includes inventory, research, feasibility experiments, and the review process. Production framework implementation follows approval of the resulting specification.
+The first campaign completed its specification gate. Hanna approved the bounded alpha build on October 1, 2026. Implementation now follows that packet and its delegated engineering choices. Later release and main-merge gates remain separate.

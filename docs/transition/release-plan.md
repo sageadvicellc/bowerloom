@@ -17,7 +17,7 @@ Sagespec is Hanna's flagship product built on Trellis to automate her entire bus
 | v1-beta | Exercise the full framework scope and prove portability | Workflow switching, interrupted handoff, and broader reliability evidence |
 | v1-rc | Prepare the release candidate for final acceptance | Repeatable release tests, resolved release blockers, pinned artifacts, and recovery instructions |
 
-The release names and harness sequence are approved. Detailed acceptance criteria remain part of the specification proposal. `v0.7-alpha` is Codex-first, and `v0.7-beta` requires Codex and Claude Code.
+The release names, harness sequence, and bounded alpha acceptance criteria are approved. Later detailed acceptance criteria remain part of the specification proposal. `v0.7-alpha` is Codex-first, and `v0.7-beta` requires Codex and Claude Code.
 
 ## Company beta
 
@@ -27,7 +27,7 @@ Proposed tests cover private personal state, scoped company access, concurrent c
 
 ## Backend and data gates
 
-The proposed alpha backend packages Supabase and PostgreSQL with usable setup, restart recovery, and optional telemetry disabled by default. The proposed runtime uses the MIT DBOS library without Conductor. Resource and compatibility tests must establish suitability.
+The approved alpha build will test Supabase and PostgreSQL with usable setup, restart recovery, and optional telemetry disabled by default. The approved runtime proof uses the MIT DBOS library without Conductor. Resource and compatibility tests must establish suitability.
 
 Beta adds shared knowledge access, consent withdrawal, offboarding, and deletion tests. Tests cover source documents, embeddings, files, caches, traces, and stored workflow data. Backup expiry and restoration after deletion need separate evidence. Detailed product retention schedules remain outside generic framework defaults.
 
@@ -45,8 +45,8 @@ A separate marketing and social crew can prepare campaign work during alpha use.
 
 This record does not start that crew or appoint its lead. Sagespec product development retains its beta dependency. No campaign material is sent or published by this specification update.
 
-## Next implementation decision
+## Active alpha implementation
 
-The [alpha build packet](alpha-build-approval.md) proposes the next campaign and its defaults. Approval opens a bounded Codex-first implementation. It does not certify a release or resolve later customer-policy choices.
+Hanna approved the [alpha build packet](alpha-build-approval.md) on October 1, 2026. Bounded Codex-first implementation is active. Approval does not accept a release or resolve later customer-policy choices.
 
 The [language direction](language-and-tutorials.md) introduces Endor-inspired tutorials and demo names. The alpha story starts with an independent treehouse. Beta adds the shared village and scoped bridges. These names explain the existing architecture without changing its permissions.

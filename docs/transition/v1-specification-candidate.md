@@ -14,7 +14,7 @@ audience: Hanna
 
 The founder selected Codex-first `v0.7-alpha` for personal testing, baseline measurements, and marketing preparation before beta. Trellis v0.7-beta follows, then a separate Sagespec product team. This candidate proposes contracts, acceptance gates, and implementation order. The research does not yet establish a working release or settle every architecture choice.
 
-The next decision is the [alpha build approval packet](alpha-build-approval.md). It bundles recommended defaults and separates alpha implementation from later release gates. It does not record founder approval.
+Hanna approved the [alpha build packet](alpha-build-approval.md). The October 1 approval opens bounded alpha implementation with the recorded defaults. Later release gates remain separate.
 
 ## Findings and proposed specification
 
@@ -227,7 +227,7 @@ Workers branch from the integration branch and open task pull requests against i
 
 | Gate | Work and owner | Exit evidence |
 |---|---|---|
-| 0. Founder specification | Hanna decides on the bounded alpha build packet | Approved alpha scope, recommended defaults, delegated engineering choices, and explicit later gates |
+| 0. Founder specification | Passed on October 1, 2026 | Hanna approved the alpha scope and defaults at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Later gates remain separate. |
 | 1. Preservation and import | Integration ownership maps retained files and PRs into the monorepo | Reviewed disposition map, license reconciliation, private-content boundary, retained history and recovery sources. Archive old repositories after cutover gates pass. |
 | 2. Contracts and source | Coordinator and module owners implement shared contracts, YAML validation, versioning, graph compiler, simulation | Actual schema engine. Invalid graph/path/version cases. Generation, drift, migration and rollback tests |
 | 3. Control state | Coordinator implements ownership, approval, admission, cancellation, and recovery | Actual runtime failure matrix, authenticated scope, persistent reservations, ambiguous-effect holds |
@@ -252,9 +252,9 @@ No release date or daily output rate is supported yet. Agents coordinate impleme
 
 ## Decision for Hanna
 
-The immediate decision is approval of the linked alpha build packet and its recommended defaults. Approval opens the Codex-first implementation campaign. It does not approve a release, merge into `main`, repository retirement, or customer-data collection.
+Hanna approved the linked alpha build packet and its defaults on October 1, 2026. The Codex-first implementation campaign is active. Release, main merge, repository retirement, and customer-data collection retain separate gates.
 
-For alpha, the proposal uses Supabase/PostgreSQL, the MIT DBOS library without Conductor, one supervised coordinator, and a controlled action broker. Workers propose bounded workspace changes and test commands. The broker authorizes and dispatches them. Mandatory controls require live evidence before alpha acceptance.
+For the approved alpha build, the team uses Supabase/PostgreSQL, the MIT DBOS library without Conductor, one supervised coordinator, and a controlled action broker. Workers propose bounded workspace changes and test commands. The broker authorizes and dispatches them. Mandatory controls require live evidence before alpha acceptance.
 
 Alpha uses authorized keyword retrieval over synthetic sources and keeps optional telemetry disabled. The team owns compatible version selection, package layout, and implementation details within these limits. Supabase suitability must pass before adoption. A material failure returns a concrete finding and alternatives to Hanna without silently weakening the requirement.
 
@@ -289,4 +289,4 @@ All reviewed observations and retrieved documentation below are dated October 1,
 - Capacity, `capacity-F1` to `F5`, `F7` to `F9`: [capacity notes](evidence-index.md#review-records). Primary sources include [Claude status-line fields](https://code.claude.com/docs/en/statusline), [shared subscription usage](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan), and [cached usage](https://code.claude.com/docs/en/costs).
 - Retrieval, `qmd-F1`, `F3`, `F4`, `F6` to `F8`, `F11`, `F12`: [QMD notes](evidence-index.md#review-records). The notes identify corrected scores and original raw outputs. Primary sources include the [QMD v2.8.3 README](https://github.com/tobi/qmd/blob/v2.8.3/README.md) and [package manifest](https://github.com/tobi/qmd/blob/v2.8.3/package.json).
 
-The founder gate is approval or revision of the alpha build packet with this candidate as its supporting specification. That approval authorizes the bounded implementation campaign and delegates its routine engineering choices. Until approval, the first-round specification boundary remains in force. Releases, repository retirement, and merges into `main` retain their separate gates.
+Hanna approved the alpha build packet on October 1, 2026, with this candidate as its supporting specification. The bounded implementation campaign is active, and the team owns routine engineering choices. Releases, repository retirement, and merges into `main` retain their separate gates.

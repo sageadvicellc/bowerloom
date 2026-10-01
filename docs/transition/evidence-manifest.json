@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "32979bf54ae18b0a4fec23909ea51337d4ef1dc9559b486b3084596080c525f8",
+    "original_sha256": "07c409ddbaf619fb939d81d62ecca5858a587fd4ac9f27b9cff162c0275018a8",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "a1984920d85d01e4fca188d0359aaef146ee9e9f20a46bf40b474f7ee3b7fee8",
+    "repository_sha256": "e8c45e81a6921904f5ad0ede88eb2eec90570a49707993050829b39492ef2e42",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -114,6 +114,14 @@
         "proposed_details": "Tutorial vocabulary and synthetic Endor demo. Keep technical and permission language explicit.",
         "implementation_approved": false,
         "runtime_tests_added": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Approved the alpha build and confirmed sageadvicellc/trellis as the canonical repository.",
+        "approved_candidate_revision": "4c8ae90f98964aa1325185adc51ffa1c22b9738e",
+        "scope": "Bounded implementation. Release acceptance and founder main merge remain pending.",
+        "runtime_tests_added": false
       }
     ]
   },
@@ -161,9 +169,26 @@
     "evidence_limit": "No live integration, access, deletion, or recovery test. Historical comparison unchanged."
   },
   "alpha_approval_packet": {
-    "status": "Pending founder decision. Readiness question is not approval.",
+    "status": "Approved by Hanna on October 1, 2026. Implementation is active. Release acceptance remains pending.",
     "scope": "Codex-first alpha only; later roadmap stages remain gated.",
     "files": [
+      {
+        "source": "outputs/trellis-alpha-build-approval.md",
+        "source_sha256": "7c3680f2eab958b15e224826cfe010526e71d0c66ede8ab03a1a109a0a5b302c",
+        "repository_copy": "alpha-build-approval.md",
+        "repository_sha256": "7c3680f2eab958b15e224826cfe010526e71d0c66ede8ab03a1a109a0a5b302c"
+      },
+      {
+        "source": "outputs/trellis-language-and-tutorials.md",
+        "source_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67",
+        "repository_copy": "language-and-tutorials.md",
+        "repository_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67"
+      }
+    ],
+    "review": "Independent review found no actionable findings in scope, proposal status, later gates, or theme clarity.",
+    "approved_candidate_revision": "4c8ae90f98964aa1325185adc51ffa1c22b9738e",
+    "approval_source": "Founder instruction in the current chat: Approved the alpha build",
+    "pre_approval_files": [
       {
         "source": "outputs/trellis-alpha-build-approval.md",
         "source_sha256": "e5cba1e649a7ba6b72649d87577550b2c264fab1c5e7bfaf6e43e77dde8f831c",
@@ -176,7 +201,6 @@
         "repository_copy": "language-and-tutorials.md",
         "repository_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67"
       }
-    ],
-    "review": "Independent review found no actionable findings in scope, proposal status, later gates, or theme clarity."
+    ]
   }
 }

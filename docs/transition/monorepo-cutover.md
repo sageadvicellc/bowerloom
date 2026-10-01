@@ -31,4 +31,4 @@ The separate historical `sageadvicellc/workbench` repository is outside this ret
 11. Add a migration notice and replacement links to each old repository.
 12. Archive each old repository after its cutover gates pass.
 
-The monorepo decision is settled. Remaining architecture choices continue through the specification walkthrough. No repository is archived by this decision record alone.
+The alpha build is approved. Retirement readiness for all five module repositories is an alpha objective. Archival follows the founder main merge and completed cutover gates. A working local alpha alone does not satisfy those gates.

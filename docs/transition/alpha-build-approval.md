@@ -1,16 +1,16 @@
 # Alpha build approval
 
-Status: ready for founder decision. This packet proposes the next campaign. It does not record approval or a completed release.
+Status: approved by Hanna on October 1, 2026, at candidate 4c8ae90f98964aa1325185adc51ffa1c22b9738e. Implementation is active. Release acceptance remains pending.
 
 ## Approval scope
 
-Approve development of the Codex-first `v0.7-alpha` on this Mac using the defaults below. The team prepares the monorepo and delivers a usable local workflow with repeatable acceptance instructions. The full v1 specification remains the direction. Later release choices do not need to block this bounded build.
+Hanna approved development of the Codex-first `v0.7-alpha` on this Mac using the defaults below. The team prepares the monorepo and delivers a usable local workflow with repeatable acceptance instructions. The full v1 specification remains the direction. Later release choices do not need to block this bounded build.
 
 Approval authorizes implementation, necessary local development dependencies, synthetic integration tests, and admitted Codex sessions through the existing subscription. It also authorizes routine engineering choices within these boundaries. This approval includes no paid infrastructure, paid API fallback, product release, public site launch, or repository retirement.
 
-## Recommended defaults
+## Approved defaults
 
-| Area | Proposed alpha default | Boundary |
+| Area | Approved alpha default | Boundary |
 |---|---|---|
 | Repository | Assemble the five modules in `sageadvicellc/trellis` | Preserve history and private-content boundaries before importing accepted work |
 | Runtime | Codex on this Mac | Defer other harness implementations until their planned milestones |
@@ -39,7 +39,7 @@ The first visible milestone is a real local startup and recovery demonstration. 
 
 The candidate must demonstrate a complete local task with a reviewable artifact and saved evidence. Test invalid definitions, denied actions, stale approvals, cancellation, restart, and uncertain external outcomes. Make sure that completed effects do not repeat. Make sure that missing capacity evidence blocks new model work. Make sure that optional telemetry sends nothing.
 
-The proposed demo builds a local job board for a fictional craft shop from synthetic orders. Acceptance covers adding a job, changing its stage, retaining it after reload, and exporting its data. No marketplace connection is part of this demo.
+The approved demo builds a local job board for a fictional craft shop from synthetic orders. Acceptance covers adding a job, changing its stage, retaining it after reload, and exporting its data. No marketplace connection is part of this demo.
 
 The team provides a repeatable baseline of outcomes, elapsed time, interventions, and observed usage. Synthetic fixtures support development but do not substitute for live Codex evidence. No release date or measured capacity tier is promised by this approval.
 
@@ -55,4 +55,4 @@ Marketing preparation can use the accepted alpha before beta. Starting that crew
 
 Agents own task branches, independent review, tests, and integration into `feature/trellis-v1`. Hanna alone reviews and merges into `main`. The team delivers the daily review at 9 a.m. America/New_York and reports material blockers when they arise. The Mac and Codex must remain available for scheduled work.
 
-The existing first-round scope ends at the specification gate. Approval of this packet opens the alpha implementation campaign. It does not approve a release or a merge into `main`. A suitable approval instruction is: “Approve the alpha build using these defaults.”
+Hanna approved this packet and opened the alpha implementation campaign. Approval does not accept a release or authorize a merge into `main`. Retirement readiness is an alpha objective, while archival retains the cutover gates.

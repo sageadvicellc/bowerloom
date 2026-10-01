@@ -2,7 +2,7 @@
 
 Hanna reviews and merges completed features into `main`. The team owns implementation, peer review, and merges into feature branches within approved scope.
 
-The founder clarified this rule on October 1, 2026. It supersedes earlier blanket merge restrictions in this campaign. The specification decision remains pending for the next implementation phase.
+The founder clarified this rule on October 1, 2026. It supersedes earlier blanket merge restrictions in this campaign. Hanna approved the alpha build on October 1, 2026. The bounded implementation campaign is active.
 
 ## Branch ownership
 
@@ -41,6 +41,12 @@ A successful branch push does not establish server-enforced merge protection. Th
 
 The daily packet presents the assembled feature, acceptance instructions, test results, usage, gaps, and decisions. The feature-to-main pull request stays ready for Hanna's review when its acceptance criteria pass. Hanna reviews that result and performs the merge.
 
-Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. Feature-branch autonomy does not select the unresolved architecture or start Sagespec early. The remaining walkthrough covers recovery, access, retrieval, and acceptance gaps.
+Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. The approved alpha packet supplies implementation defaults and delegated engineering choices. Material scope changes and later release gates remain explicit. This campaign does not start Sagespec early.
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names. Both Codex and Claude Code are required for `v0.7-beta`. Sagespec is Hanna's flagship product built on Trellis to automate her entire business.
+
+## Disk reserve
+
+Measure host free space before large downloads, builds, dependency installation, and new checkouts. Keep at least 12 GiB free on this Mac. Bound expected growth before each large operation, and measure again afterward. Stop an operation if it threatens the reserve. Record measurements in the campaign log and daily review.
+
+Do not remove existing worktrees, Docker data, or private files without founder authorization. A clean Git status does not establish that ignored files are disposable.

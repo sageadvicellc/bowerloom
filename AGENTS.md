@@ -8,4 +8,6 @@ Only Hanna, through `hannasage`, reviews and merges the assembled feature into `
 
 Prefer coda-crew for coordination and h4n-n4 for workers. Use sagehanna as the fallback. Never use hannasage for agent activity.
 
-The first campaign waits at specification approval. Feature-branch authority does not resolve the open specification choices. Preserve the stopped old team, existing history, and private business material.
+Hanna approved the alpha build on October 1, 2026. Read docs/transition/alpha-build-approval.md for the active scope and defaults. Implement and peer-review within that scope. Preserve the stopped old team, existing history, and private business material. Keep at most two workers active and preserve 25 percent of reported subscription capacity.
+
+Measure disk space before large operations. Preserve 12 GiB of host free space. Stop operations that threaten the reserve. Existing worktrees and Docker data need founder authorization before removal.

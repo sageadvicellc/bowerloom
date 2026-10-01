@@ -59,4 +59,4 @@ The current direction supersedes the earlier comparison's optional-Supabase and 
 
 The founder requested Endor-inspired nomenclature and tutorials. The [language direction](language-and-tutorials.md) records that request and proposed vocabulary. The [alpha build packet](alpha-build-approval.md) bundles recommended defaults for the next campaign. It separates the immediate implementation decision from later release gates.
 
-The founder asked about readiness. This question is not recorded as implementation approval. The packet remains pending, and its examples add no runtime evidence.
+Hanna approved the alpha build on October 1, 2026, at candidate `4c8ae90f98964aa1325185adc51ffa1c22b9738e`. Implementation is active. Approval adds no runtime evidence and does not pass the release gates.
