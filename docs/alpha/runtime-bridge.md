@@ -20,9 +20,11 @@ The alpha bridge uses the pinned Codex route for every owner. Portable model cla
 
 Before submission, the bridge reads the policy from the runtime admission ledger. Its threshold must preserve the crew reserve. Its worker limit must not exceed the crew limit. Its allowed routes must include the pinned Codex route. The runtime then applies its normal observation, reservation, and launch controls.
 
-The runtime accepts an optional trusted owner credential resolver. It receives a copy of the task input. The controller supplies this resolver for crews with multiple owners. The broker authenticates its result at each protected operation. Without a resolver, the existing fixed owner credential remains in use.
+An owner resolver selects the credential for each task. In alpha, this optional function must return the credential directly.
 
-The resolver is controller code. Do not expose it to worker output. A resolver failure or wrong identity must stop the protected operation.
+The resolver receives a copy of the task input. The controller supplies this resolver for crews with multiple owners. The broker authenticates its result at each protected operation. Without a resolver, the existing fixed owner credential remains in use.
+
+The resolver is controller code. Do not expose it to worker output. A resolver failure or wrong identity must stop the protected operation. The runtime refuses Promise credentials before authentication. It observes their rejection without an automatic retry. Async resolution remains unsupported in this alpha profile.
 
 ## Completion and cancellation
 

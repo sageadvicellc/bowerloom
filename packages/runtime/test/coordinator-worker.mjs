@@ -6,7 +6,7 @@ import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effec
 let runtime; let pool; let fired = false; let resumeAcceptance;
 process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode, ownerMode = 'fallback' }) => {
   pool = new pg.Pool({ ...config, max: 6 }); pool.on('error', () => {});
-  const ownerInputs = []; const authenticatedSubjects = [];
+  const ownerInputs = []; const authenticatedSubjects = []; let authenticationAttempts = 0;
   const mutateInput = input => {
     input.task.ownerSubject = 'agent:mutated'; input.task.approverSubjects.push('agent:mutated');
     input.plan.definition.tasks[0].owner = 'mutated'; input.reservation.allowancePercent.primary = 99;
@@ -14,6 +14,19 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
   };
   const ownerCredentialFor = ownerMode === 'fallback' ? undefined : input => {
     const original = structuredClone(input); ownerInputs.push(original);
+    // Only the build task has the broken resolver; a later design task must remain usable.
+    if (original.task.taskId === 'build' && ownerMode.startsWith('promise-')) {
+      if (ownerMode === 'promise-reject-delayed') return new Promise((_,reject) => {
+        setTimeout(() => {
+          reject(new Error('Synthetic delayed owner resolver failure'));
+          process.send({ type: 'owner-promise-settled', mode: ownerMode });
+        },20);
+      });
+      process.send({ type: 'owner-promise-settled', mode: ownerMode });
+      if (ownerMode === 'promise-reject-immediate') return Promise.reject(new Error('Synthetic immediate owner resolver failure'));
+      if (ownerMode === 'promise-resolved') return Promise.resolve('owner');
+      throw new Error('Unknown synthetic Promise resolver mode');
+    }
     if (ownerMode === 'mutate') mutateInput(input);
     if (ownerMode === 'wrong') return 'wrong-owner';
     return { 'agent:coda': 'owner', 'agent:emery': 'owner-emery' }[original.task.ownerSubject] ?? 'unknown-owner';
@@ -60,6 +73,7 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
     },
       ownerCredential: ownerMode === 'fallback' ? 'owner' : 'invalid-fallback',
       ...(ownerCredentialFor ? { ownerCredentialFor } : {}), recoveryCredential: 'recovery', identity: { async authenticate(credential) {
+        authenticationAttempts++;
         const subject = { owner: 'agent:coda', 'owner-emery': 'agent:emery', 'wrong-owner': 'agent:outsider', founder: 'founder:reviewer', recovery: 'founder:reviewer' }[credential];
         if (!subject) throw new Error('Refused'); authenticatedSubjects.push(subject);
         return { subject, proofRef: `synthetic-${credential}`, expiresAtMs: Date.now() + 120000 };
@@ -87,7 +101,7 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
       try {
         let result;
         if (message.type === 'release-acceptance') { resumeAcceptance(message.accepted); result = 'released'; }
-        else if (message.type === 'owner-audit') result = { inputs: ownerInputs, authenticatedSubjects };
+        else if (message.type === 'owner-audit') result = { inputs: ownerInputs, authenticatedSubjects, authenticationAttempts };
         else if (message.type === 'admission-policy') result = await runtime.admissionPolicy(message.accountAlias);
         else if (message.type === 'mutate-policy-result') {
           const policy = await runtime.admissionPolicy(message.accountAlias); const before = structuredClone(policy);

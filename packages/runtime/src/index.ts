@@ -1,6 +1,7 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { isPromise } from 'node:util/types';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { ActionBroker, createTaskState, parseProposal, systemClock } from '../../broker/src/index.js';
 import type { IdentityProvider, WorkspaceEffects, ApprovalRequest } from '../../broker/src/index.js';
@@ -20,7 +21,7 @@ interface Dependencies {
   effects: WorkspaceEffects;
   identity: IdentityProvider;
   ownerCredential: unknown;
-  // Trusted controller resolver for crews with more than one owner. Never supplied by a worker.
+  // Trusted synchronous controller resolver. Promise results are observed and refused before authentication.
   ownerCredentialFor?: (input: RunInput) => unknown;
   recoveryCredential: unknown;
   observations: ObservationReader;
@@ -93,7 +94,12 @@ export class SupervisedRuntime {
     return this.#admission.policy(accountAlias);
   }
   #owner(input: RunInput): unknown {
-    return this.#deps.ownerCredentialFor ? this.#deps.ownerCredentialFor(structuredClone(input)) : this.#deps.ownerCredential;
+    const credential = this.#deps.ownerCredentialFor ? this.#deps.ownerCredentialFor(structuredClone(input)) : this.#deps.ownerCredential;
+    if (isPromise(credential)) {
+      void Promise.prototype.then.call(credential, undefined, () => {});
+      throw new RuntimeError('ASYNC_OWNER_RESOLVER_UNSUPPORTED');
+    }
+    return credential;
   }
   async #outcome(id: string, worker: ModelProcess): Promise<void> {
     await this.#ledger.change(id, state => {

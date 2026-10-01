@@ -110,7 +110,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
       try { await rm(root, { recursive: true, force: true }); caseResult.scratchRemoved = true; } catch { errors.push('scratch'); }
       caseResult.childrenReaped = children.size === 0; caseResult.cleanupErrors = errors; caseResult.milliseconds = performance.now() - started;
       report.cases.push(caseResult); mkdirSync('packages/runtime/.trellis',{ recursive:true });
-      report.passed = report.cases.length === 17 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
+      report.passed = report.cases.length === 20 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
       writeFileSync('packages/runtime/.trellis/test-result.json',JSON.stringify(report,null,2)+'\n');
       if (errors.length) throw new Error('Synthetic runtime cleanup failed.');
     }
@@ -220,6 +220,45 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM trellis_effects.operations')).rows[0].n,0);
     await assert.rejects(stat(file),{code:'ENOENT'}); await next.stop(); caseResult.wrongOwnerDispatchDenied = true;
   });
+  for (const resolver of ['promise-reject-immediate','promise-reject-delayed','promise-resolved']) {
+    await run(`${resolver} is refused before authentication and the same coordinator completes another task`, async ({spawnCoordinator,input,waitState,approval,file,designFile,pool,caseResult}) => {
+      caseResult.expectedStarts = 2;
+      const worker = spawnCoordinator('normal',20,resolver); const ready = await worker.next('ready');
+      const failedInput = input(); const id = await worker.rpc('submit',{input:failedInput});
+      await worker.next('owner-promise-settled',value=>value.mode===resolver);
+      // Give the delayed rejection and Node's unhandled-rejection turn time to occur.
+      await delay(100);
+      assert.equal(worker.child.exitCode,null); assert.equal(worker.child.signalCode,null);
+      const held = await waitState(worker,id,state=>state.run.status==='HOLD');
+      assert.equal(held.run.reason,'ASYNC_OWNER_RESOLVER_UNSUPPORTED'); assert.equal(held.run.receipt,null);
+      assert.equal(held.run.acceptance,null); assert.equal(held.reservation.status,'COMPLETED'); assert.equal(held.allowanceHeld,true);
+      assert.equal(held.reservation.retained.primary.percent,5);
+      assert.equal((await worker.rpc('workflow-result',{id})).reason,'ASYNC_OWNER_RESOLVER_UNSUPPORTED');
+      const failedAudit = await worker.rpc('owner-audit'); assert.equal(failedAudit.inputs.length,1);
+      assert.equal(failedAudit.authenticationAttempts,0); assert.deepEqual(failedAudit.authenticatedSubjects,[]);
+      const store = new PostgresBrokerStore(pool,{schema:'trellis_broker'});
+      const failedGrant = await store.read(held.run.proposal.scope); assert.deepEqual(failedGrant.actions,{});
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM trellis_effects.operations')).rows[0].n,0);
+      await assert.rejects(stat(file),{code:'ENOENT'}); await assert.rejects(stat(designFile),{code:'ENOENT'});
+
+      const healthyInput = input('normal','design'); const healthyId = await worker.rpc('submit',{input:healthyInput}); assert.notEqual(healthyId,id);
+      const pending = await waitState(worker,healthyId,state=>state.run.status==='WAITING_APPROVAL');
+      await worker.rpc('approve',{id:healthyId,approval:approval(pending),credential:'founder'});
+      const completed = await waitState(worker,healthyId,state=>state.run.status==='COMPLETED');
+      assert.equal(completed.run.process.launcherId,ready.launcherId); assert.deepEqual(completed.run.input,healthyInput);
+      assert.equal(await readFile(designFile,'utf8'),JSON.parse(healthyInput.taskInput).proposal.edit.content);
+      const unchanged = await worker.rpc('status',{id}); assert.equal(unchanged.run.status,'HOLD');
+      assert.equal(unchanged.run.reason,'ASYNC_OWNER_RESOLVER_UNSUPPORTED'); assert.equal(unchanged.allowanceHeld,true);
+      assert.deepEqual(unchanged.reservation.retained,held.reservation.retained); assert.equal(unchanged.run.receipt,null);
+      assert.deepEqual((await store.read(held.run.proposal.scope)).actions,{}); await assert.rejects(stat(file),{code:'ENOENT'});
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM trellis_effects.operations')).rows[0].n,1);
+      const healthyAudit = await worker.rpc('owner-audit'); assert.equal(healthyAudit.authenticationAttempts,4);
+      assert.deepEqual(healthyAudit.authenticatedSubjects,['agent:emery','founder:reviewer','agent:emery','agent:emery']);
+      assert.equal(worker.child.exitCode,null); await worker.stop();
+      caseResult.asyncOwnerRefusedBeforeAuthentication = true; caseResult.coordinatorSurvivedPromiseSettlement = true;
+      caseResult.failedAllowanceHeld = true; caseResult.distinctHealthyWorkflowCompleted = true;
+    });
+  }
   for (const checkpoint of ['proposal','effect','receipt']) await run(`DBOS recovery after committed ${checkpoint} but before step acknowledgement`, async ({ spawnCoordinator, input, waitState, approval, snapshot, caseResult }) => {
     const first = spawnCoordinator(`crash-${checkpoint}`); await first.next('ready'); const id = await first.rpc('submit',{input:input()});
     if (checkpoint !== 'proposal') { const pending = await waitState(first,id,value => value.run.status === 'WAITING_APPROVAL'); await first.rpc('approve',{id,approval:approval(pending),credential:'founder'}); }
