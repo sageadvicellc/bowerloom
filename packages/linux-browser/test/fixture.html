@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Synthetic craft jobs</title><h1>Craft jobs</h1><form id="job-form"><label>Job <input id="job-title" required></label><button type="submit">Add</button></form><div id="jobs"></div><button id="export-jobs">Export</button><script>
+let jobs=JSON.parse(localStorage.getItem('jobs')||'[]');
+function save(){localStorage.setItem('jobs',JSON.stringify(jobs));}
+function render(){document.querySelector('#jobs').replaceChildren();for(const j of jobs){const row=document.createElement('div');row.dataset.jobId=j.id;const title=document.createElement('span');title.className='job-title';title.textContent=j.title;const stage=document.createElement('select');stage.className='job-stage';for(const value of ['queued','in-progress','done']){const option=new Option(value,value);stage.add(option);}stage.value=j.stage;stage.onchange=()=>{j.stage=stage.value;save();};row.append(title,stage);document.querySelector('#jobs').append(row);}}
+document.querySelector('#job-form').onsubmit=e=>{e.preventDefault();jobs.push({id:crypto.randomUUID(),title:document.querySelector('#job-title').value,stage:'queued'});save();render();e.target.reset();};
+document.querySelector('#export-jobs').onclick=()=>{const a=document.createElement('a');a.download='trellis-jobs.json';a.href=URL.createObjectURL(new Blob([JSON.stringify({version:1,jobs})],{type:'application/json'}));a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};render();
+</script>
