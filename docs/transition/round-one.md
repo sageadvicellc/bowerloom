@@ -27,7 +27,7 @@ At most two workers run at once. Each worker receives one bounded assignment. Re
 
 The daily review is scheduled for 9 a.m. America/New_York. It reports completed results, test evidence, blockers, usage, and any decisions that require the founder. A release date follows measured feasibility results, not an assumed daily output rate.
 
-Only hannasage authorizes a merge of the exact candidate revision. coda-crew and h4n-n4 are the preferred agent identities. sagehanna is the fallback. No work in this round changes repository visibility, removes historical work, or publishes a release.
+Only hannasage reviews and merges the exact candidate revision into `main`. Agents review and merge work into feature branches within the approved scope. These feature merges need peer review and relevant passing tests, without separate founder approval. coda-crew and h4n-n4 are the preferred agent identities. sagehanna is the fallback. No work in this round changes repository visibility, removes historical work, or publishes a release.
 
 ## Startup evidence
 

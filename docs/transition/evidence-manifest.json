@@ -55,9 +55,16 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "98920f89111c073c1650495f45e5878b2ed6049d631fab18efec2a96a17ff674",
+    "original_sha256": "7ed242b69795078931feb6a360de8167b36d86a85b453801f51b30c94e8a8105",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "edd4638e7ddb610ec524d50a0548ffd8f51dc6894f34019fb61d58355ffc447c",
-    "adaptation": "Only frontmatter and local source-link destinations differ."
+    "repository_sha256": "1c8325d667b71fd20a8da931caedfe552f14ccda82a264078a559d18e332a856",
+    "adaptation": "Only frontmatter and local source-link destinations differ.",
+    "post_review_amendment": {
+      "date": "2026-10-01",
+      "source": "Founder instruction in the current chat",
+      "change": "The sole-merger rule applies only to main. Agents peer-review and merge feature branches within approved scope.",
+      "independently_reviewed_pre_amendment_sha256": "98920f89111c073c1650495f45e5878b2ed6049d631fab18efec2a96a17ff674",
+      "research_and_fixtures_changed": false
+    }
   }
 }

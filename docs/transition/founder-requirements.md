@@ -64,7 +64,11 @@ The observed identities are:
 - h4n-n4: App ID 5127467, owned by sageadvicellc.
 - hannasage: founder approval identity, never an agent fallback.
 
-Both Apps completed a scoped repository metadata read. Write permissions remain untested. Agent identity cannot substitute for founder approval. Only hannasage authorizes a candidate to merge, with approval bound to the exact candidate revision.
+Both Apps completed a scoped repository metadata read. coda-crew also pushed the review branch and created its draft pull request. Other App permission coverage remains untested.
+
+Only hannasage reviews and merges the exact candidate revision into `main`. Agents never push or merge into `main`. Within approved work, agents review one another and merge task branches into feature branches without founder approval for each merge. An independent reviewer and relevant passing tests precede each integration merge.
+
+The founder clarified this boundary on October 1, 2026. The founder-only merge rule applies to `main`, not feature branches. This direction supersedes earlier blanket merge restrictions in campaign records.
 
 ## Development operating requirements
 

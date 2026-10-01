@@ -28,3 +28,9 @@ The [research runner](../../experiments/transition/README.md) reproduces 159 ass
 The runner does not reproduce the native QMD benchmark or the existing Roots validator test. Those require the recorded environment and source revisions. Their evidence remains in the private records.
 
 No experiment establishes a working Trellis release, authenticated permissions, a provider quota guarantee, or production containment. The specification preserves these limitations as release gates.
+
+## Founder clarification
+
+On October 1, Hanna limited the sole-merger rule to `main`. The [working order](working-order.md) records team authority over feature branches.
+
+The current candidate includes that instruction after the independent review. The manifest records the amendment separately. Research observations and experiment sources remain unchanged.

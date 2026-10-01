@@ -24,7 +24,7 @@ The release sequence is Trellis v0.7-beta acceptance, a separate Sagespec team u
 
 Coda is the Solution Lead and Emery the Design Lead in the default demonstration crew. These are configurable crew roles. Their names grant no universal framework privilege. Leads propose work within enforced ownership, permission, budget, and approval rules.
 
-Framework approvers are configurable and authenticated. For this campaign, only `hannasage` can approve a merge, and approval binds the exact candidate revision. Agent identities cannot supply it. [Founder requirements]
+Framework approvers are configurable and authenticated. For this campaign, only `hannasage` reviews and merges the exact candidate revision into `main`. Agents never push or merge into `main`. Agents review one another and merge into feature branches within approved work. Each integration merge requires independent review and relevant passing tests. It does not require separate founder approval. [Founder requirements, clarified October 1, 2026]
 
 ### 2. What the evidence establishes
 
@@ -183,6 +183,8 @@ The complete portability suite also covers clean clone/start, mandatory-capabili
 
 This queue begins only after specification approval. One integration feature branch, `feature/trellis-v1`, remains the review home. That branch does not decide repository topology.
 
+Workers branch from the integration branch and open task pull requests against it. Another agent reviews each change against its acceptance criteria. The integration lead merges accepted work into the feature branch and runs relevant integration tests. Changed code needs renewed review and tests. Hanna receives the assembled feature for review and merge into `main`.
+
 | Gate | Work and owner | Exit evidence |
 |---|---|---|
 | 0. Founder specification | Hanna settles the decisions below | Approved revision, scope, topology, runtime direction, and unresolved items explicitly bounded |
@@ -201,7 +203,9 @@ Do not close PRs, flatten branches, delete checkouts, rewrite history, or change
 
 Before release, reconcile MIT and package metadata. The snapshot found conflicting Relay metadata and missing tracked licenses in the coordinator and Workbench. No full dependency or publication audit cleared a distribution. Preserve the old team's stopped state and disabled schedules. The ten listed automation workflows were disabled. That observation does not cover every scheduler. [rstruct-F6, F8]
 
-Prepare the founder review at 9 a.m. America/New_York. Include outcomes, acceptance instructions, tests, usage, gaps, risks, and decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy. No release date or daily output rate is supported yet. Agent implementation and review remain subordinate to exact-revision founder approval. [Founder requirements]
+Prepare the founder review at 9 a.m. America/New_York. Include outcomes, acceptance instructions, tests, usage, gaps, risks, and decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
+
+No release date or daily output rate is supported yet. Agents coordinate implementation, peer review, and feature merges within approved scope. Hanna reviews the assembled feature and merges its exact approved revision into `main`. [Founder requirements]
 
 ## Decisions for Hanna
 
@@ -237,4 +241,4 @@ All reviewed observations and retrieved documentation below are dated October 1,
 - Capacity, `capacity-F1` to `F5`, `F7` to `F9`: [capacity notes](evidence-index.md#review-records). Primary sources include [Claude status-line fields](https://code.claude.com/docs/en/statusline), [shared subscription usage](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan), and [cached usage](https://code.claude.com/docs/en/costs).
 - Retrieval, `qmd-F1`, `F3`, `F4`, `F6` to `F8`, `F11`, `F12`: [QMD notes](evidence-index.md#review-records). The notes identify corrected scores and original raw outputs. Primary sources include the [QMD v2.8.3 README](https://github.com/tobi/qmd/blob/v2.8.3/README.md) and [package manifest](https://github.com/tobi/qmd/blob/v2.8.3/package.json).
 
-The founder gate is approval or revision of this exact candidate and its named decisions. Research completion alone authorizes no production implementation, repository migration, release, or merge.
+The founder gate is approval or revision of this exact candidate and its named decisions. Research completion alone authorizes no production implementation, repository migration, release, or merge into `main`. Peer-reviewed feature merges remain authorized within approved work.

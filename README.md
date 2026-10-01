@@ -11,6 +11,7 @@ Sagespec is a separate product and set of business workflows built on Trellis. T
 The first campaign prepares a specification and implementation queue for founder review. This repository does not yet contain a working framework release.
 
 - [Founder requirements](docs/transition/founder-requirements.md)
+- [Branch coordination and merge authority](docs/transition/working-order.md)
 - [Specification candidate and implementation queue](docs/transition/v1-specification-candidate.md)
 - [Round-one outcomes and boundaries](docs/transition/round-one.md)
 - [Research evidence index](docs/transition/evidence-index.md)
