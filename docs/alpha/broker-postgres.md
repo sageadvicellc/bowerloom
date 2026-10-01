@@ -46,6 +46,6 @@ Two distinct database clients performed 40 same-scope increments without lost up
 
 The revocation regression removed the final approver from an already approved action. Another client and a fresh process read the empty list. Dispatch in that fresh process returned `APPROVAL_REQUIRED`, left the action prepared, and called no effect adapter. Invalid approver types, malformed subjects, and an invalid lease interval still rolled back. The pre-repair reports are retained under the ignored `.trellis/history/10f217c5b7a856de8707ff3f8f06cf3a4c9570bd/` directory within this package.
 
-Real side-effect replay, complete broker enforcement, live Codex operation, server restart/failover, production credentials and role provisioning, and complete alpha acceptance remain open. This slice adds no DBOS wrapper and no filesystem adapter.
+Workspace-effects, supervised runtime, and CLI integration now exercise real approved writes, retained receipts, and live Codex proposals. The completed demo reopened without another effect. This store remains separate from those adapters; server failover, production database roles, and final alpha acceptance remain open. See [current evidence](acceptance-status.md).
 
 The transaction and locking choices follow the official [node-postgres transaction guidance](https://node-postgres.com/features/transactions) and [PostgreSQL 17 locking documentation](https://www.postgresql.org/docs/17/explicit-locking.html).

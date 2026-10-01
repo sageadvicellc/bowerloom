@@ -40,7 +40,7 @@ The native policy version is `codex-subscription-proposal/v0.7-alpha.3`. Its pro
 
 ## Evidence limits
 
-Unit tests cover argument rejection, exact approval, interruption, deadlines, private file handling, graph gates, and input limits. Real CLI orchestration and generated-artifact acceptance remain separate tests.
+Unit tests cover argument rejection, exact approval, interruption, deadlines, private file handling, graph gates, and input limits. Real PostgreSQL/DBOS tests use synthetic adapters for failure cases. The live `live-demo-01` run completed both generated artifacts through real Codex and browser acceptance. Fresh `up`, `status`, and `review` preserved 15 table snapshots, artifact hashes and modification times, and browser records. See [current evidence and limits](acceptance-status.md).
 
 ## Capacity margin
 
