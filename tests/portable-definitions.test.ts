@@ -159,7 +159,12 @@ for (const [name, input, code] of [
   ['alias', source.replace('id: endor-craft-shop', 'id: &identity endor-craft-shop').replace('description: Plan a local job board for a fictional craft shop from synthetic orders.', 'description: *identity'), 'YAML_FEATURE'],
   ['custom tag', source.replace('id: endor-craft-shop', 'id: !secret endor-craft-shop'), 'YAML_INVALID'],
   ['explicit standard tag', source.replace('id: endor-craft-shop', 'id: !!str endor-craft-shop'), 'YAML_FEATURE'],
+  ['tagged root key', source.replace('id: endor-craft-shop', '!!str id: endor-craft-shop'), 'YAML_FEATURE'],
+  ['anchored root key', source.replace('id: endor-craft-shop', '&identity id: endor-craft-shop'), 'YAML_FEATURE'],
+  ['tagged nested key', source.replace('maxActiveWorkers: 2', '!!str maxActiveWorkers: 2'), 'YAML_FEATURE'],
+  ['anchored nested key', source.replace('maxActiveWorkers: 2', '&workers maxActiveWorkers: 2'), 'YAML_FEATURE'],
   ['numeric mapping key', `${source}\n1: extra\n`, 'YAML_INVALID'],
+  ['collection mapping key', `${source}\n? [invalid, key]\n: extra\n`, 'YAML_INVALID'],
   ['infinite YAML number', source.replace('reservePercent: 25', 'reservePercent: .inf'), 'INVALID_VALUE'],
   ['prototype key', `${source}\n__proto__: {}\n`, 'INVALID_VALUE'],
 ] as const) {
@@ -172,6 +177,20 @@ test('definition size, depth, and array counts are bounded', () => {
   const value = clone();
   value.tasks = Array.from({ length: 257 }, () => structuredClone(value.tasks[0]!));
   assert.throws(() => validateDefinition(value), fails('DEFINITION_LIMIT'));
+});
+
+test('mapping keys count toward the YAML node limit', () => {
+  const record = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`field-${index}`, 'value']));
+  const records = Array.from({ length: 100 }, () => record);
+  // Values and collections alone fit the limit. Keys push this source above it.
+  assert.throws(() => parseCrew(JSON.stringify(records)), fails('DEFINITION_LIMIT'));
+});
+
+test('nested mappings retain the depth boundary with key traversal', () => {
+  const nested = (depth: number): string => `${'{"field":'.repeat(depth)}0${'}'.repeat(depth)}`;
+  // At the allowed depth, parsing completes and the unrelated crew schema refuses this shape.
+  assert.throws(() => parseCrew(nested(32)), fails('SCHEMA_INVALID'));
+  assert.throws(() => parseCrew(nested(33)), fails('DEFINITION_LIMIT'));
 });
 
 test('refuse missing, directory, symbolic-link, and escaping source files', async t => {

@@ -95,6 +95,8 @@ Alpha definitions permit one or two active workers, at least a 25 percent reserv
 
 The loader accepts one YAML 1.2 document. It rejects duplicate keys, parser warnings, explicit tags, anchors, aliases, and non-string mapping keys. It also rejects non-finite numbers and unsafe integers.
 
+Feature restrictions apply to mapping keys and values. Both count toward the node and depth limits.
+
 | Limit | Bound |
 |---|---|
 | Definition file | 1 MiB |

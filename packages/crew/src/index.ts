@@ -33,6 +33,7 @@ export function parseCrew(source: string): CrewDefinition {
       if (isMap(node)) {
         for (const pair of node.items) {
           if (!isScalar(pair.key) || typeof pair.key.value !== 'string') throw new DefinitionError('YAML_INVALID', 'YAML mapping keys must be strings.');
+          pending.push({ node: pair.key, depth: depth + 1 });
           pending.push({ node: pair.value, depth: depth + 1 });
         }
       } else if (isSeq(node)) {
