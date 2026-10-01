@@ -50,6 +50,13 @@ test('only the stored waiting proposal receives exact approval',async()=>{
   await assert.rejects(invoke({command:'approve',installation:'x',candidate,action},notWaiting),{code:'APPROVAL_UNAVAILABLE'});
   assert.deepEqual(notWaiting.approvals,[]);
 });
+test('an interrupt before or during proposal reads never grants approval',async()=>{
+  for(const duringRead of [false,true]){const p=port(),abort=new AbortController();
+    if(duringRead){const original=p.run;p.run=async()=>{abort.abort();return original();};}else abort.abort();
+    await executeSession({command:'approve',installation:'x',candidate,action},p,()=>{},abort.signal);
+    assert.deepEqual(p.approvals,[]);assert.equal(p.cancels,1);assert.equal(p.closed,1);
+  }
+});
 test('up stops at approval and cannot grant permission',async()=>{
   const p=port();await invoke({command:'up',installation:'x',tier:'pro'},p);
   assert.equal(p.advances,1);assert.deepEqual(p.approvals,[]);assert.equal(p.closed,1);

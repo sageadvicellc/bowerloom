@@ -58,9 +58,11 @@ export async function executeSession(command: SessionCommand, port: SessionPort,
   sleep:(ms:number)=>Promise<void> = ms=>new Promise(resolve=>setTimeout(resolve,ms)), now:()=>number=Date.now): Promise<void> {
   let summary:object|undefined;
   try {
-    let view=await port.status(); let approvedTask:string|null=null;
-    if (command.command==='cancel') { await port.cancel(); view=await port.status(); }
-    if (command.command==='approve') {
+    let view=await port.status(); let approvedTask:string|null=null;let cancelled=false;
+    const cancelIfRequested=async()=>{if(!signal.aborted)return false;if(!cancelled){await port.cancel();cancelled=true;}view=await port.status();return true;};
+    await cancelIfRequested();
+    if (!cancelled&&command.command==='cancel') { await port.cancel(); view=await port.status(); }
+    if (!cancelled&&command.command==='approve') {
       if (view.state.input.plan.candidateRevision!==command.candidate) throw new DefinitionError('STALE_APPROVAL','The supplied candidate does not match this session.');
       const waiting=[];
       for(const id of view.state.input.plan.taskOrder) {
@@ -70,12 +72,13 @@ export async function executeSession(command: SessionCommand, port: SessionPort,
       if(waiting.length!==1) throw new DefinitionError('APPROVAL_UNAVAILABLE','The session must contain one task waiting for approval.');
       const {id,state}=waiting[0]!;
       if(digest(canonicalJson(state.proposal))!==command.action) throw new DefinitionError('STALE_APPROVAL','The supplied action does not match the stored proposal.');
-      await port.approve(id,command.candidate,command.action); approvedTask=id;
+      if(!await cancelIfRequested()){await port.approve(id,command.candidate,command.action);approvedTask=id;}
+      await cancelIfRequested();
     }
-    if(command.command==='up'||command.command==='approve') {
+    if(!cancelled&&(command.command==='up'||command.command==='approve')) {
       const deadline=now()+120000;
       for (;;) {
-        if(signal.aborted) { await port.cancel(); view=await port.status(); break; }
+        if(await cancelIfRequested()) break;
         view=await port.advance();
         if(['HOLD','CANCELLED','ACCEPTANCE_FAILED','COMPLETED'].includes(view.status)) break;
         if(view.status==='WAITING_APPROVAL'&&(!approvedTask||(await port.run(approvedTask))?.status!=='WAITING_APPROVAL')) break;

@@ -10,7 +10,7 @@ import { PostgresBrokerStore } from '../../../packages/broker-postgres/src/index
 import { PostgresWorkspaceEffects } from '../../../packages/workspace-effects/src/index.js';
 import { GraphDriver, PostgresGraphStore, pinGraph } from '../../../packages/graph/src/index.js';
 import type { GraphInput, GraphView } from '../../../packages/graph/src/index.js';
-import { RuntimeTaskBridge } from '../../../packages/runtime-bridge/src/index.js';
+import { RuntimeTaskBridge, pinBridgePolicy } from '../../../packages/runtime-bridge/src/index.js';
 import type { BridgePolicy } from '../../../packages/runtime-bridge/src/index.js';
 import { RuntimeLedger, SupervisedRuntime, RuntimeError } from '../../../packages/runtime/src/index.js';
 import { PostgresTestStore, RegisteredTestAcceptance, validateTestManifestPlan } from '../../../packages/controlled-tests/src/index.js';
@@ -58,10 +58,13 @@ export function localInstallation(value:unknown):LocalInstallation{
   if(typeof value.workspaceRoot!=='string'||!isAbsolute(value.workspaceRoot))fail('WORKSPACE_ROOT');
   if(!exact(value.codex,['installation','binding','stopUsedPercent'])||typeof value.codex.stopUsedPercent!=='number'
     ||!Number.isFinite(value.codex.stopUsedPercent)||value.codex.stopUsedPercent>95||value.codex.stopUsedPercent<=10)fail('CAPACITY_POLICY');
-  pinGraph(value.graph as GraphInput);
+  const graph=pinGraph(value.graph as GraphInput);
+  if(graph.plan.definition.tasks.some(task=>!task.effects.some(effect=>effect.operation==='command.test')))fail('TEST_GATE_REQUIRED');
+  pinBridgePolicy(value.bridge as BridgePolicy);
   return structuredClone(value) as unknown as LocalInstallation;
 }
 export async function openLocalSession(config:LocalInstallation,executor:TestExecutor,mode:'start'|'read'|'cancel'):Promise<SessionPort>{
+  config=localInstallation(config);
   const graph=pinGraph(config.graph),manifest=graph.assets['test-manifest'];
   if(!manifest)fail('TEST_MANIFEST_REQUIRED');validateTestManifestPlan(graph.plan,manifest);
   if(config.codex.stopUsedPercent>100-graph.plan.definition.budget.reservePercent)fail('CREW_BUDGET_NOT_ENFORCED');
@@ -79,7 +82,7 @@ export async function openLocalSession(config:LocalInstallation,executor:TestExe
   const approver=Object.freeze({kind:'local-operator'});
   const identity={async authenticate(token:unknown){
     const subject=token===approver?config.bridge.approverSubjects[0]:[...ownerTokens].find(([,value])=>value===token)?.[0];
-    if(!subject)throw new Error('Unauthenticated');return{subject,proofRef:`local-${config.installationId}`,expiresAtMs:Date.now()+30000};
+    if(!subject)throw new Error('Unauthenticated');return{subject,proofRef:`local-${config.installationId}`,expiresAtMs:Date.now()+(token===approver?120000:30000)};
   }};
   try{
     let driver:GraphDriver;
@@ -116,7 +119,7 @@ export async function openLocalSession(config:LocalInstallation,executor:TestExe
       async approve(taskId,candidateRevision,actionDigest){
         if(!runtime)fail('READ_ONLY_COMMAND');const state=await ledger.read(runId(taskId));
         await runtime.approve(state.id,{candidateRevision,actionDigest,ownerEpoch:state.input.task.ownerEpoch,
-          expiresAtMs:Math.min(Date.now()+60000,state.input.task.leaseExpiresAtMs)},approver);
+          expiresAtMs:Math.min(Date.now()+60000,state.input.task.leaseExpiresAtMs,state.input.task.readyAtMs+state.input.plan.definition.tasks.find(task=>task.id===taskId)!.policy.deadlineSeconds*1000)},approver);
       },
       async cancel(){if(!runtime)fail('READ_ONLY_COMMAND');await driver.cancel(id);for(const taskId of graph.plan.taskOrder){
         try{await runtime.cancel(runId(taskId));}catch(error){if(!(error instanceof RuntimeError&&error.code==='UNKNOWN_RUN'))throw error;}

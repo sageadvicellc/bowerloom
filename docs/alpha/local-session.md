@@ -28,7 +28,11 @@ The `cancel` path records cancellation before runtime recovery. This prevents a 
 
 The graph permits one approved artifact write and one optional registered test per task. A browser test requires an HTML output and the exact pinned manifest. The only supported test is `craft-shop-ui-v1`.
 
-The bridge selects the write by its operation name. Effect order does not change the target. A missing or changed manifest prevents bridge construction.
+The bridge selects the write by its operation name. Effect order does not change the target. The local session requires the browser gate on every task. A missing or changed manifest prevents bridge construction.
+
+The controller validates bridge policy and supported task shapes before runtime recovery. An interrupted approval grants no authority after the interrupted read.
+
+The operator proof lasts two minutes. Each approval lasts at most one minute and also respects the task deadline and lease.
 
 The native input limit is 32,768 UTF-8 bytes, including its fixed instruction. This permits a bounded accepted HTML handoff between leads. Oversized input fails without truncation or model submission.
 

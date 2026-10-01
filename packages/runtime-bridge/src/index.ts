@@ -26,6 +26,18 @@ const id = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9][a
   && !['constructor', 'prototype', '__proto__'].includes(v);
 const integer = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 
+export function pinBridgePolicy(value: BridgePolicy): BridgePolicy {
+  const p = structuredClone(value);
+  if (Object.keys(p).sort().join() !== 'accountAlias,allowancePercent,approverSubjects,leaseExpiresAtMs,modelRoute,readyAtMs'
+      || !id(p.accountAlias) || p.modelRoute !== MODEL_ROUTE || !integer(p.readyAtMs) || !integer(p.leaseExpiresAtMs)
+      || p.leaseExpiresAtMs <= p.readyAtMs || !Array.isArray(p.approverSubjects) || !p.approverSubjects.length
+      || p.approverSubjects.length > 32 || !p.approverSubjects.every(id) || new Set(p.approverSubjects).size !== p.approverSubjects.length
+      || !p.allowancePercent || Object.keys(p.allowancePercent).length < 1 || Object.keys(p.allowancePercent).length > 2
+      || Object.entries(p.allowancePercent).some(([name, percent]) => !['primary', 'secondary'].includes(name)
+        || !Number.isFinite(percent) || percent <= 0 || percent >= 75)) fail('INVALID_POLICY');
+  return p;
+}
+
 export function renderTask(request: ExecutionRequest): string {
   const task = request.plan.definition.tasks.find(task => task.id === request.taskId) ?? fail('UNKNOWN_TASK');
   const owner = request.plan.definition.owners.find(owner => owner.id === task.owner) ?? fail('UNKNOWN_OWNER');
@@ -53,19 +65,12 @@ export class RuntimeTaskBridge implements TaskExecutor {
   readonly #store: GraphStore;
   readonly #runtime: RuntimePort;
   constructor(input: GraphInput, policy: BridgePolicy, store: GraphStore, runtime: RuntimePort, testManifest?: string) {
-    this.#input = pinGraph(input); this.#policy = structuredClone(policy); this.#store = store; this.#runtime = runtime;
+    this.#input = pinGraph(input); this.#policy = pinBridgePolicy(policy); this.#store = store; this.#runtime = runtime;
     if (this.#input.plan.definition.tasks.some(task => task.effects.some(effect => effect.operation === 'command.test'))) {
       if (testManifest === undefined) fail('TEST_MANIFEST_REQUIRED');
       validateTestManifestPlan(this.#input.plan, testManifest);
     }
-    const p = this.#policy;
-    if (Object.keys(p).sort().join() !== 'accountAlias,allowancePercent,approverSubjects,leaseExpiresAtMs,modelRoute,readyAtMs'
-      || !id(p.accountAlias) || p.modelRoute !== MODEL_ROUTE || !integer(p.readyAtMs) || !integer(p.leaseExpiresAtMs)
-      || p.leaseExpiresAtMs <= p.readyAtMs || !Array.isArray(p.approverSubjects) || !p.approverSubjects.length
-      || p.approverSubjects.length > 32 || !p.approverSubjects.every(id) || new Set(p.approverSubjects).size !== p.approverSubjects.length
-      || !p.allowancePercent || Object.keys(p.allowancePercent).length < 1 || Object.keys(p.allowancePercent).length > 2
-      || Object.entries(p.allowancePercent).some(([name, percent]) => !['primary', 'secondary'].includes(name)
-        || !Number.isFinite(percent) || percent <= 0 || percent >= 75)) fail('INVALID_POLICY');
+
   }
   async #request(supplied: ExecutionRequest, dispatch: boolean): Promise<ExecutionRequest> {
     // Only the store's committed claim supplies authority and predecessor evidence.

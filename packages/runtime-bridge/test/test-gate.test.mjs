@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {pinGraph,GraphDriver} from '../../../dist/packages/graph/src/index.js';
-import {RuntimeTaskBridge,renderTask} from '../../../dist/packages/runtime-bridge/src/index.js';
+import {RuntimeTaskBridge,renderTask,pinBridgePolicy} from '../../../dist/packages/runtime-bridge/src/index.js';
 import {taskRequest} from '../../../dist/packages/graph/src/validation.js';
 import {MODEL_ROUTE} from '../../../dist/packages/codex-adapter/src/index.js';
 import {input,seal,TestStore,canonicalJson,digest} from '../../graph/test/fixtures.mjs';
@@ -29,4 +29,9 @@ test('unknown tests, duplicate tests, non-HTML outputs and missing approval are 
   const v=await gated();change(v.plan.definition.tasks[0]);
   assert.throws(()=>{v.plan=seal(v.plan);pinGraph(v);});
  }
+});
+
+test('invalid bridge policy is rejected by the pre-start validator',()=>{
+ assert.throws(()=>pinBridgePolicy({...policy,modelRoute:'paid-api'}),{code:'INVALID_POLICY'});
+ const copied=pinBridgePolicy(policy);copied.approverSubjects.push('other');assert.deepEqual(policy.approverSubjects,['founder:reviewer']);
 });
