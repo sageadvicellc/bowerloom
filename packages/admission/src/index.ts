@@ -151,7 +151,8 @@ export class PostgresAdmission {
       if (!decision.allowed) return { kind: 'denied', reason: decision.reason };
       reservation.status = 'LAUNCHING'; reservation.claimedAtMs = now; reservation.launcherId = this.#launcherId; reservation.permitHash = null;
       const validThroughMs = Math.min(Number.MAX_SAFE_INTEGER, state.observation!.observedAtMs + state.policy.maxObservationAgeMs,
-        ...Object.values(state.observation!.windows).filter(window => window !== null).map(window => window.resetAtMs - 1));
+        ...Object.entries(state.observation!.windows).flatMap(([name, window]) => window === null ? []
+          : [Math.min(window.resetAtMs, state.highWater[name]!.resetAtMs) - 1]));
       return { kind: 'claimed', request: structuredClone(reservation.request), claimedAtMs: now, validThroughMs };
     });
     if (claim.kind === 'denied') return claim;

@@ -5,6 +5,13 @@ export const activeReservation = (status: string): boolean => ['RESERVED', 'LAUN
 const charge = (percent: number): number => Math.ceil(percent * 100);
 const threshold = (percent: number): number => Math.floor(percent * 100);
 const own = <T>(values: Record<string, T>, key: string): T | undefined => Object.hasOwn(values, key) ? values[key] : undefined;
+type WindowIdentity = { resetAtMs: number; durationMs: number };
+// Compare against the original high-water anchor, never the previous sample.
+// Nonoverlapping windows remain real rollovers even when their duration is short.
+const sameAccountingWindow = (anchor: WindowIdentity, sample: WindowIdentity): boolean => {
+  const difference = Math.abs(sample.resetAtMs - anchor.resetAtMs);
+  return sample.durationMs === anchor.durationMs && difference <= 1000 && difference < anchor.durationMs;
+};
 
 export function createAccount(accountId: string, aliases: string[], policy: AdmissionPolicy): AccountState {
   identifier(accountId);
@@ -33,8 +40,12 @@ function observationReason(state: AccountState, observation: AccountObservation,
     const prior = own(state.highWater, name);
     if (prior) {
       if (window.durationMs !== prior.durationMs) return 'WINDOW_DURATION_CHANGED';
-      if (window.resetAtMs < prior.resetAtMs) return 'OUT_OF_ORDER_WINDOW';
-      if (window.resetAtMs !== prior.resetAtMs && window.resetAtMs - window.durationMs < prior.resetAtMs) return 'OVERLAPPING_RESET';
+      if (sameAccountingWindow(prior, window)) {
+        if (prior.resetAtMs <= now) return 'EXPIRED_WINDOW';
+      } else {
+        if (window.resetAtMs < prior.resetAtMs) return 'OUT_OF_ORDER_WINDOW';
+        if (window.resetAtMs - window.durationMs < prior.resetAtMs) return 'OVERLAPPING_RESET';
+      }
     }
   }
   return null;
@@ -46,17 +57,21 @@ export function acceptObservation(input: AccountState, value: unknown, now: numb
   catch { return { state, accepted: false, reason: 'INVALID_OBSERVATION' }; }
   const reason = observationReason(state, observation, now);
   if (reason) return { state, accepted: false, reason };
+  const jitteredWindows = new Set<string>();
   for (const [name, window] of Object.entries(observation.windows)) if (window) {
     const prior = own(state.highWater, name);
-    state.highWater[name] = { resetAtMs: window.resetAtMs, durationMs: window.durationMs,
-      usedPercent: prior?.resetAtMs === window.resetAtMs ? Math.max(prior.usedPercent, window.usedPercent) : window.usedPercent };
+    const sameWindow = prior && sameAccountingWindow(prior, window);
+    if (sameWindow && prior.resetAtMs !== window.resetAtMs) jitteredWindows.add(name);
+    state.highWater[name] = { resetAtMs: sameWindow ? prior.resetAtMs : window.resetAtMs, durationMs: window.durationMs,
+      usedPercent: sameWindow ? Math.max(prior.usedPercent, window.usedPercent) : window.usedPercent };
   }
   state.observation = observation;
   for (const reservation of Object.values(state.reservations)) {
     if (reservation.status !== 'COMPLETED' || reservation.completedAtMs === null || observation.observedAtMs <= reservation.completedAtMs) continue;
     const covered = Object.entries(reservation.retained).every(([name, retained]) => {
       const window = own(observation.windows, name);
-      if (!window || window.accountedThroughMs === null || window.accountedThroughMs < reservation.completedAtMs!) return false;
+      // Timestamp tolerance establishes neither exact coverage nor a reset that can release a hold.
+      if (jitteredWindows.has(name) || !window || window.accountedThroughMs === null || window.accountedThroughMs < reservation.completedAtMs!) return false;
       const sameWindow = window.resetAtMs === retained.resetAtMs && window.durationMs === retained.durationMs;
       const resolvedReset = state.policy.completedResetPolicy === 'release-covered' && window.resetAtMs > retained.resetAtMs
         && window.resetAtMs - window.durationMs >= retained.resetAtMs;
@@ -103,7 +118,7 @@ function evaluate(stateInput: AccountState, requestInput: ReservationRequest, no
   if (request.role === 'worker' && workers + (proposed ? 1 : 0) > state.policy.maxWorkers) return deny('WORKER_LIMIT');
   for (const name of windows) {
     const highWater = own(state.highWater, name); const sample = own(observation.windows, name);
-    if (!sample || !highWater || highWater.resetAtMs !== sample.resetAtMs || highWater.durationMs !== sample.durationMs) return deny('MISSING_WINDOW_HISTORY');
+    if (!sample || !highWater || !sameAccountingWindow(highWater, sample) || highWater.usedPercent < sample.usedPercent) return deny('MISSING_WINDOW_HISTORY');
     const retained = Object.values(state.reservations).reduce((total, reservation) => total + charge(own(reservation.retained, name)?.percent ?? 0), 0);
     const total = charge(highWater.usedPercent) + retained + charge(state.policy.headroomPercent) + (proposed ? charge(request.allowancePercent[name]!) : 0);
     if (total >= threshold(state.policy.thresholdPercent)) return deny('CAPACITY_LIMIT');
