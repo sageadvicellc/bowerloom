@@ -2,7 +2,7 @@
 
 This alpha package connects the broker/runtime interface to a pinned, proposal-only Codex process. It includes an authenticated no-thread observation reader and a separate orphan guardian. It has no action dispatch capability: its only successful result is one strict `trellis/action/v0.7-alpha` proposal string, which still requires the broker's ownership, scope, revision, approval, permission, deadline, and idempotency checks.
 
-**Status: integrated and exercised by the two-lead live demo at `6e16e709174549faf8dd48e4a844449b5dd30212`.** Both generated proposals passed exact approval, real writes, and registered browser acceptance. Final independent alpha review remains pending.
+Integrated and exercised by the two-lead live demo at `6e16e709174549faf8dd48e4a844449b5dd30212`. Both generated proposals passed exact approval, real writes, and registered browser acceptance. Final independent alpha review remains pending.
 
 The packaged native adversarial test observed no tool events, unchanged canaries, and no connections to owned listeners. Direct command probes separately demonstrated denied reads, writes, child writes, TCP, and Unix access. These results do not prove arbitrary hidden native invocation denial, complete provider telemetry suppression, or total harness egress isolation. See [current alpha evidence](../../docs/alpha/acceptance-status.md).
 
@@ -59,11 +59,11 @@ Live bounds are 60 seconds, stdout 65,536 bytes, stderr 32,768 bytes, and 64 pro
 | --- | --- | --- |
 | Owned process cleanup | Synthetic guardian, descendant, parent-loss, deadline, cancellation, and overflow tests; packaged live proposals completed cleanup. | No arbitrary PID adoption, host recovery, or general server failover. |
 | Authenticated observation | Packaged no-thread account/model/config checks and live subscription admission. | No authoritative provider accounting watermark or tier calibration. |
-| Worker tools and broker bypass | Pinned source gates, seven direct command denials, bounded adversarial canaries, and approved live artifact writes. | No complete hidden-tool inventory or universal native-invocation proof. |
+| Worker tools and broker bypass | Pinned source gates, seven command-boundary probes, bounded adversarial canaries, and approved live artifact writes. | No complete hidden-tool inventory or universal native-invocation proof. |
 | Trusted harness traffic | Authentication, account observation, and inference use the existing subscription route. Worker-facing network tools remain denied. | Total harness egress and provider-owned telemetry remain unproved. |
 | Optional Trellis telemetry | No remote exporter; local evidence callback defaults to a no-op. DBOS tracing and native analytics are disabled. | The assembled zero-send supplement remains under final acceptance review. It cannot establish provider telemetry suppression. |
 
-The completed live demo connects this adapter to persistent admission, broker effects, graph handoff, and browser acceptance. Separate tests cover interrupted runtime and browser cleanup. Final independent review and the founder walkthrough remain pending. A failed mandatory control stops the affected capability; it does not authorize weakening the boundary.
+The completed live demo connects this adapter to persistent admission, broker effects, graph handoff, and browser acceptance. Separate tests cover interrupted runtime and browser cleanup. The founder walkthrough is ready. Final independent review remains pending. A failed mandatory control stops the affected capability; it does not authorize weakening the boundary.
 
 ## Reproduction and source provenance
 

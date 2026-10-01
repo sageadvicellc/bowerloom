@@ -2,7 +2,13 @@
 
 The two-lead generated demo passed at source `6e16e709174549faf8dd48e4a844449b5dd30212` on October 1, 2026.
 
-Final independent alpha review, the narrated founder walkthrough, and founder acceptance remain pending. This result does not authorize release, archival, or a main merge.
+The narrated walkthrough and local artifact preview are ready. Final independent alpha review and founder acceptance remain pending. This result does not authorize release, archival, or a main merge.
+
+The private founder packet includes the 261.375737-second `trellis-v0.7-alpha-walkthrough.mp4`, its same-name Markdown transcript, and the loopback preview at `http://127.0.0.1:60790`.
+
+The preview server enforces the approved artifact hash. The in-app browser download capture timed out; automated real-browser export checks passed for both artifacts.
+
+Use an external browser if the in-app preview does not download. This limitation does not change the recorded automated export results.
 
 ## Recorded live result
 
