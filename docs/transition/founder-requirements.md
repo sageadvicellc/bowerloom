@@ -6,7 +6,7 @@ This baseline records the founder's requirements and planning decisions from thi
 
 ## Product and release requirements
 
-Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is Hanna's product and business workflows built on Trellis. Trellis and Sagespec have separate product scopes.
+Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Trellis and Sagespec have separate product scopes.
 
 Deliver `v0.7-alpha` first with Codex. Hanna uses it for personal testing and records a baseline for beta comparisons. Alpha also enables a marketing and social team to prepare the campaign without waiting for beta.
 
@@ -22,7 +22,9 @@ Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a
 
 The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review.
 
-Codex is the selected first harness for alpha. Claude Code remains a candidate for later support. Beta support breadth remains a specification choice. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
+Codex is the selected first harness for `v0.7-alpha`. Both Codex and Claude Code are required for `v0.7-beta`. Each requires live evidence for its declared controls. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
+
+The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
 ## Portability is a core requirement
 

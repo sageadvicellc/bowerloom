@@ -38,3 +38,5 @@ The current candidate includes that instruction after the independent review. Th
 Hanna also selected the framework monorepo and retirement of the five dispersed module repositories. The [cutover plan](monorepo-cutover.md) records preservation and retirement gates. This decision follows the independent research review.
 
 Hanna added Codex-first `v0.7-alpha` for testing, beta baseline measurements, and marketing preparation before beta. The [release plan](release-plan.md) records that decision and the proposed acceptance criteria. This amendment adds no new experiment result.
+
+Hanna approved Codex and Claude Code for `v0.7-beta` and standardized the later releases as `v1-beta` and `v1-rc`. Sagespec is the flagship for automation of her entire business. Historical names do not override the current release plan.

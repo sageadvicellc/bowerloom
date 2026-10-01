@@ -41,4 +41,6 @@ A successful branch push does not establish server-enforced merge protection. Th
 
 The daily packet presents the assembled feature, acceptance instructions, test results, usage, gaps, and decisions. The feature-to-main pull request stays ready for Hanna's review when its acceptance criteria pass. Hanna reviews that result and performs the merge.
 
-Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. Feature-branch autonomy does not select the unresolved architecture or start Sagespec early. The next voice walkthrough covers those decisions and gaps.
+Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. Feature-branch autonomy does not select the unresolved architecture or start Sagespec early. The remaining walkthrough covers recovery, access, retrieval, and acceptance gaps.
+
+The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names. Both Codex and Claude Code are required for `v0.7-beta`. Sagespec is Hanna's flagship product built on Trellis to automate her entire business.

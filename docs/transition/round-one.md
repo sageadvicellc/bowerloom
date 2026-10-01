@@ -2,7 +2,7 @@
 
 The founder approved the transition plan. This round turns the brief into a tested specification and a reviewable development queue.
 
-Trellis is the open-source framework. Sagespec is Hanna's product and workflows built on it. The delivery order is Codex-first `v0.7-alpha`, then `v0.7-beta`, then Sagespec development through a separate product team. Alpha enables Hanna to test and establish a baseline. A marketing and social team can prepare its campaign without beta as a dependency. This round records the milestones and does not start either team.
+Trellis is the open-source framework. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. The delivery order is Codex-first `v0.7-alpha`, then `v0.7-beta` with Codex and Claude Code. Sagespec product development follows accepted beta. Trellis continues through `v1-beta` and `v1-rc`. Alpha enables Hanna to test and establish a baseline. A marketing and social team can prepare its campaign without beta as a dependency. This round records the milestones and does not start either team.
 
 ## Expected results
 

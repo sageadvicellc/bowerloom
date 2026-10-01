@@ -4,7 +4,9 @@ Trellis is the open-source tooling and framework for building self-managing syst
 
 Portable, versioned definitions describe teams, skills, permissions, workflow graphs, budgets, and evaluation requirements outside individual agent tools.
 
-Sagespec is a separate product and set of business workflows built on Trellis. The delivery sequence is Codex-first `v0.7-alpha`, then `v0.7-beta`, then Sagespec development through a separate product team. Alpha supports founder testing, baseline measurements, and marketing preparation before beta.
+Sagespec is Hanna's flagship product built on Trellis to automate her entire business. It has its own product repository and team.
+
+The framework releases are `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. Alpha is Codex-first. Beta requires Codex and Claude Code. Sagespec development starts on accepted beta. Alpha supports founder testing, baseline measurements, and marketing preparation before beta.
 
 ## Current development
 
@@ -13,7 +15,7 @@ The first campaign prepares a specification and implementation queue for founder
 - [Founder requirements](docs/transition/founder-requirements.md)
 - [Branch coordination and merge authority](docs/transition/working-order.md)
 - [Approved monorepo cutover](docs/transition/monorepo-cutover.md)
-- [Alpha, beta, and v1 release plan](docs/transition/release-plan.md)
+- [Release plan through v1-rc](docs/transition/release-plan.md)
 - [Specification candidate and implementation queue](docs/transition/v1-specification-candidate.md)
 - [Round-one outcomes and boundaries](docs/transition/round-one.md)
 - [Research evidence index](docs/transition/evidence-index.md)

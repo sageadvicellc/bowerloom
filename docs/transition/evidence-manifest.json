@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "48ae7509d32f186dcfcdf94b17b7f4a3471e77da9cb12acaddb13f0f5bd038e5",
+    "original_sha256": "3722824c0339b5460b3549243115b833986e428c77be8be7ba2206ad4d176a87",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "6375c8503d17b2724f13bad7b45dd7ef3ffe1926b07f86b8b29168c2442f5807",
+    "repository_sha256": "2fa8c57c166e4bd5c821db54851e7d992562fbb55f1b43b0bbcdbecc6d6e5ade",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -78,6 +78,13 @@
         "source": "Founder instruction in the current chat",
         "decision": "Add Codex-first v0.7-alpha for founder testing, beta baseline measurements, and marketing/social preparation before beta. Sagespec product development remains after beta.",
         "acceptance_criteria": "Detailed alpha tests are proposed, not measured release readiness.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Canonical milestones: v0.7-alpha, v0.7-beta, v1-beta, v1-rc. Codex and Claude Code are required for v0.7-beta. Sagespec is the flagship for automation of the entire business.",
+        "acceptance_criteria": "Detailed release and release-candidate criteria remain proposals.",
         "research_and_fixtures_changed": false
       }
     ]

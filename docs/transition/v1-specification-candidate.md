@@ -8,7 +8,7 @@ check: evidence-index.md
 audience: Hanna
 ---
 
-# Trellis v1 specification candidate
+# Trellis specification candidate
 
 ## Summary
 
@@ -18,11 +18,13 @@ The founder selected Codex-first `v0.7-alpha` for personal testing, baseline mea
 
 ### 1. Product boundary and release sequence
 
-Trellis is the MIT-licensed, self-hosted framework for owners who direct automation through personal agents. Sagespec is Hanna's downstream product and business workflows. Generic examples belong in Trellis. Sagespec's product brief, business rules, knowledge, and assets belong in its own project.
+The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
-The release sequence is Codex-first `v0.7-alpha`, then `v0.7-beta`, then Sagespec development on the accepted beta. Alpha gives Hanna a working test release and a measured baseline for beta. It also enables a marketing and social team to prepare the campaign before beta.
+Trellis is the MIT-licensed, self-hosted framework for owners who direct automation through personal agents. Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Generic examples belong in Trellis. Sagespec's product brief, business rules, knowledge, and assets belong in its own project.
 
-The marketing team is separate from the later Sagespec product team. Each crew needs its own scope, permissions, writable state, and shared-account capacity accounting. Trellis v1 hardening continues alongside downstream work. This specification appoints neither lead and starts neither team.
+Codex-first `v0.7-alpha` precedes `v0.7-beta`, which supports Codex and Claude Code. Sagespec development starts on the accepted beta and targets automation of Hanna's entire business. Alpha gives Hanna a working test release and a measured baseline for beta. It also enables a marketing and social team to prepare the campaign before beta.
+
+The marketing team is separate from the later Sagespec product team. Each crew needs its own scope, permissions, writable state, and shared-account capacity accounting. Trellis `v1-beta` and `v1-rc` work continues alongside downstream product development. This specification appoints neither lead and starts neither team.
 
 Coda is the Solution Lead and Emery the Design Lead in the default demonstration crew. These are configurable crew roles. Their names grant no universal framework privilege. Leads propose work within enforced ownership, permission, budget, and approval rules.
 
@@ -91,7 +93,7 @@ Each adapter needs structured capability description, validation, planning, mate
 | Candidate | Checked evidence | Proposed disposition for review |
 |---|---|---|
 | Codex 0.157.0 | Local help/version and structured interfaces | Selected first harness for alpha. Live control tests remain required. |
-| Claude Code 2.1.286 | Local help/version and structured interfaces | Second candidate, subject to valid capacity admission |
+| Claude Code 2.1.286 | Local help/version and structured interfaces | Required alongside Codex for v0.7-beta. Live control tests and valid capacity admission remain required. |
 | OpenCode | Homebrew receipt 1.18.30. Three startup inspection timeouts | Defer until startup is understood |
 | Goose | Source and documentation. Absent from PATH | Later composition experiment |
 
@@ -141,15 +143,17 @@ Keyword retrieval, semantic retrieval, and answer generation need separate accep
 
 Workbench experiments use permitted frozen snapshots, pinned versions, and independent writable state. Credentials and writable production mounts stay outside the experiment. Separate directories alone do not prove containment. Production prompts, knowledge, or policy change only through reviewed promotion into an approved release. Existing corpus and ownership controls must survive repository changes. [rstruct-F9, proposed contracts]
 
-### 9. Alpha, beta, and v1 acceptance
+### 9. Release acceptance
 
 Alpha is a usable Codex-first release on this Mac. Its proposed acceptance requires a complete local workflow through portable definitions, structured progress, and a reviewable result. Its supported actions must pass live permission, approval, capacity, cancellation, and recovery tests. Alpha records known limits and recovery instructions. A renamed simulation does not satisfy this milestone.
 
 Alpha freezes repeatable tasks, synthetic inputs, acceptance criteria, and versions for beta comparison. Runs record accepted outcomes, founder interventions, elapsed time, observed usage, and recovery results. Missing measurements remain explicit. Alpha also supports a separate Codex marketing crew that produces reviewable campaign drafts. Beta completion is not a prerequisite for that crew.
 
-The proposed v0.7-beta includes the portable loader, typed acyclic graph compiler, simulation mode, coordinator controls, and the chosen runtime support. It also includes module integration, authorized retrieval at the chosen scope, and two generic demos. Its release statement lists only tested behavior. Documentation-only adapters remain experimental.
+The proposed `v0.7-beta` includes the portable loader, typed acyclic graph compiler, simulation mode, and coordinator controls. It requires Codex and Claude Code support with live control evidence. It also includes module integration, authorized retrieval at the chosen scope, and two generic demos. Its release statement lists only tested behavior. Documentation-only adapters remain experimental.
 
-V1 additionally requires the same workflow on two supported harnesses, a mapping-only switch, and actual interrupted handoff without repeating completed effects. Every release gate requires proven mandatory controls within its claimed scope. V1 broadens the evidence for recovery, schema migrations, retrieval, model routing, and independent evaluations. It does not inherit untested platform or scale claims.
+The proposed `v1-beta` adds a mapping-only harness switch and interrupted handoff without repeating completed effects. `v0.7-beta` already requires the common workflow and mandatory controls on Codex and Claude Code. Every release gate requires proven mandatory controls within its claimed scope. `v1-beta` broadens the evidence for recovery, schema migrations, retrieval, model routing, and independent evaluations. It does not inherit untested platform or scale claims.
+
+The proposed `v1-rc` fixes a candidate revision and repeats the release acceptance suite against its packaged artifacts. Blocking defects require fixes and renewed tests. Its release record includes pinned versions, supported platforms, known limits, and recovery instructions.
 
 Both demos begin with a clean installation, portable source, synthetic inputs, pinned dependencies, declared permissions, and acceptance instructions. The current composition fixture produced a fixed HTML artifact and a fixed invoice report. These are contract demonstrations, not completed product demos. [contracts-F4]
 
@@ -183,7 +187,7 @@ For the administrative-founder path:
 9. In a separate case, cancel before dispatch.
 10. Exercise ambiguous-outcome recovery without duplicate publication.
 
-The complete portability suite also covers clean clone/start, mandatory-capability removal, reproducible generation, generated-file drift, and contributor experiment isolation. Beta must pass the applicable runtime cases. The two-harness workflow, switch, and handoff complete the v1 portability gate. Every pass needs saved evidence rather than a simulator label.
+The complete portability suite also covers clean clone/start, mandatory-capability removal, reproducible generation, generated-file drift, and contributor experiment isolation. `v0.7-beta` must pass the common workflow and applicable runtime cases on Codex and Claude Code. The switch and interrupted handoff complete the proposed `v1-beta` portability gate. Every pass needs saved evidence rather than a simulator label.
 
 ### 10. Implementation queue and preservation
 
@@ -201,9 +205,10 @@ Workers branch from the integration branch and open task pull requests against i
 | 5. Module integration | Module owners bind Relay, Roots, Vines, and Crew. The integration owner freezes the synthetic application brief and measurable pass/fail behavior. | Request/event compatibility, approved retrieval boundary, trace evidence, two-team access and state tests. The application brief is ready before demo acceptance. |
 | 6. Alpha acceptance | Integration owner delivers the usable Codex-first release | Local workflow, live control tests, founder test instructions, known limits, baseline records, exact-revision founder review |
 | 7. Early use | Hanna tests alpha. A separate marketing and social crew prepares campaign drafts when started. | Repeatable measurements, actionable defects, separate crew state and permissions, shared-account admission. No beta dependency. |
-| 8. Beta acceptance | Integration owner assembles both demos and the release manifest | Alpha-to-beta comparison, clean setup, application/workflow acceptance, recovery runbook, documented limits, exact-revision founder approval |
+| 8. Beta acceptance | Integration owner assembles both demos on Codex and Claude Code | Live controls and common workflow on both harnesses, alpha comparison, recovery instructions, exact-revision founder approval |
 | 9. Sagespec handoff | Separate product lead and team, once appointed | Approved product brief, pinned beta, own definitions/state/credentials/approvals, shared-account admission |
-| 10. V1 hardening | Trellis owners continue. Workbench supplies independent evidence | Second harness and all portability cases. Calibrated profiles, broader retrieval/recovery evidence, reviewed promotion |
+| 10. v1-beta | Trellis owners harden the full framework scope. Workbench supplies independent evidence. | All portability cases, calibrated profiles, broader retrieval/recovery evidence, reviewed promotion |
+| 11. v1-rc | Integration owner prepares the release candidate | Pinned artifacts, repeated release suite, resolved release blockers, recovery instructions, and exact-revision founder review |
 
 The preservation map labels each historical file and PR preserve, reapply, supersede, or leave for review. While porting accepted changes, keep original branches, PR links, and stacked base relationships. The snapshot found 15 open module PRs. Four Crew PRs target `feat/codex-v1`. Shallow research clones are not historical backups. [rstruct-F7]
 
@@ -219,7 +224,7 @@ No release date or daily output rate is supported yet. Agents coordinate impleme
 
 1. Repository topology, decided October 1: use `sageadvicellc/trellis` as the framework monorepo. Retire the five dispersed module repositories after accepted code and useful open work move. Preserve history, source references, and recovery copies. Archive the repositories after the replacement passes installation, tests, packaging, and cutover review. Hanna merges the monorepo candidate into `main` before archival. Sagespec remains separate. This decision does not authorize repository deletion or visibility changes.
 2. Import work under the approved direction: the team prepares and reviews a sanitized framework-only file/PR map before imports. Retain historical work while accepted changes are ported. Require license reconciliation, reproducible pins, preserved Workbench controls, and actual clean setup before release readiness. Hanna reviews the assembled migration before merging into `main`.
-3. Alpha runtime, decided October 1: deliver `v0.7-alpha` with Codex first on this Mac. Hanna uses alpha for testing and beta baseline measurements. Marketing preparation can start before beta. Live control tests remain required. Beta harness breadth remains open. V1 still requires evidence on two supported harnesses.
+3. Alpha runtime, decided October 1: deliver `v0.7-alpha` with Codex first on this Mac. Hanna uses alpha for testing and beta baseline measurements. Marketing preparation can start before beta. Live control tests remain required. Both Codex and Claude Code are required for `v0.7-beta`. The later milestones are `v1-beta` and `v1-rc`. Detailed release acceptance criteria remain proposed.
 4. Open-source breadth: defer OpenCode and retain Goose as a documentary candidate, or authorize a separate bounded repair/install/validation pass. Broader coverage adds configuration and nested-accounting work. OpenCode's conflicting subscription claims do not authorize that route.
 5. Mandatory action boundary: choose read/propose with a separately enforced action broker, or include broader tools in the initial contract. The broader choice includes direct code and external-action tools. It requires broader escape and permission tests. Documentation, fixtures, and native proof remain separate. Weakening mandatory proof requires a revision to the founder's control requirements.
 6. Recovery implementation: the notes recommend a local durable journal and one dispatch authority for beta. DBOS with self-hosted Postgres is the alternative, pending a live spike. The local choice leaves more recovery tooling to Trellis. DBOS adds engine and database operations. Both retain ambiguous-effect reconciliation and artifact-based portable handoff.

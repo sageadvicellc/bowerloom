@@ -2,17 +2,22 @@
 
 Hanna added `v0.7-alpha` on October 1, 2026. Codex is its first harness. The milestone enables founder testing, a baseline for beta comparisons, and marketing preparation before beta.
 
+The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
+
+Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Its implementation starts on accepted `v0.7-beta` and proceeds in reviewed stages.
+
 ## Release sequence
 
 | Milestone | Purpose | Required evidence |
 |---|---|---|
 | v0.7-alpha | Give Hanna a usable Codex-first release on this Mac | A complete local workflow, live control tests, reviewable results, test instructions, and known limits |
 | Alpha use | Establish the beta baseline and enable a marketing and social crew | Repeatable test records, defects, separate crew state, and reviewable campaign drafts |
-| v0.7-beta | Deliver the two tested demonstration paths for wider trials | Both demos, alpha comparisons, recovery instructions, and evidence for the declared runtime support |
-| Sagespec development | Build Hanna's product and workflows on accepted Trellis beta | Separate product scope, lead, permissions, and writable state |
-| v1 | Harden the framework and prove portability | Two supported harnesses, workflow switching, interrupted handoff, and the remaining reliability gates |
+| v0.7-beta | Support Codex and Claude Code with two tested demonstration paths | Live controls on both harnesses, both demos, alpha comparisons, and recovery instructions |
+| Sagespec development | Build the flagship for automation of Hanna's entire business on accepted beta | Separate product scope, lead, permissions, and writable state |
+| v1-beta | Exercise the full framework scope and prove portability | Workflow switching, interrupted handoff, and broader reliability evidence |
+| v1-rc | Prepare the release candidate for final acceptance | Repeatable release tests, resolved release blockers, pinned artifacts, and recovery instructions |
 
-The alpha milestone and Codex-first direction are approved. Its detailed acceptance criteria remain part of the specification proposal. Beta harness breadth remains open.
+The release names and harness sequence are approved. Detailed acceptance criteria remain part of the specification proposal. `v0.7-alpha` is Codex-first, and `v0.7-beta` requires Codex and Claude Code.
 
 ## Proposed alpha baseline
 
