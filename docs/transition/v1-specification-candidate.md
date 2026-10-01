@@ -14,6 +14,8 @@ audience: Hanna
 
 The founder selected Codex-first `v0.7-alpha` for personal testing, baseline measurements, and marketing preparation before beta. Trellis v0.7-beta follows, then a separate Sagespec product team. This candidate proposes contracts, acceptance gates, and implementation order. The research does not yet establish a working release or settle every architecture choice.
 
+The next decision is the [alpha build approval packet](alpha-build-approval.md). It bundles recommended defaults and separates alpha implementation from later release gates. It does not record founder approval.
+
 ## Findings and proposed specification
 
 ### 1. Product boundary and release sequence
@@ -27,6 +29,8 @@ Codex-first `v0.7-alpha` precedes `v0.7-beta`, which supports Codex and Claude C
 The marketing team is separate from the later Sagespec product team. Each crew needs its own scope, permissions, writable state, and shared-account capacity accounting. Trellis `v1-beta` and `v1-rc` work continues alongside downstream product development. This specification appoints neither lead and starts neither team.
 
 Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. This is an approved founder requirement. Supabase is now a conditional backend requirement. PostgreSQL throughout is the favored direction, while packaging and execution details remain proposals.
+
+The founder requested Endor and Star Wars references in tutorials, example names, and occasional success messages. The [language direction](language-and-tutorials.md) maps independent installations to trees and scoped connections to bridges. Technical terms, commands, permissions, and approval text remain explicit.
 
 Coda is the Solution Lead and Emery the Design Lead in the default demonstration crew. These are configurable crew roles. Their names grant no universal framework privilege. Leads propose work within enforced ownership, permission, budget, and approval rules.
 
@@ -217,11 +221,13 @@ The complete portability suite also covers clean clone/start, mandatory-capabili
 
 The remaining implementation queue begins after specification approval. Hanna selected `sageadvicellc/trellis` as the monorepo on October 1, 2026. The integration branch remains `feature/trellis-v1`. Sagespec stays in a separate repository.
 
+This queue covers the full roadmap. The current approval packet authorizes work only through alpha acceptance. Later milestones retain their stated gates.
+
 Workers branch from the integration branch and open task pull requests against it. Another agent reviews each change against its acceptance criteria. The integration lead merges accepted work into the feature branch and runs relevant integration tests. Changed code needs renewed review and tests. Hanna receives the assembled feature for review and merge into `main`.
 
 | Gate | Work and owner | Exit evidence |
 |---|---|---|
-| 0. Founder specification | Hanna settles the remaining decisions below | Approved revision, scope, runtime direction, and unresolved items explicitly bounded. Monorepo direction is approved. |
+| 0. Founder specification | Hanna decides on the bounded alpha build packet | Approved alpha scope, recommended defaults, delegated engineering choices, and explicit later gates |
 | 1. Preservation and import | Integration ownership maps retained files and PRs into the monorepo | Reviewed disposition map, license reconciliation, private-content boundary, retained history and recovery sources. Archive old repositories after cutover gates pass. |
 | 2. Contracts and source | Coordinator and module owners implement shared contracts, YAML validation, versioning, graph compiler, simulation | Actual schema engine. Invalid graph/path/version cases. Generation, drift, migration and rollback tests |
 | 3. Control state | Coordinator implements ownership, approval, admission, cancellation, and recovery | Actual runtime failure matrix, authenticated scope, persistent reservations, ambiguous-effect holds |
@@ -244,20 +250,23 @@ Prepare the founder review at 9 a.m. America/New_York. Include outcomes, accepta
 
 No release date or daily output rate is supported yet. Agents coordinate implementation, peer review, and feature merges within approved scope. Hanna reviews the assembled feature and merges its exact approved revision into `main`. [Founder requirements]
 
-## Decisions for Hanna
+## Decision for Hanna
 
-1. Repository topology, decided October 1: use `sageadvicellc/trellis` as the framework monorepo. Retire the five dispersed module repositories after accepted code and useful open work move. Preserve history, source references, and recovery copies. Archive the repositories after the replacement passes installation, tests, packaging, and cutover review. Hanna merges the monorepo candidate into `main` before archival. Sagespec remains separate. This decision does not authorize repository deletion or visibility changes.
-2. Import work under the approved direction: the team prepares and reviews a sanitized framework-only file/PR map before imports. Retain historical work while accepted changes are ported. Require license reconciliation, reproducible pins, preserved Workbench controls, and actual clean setup before release readiness. Hanna reviews the assembled migration before merging into `main`.
-3. Alpha runtime, decided October 1: deliver `v0.7-alpha` with Codex first on this Mac. Hanna uses alpha for testing and beta baseline measurements. Marketing preparation can start before beta. Live control tests remain required. Both Codex and Claude Code are required for `v0.7-beta`. The later milestones are `v1-beta` and `v1-rc`. Detailed release acceptance criteria remain proposed.
-4. Open-source breadth: defer OpenCode and retain Goose as a documentary candidate, or authorize a separate bounded repair/install/validation pass. Broader coverage adds configuration and nested-accounting work. OpenCode's conflicting subscription claims do not authorize that route.
-5. Mandatory action boundary: choose read/propose with a separately enforced action broker, or include broader tools in the initial contract. The broader choice includes direct code and external-action tools. It requires broader escape and permission tests. Documentation, fixtures, and native proof remain separate. Weakening mandatory proof requires a revision to the founder's control requirements.
-6. Storage and recovery: Supabase is required if it satisfies setup, shared knowledge, access, and deletion needs. Hanna favors PostgreSQL throughout. The proposal uses the MIT DBOS library with one supervised coordinator per installation and excludes Conductor. Exact packaging and engine adoption await tests. Automatic replacement of a failed company server remains outside this proposed first deployment. Ambiguous effects still require reconciliation.
-7. Retrieval scope: shared company knowledge must support embeddings and limited access. Select the embedding model, generation location, and retrieval quality targets before semantic acceptance. The earlier lexical results remain bounded evidence. PostgreSQL storage does not establish semantic accuracy, corpus limits, or isolation.
-8. Retrieval access and targets: choose separate indexes with enforced process boundaries, or a trusted broker over shared state. The broker must close every unauthorized path. Separate indexes can duplicate storage. Shared state enlarges the authorization surface. Set exact/paraphrase recall, stale-evidence, access, and missing-answer criteria. Choose whether to accept the 5,000-short-document observation or require more tests before choosing the v1 envelope. Those further tests cover byte volume and semantic retrieval.
-9. Capacity calibration and routing: choose proven freshness sources and measured sampling limits, job allowances, route mappings, and unattended-operation limits. The founder's 25 percent reserve and existing-subscription requirement remain in force. The notes recommend expressing the reserve as an admission policy with stated limits. No fixture selects a threshold or profile calibration. Live Claude work remains pending valid admission. Paid fallback stays disabled.
-10. Module contracts and demos: approve or revise the proposed contracts and release acceptance criteria. Codex-first alpha and its early-use purpose are approved. The detailed alpha tests and both beta demos remain proposed. Sagespec product development follows beta acceptance. Its lead and product scope remain separate from the early marketing crew.
+The immediate decision is approval of the linked alpha build packet and its recommended defaults. Approval opens the Codex-first implementation campaign. It does not approve a release, merge into `main`, repository retirement, or customer-data collection.
 
-11. Data policies: reconcile historical Sagespec schedules and telemetry treatment. Define policy parameters, consent scope, backup expiry, deletion evidence, and restoration behavior. Keep Sagespec customer terms separate from Trellis defaults. Historical continued-monitoring and indefinite-vitals text cannot silently establish current consent or retention rules.
+For alpha, the proposal uses Supabase/PostgreSQL, the MIT DBOS library without Conductor, one supervised coordinator, and a controlled action broker. Workers propose bounded workspace changes and test commands. The broker authorizes and dispatches them. Mandatory controls require live evidence before alpha acceptance.
+
+Alpha uses authorized keyword retrieval over synthetic sources and keeps optional telemetry disabled. The team owns compatible version selection, package layout, and implementation details within these limits. Supabase suitability must pass before adoption. A material failure returns a concrete finding and alternatives to Hanna without silently weakening the requirement.
+
+The following choices remain gated later:
+
+1. Beta semantic retrieval needs an embedding model, generation location, frozen quality targets, and access tests before acceptance.
+2. Shared company use needs isolation, worker ownership, revocation, reconnect, and recovery evidence while personal installations retain autonomy.
+3. Sagespec retention schedules and telemetry treatment need reconciliation before customer use. Framework defaults do not inherit historical customer terms.
+4. Capacity calibration needs reliable observations, measured allowances, and declared limits before unattended or tiered operation. The reserve and no-paid-fallback requirements remain fixed.
+5. Additional harnesses and automatic replacement of a lost server remain outside the alpha scope. Beta still requires Codex and Claude Code.
+
+The monorepo, release names, main-only founder merge authority, product separation, and personal autonomy requirements remain approved. The approval packet changes none of those decisions.
 
 ## Gaps
 
@@ -280,4 +289,4 @@ All reviewed observations and retrieved documentation below are dated October 1,
 - Capacity, `capacity-F1` to `F5`, `F7` to `F9`: [capacity notes](evidence-index.md#review-records). Primary sources include [Claude status-line fields](https://code.claude.com/docs/en/statusline), [shared subscription usage](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan), and [cached usage](https://code.claude.com/docs/en/costs).
 - Retrieval, `qmd-F1`, `F3`, `F4`, `F6` to `F8`, `F11`, `F12`: [QMD notes](evidence-index.md#review-records). The notes identify corrected scores and original raw outputs. Primary sources include the [QMD v2.8.3 README](https://github.com/tobi/qmd/blob/v2.8.3/README.md) and [package manifest](https://github.com/tobi/qmd/blob/v2.8.3/package.json).
 
-The founder gate is approval or revision of this exact candidate and its named decisions. Research completion alone authorizes no production implementation, repository migration, release, or merge into `main`. Peer-reviewed feature merges remain authorized within approved work.
+The founder gate is approval or revision of the alpha build packet with this candidate as its supporting specification. That approval authorizes the bounded implementation campaign and delegates its routine engineering choices. Until approval, the first-round specification boundary remains in force. Releases, repository retirement, and merges into `main` retain their separate gates.

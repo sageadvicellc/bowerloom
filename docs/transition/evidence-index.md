@@ -54,3 +54,9 @@ The retained brief, note, and check reside under `work/campaign/research/2026-10
 The founder now favors PostgreSQL throughout and requires Supabase, including Studio, if it satisfies the stated needs. The v1 core excludes proprietary coordination dependencies. The [current direction](storage-and-data-policy.md) proposes the MIT DBOS library without Conductor and separates company, personal, and client-private data.
 
 The current direction supersedes the earlier comparison's optional-Supabase and lightweight-personal-storage recommendation. Its independently checked documentary findings remain historical evidence. An independent review of the amendment found no actionable issues and re-retrieved its cited product documentation. This amendment adds no runtime result. Detailed product retention schedules remain outside the public framework.
+
+## Alpha approval and language direction
+
+The founder requested Endor-inspired nomenclature and tutorials. The [language direction](language-and-tutorials.md) records that request and proposed vocabulary. The [alpha build packet](alpha-build-approval.md) bundles recommended defaults for the next campaign. It separates the immediate implementation decision from later release gates.
+
+The founder asked about readiness. This question is not recorded as implementation approval. The packet remains pending, and its examples add no runtime evidence.

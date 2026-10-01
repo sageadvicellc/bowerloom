@@ -44,3 +44,9 @@ Alpha must exercise real Codex sessions within its declared scope. Synthetic fix
 A separate marketing and social crew can prepare campaign work during alpha use. It does not depend on beta completion. It has its own scope, permissions, writable state, and share of account capacity.
 
 This record does not start that crew or appoint its lead. Sagespec product development retains its beta dependency. No campaign material is sent or published by this specification update.
+
+## Next implementation decision
+
+The [alpha build packet](alpha-build-approval.md) proposes the next campaign and its defaults. Approval opens a bounded Codex-first implementation. It does not certify a release or resolve later customer-policy choices.
+
+The [language direction](language-and-tutorials.md) introduces Endor-inspired tutorials and demo names. The alpha story starts with an independent treehouse. Beta adds the shared village and scoped bridges. These names explain the existing architecture without changing its permissions.

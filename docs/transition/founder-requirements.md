@@ -32,6 +32,10 @@ Beta must test independent personal installations and shared company use. Multip
 
 The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is a conditional requirement, subject to suitability for setup, access, recovery, and deletion. Hanna favors PostgreSQL throughout personal and company installations. The exact packaging and workflow engine remain proposed.
 
+## Language and teaching
+
+Hanna requested Endor and Star Wars references in nomenclature, tutorials, and examples. Use the connected tree-village idea to explain independent installations and scoped connections. Keep ordinary technical terms visible beside the metaphors. Preserve clear commands, permission language, errors, and approval instructions. The detailed tutorial vocabulary remains a proposal.
+
 ## Storage and data lifecycle direction
 
 Hanna prioritizes ease of use for both technical and nontechnical founders. Supabase must remain in the supported backend design if it satisfies the stated needs. Studio is part of that requirement. The v1 core must avoid proprietary coordination dependencies.
