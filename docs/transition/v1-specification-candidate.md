@@ -66,6 +66,8 @@ A graph records tasks and their dependencies. A harness runs an agent session. A
 | trellis-vines | Observations, audit exports, usage observations, evaluation evidence | Audit records do not decide workflow state. General metadata excludes private content. |
 | trellis-workbench | Isolated experiments, pinned inputs, comparisons, promotion evidence | An experiment cannot change production or promote itself. |
 
+Vines is the logging system. Its records supply evidence to consuming applications. A later Sagespec layer owns self-improvement decisions and workflows built on those records.
+
 The coordinator is a framework component, not a sixth named module. It resides in the approved framework monorepo. Existing Crew, Relay, Roots, and Vines interfaces cover parts of these boundaries. They do not implement the complete proposal. [contracts-F1 to F3]
 
 The Relay beta proposal permits one shared socket lane. V1 targets ad-hoc conversations and a durable lead/master record. Both require explicit conversation scope, access rules, and retention. These are proposed founder targets. No transport is selected or tested here.

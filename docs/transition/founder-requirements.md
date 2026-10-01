@@ -22,6 +22,10 @@ Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a
 
 The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review.
 
+Vines is the logging system. It records operational events and evidence. Self-improvement belongs to a later Sagespec layer built on Vines.
+
+Hanna clarified this boundary on October 1, 2026. The alpha film excludes Sagespec and self-improvement references. Workbench retains repeatable crew testing.
+
 Codex is the selected first harness for `v0.7-alpha`. Both Codex and Claude Code are required for `v0.7-beta`. Each requires live evidence for its declared controls. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
