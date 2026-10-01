@@ -5,6 +5,9 @@ import pg from 'pg';
 import type { Pool, PoolClient, QueryResult } from 'pg';
 import { stringify } from 'yaml';
 import { canonicalJson, digest, DefinitionError, validateDefinition } from '../../../packages/contracts/src/index.js';
+import type { Effect } from '../../../packages/contracts/src/index.js';
+import { authoredGraph, validateAuthoredCrew, AUTHORING_LIMITS, checked, parseJson } from '../../../packages/authoring/src/index.js';
+import type { AuthoredCrew, AuthoringManifest } from '../../../packages/authoring/src/index.js';
 import { parseCrew, compileCrew } from '../../../packages/crew/src/index.js';
 import type { GraphInput } from '../../../packages/graph/src/index.js';
 import { copyJson, identifier } from '../../../packages/graph/src/validation.js';
@@ -89,6 +92,75 @@ export async function prepareEndorAlpha(options:PrepareEndorAlphaOptions):Promis
   return graph;
 }
 
+/** This installation profile accepts this exact Workbench scenario, not a bundle-selected substitute. */
+export const AUTHORED_CRAFT_SHOP_SCENARIO_DIGEST='sha256:bc620b68e6c6a147f0e121327d5175a50c0b89ea23514e3202b8464ccb6827b8';
+export interface AuthoredInstallationAuthority {
+  bundle:unknown;
+  frozenScenario:string;
+  /** Exact canonical bytes returned by the trusted installed tester registry. */
+  registeredManifest:string;
+  /** Controller grants, supplied independently of the authored project. No path-prefix grants. */
+  permissions:Record<string,Effect[]>;
+}
+export interface PrepareAuthoredCraftShopOptions extends AuthoredInstallationAuthority {
+  destination:string;
+  workspaceId:string;
+  runId:string;
+  owners:GraphInput['owners'];
+}
+function authoredProfile(value:AuthoredInstallationAuthority,bindings:Pick<GraphInput,'workspaceId'|'runId'|'owners'>):{bundle:AuthoredCrew;graph:GraphInput;crewPath:string}{
+  if(typeof value.frozenScenario!=='string'||Buffer.byteLength(value.frozenScenario)>AUTHORING_LIMITS.jsonBytes
+    ||digest(value.frozenScenario)!==AUTHORED_CRAFT_SHOP_SCENARIO_DIGEST)fail('FROZEN_SCENARIO_REQUIRED');
+  const bundle=validateAuthoredCrew(value.bundle,value.frozenScenario);
+  validateRegisteredManifest(value.registeredManifest);
+  if(bundle.assets['test-manifest']!==value.registeredManifest)fail('TEST_MANIFEST_MISMATCH');
+  const graph=authoredGraph(bundle,value.frozenScenario,bindings);
+  const grants=copyJson(value.permissions,16384),definition=graph.plan.definition;
+  if(!exact(grants,definition.owners.map(owner=>owner.id)))fail('AUTHORED_PERMISSIONS');
+  const allowed:Effect[]=[...paths.map(path=>({operation:'workspace.write' as const,path})),{operation:'command.test',command:'craft-shop-ui-v1'}];
+  const normalize=(effects:Effect[])=>effects.map(effect=>canonicalJson(effect)).sort();
+  if(definition.scope.some(effect=>!allowed.some(grant=>same(grant,effect))))fail('AUTHORED_PERMISSIONS');
+  for(const owner of definition.owners){
+    const assigned=grants[owner.id];
+    if(!Array.isArray(assigned)||assigned.some(effect=>!allowed.some(grant=>same(grant,effect)))
+      ||!same(normalize(assigned),normalize(owner.permissions)))fail('AUTHORED_PERMISSIONS');
+  }
+  const manifest=checked<AuthoringManifest>('authoring',parseJson(bundle.assets[bundle.manifestAsset]!));
+  // Reject file/directory aliases before materializing anything, including case-insensitive filesystem collisions.
+  const files=[manifest.crew,...Object.values(graph.plan.assets).map(asset=>asset.path),...paths].map(path=>path.toLowerCase());
+  if(files.some((path,index)=>files.some((other,j)=>j!==index&&(path===other||path.startsWith(`${other}/`)))))fail('AUTHORED_SNAPSHOT_PATH');
+  return{bundle,graph,crewPath:manifest.crew};
+}
+async function verifyAuthoredSnapshot(root:string,profile:ReturnType<typeof authoredProfile>):Promise<void>{
+  await directory(root,true);
+  await textFile(join(root,profile.crewPath),1024*1024,true);
+  for(const [name,asset]of Object.entries(profile.graph.plan.assets)){
+    if(await textFile(join(root,asset.path),AUTHORING_LIMITS.assetBytes,true)!==profile.bundle.assets[name])fail('AUTHORED_SNAPSHOT_CHANGED');
+  }
+  const plan=await compileCrew(join(root,profile.crewPath),{root});
+  if(!same(plan,profile.graph.plan))fail('AUTHORED_SNAPSHOT_CHANGED');
+}
+/** Trusted-controller preparation only. No identities, grants, or tester authority are inferred from bundle text. */
+export async function prepareAuthoredCraftShop(options:PrepareAuthoredCraftShopOptions):Promise<GraphInput>{
+  const input=copyJson(options,2*1024*1024);
+  if(!exact(input,['bundle','frozenScenario','registeredManifest','permissions','destination','workspaceId','runId','owners']))fail('AUTHORED_PREPARATION');
+  const profile=authoredProfile(input,{workspaceId:input.workspaceId,runId:input.runId,owners:input.owners});
+  const destination=input.destination;
+  if(typeof destination!=='string'||!isAbsolute(destination)||resolve(destination)!==destination)fail('UNSAFE_DESTINATION');
+  await directory(dirname(destination),true);
+  // Exclusive creation never adopts or replaces an existing snapshot. Partial failures remain for inspection.
+  await mkdir(destination,{mode:0o700});
+  const files=[{path:profile.crewPath,content:stringify(profile.graph.plan.definition)},
+    ...Object.entries(profile.graph.plan.assets).map(([id,asset])=>({path:asset.path,content:profile.bundle.assets[id]!}))];
+  for(const file of files){
+    await mkdir(dirname(join(destination,file.path)),{recursive:true,mode:0o700});
+    await writeFile(join(destination,file.path),file.content,{mode:0o600,flag:'wx'});
+  }
+  for(const path of paths)await mkdir(dirname(join(destination,path)),{recursive:true,mode:0o700});
+  await verifyAuthoredSnapshot(destination,profile);
+  return profile.graph;
+}
+
 /** Structural subset accepted directly from the controller's LocalInstallation. */
 export interface ProvisioningConfiguration {
   installationId:string;
@@ -110,13 +182,26 @@ export interface ProvisioningReceipt {
 }
 /** Provision only: no DBOS launch, account creation, observation, reservation or policy update. */
 export async function provisionLocalInstallation(value:ProvisioningConfiguration):Promise<ProvisioningReceipt>{
+  return provisionInstallation(value,demoGraph);
+}
+/** Validate the authored snapshot and trusted installation bindings before credentials or database access. */
+export async function provisionAuthoredInstallation(value:ProvisioningConfiguration,authority:AuthoredInstallationAuthority):Promise<ProvisioningReceipt>{
+  const config=copyJson(value,2*1024*1024),input=copyJson(authority,2*1024*1024);
+  if(!exact(input,['bundle','frozenScenario','registeredManifest','permissions']))fail('AUTHORED_AUTHORITY');
+  if(!config.graph)fail('AUTHORED_GRAPH_BINDING');
+  const profile=authoredProfile(input,{workspaceId:config.graph.workspaceId,runId:config.graph.runId,owners:config.graph.owners});
+  if(!same(config.graph,profile.graph))fail('AUTHORED_GRAPH_BINDING');
+  await verifyAuthoredSnapshot(config.workspaceRoot,profile);
+  return provisionInstallation(config,graph=>{if(!same(graph,profile.graph))fail('AUTHORED_GRAPH_BINDING');return profile.graph;});
+}
+async function provisionInstallation(value:ProvisioningConfiguration,profile:(value:GraphInput)=>GraphInput):Promise<ProvisioningReceipt>{
   const config=copyJson(value,2*1024*1024),db=config.database,schemas=config.schemas;
   if(!/^alpha-[a-z0-9-]{1,64}$/.test(config.installationId)||!exact(db,['host','port','name','credentialsFile'])||db.host!=='127.0.0.1'
     ||!Number.isSafeInteger(db.port)||db.port<1024||db.port>65535||!/^trellis_[a-z0-9_]{1,60}$/.test(db.name)
     ||typeof db.credentialsFile!=='string'||!isAbsolute(db.credentialsFile))fail('LOCAL_DATABASE_REQUIRED');
   if(!exact(schemas,['runtime','broker','admission','effects','graph','tests'])||Object.values(schemas).some(s=>typeof s!=='string'||!schemaPattern.test(s))||new Set(Object.values(schemas)).size!==6)fail('INSTALLATION_SCHEMA');
   if(!identifier(config.bridge.accountAlias)||!identifier(config.bridge.modelRoute)||!Number.isFinite(config.codex.stopUsedPercent)||config.codex.stopUsedPercent<=0||config.codex.stopUsedPercent>100-config.graph.plan.definition.budget.reservePercent)fail('CAPACITY_POLICY');
-  const graph=demoGraph(config.graph);await directory(config.workspaceRoot,true);
+  const graph=profile(config.graph);await directory(config.workspaceRoot,true);
   const secret=strictJson(await textFile(resolve(db.credentialsFile),16384,true),16384) as Record<string,unknown>;
   if(!secret||typeof secret.POSTGRES_PASSWORD!=='string'||!secret.POSTGRES_PASSWORD)fail('DATABASE_CREDENTIAL_REQUIRED');
   const pool=new pg.Pool({host:db.host,port:db.port,database:db.name,user:'postgres',password:secret.POSTGRES_PASSWORD,ssl:false,max:1,
@@ -151,7 +236,7 @@ export async function provisionLocalInstallation(value:ProvisioningConfiguration
       if(sql==='ROLLBACK'){const result=await client!.query('ROLLBACK TO SAVEPOINT trellis_provision_component');nesting=false;return result;}
       return client!.query(sql,values);
     },release(){}} as unknown as PoolClient;}} satisfies Pick<Pool,'connect'>;
-    const effects=await PostgresWorkspaceEffects.open(borrowed,{schema:schemas.effects,workspaces:[{workspaceId:graph.workspaceId,root:config.workspaceRoot,writablePaths:paths}]});
+    const effects=await PostgresWorkspaceEffects.open(borrowed,{schema:schemas.effects,workspaces:[{workspaceId:graph.workspaceId,root:config.workspaceRoot,writablePaths:graph.plan.definition.tasks.flatMap(task=>task.effects.flatMap(effect=>effect.operation==='workspace.write'?[effect.path]:[]))}]});
     await new RuntimeLedger(borrowed,schemas.runtime).createSchema();await new PostgresBrokerStore(borrowed,{schema:schemas.broker}).createSchema();
     await effects.createSchema();await new PostgresGraphStore(borrowed,schemas.graph).createSchema();await new PostgresTestStore(borrowed,{schema:schemas.tests,brokerSchema:schemas.broker}).createSchema();
     const receipt:ProvisioningReceipt={installationId:config.installationId,database:db.name,candidateRevision:graph.plan.candidateRevision,createdSchemas:names,

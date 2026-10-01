@@ -27,7 +27,7 @@ This directory contains assets, not a live scenario runner. The next integration
 1. `compileAuthoring(authoringFile, { scenarioFile, root })` produces an `AuthoredCrew` snapshot.
 2. `validateAuthoredCrew(bundle, frozenScenarioBytes)` verifies transported bytes and the bounded scenario shape.
 3. `authoredGraph(bundle, frozenScenarioBytes, { workspaceId, runId, owners })` binds controller-supplied identities.
-4. A generic installation adapter prepares private files and checks the existing admission account and registered tester.
+4. The [authored installation helpers](../../docs/authoring/installation.md) prepare private files and check the existing admission account and registered tester.
 5. Existing session commands execute the graph through runtime approval, effect, and acceptance controls.
 
 The adapter needs the snapshot, trusted scenario, registered tester, private destination, installation policy, and authenticated owner subjects and epochs.

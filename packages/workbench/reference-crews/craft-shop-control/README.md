@@ -31,4 +31,4 @@ The Vines map declares runtime status, write receipts, and browser acceptance ev
 
 Public defaults reserve 25 percent capacity and allow at most two active workers. This scenario executes its tasks sequentially.
 
-Export is offline and confers no approval authority. The generic installation adapter and live Workbench runner remain separate integration work.
+Export is offline and confers no approval authority. The [installation helpers](../../../../docs/authoring/installation.md) prepare its private snapshot; live Workbench execution remains separate.

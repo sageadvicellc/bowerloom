@@ -100,7 +100,7 @@ Secrets, credentials, subscription state, approvals, execution receipts, and loc
 
 ## Integration boundary
 
-The generic installer and live Workbench comparison runner are separate work. This package provides their portable input and validation boundary.
+The [authored installation helpers](../../docs/authoring/installation.md) consume this package's portable input and validation boundary. The live Workbench comparison runner remains separate work.
 
 The installer must validate the bundle against trusted scenario bytes, match its registered tester, and supply authenticated owner bindings.
 
