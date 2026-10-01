@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "db1caec7420d5a1b7137aa3a05e7c7fe62bbbfcc7e638c5a831d085789339c56",
+    "original_sha256": "1f9df05cc654f016de9082d96194882fee0a71540fb88a0f1abca41b8421b068",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "325445125f98a0e001ecf96bad9765db884de90c3e43b5e014da65d34b602341",
+    "repository_sha256": "69aa8fb752bc50aad18adc79fde07422ff7fb7faca04c044d8fe993e3ff9541d",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -100,5 +100,39 @@
         "research_and_fixtures_changed": false
       }
     ]
+  },
+  "shared_durability_followup": {
+    "date": "2026-10-01",
+    "fact_ids": "sd-F1 through sd-F10",
+    "verdicts": {
+      "confirmed": 10,
+      "changed": 0,
+      "failed": 0,
+      "unsupported": 0
+    },
+    "scope": "Documentary source review. No runtime tests or technology selection. Recheck chosen releases before implementation.",
+    "retained_records": [
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/BRIEF.md",
+        "sha256": "39c0b304fdab4b98cce33ba2ba9363f79bdea98f1f95c32df99126f34b85b787"
+      },
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/notes/shared-durability.md",
+        "sha256": "9b5313ec73ef4e71f647ddc123349cd7030913995008563733a3bcfa67e1d127"
+      },
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/CHECK.md",
+        "sha256": "31fabad2dd913b0f59d5b4f5f742937e4f5eb84f5db4aed82f1a04ea16b0f096"
+      },
+      {
+        "path": "outputs/trellis-shared-durability-options.md",
+        "sha256": "77450e5cc6a8ae6a639b6d015d0e489a62f6e8f862d367145e2ebb892b1caf99"
+      }
+    ],
+    "repository_copy": {
+      "path": "shared-durability-options.md",
+      "sha256": "fabcebd4d0cbc9eead497cae365d211985153cdf977a88c961463454abd12180",
+      "adaptation": "Only brief and check frontmatter destinations differ."
+    }
   }
 }

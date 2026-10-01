@@ -42,3 +42,9 @@ Hanna added Codex-first `v0.7-alpha` for testing, beta baseline measurements, an
 Hanna approved Codex and Claude Code for `v0.7-beta` and standardized the later releases as `v1-beta` and `v1-rc`. Sagespec is the flagship for automation of her entire business. Historical names do not override the current release plan.
 
 Hanna required independent personal use and simultaneous company participation for beta. Multiple employees share one company server while their personal installations retain autonomy. Proposed access, outage, and reconnection tests remain unimplemented. The focused storage and recovery comparison records the resulting open architecture choice.
+
+## Shared durability follow-up
+
+The [company and personal comparison](shared-durability-options.md) records the focused follow-up dated October 1, 2026. Its independent review confirms ten documentary claims, `sd-F1` through `sd-F10`, within their recorded limits. No claim changed, failed, or lacked source support. This review does not establish runtime compatibility or successful failure tests.
+
+The retained brief, note, and check reside under `work/campaign/research/2026-10-01-shared-durability`. The manifest records their hashes separately from the original research. The sources are living documentation. Implementation requires release-specific review and tests.

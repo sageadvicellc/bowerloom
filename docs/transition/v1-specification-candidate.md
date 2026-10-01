@@ -121,6 +121,8 @@ The recovery fixture supports these rules in its local ledger. It does not estab
 
 The original notes compared a local durable journal with DBOS TypeScript and self-hosted Postgres. The founder then required simultaneous company use and personal autonomy. A focused follow-up evaluates that broader requirement and her Supabase preference. The original local-only beta recommendation no longer covers the full requirement. No implementation is selected here. [durable-F3 to F7, founder clarification]
 
+The [shared durability comparison](shared-durability-options.md) proposes optional Supabase company storage and lightweight personal storage. It separates storage from execution recovery and records engine choices, operational costs, and untested boundaries. Its ten documentary facts received independent review. It adds no runtime result.
+
 The proposed company boundary keeps company task ownership and approvals on the company server. Personal installations retain private definitions, credentials, and state. Employees select a company workspace explicitly. Company participation does not grant access to unrelated local files, credentials, or personal work.
 
 Local execution of company tasks requires a scoped grant and declared machine capacity. Personal work can continue during a company outage. Disconnected workers cannot assume new company authority. Reconnection must resolve stale ownership and uncertain effects before company work resumes. These boundaries remain proposed acceptance requirements, not implemented capabilities.
