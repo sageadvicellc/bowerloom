@@ -1,0 +1,107 @@
+format: trellis/crew/v0.7-alpha
+id: endor-craft-shop
+description: Plan a local job board for a fictional craft shop from synthetic orders.
+requiredCapabilities:
+  - workspace.read
+  - workspace.write
+  - command.test
+  - approval.exact-revision
+budget:
+  maxActiveWorkers: 2
+  reservePercent: 25
+  paidFallback: false
+scope:
+  - { operation: workspace.read, path: assets }
+  - { operation: workspace.read, path: output }
+  - { operation: workspace.write, path: output }
+  - { operation: command.test, command: test-job-board }
+assets:
+  coda-prompt: { path: prompts/coda.md, mediaType: text/markdown }
+  emery-prompt: { path: prompts/emery.md, mediaType: text/markdown }
+  review-skill: { path: skills/review.md, mediaType: text/markdown }
+  orders: { path: assets/orders.json, mediaType: application/json }
+owners:
+  - id: coda
+    role: Solution Lead
+    prompt: coda-prompt
+    skills: []
+    modelClass: standard
+    permissions:
+      - { operation: workspace.read, path: assets }
+      - { operation: workspace.read, path: output }
+      - { operation: workspace.write, path: output }
+      - { operation: command.test, command: test-job-board }
+  - id: emery
+    role: Design Lead
+    prompt: emery-prompt
+    skills: [review-skill]
+    modelClass: economy
+    permissions:
+      - { operation: workspace.read, path: output }
+      - { operation: workspace.write, path: output/design }
+      - { operation: command.test, command: test-job-board }
+tasks:
+  - id: design
+    owner: emery
+    description: Specify the job board and its acceptance steps.
+    dependsOn: []
+    requires: [workspace.write]
+    inputs:
+      orders:
+        type: { kind: artifact, mediaType: application/json }
+        source: { asset: orders }
+    outputs:
+      brief: { kind: artifact, mediaType: text/markdown }
+    effects:
+      - { operation: workspace.write, path: output/design/brief.md }
+    approval: none
+    policy: { maxAttempts: 1, timeoutSeconds: 300, deadlineSeconds: 300, backoffSeconds: 0, onFailure: escalate }
+    acceptance:
+      - The brief covers adding a job, changing its stage, reload persistence, and export.
+  - id: build
+    owner: coda
+    description: Build the local job board from the accepted brief.
+    dependsOn: [design]
+    requires: [workspace.read, workspace.write, command.test, approval.exact-revision]
+    inputs:
+      brief:
+        type: { kind: artifact, mediaType: text/markdown }
+        source: { task: design, output: brief }
+      orders:
+        type: { kind: artifact, mediaType: application/json }
+        source: { asset: orders }
+    outputs:
+      application: { kind: artifact, mediaType: text/html }
+    effects:
+      - { operation: workspace.read, path: assets/orders.json }
+      - { operation: workspace.read, path: output/design/brief.md }
+      - { operation: workspace.write, path: output/job-board }
+      - { operation: command.test, command: test-job-board }
+    approval: required
+    policy: { maxAttempts: 2, timeoutSeconds: 300, deadlineSeconds: 610, backoffSeconds: 10, onFailure: escalate }
+    acceptance:
+      - A user can add a job and change its stage.
+      - Jobs survive a page reload and export as JSON.
+      - The application connects to no marketplace.
+  - id: review
+    owner: emery
+    description: Review the application against the craft-shop acceptance steps.
+    dependsOn: [build]
+    requires: [workspace.read, command.test]
+    inputs:
+      application:
+        type: { kind: artifact, mediaType: text/html }
+        source: { task: build, output: application }
+    outputs:
+      result:
+        kind: record
+        fields:
+          accepted: { kind: boolean }
+          findings: { kind: array, items: { kind: string } }
+    effects:
+      - { operation: workspace.read, path: output/job-board }
+      - { operation: command.test, command: test-job-board }
+    approval: none
+    policy: { maxAttempts: 1, timeoutSeconds: 300, deadlineSeconds: 300, backoffSeconds: 0, onFailure: escalate }
+    acceptance:
+      - Each required behavior has an observed result or an explicit failure.

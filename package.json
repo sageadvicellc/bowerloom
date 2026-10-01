@@ -1,0 +1,17 @@
+{
+  "name": "@sagetrellis/trellis",
+  "version": "0.7.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=24.11.0 <25" },
+  "workspaces": ["packages/*", "apps/*"],
+  "bin": { "trellis": "dist/apps/cli/src/main.js" },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "trellis": "node dist/apps/cli/src/main.js"
+  },
+  "devDependencies": { "@types/node": "24.11.0", "typescript": "7.0.2" }
+}
