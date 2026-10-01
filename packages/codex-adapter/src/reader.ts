@@ -1,14 +1,14 @@
 import type { AccountObservation } from '../../admission/src/types.js';
 import type { Installation,AccountBinding,ObservationReader } from './types.js';
-import { bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,sanitized,verifyModel,verifyProvenance } from './observation.js';
+import { bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,sanitized,verifyModel,verifyProvenance } from './observation.js';
 import { installationChecks,workspace } from './installation.js';
 import { startGuardian,type OwnedGuardian } from './supervisor.js';
 import { AdapterError,check,object,strictJson } from './safe.js';
 import { CONTROLS,LIMITS,RPC_METHODS } from './policy.js';
 export async function readAuthenticatedObservation(
-  rpc:(method:string,params:unknown)=>Promise<unknown>,initialized:()=>void,binding:AccountBinding,cwd:string,started:number,now:()=>number=Date.now,stopUsedPercent:number=75
+  rpc:(method:string,params:unknown)=>Promise<unknown>,initialized:()=>void,binding:AccountBinding,cwd:string,started:number,now:()=>number=Date.now,stopUsedPercent:number=75,provisionalPercent:number=10
 ):Promise<AccountObservation>{
-  capacityCeiling(stopUsedPercent);
+  capacityCeiling(stopUsedPercent);provisionalMargin(provisionalPercent);
   await rpc('initialize',{clientInfo:{name:'trellis_codex_observer',version:'0.7.0-alpha.0'},capabilities:{experimentalApi:true}});
   initialized();
   const cfg=await rpc('config/read',{cwd,includeLayers:true}),req=await rpc('configRequirements/read',{});verifyProvenance(cfg,req);
@@ -17,12 +17,12 @@ export async function readAuthenticatedObservation(
   const auth=object(object(account).account);check(auth.type==='chatgpt'&&auth.planType==='pro','SUBSCRIPTION_REQUIRED');
   verifyModel(await rpc('model/list',{includeHidden:false,limit:100}));
   const usage=await rpc('account/rateLimits/read',{});
-  const observation=observationFromResponses(account,usage,binding,started,now());requireHeadroom(observation,stopUsedPercent);return observation;
+  const observation=observationFromResponses(account,usage,binding,started,now());requireHeadroom(observation,stopUsedPercent,provisionalPercent);return observation;
 }
 // Private stdio reader. No thread, turn, tool, login, token export or auth-file API exists here.
 export class CodexObservationReader implements ObservationReader {
-  readonly #install:Installation;readonly #binding:AccountBinding;readonly #ceiling:number;#busy=false;#quarantined=false;
-  constructor(installation:Installation,binding:AccountBinding,stopUsedPercent:number=75){this.#install=structuredClone(installation);this.#binding=bindingCopy(binding);this.#ceiling=capacityCeiling(stopUsedPercent);}
+  readonly #install:Installation;readonly #binding:AccountBinding;readonly #ceiling:number;readonly #margin:number;#busy=false;#quarantined=false;
+  constructor(installation:Installation,binding:AccountBinding,stopUsedPercent:number=75,provisionalPercent:number=10){this.#install=structuredClone(installation);this.#binding=bindingCopy(binding);this.#ceiling=capacityCeiling(stopUsedPercent);this.#margin=provisionalMargin(provisionalPercent);}
   async read(accountAlias:string):Promise<AccountObservation>{
     check(this.#binding.aliases.includes(accountAlias),'UNKNOWN_ACCOUNT_ALIAS');
     check(!this.#busy&&!this.#quarantined,'OBSERVER_BUSY_OR_QUARANTINED');this.#busy=true;
@@ -48,7 +48,7 @@ export class CodexObservationReader implements ObservationReader {
         check(RPC_METHODS.includes(method)&&pending===null,'OBSERVER_METHOD');
         return new Promise((resolve,rejectPromise)=>{pending={id:++rid,resolve,reject:rejectPromise};owned!.write(JSON.stringify({id:rid,method,params})+'\n');});
       };
-      const observation=await readAuthenticatedObservation(rpc,()=>owned!.write(JSON.stringify({method:'initialized',params:{}})+'\n'),this.#binding,work.cwd,started,Date.now,this.#ceiling);
+      const observation=await readAuthenticatedObservation(rpc,()=>owned!.write(JSON.stringify({method:'initialized',params:{}})+'\n'),this.#binding,work.cwd,started,Date.now,this.#ceiling,this.#margin);
       await work.verify();return observation;
     }catch(error){if(attempted&&!owned)this.#quarantined=true;throw sanitized(error);}
     finally{try{if(owned)await owned.terminate();}catch(error){this.#quarantined=true;throw sanitized(error);}finally{await work.close();}}

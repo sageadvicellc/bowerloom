@@ -4,6 +4,8 @@ import {writeFile,mkdtemp,realpath,rm} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {openLocalSession,localInstallation} from '../../../dist/apps/cli/src/controller.js';
+import {PostgresAdmission} from '../../../dist/packages/admission/src/index.js';
+import {enforceLocalBudget} from '../../../dist/apps/cli/src/controller.js';
 import {RuntimeLedger,SupervisedRuntime} from '../../../dist/packages/runtime/src/index.js';
 import {PostgresGraphStore,pinGraph} from '../../../dist/packages/graph/src/index.js';
 import {PostgresWorkspaceEffects} from '../../../dist/packages/workspace-effects/src/index.js';
@@ -30,6 +32,7 @@ graph.plan.definition.assets['test-manifest']={path:'test-manifest.json',mediaTy
  const store=new TestStore(),hooks=[],scope={workspaceId:graph.workspaceId,runId:graph.runId,taskId:'design'};
  const runInput={plan:graph.plan,task:{...scope,ownerSubject:'agent:emery',ownerEpoch:1,approverSubjects:['founder:reviewer'],readyAtMs:now,leaseExpiresAtMs:now+1200000,completedDependencies:[]},taskInput:'synthetic',reservation:{}};
  const authority=createTaskState(graph.plan,runInput.task),brokerStore=new InMemoryBrokerStore();brokerStore.seed(authority);let broker,action,deps,opened=0,closed=0;
+ hooks.push(mock.method(PostgresAdmission.prototype,'policy',async()=>({thresholdPercent:75,maxWorkers:2,headroomPercent:8,maxObservationAgeMs:30000,admittedRoutes:[MODEL_ROUTE],completedResetPolicy:'hold'})));
  hooks.push(mock.method(PostgresGraphStore.prototype,'transaction',(id,change)=>store.transaction(id,change)));
  hooks.push(mock.method(PostgresWorkspaceEffects,'open',async()=>({apply(){throw Error('unreachable');},lookup(){throw Error('unreachable');}})));
  hooks.push(mock.method(RuntimeLedger.prototype,'read',async()=>({id:'synthetic-run',input:runInput,proposal:action.proposal})));
@@ -63,4 +66,14 @@ test('approval near the task deadline is capped and remains usable',async()=>{
  const f=await fixture('deadline',true);let session;try{session=await openLocalSession(f.config,executor,'start');await session.approve('design',f.config.graph.plan.candidateRevision,f.action.actionDigest);
   const state=await f.brokerStore.transaction(f.scope,s=>structuredClone(s));assert.equal(state.actions.write.approval.expiresAtMs,f.runInput.task.readyAtMs+600000);
  }finally{if(session)await session.close();await f.cleanup();}
+});
+
+test('explicit native margin covers the actual ledger margin and proposed allowance',async()=>{
+ const f=await fixture('margin');try{const p={thresholdPercent:75,maxWorkers:2,headroomPercent:3,maxObservationAgeMs:30000,admittedRoutes:[MODEL_ROUTE],completedResetPolicy:'hold'};
+ f.config.codex.provisionalPercent=5;assert.doesNotThrow(()=>enforceLocalBudget(f.config,p));
+ assert.throws(()=>enforceLocalBudget(f.config,{...p,headroomPercent:4}),{code:'CREW_BUDGET_NOT_ENFORCED'});
+ assert.throws(()=>enforceLocalBudget(f.config,{...p,maxWorkers:3}),{code:'CREW_BUDGET_NOT_ENFORCED'});
+ assert.throws(()=>enforceLocalBudget(f.config,{...p,thresholdPercent:95}),{code:'CREW_BUDGET_NOT_ENFORCED'});
+ f.config.codex.provisionalPercent=1;assert.throws(()=>enforceLocalBudget(f.config,p),{code:'CAPACITY_POLICY'});
+ }finally{await f.cleanup();}
 });

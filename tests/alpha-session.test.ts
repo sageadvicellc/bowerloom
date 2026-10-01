@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, writeFile, chmod, symlink, link, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -74,6 +75,8 @@ test('cleanup failure prevents a successful-looking status output',async()=>{
 test('private installation reader rejects public permissions, links, duplicate JSON, and oversized data',async()=>{
   const directory=await realpath(await mkdtemp(join(tmpdir(),'trellis-private-read-'))),file=join(directory,'installation.json');
   try{
+    const fifo=join(directory,'fifo');execFileSync('/usr/bin/mkfifo',[fifo]);await chmod(fifo,0o600);
+    await assert.rejects(privateJson(fifo),{code:'PRIVATE_FILE_REQUIRED'});
     await writeFile(file,'{"valid":true}',{mode:0o600});assert.equal((await privateJson(file) as {valid:boolean}).valid,true);
     await chmod(file,0o644);await assert.rejects(privateJson(file),{code:'PRIVATE_FILE_REQUIRED'});await chmod(file,0o600);
     await symlink(file,join(directory,'symlink'));await assert.rejects(privateJson(join(directory,'symlink')),{code:'INSTALLATION_PATH'});

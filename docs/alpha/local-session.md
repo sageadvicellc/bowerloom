@@ -1,6 +1,6 @@
 # Local session contract
 
-This source connects a private local installation to the graph and supervised runtime. The public command entry point still needs the registered browser package.
+This source connects a private local installation to the graph and supervised runtime. The public commands use the registered Linux browser package.
 
 The installation file contains machine paths and account bindings. Portable crew definitions contain the versioned prompts, skills, task graph, permissions, and test manifest. Keep these files separate.
 
@@ -22,7 +22,7 @@ An approval permits the stored artifact write and its declared acceptance test. 
 
 The session stops for a pending approval, a terminal result, an interrupt, or its two-minute deadline. An interrupt or deadline requests cancellation. The controller completes cleanup before it emits the result.
 
-The `cancel` path records cancellation before runtime recovery. This prevents a recovered workflow from starting another model operation. Cleanup failure remains an error and does not imply that an external process stopped.
+The `cancel` path records cancellation before runtime recovery or browser cleanup. It opens browser assets only if cleanup needs them. This prevents a recovered workflow from starting another model operation. Cleanup failure remains an error and does not imply that an external process stopped.
 
 ## Browser gate
 
@@ -41,3 +41,13 @@ The native policy version is `codex-subscription-proposal/v0.7-alpha.2`. Its pro
 ## Evidence limits
 
 Unit tests cover argument rejection, exact approval, interruption, deadlines, private file handling, graph gates, and input limits. Real CLI orchestration and generated-artifact acceptance remain separate tests.
+
+## Capacity margin
+
+The native capacity margin defaults to 10 percentage points. An explicit `codex.provisionalPercent` accepts values from 2 through 10.
+
+The controller requires this margin to cover the stored coordination allowance and the largest proposed model allowance. The admission ledger also counts existing holds.
+
+A smaller margin does not change the stored policy or release prior holds. The product stop remains 75 percent unless an installation declares another authorized policy.
+
+This campaign explicitly permits a 95 percent stop. Its portable crew must declare the matching reserve. Every new model still needs current account evidence.
