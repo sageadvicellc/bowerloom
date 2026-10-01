@@ -125,7 +125,7 @@ const invalidCases: Array<[string, string, (value: CrewDefinition) => void]> = [
   ['different command', 'EFFECT_OUT_OF_SCOPE', value => { value.tasks[2]!.effects.push({ operation: 'command.test', command: 'run-anything' }); }],
   ['scope traversal', 'UNSAFE_PATH', value => { value.scope.push({ operation: 'workspace.write', path: 'output/../private' }); }],
   ['paid fallback', 'SCHEMA_INVALID', value => { value.budget.paidFallback = true as never; }],
-  ['reserve under 25 percent', 'SCHEMA_INVALID', value => { value.budget.reservePercent = 24; }],
+  ['reserve under 5 percent', 'SCHEMA_INVALID', value => { value.budget.reservePercent = 4; }],
   ['more than two alpha workers', 'SCHEMA_INVALID', value => { value.budget.maxActiveWorkers = 3; }],
 ];
 
@@ -270,4 +270,16 @@ test('CLI schema failures do not echo source text or environment secrets', async
     assert(!result.stderr.includes('synthetic-sensitive-content'));
     return true;
   });
+});
+
+test('an explicit five percent reserve changes the candidate while the example keeps twenty-five', async t => {
+  const root = await fixture(t);
+  const before = await compileCrew(join(root, 'crew.yaml'));
+  assert.equal(before.definition.budget.reservePercent, 25);
+  const changed = clone(); changed.budget.reservePercent = 5;
+  await save(root, changed);
+  const after = await compileCrew(join(root, 'crew.yaml'));
+  assert.equal(after.definition.budget.reservePercent, 5);
+  assert.notEqual(after.candidateRevision, before.candidateRevision);
+  assert.equal(baseline.budget.reservePercent, 25);
 });
