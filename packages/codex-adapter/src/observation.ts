@@ -42,10 +42,11 @@ export function verifyModel(body:unknown):void {
   const candidates=b.data.filter((m:unknown)=>object(m).model==='gpt-5.5');check(candidates.length===1,'MODEL_UNAVAILABLE');
   const m=object(candidates[0]);check(m.hidden===false&&Array.isArray(m.supportedReasoningEfforts)&&m.supportedReasoningEfforts.some((e:unknown)=>object(e).reasoningEffort==='low')&&!active(m.availabilityNux),'MODEL_CAPABILITY');
 }
+export function supportedSubscriptionPlan(value:unknown):value is 'pro'|'promax' {return value==='pro'||value==='promax';}
 export function observationFromResponses(accountBody:unknown,usageBody:unknown,binding:AccountBinding,startedAtMs:number,nowMs:number):AccountObservation {
   const b=bindingCopy(binding);check(time(startedAtMs)&&time(nowMs)&&nowMs>=startedAtMs&&nowMs-startedAtMs<=LIMITS.observationAgeMs,'STALE_OBSERVATION');
   const accountResponse=object(accountBody),account=object(accountResponse.account),usage=object(usageBody);
-  check(account.type==='chatgpt'&&account.planType==='pro','SUBSCRIPTION_REQUIRED');
+  check(account.type==='chatgpt'&&supportedSubscriptionPlan(account.planType),'SUBSCRIPTION_REQUIRED');
   check(accountBindingDigest(usage.accountId)===b.providerAccountSha256,'ACCOUNT_MISMATCH');
   if(accountResponse.workspaceRouting!=null){const route=object(accountResponse.workspaceRouting);
     check(accountBindingDigest(route.chatgptAccountId)===b.providerAccountSha256,'ACCOUNT_MISMATCH');
@@ -53,7 +54,7 @@ export function observationFromResponses(accountBody:unknown,usageBody:unknown,b
   }
   check(usage.ordinaryUsageAllowed===true,'ORDINARY_USAGE_UNKNOWN_OR_DENIED');
   const buckets=object(usage.rateLimitsByLimitId);check(Object.keys(buckets).length===1&&Object.hasOwn(buckets,'codex'),'UNKNOWN_USAGE_BUCKETS');
-  const bucket=object(buckets.codex);check(bucket.planType==='pro'&&bucket.rateLimitReachedType===null&&bucket.spendControlReached===false,'USAGE_RESTRICTED_OR_UNKNOWN');
+  const bucket=object(buckets.codex);check(bucket.planType===account.planType&&bucket.rateLimitReachedType===null&&bucket.spendControlReached===false,'USAGE_RESTRICTED_OR_UNKNOWN');
   const windows:Record<string,UsageWindow|null>={};
   for(const name of ['primary','secondary'] as const){const raw=bucket[name];
     if(raw==null){check(b.optionalWindows.includes(name),'REQUIRED_WINDOW_UNAVAILABLE');windows[name]=null;continue;}

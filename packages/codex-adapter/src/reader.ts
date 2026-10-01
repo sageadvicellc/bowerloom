@@ -1,6 +1,6 @@
 import type { AccountObservation } from '../../admission/src/types.js';
 import type { Installation,AccountBinding,ObservationReader } from './types.js';
-import { bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,sanitized,verifyModel,verifyProvenance } from './observation.js';
+import { bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,sanitized,verifyModel,verifyProvenance,supportedSubscriptionPlan } from './observation.js';
 import { installationChecks,workspace } from './installation.js';
 import { startGuardian,type OwnedGuardian } from './supervisor.js';
 import { AdapterError,check,object,strictJson } from './safe.js';
@@ -14,7 +14,7 @@ export async function readAuthenticatedObservation(
   const cfg=await rpc('config/read',{cwd,includeLayers:true}),req=await rpc('configRequirements/read',{});verifyProvenance(cfg,req);
   for(const name of ['local','remote'])check(object(await rpc('environment/status',{environmentId:name})).status==='unknown','EXECUTION_ENVIRONMENT_AVAILABLE');
   const account=await rpc('account/read',{refreshToken:false});
-  const auth=object(object(account).account);check(auth.type==='chatgpt'&&auth.planType==='pro','SUBSCRIPTION_REQUIRED');
+  const auth=object(object(account).account);check(auth.type==='chatgpt'&&supportedSubscriptionPlan(auth.planType),'SUBSCRIPTION_REQUIRED');
   verifyModel(await rpc('model/list',{includeHidden:false,limit:100}));
   const usage=await rpc('account/rateLimits/read',{});
   const observation=observationFromResponses(account,usage,binding,started,now());requireHeadroom(observation,stopUsedPercent,provisionalPercent);return observation;

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, realpath, statfs, mkdtemp, mkdir, readdir, unlink, rmdir, writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { check, sha } from './safe.js';
-import { CODEX_VERSION, CONTROLS, LIMITS, SUPPORTED_NATIVE_SHA256 } from './policy.js';
+import { CONTROLS, LIMITS, SUPPORTED_NATIVE_BINARIES } from './policy.js';
 import type { Installation } from './types.js';
 export function childEnvironment(): Record<string,string> {
   const env: Record<string,string>={};
@@ -13,9 +13,12 @@ export function childEnvironment(): Record<string,string> {
   return env;
 }
 async function absent(path:string) {try{await lstat(path);return false;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return true;throw e;}}
+export function requireNativePin(version:string,sha256:string):void {
+  check(Object.hasOwn(SUPPORTED_NATIVE_BINARIES,version)&&SUPPORTED_NATIVE_BINARIES[version]===sha256,'UNSUPPORTED_BINARY');
+}
 export async function installationChecks(install:Installation):Promise<Record<string,string>> {
   check(process.platform==='darwin'&&process.arch==='arm64','UNSUPPORTED_PLATFORM');
-  check(install.version===CODEX_VERSION&&install.nativeSha256===SUPPORTED_NATIVE_SHA256,'UNSUPPORTED_BINARY');
+  requireNativePin(install.version,install.nativeSha256);
   check(resolve(install.nativePath)===install.nativePath&&(await realpath(install.nativePath))===install.nativePath,'BINARY_PATH');
   const meta=await lstat(install.nativePath);check(meta.isFile()&&meta.size>0&&meta.size<512*1024*1024,'BINARY_TYPE');
   const hash=createHash('sha256');for await(const chunk of createReadStream(install.nativePath))hash.update(chunk);

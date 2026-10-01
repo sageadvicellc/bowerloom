@@ -1,6 +1,6 @@
 import type { AccountObservation } from '../../admission/src/types.js';
 export interface Installation {
-  nativePath: string; nativeSha256: string; version: '0.157.0';
+  nativePath: string; nativeSha256: string; version: '0.157.0' | '0.159.2';
   // Private, controller-owned parent. A fresh empty directory is created for each operation.
   workRoot: string;
 }
