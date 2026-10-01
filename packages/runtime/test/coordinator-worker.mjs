@@ -4,8 +4,33 @@ import { SupervisedRuntime, SyntheticProcessAdapter, RuntimeLedger } from '../..
 import { PostgresBrokerStore } from '../../../dist/packages/broker-postgres/src/index.js';
 import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effects/src/index.js';
 let runtime; let pool; let fired = false; let resumeAcceptance;
-process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode }) => {
+process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode, ownerMode = 'fallback' }) => {
   pool = new pg.Pool({ ...config, max: 6 }); pool.on('error', () => {});
+  const ownerInputs = []; const authenticatedSubjects = []; let authenticationAttempts = 0;
+  const mutateInput = input => {
+    input.task.ownerSubject = 'agent:mutated'; input.task.approverSubjects.push('agent:mutated');
+    input.plan.definition.tasks[0].owner = 'mutated'; input.reservation.allowancePercent.primary = 99;
+    input.reservation.jobId = 'mutated-job'; input.taskInput = 'mutated input';
+  };
+  const ownerCredentialFor = ownerMode === 'fallback' ? undefined : input => {
+    const original = structuredClone(input); ownerInputs.push(original);
+    // Only the build task has the broken resolver; a later design task must remain usable.
+    if (original.task.taskId === 'build' && ownerMode.startsWith('promise-')) {
+      if (ownerMode === 'promise-reject-delayed') return new Promise((_,reject) => {
+        setTimeout(() => {
+          reject(new Error('Synthetic delayed owner resolver failure'));
+          process.send({ type: 'owner-promise-settled', mode: ownerMode });
+        },20);
+      });
+      process.send({ type: 'owner-promise-settled', mode: ownerMode });
+      if (ownerMode === 'promise-reject-immediate') return Promise.reject(new Error('Synthetic immediate owner resolver failure'));
+      if (ownerMode === 'promise-resolved') return Promise.resolve('owner');
+      throw new Error('Unknown synthetic Promise resolver mode');
+    }
+    if (ownerMode === 'mutate') mutateInput(input);
+    if (ownerMode === 'wrong') return 'wrong-owner';
+    return { 'agent:coda': 'owner', 'agent:emery': 'owner-emery' }[original.task.ownerSubject] ?? 'unknown-owner';
+  };
   const intercepted = { async connect() {
     const client = await pool.connect(); let checkpoint = null;
     return { async query(sql, values) {
@@ -37,7 +62,7 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
       }, release: destroy => client.release(destroy) };
     } };
     const effects = await PostgresWorkspaceEffects.open(effectConnection, { schema: schemas.effects,
-      workspaces: [{ workspaceId: 'synthetic-workspace', root, writablePaths: ['output/job-board/index.html'] }] });
+      workspaces: [{ workspaceId: 'synthetic-workspace', root, writablePaths: ['output/job-board/index.html','output/design/brief.md'] }] });
     const adapter = new SyntheticProcessAdapter({ command: [process.execPath, new URL('./synthetic-child.mjs', import.meta.url).pathname], cwd: root, timeoutMs: 15000, outputBytes: 65536 });
     runtime = await SupervisedRuntime.open({ pool: intercepted, brokerStore: new PostgresBrokerStore(pool, { schema: schemas.broker }), effects: {
       async apply(request, signal) {
@@ -46,9 +71,12 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
         return result;
       }, lookup: request => effects.lookup(request),
     },
-      ownerCredential: 'owner', recoveryCredential: 'recovery', identity: { async authenticate(credential) {
-        if (!['owner','founder','recovery'].includes(credential)) throw new Error('Refused');
-        return { subject: credential === 'owner' ? 'agent:coda' : 'founder:reviewer', proofRef: `synthetic-${credential}`, expiresAtMs: Date.now() + 120000 };
+      ownerCredential: ownerMode === 'fallback' ? 'owner' : 'invalid-fallback',
+      ...(ownerCredentialFor ? { ownerCredentialFor } : {}), recoveryCredential: 'recovery', identity: { async authenticate(credential) {
+        authenticationAttempts++;
+        const subject = { owner: 'agent:coda', 'owner-emery': 'agent:emery', 'wrong-owner': 'agent:outsider', founder: 'founder:reviewer', recovery: 'founder:reviewer' }[credential];
+        if (!subject) throw new Error('Refused'); authenticatedSubjects.push(subject);
+        return { subject, proofRef: `synthetic-${credential}`, expiresAtMs: Date.now() + 120000 };
       } },
       observations: { async read() { const now = Date.now(); return { observationId: `sample-${now}`, accountId, observedAtMs: now,
         authentication: 'subscription', ordinaryUsageAllowed: true,
@@ -73,8 +101,20 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
       try {
         let result;
         if (message.type === 'release-acceptance') { resumeAcceptance(message.accepted); result = 'released'; }
+        else if (message.type === 'owner-audit') result = { inputs: ownerInputs, authenticatedSubjects, authenticationAttempts };
+        else if (message.type === 'admission-policy') result = await runtime.admissionPolicy(message.accountAlias);
+        else if (message.type === 'mutate-policy-result') {
+          const policy = await runtime.admissionPolicy(message.accountAlias); const before = structuredClone(policy);
+          // Mutate inside the caller process: IPC serialization must not be what protects the ledger.
+          policy.thresholdPercent = 100; policy.maxWorkers = 999; policy.admittedRoutes.push('unregistered-route');
+          result = { before, after: await runtime.admissionPolicy(message.accountAlias) };
+        }
+        else if (message.type === 'mutate-status-input') {
+          const status = await runtime.status(message.id); mutateInput(status.run.input);
+          result = await runtime.status(message.id);
+        }
         else if (message.type === 'workflow-result') result = await DBOS.getResult(message.id, { timeoutSeconds: 3 });
-        else if (message.type === 'submit') result = await runtime.submit(message.input);
+        else if (message.type === 'submit') { result = await runtime.submit(message.input); if (message.mutateAfterSubmit) mutateInput(message.input); }
         else if (message.type === 'status') result = await runtime.status(message.id);
         else if (message.type === 'approve') result = await runtime.approve(message.id, message.approval, message.credential);
         else if (message.type === 'cancel') result = await runtime.cancel(message.id);

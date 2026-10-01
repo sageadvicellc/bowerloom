@@ -1,6 +1,7 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { isPromise } from 'node:util/types';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { ActionBroker, createTaskState, parseProposal, systemClock } from '../../broker/src/index.js';
 import type { IdentityProvider, WorkspaceEffects, ApprovalRequest } from '../../broker/src/index.js';
@@ -20,6 +21,8 @@ interface Dependencies {
   effects: WorkspaceEffects;
   identity: IdentityProvider;
   ownerCredential: unknown;
+  // Trusted synchronous controller resolver. Promise results are observed and refused before authentication.
+  ownerCredentialFor?: (input: RunInput) => unknown;
   recoveryCredential: unknown;
   observations: ObservationReader;
   models: ModelAdapter;
@@ -85,6 +88,18 @@ export class SupervisedRuntime {
     const run = await this.#ledger.read(id); const request = run.input.reservation;
     const reservation = await this.#admission.lookup(request.accountAlias, request.jobId);
     return { run, reservation, allowanceHeld: Boolean(reservation && Object.keys(reservation.retained).length) };
+  }
+  async admissionPolicy(accountAlias: string) {
+    await this.#coordinator.guard();
+    return this.#admission.policy(accountAlias);
+  }
+  #owner(input: RunInput): unknown {
+    const credential = this.#deps.ownerCredentialFor ? this.#deps.ownerCredentialFor(structuredClone(input)) : this.#deps.ownerCredential;
+    if (isPromise(credential)) {
+      void Promise.prototype.then.call(credential, undefined, () => {});
+      throw new RuntimeError('ASYNC_OWNER_RESOLVER_UNSUPPORTED');
+    }
+    return credential;
   }
   async #outcome(id: string, worker: ModelProcess): Promise<void> {
     await this.#ledger.change(id, state => {
@@ -152,17 +167,17 @@ export class SupervisedRuntime {
       await step('proposal-capture', () => this.#capture(id, admission));
       const prepared = await step('broker-prepare', async () => {
         const state = await this.#check(id); if (!state.proposal) throw new RuntimeError('MISSING_PROPOSAL');
-        const action = await this.#broker.prepare(JSON.stringify(state.proposal), this.#deps.ownerCredential);
+        const action = await this.#broker.prepare(JSON.stringify(state.proposal), this.#owner(state.input));
         await this.#ledger.change(id, current => { current.status = 'WAITING_APPROVAL'; }); return action;
       });
       // The wakeup is not approval authority. The broker validates the durable approval at dispatch.
       await DBOS.recv('approval-or-cancel', 86400);
       await step('effect-dispatch', async () => {
         const state = await this.#check(id); const scope = prepared.proposal.scope;
-        let action = await this.#broker.inspect(scope, prepared.proposal.requestId, this.#deps.ownerCredential);
-        if (action.status === 'IN_FLIGHT') { await this.#broker.recover(scope, this.#deps.recoveryCredential); action = await this.#broker.inspect(scope, prepared.proposal.requestId, this.#deps.ownerCredential); }
+        let action = await this.#broker.inspect(scope, prepared.proposal.requestId, this.#owner(state.input));
+        if (action.status === 'IN_FLIGHT') { await this.#broker.recover(scope, this.#deps.recoveryCredential); action = await this.#broker.inspect(scope, prepared.proposal.requestId, this.#owner(state.input)); }
         if (action.status === 'NEEDS_RECONCILIATION') action = await this.#broker.reconcile(scope, prepared.proposal.requestId, this.#deps.recoveryCredential);
-        else if (action.status === 'PREPARED') action = await this.#broker.dispatch(scope, prepared.proposal.requestId, this.#deps.ownerCredential);
+        else if (action.status === 'PREPARED') action = await this.#broker.dispatch(scope, prepared.proposal.requestId, this.#owner(state.input));
         if (action.status !== 'COMPLETED' || !action.receipt) throw new RuntimeError('EFFECT_RECONCILIATION_REQUIRED');
         await this.#ledger.change(id, current => { current.receipt = action.receipt; });
         void state;
@@ -197,7 +212,7 @@ export class SupervisedRuntime {
     await this.#coordinator.guard();
     this.#cancelled.add(id); const inflight = this.#inflight.get(id); inflight?.abort.abort();
     const state = await this.#ledger.change(id, current => { current.cancelled = true; current.status = 'CANCELLED'; current.reason = 'CANCELLED'; });
-    await this.#broker.cancel({ workspaceId: state.input.task.workspaceId, runId: state.input.task.runId, taskId: state.input.task.taskId }, this.#deps.ownerCredential);
+    await this.#broker.cancel({ workspaceId: state.input.task.workspaceId, runId: state.input.task.runId, taskId: state.input.task.taskId }, this.#owner(state.input));
     if (inflight) await inflight.done;
     const reservation = await this.#admission.lookup(state.input.reservation.accountAlias, state.input.reservation.jobId);
     if (reservation?.status === 'RESERVED') await this.#admission.reconcile(state.input.reservation, {
