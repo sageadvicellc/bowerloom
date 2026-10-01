@@ -1,0 +1,16 @@
+{
+  "name": "trellis-alpha-backend-proof",
+  "private": true,
+  "version": "0.7.0-alpha.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "proof": "node scripts/prove.mjs"
+  },
+  "dependencies": {
+    "@dbos-inc/dbos-sdk": "5.2.11",
+    "pg": "8.16.3"
+  }
+}

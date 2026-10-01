@@ -1,0 +1,215 @@
+{
+  "name": "trellis-alpha-proof",
+  "services": {
+    "db": {
+      "image": "public.ecr.aws/supabase/postgres@sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "mem_limit": "384m",
+      "cpus": 1,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "environment": {
+        "POSTGRES_HOST": "/var/run/postgresql",
+        "PGPORT": 5432,
+        "POSTGRES_PORT": 5432,
+        "POSTGRES_DB": "postgres",
+        "PGDATABASE": "postgres",
+        "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD:?}",
+        "PGPASSWORD": "${POSTGRES_PASSWORD:?}",
+        "JWT_EXP": 3600
+      },
+      "ports": [
+        "127.0.0.1:56582:5432"
+      ],
+      "volumes": [
+        "trellis-data:/var/lib/postgresql/data",
+        "trellis-db-config:/etc/postgresql-custom",
+        "./roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro",
+        "./jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro"
+      ],
+      "command": [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+        "-c",
+        "shared_buffers=64MB",
+        "-c",
+        "max_connections=50"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "postgres",
+          "-h",
+          "localhost"
+        ],
+        "interval": "2s",
+        "timeout": "2s",
+        "retries": 45
+      }
+    },
+    "meta": {
+      "image": "public.ecr.aws/supabase/postgres-meta@sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "mem_limit": "192m",
+      "cpus": 1,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "environment": {
+        "PG_META_PORT": 8080,
+        "PG_META_DB_HOST": "db",
+        "PG_META_DB_PORT": 5432,
+        "PG_META_DB_NAME": "postgres",
+        "PG_META_DB_USER": "postgres",
+        "PG_META_DB_PASSWORD": "${POSTGRES_PASSWORD:?}",
+        "CRYPTO_KEY": "${PG_META_CRYPTO_KEY:?}"
+      }
+    },
+    "studio": {
+      "image": "public.ecr.aws/supabase/studio@sha256:4905784b715cb22b265d26405067649544b40faffff89fd8dc7a28736f42afb0",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "mem_limit": "512m",
+      "cpus": 1,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "depends_on": {
+        "meta": {
+          "condition": "service_started"
+        }
+      },
+      "environment": {
+        "HOSTNAME": "0.0.0.0",
+        "STUDIO_PG_META_URL": "http://meta:8080",
+        "POSTGRES_HOST": "db",
+        "POSTGRES_PORT": 5432,
+        "POSTGRES_DB": "postgres",
+        "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD:?}",
+        "POSTGRES_USER_READ_WRITE": "postgres",
+        "PG_META_CRYPTO_KEY": "${PG_META_CRYPTO_KEY:?}",
+        "PGRST_DB_SCHEMAS": "public",
+        "DEFAULT_ORGANIZATION_NAME": "Trellis Alpha Proof",
+        "DEFAULT_PROJECT_NAME": "Endor Synthetic Proof",
+        "SUPABASE_URL": "http://gateway:8000",
+        "SUPABASE_PUBLIC_URL": "http://127.0.0.1:56581",
+        "SUPABASE_ANON_KEY": "${ANON_KEY:?}",
+        "SUPABASE_SERVICE_KEY": "${SERVICE_ROLE_KEY:?}",
+        "AUTH_JWT_SECRET": "${JWT_SECRET:?}",
+        "OPENAI_API_KEY": "",
+        "NEXT_PUBLIC_ENABLE_LOGS": "false",
+        "ENABLED_FEATURES_LOGS_ALL": "false",
+        "NEXT_PUBLIC_IS_PLATFORM": "false"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/platform/profile').then(r=>{if(r.status!==200)process.exit(1)}).catch(()=>process.exit(1))"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 30
+      }
+    },
+    "rest": {
+      "image": "public.ecr.aws/supabase/postgrest@sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "mem_limit": "96m",
+      "cpus": 1,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "environment": {
+        "PGRST_DB_URI": "postgres://authenticator:${POSTGRES_PASSWORD:?}@db:5432/postgres",
+        "PGRST_DB_SCHEMAS": "public",
+        "PGRST_DB_ANON_ROLE": "anon",
+        "PGRST_JWT_SECRET": "${JWT_SECRET:?}",
+        "PGRST_DB_USE_LEGACY_GUCS": "false",
+        "PGRST_APP_SETTINGS_JWT_SECRET": "${JWT_SECRET:?}",
+        "PGRST_APP_SETTINGS_JWT_EXP": 3600
+      }
+    },
+    "gateway": {
+      "image": "public.ecr.aws/supabase/kong@sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "mem_limit": "192m",
+      "cpus": 1,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "depends_on": {
+        "studio": {
+          "condition": "service_healthy"
+        }
+      },
+      "environment": {
+        "KONG_DATABASE": "off",
+        "KONG_DECLARATIVE_CONFIG": "/private/gateway.json",
+        "KONG_DNS_ORDER": "LAST,A,CNAME",
+        "KONG_PLUGINS": "basic-auth",
+        "KONG_NGINX_WORKER_PROCESSES": 1,
+        "KONG_PROXY_LISTEN": "0.0.0.0:8000",
+        "KONG_ADMIN_LISTEN": "off",
+        "KONG_PROXY_ACCESS_LOG": "/dev/null"
+      },
+      "volumes": [
+        "../.private/gateway.json:/private/gateway.json:ro"
+      ],
+      "ports": [
+        "127.0.0.1:56581:8000"
+      ]
+    }
+  },
+  "networks": {
+    "default": {
+      "driver": "bridge",
+      "driver_opts": {
+        "com.docker.network.bridge.enable_ip_masquerade": "false"
+      }
+    }
+  },
+  "volumes": {
+    "trellis-data": {},
+    "trellis-db-config": {}
+  }
+}
