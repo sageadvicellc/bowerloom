@@ -90,7 +90,7 @@ for(const [name,change] of [
   assert.equal((await s.driver.advance(s.id)).status,'HOLD');assert.equal(s.runtime.starts.length,1);
 });
 test('oversized pinned inputs fail before admission or model submission without truncation',async()=>{
-  const s=await setup('size',v=>{v.assets.orders='x'.repeat(5000);v.plan.assets.orders.digest=digest(v.assets.orders);v.plan.assets.orders.bytes=5000;});
+  const s=await setup('size',v=>{v.assets.orders='x'.repeat(33000);v.plan.assets.orders.digest=digest(v.assets.orders);v.plan.assets.orders.bytes=33000;});
   assert.equal((await s.driver.advance(s.id)).status,'HOLD');assert.equal(s.runtime.policyCalls,0);assert.equal(s.runtime.starts.length,0);
 });
 test('policy is copied and unsupported routes or invalid budgets fail at construction',async()=>{
