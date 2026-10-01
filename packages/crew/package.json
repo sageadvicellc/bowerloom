@@ -1,0 +1,8 @@
+{
+  "name": "@sagetrellis/crew",
+  "version": "0.7.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "dependencies": { "yaml": "2.9.1" }
+}
