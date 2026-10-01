@@ -92,6 +92,21 @@ test('request reuse is stable, but changed bytes or preconditions conflict', asy
   assert.equal(f.calls(), 0);
 });
 
+for (const requestId of ['toString', 'valueOf', 'hasOwnProperty']) {
+  test(`legal request ID ${requestId} does not collide with inherited properties`, async () => {
+    const f = setup(); const proposal = f.proposal(requestId);
+    const prepared = await f.prepare(proposal);
+    assert.equal(prepared.status, 'PREPARED');
+    assert.deepEqual(await f.prepare(proposal), prepared);
+    await f.approve(prepared);
+    const completed = await f.broker.dispatch(scope, requestId, 'worker');
+    assert.equal(completed.status, 'COMPLETED');
+    assert.equal(completed.proposal.requestId, requestId);
+    assert.deepEqual(await f.broker.inspect(scope, requestId, 'worker'), completed);
+    assert.equal(f.calls(), 1);
+  });
+}
+
 test('changing action bytes creates a different digest and needs separate approval', async () => {
   const f = setup();
   const first = await f.prepare(); await f.approve(first);
@@ -249,6 +264,26 @@ test('an existing file changes only when its digest matches the approved precond
   assert.equal((await f.broker.dispatch(scope, proposal.requestId, 'worker')).status, 'COMPLETED');
 });
 
+test('the synthetic adapter retains a negative outcome across a competing write and repeated delivery', async () => {
+  const f = setup();
+  const proposalA = f.proposal('operation-a'); proposalA.edit.expectedDigest = digest('Prior content'); proposalA.edit.content = 'Replacement content';
+  const actionA = await f.prepare(proposalA);
+  const request = (action: ActionRecord): EffectRequest => ({ proposal: action.proposal, actionDigest: action.actionDigest,
+    operationKey: action.operationKey, deadlineMs: f.clock.now() + 100_000 });
+  const requestA = request(actionA);
+  const signal = new AbortController().signal;
+  const rejected = await f.workspace.apply(requestA, signal);
+  assert.equal(rejected.kind, 'not-applied');
+  const proposalB = f.proposal('operation-b'); proposalB.edit.content = 'Prior content';
+  const requestB = request(await f.prepare(proposalB));
+  assert.equal((await f.workspace.apply(requestB, signal)).kind, 'applied');
+  assert.deepEqual(await f.workspace.apply(requestA, signal), rejected);
+  assert.equal(f.workspace.read(scope.workspaceId, proposalA.edit.path), 'Prior content');
+  await assert.rejects(f.workspace.apply({ ...requestB, operationKey: requestA.operationKey }, signal), failed('RECEIPT_CONFLICT'));
+  await assert.rejects(f.workspace.apply({ ...requestA, operationKey: requestB.operationKey }, signal), failed('RECEIPT_CONFLICT'));
+  assert.equal(f.workspace.read(scope.workspaceId, proposalA.edit.path), 'Prior content');
+});
+
 test('an effect exception holds the action without automatic retry', async () => {
   const f = setup(); await f.approve(await f.prepare()); let calls = 0;
   const effects: WorkspaceEffects = { async apply() { calls++; throw new Error('ambiguous external result'); }, async lookup() { return null; } };
@@ -303,6 +338,26 @@ test('cancellation during dispatch records an uncertain effect without claiming 
   assert.equal(f.calls(), 1);
   assert.equal((await broker.dispatch(scope, 'write-one', 'worker')).status, 'COMPLETED');
   assert.equal(f.calls(), 1);
+});
+
+test('cancellation signals an active call after recovery moves its record into reconciliation', async () => {
+  const f = setup(); await f.approve(await f.prepare());
+  const entered = deferred<void>(); const release = deferred<void>(); const finished = deferred<void>();
+  let effectSignal!: AbortSignal;
+  const effects: WorkspaceEffects = { lookup: f.effects.lookup, async apply(request, signal) {
+    effectSignal = signal; entered.resolve(); await release.promise;
+    try { return await f.effects.apply(request, signal); } finally { finished.resolve(); }
+  } };
+  const broker = new ActionBroker({ ...f, effects });
+  const dispatch = broker.dispatch(scope, 'write-one', 'worker'); await entered.promise;
+  await broker.recover(scope, 'reviewer');
+  assert.equal((await broker.inspect(scope, 'write-one', 'worker')).status, 'NEEDS_RECONCILIATION');
+  await broker.cancel(scope, 'reviewer');
+  assert.equal(effectSignal.aborted, true);
+  assert.equal((await dispatch).status, 'NEEDS_RECONCILIATION');
+  release.resolve(); await finished.promise;
+  assert.equal(f.workspace.read(scope.workspaceId, f.proposal().edit.path), undefined);
+  assert.equal(await f.store.transaction(scope, state => state.cancelRequested), true);
 });
 
 test('storage failure before dispatch commit calls no effect', async () => {

@@ -126,9 +126,8 @@ export class ActionBroker {
     return this.#store.transaction(proposal.scope, state => {
       this.#actor(state, proposal.scope, principal, 'owner');
       this.#admit(state, proposal);
-      const existing = state.actions[proposal.requestId];
-      if (existing) {
-        this.#action(state, proposal.requestId);
+      if (Object.hasOwn(state.actions, proposal.requestId)) {
+        const existing = this.#action(state, proposal.requestId);
         if (existing.actionDigest !== actionDigest) refuse('REQUEST_CONFLICT', 'The request ID already identifies different content.');
         return structuredClone(existing);
       }
@@ -241,7 +240,7 @@ export class ActionBroker {
       this.#actor(state, scope, principal, 'either');
       state.cancelRequested = true;
       for (const action of Object.values(state.actions)) if (action.status === 'PREPARED') action.status = 'CANCELLED';
-      return Object.values(state.actions).filter(action => action.status === 'IN_FLIGHT').map(action => action.operationKey);
+      return Object.values(state.actions).map(action => action.operationKey);
     });
     for (const key of operationKeys) this.#active.get(key)?.abort();
   }

@@ -30,31 +30,36 @@ export class InMemoryBrokerStore implements BrokerStore {
 
 export class InMemoryWorkspaceEffects implements WorkspaceEffects {
   readonly #files = new Map<string, string>();
-  readonly #receipts = new Map<string, Receipt>();
+  readonly #outcomes = new Map<string, EffectResult>();
   readonly #clock: Clock;
   constructor(clock: Clock) { this.#clock = clock; }
   seed(workspaceId: string, path: string, content: string): void { this.#files.set(canonicalJson({ workspaceId, path }), content); }
   read(workspaceId: string, path: string): string | undefined { return this.#files.get(canonicalJson({ workspaceId, path })); }
   async apply(request: EffectRequest, signal: AbortSignal): Promise<EffectResult> {
-    const existing = this.#receipts.get(request.operationKey);
+    const existing = this.#outcomes.get(request.operationKey);
     if (existing) {
-      if (existing.actionDigest !== request.actionDigest) throw new BrokerError('RECEIPT_CONFLICT', 'The operation key already identifies a different effect.');
-      return { kind: 'applied', receipt: structuredClone(existing) };
+      const actionDigest = existing.kind === 'applied' ? existing.receipt.actionDigest : existing.actionDigest;
+      if (actionDigest !== request.actionDigest) throw new BrokerError('RECEIPT_CONFLICT', 'The operation key already identifies a different effect.');
+      return structuredClone(existing);
     }
     if (signal.aborted || this.#clock.now() >= request.deadlineMs) throw new BrokerError('DISPATCH_STOPPED', 'The synthetic effect deadline or cancellation stopped this call.');
     const { scope, edit } = request.proposal;
     const fileKey = canonicalJson({ workspaceId: scope.workspaceId, path: edit.path });
     const previous = this.#files.get(fileKey);
     const beforeDigest = previous === undefined ? null : digest(previous);
-    if (beforeDigest !== edit.expectedDigest) return { kind: 'not-applied', operationKey: request.operationKey, actionDigest: request.actionDigest, reason: 'PRECONDITION_FAILED' };
+    if (beforeDigest !== edit.expectedDigest) {
+      const result: EffectResult = { kind: 'not-applied', operationKey: request.operationKey, actionDigest: request.actionDigest, reason: 'PRECONDITION_FAILED' };
+      this.#outcomes.set(request.operationKey, result);
+      return structuredClone(result);
+    }
     const receipt: Receipt = { format: 'trellis/effect-receipt/v0.7-alpha', operationKey: request.operationKey, actionDigest: request.actionDigest,
       workspaceId: scope.workspaceId, path: edit.path, beforeDigest, afterDigest: digest(edit.content), bytes: Buffer.byteLength(edit.content), appliedAtMs: this.#clock.now() };
     this.#files.set(fileKey, edit.content);
-    this.#receipts.set(request.operationKey, receipt);
+    this.#outcomes.set(request.operationKey, { kind: 'applied', receipt });
     return { kind: 'applied', receipt: structuredClone(receipt) };
   }
   async lookup(request: EffectRequest): Promise<Receipt | null> {
-    const receipt = this.#receipts.get(request.operationKey);
-    return receipt ? structuredClone(receipt) : null;
+    const outcome = this.#outcomes.get(request.operationKey);
+    return outcome?.kind === 'applied' ? structuredClone(outcome.receipt) : null;
   }
 }

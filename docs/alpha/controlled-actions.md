@@ -47,9 +47,13 @@ A receipt binds the operation key, action digest, workspace, path, prior digest,
 
 A real adapter must make the prior-content comparison and write indivisible for competing writers. It must retain operation receipts and prevent conflicting reuse of operation keys. A negative result must rule out both existing and future effects for that operation. The memory adapter demonstrates these semantics only within its synthetic state.
 
+The memory adapter retains terminal negative outcomes as well as successful receipts. Repeated delivery returns the retained outcome, even after another writer changes the path. Conflicting reuse of an operation key fails.
+
 ## Cancellation and deadlines
 
 Cancellation first records the task request in storage. Prepared actions become `CANCELLED`. Future proposals and dispatch attempts stop. The current broker instance also sends an abort signal to its active adapter calls.
+
+Local interruption includes calls whose records entered reconciliation during recovery. A changed durable status does not remove an active call from cancellation.
 
 Each dispatch deadline is the earliest task deadline, lease expiry, or task attempt timeout. The deadline alarm stops the broker wait and requests interruption through an abort signal. It does not terminate an arbitrary process or undo a write. A real adapter and supervisor must prove those controls separately.
 
