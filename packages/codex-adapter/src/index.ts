@@ -21,9 +21,9 @@ export function proposalPrompt(taskInput: string): string {
 export class CodexAdapter implements ModelAdapter {
   readonly #reader:CodexObservationReader;readonly #installation:Installation;readonly #binding:AccountBinding;readonly #accountAlias:string;
   readonly #evidence:(evidence:AdapterEvidence)=>void;#busy=false;#quarantined=false;
-  constructor(options:{installation:Installation;binding:AccountBinding;accountAlias:string;onEvidence?:(evidence:AdapterEvidence)=>void}){
+  constructor(options:{installation:Installation;binding:AccountBinding;accountAlias:string;stopUsedPercent?:number;onEvidence?:(evidence:AdapterEvidence)=>void}){
     this.#installation=structuredClone(options.installation);this.#binding=bindingCopy(options.binding);
-    check(this.#binding.aliases.includes(options.accountAlias),'UNKNOWN_ACCOUNT_ALIAS');this.#accountAlias=options.accountAlias;this.#reader=new CodexObservationReader(this.#installation,this.#binding);
+    check(this.#binding.aliases.includes(options.accountAlias),'UNKNOWN_ACCOUNT_ALIAS');this.#accountAlias=options.accountAlias;this.#reader=new CodexObservationReader(this.#installation,this.#binding,options.stopUsedPercent);
     this.#evidence=options.onEvidence??(()=>{});
   }
   async start(input:{launcherId:string;taskInput:string;modelRoute:string},signal:AbortSignal):Promise<ModelProcess>{

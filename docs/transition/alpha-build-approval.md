@@ -56,3 +56,11 @@ Marketing preparation can use the accepted alpha before beta. Starting that crew
 Agents own task branches, independent review, tests, and integration into `feature/trellis-v1`. Hanna alone reviews and merges into `main`. The team delivers the daily review at 9 a.m. America/New_York and reports material blockers when they arise. The Mac and Codex must remain available for scheduled work.
 
 Hanna approved this packet and opened the alpha implementation campaign. Approval does not accept a release or authorize a merge into `main`. Retirement readiness is an alpha objective, while archival retains the cutover gates.
+
+## Capacity amendment
+
+On October 1, Hanna changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
+
+This instruction supersedes the earlier 25 percent reserve for this campaign. Preserve held allowances and room for active lead, worker, and review work.
+
+Stop new model work if current usage is unavailable. The product default remains unchanged.

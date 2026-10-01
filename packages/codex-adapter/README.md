@@ -68,3 +68,13 @@ No general native invocation-denial, total-egress, or whole-alpha readiness clai
 Run `npm test` and `npm run typecheck` at the repository root. All adapter tests use synthetic Node children and synthetic account/config responses. The orphan test kills only its own test controller and observes the owned worker/guardian disappear; another test confirms an unrelated test process survives cancellation. Tests never start Codex inference, Docker, public listeners, or paid services. Existing PostgreSQL proofs are skipped unless separately configured; those are unrelated integration gates.
 
 Relevant official matching-version source is at OpenAI commit `00c972ed5d6ff6499317fd41b7f23605b8e6850d`: [exec loader selection](https://github.com/openai/codex/blob/00c972ed5d6ff6499317fd41b7f23605b8e6850d/codex-rs/exec/src/lib.rs#L698), [explicit no-environment sentinel](https://github.com/openai/codex/blob/00c972ed5d6ff6499317fd41b7f23605b8e6850d/codex-rs/exec-server/src/environment_provider.rs#L62), [shell/apply_patch environment gates](https://github.com/openai/codex/blob/00c972ed5d6ff6499317fd41b7f23605b8e6850d/codex-rs/core/src/tools/spec_plan.rs#L1037), and [global instruction provider](https://github.com/openai/codex/blob/00c972ed5d6ff6499317fd41b7f23605b8e6850d/codex-rs/codex-home/src/instructions/mod.rs#L40). These are source-backed inferences, not a reproducible-build attestation or a complete live tool inventory. The package's implementation is original Trellis code under the repository MIT license. It bundles no Codex source, binary, credentials, or private campaign evidence.
+
+## Explicit campaign ceiling
+
+The adapter and observer retain a default usage ceiling of 75 percent. The trusted controller can supply `stopUsedPercent` up to 95 after operator authorization.
+
+Pass the same ceiling to `CodexAdapter` and the third argument of `CodexObservationReader`. The observer retains its ten-point provisional margin under either ceiling.
+
+The PostgreSQL admission policy and crew reserve still apply separately. This argument does not clear held allowances or bypass a refused runtime admission.
+
+An invalid ceiling fails before a native request. Missing or refused account observations still stop model work.

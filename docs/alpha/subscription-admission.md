@@ -10,7 +10,7 @@ There are no subscription-tier defaults or calibrated token estimates. A control
 
 | Input | Behavior |
 | --- | --- |
-| `thresholdPercent` | Greater than zero and at most 75. Reaching the threshold refuses work. |
+| `thresholdPercent` | Greater than zero and at most 95. Reaching the threshold refuses work. |
 | `maxWorkers` | One or two active workers across all account aliases and crews. |
 | `headroomPercent` | Capacity reserved for other activity. Leads, reviewers, support work, and retries also need their own explicit reservations. |
 | `maxObservationAgeMs` | Maximum accepted sample age; there is no default freshness claim. |
@@ -50,6 +50,18 @@ No time-to-live refunds a reservation. A failed commit acknowledgement raises `C
 
 `complete` requires a matching running process reference and a trusted completion proof. All of a completed job's retained allowances remain until **one later accepted observation covers every retained window** through the completion timestamp. An unknown/lagging coverage timestamp or partially covered set releases nothing. For a crossed reset, `release-covered` must additionally be selected; `hold` preserves completed allowances across that reset. A provider reader unable to attest coverage can leave completed allowances held indefinitely. This is an unresolved runtime input, not a reason to fabricate coverage.
 
+## Explicit policy replacement
+
+The trusted controller can call `replacePolicy(alias, expected, replacement)` after an operator authorizes a policy change. Workers must not receive this API or its database credentials.
+
+The method compares the expected policy under the account lock. A conflicting policy causes `POLICY_CONFLICT`. An already matching replacement returns the current policy without another change.
+
+The method preserves observations, usage history, aliases, reservations, and held allowances. It does not grant launch authority or clear an uncertain outcome.
+
+An uncertain commit causes `COMMIT_UNKNOWN`. Read the current policy before another operation. The library does not retry automatically.
+
+The schema permits an explicit 5 percent reserve. The example retains 25 percent. Hanna authorized 5 percent for this alpha campaign on October 1, 2026.
+
 ## Trusted reconciliation and launcher fencing
 
 `reconcile(pinnedRequest, proof)` is a supervisor-only operation. A trusted `not-started` proof cancels a still-unused reservation. If an uncertain initial reservation commit left no row, that proof creates a cancelled tombstone, binding the job permanently. No reconciliation reissues a permit or makes the same job launchable again. A trusted completed proof can resolve a claimed process and retains its allowance for coverage.
@@ -64,7 +76,7 @@ The ledger is bounded to 1,024 jobs per account, 32 aliases per account, 32 name
 
 Remaining runtime work includes the authenticated no-thread observation adapter, provider-specific applicability and coverage semantics, a process supervisor with distinct launcher identities and fencing, controller-only credential/permit boundaries, and a scheduler that reserves all model work through one ledger. There is no DBOS wrapper, command runner, API fallback, telemetry proof, or model execution in this slice.
 
-Provider reports can lag, other clients can consume the same subscription, and running jobs can exceed their explicit allowances. Reservations coordinate this controller's planned work; they do not enforce provider quotas or guarantee that 25 percent remains in a concurrently used account. Synthetic test allowances and ages must not be presented as Pro, 5x, or 20x subscription calibration.
+Provider reports can lag, other clients can consume the same subscription, and running jobs can exceed their explicit allowances. Reservations coordinate this controller's planned work; they do not enforce provider quotas or guarantee that the selected reserve remains in a concurrently used account. Synthetic test allowances and ages must not be presented as Pro, 5x, or 20x subscription calibration.
 
 ## Reproduce the bounded tests
 

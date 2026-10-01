@@ -65,7 +65,11 @@ export function observationFromResponses(accountBody:unknown,usageBody:unknown,b
   return {observationId:randomUUID(),accountId:b.canonicalAccountId,observedAtMs:nowMs,authentication:'subscription',ordinaryUsageAllowed:true,
     windows,routes:{[MODEL_ROUTE]:{requiredWindows:b.requiredWindows,optionalWindows:b.optionalWindows}}};
 }
-export function requireHeadroom(observation:AccountObservation):void {
-  check(Object.values(observation.windows).every(w=>w===null||w.usedPercent+10<75),'RESERVE_AND_PROVISIONAL_HOLD');
+export function capacityCeiling(value:number=75):number {
+  check(Number.isFinite(value)&&value>10&&value<=95,'CAPACITY_POLICY');return value;
+}
+export function requireHeadroom(observation:AccountObservation,stopUsedPercent:number=75):void {
+  const ceiling=capacityCeiling(stopUsedPercent);
+  check(Object.values(observation.windows).every(w=>w===null||w.usedPercent+10<ceiling),'RESERVE_AND_PROVISIONAL_HOLD');
 }
 export function sanitized(error:unknown):AdapterError {return error instanceof AdapterError?error:new AdapterError('ADAPTER_FAILURE');}
