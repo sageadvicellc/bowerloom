@@ -41,4 +41,4 @@ A successful branch push does not establish server-enforced merge protection. Th
 
 The daily packet presents the assembled feature, acceptance instructions, test results, usage, gaps, and decisions. The feature-to-main pull request stays ready for Hanna's review when its acceptance criteria pass. Hanna reviews that result and performs the merge.
 
-Trellis v0.7-beta precedes a separate Sagespec team with its own lead. Feature-branch autonomy does not select the unresolved architecture or start Sagespec early. The next voice walkthrough covers those decisions and gaps.
+Codex-first `v0.7-alpha` enables founder testing and marketing preparation before beta. Trellis v0.7-beta precedes a separate Sagespec product team with its own lead. Feature-branch autonomy does not select the unresolved architecture or start Sagespec early. The next voice walkthrough covers those decisions and gaps.

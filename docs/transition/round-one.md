@@ -2,7 +2,7 @@
 
 The founder approved the transition plan. This round turns the brief into a tested specification and a reviewable development queue.
 
-Trellis is the open-source framework. Sagespec is Hanna's product and workflows built on it. The delivery order is Trellis v0.7-beta, then Sagespec development through a second team with its own lead. This round defines that boundary and the handoff criteria. It does not start the Sagespec team.
+Trellis is the open-source framework. Sagespec is Hanna's product and workflows built on it. The delivery order is Codex-first `v0.7-alpha`, then `v0.7-beta`, then Sagespec development through a separate product team. Alpha enables Hanna to test and establish a baseline. A marketing and social team can prepare its campaign without beta as a dependency. This round records the milestones and does not start either team.
 
 ## Expected results
 
@@ -13,7 +13,7 @@ This round produces these results:
 3. Evidence about Claude Code, Codex, and suitable open-source harnesses, including startup, shutdown, recovery, permissions, and subscription use.
 4. A portability contract for configuration outside individual harnesses, with acceptance scenarios across supported tools.
 5. Feasibility results for workflow execution, knowledge retrieval, and capacity control, with explicit gaps where tests cannot run.
-6. A draft v1 specification, a bounded v0.7-beta scope, and an ordered implementation queue.
+6. A draft v1 specification, bounded alpha and beta scopes, and an ordered implementation queue.
 
 Hanna selected `sageadvicellc/trellis` as the framework monorepo on October 1, 2026. The working branch remains `feature/trellis-v1`. The remaining specification choices stay open. The dispersed framework repositories retire after their replacements pass migration and cutover gates.
 

@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "b15e1eff315e14cdcd60b595c153298d2de0834d10183b14dcfa9d52184f797d",
+    "original_sha256": "48ae7509d32f186dcfcdf94b17b7f4a3471e77da9cb12acaddb13f0f5bd038e5",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "c794e70b486ecc992c0e06c39ce010d7192f68f980094d7b3db370bbf2f3d26b",
+    "repository_sha256": "6375c8503d17b2724f13bad7b45dd7ef3ffe1926b07f86b8b29168c2442f5807",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -71,6 +71,13 @@
         "date": "2026-10-01",
         "source": "Founder instruction in the current chat",
         "decision": "Trellis monorepo. Retire the five dispersed framework repositories after migration and cutover. Sagespec stays separate.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Add Codex-first v0.7-alpha for founder testing, beta baseline measurements, and marketing/social preparation before beta. Sagespec product development remains after beta.",
+        "acceptance_criteria": "Detailed alpha tests are proposed, not measured release readiness.",
         "research_and_fixtures_changed": false
       }
     ]

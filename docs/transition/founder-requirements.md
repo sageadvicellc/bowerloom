@@ -8,7 +8,9 @@ This baseline records the founder's requirements and planning decisions from thi
 
 Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is Hanna's product and business workflows built on Trellis. Trellis and Sagespec have separate product scopes.
 
-Deliver Trellis v0.7-beta first. Then build Sagespec on that release through a second team with its own lead. Keep Trellis maintenance and Sagespec product delivery under separate ownership. The Sagespec lead and team design remain future implementation work.
+Deliver `v0.7-alpha` first with Codex. Hanna uses it for personal testing and records a baseline for beta comparisons. Alpha also enables a marketing and social team to prepare the campaign without waiting for beta.
+
+Deliver `v0.7-beta` next. Then build Sagespec on that release through a separate product team with its own lead. Keep Trellis maintenance and Sagespec product delivery under separate ownership. The marketing team and Sagespec product team have different scopes. Their lead assignments remain future work.
 
 Generic demonstrations belong to Trellis. Sagespec-specific workflows, business rules, knowledge, and product assets belong to the downstream Sagespec project. The framework must support multiple independent teams through portable definitions, explicit permissions, and separate writable state.
 
@@ -18,7 +20,9 @@ The v0.7-beta demo has two paths. Technical founders receive a built local appli
 
 Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a maximum of two to seven active workers, with lead activity included in usage accounting.
 
-The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review. Claude Code and Codex are the preferred initial harness candidates. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
+The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review.
+
+Codex is the selected first harness for alpha. Claude Code remains a candidate for later support. Beta support breadth remains a specification choice. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
 
 ## Portability is a core requirement
 

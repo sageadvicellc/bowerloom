@@ -36,3 +36,5 @@ On October 1, Hanna limited the sole-merger rule to `main`. The [working order](
 The current candidate includes that instruction after the independent review. The manifest records the amendment separately. Research observations and experiment sources remain unchanged.
 
 Hanna also selected the framework monorepo and retirement of the five dispersed module repositories. The [cutover plan](monorepo-cutover.md) records preservation and retirement gates. This decision follows the independent research review.
+
+Hanna added Codex-first `v0.7-alpha` for testing, beta baseline measurements, and marketing preparation before beta. The [release plan](release-plan.md) records that decision and the proposed acceptance criteria. This amendment adds no new experiment result.

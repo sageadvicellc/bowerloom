@@ -4,7 +4,7 @@ Trellis is the open-source tooling and framework for building self-managing syst
 
 Portable, versioned definitions describe teams, skills, permissions, workflow graphs, budgets, and evaluation requirements outside individual agent tools.
 
-Sagespec is a separate product and set of business workflows built on Trellis. The delivery sequence is Trellis v0.7-beta, then Sagespec development through a second team with its own lead.
+Sagespec is a separate product and set of business workflows built on Trellis. The delivery sequence is Codex-first `v0.7-alpha`, then `v0.7-beta`, then Sagespec development through a separate product team. Alpha supports founder testing, baseline measurements, and marketing preparation before beta.
 
 ## Current development
 
@@ -13,6 +13,7 @@ The first campaign prepares a specification and implementation queue for founder
 - [Founder requirements](docs/transition/founder-requirements.md)
 - [Branch coordination and merge authority](docs/transition/working-order.md)
 - [Approved monorepo cutover](docs/transition/monorepo-cutover.md)
+- [Alpha, beta, and v1 release plan](docs/transition/release-plan.md)
 - [Specification candidate and implementation queue](docs/transition/v1-specification-candidate.md)
 - [Round-one outcomes and boundaries](docs/transition/round-one.md)
 - [Research evidence index](docs/transition/evidence-index.md)
