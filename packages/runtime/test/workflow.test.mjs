@@ -110,7 +110,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
       try { await rm(root, { recursive: true, force: true }); caseResult.scratchRemoved = true; } catch { errors.push('scratch'); }
       caseResult.childrenReaped = children.size === 0; caseResult.cleanupErrors = errors; caseResult.milliseconds = performance.now() - started;
       report.cases.push(caseResult); mkdirSync('packages/runtime/.trellis',{ recursive:true });
-      report.passed = report.cases.length === 20 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
+      report.passed = report.cases.length === 23 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
       writeFileSync('packages/runtime/.trellis/test-result.json',JSON.stringify(report,null,2)+'\n');
       if (errors.length) throw new Error('Synthetic runtime cleanup failed.');
     }
@@ -161,7 +161,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     }
     const audit = await restarted.rpc('owner-audit');
     for (const value of inputs) {
-      assert.equal(audit.inputs.filter(entry=>entry.task.ownerSubject===value.task.ownerSubject).length,2);
+      assert.equal(audit.inputs.filter(entry=>entry.task.ownerSubject===value.task.ownerSubject).length,3);
       assert.equal(audit.authenticatedSubjects.filter(subject=>subject===value.task.ownerSubject).length,2);
     }
     const filesBefore = [await snapshot(designFile),await snapshot()]; await restarted.kill();
@@ -191,7 +191,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     assert.deepEqual(stored.input,original); assert.equal(stored.inputDigest,digest(canonicalJson(original)));
     await worker.rpc('approve',{id,approval:approval(pending),credential:'founder'});
     const completed = await waitState(worker,id,state=>state.run.status==='COMPLETED'); assert.deepEqual(completed.run.input,original);
-    const audit = await worker.rpc('owner-audit'); assert.equal(audit.inputs.length,3);
+    const audit = await worker.rpc('owner-audit'); assert.equal(audit.inputs.length,4);
     for (const observed of audit.inputs) assert.deepEqual(observed,original);
     assert.equal(await worker.rpc('submit',{input:original}),id); await worker.stop();
     caseResult.policyReadFromLedger = true; caseResult.sameProcessMutationIsolated = true;
@@ -336,6 +336,23 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     assert.equal(after.run.cancelled,true); assert.equal(after.run.acceptance,null); assert.deepEqual(after.run.receipt,before.run.receipt);
     assert.deepEqual(await snapshot(),fileBefore); await worker.stop();
     caseResult.cancelledWhileReaderAwaited=true; caseResult.readerReturnedAccepted=accepted; caseResult.receiptPreserved=true;
+  });
+  for (const stop of ['cancel','close','lock-loss']) await run(`owned acceptance observes runtime ${stop} and cleanup before completion`,async({spawnCoordinator,input,waitState,approval,snapshot,pool,caseResult})=>{
+    const worker=spawnCoordinator('acceptance-owned');const ready=await worker.next('ready');const id=await worker.rpc('submit',{input:input()});
+    const pending=await waitState(worker,id,value=>value.run.status==='WAITING_APPROVAL');await worker.rpc('approve',{id,approval:approval(pending),credential:'founder'});
+    const checkpoint=await worker.next('checkpoint',value=>value.checkpoint==='acceptance');assert.equal(checkpoint.ownerCredential,'owner');assert.equal(checkpoint.launcherId,ready.launcherId);
+    const before=await worker.rpc('status',{id}),fileBefore=await snapshot();assert.equal(checkpoint.receipt,before.run.receipt.operationKey);
+    if(stop==='cancel'){
+      await worker.rpc('cancel',{id});assert.ok(worker.messages.some(m=>m.type==='acceptance-reaped'));assert.ok(worker.messages.some(m=>m.type==='acceptance-cleanup-hook'&&m.hook==='cancel'));
+      const after=await worker.rpc('status',{id});assert.equal(after.run.status,'CANCELLED');assert.equal(after.run.acceptance,null);assert.deepEqual(after.run.receipt,before.run.receipt);await worker.stop();
+    }else if(stop==='close'){
+      await worker.stop();assert.ok(worker.messages.some(m=>m.type==='acceptance-reaped'));assert.ok(worker.messages.some(m=>m.type==='acceptance-cleanup-hook'&&m.hook==='close'));
+    }else{
+      const locks=(await pool.query("SELECT pid FROM pg_locks WHERE locktype='advisory' AND objsubid=2 AND database=(SELECT oid FROM pg_database WHERE datname=current_database())")).rows;assert.equal(locks.length,1);
+      await pool.query('SELECT pg_terminate_backend($1)',[locks[0].pid]);await worker.next('acceptance-reaped');
+      const after=await waitState(worker,id,value=>value.run.status==='HOLD');assert.equal(after.run.acceptance,null);assert.deepEqual(after.run.receipt,before.run.receipt);await worker.stop();
+    }
+    assert.deepEqual(await snapshot(),fileBefore);caseResult.ownedAcceptanceReaped=true;caseResult.writeReceiptPreserved=true;
   });
   await run('lost receipt acknowledgement keeps the durable receipt and does not repeat the write', async ({spawnCoordinator,input,waitState,approval,snapshot}) => {
     const worker=spawnCoordinator('lost-receipt-ack'); await worker.next('ready'); const id=await worker.rpc('submit',{input:input()});
