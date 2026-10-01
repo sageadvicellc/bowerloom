@@ -1,4 +1,5 @@
 import { canonicalJson, digest } from '../../contracts/src/index.js';
+import { validateTestManifestPlan } from '../../controlled-tests/src/index.js';
 import { MODEL_ROUTE, proposalPrompt } from '../../codex-adapter/src/index.js';
 import type { AdmissionPolicy } from '../../admission/src/index.js';
 import type { SupervisedRuntime, RunInput } from '../../runtime/src/index.js';
@@ -28,7 +29,7 @@ const integer = (v: unknown): v is number => Number.isSafeInteger(v) && (v as nu
 export function renderTask(request: ExecutionRequest): string {
   const task = request.plan.definition.tasks.find(task => task.id === request.taskId) ?? fail('UNKNOWN_TASK');
   const owner = request.plan.definition.owners.find(owner => owner.id === task.owner) ?? fail('UNKNOWN_OWNER');
-  const effect = task.effects[0];
+  const effect = task.effects.find(effect => effect.operation === 'workspace.write');
   if (!effect || effect.operation !== 'workspace.write') fail('UNSUPPORTED_EFFECT');
   const prompt = canonicalJson({
     instruction: 'Produce the requested file content in edit.content. Copy all supplied proposal fields exactly. Do not execute effects. For a non-artifact output, encode the value as canonical JSON in edit.content.',
@@ -51,8 +52,12 @@ export class RuntimeTaskBridge implements TaskExecutor {
   readonly #policy: BridgePolicy;
   readonly #store: GraphStore;
   readonly #runtime: RuntimePort;
-  constructor(input: GraphInput, policy: BridgePolicy, store: GraphStore, runtime: RuntimePort) {
+  constructor(input: GraphInput, policy: BridgePolicy, store: GraphStore, runtime: RuntimePort, testManifest?: string) {
     this.#input = pinGraph(input); this.#policy = structuredClone(policy); this.#store = store; this.#runtime = runtime;
+    if (this.#input.plan.definition.tasks.some(task => task.effects.some(effect => effect.operation === 'command.test'))) {
+      if (testManifest === undefined) fail('TEST_MANIFEST_REQUIRED');
+      validateTestManifestPlan(this.#input.plan, testManifest);
+    }
     const p = this.#policy;
     if (Object.keys(p).sort().join() !== 'accountAlias,allowancePercent,approverSubjects,leaseExpiresAtMs,modelRoute,readyAtMs'
       || !id(p.accountAlias) || p.modelRoute !== MODEL_ROUTE || !integer(p.readyAtMs) || !integer(p.leaseExpiresAtMs)

@@ -1,12 +1,12 @@
 // Versioned metaharness policy. Machine paths and account bindings are controller inputs.
-export const POLICY_VERSION = 'codex-subscription-proposal/v0.7-alpha.1';
+export const POLICY_VERSION = 'codex-subscription-proposal/v0.7-alpha.2';
 export const CODEX_VERSION = '0.157.0';
 export const MODEL_ROUTE = 'codex:gpt-5.5:low';
 export const MODEL = 'gpt-5.5';
 export const EFFORT = 'low';
 export const SUPPORTED_NATIVE_SHA256 = 'ad0be20d04e2ba6146ecdb51d7f8b7b0fe15420a15dc9b0057518d858f1f3714';
 export const LIMITS = Object.freeze({ seconds: 60, stdoutBytes: 65536, stderrBytes: 32768, events: 64,
-  inputBytes: 4096, observerBytes: 2 * 1024 * 1024, observationAgeMs: 30000, reserveBytes: 12 * 2 ** 30 });
+  inputBytes: 32768, observerBytes: 2 * 1024 * 1024, observationAgeMs: 30000, reserveBytes: 12 * 2 ** 30 });
 export const CONTROLS: readonly string[] = Object.freeze([
   "--disable",
   "plugins",

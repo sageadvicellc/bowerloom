@@ -74,12 +74,21 @@ export function pinGraph(value: GraphInput): GraphInput {
   }
   if (totalBytes > GRAPH_LIMITS.inputBytes / 2) fail('ASSET_LIMIT');
   for (const owner of Object.values(input.owners)) if (!exact(owner, ['subject','epoch']) || !identifier(owner.subject) || !integer(owner.epoch) || owner.epoch < 1) fail('INVALID_OWNER');
-  const capabilities = ['workspace.write','approval.exact-revision'];
+  const capabilities = ['workspace.write','approval.exact-revision','command.test'];
   if (plan.definition.tasks.length > GRAPH_LIMITS.tasks || plan.definition.requiredCapabilities.some(cap => !capabilities.includes(cap))) fail('UNSUPPORTED_GRAPH');
   for (const task of plan.definition.tasks) {
-    if (task.effects.length !== 1 || task.effects[0]!.operation !== 'workspace.write' || Object.keys(task.outputs).length !== 1
-      || task.approval !== 'required' || task.policy.maxAttempts !== 1 || task.policy.backoffSeconds !== 0
-      || !same([...task.requires].sort(), [...capabilities].sort())) fail('UNSUPPORTED_TASK');
+    const writes = task.effects.filter(effect => effect.operation === 'workspace.write');
+    const tests = task.effects.filter(effect => effect.operation === 'command.test');
+    const required = ['workspace.write','approval.exact-revision', ...(tests.length ? ['command.test'] : [])];
+    if (writes.length !== 1 || tests.length > 1 || task.effects.length !== writes.length + tests.length
+      || Object.keys(task.outputs).length !== 1 || task.approval !== 'required'
+      || task.policy.maxAttempts !== 1 || task.policy.backoffSeconds !== 0
+      || !same([...task.requires].sort(), required.sort())) fail('UNSUPPORTED_TASK');
+    if (tests.length) {
+      const output = Object.values(task.outputs)[0]!;
+      if (tests[0]!.command !== 'craft-shop-ui-v1' || output.kind !== 'artifact' || output.mediaType !== 'text/html'
+        || plan.assets['test-manifest']?.mediaType !== 'application/json') fail('UNSUPPORTED_TEST_GATE');
+    }
     for (const type of Object.values(task.outputs)) supportedType(type);
   }
   return input;
@@ -118,7 +127,7 @@ export function observation(request: ExecutionRequest, supplied: ExecutionObserv
   if (!exact(completed, ['proposal','receipt','evidenceRef']) || !identifier(completed.evidenceRef) || value.reason !== null) fail('INVALID_COMPLETION');
   const proposal = parseProposal(JSON.stringify(completed.proposal));
   const task = request.plan.definition.tasks.find(task => task.id === request.taskId)!;
-  const effect = task.effects[0]!;
+  const effect = task.effects.find(effect => effect.operation === 'workspace.write')!;
   if (proposal.candidateRevision !== request.candidateRevision || proposal.ownerEpoch !== request.ownerEpoch
     || !same(proposal.scope, { workspaceId: request.workspaceId, runId: request.runId, taskId: request.taskId })
     || effect.operation !== 'workspace.write' || proposal.edit.path !== effect.path || Buffer.byteLength(proposal.edit.content) > GRAPH_LIMITS.outputBytes) fail('OUTPUT_BINDING');
