@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,verifyModel,verifyProvenance } from '../src/observation.js';
+import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,verifyModel,verifyProvenance } from '../src/observation.js';
 import { CONTROLS,MODEL_ROUTE } from '../src/policy.js';
 import { strictJson } from '../src/safe.js';
 import type { AccountBinding } from '../src/types.js';
@@ -76,4 +76,22 @@ test('malformed eligibility, unknown spend control, and workspace routing mismat
   for(const [key,value] of [['rateLimitReachedType',false],['spendControlReached',undefined],['spendControlReached',true]]){const f=fixture();(f.usage.rateLimitsByLimitId.codex as any)[key as string]=value;assert.throws(()=>observe(f));}
   const f=fixture();(f.account as any).workspaceRouting={chatgptAccountId:'other',backendOrigin:'https://chatgpt.com'};assert.throws(()=>observe(f));
   assert.throws(()=>strictJson('"\\ud800"'));
+});
+
+test('explicit capacity ceiling preserves ten points and the default remains seventy-five',()=>{
+  assert.equal(capacityCeiling(),75);
+  for(const invalid of [0,10,95.01,100,NaN,Infinity])assert.throws(()=>capacityCeiling(invalid));
+  for(const used of [74,84,85,95]){
+    const f=fixture();f.usage.rateLimitsByLimitId.codex.primary.usedPercent=used;
+    const out=observe(f);
+    assert.throws(()=>requireHeadroom(out));
+    if(used<85)requireHeadroom(out,95);else assert.throws(()=>requireHeadroom(out,95));
+  }
+  const f=fixture();(f.usage.rateLimitsByLimitId.codex as any).secondary={...f.usage.rateLimitsByLimitId.codex.primary,usedPercent:85};
+  assert.throws(()=>requireHeadroom(observe(f),95));
+});
+test('invalid observer ceiling is refused before any native request',async()=>{
+  const {readAuthenticatedObservation}=await import('../src/reader.js');let calls=0;
+  await assert.rejects(readAuthenticatedObservation(async()=>{calls++;return {};},()=>{},binding,'/synthetic',now,()=>now,96));
+  assert.equal(calls,0);
 });

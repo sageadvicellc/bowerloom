@@ -370,9 +370,9 @@ test('account admission against a dedicated synthetic PostgreSQL database', { sk
     if (created) try { await admin.query(`DROP DATABASE "${database}"`); report.databaseRemoved = true; } catch { cleanupErrors.push('database'); }
     try { await admin.end(); } catch { cleanupErrors.push('admin'); }
     report.childrenReaped = children.size === 0; report.cleanupErrors = cleanupErrors; report.finishedAt = new Date().toISOString();
-    report.passed = report.tests.length === 18 && report.tests.every(value => value.passed) && report.databaseRemoved === true && report.childrenReaped && cleanupErrors.length === 0;
+    report.passed = report.tests.length === 19 && report.tests.every(value => value.passed) && report.databaseRemoved === true && report.childrenReaped && cleanupErrors.length === 0;
     mkdirSync('packages/admission/.trellis', { recursive: true });
     writeFileSync('packages/admission/.trellis/test-result.json', JSON.stringify(report, null, 2) + '\n');
-    if (cleanupErrors.length) throw new Error('Synthetic admission test cleanup failed; inspect local result.');
+    if (!report.passed) throw new Error('Synthetic admission test evidence is incomplete or failed; inspect the local result.');
   }
 });
