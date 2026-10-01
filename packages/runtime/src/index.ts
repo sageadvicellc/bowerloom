@@ -102,10 +102,10 @@ export class SupervisedRuntime {
     else if (['LAUNCHING','UNKNOWN'].includes(reservation.status)) await this.#admission.reconcile(request, proof);
   }
   async #capture(id: string, admission: ReserveResult | null): Promise<void> {
-    if (this.#inflight.has(id) || this.#inflight.size >= 2) throw new RuntimeError('OWNED_PROCESS_LIMIT');
+    if (this.#inflight.has(id) || new Set([...this.#inflight.keys(), ...this.#active.keys()]).size >= 2) throw new RuntimeError('OWNED_PROCESS_LIMIT');
     const abort = new AbortController(); let finished!: () => void;
     const done = new Promise<void>(resolve => { finished = resolve; }); this.#inflight.set(id, { abort, done });
-    let worker: ModelProcess | undefined;
+    let worker: ModelProcess | undefined; let reaped = false;
     try {
       const state = await this.#check(id);
       if (state.proposal) { await this.#completeReservation(id); return; }
@@ -127,16 +127,20 @@ export class SupervisedRuntime {
         if (held?.launcherId && held.launcherId !== this.launcherId) throw new RuntimeError('FOREIGN_LAUNCHER_RECONCILIATION_REQUIRED');
         throw new RuntimeError(launched.kind === 'denied' ? launched.reason : 'LAUNCH_UNKNOWN');
       }
-      const proposal = parseProposal(await worker.result); await this.#check(id);
+      const output = await worker.result; reaped = true;
+      const proposal = parseProposal(output); await this.#check(id);
       await this.#ledger.change(id, current => { current.proposal = proposal; });
       await this.#outcome(id, worker);
     } catch (error) {
       if (worker) {
-        try { await worker.terminate(); await this.#outcome(id, worker); }
+        try { await worker.terminate(); reaped = true; await this.#outcome(id, worker); }
         catch { /* Uncertain termination or acknowledgement retains the account hold. */ }
       }
       throw error;
-    } finally { this.#active.delete(id); this.#inflight.delete(id); finished(); }
+    } finally {
+      if (!worker || reaped) this.#active.delete(id); // Retain uncertain owned handles for close() cleanup.
+      this.#inflight.delete(id); finished();
+    }
   }
   async #execute(id: string): Promise<RunState> {
     const step = <T>(name: string, action: () => Promise<T>) => DBOS.runStep(action, { name, retriesAllowed: false });
@@ -167,7 +171,13 @@ export class SupervisedRuntime {
         const state = await this.#check(id); if (!state.receipt) throw new RuntimeError('MISSING_RECEIPT');
         const accepted = state.acceptance ?? await this.#deps.acceptance.read(state.input, state.receipt);
         if (typeof accepted?.accepted !== 'boolean') throw new RuntimeError('INVALID_ACCEPTANCE'); identifier(accepted.evidenceRef);
-        return this.#ledger.change(id, current => { current.acceptance = structuredClone(accepted); current.status = accepted.accepted ? 'COMPLETED' : 'ACCEPTANCE_FAILED'; });
+        return this.#ledger.change(id, current => {
+          // The read can await while cancellation commits. Decide terminal state under this row lock.
+          if (current.cancelled || this.#cancelled.has(id)) {
+            current.cancelled = true; current.status = 'CANCELLED'; current.reason = 'CANCELLED'; return;
+          }
+          current.acceptance = structuredClone(accepted); current.status = accepted.accepted ? 'COMPLETED' : 'ACCEPTANCE_FAILED';
+        });
       });
     } catch (error) {
       return step('durable-stop', async () => this.#ledger.change(id, current => {

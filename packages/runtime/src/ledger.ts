@@ -18,7 +18,7 @@ export const runId = (input: RunInput): string => digest(canonicalJson({ workspa
 function decode(value: RunState): RunState {
   if (!value || value.version !== 1 || Object.keys(value).sort().join() !== 'acceptance,cancelled,id,input,inputDigest,modelOutcome,process,proposal,reason,receipt,status,version'
     || !['QUEUED','WAITING_APPROVAL','HOLD','CANCELLED','COMPLETED','ACCEPTANCE_FAILED'].includes(value.status)
-    || typeof value.cancelled !== 'boolean') throw new RuntimeError('CORRUPT_RUN');
+    || typeof value.cancelled !== 'boolean' || (value.cancelled && value.status !== 'CANCELLED')) throw new RuntimeError('CORRUPT_RUN');
   const input = pin(value.input);
   if (value.id !== runId(input) || value.inputDigest !== digest(canonicalJson(input))) throw new RuntimeError('CORRUPT_RUN');
   if (value.proposal) {

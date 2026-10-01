@@ -105,7 +105,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
       try { await rm(root, { recursive: true, force: true }); caseResult.scratchRemoved = true; } catch { errors.push('scratch'); }
       caseResult.childrenReaped = children.size === 0; caseResult.cleanupErrors = errors; caseResult.milliseconds = performance.now() - started;
       report.cases.push(caseResult); mkdirSync('packages/runtime/.trellis',{ recursive:true });
-      report.passed = report.cases.length === 11 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
+      report.passed = report.cases.length === 13 && report.cases.every(value => value.passed && value.databaseRemoved && value.scratchRemoved && value.childrenReaped && !value.cleanupErrors.length);
       writeFileSync('packages/runtime/.trellis/test-result.json',JSON.stringify(report,null,2)+'\n');
       if (errors.length) throw new Error('Synthetic runtime cleanup failed.');
     }
@@ -191,6 +191,19 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     await assert.rejects(stat(file),{code:'ENOENT'}); await worker.kill();
     const next=spawnCoordinator(); await next.next('ready'); await next.rpc('submit',{input:value});
     assert.equal((await next.rpc('status',{id})).run.status,'HOLD'); await assert.rejects(stat(file),{code:'ENOENT'}); await next.stop();
+  });
+  for (const accepted of [true,false]) await run(`cancellation committed during awaited acceptance survives ${accepted?'accepted':'rejected'} evidence`, async ({spawnCoordinator,input,waitState,approval,snapshot,caseResult}) => {
+    const worker=spawnCoordinator('acceptance-gate'); await worker.next('ready'); const id=await worker.rpc('submit',{input:input()});
+    const pending=await waitState(worker,id,value=>value.run.status==='WAITING_APPROVAL'); await worker.rpc('approve',{id,approval:approval(pending),credential:'founder'});
+    await worker.next('checkpoint',value=>value.checkpoint==='acceptance');
+    const before=await worker.rpc('status',{id}); assert.ok(before.run.receipt); const fileBefore=await snapshot();
+    await worker.rpc('cancel',{id}); const cancelled=await worker.rpc('status',{id}); assert.equal(cancelled.run.status,'CANCELLED');
+    await worker.rpc('release-acceptance',{accepted}); const workflowResult=await worker.rpc('workflow-result',{id});
+    assert.equal(workflowResult.status,'CANCELLED'); assert.equal(workflowResult.cancelled,true); assert.equal(workflowResult.acceptance,null);
+    const after=await worker.rpc('status',{id}); assert.equal(after.run.status,'CANCELLED'); assert.equal(after.run.reason,'CANCELLED');
+    assert.equal(after.run.cancelled,true); assert.equal(after.run.acceptance,null); assert.deepEqual(after.run.receipt,before.run.receipt);
+    assert.deepEqual(await snapshot(),fileBefore); await worker.stop();
+    caseResult.cancelledWhileReaderAwaited=true; caseResult.readerReturnedAccepted=accepted; caseResult.receiptPreserved=true;
   });
   await run('lost receipt acknowledgement keeps the durable receipt and does not repeat the write', async ({spawnCoordinator,input,waitState,approval,snapshot}) => {
     const worker=spawnCoordinator('lost-receipt-ack'); await worker.next('ready'); const id=await worker.rpc('submit',{input:input()});

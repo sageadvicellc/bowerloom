@@ -1,8 +1,9 @@
 import pg from 'pg';
+import { DBOS } from '@dbos-inc/dbos-sdk';
 import { SupervisedRuntime, SyntheticProcessAdapter, RuntimeLedger } from '../../../dist/packages/runtime/src/index.js';
 import { PostgresBrokerStore } from '../../../dist/packages/broker-postgres/src/index.js';
 import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effects/src/index.js';
-let runtime; let pool; let fired = false;
+let runtime; let pool; let fired = false; let resumeAcceptance;
 process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode }) => {
   pool = new pg.Pool({ ...config, max: 6 }); pool.on('error', () => {});
   const intercepted = { async connect() {
@@ -59,13 +60,21 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
         await pool.query('INSERT INTO runtime_test_starts VALUES ($1)', [worker.identity.processRef]);
         return worker;
       } },
-      acceptance: { async read() { return { accepted: true, evidenceRef: 'synthetic-receipt-check' }; } },
+      acceptance: { async read() {
+        if (mode === 'acceptance-gate') {
+          const accepted = await new Promise(resolve => { resumeAcceptance = resolve; process.send({ type:'checkpoint', checkpoint:'acceptance' }); });
+          return { accepted, evidenceRef:'synthetic-delayed-acceptance' };
+        }
+        return { accepted: true, evidenceRef: 'synthetic-receipt-check' };
+      } },
     }, options);
     process.send({ type: 'ready', launcherId: runtime.launcherId, rssBytes: process.memoryUsage().rss });
     process.on('message', async message => {
       try {
         let result;
-        if (message.type === 'submit') result = await runtime.submit(message.input);
+        if (message.type === 'release-acceptance') { resumeAcceptance(message.accepted); result = 'released'; }
+        else if (message.type === 'workflow-result') result = await DBOS.getResult(message.id, { timeoutSeconds: 3 });
+        else if (message.type === 'submit') result = await runtime.submit(message.input);
         else if (message.type === 'status') result = await runtime.status(message.id);
         else if (message.type === 'approve') result = await runtime.approve(message.id, message.approval, message.credential);
         else if (message.type === 'cancel') result = await runtime.cancel(message.id);

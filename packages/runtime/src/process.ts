@@ -20,15 +20,24 @@ export class SyntheticProcessAdapter implements ModelAdapter {
     const token = randomBytes(32).toString('hex'); const processRef = `process-${randomUUID()}`;
     const child = spawn(this.#command[0]!, this.#command.slice(1), { cwd: this.#cwd, env: {}, shell: false, detached: true,
       stdio: ['pipe','pipe','pipe'] });
-    let closed = false; let failed = false; let bytes = 0; const chunks: Buffer[] = [];
+    let groupAbsent = false; let failed = false; let bytes = 0; const chunks: Buffer[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let exitResolve!: (value: number | null) => void; const exited = new Promise<number | null>(resolve => { exitResolve = resolve; });
     child.on('error', () => { failed = true; });
-    child.once('close', code => { closed = true; exitResolve(code); });
+    child.once('close', exitResolve);
+    const finishOwnership = (): void => {
+      groupAbsent = true; clearTimeout(timer); signal.removeEventListener('abort', stop);
+    };
     const stop = (): void => {
       failed = true;
-      if (!closed && child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') failed = true; } }
+      // A leader's close event does not end ownership of its surviving group.
+      // Once absence is observed, never signal or inspect that identifier again.
+      if (!groupAbsent && child.pid) {
+        try { process.kill(-child.pid, 'SIGKILL'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') finishOwnership(); }
+      }
     };
-    const timer = setTimeout(stop, this.#timeout); timer.unref();
+    timer = setTimeout(stop, this.#timeout); timer.unref();
     signal.addEventListener('abort', stop, { once: true });
     for (const stream of [child.stdout, child.stderr]) stream.on('data', (buffer: Buffer) => {
       bytes += buffer.length; if (bytes > this.#outputLimit) stop();
@@ -36,17 +45,31 @@ export class SyntheticProcessAdapter implements ModelAdapter {
     });
     child.stdin.on('error', () => { failed = true; });
     const groupGone = async (): Promise<void> => {
-      if (!child.pid) return;
+      if (groupAbsent) return;
+      if (!child.pid) { finishOwnership(); return; }
       for (let attempt = 0; attempt < 100; attempt++) {
+        if (groupAbsent) return;
         try { process.kill(-child.pid, 0); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return; throw new RuntimeError('TERMINATION_UNKNOWN'); }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') { finishOwnership(); return; }
+          // macOS can briefly report EPERM while a killed orphan is being reaped.
+          // It is not absence evidence: retry within the same bounded ownership interval.
+          if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw new RuntimeError('TERMINATION_UNKNOWN');
+        }
         await delay(10);
       }
       throw new RuntimeError('TERMINATION_UNKNOWN');
     };
+    const waitForClose = async (): Promise<void> => {
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([exited, new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new RuntimeError('TERMINATION_UNKNOWN')), 1000);
+        })]);
+      } finally { clearTimeout(deadline); }
+    };
     const result = (async () => {
       const code = await exited;
-      clearTimeout(timer); signal.removeEventListener('abort', stop);
       await groupGone();
       if (failed || code !== 0 || signal.aborted) throw new RuntimeError('PROCESS_STOPPED');
       let packet; try { packet = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new RuntimeError('INVALID_WORKER_OUTPUT'); }
@@ -59,7 +82,7 @@ export class SyntheticProcessAdapter implements ModelAdapter {
       if (signal.aborted) stop();
       child.stdin.end(JSON.stringify({ token, taskInput: input.taskInput, modelRoute: input.modelRoute }));
       return { identity: { processRef, ownershipDigest: digest(token), pid: child.pid!, groupId: child.pid!, launcherId: input.launcherId }, result,
-        async terminate() { stop(); await exited; await groupGone(); } };
-    } catch (error) { stop(); await exited; throw error; }
+        async terminate() { stop(); await waitForClose(); await groupGone(); } };
+    } catch (error) { stop(); await waitForClose(); await groupGone(); throw error; }
   }
 }
