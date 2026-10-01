@@ -13,5 +13,5 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "packages/codex-adapter/test/**/*.ts"]
+  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "packages/codex-adapter/test/**/*.ts", "packages/roots/test/**/*.ts"]
 }
