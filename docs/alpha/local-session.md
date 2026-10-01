@@ -36,7 +36,7 @@ The operator proof lasts two minutes. Each approval lasts at most one minute and
 
 The native input limit is 32,768 UTF-8 bytes, including its fixed instruction. This permits a bounded accepted HTML handoff between leads. Oversized input fails without truncation or model submission.
 
-The native policy version is `codex-subscription-proposal/v0.7-alpha.2`. Its process, output, permission, and subscription controls remain unchanged.
+The native policy version is `codex-subscription-proposal/v0.7-alpha.3`. Its process, output, permission, and subscription controls remain unchanged.
 
 ## Evidence limits
 
@@ -53,3 +53,13 @@ A smaller margin does not change the stored policy or release prior holds. The p
 This campaign explicitly permits a 95 percent stop. Its portable crew must declare the matching reserve. Every new model still needs current account evidence.
 
 Cancellation uses the stored write receipt to locate unfinished browser tests after a controller restart. It repeats owned cleanup without another test launch.
+
+## Native compatibility
+
+The adapter accepts two exact native builds: `0.157.0` and `0.159.2`. A changed executable hash requires a new reviewed pin.
+
+The authenticated account and usage bucket must both identify `pro` or both identify `promax`. An unknown plan remains blocked.
+
+The older native protocol maps `promax` to `unknown`. That account requires the pinned `0.159.2` executable and its tested controls.
+
+A new native pin does not change the model route, permissions, stored account identity, or held allowances.

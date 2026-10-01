@@ -107,3 +107,14 @@ test('invalid explicit margin fails before authenticated observer RPC',async()=>
  const {readAuthenticatedObservation}=await import('../src/reader.js');let calls=0;
  await assert.rejects(readAuthenticatedObservation(async()=>{calls++;return {};},()=>{},binding,'/synthetic',now,()=>now,95,1),{code:'CAPACITY_POLICY'});assert.equal(calls,0);
 });
+
+test('explicit Pro Max subscription requires matching authenticated account and usage plans',()=>{
+  const f=fixture();f.account.account.planType='promax';f.usage.rateLimitsByLimitId.codex.planType='promax';assert.equal(observe(f).authentication,'subscription');
+  for(const plan of ['unknown','free','plus','prolite','future','']){const g=fixture();g.account.account.planType=plan;g.usage.rateLimitsByLimitId.codex.planType=plan;assert.throws(()=>observe(g),{code:'SUBSCRIPTION_REQUIRED'});}
+  f.usage.rateLimitsByLimitId.codex.planType='pro';assert.throws(()=>observe(f),{code:'USAGE_RESTRICTED_OR_UNKNOWN'});
+});
+test('only exact supported native version and hash pairs pass',async()=>{
+  const {requireNativePin}=await import('../src/installation.js');const {SUPPORTED_NATIVE_BINARIES}=await import('../src/policy.js');
+  for(const [version,hash]of Object.entries(SUPPORTED_NATIVE_BINARIES))requireNativePin(version,hash);
+  for(const [version,hash]of [['0.159.2',SUPPORTED_NATIVE_BINARIES['0.157.0']!],['0.157.0',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['0.159.3',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['constructor','x'],['0.159.2','changed']])assert.throws(()=>requireNativePin(version!,hash!),{code:'UNSUPPORTED_BINARY'});
+});
