@@ -21,8 +21,20 @@ type Active={creation:Promise<void>;reap?:Promise<void>};
 export class BrowserError extends Error {constructor(readonly code:string){super(code);this.name='BrowserError';}}
 function check(v:unknown,c:string):asserts v {if(!v)throw new BrowserError(c);}
 const safeId=(id:string):string=>{check(ID.test(id),'INVALID_OPERATION');return id.slice(7);};
-const hashFile=async(path:string):Promise<string>=>{const hash=createHash('sha256');const h=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{for await(const chunk of h.createReadStream({autoClose:false}))hash.update(chunk);return 'sha256:'+hash.digest('hex');}finally{await h.close();}};
-async function regular(path:string,max:number):Promise<Buffer>{const h=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{const s=await h.stat();check(s.isFile()&&s.nlink===1&&s.size<=max,'INVALID_FILE');return await h.readFile();}finally{await h.close();}}
+function unchanged(a:import('node:fs').Stats,b:import('node:fs').Stats):boolean {
+ return a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs&&b.isFile()&&b.nlink===1;
+}
+async function readBounded(path:string,max:number,consume:(bytes:Buffer)=>void):Promise<void>{
+ const h=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const before=await h.stat();check(before.isFile()&&before.nlink===1&&before.size<=max,'INVALID_FILE');
+  const buffer=Buffer.alloc(Math.min(65536,max+1));let total=0;
+  for(;;){const r=await h.read(buffer,0,Math.min(buffer.length,max+1-total),total);if(r.bytesRead===0)break;total+=r.bytesRead;check(total<=max,'FILE_GREW');consume(buffer.subarray(0,r.bytesRead));}
+  const after=await h.stat(),named=await lstat(path);check(total===before.size&&unchanged(before,after)&&unchanged(before,named)&&!named.isSymbolicLink(),'FILE_CHANGED');
+ }finally{await h.close();}
+}
+async function hashFile(path:string,max:number):Promise<string>{const hash=createHash('sha256');await readBounded(path,max,b=>{hash.update(b);});return 'sha256:'+hash.digest('hex');}
+async function regular(path:string,max:number):Promise<Buffer>{const chunks:Buffer[]=[];await readBounded(path,max,b=>chunks.push(Buffer.from(b)));return Buffer.concat(chunks);}
 async function absent(path:string):Promise<boolean>{try{await lstat(path);return false;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return true;throw e;}}
 async function privateDirectory(path:string):Promise<void>{const s=await lstat(path);check(s.isDirectory()&&!s.isSymbolicLink()&&s.uid===process.getuid?.()&&(s.mode&0o777)===0o700&&await realpath(path)===path,'PRIVATE_DIRECTORY_REQUIRED');}
 async function atomic(path:string,value:unknown):Promise<void>{const temp=path+'.'+randomUUID();const h=await open(temp,'wx',0o600);try{await h.writeFile(canonicalJson(value));await h.sync();}finally{await h.close();}await rename(temp,path);const d=await open(dirname(path),'r');try{await d.sync();}finally{await d.close();}}
@@ -57,7 +69,7 @@ export class LinuxBrowserExecutor {
   const i=this.#installation;await privateDirectory(i.stateRoot);check(await realpath(i.browserRoot)===i.browserRoot&&await realpath(i.librariesRoot)===i.librariesRoot,'ASSET_ROOT_CHANGED');
   const verify=async(root:string,pins:Pin[],links:{file:string;target:string}[])=>{
    const expected=new Set([...pins.map(p=>p.path),...links.map(p=>p.file)]),seen=new Set<string>();
-   const walk=async(path:string,prefix=''):Promise<void>=>{for(const name of await readdir(path)){const rel=prefix+name,s=await lstat(join(path,name));if(s.isDirectory()){check(!s.isSymbolicLink(),'ASSET_TYPE');await walk(join(path,name),rel+'/');}else{check(expected.has(rel),'UNPINNED_ASSET');seen.add(rel);const link=links.find(x=>x.file===rel);if(link){check(s.isSymbolicLink()&&await readlink(join(root,rel))===link.target&&!link.target.includes('/')&&await realpath(join(root,rel))===join(root,link.target),'ASSET_LINK');}else{const pin=pins.find(x=>x.path===rel)!;check(s.isFile()&&!s.isSymbolicLink()&&s.nlink===1&&s.size===pin.bytes,'ASSET_TYPE');check(await hashFile(join(root,rel))===pin.digest,'ASSET_HASH');}}}};
+   const walk=async(path:string,prefix=''):Promise<void>=>{for(const name of await readdir(path)){const rel=prefix+name,s=await lstat(join(path,name));if(s.isDirectory()){check(!s.isSymbolicLink(),'ASSET_TYPE');await walk(join(path,name),rel+'/');}else{check(expected.has(rel),'UNPINNED_ASSET');seen.add(rel);const link=links.find(x=>x.file===rel);if(link){check(s.isSymbolicLink()&&await readlink(join(root,rel))===link.target&&!link.target.includes('/')&&await realpath(join(root,rel))===join(root,link.target),'ASSET_LINK');}else{const pin=pins.find(x=>x.path===rel)!;check(s.isFile()&&!s.isSymbolicLink()&&s.nlink===1&&s.size===pin.bytes,'ASSET_TYPE');check(await hashFile(join(root,rel),pin.bytes)===pin.digest,'ASSET_HASH');}}}};
    await walk(root);check(seen.size===expected.size,'MISSING_ASSET');
   };
   await verify(i.browserRoot,this.#runtime.browserFiles,[]);await verify(i.librariesRoot,this.#runtime.libraries,this.#runtime.libraryLinks);
