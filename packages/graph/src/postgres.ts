@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isPromise } from 'node:util/types';
 import type { Pool, PoolClient } from 'pg';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
 import { copyJson, graphState, identifier } from './validation.js';
@@ -50,6 +51,12 @@ export class PostgresGraphStore implements GraphStore {
         current = graphState(row.state); if (current.id !== id) throw new GraphError('CORRUPT_GRAPH');
       }
       const changed = change(current);
+      if (isPromise(changed)) {
+        // Reject asynchronous mutation immediately, but observe any later rejection.
+        // Use the native method without invoking a user-defined `then` property.
+        void Promise.prototype.then.call(changed, undefined, () => {});
+        throw new GraphError('INVALID_MUTATOR');
+      }
       if (!changed || Object.getPrototypeOf(changed) !== Object.prototype) throw new GraphError('INVALID_MUTATOR');
       const descriptors = Object.getOwnPropertyDescriptors(changed);
       if (Reflect.ownKeys(changed).length !== 2 || Object.keys(descriptors).sort().join() !== 'result,state' || !Object.values(descriptors).every(value => value.enumerable && 'value' in value)) throw new GraphError('INVALID_MUTATOR');
