@@ -1,0 +1,142 @@
+{
+  "formatVersion": 1,
+  "experiment": "macOS local Supabase and DBOS backend proof",
+  "source": "Founder-approved local alpha prototype after B1 and B2 independent review",
+  "reviewedManifestSha256": "1d3fb8ef8aa615407a3a642c9d49be1059d87d3790e1473c82b54a07644f83a7",
+  "integrationBaseCommit": "38bd700a7382a02a90a1afbd77513b77498737f9",
+  "importedAt": "2026-10-01",
+  "files": [
+    {
+      "path": ".gitignore",
+      "reviewedSha256": "b02d26267641a228c5c5784cefd0a92b1ca7ce0ee31c1cc05dc6341252b1fb1b",
+      "packagedSha256": "b02d26267641a228c5c5784cefd0a92b1ca7ce0ee31c1cc05dc6341252b1fb1b",
+      "unchanged": true
+    },
+    {
+      "path": "README.md",
+      "reviewedSha256": "79bdd2252765ee28c5d081f0da60dadf50150170ffe2c9b6fed4e43cff2e3156",
+      "packagedSha256": "79bdd2252765ee28c5d081f0da60dadf50150170ffe2c9b6fed4e43cff2e3156",
+      "unchanged": true
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "reviewedSha256": "4a318c71887d5fd8943394e6d2d1f11b2cf7b6de224f472fcf13c392ec8232ab",
+      "packagedSha256": "4a318c71887d5fd8943394e6d2d1f11b2cf7b6de224f472fcf13c392ec8232ab",
+      "unchanged": true
+    },
+    {
+      "path": "infra/compose.json",
+      "reviewedSha256": "d8f1f73dd8a4c6d23899e27872ba09f7c5d43fb5850cc0fd78679ed0866c282f",
+      "packagedSha256": "d8f1f73dd8a4c6d23899e27872ba09f7c5d43fb5850cc0fd78679ed0866c282f",
+      "unchanged": true
+    },
+    {
+      "path": "infra/images.json",
+      "reviewedSha256": "3244397732cd63d139a867ff1dd62cad20f64c396ed11012d7ac563785b9e525",
+      "packagedSha256": "3244397732cd63d139a867ff1dd62cad20f64c396ed11012d7ac563785b9e525",
+      "unchanged": true
+    },
+    {
+      "path": "infra/jwt.sql",
+      "reviewedSha256": "c1d3f5c01e44646c2e533c5a1c111821cc49cb5a4c2534e08cddad61d8fb0339",
+      "packagedSha256": "c1d3f5c01e44646c2e533c5a1c111821cc49cb5a4c2534e08cddad61d8fb0339",
+      "unchanged": true
+    },
+    {
+      "path": "infra/roles.sql",
+      "reviewedSha256": "3ad717b225daa38aa982da26750f35641eb404e1eb5e69a763c22236ab96c1b2",
+      "packagedSha256": "3ad717b225daa38aa982da26750f35641eb404e1eb5e69a763c22236ab96c1b2",
+      "unchanged": true
+    },
+    {
+      "path": "licenses/dbos-MIT.txt",
+      "reviewedSha256": "503e404dfddb2f1ec81ade7bb601e54c05a3bb8e7b657a0e0444069bc00fd86a",
+      "packagedSha256": "503e404dfddb2f1ec81ade7bb601e54c05a3bb8e7b657a0e0444069bc00fd86a",
+      "unchanged": true
+    },
+    {
+      "path": "licenses/supabase-Apache-2.0.txt",
+      "reviewedSha256": "c29468abcd629e248c2f76848155c386b733872bcabcc4cf65ef1e7c61431042",
+      "packagedSha256": "c29468abcd629e248c2f76848155c386b733872bcabcc4cf65ef1e7c61431042",
+      "unchanged": true
+    },
+    {
+      "path": "package-lock.json",
+      "reviewedSha256": "21788fcc11a8c3a6d4080634424a63510c54725fd3591ec39d3835ddab661a5f",
+      "packagedSha256": "21788fcc11a8c3a6d4080634424a63510c54725fd3591ec39d3835ddab661a5f",
+      "unchanged": true
+    },
+    {
+      "path": "package.json",
+      "reviewedSha256": "d57b8c850d0b073e3d061ded9526e6f7686f73929b5ba85359765bcef2eaf022",
+      "packagedSha256": "d57b8c850d0b073e3d061ded9526e6f7686f73929b5ba85359765bcef2eaf022",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/coordinator.ts",
+      "reviewedSha256": "48ccfc2478240c028cbc1147f61325b7b99ad3ea89df75d4fb10e2d69aedbe46",
+      "packagedSha256": "48ccfc2478240c028cbc1147f61325b7b99ad3ea89df75d4fb10e2d69aedbe46",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/fresh-start.py",
+      "reviewedSha256": "943a75a3e72b2cdd29951c95867ccc0228c6e298ca71ea2a13a9c4f979e8cfb0",
+      "packagedSha256": "1d0ef88cae5c7bf6ea448d468574493a52de173505e5dae0e0634c71d46fbb35",
+      "unchanged": false,
+      "packagingChange": "Require explicit acknowledgment before operating the fixed local proof target."
+    },
+    {
+      "path": "scripts/persistence.mjs",
+      "reviewedSha256": "f56ac2b69c1675c2b94c9b00429818c0bdf6779bb7e33bae1a390fe550ab2e35",
+      "packagedSha256": "f56ac2b69c1675c2b94c9b00429818c0bdf6779bb7e33bae1a390fe550ab2e35",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/prepare.py",
+      "reviewedSha256": "61261e7280c30731453f32e5ac61d509da0734a1fed5b4f0a481a5b2c74e3fc2",
+      "packagedSha256": "05326b746c0f2abd876f5197f0b5716855d7bff0d10011e09bd7fafcc7536c30",
+      "unchanged": false,
+      "packagingChange": "Require explicit acknowledgment before operating the fixed local proof target."
+    },
+    {
+      "path": "scripts/proof_docker.py",
+      "reviewedSha256": "8bc34e6fb497848053a5742f7f84e8708f6788fd6801391866a7f1a3025a480c",
+      "packagedSha256": "0aa635531edb9a41d5261dec50ddd27c1472315682458c2a6e6953b22aefaf25",
+      "unchanged": false,
+      "packagingChange": "Require explicit acknowledgment before operating the fixed local proof target."
+    },
+    {
+      "path": "scripts/prove.mjs",
+      "reviewedSha256": "44bc91fc333ba2fd1d8225652c3fdcaf61c4c6f78c5c863cafbcb07366f99985",
+      "packagedSha256": "44bc91fc333ba2fd1d8225652c3fdcaf61c4c6f78c5c863cafbcb07366f99985",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/stack.py",
+      "reviewedSha256": "da6df93d1afc2887f89fff08004fd5d7f52a4fc8cc2344c9d35e893beddea30b",
+      "packagedSha256": "da6df93d1afc2887f89fff08004fd5d7f52a4fc8cc2344c9d35e893beddea30b",
+      "unchanged": true
+    },
+    {
+      "path": "scripts/test_lifecycle.py",
+      "reviewedSha256": "6439ee18e94cb2cffb610430b5ad509765bdd16e61cf0164908aec1870a9ce4a",
+      "packagedSha256": "6439ee18e94cb2cffb610430b5ad509765bdd16e61cf0164908aec1870a9ce4a",
+      "unchanged": true
+    }
+  ],
+  "excluded": [
+    "private credentials and configuration",
+    "node_modules",
+    "runtime result JSON",
+    "logs",
+    "screenshots and browser metadata",
+    "private campaign files"
+  ],
+  "newPackagingFiles": [
+    "PACKAGE.md",
+    "import-manifest.json",
+    "tests/test_package.py"
+  ],
+  "runtimeEvidenceIncluded": false,
+  "fullAlphaAcceptance": false
+}

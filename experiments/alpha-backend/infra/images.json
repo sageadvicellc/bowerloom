@@ -1,0 +1,32 @@
+{
+  "db": {
+    "tag": "public.ecr.aws/supabase/postgres:17.6.1.167",
+    "digest": "public.ecr.aws/supabase/postgres@sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb",
+    "imageId": "sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb",
+    "localSizeBytes": 366883102
+  },
+  "studio": {
+    "tag": "public.ecr.aws/supabase/studio:2026.08.24-sha-8ec45b2",
+    "digest": "public.ecr.aws/supabase/studio@sha256:4905784b715cb22b265d26405067649544b40faffff89fd8dc7a28736f42afb0",
+    "imageId": "sha256:4905784b715cb22b265d26405067649544b40faffff89fd8dc7a28736f42afb0",
+    "localSizeBytes": 324701639
+  },
+  "meta": {
+    "tag": "public.ecr.aws/supabase/postgres-meta:v0.99.0",
+    "digest": "public.ecr.aws/supabase/postgres-meta@sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158",
+    "imageId": "sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158",
+    "localSizeBytes": 114037947
+  },
+  "rest": {
+    "tag": "public.ecr.aws/supabase/postgrest:v16.2",
+    "digest": "public.ecr.aws/supabase/postgrest@sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e",
+    "imageId": "sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e",
+    "localSizeBytes": 6459808
+  },
+  "gateway": {
+    "tag": "public.ecr.aws/supabase/kong:2.8.1",
+    "digest": "public.ecr.aws/supabase/kong@sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d",
+    "imageId": "sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d",
+    "localSizeBytes": 48532440
+  }
+}
