@@ -4,14 +4,25 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=24.11.0 <25" },
-  "workspaces": ["packages/*", "apps/*"],
-  "bin": { "trellis": "dist/apps/cli/src/main.js" },
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "bin": {
+    "trellis": "dist/apps/cli/src/main.js"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/tests/*.test.js",
-    "trellis": "node dist/apps/cli/src/main.js"
+    "test": "npm run build && node --test dist/tests/*.test.js packages/broker-postgres/test/*.test.mjs",
+    "trellis": "node dist/apps/cli/src/main.js",
+    "test:broker-postgres": "npm run build && node --test packages/broker-postgres/test/*.test.mjs"
   },
-  "devDependencies": { "@types/node": "24.11.0", "typescript": "7.0.2" }
+  "devDependencies": {
+    "@types/node": "24.11.0",
+    "typescript": "7.0.2"
+  }
 }
