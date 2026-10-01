@@ -11,7 +11,10 @@ Sagespec is a separate product and set of business workflows built on Trellis. T
 The first campaign prepares a specification and implementation queue for founder review. This repository does not yet contain a working framework release.
 
 - [Founder requirements](docs/transition/founder-requirements.md)
+- [Specification candidate and implementation queue](docs/transition/v1-specification-candidate.md)
 - [Round-one outcomes and boundaries](docs/transition/round-one.md)
+- [Research evidence index](docs/transition/evidence-index.md)
+- [Reproducible research fixtures](experiments/transition/README.md)
 - [Historical coordinator draft](docs/coordinator-spec.md)
 
 The current founder requirements govern conflicts with the historical draft. The temporary review branch does not decide the final repository structure.

@@ -1,0 +1,63 @@
+{
+  "observed_on": "2026-10-01",
+  "scope": "Bounded engineering research, not release readiness.",
+  "private_records_root": "work/campaign/research in the campaign workspace",
+  "records": [
+    {
+      "record": "notes/durable-execution.md",
+      "sha256": "367bf020f32559525d77ebcdce6fd912f86e645a11b6516dae7f8694e7223d30",
+      "fact_prefix": "durable-F",
+      "facts": 11
+    },
+    {
+      "record": "notes/harness-portability.md",
+      "sha256": "a6b0fdbffb9fdb256a498d5dda14648ad61cf8656b70d7e03ecbe408d55dafa1",
+      "fact_prefix": "hp-F",
+      "facts": 21
+    },
+    {
+      "record": "notes/module-contracts.md",
+      "sha256": "0a74b9b4bb5122d2b8bd56b7e8bf88b1f51d80d991a35c069667a20dad0f8a16",
+      "fact_prefix": "contracts-F",
+      "facts": 4
+    },
+    {
+      "record": "notes/qmd-scaling.md",
+      "sha256": "72b732a922d297d6fcf3f796488cf0067e40221531e955f7c6abc8505c0de78c",
+      "fact_prefix": "qmd-F",
+      "facts": 12
+    },
+    {
+      "record": "notes/repository-structure.md",
+      "sha256": "03189c9defaf1108db435b835d0aad6ef9bfedbbdb95bbf30445fef2fee3e521",
+      "fact_prefix": "rstruct-F",
+      "facts": 10
+    },
+    {
+      "record": "notes/subscription-capacity.md",
+      "sha256": "4df269a2f6b8b335e83d6c4532b00d91ef28aef502a3f38f794216eea516c7b4",
+      "fact_prefix": "capacity-F",
+      "facts": 9
+    },
+    {
+      "record": "CHECK.md",
+      "sha256": "da0c38927cd79f625822001d0ef60940b24d36a9e07cced065aa77e191750263",
+      "confirmed": 67,
+      "changed": 0,
+      "failed": 0,
+      "unsupported": 0
+    },
+    {
+      "record": "SPEC-REVIEW.md",
+      "sha256": "29d8495c854cc57f62c19f06d99a4a0f3ef875521e9ba01be89eb9b97ea2591a",
+      "verdict": "Pass for founder review after three resolved findings."
+    }
+  ],
+  "candidate": {
+    "private_original": "outputs/trellis-v1-specification-candidate.md",
+    "original_sha256": "98920f89111c073c1650495f45e5878b2ed6049d631fab18efec2a96a17ff674",
+    "repository_copy": "v1-specification-candidate.md",
+    "repository_sha256": "edd4638e7ddb610ec524d50a0548ffd8f51dc6894f34019fb61d58355ffc447c",
+    "adaptation": "Only frontmatter and local source-link destinations differ."
+  }
+}
