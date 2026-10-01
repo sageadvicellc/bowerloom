@@ -89,7 +89,7 @@ Workspace effects declare a path. A granted path covers itself and descendants s
 
 Test effects name a command ID. They contain no shell string, arguments, or executable path. A future trusted runtime must map that ID to an admitted command. Declared inputs identify data for a task. They do not grant unrestricted filesystem access.
 
-Alpha definitions permit one or two active workers, at least a 25 percent reserve, and `paidFallback: false`. This compiler only makes sure that those declarations meet the schema. Persistent account reservations, fresh usage observations, and live admission remain later work. A declaration cannot override a runtime refusal.
+Alpha definitions permit one or two active workers, at least a 5 percent reserve, and `paidFallback: false`. This compiler only makes sure that those declarations meet the schema. The runtime enforces account reservations and fresh usage observations separately. The example retains a 25 percent reserve. A declaration cannot override a runtime refusal.
 
 ## Source bounds and paths
 
