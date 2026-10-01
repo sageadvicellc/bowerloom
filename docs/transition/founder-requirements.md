@@ -1,0 +1,77 @@
+# Trellis specification baseline
+
+Status: founder requirements for the next specification draft. The founder approved the transition plan and authorized development on September 30, 2026, Eastern time.
+
+This baseline records the founder's requirements and planning decisions from this conversation. It does not replace the research and specification approval gate. The current brief governs conflicting historical decisions.
+
+## Product and release requirements
+
+Trellis is the open-source tooling and framework for building self-managing systems. Sagespec is Hanna's product and business workflows built on Trellis. Trellis and Sagespec have separate product scopes.
+
+Deliver Trellis v0.7-beta first. Then build Sagespec on that release through a second team with its own lead. Keep Trellis maintenance and Sagespec product delivery under separate ownership. The Sagespec lead and team design remain future implementation work.
+
+Generic demonstrations belong to Trellis. Sagespec-specific workflows, business rules, knowledge, and product assets belong to the downstream Sagespec project. The framework must support multiple independent teams through portable definitions, explicit permissions, and separate writable state.
+
+Trellis is an MIT-licensed framework for business owners who direct automation through their personal agents. V1 targets a reliable, self-hosted core. Its code enforces permissions, task ownership, resource limits, approval boundaries, and recovery behavior.
+
+The v0.7-beta demo has two paths. Technical founders receive a built local application. Administrative founders receive a working business workflow. Both paths use synthetic business data and include acceptance instructions.
+
+Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a maximum of two to seven active workers, with lead activity included in usage accounting.
+
+The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. The research gate settles repository structure and exact module contracts. Claude Code and Codex are the preferred initial harness candidates. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
+
+## Portability is a core requirement
+
+Trellis owns a metaharness layer, a configuration layer outside individual agent tools. This layer is the authoritative home for team and workflow definitions. Individual harness files are generated representations, not independent sources of truth.
+
+The specification must include these requirements:
+
+1. Store portable definitions in version-controllable text files. Include crew roles, prompts, skills, workflow graphs, permissions, model preferences, budgets, and evaluation requirements.
+2. Reference shared files through repository-relative paths or declared environment parameters. Keep secrets, credentials, machine paths, runtime state, and private execution logs outside the portable definitions.
+3. Version the definition format and its dependencies. Make changes reviewable through ordinary Git diffs. Provide explicit migrations and a recovery path for format changes.
+4. Use adapters to translate Trellis definitions into supported harness behavior. An adapter is a connector for an external tool. Record adapter versions with each run.
+5. Declare each harness's supported capabilities. Reject unsupported mandatory capabilities before execution. Never silently discard a permission, budget, approval rule, or required skill.
+6. Keep harness-specific extensions explicitly named and optional to the portable core. Report their effect on compatibility before a user changes harnesses.
+7. Preserve business intent and required controls across supported harnesses. Model choices and optional features can differ only through declared, reviewable mappings.
+8. Give personal agents documented, structured interfaces for setup, execution, progress, approvals, and results. No single personal agent or vendor owns the user interface.
+9. Keep workbench experiments independent of production configuration and writable state. Support portable experiment definitions with pinned module, adapter, model, and dataset references.
+10. Document supported operating systems and prerequisites. Separate portable definitions from platform-specific installation and process control.
+
+Portability does not promise identical model responses or transfer of hidden session state. Recovery uses recorded tasks, artifacts, and explicit handoffs. The supported platform and harness matrix remains a research deliverable.
+
+## Portability acceptance scenarios
+
+The research and release gates must include these scenarios:
+
+1. Clone one example configuration into a clean supported environment. Start it without copying private harness directories or machine-specific files.
+2. Run the same business workflow on two supported harnesses. Apply the same acceptance criteria and permission boundaries to both results.
+3. Change the selected harness through a declared mapping. Keep the business workflow definition unchanged.
+4. Remove a mandatory capability from an adapter. Make sure that execution stops before any affected action starts.
+5. Regenerate harness files from the same source and adapter versions. Make sure that the generated configuration remains reproducible.
+6. Detect edits that cause generated harness files to diverge from their source. Require an explicit reconciliation before those edits become authoritative.
+7. Resume an interrupted task through its saved artifacts and handoff on another supported harness. Make sure that completed external actions do not repeat.
+8. Run a contributor's benchmark separately from production. Make sure that neither credentials nor writable production state enter the experiment.
+
+## GitHub identities
+
+Prefer coda-crew for technical coordination and integration work. Prefer h4n-n4 for worker-authored activity. Use sagehanna if App access is unavailable or requires disproportionate setup work. Preserve the same role restrictions when using the fallback account.
+
+The founder named the worker App as h4n-na. GitHub returned h4n-n4 as the registered worker App. The existing workbench helper supports both coda-crew and h4n-n4.
+
+The observed identities are:
+
+- coda-crew: App ID 5104842, owned by sageadvicellc.
+- h4n-n4: App ID 5127467, owned by sageadvicellc.
+- hannasage: founder approval identity, never an agent fallback.
+
+Both Apps completed a scoped repository metadata read. Write permissions remain untested. Agent identity cannot substitute for founder approval. Only hannasage authorizes a candidate to merge, with approval bound to the exact candidate revision.
+
+## Development operating requirements
+
+Development runs on this Mac using existing subscriptions. Preserve 25 percent of reported subscription capacity through admission limits and an allowance for work already running. Pause new model work when reliable usage information is unavailable.
+
+The founder reports that the handoff is complete and the old team is stopped. Preserve useful branches and evidence for review against the new specification. The startup inventory also shows that the listed workbench merge and agent automation workflows are disabled. Research determines whether the framework uses one repository or coordinated module repositories.
+
+Prepare one daily review at 9 a.m. America/New_York. Include completed outcomes, acceptance instructions, test evidence, remaining risks, and required founder decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
+
+The first campaign is authorized and ends at the specification approval gate. It includes inventory, research, feasibility experiments, and the review process. Production framework implementation follows approval of the resulting specification.
