@@ -21,7 +21,18 @@ export interface ModelAdapter {
   start(input: { launcherId: string; taskInput: string; modelRoute: string }, signal: AbortSignal): Promise<ModelProcess>;
 }
 export interface Acceptance { accepted: boolean; evidenceRef: string }
-export interface AcceptanceReader { read(input: RunInput, receipt: Receipt): Promise<Acceptance> }
+export interface AcceptanceContext {
+  signal: AbortSignal;
+  launcherId: string;
+  ownerCredential: unknown;
+  guard(): Promise<void>;
+}
+export interface AcceptanceReader {
+  read(input: RunInput, receipt: Receipt, context: AcceptanceContext): Promise<Acceptance>;
+  // Controller-owned cleanup hooks; never authorize a new execution.
+  cancel?(input: RunInput): Promise<void>;
+  close?(): Promise<void>;
+}
 export interface ModelOutcome { processRef: string; completedAtMs: number; proofRef: string }
 export interface RunState {
   version: 1;

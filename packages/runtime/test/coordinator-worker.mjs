@@ -3,7 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { SupervisedRuntime, SyntheticProcessAdapter, RuntimeLedger } from '../../../dist/packages/runtime/src/index.js';
 import { PostgresBrokerStore } from '../../../dist/packages/broker-postgres/src/index.js';
 import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effects/src/index.js';
-let runtime; let pool; let fired = false; let resumeAcceptance;
+let runtime; let pool; let fired = false; let resumeAcceptance; let acceptanceCleanup = Promise.resolve();
 process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode, ownerMode = 'fallback' }) => {
   pool = new pg.Pool({ ...config, max: 6 }); pool.on('error', () => {});
   const ownerInputs = []; const authenticatedSubjects = []; let authenticationAttempts = 0;
@@ -88,7 +88,24 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
         await pool.query('INSERT INTO runtime_test_starts VALUES ($1)', [worker.identity.processRef]);
         return worker;
       } },
-      acceptance: { async read() {
+      acceptance: { ...(mode === 'acceptance-owned' ? {
+        async cancel() { await acceptanceCleanup; process.send({type:'acceptance-cleanup-hook',hook:'cancel'}); },
+        async close() { await acceptanceCleanup; process.send({type:'acceptance-cleanup-hook',hook:'close'}); },
+      } : {}), async read(input,receipt,context) {
+        if (mode === 'acceptance-owned') {
+          let finish; acceptanceCleanup = new Promise(resolve => { finish=resolve; });
+          try {
+            await context.guard();
+            process.send({type:'checkpoint',checkpoint:'acceptance',ownerCredential:context.ownerCredential,launcherId:context.launcherId,receipt:receipt.operationKey});
+            await new Promise((_,reject) => {
+              const abort=()=>{const error=new Error('Synthetic acceptance stopped');error.code='CANCELLED';reject(error);};
+              context.signal.addEventListener('abort',abort,{once:true});if(context.signal.aborted)abort();
+            });
+          } finally {
+            await new Promise(resolve=>setTimeout(resolve,20));
+            process.send({type:'acceptance-reaped'});finish();
+          }
+        }
         if (mode === 'acceptance-gate') {
           const accepted = await new Promise(resolve => { resumeAcceptance = resolve; process.send({ type:'checkpoint', checkpoint:'acceptance' }); });
           return { accepted, evidenceRef:'synthetic-delayed-acceptance' };

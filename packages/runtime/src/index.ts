@@ -34,6 +34,7 @@ export class SupervisedRuntime {
   readonly #ledger: RuntimeLedger; readonly #admission: PostgresAdmission; readonly #broker: ActionBroker;
   readonly #active = new Map<string, { worker: ModelProcess; abort: AbortController }>();
   readonly #cancelled = new Set<string>();
+  readonly #accepting = new Map<string, {abort: AbortController; done: Promise<void>}>();
   readonly #inflight = new Map<string, { abort: AbortController; done: Promise<void> }>();
   readonly #workflow: (id: string) => Promise<RunState>;
   #closing = false;
@@ -184,7 +185,21 @@ export class SupervisedRuntime {
       });
       return await step('acceptance', async () => {
         const state = await this.#check(id); if (!state.receipt) throw new RuntimeError('MISSING_RECEIPT');
-        const accepted = state.acceptance ?? await this.#deps.acceptance.read(state.input, state.receipt);
+        let accepted = state.acceptance;
+        if (!accepted) {
+          if (this.#accepting.has(id)) throw new RuntimeError('ACCEPTANCE_BUSY');
+          const abort = new AbortController(); let finish!: () => void;
+          const done = new Promise<void>(resolve => { finish = resolve; });
+          this.#accepting.set(id, { abort, done });
+          try {
+            // Register cancellation before the last guard and the injected acceptance call.
+            await this.#check(id);
+            accepted = await this.#deps.acceptance.read(state.input, state.receipt, {
+              signal: AbortSignal.any([abort.signal, this.#coordinator.signal]), launcherId: this.launcherId,
+              ownerCredential: this.#owner(state.input), guard: async () => { await this.#check(id); },
+            });
+          } finally { this.#accepting.delete(id); finish(); }
+        }
         if (typeof accepted?.accepted !== 'boolean') throw new RuntimeError('INVALID_ACCEPTANCE'); identifier(accepted.evidenceRef);
         return this.#ledger.change(id, current => {
           // The read can await while cancellation commits. Decide terminal state under this row lock.
@@ -211,9 +226,12 @@ export class SupervisedRuntime {
   async cancel(id: string): Promise<void> {
     await this.#coordinator.guard();
     this.#cancelled.add(id); const inflight = this.#inflight.get(id); inflight?.abort.abort();
+    const accepting = this.#accepting.get(id); accepting?.abort.abort();
     const state = await this.#ledger.change(id, current => { current.cancelled = true; current.status = 'CANCELLED'; current.reason = 'CANCELLED'; });
     await this.#broker.cancel({ workspaceId: state.input.task.workspaceId, runId: state.input.task.runId, taskId: state.input.task.taskId }, this.#owner(state.input));
     if (inflight) await inflight.done;
+    await this.#deps.acceptance.cancel?.(state.input);
+    if (accepting && this.#deps.acceptance.cancel) await accepting.done;
     const reservation = await this.#admission.lookup(state.input.reservation.accountAlias, state.input.reservation.jobId);
     if (reservation?.status === 'RESERVED') await this.#admission.reconcile(state.input.reservation, {
       kind: 'not-started', proofRef: `unused-${randomUUID()}`, observedAtMs: Date.now(), processRef: null, fencedLauncherId: null,
@@ -223,10 +241,13 @@ export class SupervisedRuntime {
   async close(): Promise<void> {
     this.#closing = true;
     for (const { abort } of this.#inflight.values()) abort.abort();
+    for (const { abort } of this.#accepting.values()) abort.abort();
     const stopped = await Promise.allSettled([...this.#active.values()].map(({ worker }) => worker.terminate()));
     await Promise.all([...this.#inflight.values()].map(({ done }) => done));
+    const acceptanceCleanup = await Promise.allSettled([Promise.resolve().then(() => this.#deps.acceptance.close?.())]);
+    if (this.#deps.acceptance.close) await Promise.all([...this.#accepting.values()].map(({ done }) => done));
     try { await DBOS.shutdown({ deregister: true, workflowCompletionTimeoutMS: 1000 }); }
     finally { await this.#coordinator.close(); }
-    if (stopped.some(result => result.status === 'rejected')) throw new RuntimeError('TERMINATION_UNKNOWN');
+    if (stopped.some(result => result.status === 'rejected') || acceptanceCleanup.some(result => result.status === 'rejected')) throw new RuntimeError('TERMINATION_UNKNOWN');
   }
 }
