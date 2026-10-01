@@ -87,7 +87,7 @@ The schema recognizes `workspace.read`, `workspace.write`, `command.test`, and `
 
 Workspace effects declare a path. A granted path covers itself and descendants separated by `/`. A grant for `output/design` excludes `output/design-other`. Owner permissions must fit the crew scope. Task effects must fit their owner permissions.
 
-Test effects name a command ID. They contain no shell string, arguments, or executable path. A future trusted runtime must map that ID to an admitted command. Declared inputs identify data for a task. They do not grant unrestricted filesystem access.
+Test effects name a command ID. They contain no shell string, arguments, or executable path. The registered-test package maps `craft-shop-ui-v1` to its pinned browser executor. Other command IDs remain unsupported by the alpha session. Declared inputs identify data for a task. They do not grant unrestricted filesystem access.
 
 Alpha definitions permit one or two active workers, at least a 5 percent reserve, and `paidFallback: false`. This compiler only makes sure that those declarations meet the schema. The runtime enforces account reservations and fresh usage observations separately. The example retains a 25 percent reserve. A declaration cannot override a runtime refusal.
 
@@ -121,7 +121,7 @@ The plan includes the full validated definition, compiler version, sorted graph,
 
 YAML comments, whitespace, record key order, and the absolute checkout location do not change the candidate. Array order remains part of the definition. Changes to owners, types, permissions, policy, or asset references produce new candidates. The returned plan is deeply frozen in memory.
 
-The plan records digests, not an asset archive or an authenticated signature. It does not authenticate a publisher or approve its own contents. A future runtime must retain the exact source bytes or compare their digests before use. The compiler does not generate harness files, detect generated-file drift, or bind runtime approvals.
+The plan records digests, not an asset archive or an authenticated signature. It does not authenticate a publisher or approve its own contents. The graph and runtime bridge retain exact source snapshots and compare their digests before use. The compiler does not generate harness files, detect generated-file drift, or bind runtime approvals.
 
 ## Evidence and dependencies
 
@@ -138,4 +138,4 @@ Exact dependency pins are `yaml` 2.9.1, `ajv` 8.20.0, `typescript` 7.0.2, and `@
 
 The implementation uses the documented [YAML document API](https://eemeli.org/yaml/#parsing-documents) and [Ajv TypeScript support](https://ajv.js.org/guide/typescript.html). The dependency metadata records ISC for YAML, MIT for Ajv and Node types, and Apache-2.0 for TypeScript. This record does not constitute a distribution license audit.
 
-Backend startup, natural-language planning, harness generation, live models, action dispatch, approval enforcement, and durable recovery remain later slices. `trellis up`, installation packaging, and the usable job board remain unfinished.
+The compiler remains offline. The [local session](local-session.md) composes live Codex proposals, exact approvals, durable effects, and browser acceptance for the prepared Endor alpha demo. General installation packaging, natural-language crew authoring, harness-file generation, and cross-harness drift detection remain unfinished.

@@ -1,6 +1,6 @@
 # Alpha subscription admission
 
-`packages/admission` implements a strict capacity policy and a PostgreSQL account reservation ledger. This is a controller library with synthetic integration evidence. The production observation reader, process supervisor, crew scheduler, and live-model acceptance remain unconnected.
+`packages/admission` implements a strict capacity policy and a PostgreSQL account reservation ledger. The local CLI connects it to the authenticated Codex reader, supervised runtime, and sequential graph. The two-lead demo used the existing shared account ledger; [current evidence](acceptance-status.md) records its bounded acceptance.
 
 Every crew and role using one provider account must share one canonical account row in the same database and schema. The trusted controller registers aliases for that account. Separate schemas or databases do not coordinate capacity. A worker cannot choose an account binding, role, allowance, observation, or reconciliation proof and must receive neither database credentials nor launch permits.
 
@@ -24,9 +24,11 @@ Missing, malformed, stale, future, expired, conflicting, and out-of-order observ
 
 For each window, admission uses the highest reported percentage in its current reset interval, all retained allowances, headroom, and the proposed allowance. It refuses totals greater than or equal to the threshold. Percentage charges round upward to hundredths; the threshold rounds downward. These conservative arithmetic rules are not token calibration. Valid observations persist even when the request is refused, including an invalid paid-fallback request, so lower later reports cannot erase a previously observed high-water mark.
 
+Overlapping reset timestamps within 1,000 milliseconds of the original high-water anchor denote the same equal-duration window. The anchor never advances through cumulative jitter. Usage remains the maximum observed percentage; jittered coverage releases no retained allowance. Admission and launch respect the earlier raw or anchored expiry. Larger overlaps and duration changes remain refused.
+
 A new nonoverlapping reset can establish a new usage baseline. It does not erase reservations. A known absent optional window that has never been reserved stays absent and creates no synthetic zero-percent window.
 
-`ObservationReader` is an interface only. No reader implementation or historical research helper is imported. In particular, an installed provider report must not acquire an invented `accountedThroughMs`: use `null` when the observer cannot attest that all usage through that instant is included. Report arrival time alone is not coverage evidence.
+`ObservationReader` remains an injected interface; the CLI supplies the reviewed Codex reader. An installed provider report must not acquire an invented `accountedThroughMs`: use `null` when the observer cannot attest that all usage through that instant is included. Report arrival time alone is not coverage evidence.
 
 ## Reservation and launch lifecycle
 
@@ -74,7 +76,7 @@ A paused launcher is dangerous even if no process is visible yet. Before cancell
 
 The ledger is bounded to 1,024 jobs per account, 32 aliases per account, 32 named windows/routes, and 8 MiB serialized account state. Initial schema creation registers 1–16 canonical accounts. History is retained; this slice has no compaction, garbage collection, migration, or manual high-water reset. Unknown versions, malformed state, inconsistent job bindings, and checksum failures refuse work. Checksums detect accidental changes; they are not authentication against a database administrator.
 
-Remaining runtime work includes the authenticated no-thread observation adapter, provider-specific applicability and coverage semantics, a process supervisor with distinct launcher identities and fencing, controller-only credential/permit boundaries, and a scheduler that reserves all model work through one ledger. There is no DBOS wrapper, command runner, API fallback, telemetry proof, or model execution in this slice.
+The assembled runtime supplies authenticated observations, distinct launcher identities, owned cleanup, DBOS recovery, controller-only credentials, and graph reservations through one ledger. This package still executes no model or command itself. Authoritative provider coverage, general account-window migration, automatic foreign-launcher reconciliation, and company-server failover remain unsupported.
 
 Provider reports can lag, other clients can consume the same subscription, and running jobs can exceed their explicit allowances. Reservations coordinate this controller's planned work; they do not enforce provider quotas or guarantee that the selected reserve remains in a concurrently used account. Synthetic test allowances and ages must not be presented as Pro, 5x, or 20x subscription calibration.
 
@@ -96,4 +98,4 @@ npm run test:admission
 
 This creates and removes only a unique `trellis_admission_test_<random>` database and its `trellis_admission_test` schema. It uses synthetic observations and callback counters, launches bounded synthetic Node test children, and kills only children it created. It does not change Docker lifecycle, existing proof databases, authentication, or protected projects. Local generated evidence is written to ignored `packages/admission/.trellis/test-result.json`.
 
-The tests cover shared-account aliases, concurrent worker reservations, lead/review/retry capacity, all applicable windows, high-water persistence after refusal, freshness after a row-lock wait and commit acknowledgement, reset policies, incomplete coverage, disappearing retained windows, lost reservation/claim/running acknowledgements, two process-crash checkpoints with fresh-process replay refusals, fencing prerequisites, detached inputs, corruption, and zero callback starts on refusal. Independent review and runtime integration remain separate gates.
+The tests cover shared-account aliases, concurrent worker reservations, lead/review/retry capacity, all applicable windows, high-water persistence after refusal, freshness after a row-lock wait and commit acknowledgement, reset policies, incomplete coverage, disappearing retained windows, lost reservation/claim/running acknowledgements, two process-crash checkpoints with fresh-process replay refusals, fencing prerequisites, detached inputs, corruption, and zero callback starts on refusal. The integrated live demo adds real account admission evidence. Final independent release review remains separate.

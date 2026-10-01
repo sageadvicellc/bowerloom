@@ -39,7 +39,7 @@ The controller must be the sole writer of the registered directory trees, and ea
 
 Cancellation and deadlines are checked before admission, staging, and publication. A filesystem call already issued cannot be recalled, and a later cancellation cannot undo published bytes. Failed or interrupted work after intent remains held. Completed and negative cached results can be returned after cancellation because they perform no new file effect.
 
-The PostgreSQL pool and ledger are trusted. Database role provisioning, protection from privileged record tampering, hold resolution, retention, relocation, server failure recovery, and production deployment remain separate work. This slice adds no command runner, DBOS wrapper, live model integration, or claim of complete alpha readiness. The POSIX implementation was tested on the existing Mac; Linux behavior has not been independently established here.
+The PostgreSQL pool and ledger are trusted. Database role provisioning, protection from privileged record tampering, hold resolution, retention, relocation, server failure recovery, and production deployment remain separate work. The local CLI integrates this adapter with DBOS, live proposals, and registered browser acceptance. This filesystem package is not a command runner or worker sandbox; final alpha review remains pending. The POSIX implementation was tested on the existing Mac; Linux behavior has not been independently established here.
 
 ## Reproduce the synthetic proof
 

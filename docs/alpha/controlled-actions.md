@@ -1,8 +1,8 @@
 # Controlled action policy in alpha
 
-This slice implements broker policy and effect receipt logic. An action broker authorizes a proposed operation before dispatch. A receipt records an operation that an effect adapter confirms. The included adapters use synthetic memory state. They provide no filesystem, process, network, or durable storage enforcement.
+This package implements broker policy and effect receipt logic. Its memory adapters remain synthetic fixtures. The local CLI uses the PostgreSQL broker store, workspace-effects adapter, supervised runtime, and registered browser acceptance. Those components completed the two-lead live demo; see [current evidence and limits](acceptance-status.md). The broker itself is not an operating-system sandbox.
 
-Alpha issue [#11](https://github.com/sageadvicellc/trellis/issues/11) remains open until real adapters and containment pass separate acceptance. No live model session runs in this slice. No command runner, filesystem writer, or shell entry point exists here.
+The broader [controlled-action work](https://github.com/sageadvicellc/trellis/issues/11) retains its independent acceptance boundary. This package exposes no unrestricted command or shell path. The integrated runtime supplies live execution through separately reviewed adapters; final alpha review remains pending.
 
 ## Implemented boundary
 
@@ -18,7 +18,7 @@ Task grants name the active owner, epoch, candidate, readiness time, lease expir
 
 Every broker method requests an identity through `IdentityProvider`. The provider returns an authenticated subject, proof reference, and expiry. The broker checks authority and expiry again inside the storage transaction. Caller-supplied owner labels and action fields cannot authenticate a subject.
 
-This slice defines the identity interface but supplies no production identity provider. The tests use explicitly synthetic credentials. The future provider must protect credentials and bind its proof to the authenticated session. Workers cannot control this provider or its subject mapping.
+This package defines the identity interface. Tests use synthetic credentials; the local CLI supplies private controller-owned owner and operator tokens. Workers cannot control that provider or subject mapping. Remote company identity and authentication remain outside this local alpha.
 
 An approval binds the workspace, run, task, request ID, candidate revision, action digest, ownership epoch, approver, proof reference, and expiry. The action digest covers all proposal fields, including the new bytes and prior digest. Changed content requires a different action and approval. Reusing a request ID with different content fails.
 
@@ -65,9 +65,9 @@ An independent broker instance observes stored cancellation before new dispatch.
 
 `BrokerStore.transaction` must isolate concurrent updates to one task scope. It must make the update indivisible, commit before success, and roll back callback failures. It must return detached records. Cancellation, approval changes, ownership changes, and dispatch admission use this same authority.
 
-The store must protect pinned action content and trusted task grants from workers. A production store must retain committed intent, approvals, cancellation requests, and receipts across process loss. It must never replace unavailable state with empty state. Cross-process and database behavior remain unproved here.
+The store must protect pinned action content and trusted task grants from workers. A production store must retain committed intent, approvals, cancellation requests, and receipts across process loss. It must never replace unavailable state with empty state. The PostgreSQL store tests separately establish cross-client locking, rollback, revocation, and durable state. This policy package does not establish those guarantees by itself.
 
-`InMemoryBrokerStore` serializes synthetic transactions and demonstrates rollback. Two broker objects can share it for concurrency tests. It loses everything when the process exits. Supabase and DBOS integration remains separate from this slice.
+`InMemoryBrokerStore` serializes synthetic transactions and demonstrates rollback. Two broker objects can share it for concurrency tests. It loses everything when the process exits. The assembled CLI uses PostgreSQL persistence and the DBOS runtime instead of this memory fixture.
 
 An authorized recovery call moves interrupted `IN_FLIGHT` actions into `NEEDS_RECONCILIATION`. The broker does not infer non-execution from a restart. A receipt lookup can restore a completed outcome without another effect call. Missing evidence leaves the action held for operator resolution.
 
@@ -100,9 +100,9 @@ Local inspection on October 1, 2026, reports `codex-cli 0.157.0`. The `codex exe
 
 The checked harness evidence records configuration precedence and network-proxy hazards. Older sandbox configuration can override permission profiles. Domain restrictions require an active network proxy. The source documents are [Codex permissions](https://learn.chatgpt.com/docs/permissions) and [Codex App Server](https://learn.chatgpt.com/docs/app-server). The transition [evidence index](../transition/evidence-index.md) retains the research scope.
 
-A declared test command cannot establish process or network containment. The broker refuses `command.test` proposals in this slice even when the portable graph declares that capability. A later adapter must provide a reviewed execution path before that capability can run.
+A declared test command cannot establish process or network containment. The broker refuses `command.test` proposals in this slice even when the portable graph declares that capability. The registered-test broker handles the declared test after an approved write. The model still proposes only the write, never a shell command.
 
-Before a live runtime claim, the adapter must pass the following gates:
+The following controls are evaluated through separate adapter, storage, and runtime evidence:
 
 1. Bind the generated policy to the actual harness and inspect its effective configuration.
 2. Deny native write tools, unmanaged subprocesses, and alternate tool paths outside the broker.
@@ -113,7 +113,7 @@ Before a live runtime claim, the adapter must pass the following gates:
 7. Repeat receipt, restart, stale approval, and storage-failure cases with persistent state.
 8. Establish fresh account admission before any model session starts.
 
-The synthetic broker does not satisfy these gates. Issue #11 remains open, and alpha release readiness remains unclaimed.
+Memory-broker tests establish policy behavior only. The integrated evidence now covers live proposals, approved writes, browser acceptance, and bounded restart and cleanup cases. It does not establish total trusted-harness egress restriction or provider telemetry suppression. Final independent alpha review remains pending.
 
 ## Repeat the policy tests
 

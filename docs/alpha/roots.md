@@ -2,6 +2,8 @@
 
 `packages/roots` provides the alpha keyword retrieval service. A trusted controller registers a fixed synthetic corpus and current grants. A reader authenticates each request through an injected `IdentityProvider` and returns bounded, literal quotations from sources that principal can currently read. The service is usable from a CLI or coordinator without loading files, connecting to a database, or calling a model.
 
+The live demo receives pinned synthetic assets through its graph. It does not invoke Roots from a model tool or CLI retrieval command. Library retrieval tests establish the authorized keyword boundary separately.
+
 This package sends no telemetry. It contains no network, filesystem, embedding, or model client and accepts no telemetry callback. Its injected identity provider remains trusted application code; the controller is responsible for that provider's authentication, timeouts, and side effects. The package does not establish whole-process network isolation.
 
 ## Controller and reader

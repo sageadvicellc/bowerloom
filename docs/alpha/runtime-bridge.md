@@ -10,7 +10,7 @@ The bridge binds runtime identity to the workspace, run, and task. It binds the 
 
 The prompt contains the pinned owner instructions, skills, task description, acceptance criteria, input values, and required proposal metadata. It includes no owner credential. It asks the model to propose file content through the existing action format.
 
-The adapter enforces its existing 4,096-byte bound on the entire prompt. The bridge uses the same function before admission. It refuses an oversized task without truncation. A large predecessor artifact can therefore stop the next task. This slice does not change the prompt limit.
+The adapter enforces its existing 32,768-byte bound on the entire prompt. The bridge uses the same function before admission. It refuses an oversized task without truncation. A large predecessor artifact can therefore stop the next task. The limit includes the adapter's fixed preamble and accepted predecessor content.
 
 The controller must supply authenticated snapshots when it assembles the graph. The bridge proves snapshot integrity against the compiled asset pins. It does not authorize access to an external source. The roots library provides that separate retrieval boundary.
 
@@ -36,6 +36,6 @@ Graph cancellation stops future scheduling. The bridge reads that state again af
 
 ## Scope
 
-This bridge supports the graph package profile: one approved file write and one output per task, with one attempt. The existing broader Endor example remains outside that profile. This change adds no CLI startup, test command executor, or completed craft-shop demonstration.
+The bridge supports one approved write, one output, one attempt, and an optional registered `craft-shop-ui-v1` test. The local CLI requires that test for every demo task. `examples/endor-alpha` supplies the two-lead template; the older `examples/endor` remains an offline compiler example.
 
-Synthetic tests cover the bridge mapping and rejection paths. Separate PostgreSQL tests cover policy reads and owner credentials. Live graph acceptance remains pending.
+Synthetic tests cover the bridge mapping and rejection paths. Separate PostgreSQL tests cover policy reads and owner credentials. The live two-lead graph completed with real browser acceptance; final independent alpha review remains pending. See [current evidence](acceptance-status.md).
