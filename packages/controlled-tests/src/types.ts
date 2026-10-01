@@ -79,7 +79,7 @@ export interface TestStore {
 export interface TestDependencies { store: TestStore; manifest: string; executor: TestExecutor; identity: IdentityProvider; clock?: Clock }
 export interface ControlledAcceptance {
   read(input: RunInput, receipt: Receipt, context: AcceptanceContext): Promise<Acceptance>;
-  cancel(input: RunInput): Promise<void>;
+  cancel(input: RunInput, receipt?: Receipt): Promise<void>;
   close(): Promise<void>;
 }
 export class TestError extends Error { constructor(readonly code: string) { super(code); this.name='TestError'; } }

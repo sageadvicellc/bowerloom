@@ -51,3 +51,5 @@ The controller requires this margin to cover the stored coordination allowance a
 A smaller margin does not change the stored policy or release prior holds. The product stop remains 75 percent unless an installation declares another authorized policy.
 
 This campaign explicitly permits a 95 percent stop. Its portable crew must declare the matching reserve. Every new model still needs current account evidence.
+
+Cancellation uses the stored write receipt to locate unfinished browser tests after a controller restart. It repeats owned cleanup without another test launch.

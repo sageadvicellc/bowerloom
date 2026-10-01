@@ -81,7 +81,14 @@ export async function executeSession(command: SessionCommand, port: SessionPort,
         if(await cancelIfRequested()) break;
         view=await port.advance();
         if(['HOLD','CANCELLED','ACCEPTANCE_FAILED','COMPLETED'].includes(view.status)) break;
-        if(view.status==='WAITING_APPROVAL'&&(!approvedTask||(await port.run(approvedTask))?.status!=='WAITING_APPROVAL')) break;
+        if(view.status==='WAITING_APPROVAL'){
+          let pending=false;
+          for(const id of view.state.input.plan.taskOrder){
+            if(id===approvedTask)continue;const task=await port.run(id);
+            if(task?.status==='WAITING_APPROVAL'&&task.proposal){pending=true;break;}
+          }
+          if(pending)break;
+        }
         if(now()>=deadline) { await port.cancel(); view=await port.status(); break; }
         await sleep(200);
       }

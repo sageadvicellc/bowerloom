@@ -91,3 +91,13 @@ test('accepted HTML handoff fits a bounded native prompt without truncation',()=
   assert.throws(()=>proposalPrompt('x'.repeat(32768)),{code:'TASK_INPUT_BOUND'});
   assert.throws(()=>proposalPrompt('é'.repeat(16384)),{code:'TASK_INPUT_BOUND'});
 });
+
+test('approval ignores a stale waiting graph until another task actually needs approval',async()=>{
+  const p=port();let step=0;const base=p.status;
+  p.status=async()=>{const view=await base();view.state.input.plan.taskOrder=['build','next'];return view;};
+  p.advance=async()=>{step++;p.advances++;return p.status();};
+  p.approve=async(...args)=>{p.approvals.push(args);p.runStatus='COMPLETED';};
+  const adapter:SessionPort={...p,status:p.status,advance:p.advance,approve:p.approve,run:async id=>id==='build'?p.run():step>=2?{status:'WAITING_APPROVAL',proposal} as RunState:null};
+  await executeSession({command:'approve',installation:'x',candidate,action},adapter,()=>{},new AbortController().signal,async()=>{});
+  assert.equal(p.advances,2);assert.equal(p.approvals.length,1);
+});
