@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, writeFile, chmod, symlink, link, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -74,6 +75,8 @@ test('cleanup failure prevents a successful-looking status output',async()=>{
 test('private installation reader rejects public permissions, links, duplicate JSON, and oversized data',async()=>{
   const directory=await realpath(await mkdtemp(join(tmpdir(),'trellis-private-read-'))),file=join(directory,'installation.json');
   try{
+    const fifo=join(directory,'fifo');execFileSync('/usr/bin/mkfifo',[fifo]);await chmod(fifo,0o600);
+    await assert.rejects(privateJson(fifo),{code:'PRIVATE_FILE_REQUIRED'});
     await writeFile(file,'{"valid":true}',{mode:0o600});assert.equal((await privateJson(file) as {valid:boolean}).valid,true);
     await chmod(file,0o644);await assert.rejects(privateJson(file),{code:'PRIVATE_FILE_REQUIRED'});await chmod(file,0o600);
     await symlink(file,join(directory,'symlink'));await assert.rejects(privateJson(join(directory,'symlink')),{code:'INSTALLATION_PATH'});
@@ -87,4 +90,14 @@ test('accepted HTML handoff fits a bounded native prompt without truncation',()=
   assert.ok(proposalPrompt(handoff).endsWith(handoff));
   assert.throws(()=>proposalPrompt('x'.repeat(32768)),{code:'TASK_INPUT_BOUND'});
   assert.throws(()=>proposalPrompt('é'.repeat(16384)),{code:'TASK_INPUT_BOUND'});
+});
+
+test('approval ignores a stale waiting graph until another task actually needs approval',async()=>{
+  const p=port();let step=0;const base=p.status;
+  p.status=async()=>{const view=await base();view.state.input.plan.taskOrder=['build','next'];return view;};
+  p.advance=async()=>{step++;p.advances++;return p.status();};
+  p.approve=async(...args)=>{p.approvals.push(args);p.runStatus='COMPLETED';};
+  const adapter:SessionPort={...p,status:p.status,advance:p.advance,approve:p.approve,run:async id=>id==='build'?p.run():step>=2?{status:'WAITING_APPROVAL',proposal} as RunState:null};
+  await executeSession({command:'approve',installation:'x',candidate,action},adapter,()=>{},new AbortController().signal,async()=>{});
+  assert.equal(p.advances,2);assert.equal(p.approvals.length,1);
 });

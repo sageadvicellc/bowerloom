@@ -1,0 +1,34 @@
+{
+  "source": "private reviewed Linux browser proof04",
+  "sourcePlanSHA256": "1fbca0b9cee52c572637e5630e93792f863b43203ecca0ebc380b7ba930f417b",
+  "imports": [
+    {
+      "sourceFile": "runner.cjs",
+      "sourceSHA256": "32a147c63076da2a2ced0129874281d9f0439f0c99a54bb2074f76e92e78a902",
+      "destination": "assets/runner.cjs",
+      "destinationSHA256": "f088b5f1174aa639f9e95940ba69b7603711c9333699d1cc28fc81a8abe2e6a1",
+      "change": "total in-container deadline before browser work"
+    },
+    {
+      "sourceFile": "seccomp.json",
+      "sourceSHA256": "a6c3ef6408a217e23cf8606ca062ce4d61a105ad20d2342acde51d92228427d6",
+      "destination": "assets/seccomp.json",
+      "destinationSHA256": "a6c3ef6408a217e23cf8606ca062ce4d61a105ad20d2342acde51d92228427d6",
+      "change": "unchanged"
+    },
+    {
+      "sourceFile": "environment-manifest.json",
+      "sourceSHA256": "0b8b4294eecddc9e22913ad5623bcaceb837eb316d087e3aaaf6c9f5e3f770b3",
+      "destination": "assets/runtime-manifest.json",
+      "destinationSHA256": "0b8b4294eecddc9e22913ad5623bcaceb837eb316d087e3aaaf6c9f5e3f770b3",
+      "change": "unchanged"
+    },
+    {
+      "sourceFile": "craft-shop-contract.md",
+      "sourceSHA256": "209ec76881da3c3dde0ff52a569dd7a0991dd33d9a0aa85226a9a42bee510dac",
+      "destination": "assets/craft-shop-contract.md",
+      "destinationSHA256": "209ec76881da3c3dde0ff52a569dd7a0991dd33d9a0aa85226a9a42bee510dac",
+      "change": "unchanged"
+    }
+  ]
+}
