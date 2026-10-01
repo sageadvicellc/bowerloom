@@ -19,6 +19,12 @@ Sagespec is Hanna's flagship product built on Trellis to automate her entire bus
 
 The release names and harness sequence are approved. Detailed acceptance criteria remain part of the specification proposal. `v0.7-alpha` is Codex-first, and `v0.7-beta` requires Codex and Claude Code.
 
+## Company beta
+
+Beta must support independent personal installations and shared company use. One company server serves multiple employees who retain autonomous personal installations on their machines. Both uses coexist. Joining the company must preserve personal independence.
+
+Proposed tests cover private personal state, scoped company access, concurrent company work, server outages, revoked access, and reconnection. Company work retains explicit ownership during disconnection. Personal work remains independently useful. These tests do not select a database or workflow engine, and no implementation passed them yet.
+
 ## Proposed alpha baseline
 
 The team freezes the task definitions, synthetic inputs, acceptance criteria, and version references. Each run records success, founder interventions, elapsed time, observed usage, and recovery outcomes. Missing observations remain explicit.

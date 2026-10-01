@@ -26,6 +26,12 @@ Codex is the selected first harness for `v0.7-alpha`. Both Codex and Claude Code
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
+## Company use and personal autonomy
+
+Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. Joining a company must preserve that independence.
+
+The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is Hanna's preferred open-source candidate, but the database and workflow engine remain open decisions.
+
 ## Portability is a core requirement
 
 Trellis owns a metaharness layer, a configuration layer outside individual agent tools. This layer is the authoritative home for team and workflow definitions. Individual harness files are generated representations, not independent sources of truth.

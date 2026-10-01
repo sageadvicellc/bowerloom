@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "3722824c0339b5460b3549243115b833986e428c77be8be7ba2206ad4d176a87",
+    "original_sha256": "db1caec7420d5a1b7137aa3a05e7c7fe62bbbfcc7e638c5a831d085789339c56",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "2fa8c57c166e4bd5c821db54851e7d992562fbb55f1b43b0bbcdbecc6d6e5ade",
+    "repository_sha256": "325445125f98a0e001ecf96bad9765db884de90c3e43b5e014da65d34b602341",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -85,6 +85,18 @@
         "source": "Founder instruction in the current chat",
         "decision": "Canonical milestones: v0.7-alpha, v0.7-beta, v1-beta, v1-rc. Codex and Claude Code are required for v0.7-beta. Sagespec is the flagship for automation of the entire business.",
         "acceptance_criteria": "Detailed release and release-candidate criteria remain proposals.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "decision": "Beta supports independent personal installations and simultaneous company participation. One company server supports multiple employees who retain personal autonomy.",
+        "scope": "Requirement amendment. Storage and workflow engine selection remain open. Proposed access, outage, and reconnection tests are not implementation results.",
+        "files": [
+          "founder-requirements.md",
+          "release-plan.md",
+          "v1-specification-candidate.md"
+        ],
+        "source": "Founder instruction in the current chat",
         "research_and_fixtures_changed": false
       }
     ]

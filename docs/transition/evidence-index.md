@@ -40,3 +40,5 @@ Hanna also selected the framework monorepo and retirement of the five dispersed 
 Hanna added Codex-first `v0.7-alpha` for testing, beta baseline measurements, and marketing preparation before beta. The [release plan](release-plan.md) records that decision and the proposed acceptance criteria. This amendment adds no new experiment result.
 
 Hanna approved Codex and Claude Code for `v0.7-beta` and standardized the later releases as `v1-beta` and `v1-rc`. Sagespec is the flagship for automation of her entire business. Historical names do not override the current release plan.
+
+Hanna required independent personal use and simultaneous company participation for beta. Multiple employees share one company server while their personal installations retain autonomy. Proposed access, outage, and reconnection tests remain unimplemented. The focused storage and recovery comparison records the resulting open architecture choice.
