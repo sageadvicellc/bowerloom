@@ -14,7 +14,7 @@ const object = (properties: Record<string, object>): object => ({ type: 'object'
 const nullable = (schema: object): object => ({ anyOf: [schema, { type: 'null' }] });
 const ids = (minimum = 0): object => ({ type: 'array', items: idSchema, minItems: minimum, maxItems: 32, uniqueItems: true });
 const record = (schema: object, limit = 32): object => ({ type: 'object', propertyNames: idSchema, additionalProperties: schema, maxProperties: limit });
-const policySchema = object({ thresholdPercent: { type: 'number', minimum: 0.01, maximum: 75 }, maxWorkers: { type: 'integer', minimum: 1, maximum: 2 },
+const policySchema = object({ thresholdPercent: { type: 'number', minimum: 0.01, maximum: 95 }, maxWorkers: { type: 'integer', minimum: 1, maximum: 2 },
   maxObservationAgeMs: positive, headroomPercent: percent, admittedRoutes: ids(1), completedResetPolicy: { enum: ['hold', 'release-covered'] } });
 const windowSchema = object({ usedPercent: percent, durationMs: positive, resetAtMs: positive, accountedThroughMs: nullable(timeSchema) });
 const observationSchema = object({ observationId: idSchema, accountId: idSchema, observedAtMs: timeSchema,

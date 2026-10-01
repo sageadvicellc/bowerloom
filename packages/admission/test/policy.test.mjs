@@ -7,7 +7,7 @@ const fresh = () => createAccount('account', ['alias', 'second-alias'], policy()
 const sampled = value => acceptObservation(fresh(), value ?? observation(), 10000).state;
 const decision = (value, valueRequest = request(), now = 10000) => evaluateAdmission(sampled(value), valueRequest, now);
 test('all policy inputs are explicit, bounded, detached, and without paid fallback', () => {
-  for (const override of [{ thresholdPercent: 75.01 }, { thresholdPercent: 0 }, { maxWorkers: 3 }, { maxObservationAgeMs: 0 },
+  for (const override of [{ thresholdPercent: 95.01 }, { thresholdPercent: 0 }, { maxWorkers: 3 }, { maxObservationAgeMs: 0 },
     { admittedRoutes: [] }, { headroomPercent: -1 }, { completedResetPolicy: 'refund' }, { extra: true }]) {
     assert.throws(() => createAccount('account', ['alias'], policy(override)), { code: 'INVALID_POLICY' });
   }
@@ -109,4 +109,15 @@ test('unknown state versions, mismatched accounts, and malformed reservation sta
   const state = sampled(); assert.throws(() => stateCopy({ ...state, version: 2 }), { code: 'CORRUPT_ACCOUNT' });
   state.observation.accountId = 'other'; assert.throws(() => stateCopy(state), { code: 'CORRUPT_ACCOUNT' });
   const bad = fresh(); bad.reservations.job = {}; assert.throws(() => stateCopy(bad), { code: 'CORRUPT_ACCOUNT' });
+});
+
+test('explicit 95 percent policy preserves capacity arithmetic and refuses its exact boundary', () => {
+  const account = createAccount('account', ['alias'], policy({ thresholdPercent: 95, headroomPercent: 8 }));
+  const sample = observation(); sample.windows.primary.usedPercent = 84;
+  const state = acceptObservation(account, sample, 10000).state;
+  const job = request('alias', 'job', { allowancePercent: { primary: 2 } });
+  assert.equal(evaluateAdmission(state, job, 10000).allowed, true);
+  state.highWater.primary.usedPercent = 85;
+  assert.equal(evaluateAdmission(state, job, 10000).reason, 'CAPACITY_LIMIT');
+  assert.equal(evaluateAdmission(account, job, 10000).reason, 'MISSING_OBSERVATION');
 });

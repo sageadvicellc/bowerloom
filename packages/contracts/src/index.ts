@@ -90,7 +90,7 @@ export const crewSchema = {
     requiredCapabilities: list({ enum: CAPABILITIES }, CAPABILITIES.length),
     budget: object({
       maxActiveWorkers: { type: 'integer', minimum: 1, maximum: 2 },
-      reservePercent: { type: 'integer', minimum: 25, maximum: 100 },
+      reservePercent: { type: 'integer', minimum: 5, maximum: 100 },
       paidFallback: { const: false },
     }),
     scope: list(effect, 64),

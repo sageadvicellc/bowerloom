@@ -53,6 +53,39 @@ test('account admission against a dedicated synthetic PostgreSQL database', { sk
     await admin.query(`CREATE DATABASE "${database}" TEMPLATE template0`); created = true;
     await admission.createSchema(names.map(accountId => ({ accountId, aliases: [`${accountId}-a`, `${accountId}-b`],
       policy: policy(accountId === 'release' ? { completedResetPolicy: 'release-covered' } : {}) })));
+    await run('explicit policy replacement retains history, handles races, and survives lost acknowledgement', async () => {
+      const policySchema = `${schema}_policy`;
+      const policyOpen = (connection = pool) => new PostgresAdmission(connection, { schema: policySchema, launcherId: 'policy-controller', now: () => now });
+      const admission = policyOpen(); const other = policyOpen(otherPool);
+      const state = async () => (await pool.query(`SELECT state FROM \"${policySchema}\".accounts WHERE account_id='policy-change'`)).rows[0].state;
+      const initial = policy(); const increased = policy({ thresholdPercent: 95 });
+      await admission.createSchema([{ accountId: 'policy-change', aliases: ['policy-change-a', 'policy-change-b'], policy: initial }]);
+      const reserved = await admission.reserve(req('policy-change'), sample('policy-change'));
+      assert.equal(reserved.kind, 'accepted');
+      const before = await state();
+      assert.deepEqual(await admission.replacePolicy('policy-change-a', initial, increased), increased);
+      const after = await state();
+      assert.deepEqual({ ...after, policy: before.policy }, before);
+      const contenders = await Promise.allSettled([
+        admission.replacePolicy('policy-change-a', increased, policy({ thresholdPercent: 90 })),
+        other.replacePolicy('policy-change-b', increased, policy({ thresholdPercent: 85 })),
+      ]);
+      assert.equal(contenders.filter(result => result.status === 'fulfilled').length, 1);
+      assert.equal(contenders.find(result => result.status === 'rejected').reason.code, 'POLICY_CONFLICT');
+      const current = await admission.policy('policy-change-a');
+      let lost = false;
+      const uncertain = policyOpen(intercept(pool, async (client, sql, values) => {
+        const result = await client.query(sql, values);
+        if (sql === 'COMMIT' && !lost) { lost = true; throw new Error('lost acknowledgement'); }
+        return result;
+      }));
+      await assert.rejects(uncertain.replacePolicy('policy-change-a', current, increased), { code: 'COMMIT_UNKNOWN' });
+      assert.deepEqual(await other.policy('policy-change-b'), increased);
+      assert.deepEqual(await other.replacePolicy('policy-change-b', current, increased), increased);
+      assert.deepEqual((await state()).reservations, before.reservations);
+      assert.deepEqual((await other.lookup('policy-change-a', 'job')).retained, reserved.reservation.retained);
+      assert.throws(() => admission.replacePolicy('policy-change-a', increased, policy({ thresholdPercent: 95.01 })), { code: 'INVALID_POLICY' });
+    });
     await run('different clients and aliases serialize two workers and charge every role against one account', async () => {
       const pids = await Promise.all(pools.map(pool => pool.query('SELECT pg_backend_pid() AS pid')));
       assert.notEqual(pids[0].rows[0].pid, pids[1].rows[0].pid); report.distinctClientBackends = true;

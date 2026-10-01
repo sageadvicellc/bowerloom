@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
 import { createAccount, acceptObservation, evaluateAdmission, evaluateLaunch } from './policy.js';
-import { AdmissionError, identifier, requestCopy, proofCopy, stateCopy, validTime, observationCopy } from './validation.js';
+import { AdmissionError, identifier, requestCopy, proofCopy, stateCopy, validTime, observationCopy, policyCopy } from './validation.js';
 import type { AccountState, AdmissionPolicy, ReservationRequest, Reservation, ReservationView, ReserveResult, LaunchResult, ReconciliationProof } from './types.js';
 export type * from './types.js';
 export { AdmissionError } from './validation.js';
@@ -91,6 +91,18 @@ export class PostgresAdmission {
   }
   policy(accountAlias: string): Promise<AdmissionPolicy> {
     return this.#account(accountAlias, state => structuredClone(state.policy));
+  }
+  // Trusted controller API. Preserve account history and claims while replacing an explicit policy.
+  replacePolicy(accountAlias: string, expected: AdmissionPolicy, replacement: AdmissionPolicy): Promise<AdmissionPolicy> {
+    const previous = policyCopy(expected); const next = policyCopy(replacement);
+    return this.#account(accountAlias, state => {
+      if (canonicalJson(state.policy) === canonicalJson(next)) return structuredClone(state.policy);
+      if (canonicalJson(state.policy) !== canonicalJson(previous)) {
+        throw new AdmissionError('POLICY_CONFLICT', 'The account policy changed. Read its current policy before another replacement.');
+      }
+      state.policy = next;
+      return structuredClone(state.policy);
+    });
   }
   reserve(input: ReservationRequest, observation: unknown): Promise<ReserveResult> {
     // The alias alone identifies the trusted account even if the rest of a request is refused.

@@ -50,3 +50,11 @@ The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-
 Measure host free space before large downloads, builds, dependency installation, and new checkouts. Keep at least 12 GiB free on this Mac. Bound expected growth before each large operation, and measure again afterward. Stop an operation if it threatens the reserve. Record measurements in the campaign log and daily review.
 
 Do not remove existing worktrees, Docker data, or private files without founder authorization. A clean Git status does not establish that ignored files are disposable.
+
+## Capacity amendment
+
+On October 1, Hanna changed this campaign reserve to 5 percent. Continue until alpha is ready for demo and review or usage reaches 95 percent.
+
+This instruction supersedes the earlier 25 percent reserve for this campaign. Preserve held allowances and room for active lead, worker, and review work.
+
+Stop new model work if current usage is unavailable. The product default remains unchanged.
