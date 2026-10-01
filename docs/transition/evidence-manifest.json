@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "7ed242b69795078931feb6a360de8167b36d86a85b453801f51b30c94e8a8105",
+    "original_sha256": "b15e1eff315e14cdcd60b595c153298d2de0834d10183b14dcfa9d52184f797d",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "1c8325d667b71fd20a8da931caedfe552f14ccda82a264078a559d18e332a856",
+    "repository_sha256": "c794e70b486ecc992c0e06c39ce010d7192f68f980094d7b3db370bbf2f3d26b",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -65,6 +65,14 @@
       "change": "The sole-merger rule applies only to main. Agents peer-review and merge feature branches within approved scope.",
       "independently_reviewed_pre_amendment_sha256": "98920f89111c073c1650495f45e5878b2ed6049d631fab18efec2a96a17ff674",
       "research_and_fixtures_changed": false
-    }
+    },
+    "founder_decisions": [
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Trellis monorepo. Retire the five dispersed framework repositories after migration and cutover. Sagespec stays separate.",
+        "research_and_fixtures_changed": false
+      }
+    ]
   }
 }

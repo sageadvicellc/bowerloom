@@ -15,7 +15,7 @@ This round produces these results:
 5. Feasibility results for workflow execution, knowledge retrieval, and capacity control, with explicit gaps where tests cannot run.
 6. A draft v1 specification, a bounded v0.7-beta scope, and an ordered implementation queue.
 
-The founder's next approval settles the specification and repository structure. The working branch is feature/trellis-v1 in sageadvicellc/trellis. This temporary review home does not decide the final repository structure.
+Hanna selected `sageadvicellc/trellis` as the framework monorepo on October 1, 2026. The working branch remains `feature/trellis-v1`. The remaining specification choices stay open. The dispersed framework repositories retire after their replacements pass migration and cutover gates.
 
 ## Operating boundaries
 

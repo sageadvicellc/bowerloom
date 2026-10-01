@@ -43,7 +43,7 @@ The inspected coordinator repository contains documentation only. Roots keeps it
 
 ### 3. Ownership and shared contracts
 
-The following boundaries are proposed. One versioned contract package supplies shared fields and acceptance fixtures. Modules own specialized payloads and retain explicit build boundaries under either repository layout.
+The following boundaries are proposed. One versioned contract package supplies shared fields and acceptance fixtures. Modules own specialized payloads and retain explicit build boundaries inside the approved monorepo.
 
 A graph records tasks and their dependencies. A harness runs an agent session. An adapter connects Trellis to an external tool.
 
@@ -56,7 +56,7 @@ A graph records tasks and their dependencies. A harness runs an agent session. A
 | trellis-vines | Observations, audit exports, usage observations, evaluation evidence | Audit records do not decide workflow state. General metadata excludes private content. |
 | trellis-workbench | Isolated experiments, pinned inputs, comparisons, promotion evidence | An experiment cannot change production or promote itself. |
 
-The coordinator is a framework component, not a sixth named module. Its placement follows the repository decision. Existing Crew, Relay, Roots, and Vines interfaces cover parts of these boundaries. They do not implement the complete proposal. [contracts-F1 to F3]
+The coordinator is a framework component, not a sixth named module. It resides in the approved framework monorepo. Existing Crew, Relay, Roots, and Vines interfaces cover parts of these boundaries. They do not implement the complete proposal. [contracts-F1 to F3]
 
 The Relay beta proposal permits one shared socket lane. V1 targets ad-hoc conversations and a durable lead/master record. Both require explicit conversation scope, access rules, and retention. These are proposed founder targets. No transport is selected or tested here.
 
@@ -181,14 +181,14 @@ The complete portability suite also covers clean clone/start, mandatory-capabili
 
 ### 10. Implementation queue and preservation
 
-This queue begins only after specification approval. One integration feature branch, `feature/trellis-v1`, remains the review home. That branch does not decide repository topology.
+The remaining implementation queue begins after specification approval. Hanna selected `sageadvicellc/trellis` as the monorepo on October 1, 2026. The integration branch remains `feature/trellis-v1`. Sagespec stays in a separate repository.
 
 Workers branch from the integration branch and open task pull requests against it. Another agent reviews each change against its acceptance criteria. The integration lead merges accepted work into the feature branch and runs relevant integration tests. Changed code needs renewed review and tests. Hanna receives the assembled feature for review and merge into `main`.
 
 | Gate | Work and owner | Exit evidence |
 |---|---|---|
-| 0. Founder specification | Hanna settles the decisions below | Approved revision, scope, topology, runtime direction, and unresolved items explicitly bounded |
-| 1. Preservation and import | Integration ownership maps retained files and PRs into the chosen layout | Reviewed disposition map, license reconciliation, private-content boundary, retained recovery sources |
+| 0. Founder specification | Hanna settles the remaining decisions below | Approved revision, scope, runtime direction, and unresolved items explicitly bounded. Monorepo direction is approved. |
+| 1. Preservation and import | Integration ownership maps retained files and PRs into the monorepo | Reviewed disposition map, license reconciliation, private-content boundary, retained history and recovery sources. Archive old repositories after cutover gates pass. |
 | 2. Contracts and source | Coordinator and module owners implement shared contracts, YAML validation, versioning, graph compiler, simulation | Actual schema engine. Invalid graph/path/version cases. Generation, drift, migration and rollback tests |
 | 3. Control state | Coordinator implements ownership, approval, admission, cancellation, and recovery | Actual runtime failure matrix, authenticated scope, persistent reservations, ambiguous-effect holds |
 | 4. First harness | Crew implements the selected adapter and platform runner | Effective-policy denial tests, subscription route, measured admission, startup and complete teardown |
@@ -209,8 +209,8 @@ No release date or daily output rate is supported yet. Agents coordinate impleme
 
 ## Decisions for Hanna
 
-1. Repository topology: the notes recommend one framework source repository with separate module directories and artifacts. This requires reviewed imports, packaging changes, and consolidated CI. Coordinated module repositories preserve existing access and branch homes but require explicit release pins and PR dependency tracking. Both need shared contract tests and complete rollback manifests.
-2. Import scope and release prerequisites: approve the sanitized framework-only file/PR map before moves. Retain historical work while accepted changes are ported. Require license reconciliation, reproducible pins, preserved Workbench controls, and actual clean setup before release readiness.
+1. Repository topology, decided October 1: use `sageadvicellc/trellis` as the framework monorepo. Retire the five dispersed module repositories after accepted code and useful open work move. Preserve history, source references, and recovery copies. Archive the repositories after the replacement passes installation, tests, packaging, and cutover review. Hanna merges the monorepo candidate into `main` before archival. Sagespec remains separate. This decision does not authorize repository deletion or visibility changes.
+2. Import work under the approved direction: the team prepares and reviews a sanitized framework-only file/PR map before imports. Retain historical work while accepted changes are ported. Require license reconciliation, reproducible pins, preserved Workbench controls, and actual clean setup before release readiness. Hanna reviews the assembled migration before merging into `main`.
 3. Initial runtime support: choose two experimental adapters pending gates on this Mac, or test one harness first. The two-adapter choice covers Codex and Claude. It tests portability earlier. Testing one harness first reduces initial integration work. The notes propose Codex first. Neither choice supports a certified-runtime claim today.
 4. Open-source breadth: defer OpenCode and retain Goose as a documentary candidate, or authorize a separate bounded repair/install/validation pass. Broader coverage adds configuration and nested-accounting work. OpenCode's conflicting subscription claims do not authorize that route.
 5. Mandatory action boundary: choose read/propose with a separately enforced action broker, or include broader tools in the initial contract. The broader choice includes direct code and external-action tools. It requires broader escape and permission tests. Documentation, fixtures, and native proof remain separate. Weakening mandatory proof requires a revision to the founder's control requirements.

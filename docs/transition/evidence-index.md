@@ -34,3 +34,5 @@ No experiment establishes a working Trellis release, authenticated permissions, 
 On October 1, Hanna limited the sole-merger rule to `main`. The [working order](working-order.md) records team authority over feature branches.
 
 The current candidate includes that instruction after the independent review. The manifest records the amendment separately. Research observations and experiment sources remain unchanged.
+
+Hanna also selected the framework monorepo and retirement of the five dispersed module repositories. The [cutover plan](monorepo-cutover.md) records preservation and retirement gates. This decision follows the independent research review.

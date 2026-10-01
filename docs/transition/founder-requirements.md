@@ -18,7 +18,7 @@ The v0.7-beta demo has two paths. Technical founders receive a built local appli
 
 Coda is the Solution Lead. Emery is the Design Lead. Subscription profiles set a maximum of two to seven active workers, with lead activity included in usage accounting.
 
-The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. The research gate settles repository structure and exact module contracts. Claude Code and Codex are the preferred initial harness candidates. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
+The five modules are trellis-vines, trellis-relay, trellis-roots, trellis-crew, and trellis-workbench. Hanna selected a monorepo on October 1, 2026. The framework modules move into `sageadvicellc/trellis` with separate interfaces, tests, and build boundaries. Sagespec remains a separate product repository. Exact module contracts remain part of the specification review. Claude Code and Codex are the preferred initial harness candidates. A harness is the agent tool that runs a session. Research also evaluates suitable open-source alternatives.
 
 ## Portability is a core requirement
 
@@ -74,7 +74,7 @@ The founder clarified this boundary on October 1, 2026. The founder-only merge r
 
 Development runs on this Mac using existing subscriptions. Preserve 25 percent of reported subscription capacity through admission limits and an allowance for work already running. Pause new model work when reliable usage information is unavailable.
 
-The founder reports that the handoff is complete and the old team is stopped. Preserve useful branches and evidence for review against the new specification. The startup inventory also shows that the listed workbench merge and agent automation workflows are disabled. Research determines whether the framework uses one repository or coordinated module repositories.
+The founder reports that the handoff is complete and the old team is stopped. Preserve useful branches and evidence for review against the new specification. The startup inventory also shows that the listed workbench merge and agent automation workflows are disabled. The team will retire the five dispersed framework repositories after migration and cutover. Retirement means archive, not deletion. Preserve history and useful open work before archiving.
 
 Prepare one daily review at 9 a.m. America/New_York. Include completed outcomes, acceptance instructions, test evidence, remaining risks, and required founder decisions. Measure task success, founder intervention, usage per accepted result, completion time, recovery reliability, and retrieval accuracy.
 

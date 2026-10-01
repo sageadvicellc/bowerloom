@@ -12,10 +12,11 @@ The first campaign prepares a specification and implementation queue for founder
 
 - [Founder requirements](docs/transition/founder-requirements.md)
 - [Branch coordination and merge authority](docs/transition/working-order.md)
+- [Approved monorepo cutover](docs/transition/monorepo-cutover.md)
 - [Specification candidate and implementation queue](docs/transition/v1-specification-candidate.md)
 - [Round-one outcomes and boundaries](docs/transition/round-one.md)
 - [Research evidence index](docs/transition/evidence-index.md)
 - [Reproducible research fixtures](experiments/transition/README.md)
 - [Historical coordinator draft](docs/coordinator-spec.md)
 
-The current founder requirements govern conflicts with the historical draft. The temporary review branch does not decide the final repository structure.
+The current founder requirements govern conflicts with the historical draft. Hanna selected this repository as the framework monorepo. The dispersed module repositories retire after migration and cutover.
