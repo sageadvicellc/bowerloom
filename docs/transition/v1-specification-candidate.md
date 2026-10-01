@@ -26,7 +26,7 @@ Codex-first `v0.7-alpha` precedes `v0.7-beta`, which supports Codex and Claude C
 
 The marketing team is separate from the later Sagespec product team. Each crew needs its own scope, permissions, writable state, and shared-account capacity accounting. Trellis `v1-beta` and `v1-rc` work continues alongside downstream product development. This specification appoints neither lead and starts neither team.
 
-Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. This is an approved founder requirement. The storage and execution technologies remain open decisions.
+Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. This is an approved founder requirement. Supabase is now a conditional backend requirement. PostgreSQL throughout is the favored direction, while packaging and execution details remain proposals.
 
 Coda is the Solution Lead and Emery the Design Lead in the default demonstration crew. These are configurable crew roles. Their names grant no universal framework privilege. Leads propose work within enforced ownership, permission, budget, and approval rules.
 
@@ -119,9 +119,9 @@ Cancellation stops future dispatch and records `cancel_requested` separately fro
 
 The recovery fixture supports these rules in its local ledger. It does not establish universal exactly-once behavior. Actual runtime tests must repeat its crash, stale-owner, stale-approval, storage-error, cancellation, and artifact-handoff cases. [durable-F8 to F10]
 
-The original notes compared a local durable journal with DBOS TypeScript and self-hosted Postgres. The founder then required simultaneous company use and personal autonomy. A focused follow-up evaluates that broader requirement and her Supabase preference. The original local-only beta recommendation no longer covers the full requirement. No implementation is selected here. [durable-F3 to F7, founder clarification]
+The founder now favors PostgreSQL throughout and requires Supabase if it satisfies the stated needs. Ease of use includes installation, maintenance, and Studio access. The v1 core must avoid proprietary coordination dependencies. [Founder direction, October 1]
 
-The [shared durability comparison](shared-durability-options.md) proposes optional Supabase company storage and lightweight personal storage. It separates storage from execution recovery and records engine choices, operational costs, and untested boundaries. Its ten documentary facts received independent review. It adds no runtime result.
+The [storage and data lifecycle direction](storage-and-data-policy.md) proposes Supabase-backed PostgreSQL and the MIT DBOS library with one supervised coordinator per installation. It excludes Conductor from the core. Exact packaging and engine adoption remain proposals pending tests. The [earlier comparison](shared-durability-options.md) retains its documentary findings, but its optional-Supabase and lightweight-storage recommendation predates this direction.
 
 The proposed company boundary keeps company task ownership and approvals on the company server. Personal installations retain private definitions, credentials, and state. Employees select a company workspace explicitly. Company participation does not grant access to unrelated local files, credentials, or personal work.
 
@@ -151,15 +151,29 @@ Keyword retrieval, semantic retrieval, and answer generation need separate accep
 
 Workbench experiments use permitted frozen snapshots, pinned versions, and independent writable state. Credentials and writable production mounts stay outside the experiment. Separate directories alone do not prove containment. Production prompts, knowledge, or policy change only through reviewed promotion into an approved release. Existing corpus and ownership controls must survive repository changes. [rstruct-F9, proposed contracts]
 
+### 8a. Shared knowledge and data lifecycle
+
+Roots must support centralized company knowledge with scoped access to sources, citations, chunks, and embeddings. Personal and client-private corpora remain separately authorized. Shared infrastructure grants no access by itself. Supabase does not replace Roots source tracking or retrieval policy.
+
+Vines must separate necessary local operational records from optional telemetry sent to Sage Advice. Optional transmission starts disabled. Consent identifies the recipient, purpose, permitted fields, and retention policy. Revocation stops new optional collection and transmission. Every retained class needs a deletion rule.
+
+A versioned policy must name owners, retention triggers, deadlines, and deletion methods. Offboarding revokes access and stops scoped workers and streams. Export and retained-data deletion follow their declared policies. A retained copy grants no continuing monitoring permission.
+
+Deletion must cover source records, derived embeddings, caches, traces, file objects, workflow arguments and results, and controlled exports. Backups need explicit expiry. Restoration must apply deletion records before serving restored data. A soft-delete marker alone does not satisfy deletion. Detailed periods remain product policies, separate from generic framework requirements.
+
 ### 9. Release acceptance
 
 Alpha is a usable Codex-first release on this Mac. Its proposed acceptance requires a complete local workflow through portable definitions, structured progress, and a reviewable result. Its supported actions must pass live permission, approval, capacity, cancellation, and recovery tests. Alpha records known limits and recovery instructions. A renamed simulation does not satisfy this milestone.
+
+The proposed alpha backend uses Supabase and PostgreSQL. Acceptance must include usable setup, process restart, and optional telemetry disabled by default. This proposal requires measured resource and compatibility evidence.
 
 Alpha freezes repeatable tasks, synthetic inputs, acceptance criteria, and versions for beta comparison. Runs record accepted outcomes, founder interventions, elapsed time, observed usage, and recovery results. Missing measurements remain explicit. Alpha also supports a separate Codex marketing crew that produces reviewable campaign drafts. Beta completion is not a prerequisite for that crew.
 
 The proposed `v0.7-beta` includes the portable loader, typed acyclic graph compiler, simulation mode, and coordinator controls. It requires Codex and Claude Code support with live control evidence. It also includes module integration, authorized retrieval at the chosen scope, and two generic demos. Its release statement lists only tested behavior. Documentation-only adapters remain experimental.
 
 Beta also requires independent personal installations and a company server with multiple employees. Proposed acceptance tests cover concurrent company tasks, private-state separation, scoped machine access, server outages, employee disconnection, access revocation, and reconnection. Tests must make sure that personal work continues independently and stale company ownership cannot dispatch actions. No existing fixture establishes these results.
+
+Beta must also test limited access to shared knowledge and consent withdrawal. Its data tests cover embeddings, direct storage reads, deletion failures, backup expiry, and restoration after deletion. These are proposed gates, not completed results.
 
 The proposed `v1-beta` adds a mapping-only harness switch and interrupted handoff without repeating completed effects. `v0.7-beta` already requires the common workflow and mandatory controls on Codex and Claude Code. Every release gate requires proven mandatory controls within its claimed scope. `v1-beta` broadens the evidence for recovery, schema migrations, retrieval, model routing, and independent evaluations. It does not inherit untested platform or scale claims.
 
@@ -237,11 +251,13 @@ No release date or daily output rate is supported yet. Agents coordinate impleme
 3. Alpha runtime, decided October 1: deliver `v0.7-alpha` with Codex first on this Mac. Hanna uses alpha for testing and beta baseline measurements. Marketing preparation can start before beta. Live control tests remain required. Both Codex and Claude Code are required for `v0.7-beta`. The later milestones are `v1-beta` and `v1-rc`. Detailed release acceptance criteria remain proposed.
 4. Open-source breadth: defer OpenCode and retain Goose as a documentary candidate, or authorize a separate bounded repair/install/validation pass. Broader coverage adds configuration and nested-accounting work. OpenCode's conflicting subscription claims do not authorize that route.
 5. Mandatory action boundary: choose read/propose with a separately enforced action broker, or include broader tools in the initial contract. The broader choice includes direct code and external-action tools. It requires broader escape and permission tests. Documentation, fixtures, and native proof remain separate. Weakening mandatory proof requires a revision to the founder's control requirements.
-6. Recovery implementation: the founder requires a company server for multiple employees and autonomous personal installations. Supabase is her preferred open-source candidate. The focused follow-up compares storage and recovery choices against both requirements. No database or workflow engine is selected. The original local-only beta recommendation does not cover the new requirement. All candidates retain ambiguous-effect reconciliation and portable handoff.
-7. Retrieval scope: choose explicit keyword retrieval over an authorized corpus for beta, or require semantic/hybrid validation first. Keyword scope is narrower and failed both selected paraphrases. Semantic scope adds model isolation and resource validation.
+6. Storage and recovery: Supabase is required if it satisfies setup, shared knowledge, access, and deletion needs. Hanna favors PostgreSQL throughout. The proposal uses the MIT DBOS library with one supervised coordinator per installation and excludes Conductor. Exact packaging and engine adoption await tests. Automatic replacement of a failed company server remains outside this proposed first deployment. Ambiguous effects still require reconciliation.
+7. Retrieval scope: shared company knowledge must support embeddings and limited access. Select the embedding model, generation location, and retrieval quality targets before semantic acceptance. The earlier lexical results remain bounded evidence. PostgreSQL storage does not establish semantic accuracy, corpus limits, or isolation.
 8. Retrieval access and targets: choose separate indexes with enforced process boundaries, or a trusted broker over shared state. The broker must close every unauthorized path. Separate indexes can duplicate storage. Shared state enlarges the authorization surface. Set exact/paraphrase recall, stale-evidence, access, and missing-answer criteria. Choose whether to accept the 5,000-short-document observation or require more tests before choosing the v1 envelope. Those further tests cover byte volume and semantic retrieval.
 9. Capacity calibration and routing: choose proven freshness sources and measured sampling limits, job allowances, route mappings, and unattended-operation limits. The founder's 25 percent reserve and existing-subscription requirement remain in force. The notes recommend expressing the reserve as an admission policy with stated limits. No fixture selects a threshold or profile calibration. Live Claude work remains pending valid admission. Paid fallback stays disabled.
 10. Module contracts and demos: approve or revise the proposed contracts and release acceptance criteria. Codex-first alpha and its early-use purpose are approved. The detailed alpha tests and both beta demos remain proposed. Sagespec product development follows beta acceptance. Its lead and product scope remain separate from the early marketing crew.
+
+11. Data policies: reconcile historical Sagespec schedules and telemetry treatment. Define policy parameters, consent scope, backup expiry, deletion evidence, and restoration behavior. Keep Sagespec customer terms separate from Trellis defaults. Historical continued-monitoring and indefinite-vitals text cannot silently establish current consent or retention rules.
 
 ## Gaps
 

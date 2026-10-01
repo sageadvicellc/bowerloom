@@ -55,9 +55,9 @@
   ],
   "candidate": {
     "private_original": "outputs/trellis-v1-specification-candidate.md",
-    "original_sha256": "1f9df05cc654f016de9082d96194882fee0a71540fb88a0f1abca41b8421b068",
+    "original_sha256": "105200e5e1d231425cc658909aa50bedcc6efbd7de8168e3e2f7f54ae284a777",
     "repository_copy": "v1-specification-candidate.md",
-    "repository_sha256": "69aa8fb752bc50aad18adc79fde07422ff7fb7faca04c044d8fe993e3ff9541d",
+    "repository_sha256": "5ad8d69bf673c9acadcac10ab0d92fc4f687ce104d5625fd423477e6e264d02b",
     "adaptation": "Only frontmatter and local source-link destinations differ.",
     "post_review_amendment": {
       "date": "2026-10-01",
@@ -98,6 +98,14 @@
         ],
         "source": "Founder instruction in the current chat",
         "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Supabase including Studio is conditionally required. PostgreSQL throughout is favored for ease of use. The v1 core excludes proprietary coordination dependencies. Shared knowledge needs scoped access, and opt-in telemetry needs deletion policy.",
+        "proposal": "MIT DBOS library without Conductor, one supervised coordinator per installation, and explicit data lifecycle controls.",
+        "not_selected": "Exact packaging, runtime adoption, and retention durations.",
+        "runtime_tests_added": false
       }
     ]
   },
@@ -134,5 +142,14 @@
       "sha256": "fabcebd4d0cbc9eead497cae365d211985153cdf977a88c961463454abd12180",
       "adaptation": "Only brief and check frontmatter destinations differ."
     }
+  },
+  "storage_direction_amendment": {
+    "date": "2026-10-01",
+    "private_original": "outputs/trellis-storage-direction.md",
+    "original_sha256": "00baa0f0236064c505359f157cebdb2e7b08b0d68643a431af0706e209a51c92",
+    "repository_copy": "storage-and-data-policy.md",
+    "repository_sha256": "00baa0f0236064c505359f157cebdb2e7b08b0d68643a431af0706e209a51c92",
+    "review": "Independent review found no actionable issues, re-retrieved cited product documentation, and separately reviewed the cache and backup-record additions.",
+    "evidence_limit": "No live integration, access, deletion, or recovery test. Historical comparison unchanged."
   }
 }

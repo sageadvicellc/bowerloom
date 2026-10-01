@@ -23,7 +23,13 @@ The release names and harness sequence are approved. Detailed acceptance criteri
 
 Beta must support independent personal installations and shared company use. One company server serves multiple employees who retain autonomous personal installations on their machines. Both uses coexist. Joining the company must preserve personal independence.
 
-Proposed tests cover private personal state, scoped company access, concurrent company work, server outages, revoked access, and reconnection. Company work retains explicit ownership during disconnection. Personal work remains independently useful. These tests do not select a database or workflow engine, and no implementation passed them yet.
+Proposed tests cover private personal state, scoped company access, concurrent company work, server outages, revoked access, and reconnection. Company work retains explicit ownership during disconnection. Personal work remains independently useful. Supabase is a conditional requirement, with PostgreSQL throughout as the favored direction. Exact packaging and the workflow engine remain proposed. No implementation passed these tests yet.
+
+## Backend and data gates
+
+The proposed alpha backend packages Supabase and PostgreSQL with usable setup, restart recovery, and optional telemetry disabled by default. The proposed runtime uses the MIT DBOS library without Conductor. Resource and compatibility tests must establish suitability.
+
+Beta adds shared knowledge access, consent withdrawal, offboarding, and deletion tests. Tests cover source documents, embeddings, files, caches, traces, and stored workflow data. Backup expiry and restoration after deletion need separate evidence. Detailed product retention schedules remain outside generic framework defaults.
 
 ## Proposed alpha baseline
 

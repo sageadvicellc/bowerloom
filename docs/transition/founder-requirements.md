@@ -30,7 +30,15 @@ The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-
 
 Beta must test independent personal installations and shared company use. Multiple employees work through one company server while retaining autonomous personal installations on their own machines. Personal use and company participation coexist. Joining a company must preserve that independence.
 
-The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is Hanna's preferred open-source candidate, but the database and workflow engine remain open decisions.
+The specification must define ownership of company work and boundaries around private personal work. Proposed tests cover separate credentials and state, scoped company access, personal work during server outages, and safe reconnection. These detailed tests remain proposals. Supabase is a conditional requirement, subject to suitability for setup, access, recovery, and deletion. Hanna favors PostgreSQL throughout personal and company installations. The exact packaging and workflow engine remain proposed.
+
+## Storage and data lifecycle direction
+
+Hanna prioritizes ease of use for both technical and nontechnical founders. Supabase must remain in the supported backend design if it satisfies the stated needs. Studio is part of that requirement. The v1 core must avoid proprietary coordination dependencies.
+
+Company embeddings and wiki content need centralized storage with limited, revocable access over secure connections. Personal and client-private content must retain explicit ownership and access boundaries. Joining a shared company instance preserves personal autonomy.
+
+Trellis must support versioned retention and deletion policies. Optional telemetry sent to Sage Advice from Trellis or Sagespec requires explicit consent and a deletion policy. The detailed contract must cover derived data and backups. Historical Sagespec schedules require reconciliation before adoption. This requirement does not activate collection or authorize deletion of existing data.
 
 ## Portability is a core requirement
 

@@ -48,3 +48,9 @@ Hanna required independent personal use and simultaneous company participation f
 The [company and personal comparison](shared-durability-options.md) records the focused follow-up dated October 1, 2026. Its independent review confirms ten documentary claims, `sd-F1` through `sd-F10`, within their recorded limits. No claim changed, failed, or lacked source support. This review does not establish runtime compatibility or successful failure tests.
 
 The retained brief, note, and check reside under `work/campaign/research/2026-10-01-shared-durability`. The manifest records their hashes separately from the original research. The sources are living documentation. Implementation requires release-specific review and tests.
+
+## Storage direction amendment
+
+The founder now favors PostgreSQL throughout and requires Supabase, including Studio, if it satisfies the stated needs. The v1 core excludes proprietary coordination dependencies. The [current direction](storage-and-data-policy.md) proposes the MIT DBOS library without Conductor and separates company, personal, and client-private data.
+
+The current direction supersedes the earlier comparison's optional-Supabase and lightweight-personal-storage recommendation. Its independently checked documentary findings remain historical evidence. An independent review of the amendment found no actionable issues and re-retrieved its cited product documentation. This amendment adds no runtime result. Detailed product retention schedules remain outside the public framework.
