@@ -39,8 +39,14 @@ export default function AlphaGuide() {
       <h3 id="local-backend">A local backend, built on Supabase</h3>
       <p>Bowerloom builds on upstream tools. Supabase provides PostgreSQL and Studio, its database interface. Docker runs the local services. The tested controller uses the MIT DBOS library for durable work; the recorded blog-draft recipe uses LangGraph checkpoints in PostgreSQL.</p>
       <p><Propernoun>Vines</Propernoun> is the logging tool. This alpha validates logging maps; it does not ship a standalone Vines collection service. <Propernoun>Workbench</Propernoun> runs tests through an installed controller backed by PostgreSQL. Neither module replaces the upstream database.</p>
-      <p>The prompt builder and portable file installer do not need Docker. A backend-dependent workflow does. Local backend setup is under development; the existing internal proof stack is not a public installer. Cloud configuration belongs to later versions.</p>
-      <p>Any backend setup must identify its images, disk allowance, ports, and owned data before you approve it. Docker host installation remains a separate prerequisite. Your agent must not reuse an unrelated database or reset existing data.</p>
+      <p>The prompt builder and portable file installer do not need Docker. For backend-dependent work, the source CLI can plan a separate local Supabase installation. The first adapter supports macOS with Docker Desktop on Apple silicon. Cloud configuration belongs to later versions.</p>
+      <p>The backend plan identifies five pinned images, its ports, private files, and owned volumes. It requires 16 GiB free: a 12 GiB reserve plus a 4 GiB growth allowance. That allowance is an estimate, not a storage quota. Installation requires the exact plan revision as approval.</p>
+      <pre><code>{`node dist/apps/cli/src/main.js backend doctor
+node dist/apps/cli/src/main.js backend plan --root /absolute/private-parent/bowerloom-local
+node dist/apps/cli/src/main.js backend install --root /absolute/private-parent/bowerloom-local --approve REPLACE_WITH_EXACT_PLAN_REVISION
+node dist/apps/cli/src/main.js backend status --root /absolute/private-parent/bowerloom-local`}</code></pre>
+      <p>Create the private parent first and use an unused installation path. Review the plan before copying its revision into the install command. Docker host installation remains a separate prerequisite. Your agent must not reuse an unrelated database or reset existing data.</p>
+      <p>The local profile includes PostgreSQL, Studio, postgres-meta, PostgREST, and Kong. It creates no agent runtime, workers, recipe credentials, or company access rules. Authentication, Storage, Realtime, and other Supabase services are outside this profile. Failed installations preserve their files and data for inspection.</p>
       <h3 id="alpha-evidence">What the recorded evidence covers</h3>
       <p>The separate Labs-to-blog test produced a GitHub draft pull request from committed experiment evidence. It required an exact plan and local approval before the external write.</p>
       <p>A test deliberately dropped GitHub’s successful response. Bowerloom paused the uncertain write, then a fresh process recovered the saved result. Two later runs returned that result without new HTTP requests or duplicate drafts.</p>
