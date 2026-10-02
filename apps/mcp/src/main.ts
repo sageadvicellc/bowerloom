@@ -20,6 +20,8 @@ if (args.length !== 2 || args[0] !== '--installation' || !args[1] || args[1].sta
     };
     process.once('SIGINT', () => { void close(); });
     process.once('SIGTERM', () => { void close(); });
+    process.stdin.once('end', () => { void close(); });
+    process.stdin.once('error', () => { void close(); });
     server.onclose = () => { void close(); };
     try { await server.connect(new StdioServerTransport()); }
     catch (error) { await close(); throw error; }

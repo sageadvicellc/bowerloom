@@ -12,7 +12,11 @@
     "apps/*"
   ],
   "bin": {
-    "trellis": "dist/apps/cli/src/main.js"
+    "trellis": "dist/apps/cli/src/main.js",
+    "trellis-mcp": "dist/apps/mcp/src/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0"
   },
   "scripts": {
     "build": "tsc",
