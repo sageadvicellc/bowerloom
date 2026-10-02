@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { destinations, docs, hero, questions, repository, stages } from "./content";
+import { destinations, hero, questions, repository } from "./content";
+import ProductText from "./ProductText";
+import LabsWorkflow from "./LabsWorkflow";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
@@ -26,20 +28,6 @@ function Mark() {
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
-}
-
-function WorkflowIcon({ index }: { index: number }) {
-  const paths = [
-    "M7 3h10M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M7 15h10",
-    "M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6",
-    "m4 16 11-11 4 4L8 20H4v-4Zm9-9 4 4M13 20h7",
-    "M20 11v1a8 8 0 1 1-5-7M8 11l4 4 8-9",
-  ];
-  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[index]} /></svg>;
-}
-
-function ProductText({ children }: { children: string }) {
-  return <>{children.split(/(Teams|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)/g).map((part, index) => /^(Teams|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)$/.test(part) ? <code key={index}>{part}</code> : part)}</>;
 }
 
 const offers = [
@@ -115,7 +103,6 @@ export default function App() {
     new URLSearchParams(window.location.search).get("diagnostics") === "1";
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
-  const stage = stages[selected];
 
   useEffect(() => {
     let onScreen = true;
@@ -149,9 +136,9 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#recipe">The workflow</a>
+          <a href="#recipe">The Labs workflow</a>
           <a href="#build">Build with your agent</a>
-          <ExternalLink href={docs}>Alpha guide</ExternalLink>
+          <a href="#alpha-guide">Alpha guide</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
         </nav>
         <span className="alpha-label">
@@ -166,7 +153,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your abilities with <em>Bowerloom</em>
+              Grow your capabilities with <em>Bowerloom</em>
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -174,7 +161,7 @@ export default function App() {
             <a className="button primary" href="#build">
               Build with your agent
             </a>
-            <a className="hero-secondary" href="#recipe">See the first workflow</a>
+            <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
           </div>
           <div className="workshop-area" ref={sceneRef}>
             <div className="scene-caption">
@@ -241,42 +228,7 @@ export default function App() {
         </section>
         )}
         <CoreOffers />
-        <section id="recipe" className="recipe-section" aria-labelledby="recipe-title">
-          <div className="section-heading">
-            <p className="eyebrow">First workflow: Labs to blog</p>
-            <h2 id="recipe-title">Turn a completed experiment into a draft you can review.</h2>
-            <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Bowerloom prepares the proposed GitHub change for review before the designated local operator approves it.</p>
-          </div>
-          <div className="stage-controls" role="group" aria-label="Explore the workflow steps">
-            {stages.map((item, index) => (
-              <button key={item.name} className={index === selected ? "stage active" : "stage"} aria-pressed={index === selected} onClick={() => setSelected(index)}>
-                <span className="stage-icon" aria-hidden="true">{<WorkflowIcon index={index} />}</span>
-                <span>{item.name}</span>
-              </button>
-            ))}
-          </div>
-          <div className="stage-detail" aria-live="polite" aria-atomic="true">
-            <div>
-              <p className="eyebrow" style={{ color: cinematic ? "var(--ui-muted)" : stage.color }}>{stage.tag}</p>
-              <h3>{stage.title}</h3>
-              <p>{stage.description}</p>
-            </div>
-            <div className="artifact">
-              <span className="eyebrow">What this step produces</span>
-              <strong>{stage.artifact}</strong>
-            </div>
-          </div>
-          <div className="recipe-proof">
-            <h3>A recorded run, with a result to inspect.</h3>
-            <p>The recorded GitHub workflow produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Bowerloom paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
-            <p>This result covers one prepared workflow and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
-            <div className="resource-links">
-              <ExternalLink href={destinations.trial}>Read the trial and its limits</ExternalLink>
-              <ExternalLink href={docs}>Explore the GitHub workflow</ExternalLink>
-            </div>
-            <p className="access-note">The source and guides are available on GitHub.</p>
-          </div>
-        </section>
+        <LabsWorkflow />
         <TutorialBuilder />
         <section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
@@ -284,8 +236,8 @@ export default function App() {
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
           <div className="resource-links">
-            <ExternalLink href={destinations.evidence}>Read the alpha boundaries</ExternalLink>
-            <ExternalLink href={destinations.releasePlan}>Explore the release plan</ExternalLink>
+            <a href="#alpha-guide">Read the alpha boundaries</a>
+            <a href="#release-plan">Explore the release plan</a>
             <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
         </section>
@@ -351,11 +303,11 @@ export default function App() {
         <p>An open-source framework for agent teams.</p>
         <div>
           <ExternalLink href={repository}>GitHub</ExternalLink>
-          <ExternalLink href={docs}>GitHub workflow guide</ExternalLink>
-          <ExternalLink href={destinations.evidence}>Alpha evidence</ExternalLink>
+          <ExternalLink href={destinations.readme}>README</ExternalLink>
+          <a href="#alpha-evidence">Alpha evidence</a>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
-        <p className="footer-access">Read the source and guides on GitHub.</p>
+        <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
         <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
       </footer>

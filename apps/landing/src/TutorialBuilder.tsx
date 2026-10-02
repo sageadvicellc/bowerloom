@@ -1,6 +1,8 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { buildTutorialPrompt, projects, initialSelection, palettes, reviewModes } from './tutorial';
 import './tutorial.css';
+import AlphaGuide from './AlphaGuide';
+import ProductText from './ProductText';
 
 export default function TutorialBuilder() {
   const [selection, setSelection] = useState(initialSelection);
@@ -28,6 +30,7 @@ export default function TutorialBuilder() {
       <h2 id="tutorial-heading">What will your first team take on?</h2>
       <p>Give your agent a goal worth sharing. It will help you define the roles, agree on the boundaries, and plan the moments when you check in.</p>
     </div>
+    <AlphaGuide />
     <form onSubmit={event => {
       event.preventDefault();
       try { setPrompt(buildTutorialPrompt(selection)); setError(''); setCopyStatus('Your tutorial-maker prompt is ready below.'); }
@@ -85,7 +88,7 @@ export default function TutorialBuilder() {
       <label htmlFor="tutorial-prompt">Your tutorial-maker prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to tailor the tutorial. It checks whether this alpha supports your project or whether native subagents need a separately agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p>Optional checkout setup requires Git, Node 24.11 within Node 24, and npm 11. Setup details stay in the prompt.</p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to tailor the tutorial. It checks whether this alpha supports your project or whether native subagents need a separately agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
     </div>}
   </section>;
 }

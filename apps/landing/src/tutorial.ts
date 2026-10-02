@@ -62,7 +62,7 @@ Use a local index.html as the project handoff, with links to artifacts and miles
 Record real worker outputs and independent review evidence. If independent review is unavailable, report that gap rather than labeling the maker's self-review independent. Never invent customer data, metrics, research, success claims, or acceptance.
 
 Optional Bowerloom checkout setup
-First inspect for an existing checkout. Setup requires Git, Node 24.11 or later within Node 24, and npm 11. Explain the required setup before installation. There is no published npm package for this alpha. If prerequisites are missing, report the gap. Never ask me to paste credentials.
+First inspect for an existing checkout. Setup requires git, node 24.11 or later within version 24, and npm 11. Explain the required setup before installation. There is no published npm package for this alpha. If prerequisites are missing, report the gap. Never ask me to paste credentials.
 For an explicitly agreed setup in a new directory without an existing bowerloom folder:
 ${setupCommands}
 For an existing checkout, inspect the branch and local changes. Never reset, overwrite, or switch a dirty checkout. Record the exact Git revision and actual command results. The example's runtimeReady: false means validation does not start workers or grant execution authority. Do not treat setup as project execution.

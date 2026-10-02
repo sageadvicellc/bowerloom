@@ -1,55 +1,23 @@
 export const repository = "https://github.com/sageadvicellc/bowerloom";
 const branch = `${repository}/blob/feature/trellis-v1`;
-export const docs = `${branch}/docs/recipes/labs-to-blog.md`;
 export const destinations = {
-  trial: `${branch}/docs/recipes/live-acceptance.md`,
-  mcp: `${branch}/apps/mcp/README.md`,
-  evidence: `${branch}/docs/alpha/acceptance-status.md`,
-  releasePlan: `${branch}/docs/transition/release-plan.md`,
+  readme: `${branch}/README.md`,
   license: `${branch}/package.json`,
 };
 export const hero = {
   "Eyebrow": "Portable tools and teams",
-  "H1": "Grow your abilities with Bowerloom",
+  "H1": "Grow your capabilities with Bowerloom",
   "Body": "Bowerloom is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
   "Primary CTA": "Build with your agent",
-  "Secondary link": "See the first workflow",
+  "Secondary link": "Explore the Labs workflow",
   "Illustration caption": "A maker and a robot helper at the workshop."
 } as const;
 
 export const stages = [
-  {
-    "name": "Experiment",
-    "tag": "The bench",
-    "title": "Bring the completed work.",
-    "description": "Select a completed experiment record and its committed evidence. This workflow starts with that record. It does not run a new experiment.",
-    "artifact": "Completed experiment record",
-    "color": "#C9F53A"
-  },
-  {
-    "name": "Evidence",
-    "tag": "The archive",
-    "title": "Keep the sources attached.",
-    "description": "Use evidence files from a fixed Git revision. Bowerloom checks the supplied bytes and declared links. You still judge whether the draft accurately describes the evidence.",
-    "artifact": "Evidence files and source links",
-    "color": "#83DDD0"
-  },
-  {
-    "name": "Draft",
-    "tag": "The table",
-    "title": "Write in your voice.",
-    "description": "Your personal agent prepares an evidence-linked blog draft. Bowerloom saves the draft, destination, and proposed change in a plan for review.",
-    "artifact": "Blog draft and proposed change",
-    "color": "#F2BE75"
-  },
-  {
-    "name": "Approval",
-    "tag": "The gate",
-    "title": "Approve the exact change.",
-    "description": "The designated local operator approves the saved plan. Bowerloom then creates the draft pull request. Publication and merging remain separate decisions.",
-    "artifact": "GitHub draft pull request",
-    "color": "#C9F53A"
-  }
+  { name: "Knowledge", tag: "Shared context", title: "Give the work a memory.", description: "The Knowledge officer keeps sources, decisions, and documentation connected to the project.", artifact: "Source-linked project knowledge", color: "#C9F53A" },
+  { name: "Brand", tag: "Voice and claims", title: "Keep the voice clear.", description: "Brand review checks the words and visuals against the guidelines and the available evidence.", artifact: "Brand review findings", color: "#83DDD0" },
+  { name: "Lead", tag: "Scope and decisions", title: "Agree on the work.", description: "The Tech lead coordinates roles, permissions, milestones, and peer review around one goal.", artifact: "Working agreement and reviewed changes", color: "#F2BE75" },
+  { name: "Team", tag: "Makers and reviewers", title: "Build, review, and return.", description: "The project team produces artifacts and evidence within the agreed worker limit. The founder reviews the result.", artifact: "Project artifacts and review evidence", color: "#C9F53A" }
 ] as const;
 
 export const questions = [
@@ -62,8 +30,8 @@ export const questions = [
     answer: "No. The default tutorial creates local project artifacts in your chosen workspace. The Labs-to-blog workflow is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that workflow."
   },
   {
-    question: "What does the example show?",
-    answer: "The Labs-to-blog example turns committed experiment evidence into a GitHub draft. It saves a plan and requires approval before the external write. You can explore this recorded workflow or use the tutorial maker to plan a different local project with your agent."
+    question: "What does the Labs workflow show?",
+    answer: "The Labs workflow describes the development team behind this alpha and landing page: Knowledge officer, Brand review, Tech lead, and a scalable project team. It explains how their work connects. It is not proof that Bowerloom independently ran the whole team. The Alpha Guide separates that story from recorded runtime tests."
   },
   {
     question: "Who approves external changes?",
@@ -75,7 +43,7 @@ export const questions = [
   },
   {
     question: "How do the modules fit together?",
-    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools; the alpha evidence records their current limits."
+    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools. The Alpha Guide records the current limits and upstream dependencies."
   },
   {
     question: "Can I take my team to another agent app?",

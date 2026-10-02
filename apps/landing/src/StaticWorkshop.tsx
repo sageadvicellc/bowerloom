@@ -6,7 +6,7 @@ export default function StaticWorkshop({ selected }: { selected: number }) {
       className="static-workshop"
       viewBox="0 0 800 620"
       role="img"
-      aria-label="Workflow steps: completed experiment, committed evidence, blog draft, and approval for a GitHub draft pull request."
+      aria-label="Illustrated Labs roles: knowledge, brand review, technical lead, and project team."
     >
       <defs>
         <radialGradient id="sun">
