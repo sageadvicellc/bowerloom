@@ -112,7 +112,7 @@ Generated JWT credentials expire after 30 days. This alpha has no credential-rot
 
 This PostgreSQL profile follows the earlier MIT DBOS 5.2.11 compatibility proof. This installer does not rerun DBOS recovery tests or establish new runtime acceptance.
 
-The Labs-to-blog seed uses PostgreSQL and LangGraph checkpoints. Its database, private installation, and exact action approvals remain separate requirements.
+The Labs-to-blog recipe uses PostgreSQL and LangGraph checkpoints. Its database, private installation, and exact action approvals remain separate requirements.
 
 Vines currently declares logging maps. Backend installation does not create a new Vines collection service or add self-improvement.
 
@@ -120,7 +120,11 @@ Vines currently declares logging maps. Backend installation does not create a ne
 
 Source tests use an injected Docker runner and synthetic readiness results. They cover approval, tampering, ownership, reserved paths, disk gates, and failure preservation.
 
-These tests do not start Docker or establish live backend readiness. A reviewed isolated installation must supply that evidence separately.
+These source tests do not start Docker. A separate isolated installation passed on October 2, 2026, against implementation `dcdd3a103b90ec7b3de4287bd6715717884732c2`.
+
+The live run used five cached images and a new private project. Fresh status reported authenticated PostgreSQL, protected Studio, metadata access, and REST availability.
+
+A wrong PostgreSQL password was rejected. This one local run does not establish fresh-download behavior, other platforms, cloud setup, or agent execution.
 
 From the repository root, run:
 
