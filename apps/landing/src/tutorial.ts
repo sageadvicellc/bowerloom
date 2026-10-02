@@ -63,7 +63,7 @@ Record real worker outputs and independent review evidence. If independent revie
 
 Optional Bowerloom checkout setup
 First inspect for an existing checkout. Setup requires Git, Node 24.11 or later within Node 24, and npm 11. Explain the required setup before installation. There is no published npm package for this alpha. If prerequisites are missing, report the gap. Never ask me to paste credentials.
-For an explicitly agreed setup in a new directory without an existing trellis folder:
+For an explicitly agreed setup in a new directory without an existing bowerloom folder:
 ${setupCommands}
 For an existing checkout, inspect the branch and local changes. Never reset, overwrite, or switch a dirty checkout. Record the exact Git revision and actual command results. The example's runtimeReady: false means validation does not start workers or grant execution authority. Do not treat setup as project execution.
 

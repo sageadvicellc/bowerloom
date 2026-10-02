@@ -83,6 +83,6 @@ export const questions = [
   },
   {
     question: "What does it cost to try?",
-    answer: "Bowerloom is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and source access is currently limited. The tutorial lists the setup requirements and tells your agent not to spend money."
+    answer: "Bowerloom is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and the source is available on GitHub. The tutorial lists the setup requirements and tells your agent not to spend money."
   }
 ] as const;

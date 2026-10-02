@@ -15,7 +15,7 @@ Your ideas deserve a few extra hands.
 
 Bowerloom is the new name for this project. Its primary brand domain is `bowerloom.ai`, with `bowerloom.dev` as a secondary domain.
 
-This checkout still uses the existing GitHub repository and branch. These domain names do not indicate a published service.
+The public source is at `sageadvicellc/bowerloom`. The integration branch remains `feature/trellis-v1`. These domain names do not indicate a published service.
 
 Bowerloom is a free, open-source toolkit for agents to build and operate automations. Your personal agent helps turn a routine into a reusable workflow.
 
@@ -100,7 +100,6 @@ node dist/apps/cli/src/main.js validate examples/endor/crew.yaml
 This command reads the crew definition. It does not start workers or grant execution authority. The example reports `runtimeReady: false` by design.
 
 For selective local installation, read the [Bowerloom portable parts guide](docs/transition/bowerloom-migration.md). It separates file installation from agent execution.
-
 
 Give your personal agent this starting request:
 
