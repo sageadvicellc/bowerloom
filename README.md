@@ -3,7 +3,7 @@
   <img src="docs/assets/bowerloom-header-light.png" alt="Bowerloom, with a robot helper waving beside a sage trellis" width="1200">
 </picture>
 
-# Grow your abilities with Bowerloom
+# Grow your capabilities with Bowerloom
 
 <img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28">
 <img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
@@ -20,16 +20,31 @@ Bowerloom is a free, open-source toolkit for agents to build and operate automat
 
 Agents work together as a team, with named roles and a workflow you can review.
 
-Keep your team definitions in files that you can read, change, and version. They live outside any individual agent app.
+Keep your team definitions in files that you can read and version. They live outside any individual agent app.
 
-[Build with your agent](#build-with-your-agent) · [Try the first workflow](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
+[Build with your agent](#build-with-your-agent) · [Explore the Labs workflow](#the-labs-workflow) · [Explore the roadmap](docs/transition/release-plan.md)
 
 > [!NOTE]
 > `v0.7-alpha` is a local, Codex-first development trial. The source repository is public. The public installer and release are not published. Founder acceptance remains pending.
 
-## Start with one useful routine
+## The Labs workflow
 
-The first workflow turns a completed Labs experiment into a blog draft. Your personal agent writes the prose from selected evidence.
+Our first project team, `v0.7-workbench`, worked on `v0.7-alpha` and its landing page.
+
+| Role | Responsibility |
+| --- | --- |
+| Knowledge officer | Wiki librarian and author, with sources attached |
+| Brand review | Words and visuals that follow the brand guidelines |
+| Tech lead | Scoped work, technical decisions, and peer review |
+| `{Project} team` | Makers and reviewers, scaled within an agreed worker limit |
+
+The product informs the page. Founder feedback returns to the team as the next scoped change.
+
+The `workbench` versions belong to Labs, not the end-user release sequence. This team history does not establish autonomous execution of that graph through Bowerloom.
+
+## A recorded integration test
+
+The separate Labs-to-blog recipe turns a completed experiment into a blog draft. Your personal agent writes the prose from selected evidence.
 
 ```text
 An experiment → a grounded draft → your approval → a GitHub draft pull request
@@ -80,7 +95,7 @@ GitHub does not provide a reliable reduced-motion control for this GIF. Keep thi
 
 </details>
 
-Use Node 24.11 or later within Node 24, npm 11, and Git for this development checkout.
+Use `node` 24.11 or later within version 24, `npm` 11, and `git` for this development checkout.
 
 ```sh
 git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/bowerloom.git
