@@ -92,7 +92,8 @@ export async function runRecipeCommand(args: string[]): Promise<object> {
       const bytes = Buffer.alloc(1024*1024+1); let size=0;
       while(size<bytes.length) { const next = await file.read(bytes,size,bytes.length-size,null); if(!next.bytesRead)break; size+=next.bytesRead; }
       const after=await file.stat(); if(size!==before.size || after.size!==before.size || after.mtimeMs!==before.mtimeMs || after.ctimeMs!==before.ctimeMs)fail('REQUEST_CHANGED');
-      input = strictJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,size)),1024*1024);
+      // strictJson uses null-prototype records; normalize every nested record before copyJson validation.
+      input = structuredClone(strictJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,size)),1024*1024));
     } finally { await file.close(); }
   }
   const controller = await openRecipeService(installation);
