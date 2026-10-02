@@ -105,29 +105,48 @@ npm run build
 node dist/apps/cli/src/main.js --help
 ```
 
-From the repository directory, inspect the included offline example:
-
-```sh
-node dist/apps/cli/src/main.js validate examples/endor/crew.yaml
-```
-
-This command reads the crew definition. It does not start workers or grant execution authority. The example reports `runtimeReady: false` by design.
-
-For selective local installation, read the [Bowerloom portable parts guide](docs/transition/bowerloom-migration.md). It separates file installation from agent execution.
-
-Give your personal agent this starting request:
+Give your existing personal agent this starting request:
 
 ```text
-Read this Bowerloom checkout and docs/recipes/labs-to-blog.md.
-Help me prepare a blog draft from a selected experiment record.
-Keep credentials outside portable definitions.
-Show me the exact proposed change before any external write.
-Keep publication and merging under my control.
+Read this Bowerloom checkout and its init command.
+Help me choose a new workspace or an existing project.
+Use my goal to prepare a personal-agent profile and first team.
+Show the full file plan and working agreement before installation.
+Wait for my approval of the exact plan revision.
+After installation, inspect the files with init status.
+Read .bowerloom/START-HERE.md and stop for my review.
+Do not start workers or import Claude or Codex settings.
 ```
 
-From this checkout, replace `trellis` in recipe commands with `node dist/apps/cli/src/main.js`.
+From the repository directory, plan a new workspace:
 
-The recipe needs a prepared PostgreSQL database and a GitHub App installation. Follow the [recipe instructions](docs/recipes/labs-to-blog.md) before execution.
+```sh
+node dist/apps/cli/src/main.js init plan --mode new --target /absolute/projects/first-team --name "First team" --goal "Prepare a fictional client onboarding kit for my review."
+```
+
+Use an existing parent directory. Choose an unused target for `new` mode.
+For an existing project, use `--mode existing` and its absolute directory.
+Existing mode adds only `.bowerloom`. It preserves project files and harness settings.
+
+Read the proposed files and agreement before installation. Keep all inputs unchanged when you apply the plan:
+
+```sh
+node dist/apps/cli/src/main.js init apply --mode new --target /absolute/projects/first-team --name "First team" --goal "Prepare a fictional client onboarding kit for my review." --approve REPLACE_WITH_EXACT_PLAN_REVISION
+node dist/apps/cli/src/main.js init status --target /absolute/projects/first-team
+```
+
+Startup creates a portable profile for your existing agent. It generates a lead, maker, and reviewer from a fixed template.
+It also creates versioned skills, communication and logging maps, and a working agreement.
+The compiler reads the generated team before installation. File approval starts no workers or backend services.
+Claude and Codex settings converters belong to `v0.7-beta`.
+
+Read the [startup guide](packages/startup/README.md) for structured briefs and file boundaries.
+The separate [portable installer](docs/transition/bowerloom-migration.md) copies selected existing files.
+
+The recorded Labs-to-blog recipe is a separate runtime path with a real GitHub connection.
+It needs a prepared PostgreSQL database and a GitHub App installation.
+Follow the [recipe instructions](docs/recipes/labs-to-blog.md) before execution.
+Keep credentials outside portable definitions. Exact action approval, publication, and merging remain separate.
 
 For personal agents that use MCP, read the [MCP setup guide](apps/mcp/README.md). MCP exposes the same controlled recipe operations as the CLI.
 

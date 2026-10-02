@@ -52,3 +52,17 @@ test('both review cadences retain approval, truthful execution, independent revi
     assert.ok(prompt.includes(setupCommands));
   }
 });
+
+// The copied prompt must lead to actual CLI files before it requests execution.
+test('both tutorial cadences use the approved startup sequence and retain beta import boundaries', () => {
+  for (const mode of reviewModes) {
+    const prompt = buildTutorialPrompt({ ...initialSelection, reviewModeId: mode.id });
+    assert.ok(prompt.includes('init plan --mode new|existing'));
+    assert.ok(prompt.includes('init apply with the same inputs and --approve EXACT_PLAN_REVISION'));
+    assert.ok(prompt.includes('init status --target ABSOLUTE_PROJECT_PATH'));
+    assert.ok(prompt.includes('.bowerloom/START-HERE.md'));
+    assert.ok(prompt.includes('Claude and Codex converters belong to v0.7-beta'));
+    assert.ok(prompt.includes(`Set reviewMode to ${mode.id === 'guided' ? 'milestones' : 'handoff'}`));
+    assert.ok(prompt.includes('Stop at this first acceptance milestone'));
+  }
+});

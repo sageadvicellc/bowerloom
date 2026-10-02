@@ -67,18 +67,18 @@ export default function TutorialBuilder() {
       </div>
       <div className="tutorial-action">
         <button className="tutorial-primary" type="submit">Get my tutorial-maker prompt</button>
-        <p className="tutorial-hint">Take it to your existing agent. It confirms the available tools and asks you to approve the working agreement before work starts.</p>
+        <p className="tutorial-hint">Take it to your existing agent. It prepares your startup files and asks you to approve the exact plan before installation.</p>
       </div>
       {error && <p id="tutorial-error" role="alert">{error}</p>}
     </form>
     <p className="tutorial-copy-status" role="status">{copyStatus}</p>
     {prompt && <div className="tutorial-result">
       <h3>Your agent takes it from here.</h3>
-      <p>The prompt includes your goal, team roles, milestones, and approval rules. Paste it into your agent to begin with a working agreement.</p>
+      <p>The prompt includes your goal, team roles, milestones, and approval rules. Paste it into your agent to choose a new workspace or an existing project.</p>
       <label htmlFor="tutorial-prompt">Your tutorial-maker prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to tailor the tutorial. It checks whether this alpha supports your project or whether native subagents need a separately agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable profile and first team after your approval. Project execution requires a separate agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
     </div>}
   </section>;
 }

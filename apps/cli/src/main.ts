@@ -9,6 +9,9 @@ import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 const HELP = `Bowerloom v0.7-alpha: local controlled workflows
 
 Usage:
+  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
+  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
+  bowerloom init status --target <absolute-directory>
   bowerloom backend doctor
   bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
   bowerloom backend status --root <private-installation-directory>
@@ -24,6 +27,9 @@ Usage:
   bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
 The trellis and trellis-mcp commands remain compatibility aliases.
+Init prepares a personal-agent profile and first team specification from your brief.
+Init apply requires the exact plan revision. It starts no workers or backend services.
+Existing mode adds .bowerloom only. Claude and Codex settings import belongs to beta.
 Backend install requires --approve with the exact current plan revision.
 Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
 Docker Desktop is a prerequisite. The CLI never installs privileged host software.
@@ -40,6 +46,11 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'init') {
+    const { runStartupCommand } = await import('./startup.js');
+    process.stdout.write(`${canonicalJson(await runStartupCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'backend') {
     const { runBackendCommand } = await import('./backend.js');
     process.stdout.write(`${canonicalJson(await runBackendCommand(args))}\n`);
