@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/tests/*.test.js dist/packages/codex-adapter/test/*.test.js dist/packages/roots/test/*.test.js packages/broker-postgres/test/*.test.mjs packages/workspace-effects/test/*.test.mjs packages/admission/test/*.test.mjs packages/runtime/test/*.test.mjs packages/graph/test/*.test.mjs packages/runtime-bridge/test/*.test.mjs packages/controlled-tests/test/*.test.mjs packages/linux-browser/test/*.test.mjs apps/mcp/test/*.test.mjs connections/n8n/*.test.mjs packages/portable/test/*.test.mjs",
+    "test": "npm run build && node --test dist/tests/*.test.js dist/packages/codex-adapter/test/*.test.js dist/packages/roots/test/*.test.js packages/broker-postgres/test/*.test.mjs packages/workspace-effects/test/*.test.mjs packages/admission/test/*.test.mjs packages/runtime/test/*.test.mjs packages/graph/test/*.test.mjs packages/runtime-bridge/test/*.test.mjs packages/controlled-tests/test/*.test.mjs packages/linux-browser/test/*.test.mjs apps/mcp/test/*.test.mjs connections/n8n/*.test.mjs packages/portable/test/*.test.mjs packages/local-backend/test/*.test.mjs",
     "trellis": "node dist/apps/cli/src/main.js",
     "test:broker-postgres": "npm run build && node --test packages/broker-postgres/test/*.test.mjs",
     "test:workspace-effects": "npm run build && node --test packages/workspace-effects/test/*.test.mjs",
@@ -37,7 +37,8 @@
     "test:mcp": "npm run build && node --test apps/mcp/test/*.test.mjs",
     "test:n8n-export": "node --test connections/n8n/*.test.mjs",
     "bowerloom": "node dist/apps/cli/src/main.js",
-    "test:portable": "npm run build && node --test packages/portable/test/*.test.mjs dist/tests/portable-cli.test.js"
+    "test:portable": "npm run build && node --test packages/portable/test/*.test.mjs dist/tests/portable-cli.test.js",
+    "test:local-backend": "npm run build && node --test packages/local-backend/test/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.11.0",

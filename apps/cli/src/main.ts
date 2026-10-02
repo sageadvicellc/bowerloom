@@ -9,6 +9,9 @@ import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 const HELP = `Bowerloom v0.7-alpha: local controlled workflows
 
 Usage:
+  bowerloom backend doctor
+  bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
+  bowerloom backend status --root <private-installation-directory>
   bowerloom portable validate <bundle-directory>
   bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex --target <new-absolute-directory> [--approve <revision>]
   bowerloom recipe inspect|setup --installation <private.json>
@@ -21,6 +24,9 @@ Usage:
   bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
 The trellis and trellis-mcp commands remain compatibility aliases.
+Backend install requires --approve with the exact current plan revision.
+Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
+Docker Desktop is a prerequisite. The CLI never installs privileged host software.
 Portable install requires --approve with the exact current plan revision.
 Portable installation copies selected files. It starts no workers.
 The source root defaults to the directory that contains crew.yaml.
@@ -34,6 +40,11 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'backend') {
+    const { runBackendCommand } = await import('./backend.js');
+    process.stdout.write(`${canonicalJson(await runBackendCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'portable') {
     const { runPortableCommand } = await import('./portable.js');
     process.stdout.write(`${canonicalJson(runPortableCommand(args))}\n`);
