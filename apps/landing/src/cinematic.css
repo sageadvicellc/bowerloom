@@ -242,37 +242,3 @@
 .cinematic-theme .offer-controls button { color: var(--trellis-link); }
 .cinematic-theme .offer-controls button[aria-pressed="true"] { color: var(--ui-primary-fg); }
 .cinematic-theme p code { color: var(--ui-text); }
-
-/* Founder experiment: lace is confined to the hero card and can be removed alone. */
-.cinematic-theme .cinematic-copy {
-  position: relative;
-  isolation: isolate;
-  background: rgba(255, 253, 247, .79);
-  -webkit-backdrop-filter: blur(18px) saturate(.8);
-  backdrop-filter: blur(18px) saturate(.8);
-  box-shadow: 0 12px 32px #34352f10;
-}
-.cinematic-theme .cinematic-copy::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(255, 253, 247, .84) 12%, rgba(255, 253, 247, .84) 88%, transparent);
-}
-.cinematic-theme .cinematic-copy::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg stroke='%23fffefa' stroke-width='1.4' fill='none'%3E%3Cpath d='M32 0C15 10 15 22 32 32C49 22 49 10 32 0ZM0 32C10 15 22 15 32 32C22 49 10 49 0 32ZM32 64C15 54 15 42 32 32C49 42 49 54 32 64ZM64 32C54 15 42 15 32 32C42 49 54 49 64 32Z'/%3E%3Ccircle cx='32' cy='32' r='8'/%3E%3Ccircle cx='32' cy='32' r='3' fill='%23fffefa'/%3E%3Cpath d='M0 0Q16 16 32 0M64 0Q48 16 64 32M64 64Q48 48 32 64M0 64Q16 48 0 32' stroke-width='3'/%3E%3C/g%3E%3C/svg%3E");
-  -webkit-mask-image: linear-gradient(90deg, #000, transparent 18%, transparent 82%, #000), linear-gradient(#000, transparent 9%, transparent 91%, #000);
-  mask-image: linear-gradient(90deg, #000, transparent 18%, transparent 82%, #000), linear-gradient(#000, transparent 9%, transparent 91%, #000);
-}
-@supports not (backdrop-filter: blur(1px)) {
-  .cinematic-theme .cinematic-copy { background: #fffdf7; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .cinematic-theme .cinematic-copy { background: #fffdf7; -webkit-backdrop-filter: none; backdrop-filter: none; }
-}

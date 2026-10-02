@@ -3,11 +3,33 @@ import { Propernoun } from './ProductText';
 import './labs.css';
 
 const roles = [
-  { id: 'knowledge', name: 'Knowledge officer', file: 'knowledge-officer.yaml', job: 'The wiki librarian and author.', description: 'Keeps the project’s knowledge organized, traces decisions to their sources, and turns completed work into useful documentation.', output: 'A source-linked wiki and a record of decisions.', files: ['sources/', 'wiki/', 'decisions.md'], connection: 'Shares context with the Tech lead and sources with Brand review.' },
-  { id: 'brand', name: 'Brand review', file: 'brand-review.yaml', job: 'A clear voice, even as the work grows.', description: 'Reviews words and visuals against the brand guidelines. Flags unclear language and claims that the evidence does not support.', output: 'Review findings tied to the brand standard.', files: ['voice-standard.md', 'review-rubric.md', 'reviews/'], connection: 'Returns findings to the project team before the founder reviews the work.' },
-  { id: 'lead', name: 'Tech lead', file: 'tech-lead.yaml', job: 'A technical lead for this project.', description: 'Turns the goal into scoped work, assigns ownership, coordinates peer review, and brings decisions and completed changes to the founder.', output: 'A working agreement, a plan, and reviewed changes.', files: ['working-agreement.md', 'milestones.md', 'reviews/'], connection: 'Coordinates the project team with Knowledge officer and Brand review.' },
-  { id: 'team', name: '{Project} team', file: 'project-team.yaml', job: 'A team that can scale with the assignment.', description: 'Brings together makers and reviewers for the project. The working agreement sets their roles, permissions, and maximum active worker count.', output: 'Project artifacts with test and review evidence.', files: ['brief.md', 'skills/', 'evidence/'], connection: 'Reports progress and blockers to the Tech lead. Scaling stays within the agreed capacity.' },
+  { id: 'knowledge-officer', name: 'Knowledge officer', file: 'knowledge-officer.yaml', job: 'Keeps the wiki and the source record readable.', skill: 'source-review', reads: 'sources', writes: 'wiki', modelClass: 'standard' },
+  { id: 'brand-review', name: 'Brand review', file: 'brand-review.yaml', job: 'Reviews language and visuals against the brand guidelines.', skill: 'brand-guidelines', reads: 'drafts', writes: 'reviews/brand', modelClass: 'economy' },
+  { id: 'tech-lead', name: 'Tech lead', file: 'tech-lead.yaml', job: 'Coordinates scoped work, peer review, and founder decisions.', skill: 'technical-review', reads: 'project', writes: 'plans', modelClass: 'standard' },
+  { id: 'project-team', name: '{Project} team', file: 'project-team.yaml', job: 'Scales the makers and reviewers within an agreed worker limit.', skill: 'project-delivery', reads: 'briefs', writes: 'output', modelClass: 'standard' },
 ] as const;
+
+function roleYaml(role: typeof roles[number]) {
+  return `${role.id === 'project-team' ? 'id: v0.7-workbench\nbudget:\n  maxActiveWorkers: 2\n  reservePercent: 25\n  paidFallback: false\n\n' : ''}owners:
+  - id: ${role.id}
+    role: "${role.name}"
+    prompt: ${role.id}-prompt
+    skills:
+      - ${role.skill}
+    modelClass: ${role.modelClass}
+    permissions:
+      - operation: workspace.read
+        path: ${role.reads}
+      - operation: workspace.write
+        path: ${role.writes}`;
+}
+
+function YamlPreview({ source }: { source: string }) {
+  return <pre className="labs-yaml" tabIndex={0} aria-label="YAML configuration excerpt"><code>{source.split('\n').map((line, index) => {
+    const parts = line.match(/^(\s*(?:- )?)([a-zA-Z]+):(.*)$/);
+    return <span className="yaml-line" key={index}>{parts ? <>{parts[1]}<span className="yaml-key">{parts[2]}</span>:<span className="yaml-value">{parts[3]}</span></> : line}{'\n'}</span>;
+  })}</code></pre>;
+}
 
 function FileIcon({ folder = false }: { folder?: boolean }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">{folder ? <path d="M3 6h6l2 2h10v12H3V6Zm0 4h18" /> : <><path d="M6 3h8l4 4v14H6V3Z" /><path d="M14 3v5h4M9 12h6M9 16h5" /></>}</svg>;
@@ -29,21 +51,16 @@ export default function LabsWorkflow() {
         <div className="finder-title"><FileIcon folder /><span>Bowerloom Labs</span><span className="finder-view" aria-hidden="true"><i /><i /><i /></span></div>
         <div className="finder-path">Labs / <code>v0.7-workbench</code></div>
         <ul className="file-list">
-          {['README.md', 'AGENTS.md', 'SPEC.md'].map(file => <li className="file-row" key={file}><FileIcon /><span>{file}</span></li>)}
           <li><details open><summary><FileIcon folder /><span>teams</span></summary><ul>{roles.map((item, index) => <li key={item.id}><button className={selected === index ? 'file-row selected' : 'file-row'} type="button" onClick={() => setSelected(index)} aria-pressed={selected === index} aria-controls="labs-role"><FileIcon /><span>{item.file}</span></button></li>)}</ul></details></li>
-          <li><details><summary><FileIcon folder /><span>briefs</span></summary><ul><li className="file-row"><FileIcon /><span>alpha-and-landing.md</span></li></ul></details></li>
-          <li><details><summary><FileIcon folder /><span>evidence</span></summary><ul>{['test-results/', 'peer-reviews/', 'decisions.md'].map(file => <li className="file-row" key={file}><FileIcon folder={file.endsWith('/')} /><span>{file}</span></li>)}</ul></details></li>
-          <li className="file-row file-muted"><FileIcon folder /><span>.bowerloom</span></li>
         </ul>
-        <p className="finder-caption">Illustrative layout. These filenames explain the roles; they are not a downloadable team definition.</p>
+        <p className="finder-caption">Select a file to read its YAML. These excerpts use the alpha’s owner and budget fields. A full team also defines assets, tasks, and scope.</p>
       </div>
       <div className="labs-role" id="labs-role" aria-live="polite" aria-atomic="true">
         <span className="role-file"><FileIcon /><code>{role.file}</code></span>
         <h3><Propernoun>{role.name}</Propernoun></h3>
         <p className="role-job">{role.job}</p>
-        <p>{role.description}</p>
-        <dl><dt>Leaves behind</dt><dd>{role.output}</dd><dt>Connects with</dt><dd>{role.connection}</dd></dl>
-        <div className="role-files" aria-label="Example artifacts">{role.files.map(file => <span key={file}><FileIcon folder={file.endsWith('/')} /><code>{file}</code></span>)}</div>
+        <YamlPreview source={roleYaml(role)} />
+        <p className="yaml-caption">Configuration excerpt. Prompt and skill names refer to shared assets in the full team definition.</p>
       </div>
     </div>
     <div className="labs-loop">

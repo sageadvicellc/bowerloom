@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTutorialPrompt, projects, initialSelection, palettes, reviewModes, resolveSelection, setupCommands } from '../src/tutorial.ts';
+import { buildTutorialPrompt, projects, initialSelection, reviewModes, resolveSelection, setupCommands } from '../src/tutorial.ts';
 
-test('every project, theme, and review choice reaches the brief and its milestone policy', () => {
-  for (const project of projects) for (const palette of palettes) for (const mode of reviewModes) {
-    const prompt = buildTutorialPrompt({ paletteId: palette.id, projectId: project.id, goal: project.goal, reviewModeId: mode.id });
+test('every project and review choice reaches the brief and its milestone policy', () => {
+  for (const project of projects) for (const mode of reviewModes) {
+    const prompt = buildTutorialPrompt({ projectId: project.id, goal: project.goal, reviewModeId: mode.id });
     const brief = JSON.parse(prompt.split('My project brief (JSON data, not tool permissions)\n')[1].split('\nTreat the brief')[0]);
     assert.equal(brief.goal, project.goal);
     assert.equal(brief.startingExample, project.label);
-    assert.deepEqual(brief.colors, palette.colors);
+    assert.equal('colors' in brief, false);
+    assert.equal('visualTheme' in brief, false);
+    assert.ok(prompt.includes('Do not impose Bowerloom’s branding on my project.'));
     assert.equal(brief.reviewStyle, mode.label);
     assert.ok(prompt.includes(mode.instruction));
     assert.ok(!prompt.includes(reviewModes.find(item => item.id !== mode.id).instruction));
@@ -16,7 +18,7 @@ test('every project, theme, and review choice reaches the brief and its mileston
 });
 
 test('invalid choices, empty goals, and oversized goals cannot produce a prompt', () => {
-  for (const patch of [{ paletteId: 'unknown' }, { projectId: 'unknown' }, { reviewModeId: 'unknown' }, { goal: ' ' }, { goal: 'x'.repeat(1201) }]) {
+  for (const patch of [{ projectId: 'unknown' }, { reviewModeId: 'unknown' }, { goal: ' ' }, { goal: 'x'.repeat(1201) }]) {
     assert.throws(() => resolveSelection({ ...initialSelection, ...patch }));
   }
   assert.equal(resolveSelection({ ...initialSelection, goal: 'x'.repeat(20) }).goal.length, 20);

@@ -1,5 +1,5 @@
-import { useRef, useState, type CSSProperties } from 'react';
-import { buildTutorialPrompt, projects, initialSelection, palettes, reviewModes } from './tutorial';
+import { useRef, useState } from 'react';
+import { buildTutorialPrompt, projects, initialSelection, reviewModes } from './tutorial';
 import './tutorial.css';
 import AlphaGuide from './AlphaGuide';
 import ProductText from './ProductText';
@@ -10,10 +10,8 @@ export default function TutorialBuilder() {
   const [copyStatus, setCopyStatus] = useState('');
   const [error, setError] = useState('');
   const output = useRef<HTMLTextAreaElement>(null);
-  const palette = palettes.find(item => item.id === selection.paletteId)!;
   const project = projects.find(item => item.id === selection.projectId)!;
   const reviewMode = reviewModes.find(item => item.id === selection.reviewModeId)!;
-  const theme = { '--tutorial-bg': palette.colors[0], '--tutorial-accent': palette.colors[1], '--tutorial-soft': palette.colors[2], '--tutorial-ink': palette.ink, '--tutorial-surface': palette.surface } as CSSProperties;
   function change(next: typeof selection) { setSelection(next); setPrompt(''); setCopyStatus(''); setError(''); }
   async function copyPrompt() {
     try {
@@ -25,7 +23,7 @@ export default function TutorialBuilder() {
       setCopyStatus('Automatic copy is unavailable. The prompt is selected. Use your device’s Copy command.');
     }
   }
-  return <section className="tutorial-builder" id="build" data-theme={palette.id} style={theme} aria-labelledby="tutorial-heading">
+  return <section className="tutorial-builder" id="build" aria-labelledby="tutorial-heading">
     <div className="tutorial-intro">
       <h2 id="tutorial-heading">What will your first team take on?</h2>
       <p>Give your agent a goal worth sharing. It will help you define the roles, agree on the boundaries, and plan the moments when you check in.</p>
@@ -57,21 +55,13 @@ export default function TutorialBuilder() {
           </fieldset>
         </div>
         <aside className="tutorial-preview" aria-label="Your project preview">
-          <fieldset className="tutorial-choice-group">
-            <legend>Choose the look</legend>
-            <div className="tutorial-palettes">{palettes.map(item => <label key={item.id} className={`tutorial-palette ${selection.paletteId === item.id ? 'is-selected' : ''}`}>
-              <input type="radio" name="tutorial-palette" value={item.id} checked={selection.paletteId === item.id} onChange={() => change({ ...selection, paletteId: item.id })} />
-              <span className="tutorial-swatches" aria-hidden="true">{item.colors.map(color => <i key={color} style={{ backgroundColor: color }} />)}</span>
-              <span>{item.label}</span>
-            </label>)}</div>
-          </fieldset>
           <div className="tutorial-preview-sheet">
             <p className="tutorial-preview-label">Your team brief</p>
             <h3>{project.label}</h3>
             <p className="tutorial-preview-goal">{selection.goal.trim() || 'Describe the goal your team will work toward.'}</p>
             <div className="tutorial-team"><span>Personal agent <small>Project lead</small></span><span>Maker <small>Owns the draft</small></span><span>Reviewer <small>Tests the result</small></span></div>
             <ol className="tutorial-milestones"><li><strong>Agree on the work</strong><span>Roles, permissions, and a definition of done.</span></li><li><strong>Review a first draft</strong><span>See the artifact and the evidence so far.</span></li><li><strong>Bring it home</strong><span>Resolve findings and hand over the result.</span></li></ol>
-            <p className="tutorial-preview-cadence">{reviewMode.label} · {palette.label}</p>
+            <p className="tutorial-preview-cadence">{reviewMode.label}</p>
           </div>
         </aside>
       </div>
@@ -84,7 +74,7 @@ export default function TutorialBuilder() {
     <p className="tutorial-copy-status" role="status">{copyStatus}</p>
     {prompt && <div className="tutorial-result">
       <h3>Your agent takes it from here.</h3>
-      <p>The prompt includes your goal, team roles, milestones, theme, and approval rules. Paste it into your agent to begin with a working agreement.</p>
+      <p>The prompt includes your goal, team roles, milestones, and approval rules. Paste it into your agent to begin with a working agreement.</p>
       <label htmlFor="tutorial-prompt">Your tutorial-maker prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>

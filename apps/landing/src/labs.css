@@ -67,3 +67,10 @@
   .finder-title { padding: 16px 20px; }
   .finder-caption { padding-inline: 20px; }
 }
+
+.labs-role .labs-yaml { margin: 24px 0 16px; padding: 20px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); overflow-x: auto; font: 14px/1.7 var(--ui-font); tab-size: 2; }
+.labs-role .labs-yaml code { font: inherit; padding: 0; background: none; }
+.yaml-key { color: #47593b; font-weight: 600; }
+.yaml-value { color: #6f4054; }
+.labs-role .yaml-caption { font-size: 14px; line-height: 1.6; }
+.labs-yaml:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
