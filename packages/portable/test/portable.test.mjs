@@ -179,3 +179,17 @@ test('hardlinked sources and public target parents are rejected', t => {
   assert.throws(() => planInstallation(input), code('TARGET_PARENT_NOT_PRIVATE'));
   fs.chmodSync(parent, 0o700);
 });
+
+for (const kind of [['skill'], ['team'], [], {}, null, 1, true, 'unknown']) {
+  test(`reject non-schema part kind ${JSON.stringify(kind)} before planning or installation`, t => {
+    const { input, change } = fixture(t);
+    const directory = join(input.bundleDir, '.bowerloom/teams/report');
+    fs.mkdirSync(directory, {recursive:true});
+    fs.writeFileSync(join(directory, 'data.json'), '{}');
+    change(m => { m.parts[0].kind = kind; m.parts[0].files = ['teams/report/data.json']; });
+    assert.throws(() => validateBundle(input.bundleDir), code('INVALID_PART'));
+    assert.throws(() => planInstallation(input), code('INVALID_PART'));
+    assert.throws(() => installBundle(input, '0'.repeat(64)), code('INVALID_PART'));
+    assert.equal(fs.existsSync(input.targetDir), false);
+  });
+}

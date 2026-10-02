@@ -95,7 +95,7 @@ function snapshot(bundleDir: string): { validation: BundleValidation; texts: Map
   let total = Buffer.byteLength(raw);
   for (const candidate of value.parts as unknown[]) {
     exact(candidate, ['id', 'kind', 'files', 'dependsOn'], ['requiredControls']);
-    if (typeof candidate.id !== 'string' || !ID.test(candidate.id) || ids.has(candidate.id) || !['skill', 'team'].includes(String(candidate.kind))) fail('INVALID_PART');
+    if (typeof candidate.id !== 'string' || !ID.test(candidate.id) || ids.has(candidate.id) || typeof candidate.kind !== 'string' || !['skill', 'team'].includes(candidate.kind)) fail('INVALID_PART');
     ids.add(candidate.id as string);
     const files = strings(candidate.files, LIMITS.files), deps = strings(candidate.dependsOn, LIMITS.parts);
     const controls = candidate.requiredControls === undefined ? [] : strings(candidate.requiredControls, 8);
