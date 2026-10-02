@@ -1,4 +1,4 @@
-import { hero, stages } from "./content";
+import { hero, stages } from "./content.js";
 
 /** Media is supplied and reviewed separately. Ready means matching media is present, not accepted. */
 export const cinematicJourney = {

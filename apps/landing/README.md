@@ -1,6 +1,6 @@
-# Trellis alpha workshop
+# Bowerloom alpha workshop
 
-A standalone React landing page with the selected generated still and a preserved React Three Fiber workshop. It introduces Trellis and the Labs recipe; it does not run the recipe or connect accounts.
+A standalone React landing page with the selected generated still and a preserved React Three Fiber workshop. It introduces Bowerloom and the Labs recipe; it does not run the recipe or connect accounts.
 
 From this directory, with Node 24.11:
 

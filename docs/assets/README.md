@@ -1,6 +1,6 @@
 # README artwork
 
-The v2 banner uses Sage Picnic colors and Lora letterforms. The text is rasterized from font outlines, so GitHub needs no external font.
+The current Bowerloom banner uses Sage Picnic colors and Lora letterforms. The text is rasterized from font outlines, so GitHub needs no external font.
 The included `Lora-OFL.txt` states the font license. GitHub controls ordinary Markdown typography.
 
 The three Sprout poses derive from the approved cream robot identity. The founder has not selected the final pose.
@@ -12,6 +12,8 @@ The loop stays inside a collapsed details section, with a still image outside it
 The badges describe current package metadata and private alpha access. They contain no coverage or CI result claim.
 The MIT badge states the package declaration. It does not claim that a separate license file exists.
 
-The old SVG headers and dividers remain intact for source history. The README references the v2 PNG headers and existing dividers.
+The old SVG headers and dividers remain intact for source history. The README references the Bowerloom PNG headers and existing dividers.
 
 The mascot poses and contribution artwork came from the built-in image tool. The source prompts and hashes remain in the private campaign record.
+
+The Bowerloom wordmarks use Lora glyph outlines. Earlier Trellis files remain preserved as historical artwork.

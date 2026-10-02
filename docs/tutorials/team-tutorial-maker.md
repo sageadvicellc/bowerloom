@@ -14,7 +14,7 @@ Your agent inspects available capabilities before it proposes an execution path.
 
 If native subagents provide the available path, your agent names that path in the agreement. It asks for your approval before work starts.
 
-A native subagent run does not prove Trellis runtime support. A validated definition does not establish that a team ran.
+A native subagent run does not prove Bowerloom runtime support. A validated definition does not establish that a team ran.
 
 If the required controls or account capacity are unavailable, your agent records the blocker. It does not simulate workers or claim execution.
 
@@ -42,7 +42,7 @@ The local `index.html` links to the work and uses your chosen palette. Claims of
 
 ## Setup and evidence limits
 
-Optional checkout setup requires Git, Node 24.11 within Node 24, npm 11, and private repository access. The prompt contains the actual setup commands.
+Optional checkout setup requires Git, Node 24.11 within Node 24, and npm 11. The prompt contains the actual setup commands.
 
 The existing offline example returns `runtimeReady: false`. This result means that validation grants no execution authority.
 

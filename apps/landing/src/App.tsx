@@ -44,7 +44,7 @@ function ProductText({ children }: { children: string }) {
 
 const offers = [
   { title: "A toolkit that works together.", body: "Sprouts describes the team and its skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
-  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Trellis supplies explicit controls and records around the tested actions; your agent remains your interface." },
+  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies explicit controls and records around the tested actions; your agent remains your interface." },
   { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
 ];
 
@@ -57,7 +57,7 @@ function CoreOffers() {
       <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
         <h3>{offer.title}</h3><p><ProductText>{offer.body}</ProductText></p>
       </div>
-      <div className="offer-controls" role="group" aria-label="Explore Trellis">
+      <div className="offer-controls" role="group" aria-label="Explore Bowerloom">
         <div className="offer-tabs" style={{ '--active-offer': active } as React.CSSProperties}>
           <span className="offer-indicator" aria-hidden="true" />
           {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
@@ -142,10 +142,10 @@ export default function App() {
         Skip to content
       </a>
       <header className="site-header">
-        <a className="brand" href="#" aria-label="Trellis home">
+        <a className="brand" href="#" aria-label="Bowerloom home">
           <Mark />
           <span>
-            trellis<span className="brand-period">.</span>
+            bowerloom<span className="brand-period">.</span>
           </span>
         </a>
         <nav aria-label="Main navigation">
@@ -166,7 +166,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your abilities with <em>Trellis</em>
+              Grow your abilities with <em>Bowerloom</em>
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -245,7 +245,7 @@ export default function App() {
           <div className="section-heading">
             <p className="eyebrow">First seed: Labs to blog</p>
             <h2 id="recipe-title">Turn a completed experiment into a draft you can review.</h2>
-            <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Trellis prepares the proposed GitHub change for review before the designated local operator approves it.</p>
+            <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Bowerloom prepares the proposed GitHub change for review before the designated local operator approves it.</p>
           </div>
           <div className="stage-controls" role="group" aria-label="Explore the seed steps">
             {stages.map((item, index) => (
@@ -268,13 +268,13 @@ export default function App() {
           </div>
           <div className="recipe-proof">
             <h3>A recorded run, with a result to inspect.</h3>
-            <p>The recorded GitHub seed produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Trellis paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
+            <p>The recorded GitHub seed produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Bowerloom paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
             <p>This result covers one prepared seed and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
             <div className="resource-links">
               <ExternalLink href={destinations.trial}>Read the trial and its limits</ExternalLink>
               <ExternalLink href={docs}>Explore the GitHub seed</ExternalLink>
             </div>
-            <p className="access-note">These GitHub links currently require repository access.</p>
+            <p className="access-note">The source and guides are available on GitHub.</p>
           </div>
         </section>
         <TutorialBuilder />
@@ -344,9 +344,9 @@ export default function App() {
         </aside>
       )}
       <footer className="site-footer">
-        <a className="brand" href="#" aria-label="Trellis home">
+        <a className="brand" href="#" aria-label="Bowerloom home">
           <Mark />
-          <span>trellis.</span>
+          <span>bowerloom.</span>
         </a>
         <p>An open-source framework for agent teams.</p>
         <div>
@@ -355,8 +355,8 @@ export default function App() {
           <ExternalLink href={destinations.evidence}>Alpha evidence</ExternalLink>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
-        <p className="footer-access">Source and guide links currently require repository access.</p>
-        <span className="footer-note">Made by Sage Advice.</span>
+        <p className="footer-access">Read the source and guides on GitHub.</p>
+        <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
         <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
       </footer>
     </>

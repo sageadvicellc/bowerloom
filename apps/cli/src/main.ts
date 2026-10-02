@@ -6,18 +6,23 @@ import type { TestExecutor } from '../../../packages/controlled-tests/src/index.
 import { compileCrew } from '../../../packages/crew/src/index.js';
 import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
-const HELP = `Trellis v0.7-alpha: local controlled workflows
+const HELP = `Bowerloom v0.7-alpha: local controlled workflows
 
 Usage:
-  trellis recipe inspect|setup --installation <private.json>
-  trellis recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
-  trellis validate <crew.yaml> [--root <directory>]
-  trellis plan <crew.yaml> [--root <directory>]
-  trellis authoring validate|export <authoring.json> --scenario <frozen-scenario.json> [--root <directory>]
-  trellis up --demo --pro|--5x|--20x --installation <private.json>
-  trellis status|review|cancel --installation <private.json>
-  trellis approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
+  bowerloom portable validate <bundle-directory>
+  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex --target <new-absolute-directory> [--approve <revision>]
+  bowerloom recipe inspect|setup --installation <private.json>
+  bowerloom recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
+  bowerloom validate <crew.yaml> [--root <directory>]
+  bowerloom plan <crew.yaml> [--root <directory>]
+  bowerloom authoring validate|export <authoring.json> --scenario <frozen-scenario.json> [--root <directory>]
+  bowerloom up --demo --pro|--5x|--20x --installation <private.json>
+  bowerloom status|review|cancel --installation <private.json>
+  bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
+The trellis and trellis-mcp commands remain compatibility aliases.
+Portable install requires --approve with the exact current plan revision.
+Portable installation copies selected files. It starts no workers.
 The source root defaults to the directory that contains crew.yaml.
 Validate and plan read source files and print JSON. They start no workers.
 Status and review read the prepared session without a model or browser.
@@ -29,6 +34,11 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'portable') {
+    const { runPortableCommand } = await import('./portable.js');
+    process.stdout.write(`${canonicalJson(runPortableCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'recipe') {
     const { runRecipeCommand } = await import('./recipe.js');
     process.stdout.write(`${canonicalJson(await runRecipeCommand(args))}\n`);
@@ -38,7 +48,7 @@ async function main(args: string[]): Promise<void> {
     const [, command, file, flag, scenario, rootFlag, root] = args;
     if (!['validate','export'].includes(command ?? '') || !file || file.startsWith('-') || flag !== '--scenario'
       || !scenario || scenario.startsWith('-') || (args.length !== 5 && (args.length !== 7 || rootFlag !== '--root' || !root || root.startsWith('-')))) {
-      throw new DefinitionError('USAGE', 'Use trellis authoring validate|export <authoring.json> --scenario <frozen-scenario.json>, with optional --root.');
+      throw new DefinitionError('USAGE', 'Use bowerloom authoring validate|export <authoring.json> --scenario <frozen-scenario.json>, with optional --root.');
     }
     const bundle = await compileAuthoring(file, { scenarioFile: scenario, ...(root ? { root } : {}) });
     process.stdout.write(`${canonicalJson(command === 'export' ? bundle : {
@@ -75,7 +85,7 @@ async function main(args: string[]): Promise<void> {
   const [command, file, flag, root] = args;
   if (!['validate', 'plan'].includes(command ?? '') || !file || file.startsWith('-')
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
-    throw new DefinitionError('USAGE', 'Use trellis validate <crew.yaml> or trellis plan <crew.yaml>, with optional --root <directory>.');
+    throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or trellis plan <crew.yaml>, with optional --root <directory>.');
   }
   const plan = await compileCrew(file, root ? { root } : {});
   const result = command === 'plan' ? plan : {
@@ -91,7 +101,7 @@ async function main(args: string[]): Promise<void> {
 
 main(process.argv.slice(2)).catch((error: unknown) => {
   const code=error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&/^[A-Z_]{1,100}$/.test(error.code)?error.code:'IO_ERROR';
-  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'Trellis stopped. Read the local session state before another action.');
+  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'Bowerloom stopped. Read the local session state before another action.');
   process.stderr.write(`${JSON.stringify({ error: { code: safeError.code, message: safeError.message } })}\n`);
   process.exitCode = safeError.code === 'USAGE' ? 2 : 1;
 });

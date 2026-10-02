@@ -2,7 +2,7 @@
 
 The landing page lets you assemble a prompt for your personal agent. Your agent creates a local report from supplied synthetic data.
 
-This tutorial has two separate results. Trellis validates an included definition. Your personal agent creates the report outside the Trellis execution backend.
+This tutorial has two separate results. Bowerloom validates an included definition. Your personal agent creates the report outside the Bowerloom execution backend.
 
 The implemented Labs-to-blog seed remains a separate path. This report exercise does not prove arbitrary team execution or acceptance across harnesses.
 
@@ -28,13 +28,13 @@ The question controls the available hypotheses and source rows. Both questions i
 
 ## Prepare the alpha
 
-If a Trellis checkout exists, ask your agent to inspect its branch and local changes first. Do not replace an existing checkout.
+If a Bowerloom checkout exists, ask your agent to inspect its branch and local changes first. Do not replace an existing checkout.
 
 For a new checkout, use a parent directory without a `trellis` directory. Run these commands from that parent directory:
 
 ```sh
-git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/trellis.git
-cd trellis
+git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/bowerloom.git
+cd bowerloom
 npm ci --ignore-scripts
 npm run build
 node dist/apps/cli/src/main.js validate examples/endor/crew.yaml
@@ -71,7 +71,7 @@ For the shelf question, baskets sell 15 of 20 units, mugs sell 12 of 30, and pri
 
 Their shares are 75%, 40%, and 80%, respectively. Prints have the highest share. The rows do not support the hypothesis that mugs have the highest share.
 
-These are invented observations. Neither question establishes a causal effect, statistical significance, customer behavior, or a measured Trellis benefit.
+These are invented observations. Neither question establishes a causal effect, statistical significance, customer behavior, or a measured Bowerloom benefit.
 
 ## Prompt source and sample
 

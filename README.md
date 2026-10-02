@@ -1,9 +1,9 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trellis-header-dark-v2.png">
-  <img src="docs/assets/trellis-header-light-v2.png" alt="Trellis, with Sprout waving beside a sage trellis" width="1200">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bowerloom-header-dark.png">
+  <img src="docs/assets/bowerloom-header-light.png" alt="Bowerloom, with Sprout waving beside a sage trellis" width="1200">
 </picture>
 
-# Grow your abilities with Trellis
+# Grow your abilities with Bowerloom
 
 <img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28">
 <img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
@@ -13,7 +13,11 @@
 
 Your ideas deserve a few extra hands.
 
-Trellis is a free, open-source toolkit for agents to build and operate automations. Your personal agent helps turn a routine into a reusable workflow.
+Bowerloom is the new name for this project. Its primary brand domain is `bowerloom.ai`, with `bowerloom.dev` as a secondary domain.
+
+This checkout still uses the existing GitHub repository and branch. These domain names do not indicate a published service.
+
+Bowerloom is a free, open-source toolkit for agents to build and operate automations. Your personal agent helps turn a routine into a reusable workflow.
 
 Sprouts are your agents. A team brings them together, and a seed gives them a reusable workflow.
 
@@ -32,9 +36,9 @@ The first seed turns a completed Labs experiment into a blog draft. Your persona
 An experiment → a grounded draft → your approval → a GitHub draft pull request
 ```
 
-Trellis saves the proposed change and waits for exact approval before the GitHub write. Publication and merging remain separate decisions.
+Bowerloom saves the proposed change and waits for exact approval before the GitHub write. Publication and merging remain separate decisions.
 
-The recorded trial created [draft pull request #41](https://github.com/sageadvicellc/trellis/pull/41). It recovered after a lost response without another write.
+The recorded trial created [draft pull request #41](https://github.com/sageadvicellc/bowerloom/pull/41). It recovered after a lost response without another write.
 
 This result covers one prepared recipe and installation. It does not establish arbitrary automation or a measured time saving.
 
@@ -47,9 +51,9 @@ This result covers one prepared recipe and installation. It does not establish a
 
 ## Meet the workshop
 
-| Piece | Its place in Trellis |
+| Piece | Its place in Bowerloom |
 | --- | --- |
-| Crew | Portable definitions for roles, skills, and permissions |
+| Sprouts | Portable definitions for roles, skills, and permissions |
 | Relay | Connections between agents |
 | Roots | Knowledge with controlled access |
 | Vines | Logs that record the work |
@@ -72,7 +76,7 @@ Your agent proposes a team and working agreement before work starts. It names th
 
 <img src="docs/assets/trellis-workshop-preview.gif" alt="A short animated view of the illustrated workshop" width="480">
 
-This loop illustrates the world of Trellis. It does not show a software startup or an execution result.
+This loop illustrates the world of Bowerloom. It does not show a software startup or an execution result.
 GitHub does not provide a reliable reduced-motion control for this GIF. Keep this section closed for the still view.
 
 </details>
@@ -80,8 +84,8 @@ GitHub does not provide a reliable reduced-motion control for this GIF. Keep thi
 Use Node 24.11 or later within Node 24, npm 11, and Git for this development checkout.
 
 ```sh
-git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/trellis.git
-cd trellis
+git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/bowerloom.git
+cd bowerloom
 npm ci --ignore-scripts
 npm run build
 node dist/apps/cli/src/main.js --help
@@ -95,10 +99,13 @@ node dist/apps/cli/src/main.js validate examples/endor/crew.yaml
 
 This command reads the crew definition. It does not start workers or grant execution authority. The example reports `runtimeReady: false` by design.
 
+For selective local installation, read the [Bowerloom portable parts guide](docs/transition/bowerloom-migration.md). It separates file installation from agent execution.
+
+
 Give your personal agent this starting request:
 
 ```text
-Read this Trellis checkout and docs/recipes/labs-to-blog.md.
+Read this Bowerloom checkout and docs/recipes/labs-to-blog.md.
 Help me prepare a blog draft from a selected experiment record.
 Keep credentials outside portable definitions.
 Show me the exact proposed change before any external write.
@@ -113,7 +120,7 @@ For personal agents that use MCP, read the [MCP setup guide](apps/mcp/README.md)
 
 ## Keep a hand on the gate
 
-Trellis binds approval to the proposed change. Changed inputs need a new plan. An uncertain write stops for inspection and reconciliation.
+Bowerloom binds approval to the proposed change. Changed inputs need a new plan. An uncertain write stops for inspection and reconciliation.
 
 The prepared alpha uses a trusted local operator. That boundary does not prove that an approval came from a human.
 

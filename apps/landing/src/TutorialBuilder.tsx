@@ -85,7 +85,7 @@ export default function TutorialBuilder() {
       <label htmlFor="tutorial-prompt">Your tutorial-maker prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to tailor the tutorial. It checks whether this alpha supports your project or whether native subagents need a separately agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p>Optional checkout setup requires Git, Node 24.11 within Node 24, npm 11, and private repository access. Setup details stay in the prompt.</p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to tailor the tutorial. It checks whether this alpha supports your project or whether native subagents need a separately agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p>Optional checkout setup requires Git, Node 24.11 within Node 24, and npm 11. Setup details stay in the prompt.</p></details>
     </div>}
   </section>;
 }

@@ -2,7 +2,7 @@
 
 This package implements broker policy and effect receipt logic. Its memory adapters remain synthetic fixtures. The local CLI uses the PostgreSQL broker store, workspace-effects adapter, supervised runtime, and registered browser acceptance. Those components completed the two-lead live demo; see [current evidence and limits](acceptance-status.md). The broker itself is not an operating-system sandbox.
 
-The broader [controlled-action work](https://github.com/sageadvicellc/trellis/issues/11) retains its independent acceptance boundary. This package exposes no unrestricted command or shell path. The integrated runtime supplies live execution through separately reviewed adapters; final alpha review remains pending.
+The broader [controlled-action work](https://github.com/sageadvicellc/bowerloom/issues/11) retains its independent acceptance boundary. This package exposes no unrestricted command or shell path. The integrated runtime supplies live execution through separately reviewed adapters; final alpha review remains pending.
 
 ## Implemented boundary
 

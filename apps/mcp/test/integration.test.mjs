@@ -54,7 +54,7 @@ test('compiled recipe controller rejects invalid MCP arguments and matches CLI i
         protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'stdio-proof', version: '1' },
       } }) + '\n');
       await response;
-      assert.equal(JSON.parse(stdout.trim()).result.serverInfo.name, 'trellis');
+      assert.equal(JSON.parse(stdout.trim()).result.serverInfo.name, 'bowerloom');
       child.stdin.end();
       assert.deepEqual(await exited, [0, null]);
       assert.equal(stderr, '');

@@ -1,4 +1,4 @@
-export const repository = "https://github.com/sageadvicellc/trellis";
+export const repository = "https://github.com/sageadvicellc/bowerloom";
 const branch = `${repository}/blob/feature/trellis-v1`;
 export const docs = `${branch}/docs/recipes/labs-to-blog.md`;
 export const destinations = {
@@ -10,8 +10,8 @@ export const destinations = {
 };
 export const hero = {
   "Eyebrow": "Portable tools and teams",
-  "H1": "Grow your abilities with Trellis",
-  "Body": "Trellis is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
+  "H1": "Grow your abilities with Bowerloom",
+  "Body": "Bowerloom is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "See what our first seed grew",
   "Illustration caption": "A maker and a robot helper at the workshop."
@@ -30,7 +30,7 @@ export const stages = [
     "name": "Evidence",
     "tag": "The archive",
     "title": "Keep the sources attached.",
-    "description": "Use evidence files from a fixed Git revision. Trellis checks the supplied bytes and declared links. You still judge whether the draft accurately describes the evidence.",
+    "description": "Use evidence files from a fixed Git revision. Bowerloom checks the supplied bytes and declared links. You still judge whether the draft accurately describes the evidence.",
     "artifact": "Evidence files and source links",
     "color": "#83DDD0"
   },
@@ -38,7 +38,7 @@ export const stages = [
     "name": "Draft",
     "tag": "The table",
     "title": "Write in your voice.",
-    "description": "Your personal agent prepares an evidence-linked blog draft. Trellis saves the draft, destination, and proposed change in a plan for review.",
+    "description": "Your personal agent prepares an evidence-linked blog draft. Bowerloom saves the draft, destination, and proposed change in a plan for review.",
     "artifact": "Blog draft and proposed change",
     "color": "#F2BE75"
   },
@@ -46,7 +46,7 @@ export const stages = [
     "name": "Approval",
     "tag": "The gate",
     "title": "Approve the exact change.",
-    "description": "The designated local operator approves the saved plan. Trellis then creates the draft pull request. Publication and merging remain separate decisions.",
+    "description": "The designated local operator approves the saved plan. Bowerloom then creates the draft pull request. Publication and merging remain separate decisions.",
     "artifact": "GitHub draft pull request",
     "color": "#C9F53A"
   }
@@ -83,6 +83,6 @@ export const questions = [
   },
   {
     question: "What does it cost to try?",
-    answer: "Trellis is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and source access is currently limited. The tutorial lists the setup requirements and tells your agent not to spend money."
+    answer: "Bowerloom is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and source access is currently limited. The tutorial lists the setup requirements and tells your agent not to spend money."
   }
 ] as const;
