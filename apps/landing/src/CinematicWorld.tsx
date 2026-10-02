@@ -243,14 +243,14 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
           <h1 id="hero-title">Grow your abilities with <em>Bowerloom</em></h1>
           <p className="cinematic-description">{hero.Body}</p>
           <a className="button primary" href="#build">Build with your agent</a>
-          <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
+          <a className="hero-secondary" href="#recipe">See the first workflow</a>
           {motion && index > 0 && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
         </div>
         <div className="cinematic-bottom">
-          <div><p className="cinematic-label">{motion ? "Animation study · art direction under review" : "Workshop illustration"}</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the seed." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
+          <div><p className="cinematic-label">{motion ? "Animation study · art direction under review" : "Workshop illustration"}</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the workflow." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
           <div className="cinematic-actions">
             {preview && hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use motion view" : "Use still view"}</button>}
-            <a href="#recipe">Go to the seed</a>
+            <a href="#recipe">Go to the workflow</a>
           </div>
         </div>
       </div>

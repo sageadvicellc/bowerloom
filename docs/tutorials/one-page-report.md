@@ -6,7 +6,7 @@ The landing page lets you assemble a prompt for your personal agent. Your agent 
 
 This tutorial has two separate results. Bowerloom validates an included definition. Your personal agent creates the report outside the Bowerloom execution backend.
 
-The implemented Labs-to-blog seed remains a separate path. This report exercise does not prove arbitrary team execution or acceptance across harnesses.
+The implemented Labs-to-blog workflow remains a separate path. This report exercise does not prove arbitrary team execution or acceptance across harnesses.
 
 ## Prerequisites
 

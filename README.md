@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/bowerloom-header-dark.png">
-  <img src="docs/assets/bowerloom-header-light.png" alt="Bowerloom, with Sprout waving beside a sage trellis" width="1200">
+  <img src="docs/assets/bowerloom-header-light.png" alt="Bowerloom, with a robot helper waving beside a sage trellis" width="1200">
 </picture>
 
 # Grow your abilities with Bowerloom
@@ -18,18 +18,18 @@ The public source is at `sageadvicellc/bowerloom`. The integration branch remain
 
 Bowerloom is a free, open-source toolkit for agents to build and operate automations. Your personal agent helps turn a routine into a reusable workflow.
 
-Sprouts are your agents. A team brings them together, and a seed gives them a reusable workflow.
+Agents work together as a team, with named roles and a workflow you can review.
 
 Keep your team definitions in files that you can read, change, and version. They live outside any individual agent app.
 
-[Build with your agent](#build-with-your-agent) · [Try the first seed](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
+[Build with your agent](#build-with-your-agent) · [Try the first workflow](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
 
 > [!NOTE]
 > `v0.7-alpha` is a local, Codex-first development trial. The source repository is public. The public installer and release are not published. Founder acceptance remains pending.
 
 ## Start with one useful routine
 
-The first seed turns a completed Labs experiment into a blog draft. Your personal agent writes the prose from selected evidence.
+The first workflow turns a completed Labs experiment into a blog draft. Your personal agent writes the prose from selected evidence.
 
 ```text
 An experiment → a grounded draft → your approval → a GitHub draft pull request
@@ -41,7 +41,7 @@ The recorded trial created [draft pull request #41](https://github.com/sageadvic
 
 This result covers one prepared recipe and installation. It does not establish arbitrary automation or a measured time saving.
 
-[Read the seed guide](docs/recipes/labs-to-blog.md) · [See the recorded result and limits](docs/recipes/live-acceptance.md)
+[Read the workflow guide](docs/recipes/labs-to-blog.md) · [See the recorded result and limits](docs/recipes/live-acceptance.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trellis-divider-dark.svg">
@@ -52,7 +52,7 @@ This result covers one prepared recipe and installation. It does not establish a
 
 | Piece | Its place in Bowerloom |
 | --- | --- |
-| Sprouts | Portable definitions for roles, skills, and permissions |
+| Teams | Portable definitions for roles, skills, and permissions |
 | Relay | Connections between agents |
 | Roots | Knowledge with controlled access |
 | Vines | Logs that record the work |
@@ -128,7 +128,7 @@ The [n8n connection helper](connections/n8n/README.md) is optional. The first Gi
 
 ## Help the workshop grow
 
-<img src="docs/assets/trellis-contributing.webp" alt="An illustrated maker and Sprout repair a circuit board in a sunlit tree workshop" width="1200">
+<img src="docs/assets/trellis-contributing.webp" alt="An illustrated maker and a robot helper repair a circuit board in a sunlit tree workshop" width="1200">
 
 A small, reproducible contribution gives the team something concrete to review. The artwork above illustrates collaboration, not an implemented repair capability.
 

@@ -3,7 +3,7 @@
 The current Bowerloom banner uses Sage Picnic colors and Lora letterforms. The text is rasterized from font outlines, so GitHub needs no external font.
 The included `Lora-OFL.txt` states the font license. GitHub controls ordinary Markdown typography.
 
-The three Sprout poses derive from the approved cream robot identity. The founder has not selected the final pose.
+The three robot helper poses derive from the approved cream robot identity. The founder has not selected the final pose.
 The working README uses the wave as a reversible preview. The planner and ready poses remain available as alternatives.
 
 The maker illustration and workshop loop describe the visual world. They do not show software execution or prove product capabilities.

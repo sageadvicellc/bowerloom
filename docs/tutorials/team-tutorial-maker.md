@@ -46,7 +46,7 @@ Optional checkout setup requires Git, Node 24.11 within Node 24, and npm 11. The
 
 The existing offline example returns `runtimeReady: false`. This result means that validation grants no execution authority.
 
-The earlier [report exercise](one-page-report.md) remains a historical example. The [Labs-to-blog seed](../recipes/labs-to-blog.md) retains its separate runtime evidence and approval controls.
+The earlier [report exercise](one-page-report.md) remains a historical example. The [Labs-to-blog workflow](../recipes/labs-to-blog.md) retains its separate runtime evidence and approval controls.
 
 The page stores choices only in React memory. It sends no goal text to a model, backend, or local storage.
 

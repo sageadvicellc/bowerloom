@@ -28,7 +28,7 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
   return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
 }
 
-function SeedIcon({ index }: { index: number }) {
+function WorkflowIcon({ index }: { index: number }) {
   const paths = [
     "M7 3h10M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M7 15h10",
     "M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6",
@@ -39,11 +39,11 @@ function SeedIcon({ index }: { index: number }) {
 }
 
 function ProductText({ children }: { children: string }) {
-  return <>{children.split(/(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)/g).map((part, index) => /^(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)$/.test(part) ? <code key={index}>{part}</code> : part)}</>;
+  return <>{children.split(/(Teams|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)/g).map((part, index) => /^(Teams|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)$/.test(part) ? <code key={index}>{part}</code> : part)}</>;
 }
 
 const offers = [
-  { title: "A toolkit that works together.", body: "Sprouts describes the team and its skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
+  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
   { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies explicit controls and records around the tested actions; your agent remains your interface." },
   { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
 ];
@@ -149,7 +149,7 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#recipe">The seed</a>
+          <a href="#recipe">The workflow</a>
           <a href="#build">Build with your agent</a>
           <ExternalLink href={docs}>Alpha guide</ExternalLink>
           <ExternalLink href={repository}>GitHub</ExternalLink>
@@ -174,7 +174,7 @@ export default function App() {
             <a className="button primary" href="#build">
               Build with your agent
             </a>
-            <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
+            <a className="hero-secondary" href="#recipe">See the first workflow</a>
           </div>
           <div className="workshop-area" ref={sceneRef}>
             <div className="scene-caption">
@@ -234,8 +234,8 @@ export default function App() {
           </div>
           <div className="hero-footer">
             <span>Workshop illustration</span>
-            <a href="#recipe" aria-label="Go to the seed">
-              Go to the seed
+            <a href="#recipe" aria-label="Go to the workflow">
+              Go to the workflow
             </a>
           </div>
         </section>
@@ -243,14 +243,14 @@ export default function App() {
         <CoreOffers />
         <section id="recipe" className="recipe-section" aria-labelledby="recipe-title">
           <div className="section-heading">
-            <p className="eyebrow">First seed: Labs to blog</p>
+            <p className="eyebrow">First workflow: Labs to blog</p>
             <h2 id="recipe-title">Turn a completed experiment into a draft you can review.</h2>
             <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Bowerloom prepares the proposed GitHub change for review before the designated local operator approves it.</p>
           </div>
-          <div className="stage-controls" role="group" aria-label="Explore the seed steps">
+          <div className="stage-controls" role="group" aria-label="Explore the workflow steps">
             {stages.map((item, index) => (
               <button key={item.name} className={index === selected ? "stage active" : "stage"} aria-pressed={index === selected} onClick={() => setSelected(index)}>
-                <span className="stage-icon" aria-hidden="true">{<SeedIcon index={index} />}</span>
+                <span className="stage-icon" aria-hidden="true">{<WorkflowIcon index={index} />}</span>
                 <span>{item.name}</span>
               </button>
             ))}
@@ -268,11 +268,11 @@ export default function App() {
           </div>
           <div className="recipe-proof">
             <h3>A recorded run, with a result to inspect.</h3>
-            <p>The recorded GitHub seed produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Bowerloom paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
-            <p>This result covers one prepared seed and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
+            <p>The recorded GitHub workflow produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Bowerloom paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
+            <p>This result covers one prepared workflow and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
             <div className="resource-links">
               <ExternalLink href={destinations.trial}>Read the trial and its limits</ExternalLink>
-              <ExternalLink href={docs}>Explore the GitHub seed</ExternalLink>
+              <ExternalLink href={docs}>Explore the GitHub workflow</ExternalLink>
             </div>
             <p className="access-note">The source and guides are available on GitHub.</p>
           </div>
@@ -351,7 +351,7 @@ export default function App() {
         <p>An open-source framework for agent teams.</p>
         <div>
           <ExternalLink href={repository}>GitHub</ExternalLink>
-          <ExternalLink href={docs}>GitHub seed guide</ExternalLink>
+          <ExternalLink href={docs}>GitHub workflow guide</ExternalLink>
           <ExternalLink href={destinations.evidence}>Alpha evidence</ExternalLink>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
