@@ -7,9 +7,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { agentPrompt, docs, repository, stages } from "./content";
+import { destinations, docs, hero, questions, repository, stages } from "./content";
 
 import StaticWorkshop from "./StaticWorkshop";
+import TutorialBuilder from "./TutorialBuilder";
+import CinematicWorld from "./CinematicWorld";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
@@ -20,6 +22,48 @@ function Mark() {
       <path d="M8 29V7m10 22V7m10 22V7M5 12h26M5 24h26m-23 0 10-12 10 12" />
     </svg>
   );
+}
+
+function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+  return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
+}
+
+function SeedIcon({ index }: { index: number }) {
+  const paths = [
+    "M7 3h10M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M7 15h10",
+    "M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6",
+    "m4 16 11-11 4 4L8 20H4v-4Zm9-9 4 4M13 20h7",
+    "M20 11v1a8 8 0 1 1-5-7M8 11l4 4 8-9",
+  ];
+  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[index]} /></svg>;
+}
+
+function ProductText({ children }: { children: string }) {
+  return <>{children.split(/(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)/g).map((part, index) => /^(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)$/.test(part) ? <code key={index}>{part}</code> : part)}</>;
+}
+
+const offers = [
+  { title: "A toolkit that works together.", body: "Sprouts describes the team and its skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
+  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Trellis supplies explicit controls and records around the tested actions; your agent remains your interface." },
+  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
+];
+
+function CoreOffers() {
+  const [active, setActive] = useState(0);
+  const offer = offers[active];
+  return <section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+    <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
+    <div className="offer-content">
+      <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
+        <h3>{offer.title}</h3><p><ProductText>{offer.body}</ProductText></p>
+      </div>
+      <div className="offer-controls" role="group" aria-label="Explore Trellis">
+        <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer">Previous</button>
+        {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
+        <button type="button" onClick={() => setActive((active + 1) % offers.length)} aria-label="Next offer">Next</button>
+      </div>
+    </div>
+  </section>;
 }
 
 class SceneBoundary extends Component<
@@ -54,15 +98,18 @@ export default function App() {
   const [visible, setVisible] = useState(true);
   const [webglFailed, setWebglFailed] = useState(false);
   const [mapView, setMapView] = useState(false);
-  const [copyStatus, setCopyStatus] = useState("");
   const [renderSample, setRenderSample] = useState<RenderSample | null>(null);
   const [renderLoop, setRenderLoop] = useState("loading");
+  const cinematic = new URLSearchParams(window.location.search).get("cinematic") !== "0";
+  useEffect(() => {
+    document.documentElement.classList.toggle("cinematic-theme", cinematic);
+    return () => document.documentElement.classList.remove("cinematic-theme");
+  }, [cinematic]);
   const diagnostics =
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("diagnostics") === "1";
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
-  const promptRef = useRef<HTMLTextAreaElement>(null);
   const stage = stages[selected];
 
   useEffect(() => {
@@ -84,19 +131,6 @@ export default function App() {
     };
   }, []);
 
-  async function copyPrompt() {
-    try {
-      await navigator.clipboard.writeText(agentPrompt);
-      setCopyStatus("Prompt copied. Paste it into your personal agent.");
-    } catch {
-      promptRef.current?.focus();
-      promptRef.current?.select();
-      setCopyStatus(
-        "Select and copy the prompt below. Clipboard access is unavailable.",
-      );
-    }
-  }
-
   return (
     <>
       <a className="skip-link" href="#main">
@@ -110,41 +144,38 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#recipe">The recipe</a>
-          <a href={docs}>
-            Docs <span aria-hidden="true">↗</span>
-          </a>
-          <a href={repository}>
-            GitHub <span aria-hidden="true">↗</span>
-          </a>
+          <a href="#recipe">The seed</a>
+          <a href="#build">Build with your agent</a>
+          <ExternalLink href={docs}>Alpha guide</ExternalLink>
+          <ExternalLink href={repository}>GitHub</ExternalLink>
         </nav>
         <span className="alpha-label">
-          <span /> V0.7 / ALPHA
+          <span /> v0.7 alpha
         </span>
       </header>
       <main id="main">
+        {cinematic ? <CinematicWorld reducedMotion={reduced} /> : (
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="eyebrow">
-              <span className="tiny-cross">✳</span> OPEN TOOLS. PERSONAL AGENTS.
+              <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your agent crew on <em>Trellis</em>
+              Grow your sprouts on <em>Trellis</em>
             </h1>
             <p className="hero-description">
-              Build automations that keep growing.
-              <br />A free, open-source toolkit for your personal agent to turn
-              everyday routines into connected workflows.
+              {hero.Body}
             </p>
             <a className="button primary" href="#build">
-              Build with your agent <span aria-hidden="true">↗</span>
+              Build with your agent
             </a>
-            <p className="hero-note">Your agent. Your workspace. Your call.</p>
+            <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
+            <p className="hero-note">{hero["Alpha note"]}</p>
           </div>
           <div className="workshop-area" ref={sceneRef}>
             <div className="scene-caption">
               <span className="status-dot" /> THE LABS WORKSHOP{" "}
-              <span className="scene-coordinate">40° / 01</span>
+
             </div>
             <div
               className="scene"
@@ -172,7 +203,7 @@ export default function App() {
             <div className="scene-bottom">
               <span>
                 {reduced || webglFailed || mapView
-                  ? "WORKSHOP MAP / STATIC VIEW"
+                  ? "WORKSHOP MAP · STATIC VIEW"
                   : "EXPLORE THE STATIONS BELOW"}
               </span>
               {!reduced && !webglFailed && (
@@ -183,7 +214,7 @@ export default function App() {
                       onClick={() => setPaused(!paused)}
                       aria-pressed={paused}
                     >
-                      {paused ? "▷ Resume motion" : "Ⅱ Pause motion"}
+                      {paused ? "Resume motion" : "Pause motion"}
                     </button>
                   )}
                   <button
@@ -191,173 +222,71 @@ export default function App() {
                     onClick={() => setMapView(!mapView)}
                     aria-pressed={mapView}
                   >
-                    {mapView ? "Explore in 3D" : "Static map"}
+                    {mapView ? "Explore in 3D" : "Use static map"}
                   </button>
                 </div>
               )}
             </div>
           </div>
           <div className="hero-footer">
-            <span>GROW SOMETHING USEFUL</span>
-            <a href="#recipe" aria-label="Explore the Labs recipe">
-              SCROLL TO EXPLORE <span aria-hidden="true">↓</span>
+            <span>Workshop illustration</span>
+            <a href="#recipe" aria-label="Go to the seed">
+              Go to the seed
             </a>
           </div>
         </section>
-        <section
-          id="recipe"
-          className="recipe-section"
-          aria-labelledby="recipe-title"
-        >
+        )}
+        <CoreOffers />
+        <section id="recipe" className="recipe-section" aria-labelledby="recipe-title">
           <div className="section-heading">
-            <p className="eyebrow">FIRST RECIPE / LABS</p>
-            <h2 id="recipe-title">
-              From an experiment
-              <br />
-              to something you can <em>review.</em>
-            </h2>
-            <p>
-              A completed experiment. A visible evidence trail.
-              <br />
-              One example of what your agent can build.
-            </p>
+            <p className="eyebrow">First seed: Labs to blog</p>
+            <h2 id="recipe-title">Turn a completed experiment into a draft you can review.</h2>
+            <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Trellis prepares the proposed GitHub change for review before the designated local operator approves it.</p>
           </div>
-          <div
-            className="stage-controls"
-            role="group"
-            aria-label="Explore recipe stages"
-          >
+          <div className="stage-controls" role="group" aria-label="Explore the seed steps">
             {stages.map((item, index) => (
-              <button
-                key={item.name}
-                className={index === selected ? "stage active" : "stage"}
-                aria-pressed={index === selected}
-                onClick={() => setSelected(index)}
-              >
-                <span className="stage-number">0{index + 1}</span>
+              <button key={item.name} className={index === selected ? "stage active" : "stage"} aria-pressed={index === selected} onClick={() => setSelected(index)}>
+                <span className="stage-icon" aria-hidden="true">{<SeedIcon index={index} />}</span>
                 <span>{item.name}</span>
-                <span className="stage-arrow" aria-hidden="true">
-                  {index === selected ? "↗" : "→"}
-                </span>
               </button>
             ))}
           </div>
           <div className="stage-detail" aria-live="polite" aria-atomic="true">
             <div>
-              <p className="eyebrow" style={{ color: stage.color }}>
-                {stage.tag}
-              </p>
+              <p className="eyebrow" style={{ color: cinematic ? "var(--ui-muted)" : stage.color }}>{stage.tag}</p>
               <h3>{stage.title}</h3>
               <p>{stage.description}</p>
             </div>
             <div className="artifact">
-              <span className="artifact-icon" aria-hidden="true">
-                {["⌁", "◈", "▤", "◎"][selected]}
-              </span>
-              <span className="eyebrow">WHAT YOU KEEP</span>
+              <span className="eyebrow">What this step produces</span>
               <strong>{stage.artifact}</strong>
-              <span className="artifact-note">LOCAL FIRST / HUMAN REVIEW</span>
             </div>
+          </div>
+          <div className="recipe-proof">
+            <h3>A recorded run, with a result to inspect.</h3>
+            <p>The recorded GitHub seed produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Trellis paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
+            <p>This result covers one prepared seed and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
+            <div className="resource-links">
+              <ExternalLink href={destinations.trial}>Read the trial and its limits</ExternalLink>
+              <ExternalLink href={docs}>Explore the GitHub seed</ExternalLink>
+            </div>
+            <p className="access-note">These GitHub links currently require repository access.</p>
           </div>
         </section>
-        <section className="toolkit-section" aria-labelledby="toolkit-title">
-          <div>
-            <p className="eyebrow">SMALL PARTS. CONNECTED WORK.</p>
-            <h2 id="toolkit-title">
-              Give your agent
-              <br />a place to build.
-            </h2>
+        <TutorialBuilder />
+        <section className="faq-section" aria-labelledby="faq-title">
+          <h2 id="faq-title">Before you build</h2>
+          <div className="faq-list">
+            {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
-          <div className="toolkit-copy">
-            <p>
-              Trellis brings skills, roles, templates, and connection helpers
-              into a toolkit your agent can work with through a small CLI and
-              MCP interface.
-            </p>
-            <p>
-              Describe the routine. Define the boundaries. Keep the workflow and
-              its instructions in files you can read, version, and change.
-            </p>
-            <a className="text-link" href={docs}>
-              Meet the toolkit <span aria-hidden="true">↗</span>
-            </a>
-          </div>
-          <div className="toolkit-line">
-            <span>SKILLS</span>
-            <i>+</i>
-            <span>ROLES</span>
-            <i>+</i>
-            <span>TEMPLATES</span>
-            <i>+</i>
-            <span>CONNECTIONS</span>
-            <i>→</i>
-            <span className="accent">YOUR WORKFLOW</span>
-          </div>
-        </section>
-        <section
-          id="build"
-          className="build-section"
-          aria-labelledby="build-title"
-        >
-          <div className="build-intro">
-            <p className="eyebrow">YOUR NEXT STEP</p>
-            <h2 id="build-title">
-              Bring your agent.
-              <br />
-              <em>Start small.</em>
-            </h2>
-            <p>
-              Copy this prompt into your personal agent. It will read the
-              project, check the prerequisites, and help you prepare the local
-              alpha recipe.
-            </p>
-            <div className="alpha-boundary">
-              <span className="status-dot" />
-              <div>
-                <strong>A workshop, still in progress.</strong>
-                <p>
-                  v0.7 alpha is Codex-first and intended for local testing. The
-                  Labs example uses a completed experiment. You authorize
-                  draft-PR creation; you or your designated reviewer approve
-                  publication separately. Account connections need your
-                  authorization. No automatic publishing.
-                </p>
-              </div>
-            </div>
-            <a
-              className="text-link"
-              href={`${repository}/blob/feature/trellis-v1/docs/alpha/acceptance-status.md`}
-            >
-              Read the alpha limits <span aria-hidden="true">↗</span>
-            </a>
-          </div>
-          <div className="prompt-panel">
-            <div className="prompt-heading">
-              <span className="eyebrow">A PROMPT FOR YOUR AGENT</span>
-              <button onClick={copyPrompt} className="copy-button">
-                {copyStatus.startsWith("Prompt copied")
-                  ? "✓ Copied"
-                  : "Copy prompt"}{" "}
-                <span aria-hidden="true">⧉</span>
-              </button>
-            </div>
-            <label className="sr-only" htmlFor="agent-prompt">
-              Setup prompt for your personal agent
-            </label>
-            <textarea
-              id="agent-prompt"
-              ref={promptRef}
-              readOnly
-              value={agentPrompt}
-              spellCheck={false}
-            />
-            <p className="copy-status" role="status">
-              {copyStatus || "Read it. Change it. Make it yours."}
-            </p>
+          <div className="resource-links">
+            <ExternalLink href={destinations.evidence}>Read the alpha boundaries</ExternalLink>
+            <ExternalLink href={destinations.releasePlan}>Explore the release plan</ExternalLink>
+            <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
         </section>
       </main>
-      {diagnostics && (
+      {diagnostics && !cinematic && (
         <aside
           className="render-diagnostics"
           aria-label="Rendering diagnostics"
@@ -415,14 +344,16 @@ export default function App() {
           <Mark />
           <span>trellis.</span>
         </a>
-        <p>Built to be yours. Free + open source.</p>
+        <p>An open-source framework for agent teams.</p>
         <div>
-          <a href={repository}>GitHub ↗</a>
-          <a href={`${repository}/blob/feature/trellis-v1/LICENSE`}>
-            MIT license ↗
-          </a>
+          <ExternalLink href={repository}>GitHub</ExternalLink>
+          <ExternalLink href={docs}>GitHub seed guide</ExternalLink>
+          <ExternalLink href={destinations.evidence}>Alpha evidence</ExternalLink>
+          <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
-        <span className="footer-note">AN OPEN WORKSHOP BY SAGE ADVICE</span>
+        <p className="footer-access">Source and guide links currently require repository access.</p>
+        <span className="footer-note">Made by Sage Advice.</span>
+        <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
       </footer>
     </>
   );

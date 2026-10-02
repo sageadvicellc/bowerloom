@@ -1,24 +1,32 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trellis-header-dark.svg">
-  <img src="docs/assets/trellis-header-light.svg" alt="Trellis, with a waving cream robot beside a leafy garden arch" width="1200">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trellis-header-dark-v2.png">
+  <img src="docs/assets/trellis-header-light-v2.png" alt="Trellis, with Sprout waving beside a sage trellis" width="1200">
 </picture>
 
-# Grow your agent crew on Trellis
+# Grow your sprouts on Trellis
+
+<img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28">
+<img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
+<img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28">
+<img src="docs/assets/badge-npm.svg" alt="npm 11" height="28">
+<img src="docs/assets/badge-access.svg" alt="Private alpha access" height="28">
 
 Your ideas deserve a few extra hands.
 
 Trellis is a free, open-source toolkit for agents to build and operate automations. Your personal agent helps turn a routine into a reusable workflow.
 
-Keep your crew definitions in files that you can read, change, and version. They live outside any individual agent app.
+Sprouts are your agents. A team brings them together, and a seed gives them a reusable workflow.
 
-[Build with your agent](#build-with-your-agent) · [Try the first recipe](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
+Keep your team definitions in files that you can read, change, and version. They live outside any individual agent app.
+
+[Build with your agent](#build-with-your-agent) · [Try the first seed](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
 
 > [!NOTE]
-> `v0.7-alpha` is a local, Codex-first development trial. The public installer and release are not published. Founder acceptance remains pending.
+> `v0.7-alpha` is a local, Codex-first development trial. Repository access is private. The public installer and release are not published. Founder acceptance remains pending.
 
 ## Start with one useful routine
 
-The first recipe turns a completed Labs experiment into a blog draft. Your personal agent writes the prose from selected evidence.
+The first seed turns a completed Labs experiment into a blog draft. Your personal agent writes the prose from selected evidence.
 
 ```text
 An experiment → a grounded draft → your approval → a GitHub draft pull request
@@ -30,7 +38,7 @@ The recorded trial created [draft pull request #41](https://github.com/sageadvic
 
 This result covers one prepared recipe and installation. It does not establish arbitrary automation or a measured time saving.
 
-[Read the recipe guide](docs/recipes/labs-to-blog.md) · [See the recorded result and limits](docs/recipes/live-acceptance.md)
+[Read the seed guide](docs/recipes/labs-to-blog.md) · [See the recorded result and limits](docs/recipes/live-acceptance.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/trellis-divider-dark.svg">
@@ -52,6 +60,22 @@ These pieces have different levels of readiness. Read the [alpha evidence](docs/
 Keep credentials and private data outside portable definitions. The current trial uses local private installation files for these details.
 
 ## Build with your agent
+
+Start with the [one-page report tutorial](docs/tutorials/one-page-report.md). Your personal agent turns supplied synthetic data into a local report.
+
+Trellis validates an included definition. Your personal agent authors the report separately. This exercise does not execute a Trellis team.
+
+<img src="docs/assets/trellis-workshop-still.webp" alt="Illustrated forest workshop with a maker and a cream helper robot" width="720">
+
+<details>
+<summary>Play a short workshop illustration</summary>
+
+<img src="docs/assets/trellis-workshop-preview.gif" alt="A short animated view of the illustrated workshop" width="480">
+
+This loop illustrates the world of Trellis. It does not show a software startup or an execution result.
+GitHub does not provide a reliable reduced-motion control for this GIF. Keep this section closed for the still view.
+
+</details>
 
 Use Node 24.11 or later within Node 24, npm 11, and Git for this development checkout.
 
@@ -96,6 +120,18 @@ The prepared alpha uses a trusted local operator. That boundary does not prove t
 The recipe uses LangGraph and PostgreSQL for saved progress. Existing Supabase and DBOS controls remain part of the earlier framework work.
 
 The [n8n connection helper](connections/n8n/README.md) is optional. The first GitHub recipe does not require it.
+
+## Help the workshop grow
+
+<img src="docs/assets/trellis-contributing.webp" alt="An illustrated maker and Sprout repair a circuit board in a sunlit tree workshop" width="1200">
+
+A small, reproducible contribution gives the team something concrete to review. The artwork above illustrates collaboration, not an implemented repair capability.
+
+- Describe the problem and the result that you expect.
+- Include a focused example or test with your proposed change.
+- Follow the [working order](docs/transition/working-order.md) for review and branch coordination.
+
+Keep credentials, customer data, and private references out of issues and pull requests. Repository access is required during this private alpha.
 
 ## Follow the growing season
 
