@@ -312,7 +312,8 @@ export default function App() {
                 <p>
                   v0.7 alpha is Codex-first and intended for local testing. The
                   Labs example uses a completed experiment. You authorize
-                  draft-PR creation; Hanna reviews publication separately.
+                  draft-PR creation; you or your designated reviewer approve
+                  publication separately.
                   Account connections need your authorization. No automatic
                   publishing.
                 </p>
