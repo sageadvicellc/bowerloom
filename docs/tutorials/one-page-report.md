@@ -1,5 +1,7 @@
 # Build your tutorial
 
+This guide records the earlier report exercise. For the current website tutorial, use the [team tutorial maker](team-tutorial-maker.md).
+
 The landing page lets you assemble a prompt for your personal agent. Your agent creates a local report from supplied synthetic data.
 
 This tutorial has two separate results. Bowerloom validates an included definition. Your personal agent creates the report outside the Bowerloom execution backend.
@@ -30,7 +32,7 @@ The question controls the available hypotheses and source rows. Both questions i
 
 If a Bowerloom checkout exists, ask your agent to inspect its branch and local changes first. Do not replace an existing checkout.
 
-For a new checkout, use a parent directory without a `trellis` directory. Run these commands from that parent directory:
+For a new checkout, use a parent directory without a `bowerloom` directory. Run these commands from that parent directory:
 
 ```sh
 git clone --branch feature/trellis-v1 https://github.com/sageadvicellc/bowerloom.git
