@@ -2,7 +2,7 @@ import { Annotation, Command, END, START, StateGraph, interrupt } from '@langcha
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { getCurrentRunTree, traceable } from 'langsmith/traceable';
 import { RecipeError } from './types.js';
-import type { ApprovalBinding, Job, Plan, RecipeDependencies, RecipeSpec, Step, StepState } from './types.js';
+import type { ApprovalBinding, Job, Plan, RecipeDependencies, RecipeSpec, Step, StepState, WriteReceipt } from './types.js';
 import { bodyFor, canonicalJson, checkPull, clone, contentFor, digest, fail, hash, id, inputs, jobId, planDigest, same, specCopy, status } from './validation.js';
 const steps: Step[] = ['branch','file','pull'];
 const ready = (): StepState => ({ status:'READY',claimedAt:null,completedAt:null,reason:null });
@@ -39,6 +39,7 @@ export class RecipeService {
     if ((!old || old.steps.pull.status !== 'DONE') && (expectedHead || pull)) fail('BRANCH_ALREADY_EXISTS');
     if (old?.steps.pull.status === 'DONE' && (!expectedHead || !pull || pull.number !== old.pull?.number || !pull.draft || pull.state !== 'open'
       || pull.head !== branch || pull.base !== spec.github.baseBranch || pull.body !== old.plan.pullBody)) fail('PULL_DRIFT');
+    if(old?.steps.pull.status==='DONE'&&!await this.#writeReceipt(old))fail('WRITE_NOT_OBSERVED');
     const previousFile = await gh.file(spec.github.draftPath,expectedHead ?? baseSha);
     if (!old && previousFile) fail('DESTINATION_EXISTS');
     if (old?.steps.pull.status === 'DONE' && (!previousFile || previousFile.content !== old.plan.content)) fail('DRAFT_DRIFT');
@@ -51,7 +52,7 @@ export class RecipeService {
       if (!same(current,old)) fail('PLAN_CHANGED');
       const history = current ? [...current.history,...(current.pull ? [{planDigest:current.plan.digest,completedAt:current.updatedAt,pull:current.pull}] : [])] : [];
       if (history.length > 20) fail('REVISION_LIMIT');
-      const job: Job = { format:'trellis/recipe-job/v1',id:key,plan,approval:null,cancelled:false,steps:{branch:ready(),file:ready(),pull:ready()},pull:null,
+      const job: Job = { format:'trellis/recipe-job/v2',id:key,plan,approval:null,cancelled:false,steps:{branch:ready(),file:ready(),pull:ready()},writeReceipt:null,pull:null,
         createdAt:current?.createdAt ?? timestamp,updatedAt:timestamp,history };
       return { job,result:plan };
     });
@@ -73,22 +74,28 @@ export class RecipeService {
     await this.dependencies.store.change(key,current => { if (!current) return fail('UNKNOWN_JOB'); current.cancelled = true; current.updatedAt = this.#time(); return {job:current,result:null}; });
     return this.review(key);
   }
+  async #writeReceipt(job:Job):Promise<WriteReceipt|null>{
+    const p=job.plan,receipt=await this.dependencies.github.verifyWrite(p.branch,p.spec.github.draftPath,p.content,p.expectedHead??p.baseSha,`docs: Labs draft ${p.digest}`);
+    if(receipt&&job.writeReceipt&&!same(receipt,job.writeReceipt))fail('WRITE_RECEIPT_DRIFT');
+    return receipt;
+  }
   async #observed(job: Job, step: Step): Promise<boolean> {
-    const p = job.plan, gh = this.dependencies.github, head = await gh.ref(p.branch);
-    if (step === 'branch') return head === (p.expectedHead ?? p.baseSha);
-    if (!head) return false;
-    const file = await gh.file(p.spec.github.draftPath,head); if (!file || file.content !== p.content) return false;
+    const p = job.plan, gh = this.dependencies.github;
+    if (step === 'branch') return await gh.ref(p.branch) === (p.expectedHead ?? p.baseSha);
+    const receipt=await this.#writeReceipt(job);if(!receipt)return false;
     if (step === 'file') return true;
     const pull = await gh.pull(p.branch); if (!pull) return false;
-    checkPull(pull,p); if (p.existingPull !== null && pull.number !== p.existingPull) fail('PULL_DRIFT');
+    checkPull(pull,p,receipt.head); if (p.existingPull !== null && pull.number !== p.existingPull) fail('PULL_DRIFT');
     return true;
   }
   async #done(job: Job, step: Step): Promise<void> {
     const pull = step === 'pull' ? await this.dependencies.github.pull(job.plan.branch) : null;
-    if (step === 'pull') { checkPull(pull,job.plan); if (job.plan.existingPull !== null && pull.number !== job.plan.existingPull) fail('PULL_DRIFT'); }
+    const receipt=step==='branch'?null:await this.#writeReceipt(job);if(step!=='branch'&&!receipt)fail('WRITE_NOT_OBSERVED');
+    if (step === 'pull') { checkPull(pull,job.plan,receipt!.head); if (job.plan.existingPull !== null && pull.number !== job.plan.existingPull) fail('PULL_DRIFT'); }
     await this.dependencies.store.change(job.id,current => {
       if (!current || current.plan.digest !== job.plan.digest) fail('PLAN_CHANGED');
       if (!['SENDING','UNKNOWN','DONE'].includes(current.steps[step].status)) fail('UNCLAIMED_EFFECT');
+      if(receipt){if(current.writeReceipt&&!same(current.writeReceipt,receipt))fail('WRITE_RECEIPT_DRIFT');current.writeReceipt=receipt;}
       current.steps[step] = { ...current.steps[step],status:'DONE',completedAt:this.#time(),reason:null }; if (pull) current.pull = pull;
       current.updatedAt = this.#time(); return { job:current,result:null };
     });
@@ -113,7 +120,7 @@ export class RecipeService {
     if (job.steps[step].status === 'DONE') return true;
     if (job.steps[step].status !== 'READY') return false;
     const p = job.plan, gh = this.dependencies.github;
-    // Drift checks happen before consuming the claim. CAS is additionally enforced by the file API.
+    // Drift checks happen before consuming the claim. The file adapter uses a non-forced ref update, not an exact CAS.
     if (await gh.ref(p.spec.github.baseBranch) !== p.baseSha) fail('BASE_DRIFT');
     if (step === 'branch' && await gh.ref(p.branch) !== p.expectedHead) fail('HEAD_DRIFT');
     if (step === 'file') {
@@ -140,8 +147,9 @@ export class RecipeService {
       if (step === 'branch') { if (!p.expectedHead) await gh.createBranch(p.branch,p.baseSha); }
       if (step === 'file') await gh.writeFile(p.branch,p.spec.github.draftPath,p.content,p.expectedFileSha,p.expectedHead ?? p.baseSha,`docs: Labs draft ${p.digest}`);
       if (step === 'pull') {
-        if (p.existingPull === null) await gh.createPull(p.branch,p.spec.github.baseBranch,p.draft.title,p.pullBody);
-        else await gh.updatePull(p.existingPull,p.draft.title,p.pullBody);
+        const receipt=await this.#writeReceipt(job);if(!receipt||!job.writeReceipt)fail('WRITE_NOT_OBSERVED');
+        if (p.existingPull === null) await gh.createPull(p.branch,p.spec.github.baseBranch,p.draft.title,p.pullBody,receipt.head);
+        else await gh.updatePull(p.existingPull,p.draft.title,p.pullBody,p.branch,receipt.head);
       }
       if (!await this.#observed(job,step)) fail('EFFECT_NOT_OBSERVED');
       await this.#done(job,step); return true;

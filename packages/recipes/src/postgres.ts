@@ -4,7 +4,7 @@ import type { Pool, PoolClient } from 'pg';
 import { RecipeError } from './types.js';
 import type { Job, RecipeSpec, RecipeStore } from './types.js';
 import { canonicalJson, clone, digest, exact, fail, hash, id, same, specCopy, validateJob } from './validation.js';
-export const schemaName = (value: string): string => { if (!/^trellis_[a-z][a-z0-9_]{0,45}$/.test(value)) fail('INVALID_SCHEMA'); return value; };
+export const schemaName = (value: string): string => { if (typeof value !== 'string' || !/^trellis_[a-z][a-z0-9_]{0,45}$/.test(value)) fail('INVALID_SCHEMA'); return value; };
 const lockKey = (v: string): [number,number] => { const b = createHash('sha256').update(v).digest(); return [b.readInt32BE(0),b.readInt32BE(4)]; };
 /** Separate control records; LangGraph owns orchestration checkpoints, never effect permission. */
 export class PostgresRecipeStore implements RecipeStore {

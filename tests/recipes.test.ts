@@ -81,3 +81,57 @@ for(const enabled of [false,true])test(`tracing ${enabled?'enabled refuses safel
   let stdout='',stderr='';child.stdout.on('data',b=>{stdout+=b;if(stdout.length>16384)child.kill('SIGKILL');});child.stderr.on('data',b=>{stderr+=b;if(stderr.length>16384)child.kill('SIGKILL');});
   const timer=setTimeout(()=>child.kill('SIGKILL'),10000);try{const [code]=await once(child,'exit');assert.equal(code,0,stderr);const result=JSON.parse(stdout);assert.equal(result.positive,1);assert.deepEqual(result.sends,[]);assert.equal(result.error,enabled?'AMBIENT_TRACING_REFUSED':null);assert.equal(result.status,enabled?'WAITING_APPROVAL':'DRAFT_PR_READY');}finally{clearTimeout(timer);if(child.exitCode===null)child.kill('SIGKILL');}
 });
+for(const lost of [false,true])test(`unapproved extra commit after file ${lost?'response loss':'write'} cannot create or reconcile a PR`,async()=>{
+  const f=await prepare();await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);
+  const original=f.github.writeFile.bind(f.github);if(lost)f.github.lostAfter='file';
+  f.github.writeFile=async(...args)=>{try{await original(...args);}finally{
+    const parent=f.github.refs.get(f.plan.branch)!,head='e'.repeat(40),files=new Map(f.github.files.get(parent));files.set('unapproved.txt',{sha:'f'.repeat(40),content:'unapproved'});
+    f.github.files.set(head,files);f.github.commits.set(head,{parent,message:'unapproved descendant'});f.github.refs.set(f.plan.branch,head);
+  }};
+  await assert.rejects(f.service.run(f.plan.jobId));assert.equal((await f.service.status(f.plan.jobId) as any).status,'NEEDS_RECONCILIATION');
+  await assert.rejects(f.service.reconcile(f.plan.jobId),{code:'WRITE_COMMIT_DRIFT'});await f.service.run(f.plan.jobId);
+  assert.deepEqual(f.github.calls,['branch','file']);assert.equal(f.github.pulls.size,0);
+});
+test('approved bytes on a same-parent commit with an extra path are not enough',async()=>{
+  const f=await prepare();await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);const original=f.github.writeFile.bind(f.github);
+  f.github.writeFile=async(...args)=>{await original(...args);f.github.files.get(f.github.refs.get(f.plan.branch)!)!.set('extra.txt',{sha:'e'.repeat(40),content:'extra'});};
+  await assert.rejects(f.service.run(f.plan.jobId),{code:'WRITE_TREE_DRIFT'});assert.equal(f.github.pulls.size,0);
+});
+test('durable write receipt prevents adoption of another equivalent-content head after restart',async()=>{
+  const f=await prepare();await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);f.github.failBefore='pull';
+  await assert.rejects(f.service.run(f.plan.jobId));const job=await f.store.read(f.plan.jobId);assert.ok(job!.writeReceipt);
+  const old=f.github.refs.get(f.plan.branch)!,head='e'.repeat(40);f.github.files.set(head,new Map(f.github.files.get(old)));f.github.commits.set(head,{...f.github.commits.get(old)!});f.github.refs.set(f.plan.branch,head);
+  const fresh=new RecipeService(f.dependencies,f.checkpointer);await assert.rejects(fresh.reconcile(f.plan.jobId),{code:'WRITE_RECEIPT_DRIFT'});
+  assert.equal(f.github.pulls.size,0);assert.deepEqual((await f.store.read(f.plan.jobId))!.writeReceipt,job!.writeReceipt);
+});
+test('completed draft branch drift prevents planning an update',async()=>{
+  const f=await prepare();await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);await f.service.run(f.plan.jobId);
+  const parent=f.github.refs.get(f.plan.branch)!,head='e'.repeat(40);f.github.files.set(head,new Map(f.github.files.get(parent)));f.github.commits.set(head,{parent,message:'extra commit'});f.github.refs.set(f.plan.branch,head);
+  const changed=packet();changed.draft.title='Revision';await assert.rejects(f.service.plan(changed),{code:'WRITE_COMMIT_DRIFT'});
+  assert.deepEqual(f.github.calls,['branch','file','pull']);
+});
+test('PostgreSQL installation and exported schema validator reject coercible arrays',async()=>{
+  const {schemaName}=await import('../packages/recipes/src/postgres.js');
+  const v={format:'trellis/recipe-installation/v1',recipe:spec,postgres:{host:'127.0.0.1',port:56582,database:'trellis_test',user:'postgres',passwordFile:'/private/password.json',controlSchema:'trellis_recipe',checkpointSchema:'trellis_recipe_checkpoints'},github:{tokenFile:'/private/token.json'},approval:{subject:'operator',enabled:false}};
+  for(const key of ['database','user','controlSchema','checkpointSchema'] as const)assert.throws(()=>recipeInstallation({...v,postgres:{...v.postgres,[key]:[v.postgres[key]]}}));
+  assert.throws(()=>recipeInstallation({...v,postgres:{...v.postgres,controlSchema:['trellis_overlap'],checkpointSchema:'trellis_overlap'}}));
+  for(const bad of [['trellis_recipe'],null,{},1,true])assert.throws(()=>schemaName(bad as any),{code:'INVALID_SCHEMA'});
+});
+for(const update of [false,true])test(`head drift between receipt check and PR ${update?'update':'creation'} blocks dispatch`,async()=>{
+  const f=await prepare();await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);
+  let plan=f.plan;
+  if(update){await f.service.run(plan.jobId);const revised=packet();revised.draft.title='Revised';plan=await f.service.plan(revised);await f.service.approve({jobId:plan.jobId,planDigest:plan.digest},f.credential);}
+  const drift=()=>{const parent=f.github.refs.get(plan.branch)!,head='e'.repeat(40);f.github.files.set(head,new Map(f.github.files.get(parent)));f.github.commits.set(head,{parent,message:'extra'});f.github.refs.set(plan.branch,head);};
+  const create=f.github.createPull.bind(f.github),edit=f.github.updatePull.bind(f.github);
+  if(update)f.github.updatePull=async(...args)=>{drift();return edit(...args);};else f.github.createPull=async(...args)=>{drift();return create(...args);};
+  await assert.rejects(f.service.run(plan.jobId),{code:'HEAD_DRIFT'});
+  assert.deepEqual(f.github.calls,update?['branch','file','pull','file']:['branch','file']);
+  const state=await f.service.status(plan.jobId) as any;assert.equal(state.status,'NEEDS_RECONCILIATION');assert.ok(state.job.writeReceipt);
+});
+test('v1 jobs and v2 completed-file records without an exact receipt fail closed',async()=>{
+  const {validateJob}=await import('../packages/recipes/src/validation.js');const f=await prepare();
+  const job=await f.store.read(f.plan.jobId);assert.throws(()=>validateJob({...job,format:'trellis/recipe-job/v1'}),{code:'CORRUPT_JOB'});
+  await f.service.approve({jobId:f.plan.jobId,planDigest:f.plan.digest},f.credential);await f.service.run(f.plan.jobId);
+  const completed=await f.store.read(f.plan.jobId);assert.throws(()=>validateJob({...completed,writeReceipt:null}),{code:'CORRUPT_WRITE_RECEIPT'});
+  assert.throws(()=>validateJob({...completed,writeReceipt:{...completed!.writeReceipt,blob:'e'.repeat(40)}}),{code:'CORRUPT_WRITE_RECEIPT'});
+});

@@ -55,6 +55,25 @@ test('recipe control store and LangGraph persistence on isolated real PostgreSQL
       await assert.rejects(uncertain.change(planned.jobId,current=>{assert.ok(current);current.steps.branch={status:'SENDING',claimedAt:Date.now(),completedAt:null,reason:null};return{job:current,result:null};}),{code:'COMMIT_UNKNOWN'});
       const before=github.calls.length;assert.equal((await service.run(planned.jobId) as any).status,'NEEDS_RECONCILIATION');await service.reconcile(planned.jobId);assert.equal(github.calls.length,before);
     });
+    await run('unapproved post-write changes remain held across fresh PostgreSQL readers after normal and lost responses',async()=>{
+      for(const lost of [false,true]){
+        const localGitHub=new FakeGitHub(),localService=new RecipeService({store,github:localGitHub,allowedRecipe:spec,authorizeApproval:auth},saver);
+        const input=packet();input.experiment.id=lost?'drift-lost':'drift-normal';const p=await localService.plan(input);
+        await localService.approve({jobId:p.jobId,planDigest:p.digest},issuer);if(lost)localGitHub.lostAfter='file';
+        const original=localGitHub.writeFile.bind(localGitHub);
+        localGitHub.writeFile=async(...args)=>{try{await original(...args);}finally{
+          const parent=localGitHub.refs.get(p.branch)!,head='e'.repeat(40),files=new Map(localGitHub.files.get(parent));
+          files.set('unapproved.txt',{sha:'f'.repeat(40),content:'unapproved'});localGitHub.files.set(head,files);
+          localGitHub.commits.set(head,{parent,message:'unapproved descendant'});localGitHub.refs.set(p.branch,head);
+        }};
+        await assert.rejects(localService.run(p.jobId));
+        const fresh=new RecipeService({store:second,github:localGitHub,allowedRecipe:spec,authorizeApproval:auth},new PostgresSaver(other,undefined,{schema:cpSchema}));
+        assert.equal((await fresh.status(p.jobId) as any).status,'NEEDS_RECONCILIATION');
+        await assert.rejects(fresh.reconcile(p.jobId),{code:'WRITE_COMMIT_DRIFT'});await fresh.run(p.jobId);
+        assert.deepEqual(localGitHub.calls,['branch','file']);assert.equal(localGitHub.pulls.size,0);
+        assert.equal((await second.read(p.jobId))!.steps.file.status,'UNKNOWN');
+      }
+    });
     await run('throw, async callback and serialization failure roll back; snapshots detach',async()=>{
       const before=await store.read(plan.jobId);
       await assert.rejects(store.change(plan.jobId,()=>{throw Error('synthetic');}),{code:'DATABASE_ERROR'});
@@ -75,7 +94,7 @@ test('recipe control store and LangGraph persistence on isolated real PostgreSQL
     if(controlOwned)try{await pool.query(`DROP SCHEMA "${schema}" CASCADE`);}catch{cleanupErrors.push('control-schema');}
     try{report.schemasAbsent=(await pool.query('SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[])',[[schema,cpSchema]])).rowCount===0;}catch{cleanupErrors.push('absence-check');}
     for(const p of [pool,other])try{await p.end();}catch{cleanupErrors.push('pool');}
-    report.cleanupErrors=cleanupErrors;report.passed=report.cases.length===6&&report.schemasAbsent&&!cleanupErrors.length;report.endedAt=new Date().toISOString();
+    report.cleanupErrors=cleanupErrors;report.passed=report.cases.length===7&&report.schemasAbsent&&!cleanupErrors.length;report.endedAt=new Date().toISOString();
     await mkdir('packages/recipes/.trellis',{recursive:true});await writeFile('packages/recipes/.trellis/postgres-result.json',JSON.stringify(report,null,2)+'\n');
     assert.equal(cleanupErrors.length,0);assert.equal(report.schemasAbsent,true);
   }

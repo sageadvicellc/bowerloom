@@ -19,8 +19,8 @@ export function recipeInstallation(value: unknown): RecipeInstallation {
   if (!exact(v,['format','recipe','postgres','github','approval']) || v.format !== 'trellis/recipe-installation/v1') fail('INSTALLATION_FORMAT');
   v.recipe = specCopy(v.recipe); const db = v.postgres;
   if (!exact(db,['host','port','database','user','passwordFile','controlSchema','checkpointSchema']) || db.host !== '127.0.0.1'
-    || !Number.isInteger(db.port) || db.port < 1024 || db.port > 65535 || !/^trellis_[a-z0-9_]{1,55}$/.test(db.database)
-    || !/^[a-z][a-z0-9_]{0,62}$/.test(db.user) || typeof db.passwordFile !== 'string' || !isAbsolute(db.passwordFile)) fail('INSTALLATION_DATABASE');
+    || !Number.isInteger(db.port) || db.port < 1024 || db.port > 65535 || typeof db.database !== 'string' || !/^trellis_[a-z0-9_]{1,55}$/.test(db.database)
+    || typeof db.user !== 'string' || !/^[a-z][a-z0-9_]{0,62}$/.test(db.user) || typeof db.passwordFile !== 'string' || !isAbsolute(db.passwordFile)) fail('INSTALLATION_DATABASE');
   schemaName(db.controlSchema); schemaName(db.checkpointSchema); if (db.controlSchema === db.checkpointSchema) fail('INSTALLATION_SCHEMA');
   if (!exact(v.github,['tokenFile']) || typeof v.github.tokenFile !== 'string' || !isAbsolute(v.github.tokenFile)) fail('INSTALLATION_GITHUB');
   if (!exact(v.approval,['subject','enabled']) || !id(v.approval.subject) || typeof v.approval.enabled !== 'boolean') fail('INSTALLATION_APPROVAL');

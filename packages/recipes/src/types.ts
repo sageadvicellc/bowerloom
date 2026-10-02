@@ -17,8 +17,9 @@ export interface ReportedMetrics {
   corrections: number | null; inputTokens: number | null; outputTokens: number | null;
   baselineMinutes: number | null;
 }
-export interface Pull { number: number; draft: boolean; state: 'open' | 'closed'; head: string; base: string; title: string; body: string; url: string }
+export interface Pull { number: number; draft: boolean; state: 'open' | 'closed'; head: string; headSha: string; base: string; baseSha: string; title: string; body: string; url: string }
 export interface RemoteFile { sha: string; content: string }
+export interface WriteReceipt { head: string; parent: string; tree: string; blob: string }
 /** Controller-owned connection. Values in a recipe cannot select a token, endpoint or shell command. */
 export interface GitHubPort {
   readonly owner: string; readonly repo: string;
@@ -27,8 +28,9 @@ export interface GitHubPort {
   pull(branch: string): Promise<Pull | null>;
   createBranch(branch: string, sha: string): Promise<void>;
   writeFile(branch: string, path: string, content: string, previousSha: string | null, expectedHead: string, message: string): Promise<void>;
-  createPull(branch: string, base: string, title: string, body: string): Promise<void>;
-  updatePull(number: number, title: string, body: string): Promise<void>;
+  verifyWrite(branch: string, path: string, content: string, expectedParent: string, message: string): Promise<WriteReceipt | null>;
+  createPull(branch: string, base: string, title: string, body: string, expectedHead: string): Promise<void>;
+  updatePull(number: number, title: string, body: string, branch: string, expectedHead: string): Promise<void>;
 }
 export interface Plan {
   format: 'trellis/recipe-plan/v1'; jobId: string; spec: RecipeSpec; specDigest: string;
@@ -39,9 +41,9 @@ export interface Plan {
 export type Step = 'branch' | 'file' | 'pull';
 export interface StepState { status: 'READY' | 'SENDING' | 'UNKNOWN' | 'DONE'; claimedAt: number | null; completedAt: number | null; reason: string | null }
 export interface Job {
-  format: 'trellis/recipe-job/v1'; id: string; plan: Plan;
+  format: 'trellis/recipe-job/v2'; id: string; plan: Plan;
   approval: { planDigest: string; subject: string; at: number } | null;
-  cancelled: boolean; steps: Record<Step, StepState>; pull: Pull | null;
+  cancelled: boolean; steps: Record<Step, StepState>; writeReceipt: WriteReceipt | null; pull: Pull | null;
   createdAt: number; updatedAt: number;
   history: { planDigest: string; completedAt: number; pull: Pull }[];
 }

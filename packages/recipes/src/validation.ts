@@ -2,6 +2,7 @@ import { canonicalJson, digest } from '../../contracts/src/index.js';
 import { copyJson } from '../../graph/src/validation.js';
 import { RecipeError } from './types.js';
 import type { RecipeSpec, Experiment, AgentDraft, ReportedMetrics, Job, Plan, JobStatus } from './types.js';
+import {createHash} from 'node:crypto';
 export { canonicalJson, digest };
 export const clone = <T>(v: T): T => copyJson(v, 2 * 1024 * 1024);
 export function fail(code: string): never { throw new RecipeError(code); }
@@ -52,7 +53,7 @@ export const jobId = (spec: RecipeSpec, experimentId: string): string => digest(
 export const planDigest = (p: Omit<Plan, 'digest'> | Plan): string => { const { digest: ignored, ...body } = p as Plan; return digest(canonicalJson(body)); };
 export function validateJob(value: unknown): Job {
   const v = clone(value) as Job;
-  if (!exact(v, ['format','id','plan','approval','cancelled','steps','pull','createdAt','updatedAt','history']) || v.format !== 'trellis/recipe-job/v1') fail('CORRUPT_JOB');
+  if (!exact(v, ['format','id','plan','approval','cancelled','steps','writeReceipt','pull','createdAt','updatedAt','history']) || v.format !== 'trellis/recipe-job/v2') fail('CORRUPT_JOB');
   const p = v.plan;
   if (!exact(p, ['format','jobId','spec','specDigest','experiment','draft','metrics','branch','baseSha','expectedHead','expectedFileSha','existingPull','content','pullBody','digest'])
     || p.format !== 'trellis/recipe-plan/v1') fail('CORRUPT_PLAN');
@@ -71,16 +72,22 @@ export function validateJob(value: unknown): Job {
   if (Object.values(v.steps).some(s => s.status !== 'READY') && !v.approval) fail('CORRUPT_APPROVAL');
   if (v.steps.file.status !== 'READY' && v.steps.branch.status !== 'DONE') fail('CORRUPT_STEP');
   if (v.steps.pull.status !== 'READY' && v.steps.file.status !== 'DONE') fail('CORRUPT_STEP');
-  if (v.pull) checkPull(v.pull, p);
+  if(v.writeReceipt!==null){
+    const bytes=Buffer.from(p.content),blob=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+    if(!exact(v.writeReceipt,['head','parent','tree','blob'])||!Object.values(v.writeReceipt).every(sha)
+      ||v.writeReceipt.parent!==(p.expectedHead??p.baseSha)||v.writeReceipt.blob!==blob||v.steps.file.status!=='DONE')fail('CORRUPT_WRITE_RECEIPT');
+  }
+  if(v.steps.file.status==='DONE'&&!v.writeReceipt)fail('CORRUPT_WRITE_RECEIPT');
+  if (v.pull) {if(!v.writeReceipt)fail('CORRUPT_WRITE_RECEIPT');checkPull(v.pull, p,v.writeReceipt.head);}
   if (v.steps.pull.status === 'DONE' && !v.pull) fail('CORRUPT_STEP');
   return v;
 }
 export const contentFor = (job: string, specDigest: string, e: Experiment, d: AgentDraft): string => `${d.markdown.trimEnd()}\n\n<!-- trellis labs-to-blog job=${job} recipe=${specDigest} source=${e.commit} -->\n`;
 export const bodyFor = (s: RecipeSpec, job: string, e: Experiment): string => `Draft for human review. No publication or merge is authorized.\n\nExperiment: ${evidenceUrl(s,e.commit,e.record.path)}\n\n<!-- trellis-job:${job} -->`;
-export function checkPull(v: unknown, p: Plan): asserts v is import('./types.js').Pull {
+export function checkPull(v: unknown, p: Plan, expectedHead:string): asserts v is import('./types.js').Pull {
   const x = v as import('./types.js').Pull;
-  if (!exact(x, ['number','draft','state','head','base','title','body','url']) || !Number.isSafeInteger(x.number) || x.number < 1 || x.draft !== true || x.state !== 'open'
-    || x.head !== p.branch || x.base !== p.spec.github.baseBranch || x.body !== p.pullBody || x.title !== p.draft.title
+  if (!exact(x, ['number','draft','state','head','headSha','base','baseSha','title','body','url']) || !Number.isSafeInteger(x.number) || x.number < 1 || x.draft !== true || x.state !== 'open'
+    || x.head !== p.branch || x.headSha!==expectedHead || x.base !== p.spec.github.baseBranch || x.baseSha!==p.baseSha || x.body !== p.pullBody || x.title !== p.draft.title
     || x.url !== `https://github.com/${p.spec.github.owner}/${p.spec.github.repo}/pull/${x.number}`) fail('PULL_DRIFT');
 }
 export function status(job: Job): JobStatus {

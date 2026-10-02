@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
+import { blobSha } from '../packages/recipes/src/git-tree.js';
 import { MemorySaver } from '@langchain/langgraph';
 import { RecipeService, RecipeError } from '../packages/recipes/src/index.js';
-import type { RecipeStore, RecipeSpec, Job, GitHubPort, Pull, ReportedMetrics } from '../packages/recipes/src/index.js';
+import type { RecipeStore, RecipeSpec, Job, GitHubPort, Pull, ReportedMetrics, WriteReceipt } from '../packages/recipes/src/index.js';
 import { clone, digest, same, validateJob, evidenceUrl } from '../packages/recipes/src/validation.js';
 export const spec: RecipeSpec = {format:'trellis/recipe/labs-to-blog/v1',id:'labs-blog',sourceRevision:'a'.repeat(40),
   github:{host:'github.com',owner:'example',repo:'labs',baseBranch:'main',branchPrefix:'trellis/labs-blog/alpha',draftPath:'drafts/experiment.md',evidencePrefix:'experiments'}};
@@ -21,19 +23,30 @@ export class MemoryRecipeStore implements RecipeStore {
 }
 export class FakeGitHub implements GitHubPort {
   readonly owner=spec.github.owner;readonly repo=spec.github.repo; refs=new Map([['main','c'.repeat(40)]]); files=new Map<string,Map<string,{sha:string;content:string}>>();
-  pulls=new Map<string,Pull>(); calls:string[]=[]; lostAfter:string|null=null; failBefore:string|null=null; counter=1;
+  commits=new Map<string,{parent:string;message:string}>(); pulls=new Map<string,Pull>(); calls:string[]=[]; lostAfter:string|null=null; failBefore:string|null=null; counter=1;
   constructor(){this.files.set(sourceCommit,new Map([experiment.record,...experiment.evidence].map(f=>[f.path,{sha:this.sha(),content:f.content}])));this.files.set('c'.repeat(40),new Map());}
   sha(){return (++this.counter).toString(16).padStart(40,'0');}
   async ref(branch:string){return this.refs.get(branch)??null;}
   async file(path:string,ref:string){return structuredClone(this.files.get(this.refs.get(ref)??ref)?.get(path)??null);}
-  async pull(branch:string){return structuredClone(this.pulls.get(branch)??null);}
+  async pull(branch:string){const p=this.pulls.get(branch);return p?{...structuredClone(p),headSha:this.refs.get(branch)!,baseSha:this.refs.get(p.base)!}:null;}
   before(step:string){this.calls.push(step);if(this.failBefore===step)throw Error('synthetic pre-response failure');}
   after(step:string){if(this.lostAfter===step){this.lostAfter=null;throw Error('synthetic lost acknowledgement');}}
   async createBranch(branch:string,sha:string){this.before('branch');if(this.refs.has(branch))throw Error('exists');this.refs.set(branch,sha);this.after('branch');}
-  async writeFile(branch:string,path:string,content:string,previousSha:string|null,expectedHead:string,_message:string){this.before('file');if(this.refs.get(branch)!==expectedHead||(await this.file(path,expectedHead))?.sha!==(previousSha??undefined))throw Error('conflict');
-    const head=this.sha(),files=new Map(this.files.get(expectedHead));files.set(path,{sha:this.sha(),content});this.files.set(head,files);this.refs.set(branch,head);this.after('file');}
-  async createPull(branch:string,base:string,title:string,body:string){this.before('pull');if(this.pulls.has(branch))throw Error('exists');this.pulls.set(branch,{number:1,draft:true,state:'open',head:branch,base,title,body,url:`https://github.com/${this.owner}/${this.repo}/pull/1`});this.after('pull');}
-  async updatePull(number:number,title:string,body:string){this.before('update');const p=[...this.pulls.values()].find(p=>p.number===number)!;if(!p.draft||p.state!=='open')throw Error('not draft');Object.assign(p,{title,body});this.after('update');}
+  async writeFile(branch:string,path:string,content:string,previousSha:string|null,expectedHead:string,message:string){this.before('file');if(this.refs.get(branch)!==expectedHead||(await this.file(path,expectedHead))?.sha!==(previousSha??undefined))throw Error('conflict');
+    const head=this.sha(),files=new Map(this.files.get(expectedHead));files.set(path,{sha:blobSha(content),content});this.files.set(head,files);this.commits.set(head,{parent:expectedHead,message});this.refs.set(branch,head);this.after('file');}
+  async verifyWrite(branch:string,path:string,content:string,parent:string,message:string):Promise<WriteReceipt|null>{
+    const head=this.refs.get(branch);if(!head)return null;const commit=this.commits.get(head);
+    if(!commit||commit.parent!==parent||commit.message!==message)throw new RecipeError('WRITE_COMMIT_DRIFT');
+    const expected=new Map(this.files.get(parent));expected.set(path,{sha:blobSha(content),content});
+    const actual=this.files.get(head);if(!actual||!same([...expected].sort(),[...actual].sort()))throw new RecipeError('WRITE_TREE_DRIFT');
+    return{head,parent,blob:blobSha(content),tree:createHash('sha1').update(JSON.stringify([...actual].sort())).digest('hex')};
+  }
+  async createPull(branch:string,base:string,title:string,body:string,expectedHead:string){
+    if(this.refs.get(branch)!==expectedHead)throw new RecipeError('HEAD_DRIFT');this.before('pull');if(this.pulls.has(branch))throw Error('exists');
+    this.pulls.set(branch,{number:1,draft:true,state:'open',head:branch,headSha:expectedHead,base,baseSha:this.refs.get(base)!,title,body,url:`https://github.com/${this.owner}/${this.repo}/pull/1`});this.after('pull');}
+  async updatePull(number:number,title:string,body:string,branch:string,expectedHead:string){
+    if(this.refs.get(branch)!==expectedHead)throw new RecipeError('HEAD_DRIFT');this.before('update');const p=[...this.pulls.values()].find(p=>p.number===number)!;
+    if(!p.draft||p.state!=='open'||p.head!==branch)throw Error('not draft');Object.assign(p,{title,body,headSha:expectedHead});this.after('update');}
 }
 export function fixture(){const store=new MemoryRecipeStore(),github=new FakeGitHub(),checkpointer=new MemorySaver(),credential=Symbol('operator');
   const dependencies={store,github,allowedRecipe:spec,authorizeApproval:async(value:unknown)=>{if(value!==credential)throw new RecipeError('APPROVAL_NOT_AUTHORIZED');return{subject:'trusted-operator'};}};

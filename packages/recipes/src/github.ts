@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { RecipeError } from './types.js';
-import type { GitHubPort, Pull, RecipeSpec, RemoteFile } from './types.js';
+import type { GitHubPort, Pull, RecipeSpec, RemoteFile, WriteReceipt } from './types.js';
 import { branch, clone, fail, path, sha, specCopy } from './validation.js';
+import {blobSha,expectedWriteTree,treeSha} from './git-tree.js';
+import type {TreeEntry} from './git-tree.js';
 /** REST-only adapter: one sealed repository, fixed API host, no redirects, no retry. */
 export class GitHubConnection implements GitHubPort {
   readonly owner: string; readonly repo: string; readonly #spec: RecipeSpec;
@@ -34,6 +36,29 @@ export class GitHubConnection implements GitHubPort {
     if (row === null) return null;
     if (row.ref !== `refs/heads/${value}` || row.object?.type !== 'commit' || !sha(row.object.sha)) fail('GITHUB_REF'); return row.object.sha;
   }
+  async #commit(value:string):Promise<{sha:string;tree:{sha:string};parents:{sha:string}[];message:string}>{
+    if(!sha(value))fail('GITHUB_COMMIT');const row=await this.#request('GET',`git/commits/${value}`);
+    if(!row||row.sha!==value||!sha(row.tree?.sha)||!Array.isArray(row.parents)||row.parents.some((p:any)=>!sha(p.sha))||typeof row.message!=='string')fail('GITHUB_COMMIT');
+    return row;
+  }
+  async #tree(value:string):Promise<TreeEntry[]>{
+    const row=await this.#request('GET',`git/trees/${value}`);
+    if(!row||row.sha!==value||row.truncated||!Array.isArray(row.tree))fail('GITHUB_TREE');
+    const entries=row.tree.map((e:any)=>({path:e.path,mode:e.mode,type:e.type,sha:e.sha})) as TreeEntry[];
+    if(treeSha(entries)!==value)fail('GITHUB_TREE_HASH');return entries;
+  }
+  async verifyWrite(value:string,p:string,content:string,expectedParent:string,message:string):Promise<WriteReceipt|null>{
+    this.#branch(value,true);if(p!==this.#spec.github.draftPath||!sha(expectedParent)||Buffer.byteLength(content)>131072)fail('PATH_SCOPE');
+    const head=await this.ref(value);if(!head)return null;
+    const commit=await this.#commit(head);
+    if(commit.parents.length!==1||commit.parents[0]!.sha!==expectedParent||commit.message!==message)fail('WRITE_COMMIT_DRIFT');
+    const parent=await this.#commit(expectedParent),blob=blobSha(content);
+    const tree=await expectedWriteTree(parent.tree.sha,p.split('/'),blob,t=>this.#tree(t));
+    if(commit.tree.sha!==tree)fail('WRITE_TREE_DRIFT');
+    // Immutable commit proof plus a final live-ref check; no mutable content-only adoption.
+    if(await this.ref(value)!==head)fail('HEAD_DRIFT');
+    return{head,parent:expectedParent,tree,blob};
+  }
   async file(value: string, ref: string): Promise<RemoteFile | null> {
     if (!path(value) || (value !== this.#spec.github.draftPath && !value.startsWith(this.#spec.github.evidencePrefix + '/'))) fail('PATH_SCOPE');
     const commit = sha(ref) ? ref : await this.ref(ref); if (!commit) return null;
@@ -58,9 +83,9 @@ export class GitHubConnection implements GitHubPort {
   #pull(row: any): Pull {
     if (!row || !Number.isSafeInteger(row.number) || row.number < 1 || typeof row.draft !== 'boolean' || !['open','closed'].includes(row.state)
       || row.head?.repo?.full_name !== `${this.owner}/${this.repo}` || row.base?.repo?.full_name !== `${this.owner}/${this.repo}`
-      || typeof row.title !== 'string' || typeof row.body !== 'string' || row.html_url !== `https://github.com/${this.owner}/${this.repo}/pull/${row.number}`) fail('GITHUB_PULL');
+      || !sha(row.head?.sha) || !sha(row.base?.sha) || typeof row.title !== 'string' || typeof row.body !== 'string' || row.html_url !== `https://github.com/${this.owner}/${this.repo}/pull/${row.number}`) fail('GITHUB_PULL');
     this.#branch(row.head.ref,true); if (row.base.ref !== this.#spec.github.baseBranch) fail('GITHUB_PULL');
-    return { number: row.number, draft: row.draft, state: row.state, head: row.head.ref, base: row.base.ref, title: row.title, body: row.body, url: row.html_url };
+    return { number: row.number, draft: row.draft, state: row.state, head: row.head.ref, headSha:row.head.sha, base: row.base.ref, baseSha:row.base.sha, title: row.title, body: row.body, url: row.html_url };
   }
   async pull(value: string): Promise<Pull | null> {
     this.#branch(value,true);
@@ -71,22 +96,25 @@ export class GitHubConnection implements GitHubPort {
   async writeFile(value: string, p: string, content: string, previousSha: string | null, expectedHead: string, message: string): Promise<void> {
     this.#branch(value,true); if (p !== this.#spec.github.draftPath || Buffer.byteLength(content) > 131072 || (previousSha !== null && !sha(previousSha))) fail('PATH_SCOPE');
     if (!sha(expectedHead) || await this.ref(value) !== expectedHead || (await this.file(p,expectedHead))?.sha !== (previousSha ?? undefined)) fail('HEAD_DRIFT');
-    const parent = await this.#request('GET',`git/commits/${expectedHead}`); if (!sha(parent?.tree?.sha)) fail('GITHUB_COMMIT');
+    const parent = await this.#commit(expectedHead);
     const blob = await this.#request('POST','git/blobs',{content:Buffer.from(content).toString('base64'),encoding:'base64'}); if (!sha(blob?.sha)) fail('GITHUB_BLOB');
     const tree = await this.#request('POST','git/trees',{base_tree:parent.tree.sha,tree:[{path:p,mode:'100644',type:'blob',sha:blob.sha}]}); if (!sha(tree?.sha)) fail('GITHUB_TREE');
     const commit = await this.#request('POST','git/commits',{message,tree:tree.sha,parents:[expectedHead]}); if (!sha(commit?.sha)) fail('GITHUB_COMMIT');
-    // The new commit has exactly the approved parent. A competing branch change is not its ancestor.
-    // force:false therefore refuses a divergent update instead of silently rebasing onto unapproved work.
+    // Refuse divergent changes, but do not claim an exact CAS: a concurrent rewind can remain fast-forwardable.
+    // verifyWrite separately proves the resulting commit's parent and complete single-path tree.
     await this.#request('PATCH',`git/refs/heads/${this.#branch(value,true)}`,{sha:commit.sha,force:false});
   }
-  async createPull(value: string, base: string, title: string, body: string): Promise<void> {
+  async createPull(value: string, base: string, title: string, body: string, expectedHead:string): Promise<void> {
     this.#branch(value,true); if (base !== this.#spec.github.baseBranch) fail('BRANCH_SCOPE');
+    if(!sha(expectedHead)||await this.ref(value)!==expectedHead)fail('HEAD_DRIFT');
     await this.#request('POST','pulls',{ head:value,base,title,body,draft:true,maintainer_can_modify:false });
   }
-  async updatePull(number: number, title: string, body: string): Promise<void> {
+  async updatePull(number: number, title: string, body: string, value:string, expectedHead:string): Promise<void> {
+    this.#branch(value,true);
     if (!Number.isSafeInteger(number) || number < 1) fail('GITHUB_PULL');
     const current = this.#pull(await this.#request('GET',`pulls/${number}`));
     if (!current.draft || current.state !== 'open') fail('DRAFT_ONLY');
+    if(current.head!==value||!sha(expectedHead)||current.headSha!==expectedHead||await this.ref(value)!==expectedHead)fail('HEAD_DRIFT');
     await this.#request('PATCH',`pulls/${number}`,{title,body});
   }
 }
