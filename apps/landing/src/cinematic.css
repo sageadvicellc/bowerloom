@@ -1,18 +1,20 @@
-/* Canopy Brass, proposed by the landing site designer. Projection primitives stay intact. */
+/* Founder-selected Sage Picnic. Projection typography and geometry stay intact. */
 :root.cinematic-theme {
-  --ui-bg: #102522;
-  --ui-surface: #17352f;
-  --ui-border: #45665b;
-  --ui-text: #f4edd9;
-  --ui-muted: #bbc8b5;
-  --ui-primary: #f3c56b;
-  --ui-primary-fg: #102522;
-  --ui-danger: #ff9c83;
-  --warm: #f3c56b;
-  --trellis-link: #87cec6;
-  --trellis-primary-hover: #ffda8d;
-  --trellis-control-border: #799589;
-  --trellis-veil: rgb(16 37 34 / 90%);
+  color-scheme: light;
+  --ui-bg: #FFF8ED;
+  --ui-surface: #F4F0E3;
+  --ui-text: #34352F;
+  --ui-muted: #68685F;
+  --ui-primary: #667955;
+  --ui-primary-fg: #FFFFFF;
+  --ui-border: #898879;
+  --ui-danger: #A53D4F;
+  --trellis-link: #536344;
+  --trellis-primary-hover: #536344;
+  --trellis-control-border: #898879;
+  --trellis-soft-accent-1: #CCD9BE;
+  --trellis-soft-accent-2: #E9BCBF;
+  --warm: var(--ui-primary);
 }
 .cinematic-theme .button.primary:hover { background: var(--trellis-primary-hover); border-color: var(--trellis-primary-hover); }
 .cinematic-theme .text-link { color: var(--trellis-link); }
@@ -28,6 +30,8 @@
 .cinematic-theme .toolkit-section { background: var(--ui-surface); }
 .cinematic-theme .alpha-boundary > .status-dot { background: var(--ui-primary); box-shadow: none; }
 .cinematic-theme .copy-button { min-height: 44px; }
+.cinematic-theme .status-dot { box-shadow: none; }
+.cinematic-theme .alpha-label { background: var(--trellis-soft-accent-2); color: var(--ui-text); }
 .cinematic-theme :where(button, a, input, textarea, select):focus-visible {
   outline: 2px solid var(--ui-primary);
   outline-offset: 3px;
@@ -41,8 +45,8 @@
 .cinematic-video { z-index: 1; }
 .cinematic-poster { z-index: 2; }
 .cinematic-poster.presented { opacity: 0; }
-.cinematic-scrim { z-index: -1; background: linear-gradient(90deg, rgb(16 37 34 / 28%), transparent 72%); }
-.cinematic-copy { width: min(42%, 530px); max-height: calc(100svh - 160px); overflow-y: auto; padding: clamp(22px, 2.3vw, 36px); color: var(--ui-text); background: var(--trellis-veil); }
+.cinematic-scrim { z-index: -1; background: none; }
+.cinematic-copy { width: min(42%, 530px); max-height: calc(100svh - 160px); overflow-y: auto; padding: clamp(22px, 2.3vw, 36px); color: var(--ui-text); background: var(--ui-bg); }
 .cinematic-copy h1 { font-size: clamp(36px, 4.4vw, 66px); line-height: 1.02; letter-spacing: -2.8px; margin: 22px 0; }
 .cinematic-copy h1 em { color: var(--ui-primary); }
 .cinematic-copy .eyebrow { color: var(--ui-primary); }
@@ -57,7 +61,7 @@
 .cinematic-transcript ol { padding-left: 20px; margin: 12px 0 0; }
 .cinematic-transcript li { padding: 8px 0; }
 .cinematic-transcript li p { color: var(--ui-muted); margin-top: 4px; }
-.cinematic-bottom { position: absolute; left: 5%; right: 5%; bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 18px; background: var(--trellis-veil); }
+.cinematic-bottom { position: absolute; left: 5%; right: 5%; bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 18px; background: var(--ui-bg); }
 .cinematic-label { color: var(--ui-primary); font: 10px/1.5 var(--ui-font); letter-spacing: 1px; }
 .cinematic-bottom [role="status"] { color: var(--ui-muted); font: 11px/1.5 var(--ui-font); max-width: 66ch; margin-top: 4px; }
 .cinematic-actions { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
@@ -72,7 +76,7 @@
 }
 @media (max-width: 860px), (pointer: coarse) {
   .cinematic-stage { min-height: 0; padding: 0; display: flex; flex-direction: column; }
-  .cinematic-media { position: relative; inset: auto; width: 100%; aspect-ratio: 1664 / 941; z-index: 0; }
+  .cinematic-media { position: relative; inset: auto; width: 100%; aspect-ratio: 16 / 9; z-index: 0; }
   .cinematic-poster { object-fit: contain; }
   .cinematic-scrim { display: none; }
   .cinematic-copy { width: 100%; max-height: none; overflow: visible; padding: 28px 6%; background: var(--ui-bg); }

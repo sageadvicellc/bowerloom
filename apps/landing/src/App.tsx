@@ -58,7 +58,7 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState("");
   const [renderSample, setRenderSample] = useState<RenderSample | null>(null);
   const [renderLoop, setRenderLoop] = useState("loading");
-  const cinematic = new URLSearchParams(window.location.search).get("cinematic") === "1";
+  const cinematic = new URLSearchParams(window.location.search).get("cinematic") !== "0";
   useEffect(() => {
     document.documentElement.classList.toggle("cinematic-theme", cinematic);
     return () => document.documentElement.classList.remove("cinematic-theme");
@@ -252,7 +252,7 @@ export default function App() {
           </div>
           <div className="stage-detail" aria-live="polite" aria-atomic="true">
             <div>
-              <p className="eyebrow" style={{ color: stage.color }}>
+              <p className="eyebrow" style={{ color: cinematic ? "var(--ui-muted)" : stage.color }}>
                 {stage.tag}
               </p>
               <h3>{stage.title}</h3>
@@ -426,8 +426,8 @@ export default function App() {
         <p>Built to be yours. Free + open source.</p>
         <div>
           <a href={repository}>GitHub ↗</a>
-          <a href={`${repository}/blob/feature/trellis-v1/LICENSE`}>
-            MIT license ↗
+          <a href={`${repository}/blob/feature/trellis-v1/package.json`}>
+            License declaration ↗
           </a>
         </div>
         <span className="footer-note">AN OPEN WORKSHOP BY SAGE ADVICE</span>

@@ -53,7 +53,8 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   const scrubRef = useRef<ReturnType<typeof createVideoScrubber> | null>(null);
   const activeRef = useRef(true);
   const scrubSceneRef = useRef<string | null>(null);
-  const motion = !reducedMotion && !mobile && !staticView;
+  const hasClips = journey.scenes.some((item) => item.clipReady);
+  const motion = hasClips && !reducedMotion && !mobile && !staticView;
   const scene = journey.scenes[index];
   const poster = scene.posterReady ? scene.poster : journey.openingPoster;
   const clipUrl = clip?.id === scene.id ? clip.url : null;
@@ -178,7 +179,7 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   }, [clipUrl, motion, scene.id]);
 
   const status = !motion
-    ? mobile ? "Still view on mobile. Desktop scroll animation is in development." : reducedMotion ? "Still view follows your reduced-motion preference." : "Still view. Scroll animation is paused."
+    ? reducedMotion ? "Still view follows your reduced-motion preference." : mobile ? "Still view on mobile. Desktop scroll animation is in development." : !hasClips ? "Selected workshop still. Matching animation is being prepared." : "Still view. Scroll animation is paused."
     : mediaState === "error" ? "Animation unavailable. The workshop still remains visible."
       : mediaState === "loading" ? "Loading this scene. The still remains until a video frame is ready."
         : mediaState === "decoded" ? "Scroll to reveal the animation. The opening frame remains visible."
@@ -212,7 +213,7 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
         <div className="cinematic-bottom">
           <div><p className="cinematic-label">ILLUSTRATIVE VISUAL / CINEMATIC PILOT</p><p role="status">{posterFailed ? "Workshop still unavailable. Read the journey above." : status}</p></div>
           <div className="cinematic-actions">
-            {!mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use scroll motion" : "Use still view"}</button>}
+            {hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use scroll motion" : "Use still view"}</button>}
             <a href="#recipe">Explore the real recipe ↓</a>
           </div>
         </div>

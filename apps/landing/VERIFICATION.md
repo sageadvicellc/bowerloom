@@ -61,7 +61,7 @@ Browser screenshots are recorded outside the source tree in the campaign evidenc
 
 The lead independently reviews the artifact before integration.
 
-## Cinematic pilot — implementation check, 2026-10-02
+## Historical cinematic pilot — implementation check, 2026-10-02
 
 The pilot is gated by `?cinematic=1`; the default scene and slogan are preserved. Canopy Brass overrides Projection tokens only for this route. Scene one uses the supplied actual first-frame poster and silent 1080p MP4. Other scene flags remain pending. The media files are authored and committed separately by the campaign lead.
 
@@ -74,3 +74,20 @@ The pilot is gated by `?cinematic=1`; the default scene and slogan are preserved
 - Frame reveal initially rejected a confirmed callback when a later seek reduced readyState. The final implementation trusts the confirmed frame and retains a completed-seek fallback after an animation frame. Final browser recheck is pending because the Chrome QA tab disappeared and new-tab creation became unavailable. The saved desktop screenshot predates this final correction and is not proof of accepted animation.
 
 Not accepted yet: final frame-reveal browser recheck, mobile no-video-network evidence, OS reduced-motion emulation, forced network/decode failure, visibility suspension in a real tab, Safari/Firefox behavior, all six clips and their seams, creative review, or a default-route switch. No deployment or publication was performed.
+
+## Sage Picnic — reviewed interim static default, 2026-10-02
+
+This section supersedes the prior Canopy Brass direction and query-only default. The founder selected Sage Picnic. Its exact color tokens are applied as Projection overrides; typography, spacing, corner geometry, and vendor license remain. Copy and status surfaces are opaque cream. The root-owned poster is the selected 1672×941 Sage Picnic artwork, loaded with a revision query to prevent reuse of the old cached dark poster.
+
+- Chrome desktop 1440×900: selected artwork loaded; maker and robot remain visible; copy background measured rgb(255,248,237); no horizontal overflow; static hero height900px; zero videos and canvases.
+- Chrome mobile 390×844: uncropped image uses object-fit contain; exact slogan and primary CTA fit; no horizontal overflow; zero videos and canvases.
+- Default `/` renders this static experience. `/?cinematic=0` renders the preserved original hero, clears the new theme, and restores its #07090C background. `/?cinematic=1` also selects the new direction.
+- “Read the journey” opens six semantic story items and closes with Enter. The primary CTA reaches #build (measured top20px after navigation) with the read-only prompt visible.
+- Footer now links to package.json as “License declaration”; it makes no claim that a root MIT license artifact exists.
+- All six clipReady flags are false. The old video does not match the selected artwork and is not used. With no matching clips ready, the runtime uses a short still hero, reports animation pending, and does not offer an inactive motion toggle.
+- Designer full-page review found a leftover chartreuse inline recipe eyebrow. The cinematic branch now uses --ui-muted for every stage; designer confirmed the source and5.33:1 cream contrast. Its narrow rendered-label recheck is pending after the shared Chrome tab disappeared.
+- Typecheck and4/4 seek-controller tests passed. No production build was rerun for this CSS/copy/default change; local Vite rendering was inspected. Browser viewport override was reset.
+
+Proof: campaign/alpha/landing/sage-picnic-desktop.jpg, sage-picnic-mobile.jpg, and sage-picnic-mobile-setup.jpg. The media files and palette comparison are authored separately by the campaign lead and excluded from this runtime commit.
+
+The static default is reviewed; the generated video journey is still incomplete. Matching video, final confirmed-frame reveal recheck, six-clip seams, forced network/decode failure, real hidden-tab suspension, OS reduced-motion emulation, and Safari/Firefox checks remain pending. No deployment or publication was performed.
