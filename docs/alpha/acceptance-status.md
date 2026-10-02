@@ -6,7 +6,9 @@ The active alpha demonstrates a completed Labs experiment that becomes an eviden
 
 The personal agent supplies the draft. Trellis records the plan, pauses for exact approval, and controls the GitHub operations.
 
-The revised implementation and live acceptance remain in progress. Read [the revised scope](../transition/alpha-revision-02.md) and [recipe instructions](../recipes/README.md).
+The prepared recipe passed its bounded live trial. Read [the recorded result](../recipes/live-acceptance.md), [revised scope](../transition/alpha-revision-02.md), and [recipe instructions](../recipes/README.md).
+
+Founder acceptance remains pending. The landing-page redesign has separate acceptance work.
 
 The older craft-shop trial and recorded demo below remain separate evidence. They do not prove the revised recipe or authorize publication.
 

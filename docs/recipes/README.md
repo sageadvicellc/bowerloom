@@ -4,4 +4,6 @@ Start with [Labs experiment → blog draft](labs-to-blog.md). The guide includes
 
 Give the personal agent the [recipe skill](../../skills/recipes/labs-to-blog/SKILL.md) and its [input template](../../skills/recipes/labs-to-blog/plan-input.template.json). Keep credentials and company-specific choices in the private installation, outside versioned recipe files.
 
-[Implementation evidence](implementation-evidence.md) separates offline checks from pending real PostgreSQL and GitHub acceptance. No completed team benchmark is required to inspect or try this recipe.
+[The recorded live result](live-acceptance.md) covers real PostgreSQL and GitHub acceptance for one prepared installation.
+
+[Implementation evidence](implementation-evidence.md) preserves earlier author and repair records. No completed team benchmark is required for this recipe trial.

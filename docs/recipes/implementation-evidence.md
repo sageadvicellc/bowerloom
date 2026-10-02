@@ -1,5 +1,7 @@
 # Recipe implementation evidence
 
+This page preserves historical author and repair records. Read [the later live result](live-acceptance.md) for the completed prepared trial.
+
 Author verification, October 2, 2026. Source parent: `79297aa0ed8ebdeca70032db157f8d01fcf39292`. This is a new recipe slice; earlier craft-shop, DBOS, and consumed live evidence are unchanged.
 
 Pinned direct libraries: `@langchain/langgraph` 1.4.18, `@langchain/langgraph-checkpoint` 1.1.5, `@langchain/langgraph-checkpoint-postgres` 1.0.5, `@langchain/core` 1.2.14, `langsmith` 0.10.7, `pg` 8.16.3, and `@types/pg` 8.15.5. All transitive releases/integrities are in the lockfile. No provider or MCP SDK is added by this slice. Dependencies were installed into this task's own 110 MiB node_modules; canonical dependencies were not modified. The admission before installation reserved 0.8 GiB with 41.06 GiB free and a 12 GiB minimum.
