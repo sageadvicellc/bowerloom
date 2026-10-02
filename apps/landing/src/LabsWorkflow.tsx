@@ -65,7 +65,12 @@ export default function LabsWorkflow() {
     </div>
     <div className="labs-loop">
       <div><h3>The project becomes the next example.</h3><p>We called the first project team <code>v0.7-workbench</code>. Its assignment: build <code>v0.7-alpha</code> and this landing page. Review of the product informs the page; feedback on the page returns to the team.</p></div>
-      <ol aria-label="The Labs feedback loop"><li>Project team</li><li>Alpha + landing page</li><li>Founder review</li><li>Next scoped change</li></ol>
+      <ol aria-label="The Labs feedback loop">
+        <li><details><summary>Project team</summary><p>The Tech lead assigns a bounded change to the project team. Knowledge officer supplies context, and Brand review reviews the language and visuals.</p></details></li>
+        <li><details><summary>Alpha + landing page</summary><p>The team develops the alpha and explains its capabilities here. Tests and peer review distinguish working behavior from proposed features.</p></details></li>
+        <li><details><summary>Founder review</summary><p>The founder tries the result and returns feedback. Reviewed feature changes stay separate from the founder’s decision to merge into <code>main</code> or publish a release.</p></details></li>
+        <li><details><summary>Next scoped change</summary><p>Feedback becomes a specific next task with an owner and acceptance criteria. The team records the result and brings it back for review.</p></details></li>
+      </ol>
     </div>
     <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. This is the development team’s workflow, not a claim that the alpha runtime independently executed the whole graph.</p>
     <a className="hero-secondary" href="#build">Plan your own team</a>
