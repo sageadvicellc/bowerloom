@@ -11,7 +11,7 @@ export const destinations = {
 };
 export const hero = {
   "Eyebrow": "Open tools. Personal agents.",
-  "H1": "Grow your agent crew on Trellis",
+  "H1": "Grow your sprouts on Trellis",
   "Body": "Trellis is an open-source framework for building agent workflows in files you can read and change. Start with a completed experiment and a blog draft you can review.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "See the first recipe",
@@ -57,7 +57,7 @@ export const stages = [
 export const questions = [
   {
     "question": "What can I try today?",
-    "answer": "The local, Codex-first alpha supports the prepared Labs-to-blog recipe. Your personal agent supplies the draft. Trellis records the plan, approval, and GitHub operations. General installation packaging and arbitrary crew execution remain outside this proof."
+    "answer": "The local, Codex-first alpha supports the prepared Labs-to-blog recipe. Your personal agent supplies the draft. Trellis records the plan, approval, and GitHub operations. General installation packaging and arbitrary Sprouts team execution remain outside this proof."
   },
   {
     "question": "Does Trellis publish the blog for me?",
@@ -73,11 +73,11 @@ export const questions = [
   },
   {
     "question": "What stays in my files?",
-    "answer": "Portable definitions contain the roles, skills, and permissions that describe the crew. Keep credentials and private installation details outside them. Recipe progress lives in PostgreSQL, and the draft result lives in GitHub."
+    "answer": "Portable definitions contain the roles, skills, and permissions that describe the Sprouts team. Keep credentials and private installation details outside them. Recipe progress lives in PostgreSQL, and the draft result lives in GitHub."
   },
   {
-    "question": "What are Crew, Relay, Roots, Vines, and Workbench?",
-    "answer": "Crew defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these pieces. The alpha evidence describes their current limits."
+    "question": "What are Sprouts, Relay, Roots, Vines, and Workbench?",
+    "answer": "Sprouts defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these pieces. The alpha evidence describes their current limits."
   },
   {
     "question": "Can I use another agent app or a shared team?",

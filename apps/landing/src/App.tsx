@@ -137,7 +137,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your agent crew on <em>Trellis</em>
+              Grow your sprouts on <em>Trellis</em>
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -215,7 +215,7 @@ export default function App() {
         <section className="product-section" aria-labelledby="product-title">
           <h2 id="product-title">Keep the work in your hands.</h2>
           <div>
-            <p>A workflow is a reusable set of steps for a task. Trellis keeps crew definitions, including roles, skills, and permissions, outside any one agent app.</p>
+            <p>A workflow is a reusable set of steps for a task. Trellis keeps Sprouts definitions, including roles, skills, and permissions, outside any one agent app.</p>
             <p>Your personal agent prepares the prose for the alpha recipe. Trellis saves the proposed change, waits for exact approval, and records the GitHub result. Keep credentials and private installation details separate from portable definitions.</p>
           </div>
         </section>
@@ -249,7 +249,7 @@ export default function App() {
           <div className="recipe-proof">
             <h3>A recorded run, with a result to inspect.</h3>
             <p>The October 2 trial created draft pull request #41. When the test deliberately dropped GitHub’s successful response, Trellis paused the job. A fresh process inspected the remote result and recovered the saved record. Two later runs returned the same pull request without new HTTP requests.</p>
-            <p>This result covers one prepared recipe and installation. It does not establish arbitrary crew execution or measured time savings. Founder acceptance remains pending.</p>
+            <p>This result covers one prepared recipe and installation. It does not establish arbitrary Sprouts team execution or measured time savings. Founder acceptance remains pending.</p>
             <div className="resource-links">
               <a href={destinations.pullRequest}>Inspect draft pull request #41</a>
               <a href={destinations.trial}>Read the trial and its limits</a>
@@ -285,7 +285,7 @@ export default function App() {
             <summary>Local checkout commands</summary>
             <p>Use the prerequisites listed here. In a new workspace directory, run the following commands to build the development checkout. These commands do not prepare the database or authorize a GitHub write.</p>
             <pre><code>{checkoutCommands}</code></pre>
-            <p>From the cloned repository directory, read the included crew definition:</p>
+            <p>From the cloned repository directory, read the included Sprouts definition:</p>
             <pre><code>node dist/apps/cli/src/main.js validate examples/endor/crew.yaml</code></pre>
             <p>This example reports <code>runtimeReady: false</code>. Validation reads the definition. It does not start workers or grant execution authority.</p>
             <p>Follow the recipe guide before execution. From this development checkout, replace <code>trellis</code> in recipe commands with <code>node dist/apps/cli/src/main.js</code>.</p>
