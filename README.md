@@ -81,6 +81,8 @@ Show me the exact proposed change before any external write.
 Keep publication and merging under my control.
 ```
 
+From this checkout, replace `trellis` in recipe commands with `node dist/apps/cli/src/main.js`.
+
 The recipe needs a prepared PostgreSQL database and a GitHub App installation. Follow the [recipe instructions](docs/recipes/labs-to-blog.md) before execution.
 
 For personal agents that use MCP, read the [MCP setup guide](apps/mcp/README.md). MCP exposes the same controlled recipe operations as the CLI.
