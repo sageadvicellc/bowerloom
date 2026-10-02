@@ -15,9 +15,14 @@ export default function AlphaGuide() {
       setOpen(true);
       frame = requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'start' }));
     };
+    const followSameHash = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest('a') : null;
+      if (link?.getAttribute('href') === window.location.hash) followHash();
+    };
     followHash();
     window.addEventListener('hashchange', followHash);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('hashchange', followHash); };
+    document.addEventListener('click', followSameHash);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('hashchange', followHash); document.removeEventListener('click', followSameHash); };
   }, []);
   return <details className="alpha-guide" id="alpha-guide" ref={guide} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>Alpha guide: from a goal to a working agreement</summary>
