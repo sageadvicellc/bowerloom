@@ -2,6 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openRecipeService } from '../../cli/src/recipe.js';
 import { createRecipeMcpServer } from './server.js';
+import { ownMcpLifecycle } from './lifecycle.js';
 
 const args = process.argv.slice(2);
 if (args.length !== 2 || args[0] !== '--installation' || !args[1] || args[1].startsWith('-')) {
@@ -11,18 +12,10 @@ if (args.length !== 2 || args[0] !== '--installation' || !args[1] || args[1].sta
   try {
     const controller = await openRecipeService(args[1]);
     const server = createRecipeMcpServer(controller);
-    let closing = false;
-    const close = async () => {
-      if (closing) return;
-      closing = true;
-      try { await server.close(); }
-      finally { await controller.close(); }
-    };
-    process.once('SIGINT', () => { void close(); });
-    process.once('SIGTERM', () => { void close(); });
-    process.stdin.once('end', () => { void close(); });
-    process.stdin.once('error', () => { void close(); });
-    server.onclose = () => { void close(); };
+    const { close } = ownMcpLifecycle(server, controller, process.stdin, process, () => {
+      process.stderr.write('Trellis MCP cleanup failed. Read the saved recipe state before retrying.\n');
+      process.exitCode = 1;
+    });
     try { await server.connect(new StdioServerTransport()); }
     catch (error) { await close(); throw error; }
   } catch {
