@@ -5,7 +5,11 @@
 
 # Grow your sprouts on Trellis
 
-<img src="docs/assets/trellis-facts.svg" alt="Version 0.7.0-alpha.0; package license declaration MIT; Node 24.11 through 24.x; npm 11; private alpha" width="808">
+<img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28">
+<img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
+<img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28">
+<img src="docs/assets/badge-npm.svg" alt="npm 11" height="28">
+<img src="docs/assets/badge-access.svg" alt="Private alpha access" height="28">
 
 Your ideas deserve a few extra hands.
 
