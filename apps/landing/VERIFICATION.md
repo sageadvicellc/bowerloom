@@ -101,3 +101,14 @@ The static default is reviewed; the generated video journey is still incomplete.
 - Typecheck,4/4 seek-controller tests, and diff whitespace check passed. No production build or media generation was performed for the sizing change.
 
 Proof: campaign/alpha/landing/sage-picnic-mono-desktop.jpg, sage-picnic-mono-mobile.jpg, sage-picnic-mono-small-setup.jpg, and sage-picnic-mono-small-prompt.jpg. Video acceptance limitations from the static-default review remain; the still and larger type do not constitute completed animation proof.
+
+## Founder-selected Lora — 2026-10-02
+
+The runtime now uses the selected audition's unmodified local Lora variable TTF. Its SIL OFL 1.1 copyright/license is preserved alongside it in public/fonts/lora/OFL.txt. SOURCE.json records the original Google Fonts source and SHA-256; source and destination bytes were compared and matched. Font file size: 212,196 bytes. No external font request or new dependency was added.
+
+- Display headings measure Lora, weight 500, with font-optical-sizing auto. Body copy measures Lora, weight 400, at 18px and line height 1.65. All six h1/h2/h3 elements were checked at mobile width.
+- Projection mono stack remains on navigation, buttons, utility labels, the brand wordmark, commands, and the read-only setup prompt. Navigation and prompt remain 14px; the brand retains its existing weight 600.
+- Chrome at 1440×900, 390×844, and 320×740: no horizontal document overflow. The small mobile header and prompt header also show no internal overflow. Desktop copy fits its panel without internal scrolling; the maker and robot remain visible. The primary CTA reaches setup at top 20.16px on small mobile.
+- Typecheck and 4/4 seek-controller tests passed. Runtime CSS/docs pass the whitespace check; the verbatim upstream OFL file intentionally retains one trailing space on line 21. No production build or media generation was performed for this font change.
+
+Proof: campaign/alpha/landing/sage-picnic-lora-desktop.jpg, sage-picnic-lora-mobile.jpg, and sage-picnic-lora-small-setup.jpg. Matching video and the remaining video/browser acceptance checks are still pending; this typography review applies to the current static experience.
