@@ -102,6 +102,8 @@ The installer rejects every observed existing target, including empty directorie
 
 A hostile process under the same user can race the final collision observation and rename. The cooperative lock does not defend against that process.
 
+Restricted directories and source overlap use conservative case-insensitive comparisons. This rule also rejects equivalent case variants on case-sensitive filesystems.
+
 Use a trusted parent directory without concurrent writers. Symlink observations also require that assumption. This alpha does not claim a hostile-filesystem security boundary.
 
 A crash can leave a staging directory or lock. Inspect those paths before manual removal. The installer never removes an earlier lock or unrelated staging directory.

@@ -9,7 +9,6 @@
 <img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
 <img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28">
 <img src="docs/assets/badge-npm.svg" alt="npm 11" height="28">
-<img src="docs/assets/badge-access.svg" alt="Private alpha access" height="28">
 
 Your ideas deserve a few extra hands.
 
@@ -26,7 +25,7 @@ Keep your team definitions in files that you can read, change, and version. They
 [Build with your agent](#build-with-your-agent) · [Try the first seed](docs/recipes/labs-to-blog.md) · [Explore the roadmap](docs/transition/release-plan.md)
 
 > [!NOTE]
-> `v0.7-alpha` is a local, Codex-first development trial. Repository access is private. The public installer and release are not published. Founder acceptance remains pending.
+> `v0.7-alpha` is a local, Codex-first development trial. The source repository is public. The public installer and release are not published. Founder acceptance remains pending.
 
 ## Start with one useful routine
 
@@ -137,7 +136,7 @@ A small, reproducible contribution gives the team something concrete to review. 
 - Include a focused example or test with your proposed change.
 - Follow the [working order](docs/transition/working-order.md) for review and branch coordination.
 
-Keep credentials, customer data, and private references out of issues and pull requests. Repository access is required during this private alpha.
+Keep credentials, customer data, and private references out of issues and pull requests. The source repository accepts public contributions.
 
 ## Follow the growing season
 

@@ -193,3 +193,18 @@ for (const kind of [['skill'], ['team'], [], {}, null, 1, true, 'unknown']) {
     assert.equal(fs.existsSync(input.targetDir), false);
   });
 }
+
+for (const directory of ['.CoDeX', '.AGENTS', '.ConFig', '.GIT', 'Node_Modules']) {
+  test(`reject case-variant harness and internal directory ${directory}`, t => {
+    const { input, parent } = fixture(t);
+    const forbiddenParent = join(parent, directory);
+    fs.mkdirSync(forbiddenParent, {mode:0o700});
+    const targetDir = join(forbiddenParent, 'workspace');
+    assert.throws(() => planInstallation({...input, targetDir}), code('UNSAFE_TARGET'));
+    assert.equal(fs.existsSync(targetDir), false);
+  });
+}
+test('reject case-variant source overlap before target creation', t => {
+  const { input, parent } = fixture(t);
+  assert.throws(() => planInstallation({...input, targetDir:join(parent, 'BUNDLE', 'workspace')}), code('UNSAFE_TARGET'));
+});

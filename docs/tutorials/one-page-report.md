@@ -8,7 +8,7 @@ The implemented Labs-to-blog seed remains a separate path. This report exercise 
 
 ## Prerequisites
 
-You need access to the private alpha repository. This alpha does not have a published npm package.
+The alpha source repository is public. This alpha does not have a published npm package.
 
 Use Git, npm 11, and Node 24.11 or later within Node 24. Keep credentials outside the tutorial files.
 

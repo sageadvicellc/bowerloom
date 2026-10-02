@@ -132,10 +132,11 @@ export function validateBundle(bundleDir: string): BundleValidation { return sna
 function targetPath(input: InstallationInput): string {
   if (typeof input.targetDir !== 'string' || !isAbsolute(input.targetDir)) fail('ABSOLUTE_TARGET_REQUIRED');
   const target = resolve(input.targetDir), home = resolve(homedir()), source = resolve(input.bundleDir);
-  if (target === home || target === sep || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(basename(target))
-    || ['/usr', '/etc', '/bin', '/sbin', '/opt', '/System', '/Library', '/Applications'].some(path => target === path || target.startsWith(path + sep))
-    || target === source || target.startsWith(source + sep) || source.startsWith(target + sep)
-    || target.split(sep).some(segment => ['.agents', '.codex', '.config', '.git', 'node_modules'].includes(segment))) fail('UNSAFE_TARGET');
+  const foldedTarget = target.normalize('NFC').toLowerCase(), foldedHome = home.normalize('NFC').toLowerCase(), foldedSource = source.normalize('NFC').toLowerCase();
+  if (foldedTarget === foldedHome || target === sep || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(basename(target))
+    || ['/usr', '/etc', '/bin', '/sbin', '/opt', '/System', '/Library', '/Applications'].some(path => foldedTarget === path.toLowerCase() || foldedTarget.startsWith(path.toLowerCase() + sep))
+    || foldedTarget === foldedSource || foldedTarget.startsWith(foldedSource + sep) || foldedSource.startsWith(foldedTarget + sep)
+    || target.split(sep).some(segment => ['.agents', '.codex', '.config', '.git', 'node_modules'].includes(segment.toLowerCase()))) fail('UNSAFE_TARGET');
   noSymlinkAncestors(target, true);
   if (existsSync(target)) fail('TARGET_EXISTS');
   const parent = lstatSync(dirname(target));
