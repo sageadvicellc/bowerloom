@@ -9,6 +9,8 @@ import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 const HELP = `Trellis v0.7-alpha: local controlled workflows
 
 Usage:
+  trellis recipe inspect|setup --installation <private.json>
+  trellis recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
   trellis validate <crew.yaml> [--root <directory>]
   trellis plan <crew.yaml> [--root <directory>]
   trellis authoring validate|export <authoring.json> --scenario <frozen-scenario.json> [--root <directory>]
@@ -22,10 +24,16 @@ Status and review read the prepared session without a model or browser.
 Up stops for exact approval. Approve writes and tests the stored proposal.
 Tier flags do not promise measured throughput. Alpha runs tasks sequentially.
 The plan records declarations. It grants no runtime permission.
+Recipe commands share their controller with MCP. The operator CLI owns exact approval.
 `;
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'recipe') {
+    const { runRecipeCommand } = await import('./recipe.js');
+    process.stdout.write(`${canonicalJson(await runRecipeCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'authoring') {
     const [, command, file, flag, scenario, rootFlag, root] = args;
     if (!['validate','export'].includes(command ?? '') || !file || file.startsWith('-') || flag !== '--scenario'

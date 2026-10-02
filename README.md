@@ -1,16 +1,22 @@
 # Trellis
 
-Trellis is the open-source tooling and framework for building self-managing systems through natural-language workflows.
+Trellis is a free, open-source toolkit that agents use to build and operate automations.
 
-Portable, versioned definitions describe teams, skills, permissions, workflow graphs, budgets, and evaluation requirements outside individual agent tools.
+Focused skills, roles, templates, connection helpers, and commands turn a request into a reusable process. Versioned definitions stay outside individual agent tools.
 
-Sagespec is Hanna's flagship product built on Trellis to automate her entire business. It has its own product repository and team.
+Sagespec is our private Labs configuration built with Trellis. Workbench provides a place to experiment and test changes.
 
-The framework releases are `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. Alpha is Codex-first. Beta requires Codex and Claude Code. Sagespec development starts on accepted beta. Alpha supports founder testing, baseline measurements, and marketing preparation before beta.
+The framework releases are `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. Alpha is Codex-first. Beta requires Codex and Claude Code.
 
 ## Current development
 
-Hanna approved the Codex-first alpha build on October 1, 2026. The two-lead Codex demo completed through exact approvals and real browser acceptance. Final independent release review and the narrated founder walkthrough remain pending.
+Hanna approved the [revised alpha](docs/transition/alpha-revision-02.md) on October 1, 2026. It pairs a reusable experiment-to-blog recipe with an interactive landing page.
+
+The recipe targets a GitHub draft pull request and keeps publication separate. Its implementation and live acceptance are in progress.
+
+The CLI and MCP share the intended tool operations. Use n8n for useful application connections and LangGraph for steps that need saved progress. A process does not require both.
+
+The earlier controlled Codex demonstration and its evidence remain preserved. Code review and founder hands-on testing replace the video presentation for this revision.
 
 - [Current alpha evidence and limits](docs/alpha/acceptance-status.md)
 - [Prepared local CLI sessions](docs/alpha/local-session.md)
