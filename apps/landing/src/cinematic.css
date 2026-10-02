@@ -237,3 +237,8 @@
 .cinematic-copy-chapter .cinematic-chapter h2 { font-size: clamp(28px, 3vw, 44px); margin-top: 0; }
 
 .cinematic-seam { width: 100%; height: 100%; object-fit: cover; object-position: center; position: absolute; inset: 0; z-index: 3; opacity: var(--seam-opacity, 0); pointer-events: none; }
+
+.cinematic-theme .offer-slide h3 { color: var(--ui-text); }
+.cinematic-theme .offer-controls button { color: var(--trellis-link); }
+.cinematic-theme .offer-controls button[aria-pressed="true"] { color: var(--ui-primary-fg); }
+.cinematic-theme p code { color: var(--ui-text); }

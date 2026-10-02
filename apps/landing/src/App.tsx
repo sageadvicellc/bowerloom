@@ -7,9 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { agentPrompt, checkoutCommands, destinations, docs, hero, questions, repository, stages } from "./content";
+import { destinations, docs, hero, questions, repository, stages } from "./content";
 
 import StaticWorkshop from "./StaticWorkshop";
+import TutorialBuilder from "./TutorialBuilder";
 import CinematicWorld from "./CinematicWorld";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
@@ -21,6 +22,48 @@ function Mark() {
       <path d="M8 29V7m10 22V7m10 22V7M5 12h26M5 24h26m-23 0 10-12 10 12" />
     </svg>
   );
+}
+
+function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+  return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
+}
+
+function SeedIcon({ index }: { index: number }) {
+  const paths = [
+    "M7 3h10M9 3v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3M7 15h10",
+    "M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6",
+    "m4 16 11-11 4 4L8 20H4v-4Zm9-9 4 4M13 20h7",
+    "M20 11v1a8 8 0 1 1-5-7M8 11l4 4 8-9",
+  ];
+  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[index]} /></svg>;
+}
+
+function ProductText({ children }: { children: string }) {
+  return <>{children.split(/(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)/g).map((part, index) => /^(Sprouts|Relay|Roots|Vines|Workbench|@sagetrellis\/[a-z-]+)$/.test(part) ? <code key={index}>{part}</code> : part)}</>;
+}
+
+const offers = [
+  { title: "A toolkit that works together.", body: "Sprouts describes the team and its skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
+  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Trellis supplies explicit controls and records around the tested actions; your agent remains your interface." },
+  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
+];
+
+function CoreOffers() {
+  const [active, setActive] = useState(0);
+  const offer = offers[active];
+  return <section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+    <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
+    <div className="offer-content">
+      <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
+        <h3>{offer.title}</h3><p><ProductText>{offer.body}</ProductText></p>
+      </div>
+      <div className="offer-controls" role="group" aria-label="Explore Trellis">
+        <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer">Previous</button>
+        {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
+        <button type="button" onClick={() => setActive((active + 1) % offers.length)} aria-label="Next offer">Next</button>
+      </div>
+    </div>
+  </section>;
 }
 
 class SceneBoundary extends Component<
@@ -55,7 +98,6 @@ export default function App() {
   const [visible, setVisible] = useState(true);
   const [webglFailed, setWebglFailed] = useState(false);
   const [mapView, setMapView] = useState(false);
-  const [copyStatus, setCopyStatus] = useState("");
   const [renderSample, setRenderSample] = useState<RenderSample | null>(null);
   const [renderLoop, setRenderLoop] = useState("loading");
   const cinematic = new URLSearchParams(window.location.search).get("cinematic") !== "0";
@@ -68,7 +110,6 @@ export default function App() {
     new URLSearchParams(window.location.search).get("diagnostics") === "1";
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
-  const promptRef = useRef<HTMLTextAreaElement>(null);
   const stage = stages[selected];
 
   useEffect(() => {
@@ -90,19 +131,6 @@ export default function App() {
     };
   }, []);
 
-  async function copyPrompt() {
-    try {
-      await navigator.clipboard.writeText(agentPrompt);
-      setCopyStatus("Prompt copied. Paste it into your personal agent.");
-    } catch {
-      promptRef.current?.focus();
-      promptRef.current?.select();
-      setCopyStatus(
-        "Select the prompt text and copy it manually. Clipboard access is unavailable.",
-      );
-    }
-  }
-
   return (
     <>
       <a className="skip-link" href="#main">
@@ -116,14 +144,10 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#recipe">The recipe</a>
+          <a href="#recipe">The seed</a>
           <a href="#build">Build with your agent</a>
-          <a href={docs}>
-            Alpha guide <span aria-hidden="true">↗</span>
-          </a>
-          <a href={repository}>
-            GitHub <span aria-hidden="true">↗</span>
-          </a>
+          <ExternalLink href={docs}>Alpha guide</ExternalLink>
+          <ExternalLink href={repository}>GitHub</ExternalLink>
         </nav>
         <span className="alpha-label">
           <span /> v0.7 alpha
@@ -143,15 +167,15 @@ export default function App() {
               {hero.Body}
             </p>
             <a className="button primary" href="#build">
-              Build with your agent <span aria-hidden="true">↗</span>
+              Build with your agent
             </a>
-            <a className="hero-secondary" href="#recipe">See the first recipe</a>
+            <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
             <p className="hero-note">{hero["Alpha note"]}</p>
           </div>
           <div className="workshop-area" ref={sceneRef}>
             <div className="scene-caption">
               <span className="status-dot" /> THE LABS WORKSHOP{" "}
-              <span className="scene-coordinate">40° / 01</span>
+
             </div>
             <div
               className="scene"
@@ -179,7 +203,7 @@ export default function App() {
             <div className="scene-bottom">
               <span>
                 {reduced || webglFailed || mapView
-                  ? "WORKSHOP MAP / STATIC VIEW"
+                  ? "WORKSHOP MAP · STATIC VIEW"
                   : "EXPLORE THE STATIONS BELOW"}
               </span>
               {!reduced && !webglFailed && (
@@ -206,31 +230,24 @@ export default function App() {
           </div>
           <div className="hero-footer">
             <span>Workshop illustration</span>
-            <a href="#recipe" aria-label="Go to the recipe">
-              Go to the recipe <span aria-hidden="true">↓</span>
+            <a href="#recipe" aria-label="Go to the seed">
+              Go to the seed
             </a>
           </div>
         </section>
         )}
-        <section className="product-section" aria-labelledby="product-title">
-          <h2 id="product-title">Keep the work in your hands.</h2>
-          <div>
-            <p>A workflow is a reusable set of steps for a task. Trellis keeps Sprouts definitions, including roles, skills, and permissions, outside any one agent app.</p>
-            <p>Your personal agent prepares the prose for the alpha recipe. Trellis saves the proposed change, waits for exact approval, and records the GitHub result. Keep credentials and private installation details separate from portable definitions.</p>
-          </div>
-        </section>
+        <CoreOffers />
         <section id="recipe" className="recipe-section" aria-labelledby="recipe-title">
           <div className="section-heading">
-            <p className="eyebrow">First recipe: Labs to blog</p>
+            <p className="eyebrow">First seed: Labs to blog</p>
             <h2 id="recipe-title">Turn a completed experiment into a draft you can review.</h2>
             <p>Choose an experiment with evidence already committed to GitHub. Your agent writes the blog draft. Trellis prepares the proposed GitHub change for review before the designated local operator approves it.</p>
           </div>
-          <div className="stage-controls" role="group" aria-label="Explore the recipe steps">
+          <div className="stage-controls" role="group" aria-label="Explore the seed steps">
             {stages.map((item, index) => (
               <button key={item.name} className={index === selected ? "stage active" : "stage"} aria-pressed={index === selected} onClick={() => setSelected(index)}>
-                <span className="stage-number">0{index + 1}</span>
+                <span className="stage-icon" aria-hidden="true">{<SeedIcon index={index} />}</span>
                 <span>{item.name}</span>
-                <span className="stage-arrow" aria-hidden="true">{index === selected ? "↗" : "→"}</span>
               </button>
             ))}
           </div>
@@ -241,65 +258,31 @@ export default function App() {
               <p>{stage.description}</p>
             </div>
             <div className="artifact">
-              <span className="artifact-icon" aria-hidden="true">{["⌁", "◈", "▤", "◎"][selected]}</span>
               <span className="eyebrow">What this step produces</span>
               <strong>{stage.artifact}</strong>
             </div>
           </div>
           <div className="recipe-proof">
             <h3>A recorded run, with a result to inspect.</h3>
-            <p>The October 2 trial created draft pull request #41. When the test deliberately dropped GitHub’s successful response, Trellis paused the job. A fresh process inspected the remote result and recovered the saved record. Two later runs returned the same pull request without new HTTP requests.</p>
-            <p>This result covers one prepared recipe and installation. It does not establish arbitrary Sprouts team execution or measured time savings. Founder acceptance remains pending.</p>
+            <p>The recorded GitHub seed produced a reviewable blog draft with its evidence attached. When the test deliberately dropped GitHub’s successful response, Trellis paused the uncertain write. A fresh process recovered the saved result. Two later runs returned that same result without new HTTP requests or duplicate drafts.</p>
+            <p>This result covers one prepared seed and installation. It does not establish arbitrary team execution or measured time savings. Alpha release acceptance remains separate.</p>
             <div className="resource-links">
-              <a href={destinations.pullRequest}>Inspect draft pull request #41</a>
-              <a href={destinations.trial}>Read the trial and its limits</a>
-              <a href={docs}>Prepare the recipe</a>
+              <ExternalLink href={destinations.trial}>Read the trial and its limits</ExternalLink>
+              <ExternalLink href={docs}>Explore the GitHub seed</ExternalLink>
             </div>
             <p className="access-note">These GitHub links currently require repository access.</p>
           </div>
         </section>
-        <section id="build" className="build-section" aria-labelledby="build-title">
-          <div className="build-intro">
-            <p className="eyebrow">Start with one recipe</p>
-            <h2 id="build-title">Build with your agent</h2>
-            <p>Copy this prompt into your personal agent. Start by reviewing the source and prerequisites. Prepare the recipe only after you understand its requirements and proposed external action.</p>
-            <div className="prerequisites">
-              <h3>What the local trial needs</h3>
-              <p>Use Node 24.11 or later within Node 24, npm 11, and Git for the development checkout. Recipe execution also needs a prepared PostgreSQL database and a repository-scoped GitHub App installation. Account access and provider costs remain your responsibility.</p>
-            </div>
-            <div className="resource-links">
-              <a href={docs}>Recipe setup guide</a>
-              <a href={destinations.mcp}>MCP setup guide</a>
-              <a href={destinations.evidence}>Current alpha evidence</a>
-            </div>
-          </div>
-          <div className="prompt-panel">
-            <div className="prompt-heading">
-              <label className="eyebrow" htmlFor="agent-prompt">Starting prompt for your personal agent</label>
-              <button onClick={copyPrompt} className="copy-button">{copyStatus.startsWith("Prompt copied") ? "Copied" : "Copy prompt"}<span aria-hidden="true">⧉</span></button>
-            </div>
-            <textarea id="agent-prompt" ref={promptRef} readOnly value={agentPrompt} spellCheck={false} />
-            <p className="copy-status" role="status">{copyStatus || "Adapt the prompt to your experiment before you use it."}</p>
-          </div>
-          <details className="checkout-disclosure">
-            <summary>Local checkout commands</summary>
-            <p>Use the prerequisites listed here. In a new workspace directory, run the following commands to build the development checkout. These commands do not prepare the database or authorize a GitHub write.</p>
-            <pre><code>{checkoutCommands}</code></pre>
-            <p>From the cloned repository directory, read the included Sprouts definition:</p>
-            <pre><code>node dist/apps/cli/src/main.js validate examples/endor/crew.yaml</code></pre>
-            <p>This example reports <code>runtimeReady: false</code>. Validation reads the definition. It does not start workers or grant execution authority.</p>
-            <p>Follow the recipe guide before execution. From this development checkout, replace <code>trellis</code> in recipe commands with <code>node dist/apps/cli/src/main.js</code>.</p>
-          </details>
-        </section>
+        <TutorialBuilder />
         <section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
           <div className="faq-list">
-            {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p>{item.answer}</p></details>)}
+            {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
           <div className="resource-links">
-            <a href={destinations.evidence}>Read the alpha boundaries</a>
-            <a href={destinations.releasePlan}>Explore the release plan</a>
-            <a href={destinations.license}>Read the license declaration</a>
+            <ExternalLink href={destinations.evidence}>Read the alpha boundaries</ExternalLink>
+            <ExternalLink href={destinations.releasePlan}>Explore the release plan</ExternalLink>
+            <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
         </section>
       </main>
@@ -361,12 +344,12 @@ export default function App() {
           <Mark />
           <span>trellis.</span>
         </a>
-        <p>An open-source framework for agent workflows.</p>
+        <p>An open-source framework for agent teams.</p>
         <div>
-          <a href={repository}>GitHub</a>
-          <a href={docs}>Recipe guide</a>
-          <a href={destinations.evidence}>Alpha evidence</a>
-          <a href={destinations.license}>License declaration</a>
+          <ExternalLink href={repository}>GitHub</ExternalLink>
+          <ExternalLink href={docs}>GitHub seed guide</ExternalLink>
+          <ExternalLink href={destinations.evidence}>Alpha evidence</ExternalLink>
+          <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
         <p className="footer-access">Source and guide links currently require repository access.</p>
         <span className="footer-note">Made by Sage Advice.</span>
