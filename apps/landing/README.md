@@ -36,3 +36,17 @@ Acceptance budgets: scene JavaScript ≤300 KiB gzip, tested canvas backing area
 `src/projection-tokens.css` is the actual MIT-licensed fallback token stylesheet from `@hannasage/projection-ui` 0.1.5. Its copyright and license are preserved in `PROJECTION-UI-LICENSE`. The compact radius overrides and variable usage follow the consumer mapping in the resume project's `app/lib/apply-visual-palette.ts`. The app consumes the licensed tokens directly; it does not bundle the library's charts or drag-and-drop peers.
 
 Documentation links target `feature/trellis-v1` while alpha work is under review. Reconcile these links with the accepted release branch before a public launch.
+
+## Cinematic pilot (not the default)
+
+Open `/?cinematic=1` for the generated workshop journey. The committed R3F landing remains the default. The pilot uses the designer's Canopy Brass palette as Projection UI token overrides, scoped to this query route; fonts, spacing, radii, and licensed token attribution remain intact.
+
+`src/cinematic-config.ts` is the six-scene media manifest. Supply `/scroll-world/scene-01.webp` through `scene-06.webp` as actual first-frame posters and the corresponding `.mp4` files. The opening poster is the fallback for a scene whose own poster is pending. Set each `posterReady` or `clipReady` flag only after that file is present. These flags indicate availability, not creative approval or recipe proof. Scene one is currently present; scenes two through six await media.
+
+Clips: silent H.264, yuv420p, native landscape 1920×1080, faststart, short GOP (8 recommended), approximately ten seconds, at most fifteen seconds and 16 MiB each. Actual metadata determines seek duration; scene one measures 10.041667 seconds and 14,135,112 bytes. Only the active clip is fetched into a blob; changing scenes aborts the fetch and revokes its object URL. Content type, byte count, and duration are checked before use. No autoplay, audio playback, external telemetry, or new runtime dependency.
+
+Scroll input is coalesced to the latest target once per animation frame. No new seek starts while the decoder is seeking. The poster remains until a presented video frame is reported, or a completed seek confirms decoded video data and a subsequent animation frame is reached. The latter is a bounded fallback for browsers that defer frame callbacks on paused or occluded video; loading alone never reveals the video. Hidden/offscreen sections stop scheduling seeks. Still-view selection removes the video and cancels its fetch. Mobile/coarse-pointer and reduced-motion modes use the uncropped landscape still with normal-flow copy and do not fetch video.
+
+The illustrative journey is separate from the real recipe below it. All six story beats are also available in the keyboard-operable “Read the journey” disclosure. The primary CTA always opens the setup section.
+
+Run the pure seek-controller checks with Node 24: `node --test test/cinematic-scrub.test.mjs`. The adaptation follows the installed scroll-world 0.8.0 scrub-engine principles, under the MIT license in `SCROLL-WORLD-LICENSE`. Production deployment, six-clip seam inspection, cross-browser media review, and switching the default remain separate acceptance steps.

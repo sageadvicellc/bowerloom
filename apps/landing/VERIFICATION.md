@@ -60,3 +60,17 @@ Browser screenshots are recorded outside the source tree in the campaign evidenc
 - work/campaign/alpha/landing/mobile-setup.jpg
 
 The lead independently reviews the artifact before integration.
+
+## Cinematic pilot — implementation check, 2026-10-02
+
+The pilot is gated by `?cinematic=1`; the default scene and slogan are preserved. Canopy Brass overrides Projection tokens only for this route. Scene one uses the supplied actual first-frame poster and silent 1080p MP4. Other scene flags remain pending. The media files are authored and committed separately by the campaign lead.
+
+- Node 24 seek-controller suite: 4/4 passed (latest-target coalescing, decoder-in-flight handling, pause/resume/disposal, finite metadata and bounded endpoint).
+- TypeScript check and production build passed. The first build measured main JS 76.85 kB gzip and the unchanged lazy Workshop chunk 240.00 kB gzip. These sizes exclude video media.
+- Disk guard before build: 37.06 GiB free, 12 GiB reserve, 0.25 GiB expected growth allowed.
+- Chrome at 1440×900 and 1440×1000: semantic hero and primary CTA present; actual poster decoded at 1920px width; no horizontal overflow. PageDown moved scene-one currentTime to approximately 6.03 seconds of 10.041667; paused=true, muted=true, autoplay=false. Query route has zero canvases.
+- Entering pending scene two removed the video and explicitly reported the opening still as its fallback. Selecting still view removed the video and canvas and reported paused scroll animation.
+- Designer independently reviewed opening mobile and 1440×900 desktop composition and reported no runtime visual findings in those static views.
+- Frame reveal initially rejected a confirmed callback when a later seek reduced readyState. The final implementation trusts the confirmed frame and retains a completed-seek fallback after an animation frame. Final browser recheck is pending because the Chrome QA tab disappeared and new-tab creation became unavailable. The saved desktop screenshot predates this final correction and is not proof of accepted animation.
+
+Not accepted yet: final frame-reveal browser recheck, mobile no-video-network evidence, OS reduced-motion emulation, forced network/decode failure, visibility suspension in a real tab, Safari/Firefox behavior, all six clips and their seams, creative review, or a default-route switch. No deployment or publication was performed.

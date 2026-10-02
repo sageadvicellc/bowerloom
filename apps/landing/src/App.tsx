@@ -10,6 +10,7 @@ import {
 import { agentPrompt, docs, repository, stages } from "./content";
 
 import StaticWorkshop from "./StaticWorkshop";
+import CinematicWorld from "./CinematicWorld";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
@@ -57,6 +58,11 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState("");
   const [renderSample, setRenderSample] = useState<RenderSample | null>(null);
   const [renderLoop, setRenderLoop] = useState("loading");
+  const cinematic = new URLSearchParams(window.location.search).get("cinematic") === "1";
+  useEffect(() => {
+    document.documentElement.classList.toggle("cinematic-theme", cinematic);
+    return () => document.documentElement.classList.remove("cinematic-theme");
+  }, [cinematic]);
   const diagnostics =
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("diagnostics") === "1";
@@ -123,6 +129,7 @@ export default function App() {
         </span>
       </header>
       <main id="main">
+        {cinematic ? <CinematicWorld reducedMotion={reduced} /> : (
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="eyebrow">
@@ -204,6 +211,7 @@ export default function App() {
             </a>
           </div>
         </section>
+        )}
         <section
           id="recipe"
           className="recipe-section"
@@ -357,7 +365,7 @@ export default function App() {
           </div>
         </section>
       </main>
-      {diagnostics && (
+      {diagnostics && !cinematic && (
         <aside
           className="render-diagnostics"
           aria-label="Rendering diagnostics"
