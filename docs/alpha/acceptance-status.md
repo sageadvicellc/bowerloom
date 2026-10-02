@@ -1,8 +1,24 @@
 # Alpha evidence and remaining gates
 
+## Current revision
+
+The active alpha demonstrates a completed Labs experiment that becomes an evidence-linked blog draft in a GitHub draft pull request.
+
+The personal agent supplies the draft. Trellis records the plan, pauses for exact approval, and controls the GitHub operations.
+
+The revised implementation and live acceptance remain in progress. Read [the revised scope](../transition/alpha-revision-02.md) and [recipe instructions](../recipes/README.md).
+
+The older craft-shop trial and recorded demo below remain separate evidence. They do not prove the revised recipe or authorize publication.
+
+The film experiment is filed. A new film and a completed agent-team task are not requirements for the revised founder trial.
+
+The public installer, documentation site, and release remain unpublished. Hanna retains founder acceptance and the main merge.
+
+## Earlier recorded demo
+
 The two-lead generated demo passed at source `6e16e709174549faf8dd48e4a844449b5dd30212` on October 1, 2026.
 
-The narrated walkthrough and local artifact preview are ready. Final independent alpha review and founder acceptance remain pending. This result does not authorize release, archival, or a main merge.
+That technical result does not authorize release, archival, or a main merge. Earlier media and preview details below identify historical artifacts.
 
 The private founder packet includes the 261.375737-second `trellis-v0.7-alpha-walkthrough.mp4`, its same-name Markdown transcript, and the loopback preview at `http://127.0.0.1:60790`.
 
@@ -73,4 +89,4 @@ Open-work disposition, replacement availability, founder main merge, and archiva
 
 Agents integrate independently reviewed task branches into `feature/trellis-v1`. Hanna, through `hannasage`, alone merges the assembled feature into `main`.
 
-The framework remains separate from Sagespec, Hanna's flagship product and workflows. This demo starts no Sagespec or marketing team.
+Trellis remains separate from the private Sagespec Labs configuration. This demo starts no Sagespec or marketing team.
