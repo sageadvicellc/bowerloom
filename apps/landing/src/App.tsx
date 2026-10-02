@@ -129,9 +129,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> OPEN TOOLS. PERSONAL AGENTS.
             </p>
             <h1 id="hero-title">
-              Good ideas
-              <br />
-              need a <em>trellis.</em>
+              Grow your agent crew on <em>Trellis</em>
             </h1>
             <p className="hero-description">
               Build automations that keep growing.
