@@ -172,3 +172,57 @@
   .cinematic-theme { scroll-behavior: auto; }
   .cinematic-still-interest .cinematic-poster { opacity: 1; transition: none; }
 }
+
+/* Approved content: compact explanation, recorded proof, setup, and boundaries. */
+.cinematic-static .cinematic-copy { max-height: none; overflow: visible; }
+.hero-secondary { display: block; width: fit-content; min-height: 44px; padding-top: 14px; color: var(--trellis-link, var(--ui-primary)); font: 14px/1.6 var(--ui-font); text-decoration: underline; text-underline-offset: 4px; }
+.cinematic-copy .hero-note { margin-top: 12px; }
+.cinematic-image-caption, .cinematic-media-status { color: var(--ui-muted); font: 13px/1.6 var(--ui-font); margin-top: 4px; }
+.product-section, .faq-section { max-width: 1440px; margin: auto; padding: 56px 5.55%; }
+.product-section { display: grid; grid-template-columns: 1fr 1.15fr; column-gap: 70px; border-bottom: 1px solid var(--ui-border); }
+.product-section h2 { font-size: 36px; letter-spacing: -1.2px; max-width: 15ch; }
+.product-section p, .recipe-proof p, .prerequisites p, .checkout-disclosure p, .faq-list p { font-size: 18px; line-height: 1.65; color: var(--ui-muted); }
+.product-section p + p, .recipe-proof p + p, .checkout-disclosure p + p { margin-top: 14px; }
+.cinematic-theme :is(.recipe-section, .build-section) { padding-top: 56px; padding-bottom: 56px; }
+.recipe-proof { margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--ui-border); max-width: 88ch; }
+.recipe-proof h3, .prerequisites h3 { font-size: 26px; line-height: 1.25; letter-spacing: -.6px; margin: 0 0 16px; }
+.resource-links { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 18px; font: 14px/1.6 var(--ui-font); }
+.resource-links a { color: var(--trellis-link, var(--ui-primary)); text-decoration: underline; text-underline-offset: 4px; padding: 10px 0; }
+.recipe-proof .access-note { font: 13px/1.6 var(--ui-font); margin-top: 14px; }
+.cinematic-theme .build-section { gap: 32px 70px; background: var(--ui-surface); border-top: 1px solid var(--ui-border); border-bottom: 1px solid var(--ui-border); }
+.prerequisites { margin-top: 28px; }
+.checkout-disclosure { grid-column: 1/-1; min-width: 0; border-top: 1px solid var(--ui-border); padding-top: 20px; }
+.checkout-disclosure summary, .faq-list summary { cursor: pointer; font: 14px/1.6 var(--ui-font); min-height: 44px; padding: 10px 0; color: var(--ui-text); }
+.checkout-disclosure p { margin-top: 16px; max-width: 88ch; }
+.checkout-disclosure pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px; background: var(--ui-bg); font: 14px/1.6 var(--ui-font); border: 1px solid var(--ui-border); }
+.checkout-disclosure code { overflow-wrap: anywhere; }
+.cinematic-theme .prompt-panel textarea { min-height: 360px; height: 440px; }
+.faq-section h2 { margin-bottom: 24px; }
+.faq-list { max-width: 92ch; }
+.faq-list details { border-top: 1px solid var(--ui-border); padding: 10px 0; }
+.faq-list details:last-child { border-bottom: 1px solid var(--ui-border); }
+.faq-list p { padding: 12px 0 16px; }
+.site-footer > .footer-access, .site-footer > .footer-release { width: 100%; }
+.cinematic-theme .footer-note { padding-top: 4px; }
+@media (max-width: 1100px) {
+  .cinematic-theme nav { gap: 20px; }
+  .cinematic-theme .site-header { gap: 20px; }
+  .cinematic-theme .alpha-label { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .site-header { height: auto; min-height: 75px; flex-wrap: wrap; padding-top: 20px; padding-bottom: 12px; }
+  nav { order: 2; width: 100%; margin: 0; flex-wrap: wrap; gap: 0 20px; }
+  nav > a { min-height: 44px; display: inline-flex; align-items: center; }
+  nav > a:first-child { display: inline-flex; }
+  .alpha-label { display: inline-flex; margin-left: auto; padding: 6px 8px; font-size: 13px; }
+  .product-section, .faq-section { padding: 36px 6%; }
+  .product-section { display: block; }
+  .product-section h2 { margin-bottom: 22px; }
+  .cinematic-theme :is(.recipe-section, .build-section) { padding-top: 36px; padding-bottom: 36px; }
+  .recipe-proof { margin-top: 24px; padding-top: 24px; }
+  .checkout-disclosure { margin-top: 24px; }
+  .faq-section h2 { margin-bottom: 18px; }
+  .resource-links { gap: 2px 20px; }
+}
+
+.site-footer > div { flex-wrap: wrap; gap: 16px; }

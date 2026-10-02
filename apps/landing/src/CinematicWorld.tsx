@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cinematicJourney as journey } from "./cinematic-config";
+import { hero } from "./content";
 import { createVideoScrubber } from "./cinematic-scrub";
 
 type MediaState = "awaiting" | "loading" | "decoded" | "ready" | "error";
@@ -217,12 +218,10 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   }, [clipUrl, motion, scene.id]);
 
   const status = !motion
-    ? reducedMotion ? "Still view follows your reduced-motion preference." : mobile ? "Still view on mobile. Desktop scroll animation is in development." : !hasClips ? "Selected workshop still. Matching animation is being prepared." : "Still view. Scroll animation is paused."
-    : mediaState === "error" ? "Animation unavailable. The workshop still remains visible."
-      : mediaState === "loading" ? "Loading this scene. The still remains until a video frame is ready."
-        : mediaState === "decoded" ? "Scroll to reveal the animation. The opening frame remains visible."
-        : mediaState === "ready" ? "Scroll to move through the workshop."
-          : `Scene ${index + 1} animation awaits media. ${scene.posterReady ? "Showing its workshop still." : "Showing the opening workshop still."}`;
+    ? reducedMotion ? "Still view follows your reduced-motion preference." : staticView ? "Still view. Motion is off." : null
+    : mediaState === "error" ? "Animation unavailable. The workshop image remains visible."
+      : mediaState === "loading" || mediaState === "decoded" ? "Loading the animation. The workshop image remains visible."
+        : mediaState === "ready" ? "Scroll to move through the workshop." : null;
 
   return (
     <section ref={sectionRef} className={`cinematic-world ${motion ? "cinematic-scroll" : "cinematic-static"}${stillInterest ? " cinematic-still-interest" : ""}`} style={motion ? { minHeight: `${(journey.scenes.length * journey.scrollPerScene + 1) * 100}svh` } : undefined} aria-labelledby="hero-title">
@@ -233,26 +232,19 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
         </div>
         <div className="cinematic-scrim" />
         <div className="cinematic-copy">
-          <p className="eyebrow">OPEN TOOLS. PERSONAL AGENTS.</p>
+          <p className="eyebrow">{hero.Eyebrow}</p>
           <h1 id="hero-title">Grow your agent crew on <em>Trellis</em></h1>
-          <p className="cinematic-description">A free, open-source toolkit for your personal agent to turn everyday routines into connected workflows.</p>
+          <p className="cinematic-description">{hero.Body}</p>
           <a className="button primary" href="#build">Build with your agent <span aria-hidden="true">↗</span></a>
-          <p className="hero-note">Your agent. Your workspace. Your call.</p>
-          <div className="cinematic-chapter">
-            <p className="eyebrow">WORKSHOP JOURNEY / {String(index + 1).padStart(2, "0")} OF 06</p>
-            <h2>{index === 0 ? "A place to grow useful work." : scene.title}</h2>
-            <p>{index === 0 ? "Bring your agent, a routine, and a clear next step." : scene.body}</p>
-          </div>
-          <details className="cinematic-transcript">
-            <summary>Read the journey</summary>
-            <ol>{journey.scenes.map((item) => <li key={item.id}><strong>{item.title}</strong><p>{item.body}</p></li>)}</ol>
-          </details>
+          <a className="hero-secondary" href="#recipe">See the first recipe</a>
+          <p className="hero-note">{hero["Alpha note"]}</p>
+          {hasClips && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
         </div>
         <div className="cinematic-bottom">
-          <div><p className="cinematic-label">ILLUSTRATIVE VISUAL / CINEMATIC PILOT</p><p role="status">{posterFailed ? "Workshop still unavailable. Read the journey above." : status}</p></div>
+          <div><p className="cinematic-label">Workshop illustration</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the recipe." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
           <div className="cinematic-actions">
-            {hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use scroll motion" : "Use still view"}</button>}
-            <a href="#recipe">Explore the real recipe ↓</a>
+            {hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use motion view" : "Use still view"}</button>}
+            <a href="#recipe">Go to the recipe</a>
           </div>
         </div>
       </div>
