@@ -29,7 +29,7 @@ The scene uses procedural geometry, one 1024px shadow map, no textures, no exter
 
 In the development server, open `/?diagnostics=1`. The visible local panel reads Three renderer statistics and the actual R3F render-loop mode. It skips two priming frames, samples 120 frames, publishes one result, then stops collecting. There is no telemetry, network call, persisted metric, runtime dependency, or production diagnostics panel.
 
-Acceptance budgets: scene JavaScript ≤300 KiB gzip, tested canvas backing area ≤2 million pixels, DPR ≤1.5, maximum draw calls ≤250, and maximum triangles ≤50,000. Pause uses demand rendering; static/reduced-motion modes remove the canvas. Frame intervals are supplemental local observations, not a universal FPS promise. See `VERIFICATION.md` for the measured viewport and results.
+Acceptance budgets: scene JavaScript ≤300 KiB gzip, tested canvas backing area ≤2 million pixels, DPR ≤1.5, maximum main-render draw calls ≤250, and maximum main-render triangles ≤50,000. Shadow-pass cost and full GPU profiling are unmeasured; the counters do not represent total frame cost. Pause uses demand rendering; static/reduced-motion modes remove the canvas. Frame intervals are supplemental local observations, not a universal FPS promise. See `VERIFICATION.md` for the measured viewport and results.
 
 ## Projection UI provenance
 

@@ -460,7 +460,8 @@ function RenderDiagnostics({
     const values = sample.current;
     if (values.intervals.length >= renderingBudget.sampleFrames) return;
     // R3F's callbacks run before draw. After priming, renderer.info describes
-    // the preceding completed render, including its shadow pass.
+    // the preceding main render. Three 0.183.2 resets these counters after
+    // the shadow pass, so its cost is not included.
     if (values.priming-- > 0) return;
     values.intervals.push(delta * 1000);
     values.calls = Math.max(values.calls, gl.info.render.calls);
