@@ -4,6 +4,7 @@ import App from "./App";
 import "./projection-tokens.css";
 import "./styles.css";
 import "./cinematic.css";
+import "./navigation.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -52,3 +52,11 @@ This record does not start that crew or appoint its lead. Sagespec product devel
 Hanna approved the [alpha build packet](alpha-build-approval.md) on October 1, 2026. Bounded Codex-first implementation is active. Approval does not accept a release or resolve later customer-policy choices.
 
 The [language direction](language-and-tutorials.md) introduces Endor-inspired tutorials and demo names. The alpha story starts with an independent treehouse. Beta adds the shared village and scoped bridges. These names explain the existing architecture without changing its permissions.
+
+## Bowerloom beta import scope
+
+On October 2, Hanna assigned Claude and Codex settings converters to `v0.7-beta`.
+The converters bring supported harness settings into the portable `.bowerloom/` setup.
+They must show the proposed mapping and unsupported fields before writing files. They must preserve the original settings and require explicit conflict resolution.
+Credentials, tokens, and private session history stay outside the default import. Automatic context capture remains separate later work.
+These converters are planned, not implemented. Two-harness support alone does not establish import readiness.

@@ -10,6 +10,7 @@ import {
 import { destinations, hero, questions, repository } from "./content";
 import ProductText from "./ProductText";
 import LabsWorkflow from "./LabsWorkflow";
+import SiteNavigation from "./SiteNavigation";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
@@ -135,12 +136,7 @@ export default function App() {
             bowerloom<span className="brand-period">.</span>
           </span>
         </a>
-        <nav aria-label="Main navigation">
-          <a href="#recipe">The Labs workflow</a>
-          <a href="#build">Build with your agent</a>
-          <a href="#alpha-guide">Alpha guide</a>
-          <ExternalLink href={repository}>GitHub</ExternalLink>
-        </nav>
+        <SiteNavigation />
         <span className="alpha-label">
           <span /> v0.7 alpha
         </span>
