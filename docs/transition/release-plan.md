@@ -4,7 +4,9 @@ Hanna added `v0.7-alpha` on October 1, 2026. Codex is its first harness. The mil
 
 The canonical release sequence is `v0.7-alpha`, `v0.7-beta`, `v1-beta`, and `v1-rc`. A release candidate is a build proposed for final acceptance. Legacy names such as `Sagespec v3` remain historical references. Current plans use the canonical release names.
 
-Sagespec is Hanna's flagship product built on Trellis to automate her entire business. Its implementation starts on accepted `v0.7-beta` and proceeds in reviewed stages.
+The October 1 revision defines Sagespec as the private Labs configuration built with Trellis. Trellis stays free and open source.
+
+The [revised alpha](alpha-revision-02.md) governs the current toolkit, recipe, landing-page, and review scope. Earlier product-team and video assumptions below remain historical where they conflict.
 
 ## Release sequence
 
@@ -13,7 +15,7 @@ Sagespec is Hanna's flagship product built on Trellis to automate her entire bus
 | v0.7-alpha | Give Hanna a usable Codex-first release on this Mac | A complete local workflow, live control tests, reviewable results, test instructions, and known limits |
 | Alpha use | Establish the beta baseline and enable a marketing and social crew | Repeatable test records, defects, separate crew state, and reviewable campaign drafts |
 | v0.7-beta | Support Codex and Claude Code with two tested demonstration paths | Live controls on both harnesses, both demos, alpha comparisons, and recovery instructions |
-| Sagespec development | Build the flagship for automation of Hanna's entire business on accepted beta | Separate product scope, lead, permissions, and writable state |
+| Sagespec configuration | Apply Trellis to private Labs processes | Private permissions, data boundaries, and accepted reusable recipe behavior |
 | v1-beta | Exercise the full framework scope and prove portability | Workflow switching, interrupted handoff, and broader reliability evidence |
 | v1-rc | Prepare the release candidate for final acceptance | Repeatable release tests, resolved release blockers, pinned artifacts, and recovery instructions |
 
