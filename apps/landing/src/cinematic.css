@@ -89,7 +89,8 @@
 .cinematic-bottom [role="status"] { color: var(--ui-muted); font: 11px/1.5 var(--ui-font); max-width: 66ch; margin-top: 4px; }
 .cinematic-actions { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
 .cinematic-actions :is(button, a) { font: 11px var(--ui-font); min-height: 44px; display: inline-flex; align-items: center; }
-.cinematic-actions button { border: 1px solid var(--trellis-control-border); padding: 0 12px; background: var(--ui-surface); }
+.cinematic-actions button { color: var(--trellis-link); border: 1px solid var(--trellis-control-border); padding: 0 12px; background: var(--ui-surface); }
+.cinematic-actions button:hover { color: var(--trellis-link); }
 .cinematic-actions a { color: var(--trellis-link); }
 .cinematic-static .cinematic-stage { position: relative; }
 @media (max-width: 1100px) {
