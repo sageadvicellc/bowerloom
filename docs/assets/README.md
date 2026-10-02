@@ -9,7 +9,8 @@ The working README uses the wave as a reversible preview. The planner and ready 
 The maker illustration and workshop loop describe the visual world. They do not show software execution or prove product capabilities.
 The loop stays inside a collapsed details section, with a still image outside it. GitHub does not expose reliable GIF motion preferences.
 
-The badges describe current package metadata and private alpha access. They contain no coverage or CI result claim.
+The active badges describe current package metadata. They contain no coverage or CI result claim.
+The former private-access badge remains as a historical asset. The current README does not use it.
 The MIT badge states the package declaration. It does not claim that a separate license file exists.
 
 The old SVG headers and dividers remain intact for source history. The README references the Bowerloom PNG headers and existing dividers.
