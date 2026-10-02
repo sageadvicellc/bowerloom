@@ -15,6 +15,7 @@ import {
 } from "three";
 import { stages } from "./content";
 import StaticWorkshop from "./StaticWorkshop";
+import { renderingBudget, type RenderSample } from "./diagnostics";
 
 type Point = [number, number, number];
 const locations: Point[] = [
@@ -439,16 +440,64 @@ function ContextGuard({ onFailure }: { onFailure: () => void }) {
   return null;
 }
 
+function RenderDiagnostics({
+  onSample,
+  onLoopChange,
+}: {
+  onSample: (sample: RenderSample) => void;
+  onLoopChange: (mode: string) => void;
+}) {
+  const gl = useThree((state) => state.gl);
+  const frameloop = useThree((state) => state.frameloop);
+  const sample = useRef({
+    intervals: [] as number[],
+    calls: 0,
+    triangles: 0,
+    priming: 2,
+  });
+  useEffect(() => onLoopChange(frameloop), [frameloop, onLoopChange]);
+  useFrame((_, delta) => {
+    const values = sample.current;
+    if (values.intervals.length >= renderingBudget.sampleFrames) return;
+    // R3F's callbacks run before draw. After priming, renderer.info describes
+    // the preceding completed render, including its shadow pass.
+    if (values.priming-- > 0) return;
+    values.intervals.push(delta * 1000);
+    values.calls = Math.max(values.calls, gl.info.render.calls);
+    values.triangles = Math.max(values.triangles, gl.info.render.triangles);
+    if (values.intervals.length === renderingBudget.sampleFrames) {
+      const sorted = [...values.intervals].sort((a, b) => a - b);
+      onSample({
+        frames: values.intervals.length,
+        calls: values.calls,
+        triangles: values.triangles,
+        dpr: gl.getPixelRatio(),
+        backingWidth: gl.domElement.width,
+        backingHeight: gl.domElement.height,
+        meanFrameMs:
+          values.intervals.reduce((sum, value) => sum + value, 0) /
+          values.intervals.length,
+        p95FrameMs: sorted[Math.ceil(sorted.length * 0.95) - 1],
+      });
+    }
+  });
+  return null;
+}
+
 export default function Workshop({
   selected,
   onSelect,
   active,
   onFailure,
+  onSample,
+  onLoopChange,
 }: {
   selected: number;
   onSelect: (i: number) => void;
   active: boolean;
   onFailure: () => void;
+  onSample?: (sample: RenderSample) => void;
+  onLoopChange?: (mode: string) => void;
 }) {
   return (
     <Canvas
@@ -463,6 +512,9 @@ export default function Workshop({
       onCreated={({ camera }) => camera.lookAt(0, 0.45, 0)}
     >
       <ContextGuard onFailure={onFailure} />
+      {import.meta.env.DEV && onSample && onLoopChange && (
+        <RenderDiagnostics onSample={onSample} onLoopChange={onLoopChange} />
+      )}
       <fog attach="fog" args={["#07090C", 23, 43]} />
       <ambientLight intensity={0.65} color="#94b9ae" />
       <hemisphereLight args={["#d6e5b0", "#102c21", 1.8]} />

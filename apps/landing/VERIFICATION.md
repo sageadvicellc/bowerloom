@@ -21,13 +21,34 @@ This is a local preview, not a public deployment or release.
 
 - Reduced-motion preference, initial WebGL construction failure, and context-loss handlers use the same map component verified through the explicit static-map control. OS reduced-motion emulation and forced GPU context loss were not exercised through the available browser UI.
 - Clipboard permission denial has a focus/select fallback, but denial was not forced.
-- Hidden/offscreen suspension is implemented with visibilitychange and IntersectionObserver; CPU/GPU profiling was not recorded.
+- Hidden/offscreen suspension is implemented with visibilitychange and IntersectionObserver. A bounded renderer-statistics sample is recorded below; full CPU/GPU profiling was not recorded.
 - The 3D chunk is lazy-loaded and about 240 KiB gzip. Vite reports its 700 KiB raw chunk warning. The reduced-motion path does not load this chunk.
 - React Three Fiber's internal use of Three.Clock produces an upstream deprecation warning with Three 0.183.2. Explicit percentage shadows avoid the deprecated soft shadow mode.
 - Documentation URLs target the active integration branch. The recipe docs and skill are supplied by the parallel recipe work before integration. Public branch/release URLs require reconciliation before launch.
 - No recipe execution, account connection, publishing, merge, paid service, or deployment occurs from this page.
 
 ## Evidence
+
+### Measured rendering budget
+
+Local Chrome, viewport 1280 × 720, October 2. The visible development-only `?diagnostics=1` panel skipped two priming frames and sampled 120 frames. Sampling then stopped. Renderer statistics describe completed draws including the shadow pass. No metric is transmitted or persisted by the application.
+
+| Metric | Measured | Budget |
+| --- | ---: | ---: |
+| Lazy scene JavaScript (gzip) | 231.63 KiB (237,185 bytes) | ≤300 KiB |
+| Maximum draw calls | 191 | ≤250 |
+| Maximum triangles | 11,380 | ≤50,000 |
+| DPR | 1.5 | ≤1.5 |
+| Canvas backing dimensions | 1341 × 904 | — |
+| Canvas backing pixels | 1,212,264 | ≤2,000,000 |
+| Sampled frame interval, mean | 8.33 ms | observation only |
+| Sampled frame interval, p95 | 9.30 ms | observation only |
+
+The exact gzip byte count uses Python gzip at level 6 over the production scene chunk; Vite separately reports approximately 240 kB gzip. Production JavaScript was checked for the diagnostics panel and sampling text, which are absent.
+
+All bounded metrics passed in this viewport. Timing is specific to this local run and does not establish performance across devices. The loop reported `always` while animated and `demand` after Pause, read from actual R3F state. Static-map mode reported zero canvas elements. Reduced motion shares that same canvas-free branch; OS preference emulation remains untested.
+
+Screenshots: `rendering-budget.jpg`, `rendering-paused.jpg`, and `rendering-static.jpg` in the campaign evidence directory below.
 
 Local preview: http://127.0.0.1:4174/
 
