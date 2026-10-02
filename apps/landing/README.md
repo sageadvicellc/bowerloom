@@ -25,6 +25,12 @@ Keep this app's lockfile separate from the monorepo root lockfile. No deployment
 
 The scene uses procedural geometry, one 1024px shadow map, no textures, no external assets, no postprocessing, and a DPR capped at 1.5. DOM content is independent of the scene.
 
+## Local rendering budget
+
+In the development server, open `/?diagnostics=1`. The visible local panel reads Three renderer statistics and the actual R3F render-loop mode. It skips two priming frames, samples 120 frames, publishes one result, then stops collecting. There is no telemetry, network call, persisted metric, runtime dependency, or production diagnostics panel.
+
+Acceptance budgets: scene JavaScript ≤300 KiB gzip, tested canvas backing area ≤2 million pixels, DPR ≤1.5, maximum draw calls ≤250, and maximum triangles ≤50,000. Pause uses demand rendering; static/reduced-motion modes remove the canvas. Frame intervals are supplemental local observations, not a universal FPS promise. See `VERIFICATION.md` for the measured viewport and results.
+
 ## Projection UI provenance
 
 `src/projection-tokens.css` is the actual MIT-licensed fallback token stylesheet from `@hannasage/projection-ui` 0.1.5. Its copyright and license are preserved in `PROJECTION-UI-LICENSE`. The compact radius overrides and variable usage follow the consumer mapping in the resume project's `app/lib/apply-visual-palette.ts`. The app consumes the licensed tokens directly; it does not bundle the library's charts or drag-and-drop peers.

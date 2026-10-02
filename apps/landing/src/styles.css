@@ -12,6 +12,31 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
+.render-diagnostics {
+  position: fixed;
+  z-index: 30;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 14px;
+  background: #07090cf5;
+  border: 1px solid var(--ui-primary);
+  border-radius: 2px;
+  color: var(--ui-text);
+  font: 10px/1.7 var(--ui-font);
+}
+.render-diagnostics strong {
+  color: var(--ui-primary);
+  font-weight: 400;
+}
+.render-diagnostics p {
+  margin-top: 7px;
+}
+.render-diagnostics pre {
+  margin: 8px 0;
+  font: inherit;
+  white-space: pre-wrap;
+}
 * {
   box-sizing: border-box;
 }

@@ -10,6 +10,7 @@ import {
 import { agentPrompt, docs, repository, stages } from "./content";
 
 import StaticWorkshop from "./StaticWorkshop";
+import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
 
@@ -54,6 +55,11 @@ export default function App() {
   const [webglFailed, setWebglFailed] = useState(false);
   const [mapView, setMapView] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
+  const [renderSample, setRenderSample] = useState<RenderSample | null>(null);
+  const [renderLoop, setRenderLoop] = useState("loading");
+  const diagnostics =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("diagnostics") === "1";
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -158,6 +164,8 @@ export default function App() {
                       onSelect={setSelected}
                       active={!paused && visible}
                       onFailure={() => setWebglFailed(true)}
+                      onSample={diagnostics ? setRenderSample : undefined}
+                      onLoopChange={diagnostics ? setRenderLoop : undefined}
                     />
                   </Suspense>
                 </SceneBoundary>
@@ -313,9 +321,8 @@ export default function App() {
                   v0.7 alpha is Codex-first and intended for local testing. The
                   Labs example uses a completed experiment. You authorize
                   draft-PR creation; you or your designated reviewer approve
-                  publication separately.
-                  Account connections need your authorization. No automatic
-                  publishing.
+                  publication separately. Account connections need your
+                  authorization. No automatic publishing.
                 </p>
               </div>
             </div>
@@ -352,6 +359,59 @@ export default function App() {
           </div>
         </section>
       </main>
+      {diagnostics && (
+        <aside
+          className="render-diagnostics"
+          aria-label="Rendering diagnostics"
+        >
+          <strong>LOCAL RENDERING BUDGET</strong>
+          <p>
+            Render loop:{" "}
+            {reduced || webglFailed || mapView
+              ? "static / canvas removed"
+              : renderLoop}
+          </p>
+          <p>
+            {renderSample
+              ? "Sampling complete / stopped at 120 frames"
+              : "Sampling up to 120 frames…"}
+          </p>
+          {renderSample && (
+            <pre>
+              {[
+                "Draw calls (max): " +
+                  renderSample.calls +
+                  " / " +
+                  renderingBudget.drawCalls,
+                "Triangles (max): " +
+                  renderSample.triangles +
+                  " / " +
+                  renderingBudget.triangles,
+                "DPR: " + renderSample.dpr + " / " + renderingBudget.dpr,
+                "Backing size: " +
+                  renderSample.backingWidth +
+                  " × " +
+                  renderSample.backingHeight,
+                "Backing pixels: " +
+                  renderSample.backingWidth * renderSample.backingHeight +
+                  " / " +
+                  renderingBudget.backingPixels,
+                "Frame interval mean: " +
+                  renderSample.meanFrameMs.toFixed(2) +
+                  " ms",
+                "Frame interval p95: " +
+                  renderSample.p95FrameMs.toFixed(2) +
+                  " ms",
+              ].join("\n")}
+            </pre>
+          )}
+          <p>
+            Scene JS budget: ≤300 KiB gzip (build check).
+            <br />
+            Timing is local observation, not an FPS guarantee.
+          </p>
+        </aside>
+      )}
       <footer className="site-footer">
         <a className="brand" href="#" aria-label="Trellis home">
           <Mark />
