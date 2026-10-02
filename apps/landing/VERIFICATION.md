@@ -91,3 +91,13 @@ This section supersedes the prior Canopy Brass direction and query-only default.
 Proof: campaign/alpha/landing/sage-picnic-desktop.jpg, sage-picnic-mobile.jpg, and sage-picnic-mobile-setup.jpg. The media files and palette comparison are authored separately by the campaign lead and excluded from this runtime commit.
 
 The static default is reviewed; the generated video journey is still incomplete. Matching video, final confirmed-frame reveal recheck, six-clip seams, forced network/decode failure, real hidden-tab suspension, OS reduced-motion emulation, and Safari/Firefox checks remain pending. No deployment or publication was performed.
+
+## Founder mono-size revision — 2026-10-02
+
+- Selected-theme labels/eyebrows/status measured13px; navigation, primary/copy controls measured14px; prompt measured14px with22.4px line height (1.6) and440px height. Copy button measured44px height. Projection mono stack retained.
+- Heading/body unchanged: desktop hero63.36px and descriptive body16px at1440×900.
+- Chrome1440×900,390×844, and320×740: no document overflow. At320px the header, wrapped prompt header, and footer also report no internal horizontal overflow. Setup navigation still reaches top20px, and the read-only prompt receives keyboard focus.
+- The previously pending recipe-eyebrow render repair is now confirmed: rgb(104,104,95), the selected --ui-muted value, at13px.
+- Typecheck,4/4 seek-controller tests, and diff whitespace check passed. No production build or media generation was performed for the sizing change.
+
+Proof: campaign/alpha/landing/sage-picnic-mono-desktop.jpg, sage-picnic-mono-mobile.jpg, sage-picnic-mono-small-setup.jpg, and sage-picnic-mono-small-prompt.jpg. Video acceptance limitations from the static-default review remain; the still and larger type do not constitute completed animation proof.

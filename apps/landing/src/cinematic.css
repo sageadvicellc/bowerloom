@@ -14,9 +14,13 @@
   --trellis-control-border: #898879;
   --trellis-soft-accent-1: #CCD9BE;
   --trellis-soft-accent-2: #E9BCBF;
+  --trellis-mono-label-size: 13px;
+  --trellis-mono-control-size: 14px;
+  --trellis-mono-prompt-size: 14px;
   --warm: var(--ui-primary);
 }
 .cinematic-theme .button.primary:hover { background: var(--trellis-primary-hover); border-color: var(--trellis-primary-hover); }
+.cinematic-theme .button.primary { color: var(--ui-primary-fg); }
 .cinematic-theme .text-link { color: var(--trellis-link); }
 .cinematic-theme .prompt-panel { background: var(--ui-surface); border-color: var(--trellis-control-border); }
 .cinematic-theme .prompt-panel textarea { color: var(--ui-text); }
@@ -86,3 +90,27 @@
   .cinematic-chapter { margin-top: 26px; }
 }
 @media (prefers-reduced-motion: reduce) { .cinematic-world { scroll-behavior: auto; } }
+
+/* Founder-requested mono floor; heading and body type stay unchanged. */
+.cinematic-theme :is(.eyebrow, .alpha-label, .hero-note, .stage-number, .artifact-note, .toolkit-line, .alpha-boundary strong, .copy-status, .site-footer p, .footer-note, .cinematic-label, .cinematic-bottom [role="status"]) {
+  font-size: var(--trellis-mono-label-size);
+  line-height: 1.6;
+}
+.cinematic-theme :is(nav, .button, .copy-button, .motion-toggle, .text-link, .site-footer > div, .cinematic-actions :is(button, a)) {
+  font-size: var(--trellis-mono-control-size);
+  line-height: 1.6;
+}
+.cinematic-theme .build-intro .text-link { font-size: var(--trellis-mono-control-size); }
+.cinematic-theme .prompt-heading { flex-wrap: wrap; gap: 12px; }
+.cinematic-theme .prompt-panel textarea {
+  font-size: var(--trellis-mono-prompt-size);
+  line-height: 1.6;
+  min-height: 440px;
+  height: 440px;
+}
+.cinematic-theme .site-footer > div { flex-wrap: wrap; gap: 16px; }
+@media (max-width: 400px) {
+  .cinematic-theme .site-header { gap: 12px; }
+  .cinematic-theme nav { gap: 12px; }
+  .cinematic-theme nav a span { margin-left: 3px; }
+}

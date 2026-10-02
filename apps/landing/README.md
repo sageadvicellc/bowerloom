@@ -52,3 +52,5 @@ Scroll input is coalesced to the latest target once per animation frame. No new 
 The illustrative journey is separate from the real recipe below it. All six story beats are also available in the keyboard-operable “Read the journey” disclosure. The primary CTA always opens the setup section.
 
 Run the pure seek-controller checks with Node 24: `node --test test/cinematic-scrub.test.mjs`. The adaptation follows the installed scroll-world 0.8.0 scrub-engine principles, under the MIT license in `SCROLL-WORLD-LICENSE`. Production deployment, six-clip seam inspection, and cross-browser media review remain separate acceptance steps. The current default swap accepts the reviewed static experience only; it does not mark the generated video journey complete.
+
+The selected theme uses the existing Projection mono stack at a 13px floor for labels and status, 14px for navigation and controls, and14px/1.6 for the setup prompt. The prompt header wraps on small screens and its input height is440px. Heading and body typography are unchanged pending the separate font audition.
