@@ -84,6 +84,6 @@ export const questions = [
   },
   {
     question: "What does it cost to try?",
-    answer: "Trellis is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and source access is currently limited. The tutorial asks your agent to explain requirements before installing anything or spending money."
+    answer: "Trellis is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and source access is currently limited. The tutorial lists the setup requirements and tells your agent not to spend money."
   }
 ] as const;
