@@ -1,0 +1,71 @@
+/*
+  @hannasage/projection-ui — fallback design tokens
+  These are default values only. Override by wrapping your app in <ThemeProvider theme={...} />.
+  All components reference only the --ui-* custom properties defined here.
+*/
+
+:root {
+  /* Surfaces */
+  --ui-bg:      #07090C;
+  --ui-surface: #0D1117;
+  --ui-border:  #1B2535;
+
+  /* Text */
+  --ui-text:    #DDE3EE;
+  --ui-muted:   #8396AB;
+
+  /* Accent */
+  --ui-primary:    #C9F53A;
+  --ui-primary-fg: #07090C;
+
+  /* Semantic */
+  --ui-danger:  #FF5252;
+
+  /* Typography */
+  --ui-font: 'IBM Plex Mono', monospace;
+
+  /* Radius — soft preset (default) */
+  --ui-radius-sm:   4px;
+  --ui-radius-md:   6px;
+  --ui-radius-lg:   10px;
+  --ui-radius-full: 9999px;
+}
+
+/* Focus rings — uses --ui-primary so it follows the consumer's theme */
+:where(select, input, textarea, button, a):focus-visible {
+  outline:        2px solid var(--ui-primary, #C9F53A);
+  outline-offset: 2px;
+  border-radius:  3px;
+}
+
+/* Range inputs — accent color tracks the consumer's primary */
+input[type="range"] {
+  accent-color: var(--ui-primary, #C9F53A);
+  cursor: pointer;
+}
+
+/* Number inputs — hide browser spin buttons */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Scrollbar — subtle branded scrollbar */
+::-webkit-scrollbar       { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--ui-bg); }
+::-webkit-scrollbar-thumb {
+  background:    var(--ui-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ui-primary); }
+
+/* Selection highlight */
+::selection {
+  background: var(--ui-primary);
+  color:      var(--ui-primary-fg);
+}
+/*$vite$:1*/
