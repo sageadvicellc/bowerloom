@@ -35,7 +35,14 @@ export default function SiteNavigation() {
     <button className="mobile-menu-toggle" type="button" aria-label="Open navigation" aria-expanded={open} aria-controls="mobile-navigation" aria-haspopup="dialog" onClick={() => setOpen(true)}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     </button>
-    <dialog id="mobile-navigation" ref={dialog} className="mobile-drawer" aria-labelledby="mobile-navigation-title" onClose={() => setOpen(false)} onClick={event => { if (event.target === event.currentTarget) close(); }}>
+    <dialog id="mobile-navigation" ref={dialog} className="mobile-drawer" aria-labelledby="mobile-navigation-title" onClose={() => setOpen(false)} onKeyDown={event => {
+      if (event.key !== 'Tab') return;
+      const controls = event.currentTarget.querySelectorAll<HTMLElement>('button, a[href]');
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="mobile-drawer-content">
         <div className="mobile-drawer-heading"><h2 id="mobile-navigation-title">Explore Bowerloom</h2><button type="button" aria-label="Close navigation" onClick={close} autoFocus><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div>
         <nav aria-label="Mobile navigation"><NavigationLinks onNavigate={close} /></nav>
