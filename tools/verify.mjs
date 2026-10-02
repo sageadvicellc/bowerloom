@@ -18,9 +18,15 @@ const commands = [
 for (const [name, args] of commands) {
   const started = performance.now();
   const result = await new Promise((done) => {
-    const child = spawn('npm', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('npm', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' });
     const chunks = []; let bytes = 0; let reason = null;
-    const abort = (why) => { reason ??= why; child.kill('SIGTERM'); killTimer ??= setTimeout(() => child.kill('SIGKILL'), 2000); };
+    const kill = signal => {
+      try {
+        if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch { /* The process group already stopped. */ }
+    };
+    const abort = (why) => { reason ??= why; kill('SIGTERM'); killTimer ??= setTimeout(() => kill('SIGKILL'), 2000); };
     let killTimer;
     const timer = setTimeout(() => abort('TIME_LIMIT'), 15 * 60 * 1000);
     const collect = chunk => {
