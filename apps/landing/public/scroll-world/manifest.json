@@ -1,0 +1,100 @@
+{
+  "status": "technical-study-creative-hold",
+  "default": "still",
+  "previewQuery": "?cinematic=1&motion=preview",
+  "reason": "Founder requested a stronger forest-integrated cyber-solar world. Later rooms drift toward offices.",
+  "runtimeSeconds": 60.250002,
+  "videoCredits": 612,
+  "files": [
+    {
+      "path": "scene-01-end.webp",
+      "bytes": 210810,
+      "sha256": "79c7d09b91cf21919815634c8dd267a8c0f48e30e34a4d87ac89d96656e316ce"
+    },
+    {
+      "path": "scene-01.mp4",
+      "bytes": 15835290,
+      "sha256": "ee8d2e30694def52df426780142b7b3908fd8057ce102c6869e1173ca62e2ea4"
+    },
+    {
+      "path": "scene-01.webp",
+      "bytes": 468370,
+      "sha256": "058055b3297784e9b646c3bf3848ab9486097e8eb7b61b6823345bfde0d89d8b"
+    },
+    {
+      "path": "scene-02-end.webp",
+      "bytes": 182354,
+      "sha256": "b7a2eb68c751f9ec8a2f788166674afd861ed1216a9b9daa0b24548daa0c815d"
+    },
+    {
+      "path": "scene-02.mp4",
+      "bytes": 11012956,
+      "sha256": "c2a239bda8c37dda919043f5353e935a3b3c7b9254dafe4d1906a97dd34d3269"
+    },
+    {
+      "path": "scene-02.webp",
+      "bytes": 216064,
+      "sha256": "c59d0a4734ee6fb18ebcb25d37152b0a80061c39649e8cc653b4bcfbacd8f62a"
+    },
+    {
+      "path": "scene-03-end.webp",
+      "bytes": 93242,
+      "sha256": "7e97310364433994180b4da525819d8000b511510c45a92706f80db52e06071a"
+    },
+    {
+      "path": "scene-03.mp4",
+      "bytes": 9837024,
+      "sha256": "b16bb2915e833a8ede3a1a8488f486450f71f9919af7bf2624981a8e02758a37"
+    },
+    {
+      "path": "scene-03.webp",
+      "bytes": 187600,
+      "sha256": "91da07a16be7779870b8b400422c3af5da222f196c044a0365a21cb1bdc41291"
+    },
+    {
+      "path": "scene-04-end.webp",
+      "bytes": 124550,
+      "sha256": "62a4a0e77b6f1df01ad3a3bb5ae93889a7a72341d896767828173b9a4699dadb"
+    },
+    {
+      "path": "scene-04.mp4",
+      "bytes": 8353490,
+      "sha256": "396f097bae556666d1a4d378928750ab988be147473e1adaaf079e649fa31f56"
+    },
+    {
+      "path": "scene-04.webp",
+      "bytes": 102076,
+      "sha256": "411ff90600c1975e1ae345e486e8933318cabb9755d4d216f825d7e9a900ad37"
+    },
+    {
+      "path": "scene-05-end.webp",
+      "bytes": 189620,
+      "sha256": "1673cc9c51069580cc6153fa08c6f8fb5b397cf7808860b2649b6380bf4f0c46"
+    },
+    {
+      "path": "scene-05.mp4",
+      "bytes": 8307930,
+      "sha256": "84aa635b43180ead11b61cf88cb4287ab7c2ed84d1864d8008fc0749c0a5ec5b"
+    },
+    {
+      "path": "scene-05.webp",
+      "bytes": 130214,
+      "sha256": "1b29059699a8550836c33cedbecfe2ae475445e7c1fd3e42459e9510d6ff8889"
+    },
+    {
+      "path": "scene-06-end.webp",
+      "bytes": 209896,
+      "sha256": "5d4a9f57250beb5b6110d3a44f7b30e65816f21f9417863f8c7e1cba6ade8c0e"
+    },
+    {
+      "path": "scene-06.mp4",
+      "bytes": 10038533,
+      "sha256": "3e27e873048edf37a1e27536bf3a22e077befd5fd3e17fc3e7c097cfa620ca87"
+    },
+    {
+      "path": "scene-06.webp",
+      "bytes": 207206,
+      "sha256": "34c0b8039983cddac32d4cde08156286745d21648a76d36b24b04c33d0af1eab"
+    }
+  ]
+}

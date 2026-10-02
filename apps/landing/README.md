@@ -16,7 +16,7 @@ Keep this app's lockfile separate from the monorepo root lockfile. No deployment
 
 ## Interaction and fallback checks
 
-The scene-specific checks below apply to the historical workshop at `/?cinematic=0`. The default static experience and pending video contract are documented further below.
+The scene-specific checks below apply to the historical workshop at `/?cinematic=0`. The default still and explicit video study are documented further below.
 
 - “Build with your agent” navigates to the setup section.
 - Every recipe stage has a keyboard-operable DOM button; stage changes update the explanation and selected scene station.
@@ -39,18 +39,46 @@ Acceptance budgets: scene JavaScript ≤300 KiB gzip, tested canvas backing area
 
 Documentation links target `feature/trellis-v1` while alpha work is under review. Reconcile these links with the accepted release branch before a public launch.
 
-## Selected cinematic direction (interim still)
+## Selected still and animation study
 
-The default page uses the founder-selected Sage Picnic palette: cream, sage, and blush as exact Projection UI token overrides. Its copy surface is opaque cream. Fonts, spacing, radii, and licensed token attribution remain intact. The previous R3F workshop remains available at `/?cinematic=0`. `/?cinematic=1` explicitly selects the new view too.
+The default page uses Sage Picnic: cream, sage, and blush through Projection UI tokens. Opaque cream panels keep text readable.
+Local Lora supplies headings and reading text. Projection mono remains on utility labels, controls, navigation, and commands.
+The page contains a compact still hero, product explanation, four recipe stages, recorded proof, setup disclosure, and eight FAQs.
+The removed journey disclosure is not part of this version.
 
-`src/cinematic-config.ts` is the six-scene media manifest. Supply `/scroll-world/scene-01.webp` through `scene-06.webp` as actual first-frame posters and the corresponding `.mp4` files. The opening poster is the fallback for a scene whose own poster is pending. Its current URL includes the revision `?v=sage-picnic-1` to avoid reusing the replaced dark poster from browser cache. Update this revision when the opening artwork changes. Set each `posterReady` or `clipReady` flag only after matching media for the selected artwork is present. These flags indicate availability, not creative approval or recipe proof. The selected opening still is present. All six clips are marked pending: the earlier dark clip does not match the selected artwork and is not fetched. While matching media is pending, the page uses a short static hero rather than a six-scene empty scroll.
+The historical R3F workshop remains at `/?cinematic=0`. The default page and `/?cinematic=1` use the selected still without video requests.
+The normal still has slight scroll-linked opacity changes. Reduced motion removes this effect.
 
-Clips: silent H.264, yuv420p, native landscape 1920×1080, faststart, short GOP (8 recommended), approximately ten seconds, at most fifteen seconds and 16 MiB each. Actual metadata determines seek duration when matching clips are supplied. Only the active clip is fetched into a blob; changing scenes aborts the fetch and revokes its object URL. Content type, byte count, and duration are checked before use. No autoplay, audio playback, external telemetry, or new runtime dependency.
+Open `/?cinematic=1&motion=preview` for the six-clip technical study. This query is explicit because the later generated rooms need art correction.
+The study is labeled as artwork under review. It is not accepted creative work or software evidence.
+Source videos, prompts, and provider records remain in the private campaign directory. `public/scroll-world/manifest.json` records the served assets and their hashes.
 
-Scroll input is coalesced to the latest target once per animation frame. No new seek starts while the decoder is seeking. The poster remains until a presented video frame is reported, or a completed seek confirms decoded video data and a subsequent animation frame is reached. The latter is a bounded fallback for browsers that defer frame callbacks on paused or occluded video; loading alone never reveals the video. Hidden/offscreen sections stop scheduling seeks. Still-view selection removes the video and cancels its fetch. Mobile/coarse-pointer and reduced-motion modes use the uncropped landscape still with normal-flow copy and do not fetch video.
+Each clip uses silent H.264, native 1920×1080, 24 frames per second, faststart, and an eight-frame keyframe interval.
+The six slowed clips total approximately 60 seconds. Each file stays below 16 MiB and the runtime rejects durations above 15 seconds.
+Only the active clip is fetched. Scene changes abort the previous fetch and revoke its object URL.
+The runtime limits received bytes even without a content-length header. It requires an MP4 content type and finite duration before use.
+The selected opening still remains the default image. Scene-specific posters cover pending loads in the technical study.
 
-The illustrative journey is separate from the real recipe below it. All six story beats are also available in the keyboard-operable “Read the journey” disclosure. The primary CTA always opens the setup section.
+Scroll input keeps the newest requested position. The controller waits for each active seek to finish before another seek.
+The poster stays visible until a frame callback or a completed seek confirms decoded video data.
+A brief dissolve uses the previous clip's final frame. Its opacity follows scroll position in both directions.
+This softens generated differences at joins. It does not make their frames identical.
+Hidden and offscreen sections stop scheduling seeks. No video autoplays, plays audio, or sends telemetry.
 
-Run the pure seek-controller checks with Node 24: `node --test test/cinematic-scrub.test.mjs`. The adaptation follows the installed scroll-world 0.8.0 scrub-engine principles, under the MIT license in `SCROLL-WORLD-LICENSE`. Production deployment, six-clip seam inspection, and cross-browser media review remain separate acceptance steps. The current default swap accepts the reviewed static experience only; it does not mark the generated video journey complete.
+The still-view control cancels the fetch, removes video, and returns to the compact hero.
+Phones, coarse pointers, and reduced-motion preferences use the landscape still and request no video.
+The recipe and setup links remain available in both presentations. No animation supplies a factual product claim.
 
-The selected theme uses the existing Projection mono stack at a 13px floor for labels and status, 14px for navigation and controls, and14px/1.6 for the setup prompt. The prompt header wraps on small screens and its input height is440px. Heading and body typography are unchanged pending the separate font audition.
+Run the controller tests with Node 24 from this directory:
+
+```sh
+node --test test/cinematic-scrub.test.mjs
+```
+
+The adaptation follows scroll-world 0.8.0 principles. `SCROLL-WORLD-LICENSE` preserves its MIT license.
+See `SCROLL-VERIFICATION.md` for technical observations and remaining limits. Public deployment and creative acceptance remain separate decisions.
+
+Utility labels use at least 13px. Navigation, controls, and the setup prompt use 14px.
+The prompt uses line height 1.6 and a 440px text area. Its header wraps on small screens.
+Small sage text uses `#536344`. Its contrast is 6.150124:1 on cream and 5.692158:1 on the pale panel.
+Button backgrounds keep the selected primary color and white labels. Large decorative accents retain the lighter sage.

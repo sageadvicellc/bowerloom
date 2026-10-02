@@ -38,3 +38,15 @@ test("metadata must be finite and ready, endpoint is bounded below duration", ()
   assert.equal(f.seeks.length, 0); f.video.readyState = 2; f.scrub.decoded(); f.flush();
   assert.ok(f.seeks[0] < 10 && f.seeks[0] > 9.9);
 });
+
+test("backscroll during decoding replaces the forward target", () => {
+  const f = fixture();
+  f.scrub.setProgress(.85); f.flush();
+  f.video.seeking = true;
+  f.scrub.setProgress(.65); f.scrub.setProgress(.2); f.flush();
+  assert.equal(f.seeks.length, 1);
+  f.video.seeking = false; f.scrub.decoded(); f.flush();
+  assert.equal(f.seeks.length, 2);
+  assert.ok(f.seeks[1] < f.seeks[0]);
+  assert.ok(Math.abs(f.seeks[1] - .2 * (10 - 1 / 30)) < .00001);
+});

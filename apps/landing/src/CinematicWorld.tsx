@@ -42,6 +42,7 @@ async function loadClip(path: string, signal: AbortSignal) {
 
 export default function CinematicWorld({ reducedMotion }: { reducedMotion: boolean }) {
   const mobile = useMobileStill();
+  const preview = new URLSearchParams(window.location.search).get("motion") === "preview";
   const [staticView, setStaticView] = useState(false);
   const [index, setIndex] = useState(0);
   const [mediaState, setMediaState] = useState<MediaState>("awaiting");
@@ -55,14 +56,18 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   const activeRef = useRef(true);
   const scrubSceneRef = useRef<string | null>(null);
   const hasClips = journey.scenes.some((item) => item.clipReady);
-  const motion = hasClips && !reducedMotion && !mobile && !staticView;
-  const stillInterest = !hasClips && !reducedMotion && !staticView;
+  const motion = preview && hasClips && !reducedMotion && !mobile && !staticView;
+  const stillInterest = !motion && !reducedMotion && !staticView;
   const scene = journey.scenes[index];
   const poster = scene.posterReady ? scene.poster : journey.openingPoster;
   const clipUrl = clip?.id === scene.id ? clip.url : null;
   const frameVisible = presented && Boolean(clipUrl);
+  const beyondOpening = motion && index > 0;
 
   useEffect(() => { setPosterFailed(false); }, [poster]);
+  useEffect(() => {
+    if (staticView) sectionRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [staticView]);
 
   // Decorative still interest only: essential copy never depends on scroll or opacity.
   // No idle loop, transforms, or media requests; reduced motion skips this effect.
@@ -114,6 +119,7 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
       const position = progress * journey.scenes.length;
       const next = Math.min(journey.scenes.length - 1, Math.floor(position));
       localProgress.current = Math.min(1, position - next);
+      section.style.setProperty("--seam-opacity", String(next > 0 ? Math.max(0, 1 - localProgress.current / .06) : 0));
       setIndex(next);
       if (scrubSceneRef.current === journey.scenes[next].id) scrubRef.current?.setProgress(localProgress.current);
     };
@@ -224,26 +230,27 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
         : mediaState === "ready" ? "Scroll to move through the workshop." : null;
 
   return (
-    <section ref={sectionRef} className={`cinematic-world ${motion ? "cinematic-scroll" : "cinematic-static"}${stillInterest ? " cinematic-still-interest" : ""}`} style={motion ? { minHeight: `${(journey.scenes.length * journey.scrollPerScene + 1) * 100}svh` } : undefined} aria-labelledby="hero-title">
+    <section ref={sectionRef} data-scene={scene.id} data-media-state={mediaState} className={`cinematic-world ${motion ? "cinematic-scroll" : "cinematic-static"}${stillInterest ? " cinematic-still-interest" : ""}`} style={motion ? { minHeight: `${(journey.scenes.length * journey.scrollPerScene + 1) * 100}svh` } : undefined} aria-labelledby="hero-title">
       <div className="cinematic-stage">
         <div className="cinematic-media" aria-hidden="true">
           {!posterFailed && <img src={poster} alt="" onError={() => setPosterFailed(true)} className={frameVisible ? "cinematic-poster presented" : "cinematic-poster"} />}
           {clipUrl && motion && <video key={clipUrl} ref={videoRef} src={clipUrl} muted playsInline preload="auto" tabIndex={-1} className={frameVisible ? "cinematic-video presented" : "cinematic-video"} />}
+        {motion && index > 0 && <img className="cinematic-seam" src={`/scroll-world/${journey.scenes[index - 1].id}-end.webp`} alt="" />}
         </div>
         <div className="cinematic-scrim" />
-        <div className="cinematic-copy">
+        <div className={`cinematic-copy${beyondOpening ? " cinematic-copy-chapter" : ""}`}>
           <p className="eyebrow">{hero.Eyebrow}</p>
           <h1 id="hero-title">Grow your agent crew on <em>Trellis</em></h1>
           <p className="cinematic-description">{hero.Body}</p>
           <a className="button primary" href="#build">Build with your agent <span aria-hidden="true">↗</span></a>
           <a className="hero-secondary" href="#recipe">See the first recipe</a>
           <p className="hero-note">{hero["Alpha note"]}</p>
-          {hasClips && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
+          {motion && index > 0 && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
         </div>
         <div className="cinematic-bottom">
-          <div><p className="cinematic-label">Workshop illustration</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the recipe." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
+          <div><p className="cinematic-label">{motion ? "Animation study · art direction under review" : "Workshop illustration"}</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the recipe." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
           <div className="cinematic-actions">
-            {hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use motion view" : "Use still view"}</button>}
+            {preview && hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use motion view" : "Use still view"}</button>}
             <a href="#recipe">Go to the recipe</a>
           </div>
         </div>

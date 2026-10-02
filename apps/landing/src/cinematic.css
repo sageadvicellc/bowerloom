@@ -48,7 +48,7 @@
 .cinematic-theme :is(h1, h2, h3) { color: var(--ui-text); }
 .cinematic-theme :is(.section-heading > p:last-child, .stage, .stage-number, .stage-arrow, .stage-detail p:last-child, .artifact > .eyebrow, .artifact-note, .toolkit-copy p, .toolkit-line, .toolkit-line i, .build-intro > p:not(.eyebrow), .alpha-boundary p, .site-footer p, .footer-note, nav a span) { color: var(--ui-muted); }
 .cinematic-theme :is(.stage.active, .artifact strong, .site-footer > div) { color: var(--ui-text); }
-.cinematic-theme :is(.stage.active .stage-number, .stage.active .stage-arrow, .prompt-heading .eyebrow) { color: var(--ui-primary); }
+.cinematic-theme :is(.stage.active .stage-number, .stage.active .stage-arrow, .prompt-heading .eyebrow) { color: var(--trellis-link); }
 .cinematic-theme :is(.site-header, .stage-controls, .artifact, .toolkit-section, .toolkit-line, .prompt-heading, .copy-status, .site-footer, .alpha-label) { border-color: var(--ui-border); }
 .cinematic-theme .toolkit-section { background: var(--ui-surface); }
 .cinematic-theme .alpha-boundary > .status-dot { background: var(--ui-primary); box-shadow: none; }
@@ -72,7 +72,7 @@
 .cinematic-copy { width: min(42%, 530px); max-height: calc(100svh - 160px); overflow-y: auto; padding: clamp(22px, 2.3vw, 36px); color: var(--ui-text); background: var(--ui-bg); }
 .cinematic-copy h1 { font-size: clamp(36px, 4.4vw, 66px); line-height: 1.02; letter-spacing: -2.8px; margin: 22px 0; }
 .cinematic-copy h1 em { color: var(--ui-primary); }
-.cinematic-copy .eyebrow { color: var(--ui-primary); }
+.cinematic-theme .eyebrow { color: var(--trellis-link); }
 .cinematic-description { color: var(--ui-muted); font-size: 16px; line-height: 1.6; margin-bottom: 26px; max-width: 35ch; }
 .cinematic-copy .hero-note { margin-top: 14px; }
 .cinematic-chapter { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--ui-border); }
@@ -85,7 +85,7 @@
 .cinematic-transcript li { padding: 8px 0; }
 .cinematic-transcript li p { color: var(--ui-muted); margin-top: 4px; }
 .cinematic-bottom { position: absolute; left: 5%; right: 5%; bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 18px; background: var(--ui-bg); }
-.cinematic-label { color: var(--ui-primary); font: 10px/1.5 var(--ui-font); letter-spacing: 1px; }
+.cinematic-label { color: var(--trellis-link); font: 10px/1.5 var(--ui-font); letter-spacing: 1px; }
 .cinematic-bottom [role="status"] { color: var(--ui-muted); font: 11px/1.5 var(--ui-font); max-width: 66ch; margin-top: 4px; }
 .cinematic-actions { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
 .cinematic-actions :is(button, a) { font: 11px var(--ui-font); min-height: 44px; display: inline-flex; align-items: center; }
@@ -226,3 +226,13 @@
 }
 
 .site-footer > div { flex-wrap: wrap; gap: 16px; }
+
+/* Let the artwork lead after the opening while the setup action stays available. */
+.cinematic-copy-chapter { width: min(38%, 460px); }
+.cinematic-copy-chapter > :is(.eyebrow, .cinematic-description, .hero-secondary, .hero-note) { display: none; }
+.cinematic-copy-chapter > h1 { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cinematic-copy-chapter { display: flex; flex-direction: column; }
+.cinematic-copy-chapter .cinematic-chapter { order: -1; margin: 0 0 22px; padding: 0; border: 0; }
+.cinematic-copy-chapter .cinematic-chapter h2 { font-size: clamp(28px, 3vw, 44px); margin-top: 0; }
+
+.cinematic-seam { width: 100%; height: 100%; object-fit: cover; object-position: center; position: absolute; inset: 0; z-index: 3; opacity: var(--seam-opacity, 0); pointer-events: none; }
