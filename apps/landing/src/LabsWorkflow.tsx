@@ -10,7 +10,7 @@ const roles = [
 ] as const;
 
 function roleYaml(role: typeof roles[number]) {
-  return `${role.id === 'project-team' ? 'id: v0.7-workbench\nbudget:\n  maxActiveWorkers: 2\n  reservePercent: 25\n  paidFallback: false\n\n' : ''}owners:
+  return `${role.id === 'project-team' ? 'id: workbench-alpha\nbudget:\n  maxActiveWorkers: 2\n  reservePercent: 25\n  paidFallback: false\n\n' : ''}owners:
   - id: ${role.id}
     role: "${role.name}"
     prompt: ${role.id}-prompt
