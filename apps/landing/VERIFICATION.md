@@ -31,13 +31,13 @@ This is a local preview, not a public deployment or release.
 
 ### Measured rendering budget
 
-Local Chrome, viewport 1280 × 720, October 2. The visible development-only `?diagnostics=1` panel skipped two priming frames and sampled 120 frames. Sampling then stopped. Renderer statistics describe completed draws including the shadow pass. No metric is transmitted or persisted by the application.
+Local Chrome, viewport 1280 × 720, October 2. The visible development-only `?diagnostics=1` panel skipped two priming frames and sampled 120 frames. Sampling then stopped. Renderer statistics describe the preceding completed main render. Three 0.183.2 resets these counters after the shadow pass, so shadow-pass cost is not included. Shadow cost and full GPU profiling remain unmeasured; these counters do not represent total frame cost. No metric is transmitted or persisted by the application.
 
 | Metric | Measured | Budget |
 | --- | ---: | ---: |
 | Lazy scene JavaScript (gzip) | 231.63 KiB (237,185 bytes) | ≤300 KiB |
-| Maximum draw calls | 191 | ≤250 |
-| Maximum triangles | 11,380 | ≤50,000 |
+| Maximum main-render draw calls | 191 | ≤250 |
+| Maximum main-render triangles | 11,380 | ≤50,000 |
 | DPR | 1.5 | ≤1.5 |
 | Canvas backing dimensions | 1341 × 904 | — |
 | Canvas backing pixels | 1,212,264 | ≤2,000,000 |
