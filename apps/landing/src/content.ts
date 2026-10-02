@@ -10,11 +10,10 @@ export const destinations = {
 };
 export const hero = {
   "Eyebrow": "Portable tools and teams",
-  "H1": "Grow your sprouts on Trellis",
-  "Body": "Trellis is an open-source framework for building agent teams in files you can read and change. Start with your personal agent and a small local task you can review.",
+  "H1": "Grow your abilities with Trellis",
+  "Body": "Trellis is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "See what our first seed grew",
-  "Alpha note": "Local alpha, built first for Codex. The public installer and release are not published.",
   "Illustration caption": "A maker and a robot helper at the workshop."
 } as const;
 
@@ -56,15 +55,15 @@ export const stages = [
 export const questions = [
   {
     question: "What should I try first?",
-    answer: "Use the tutorial to give your personal agent a small local task: turn a short project brief into a one-page illustrated HTML report. You choose the question, hypothesis, and palette before the agent writes the report. This is a guided personal-agent exercise, not proof that an autonomous Trellis team has executed."
+    answer: "Describe a useful goal in the tutorial maker. Your personal agent helps define a team, a working agreement, and review milestones. It confirms the available execution path before you approve work. The page itself prepares a prompt; it does not start a team."
   },
   {
     question: "Do I need to connect GitHub for the tutorial?",
-    answer: "No. The one-page report stays in your chosen local workspace. The Labs-to-blog seed is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that seed."
+    answer: "No. The default tutorial creates local project artifacts in your chosen workspace. The Labs-to-blog seed is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that seed."
   },
   {
     question: "What is a seed?",
-    answer: "A seed is a small starting example you can adapt with your personal agent. The local report tutorial introduces the approach. The existing Labs-to-blog seed shows a bounded path from committed experiment evidence to a GitHub draft, with a saved plan and approval before the external write."
+    answer: "A seed is a small starting example you can adapt with your personal agent. The tutorial maker helps your agent shape that starting point around your goal. The existing Labs-to-blog seed shows a bounded path from committed experiment evidence to a GitHub draft, with a saved plan and approval before the external write."
   },
   {
     question: "Who approves external changes?",
@@ -72,7 +71,7 @@ export const questions = [
   },
   {
     question: "What stays in my files?",
-    answer: "Portable team definitions describe roles, skills, and permissions. Keep credentials and private installation details outside them. The tutorial report stays local. In the separate GitHub seed, saved progress lives in PostgreSQL and the draft result lives in GitHub."
+    answer: "Portable team definitions describe roles, skills, and permissions. Keep credentials and private installation details outside them. The tutorial artifacts stay local. In the separate GitHub seed, saved progress lives in PostgreSQL and the draft result lives in GitHub."
   },
   {
     question: "How do the modules fit together?",

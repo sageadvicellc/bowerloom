@@ -3,7 +3,7 @@
   <img src="docs/assets/trellis-header-light-v2.png" alt="Trellis, with Sprout waving beside a sage trellis" width="1200">
 </picture>
 
-# Grow your sprouts on Trellis
+# Grow your abilities with Trellis
 
 <img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28">
 <img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28">
@@ -61,9 +61,9 @@ Keep credentials and private data outside portable definitions. The current tria
 
 ## Build with your agent
 
-Start with the [one-page report tutorial](docs/tutorials/one-page-report.md). Your personal agent turns supplied synthetic data into a local report.
+Start with the [team tutorial maker](docs/tutorials/team-tutorial-maker.md). Give your personal agent a goal, review cadence, and visual theme.
 
-Trellis validates an included definition. Your personal agent authors the report separately. This exercise does not execute a Trellis team.
+Your agent proposes a team and working agreement before work starts. It names the supported execution path and asks for your approval.
 
 <img src="docs/assets/trellis-workshop-still.webp" alt="Illustrated forest workshop with a maker and a cream helper robot" width="720">
 

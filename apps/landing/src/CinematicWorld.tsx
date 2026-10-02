@@ -240,11 +240,10 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
         <div className="cinematic-scrim" />
         <div className={`cinematic-copy${beyondOpening ? " cinematic-copy-chapter" : ""}`}>
           <p className="eyebrow">{hero.Eyebrow}</p>
-          <h1 id="hero-title">Grow your sprouts on <em>Trellis</em></h1>
+          <h1 id="hero-title">Grow your abilities with <em>Trellis</em></h1>
           <p className="cinematic-description">{hero.Body}</p>
           <a className="button primary" href="#build">Build with your agent</a>
           <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
-          <p className="hero-note">{hero["Alpha note"]}</p>
           {motion && index > 0 && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
         </div>
         <div className="cinematic-bottom">

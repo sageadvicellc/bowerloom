@@ -58,9 +58,14 @@ function CoreOffers() {
         <h3>{offer.title}</h3><p><ProductText>{offer.body}</ProductText></p>
       </div>
       <div className="offer-controls" role="group" aria-label="Explore Trellis">
-        <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer">Previous</button>
-        {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
-        <button type="button" onClick={() => setActive((active + 1) % offers.length)} aria-label="Next offer">Next</button>
+        <div className="offer-tabs" style={{ '--active-offer': active } as React.CSSProperties}>
+          <span className="offer-indicator" aria-hidden="true" />
+          {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
+        </div>
+        <div className="offer-arrows">
+          <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" /></svg></button>
+          <button type="button" onClick={() => setActive((active + 1) % offers.length)} aria-label="Next offer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6M4 12h12" /></svg></button>
+        </div>
       </div>
     </div>
   </section>;
@@ -161,7 +166,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your sprouts on <em>Trellis</em>
+              Grow your abilities with <em>Trellis</em>
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -170,7 +175,6 @@ export default function App() {
               Build with your agent
             </a>
             <a className="hero-secondary" href="#recipe">See what our first seed grew</a>
-            <p className="hero-note">{hero["Alpha note"]}</p>
           </div>
           <div className="workshop-area" ref={sceneRef}>
             <div className="scene-caption">
