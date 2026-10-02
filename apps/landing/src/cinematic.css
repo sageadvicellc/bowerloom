@@ -143,3 +143,32 @@
 .cinematic-theme .cinematic-transcript summary { font: 14px/1.6 var(--ui-font); }
 .cinematic-theme .cinematic-transcript strong { font-weight: 500; }
 .cinematic-theme :is(code, pre, kbd, samp) { font-family: var(--ui-font); }
+
+/* Compact the still presentation without changing its reading or utility type. */
+.cinematic-static .cinematic-stage { min-height: 0; padding: 32px 5% 112px; }
+.cinematic-copy { padding: clamp(22px, 1.95vw, 28px); }
+.cinematic-copy .button.primary { margin-top: 0; }
+.cinematic-description { margin-bottom: 22px; }
+.cinematic-chapter { padding-top: 18px; margin-top: 18px; }
+.cinematic-transcript { margin-top: 12px; }
+.cinematic-theme :is(.recipe-section, .toolkit-section, .build-section) { padding-top: 72px; padding-bottom: 72px; }
+.cinematic-theme .stage-controls { margin-top: 28px; }
+.cinematic-theme .stage-detail { min-height: 0; margin-top: 24px; }
+.cinematic-theme .toolkit-copy { padding-top: 0; }
+.cinematic-theme .toolkit-line { margin-top: 32px; padding-top: 20px; }
+.cinematic-still-interest .cinematic-poster { opacity: var(--still-opacity, 1); transition: opacity 160ms linear; }
+@media (max-width: 860px), (pointer: coarse) {
+  .cinematic-static .cinematic-stage { padding: 0; }
+  .cinematic-copy { padding: 24px 6%; }
+}
+@media (max-width: 760px) {
+  .cinematic-theme :is(.recipe-section, .toolkit-section, .build-section) { padding-top: 48px; padding-bottom: 48px; }
+  .cinematic-theme .stage-controls { margin-top: 24px; }
+  .cinematic-theme .toolkit-copy { padding-top: 18px; }
+  .cinematic-theme .toolkit-line { margin-top: 24px; }
+  .cinematic-theme .prompt-panel { margin-top: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-theme { scroll-behavior: auto; }
+  .cinematic-still-interest .cinematic-poster { opacity: 1; transition: none; }
+}

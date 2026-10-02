@@ -55,12 +55,50 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   const scrubSceneRef = useRef<string | null>(null);
   const hasClips = journey.scenes.some((item) => item.clipReady);
   const motion = hasClips && !reducedMotion && !mobile && !staticView;
+  const stillInterest = !hasClips && !reducedMotion && !staticView;
   const scene = journey.scenes[index];
   const poster = scene.posterReady ? scene.poster : journey.openingPoster;
   const clipUrl = clip?.id === scene.id ? clip.url : null;
   const frameVisible = presented && Boolean(clipUrl);
 
   useEffect(() => { setPosterFailed(false); }, [poster]);
+
+  // Decorative still interest only: essential copy never depends on scroll or opacity.
+  // No idle loop, transforms, or media requests; reduced motion skips this effect.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!stillInterest || !section) return;
+    let frame: number | null = null;
+    let inView = true;
+    const update = () => {
+      frame = null;
+      const progress = Math.max(0, Math.min(1, -section.getBoundingClientRect().top / section.offsetHeight));
+      section.style.setProperty("--still-opacity", String(1 - progress * 0.08));
+    };
+    const schedule = () => {
+      if (frame === null && inView && !document.hidden) frame = requestAnimationFrame(update);
+    };
+    const visibility = () => {
+      if (document.hidden || !inView) {
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+      } else schedule();
+    };
+    const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; visibility(); });
+    observer.observe(section);
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    document.addEventListener("visibilitychange", visibility);
+    schedule();
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("visibilitychange", visibility);
+      section.style.removeProperty("--still-opacity");
+    };
+  }, [stillInterest]);
 
   useEffect(() => {
     if (!motion) { setIndex(0); localProgress.current = 0; return; }
@@ -187,7 +225,7 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
           : `Scene ${index + 1} animation awaits media. ${scene.posterReady ? "Showing its workshop still." : "Showing the opening workshop still."}`;
 
   return (
-    <section ref={sectionRef} className={`cinematic-world ${motion ? "cinematic-scroll" : "cinematic-static"}`} style={motion ? { minHeight: `${(journey.scenes.length * journey.scrollPerScene + 1) * 100}svh` } : undefined} aria-labelledby="hero-title">
+    <section ref={sectionRef} className={`cinematic-world ${motion ? "cinematic-scroll" : "cinematic-static"}${stillInterest ? " cinematic-still-interest" : ""}`} style={motion ? { minHeight: `${(journey.scenes.length * journey.scrollPerScene + 1) * 100}svh` } : undefined} aria-labelledby="hero-title">
       <div className="cinematic-stage">
         <div className="cinematic-media" aria-hidden="true">
           {!posterFailed && <img src={poster} alt="" onError={() => setPosterFailed(true)} className={frameVisible ? "cinematic-poster presented" : "cinematic-poster"} />}
