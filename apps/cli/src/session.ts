@@ -11,9 +11,9 @@ export interface SessionPort {
   close(): Promise<void>;
 }
 export type SessionCommand =
-  | { command: 'up'; installation: string; tier: 'pro' | '5x' | '20x' }
-  | { command: 'status' | 'review' | 'cancel'; installation: string }
-  | { command: 'approve'; installation: string; candidate: string; action: string };
+  | { command: 'up'; installation: string; registry?: string; tier: 'pro' | '5x' | '20x' }
+  | { command: 'status' | 'review' | 'cancel'; installation: string; registry?: string }
+  | { command: 'approve'; installation: string; registry?: string; candidate: string; action: string };
 const usage = (): never => { throw new DefinitionError('USAGE', 'Use an explicit installation file and the documented command arguments.'); };
 export function parseSessionCommand(args: string[]): SessionCommand {
   const command = args[0];
@@ -23,23 +23,24 @@ export function parseSessionCommand(args: string[]): SessionCommand {
     const flag=args[i]!;
     if (flags.has(flag)) return usage();
     if (['--demo','--pro','--5x','--20x'].includes(flag)) { flags.set(flag,'true'); continue; }
-    if (!['--installation','--candidate','--action'].includes(flag)) return usage();
+    if (!['--installation','--candidate','--action','--registry'].includes(flag)) return usage();
     const value=args[++i]; if (!value || value.startsWith('--') || value.includes('\0')) return usage();
     flags.set(flag,value);
   }
+  const registry=flags.get('--registry'),extra=registry?{registry}:{};
   const installation=flags.get('--installation'); if (!installation) return usage();
   if (command==='up') {
     const tiers=['pro','5x','20x'] as const; const selected=tiers.filter(t=>flags.has(`--${t}`));
-    if (flags.size!==3 || !flags.has('--demo') || selected.length!==1) return usage();
-    return {command,installation,tier:selected[0]!};
+    if (flags.size!==(registry?4:3) || !flags.has('--demo') || selected.length!==1) return usage();
+    return {command,installation,...extra,tier:selected[0]!};
   }
   if (command==='approve') {
     const candidate=flags.get('--candidate'),action=flags.get('--action');
-    if (flags.size!==3 || !candidate || !action || ![candidate,action].every(v=>/^sha256:[a-f0-9]{64}$/.test(v))) return usage();
-    return {command,installation,candidate,action};
+    if (flags.size!==(registry?4:3) || !candidate || !action || ![candidate,action].every(v=>/^sha256:[a-f0-9]{64}$/.test(v))) return usage();
+    return {command,installation,...extra,candidate,action};
   }
-  if (flags.size!==1) return usage();
-  return {command:command as 'status'|'review'|'cancel',installation};
+  if (flags.size!==(registry?2:1)) return usage();
+  return {command:command as 'status'|'review'|'cancel',installation,...extra};
 }
 export async function sessionSummary(port: SessionPort, view: GraphView, includeProposal=false): Promise<object> {
   const tasks=[];

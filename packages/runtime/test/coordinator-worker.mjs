@@ -1,9 +1,13 @@
 import pg from 'pg';
+import { mkdirSync,writeFileSync,readFileSync } from 'node:fs';
+import {join} from 'node:path';
+import {parseCrew} from '../../../dist/packages/crew/src/index.js';
+import {planControl,registerControl,openControlOwner} from '../../../dist/packages/local-control/src/index.js';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { SupervisedRuntime, SyntheticProcessAdapter, RuntimeLedger } from '../../../dist/packages/runtime/src/index.js';
 import { PostgresBrokerStore } from '../../../dist/packages/broker-postgres/src/index.js';
 import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effects/src/index.js';
-let runtime; let pool; let fired = false; let resumeAcceptance; let acceptanceCleanup = Promise.resolve();
+let runtime; let pool; let controlOwner; let controlRegistry; const controlledRuns=new Set(); let fired = false; let resumeAcceptance; let acceptanceCleanup = Promise.resolve();
 process.once('message', async ({ config, options, root, schemas, resetAtMs, accountId, usedPercent, mode, ownerMode = 'fallback' }) => {
   pool = new pg.Pool({ ...config, max: 6 }); pool.on('error', () => {});
   const ownerInputs = []; const authenticatedSubjects = []; let authenticationAttempts = 0;
@@ -36,6 +40,7 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
     return { async query(sql, values) {
       if (sql.startsWith('UPDATE ') && sql.includes(`"${schemas.runtime}".runs`) && values?.[1]) {
         const state = JSON.parse(values[1]);
+        if(mode==='cancel-storage-fail'&&state.cancelled)throw Object.assign(new Error('Synthetic cancellation persistence failure'),{code:'STOP_STORAGE_SYNTHETIC'});
         if (state.proposal && state.modelOutcome && state.status === 'QUEUED') checkpoint = 'proposal';
         if (state.receipt && state.status === 'WAITING_APPROVAL') checkpoint = 'receipt';
       }
@@ -64,7 +69,14 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
     const effects = await PostgresWorkspaceEffects.open(effectConnection, { schema: schemas.effects,
       workspaces: [{ workspaceId: 'synthetic-workspace', root, writablePaths: ['output/job-board/index.html','output/design/brief.md'] }] });
     const adapter = new SyntheticProcessAdapter({ command: [process.execPath, new URL('./synthetic-child.mjs', import.meta.url).pathname], cwd: root, timeoutMs: 15000, outputBytes: 65536 });
-    runtime = await SupervisedRuntime.open({ pool: intercepted, brokerStore: new PostgresBrokerStore(pool, { schema: schemas.broker }), effects: {
+    if(mode==='registered-control'){
+      const bytes=readFileSync('examples/endor/crew.yaml','utf8'),definition=parseCrew(bytes),spec=`teams/${definition.id}/team.yaml`;
+      mkdirSync(join(root,'.bowerloom','teams',definition.id),{recursive:true,mode:0o700});writeFileSync(join(root,'.bowerloom',spec),bytes,{mode:0o600});
+      const installation=join(root,'control-installation.json');writeFileSync(installation,JSON.stringify({format:'trellis/local-installation/v0.7-alpha',workspaceRoot:root,graph:{plan:{definition}}}),{mode:0o600});
+      controlRegistry=join(root,'control-registry');const enrollment={root,team:definition.id,spec,installation,adapter:'graph',registry:controlRegistry};
+      registerControl(enrollment,planControl(enrollment).revision);controlOwner=openControlOwner(installation,'graph',controlRegistry);
+    }
+    runtime = await SupervisedRuntime.open({ ...(controlOwner?{control:controlOwner}:{}), pool: intercepted, brokerStore: new PostgresBrokerStore(pool, { schema: schemas.broker }), effects: {
       async apply(request, signal) {
         const result = await effects.apply(request, signal);
         if (mode === 'crash-effect' && !fired) { fired = true; process.send({ type: 'checkpoint', checkpoint: 'effect' }); await new Promise(() => {}); }
@@ -113,7 +125,12 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
         return { accepted: true, evidenceRef: 'synthetic-receipt-check' };
       } },
     }, options);
-    process.send({ type: 'ready', launcherId: runtime.launcherId, rssBytes: process.memoryUsage().rss });
+    if(controlOwner)controlOwner.onStop(async()=>{
+      const results=await Promise.all([...controlledRuns].map(id=>runtime.cancel(id)));await runtime.close();
+      await controlOwner.finish({adapter:'graph',tasks:results},results.every(r=>r.confirmed));
+      process.send({type:'control-stopped'});
+    });
+    process.send({ type: 'ready', controlRegistry, launcherId: runtime.launcherId, rssBytes: process.memoryUsage().rss });
     process.on('message', async message => {
       try {
         let result;
@@ -131,11 +148,11 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
           result = await runtime.status(message.id);
         }
         else if (message.type === 'workflow-result') result = await DBOS.getResult(message.id, { timeoutSeconds: 3 });
-        else if (message.type === 'submit') { result = await runtime.submit(message.input); if (message.mutateAfterSubmit) mutateInput(message.input); }
+        else if (message.type === 'submit') { result = await runtime.submit(message.input); controlledRuns.add(result); if (message.mutateAfterSubmit) mutateInput(message.input); }
         else if (message.type === 'status') result = await runtime.status(message.id);
         else if (message.type === 'approve') result = await runtime.approve(message.id, message.approval, message.credential);
         else if (message.type === 'cancel') result = await runtime.cancel(message.id);
-        else if (message.type === 'stop') { await runtime.close(); await pool.end(); process.send({ type: 'reply', call: message.call, result: 'closed' }); process.disconnect(); return; }
+        else if (message.type === 'stop') { if(!controlOwner?.signal.aborted)await runtime.close();await controlOwner?.finish({closed:true}); await pool.end(); process.send({ type: 'reply', call: message.call, result: 'closed' }); process.disconnect(); return; }
         process.send({ type: 'reply', call: message.call, result });
       } catch (error) { process.send({ type: 'reply', call: message.call, error: error.code ?? error.name }); }
     });

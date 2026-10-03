@@ -7,7 +7,7 @@ import type {TreeEntry} from './git-tree.js';
 /** REST-only adapter: one sealed repository, fixed API host, no redirects, no retry. */
 export class GitHubConnection implements GitHubPort {
   readonly owner: string; readonly repo: string; readonly #spec: RecipeSpec;
-  constructor(spec: RecipeSpec, readonly token: () => Promise<string>, readonly transport: typeof fetch = fetch) {
+  constructor(spec: RecipeSpec, readonly token: () => Promise<string>, readonly transport: typeof fetch = fetch, readonly stopSignal?: AbortSignal) {
     this.#spec = specCopy(spec); this.owner = spec.github.owner; this.repo = spec.github.repo;
   }
   #branch(v: string, writing = false): string {
@@ -16,7 +16,8 @@ export class GitHubConnection implements GitHubPort {
   }
   async #request(method: string, route: string, body?: unknown): Promise<any> {
     const token = await this.token(); if (typeof token !== 'string' || !token || token.length > 16384 || /[\r\n]/.test(token)) fail('CREDENTIAL_UNAVAILABLE');
-    const abort = AbortSignal.timeout(15000);
+    const abort = AbortSignal.any([AbortSignal.timeout(15000),...(this.stopSignal?[this.stopSignal]:[])]);
+    if(abort.aborted)throw new RecipeError(method === 'GET' ? 'GITHUB_READ_UNAVAILABLE' : 'GITHUB_WRITE_UNKNOWN');
     let response: Response;
     try { response = await this.transport(`https://api.github.com/repos/${this.owner}/${this.repo}/${route}`, {
       method, redirect: 'error', signal: abort,

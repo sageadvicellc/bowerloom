@@ -60,3 +60,8 @@ export function schemaName(value: string): string {
   if (!/^trellis_[a-z][a-z0-9_]{0,46}$/.test(value)) throw new RuntimeError('INVALID_SCHEMA');
   return `"${value}"`;
 }
+
+export interface CancellationEvidence {
+  runId: string; confirmed: boolean; alreadyCompleted: boolean; statePersisted: boolean;
+  processes: { identity: ProcessIdentity; reaped: boolean }[]; acceptanceStopped: boolean; errors: string[];
+}

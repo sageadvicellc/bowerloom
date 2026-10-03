@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { buildTutorialPrompt, projects, initialSelection, reviewModes } from './tutorial';
+import { buildTutorialPrompt, profiles, initialSelection, reviewModes } from './tutorial';
 import './tutorial.css';
 import AlphaGuide from './AlphaGuide';
 import ProductText from './ProductText';
@@ -10,7 +10,7 @@ export default function TutorialBuilder() {
   const [copyStatus, setCopyStatus] = useState('');
   const [error, setError] = useState('');
   const output = useRef<HTMLTextAreaElement>(null);
-  const project = projects.find(item => item.id === selection.projectId)!;
+  const profile = profiles.find(item => item.id === selection.profileId)!;
   const reviewMode = reviewModes.find(item => item.id === selection.reviewModeId)!;
   function change(next: typeof selection) { setSelection(next); setPrompt(''); setCopyStatus(''); setError(''); }
   async function copyPrompt() {
@@ -25,48 +25,49 @@ export default function TutorialBuilder() {
   }
   return <section className="tutorial-builder" id="build" aria-labelledby="tutorial-heading">
     <div className="tutorial-intro">
-      <h2 id="tutorial-heading">What will your first team take on?</h2>
-      <p>Give your agent a goal worth sharing. It will help you define the roles, agree on the boundaries, and plan the moments when you check in.</p>
+      <h2 id="tutorial-heading">Set up a team around your goal.</h2>
+      <p>Choose a starting profile and describe your goal. Your existing personal agent will help you review a portable team setup before installing it.</p>
     </div>
     <AlphaGuide />
     <form onSubmit={event => {
       event.preventDefault();
-      try { setPrompt(buildTutorialPrompt(selection)); setError(''); setCopyStatus('Your tutorial-maker prompt is ready below.'); }
+      try { setPrompt(buildTutorialPrompt(selection)); setError(''); setCopyStatus('Your setup prompt is ready below.'); }
       catch (reason) { setError(reason instanceof Error ? reason.message : 'Describe your goal before continuing.'); }
     }}>
       <div className="tutorial-layout">
         <div className="tutorial-fields">
           <fieldset className="tutorial-choice-group">
-            <legend>Start with a useful project</legend>
-            <div className="tutorial-projects">{projects.map(item => <label key={item.id} className={`tutorial-option ${selection.projectId === item.id ? 'is-selected' : ''}`}>
-              <input type="radio" name="tutorial-project" value={item.id} checked={selection.projectId === item.id} onChange={() => change({ ...selection, projectId: item.id, goal: item.goal })} />
+            <legend>Choose your starting profile</legend>
+            <div className="tutorial-projects">{profiles.map(item => <label key={item.id} className={`tutorial-option ${selection.profileId === item.id ? 'is-selected' : ''}`}>
+              <input type="radio" name="tutorial-profile" value={item.id} checked={selection.profileId === item.id} onChange={() => change({ ...selection, profileId: item.id, goal: item.goal })} />
               <span><strong>{item.label}</strong><small>{item.description}</small></span>
             </label>)}</div>
           </fieldset>
           <label className="tutorial-goal-label" htmlFor="tutorial-goal">Make the goal yours</label>
-          <p className="tutorial-hint" id="goal-help">Describe the result you want to review. Keep private details out of this first brief. Choosing another example replaces this text.</p>
+          <p className="tutorial-hint" id="goal-help">Describe the result you want to review. Keep private details out of this first brief. Choosing another profile replaces the example goal.</p>
           <textarea id="tutorial-goal" value={selection.goal} onChange={event => change({ ...selection, goal: event.target.value })} rows={5} maxLength={1200} required aria-describedby={`goal-help${error ? ' tutorial-error' : ''}`} aria-invalid={!!error} />
           <fieldset className="tutorial-choice-group tutorial-review-style">
-            <legend>How closely do you want to check in?</legend>
+            <legend>Plan your future review cadence</legend>
             {reviewModes.map(item => <label key={item.id} className={`tutorial-option ${selection.reviewModeId === item.id ? 'is-selected' : ''}`}>
               <input type="radio" name="tutorial-review" value={item.id} checked={selection.reviewModeId === item.id} onChange={() => change({ ...selection, reviewModeId: item.id })} />
               <span><strong>{item.label}</strong><small>{item.description}</small></span>
             </label>)}
           </fieldset>
+          <label className="tutorial-option"><input type="checkbox" checked={selection.includeDemo} onChange={event => change({ ...selection, includeDemo: event.target.checked })} /><span><strong>Include a demo idea</strong><small>{profile.demo} No tasks run during setup.</small></span></label>
         </div>
         <aside className="tutorial-preview" aria-label="Your project preview">
           <div className="tutorial-preview-sheet">
-            <p className="tutorial-preview-label">Your team brief</p>
-            <h3>{project.label}</h3>
-            <p className="tutorial-preview-goal">{selection.goal.trim() || 'Describe the goal your team will work toward.'}</p>
-            <div className="tutorial-team"><span>Personal agent <small>Project lead</small></span><span>Maker <small>Owns the draft</small></span><span>Reviewer <small>Tests the result</small></span></div>
-            <ol className="tutorial-milestones"><li><strong>Agree on the work</strong><span>Roles, permissions, and a definition of done.</span></li><li><strong>Review a first draft</strong><span>See the artifact and the evidence so far.</span></li><li><strong>Bring it home</strong><span>Resolve findings and hand over the result.</span></li></ol>
+            <p className="tutorial-preview-label">Your setup brief</p>
+            <h3>{profile.label}</h3>
+            <p className="tutorial-preview-goal">{selection.goal.trim() || 'Describe the goal your team blueprint will support.'}</p>
+            <div className="tutorial-team">{profile.roles.map((role, index) => <span key={role}>{role}<small>{['Defines the scope', 'Proposes the draft', 'Reviews the evidence'][index]}</small></span>)}</div>
+            <ol className="tutorial-milestones"><li><strong>Review the setup</strong><span>Roles, access, limits, and the exact file plan.</span></li><li><strong>Approve installation</strong><span>Create only the reviewed .bowerloom files.</span></li><li><strong>Meet your blueprint</strong><span>Inspect it with your existing personal agent.</span></li></ol>
             <p className="tutorial-preview-cadence">{reviewMode.label}</p>
           </div>
         </aside>
       </div>
       <div className="tutorial-action">
-        <button className="tutorial-primary" type="submit">Get my tutorial-maker prompt</button>
+        <button className="tutorial-primary" type="submit">Get my setup prompt</button>
         <p className="tutorial-hint">Take it to your existing agent. It prepares your startup files and asks you to approve the exact plan before installation.</p>
       </div>
       {error && <p id="tutorial-error" role="alert">{error}</p>}
@@ -74,11 +75,11 @@ export default function TutorialBuilder() {
     <p className="tutorial-copy-status" role="status">{copyStatus}</p>
     {prompt && <div className="tutorial-result">
       <h3>Your agent takes it from here.</h3>
-      <p>The prompt includes your goal, team roles, milestones, and approval rules. Paste it into your agent to choose a new workspace or an existing project.</p>
-      <label htmlFor="tutorial-prompt">Your tutorial-maker prompt</label>
+      <p>Paste this short brief into your agent. It will prepare a readable plan for a new workspace or an existing project, then wait for your approval.</p>
+      <label htmlFor="tutorial-prompt">Your setup prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable profile and first team after your approval. Project execution requires a separate agreed path.</p><p>General team execution is not established by this alpha. The prompt requires actual tool evidence and reports a blocker when a supported path is unavailable. A proposed team is not a running team.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable assistant profile and team blueprint after your approval. That reviewable setup is the finish line for this exercise.</p><p>Nothing runs automatically. Your new blueprint can guide later work after you agree on an execution path and its permissions.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
     </div>}
   </section>;
 }

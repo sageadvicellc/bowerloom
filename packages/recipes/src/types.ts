@@ -60,4 +60,5 @@ export interface RecipeDependencies {
   store: RecipeStore; github: GitHubPort; allowedRecipe: RecipeSpec;
   authorizeApproval(credential: unknown, binding: ApprovalBinding): Promise<{ subject: string }>;
   now?: () => number;
+  control?: { guard(): void; signal: AbortSignal };
 }

@@ -6,6 +6,11 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import type { CompiledPlan } from '../../contracts/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
+import { scaffold as legacyScaffold, TEMPLATE_VERSION as LEGACY_TEMPLATE_VERSION } from './scaffold-v1alpha1.js';
+import { startupProfiles } from './profiles.js';
+import type { StartupProfile } from './profiles.js';
+export { startupProfiles } from './profiles.js';
+export type { StartupProfile } from './profiles.js';
 import type { GeneratedFile, NormalizedBrief, StartupBrief } from './scaffold.js';
 export type { StartupBrief, GeneratedFile } from './scaffold.js';
 export const STARTUP_FORMAT = 'bowerloom/startup-plan/v1alpha1' as const;
@@ -48,14 +53,15 @@ function boundedText(value: unknown, max: number, multiline = false): string {
   if (Buffer.byteLength(normalized) > max) fail('STARTUP_TEXT');
   return normalized;
 }
-function normalize(value: unknown): NormalizedInput {
+function normalize(value: unknown, legacy = false): NormalizedInput {
   record(value, ['mode', 'targetDir', 'brief']);
   if (value.mode !== 'new' && value.mode !== 'existing') fail('STARTUP_MODE');
   if (typeof value.targetDir !== 'string') fail('STARTUP_TARGET');
-  record(value.brief, ['projectName', 'goal'], ['assistantName', 'teamName', 'reviewMode']);
+  record(value.brief, ['projectName', 'goal'], ['assistantName', 'teamName', 'reviewMode', ...(legacy ? [] : ['profile'])]);
   const brief = value.brief;
+  if (!legacy && brief.profile !== undefined && (typeof brief.profile !== 'string' || !Object.hasOwn(startupProfiles, brief.profile))) fail('STARTUP_PROFILE');
   if (brief.reviewMode !== undefined && !['milestones', 'handoff'].includes(String(brief.reviewMode))) fail('STARTUP_REVIEW_MODE');
-  const normalized: NormalizedBrief = { projectName: boundedText(brief.projectName, 120), goal: boundedText(brief.goal, 6000, true), assistantName: brief.assistantName === undefined ? 'Personal assistant' : boundedText(brief.assistantName, 100), teamName: brief.teamName === undefined ? 'First team' : boundedText(brief.teamName, 120), reviewMode: (brief.reviewMode ?? 'milestones') as 'milestones' | 'handoff' };
+  const normalized: NormalizedBrief = { projectName: boundedText(brief.projectName, 120), goal: boundedText(brief.goal, 6000, true), assistantName: brief.assistantName === undefined ? 'Personal assistant' : boundedText(brief.assistantName, 100), teamName: brief.teamName === undefined ? 'First team' : boundedText(brief.teamName, 120), reviewMode: (brief.reviewMode ?? 'milestones') as 'milestones' | 'handoff', ...(!legacy ? { profile: (brief.profile ?? 'engineer') as StartupProfile } : {}) };
   return { mode: value.mode, targetDir: canonicalTarget(value.targetDir), brief: normalized };
 }
 function canonicalTarget(value: string): string {
@@ -167,9 +173,11 @@ function receiptValue(raw: Buffer): StartupReceipt {
   const p = value.plan;
   record(p, ['format', 'templateVersion', 'input', 'binding', 'files', 'compiled', 'specReady', 'runtimeReady', 'executionAuthorized', 'reviewRequired', 'revision']);
   record(p.binding, ['parent', 'target']);
-  const normalized = normalize(p.input), generated = scaffold(normalized.brief);
+  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
+  const legacy = p.templateVersion === LEGACY_TEMPLATE_VERSION;
+  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : scaffold(normalized.brief);
   if (!validIdentity(p.binding.parent) || (p.binding.target !== null && !validIdentity(p.binding.target)) || (normalized.mode === 'new') !== (p.binding.target === null)) fail('INVALID_RECEIPT');
-  const expected = { format: STARTUP_FORMAT, templateVersion: TEMPLATE_VERSION, input: normalized, binding: p.binding, ...generated,
+  const expected = { format: STARTUP_FORMAT, templateVersion: p.templateVersion, input: normalized, binding: p.binding, ...generated,
     specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
   if (!same(p, { ...expected, revision: hash(canonicalJson(expected)) })) fail('INVALID_RECEIPT');
   return value as unknown as StartupReceipt;
@@ -185,7 +193,7 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
   result.revision = receipt.plan.revision;
   if (receipt.plan.input.targetDir !== target || !same(receipt.installedTargetIdentity, identity(target)) || !same(receipt.installedBowerloomIdentity, identity(directory))) result.drift.push({ path: '.bowerloom', kind: 'installation-binding-changed' });
   for (const file of receipt.plan.files) {
-    try { const bytes = readManaged(join(directory, file.path), 65536); if (bytes.length !== file.bytes || hash(bytes) !== file.sha256) result.drift.push({ path: `.bowerloom/${file.path}`, kind: 'changed' }); }
+    try { const bytes = readManaged(join(directory, file.path), 512 * 1024); if (bytes.length !== file.bytes || hash(bytes) !== file.sha256) result.drift.push({ path: `.bowerloom/${file.path}`, kind: 'changed' }); }
     catch (error) { result.drift.push({ path: `.bowerloom/${file.path}`, kind: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unsafe' }); }
   }
   const expectedPaths = new Set([...receipt.plan.files.map(file => file.path), RECEIPT]);
@@ -209,4 +217,29 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
   }
   result.specReady = result.drift.length === 0; result.status = result.specReady ? 'ready-for-review' : 'drifted';
   return result;
+}
+
+/** Human review is a projection of the exact plan; it never grants execution. */
+export function renderStartupReview(plan: StartupPlan): string {
+  const profile = startupProfiles[plan.input.brief.profile ?? 'engineer'];
+  const team = plan.compiled.definition;
+  const roles = team.owners.map(owner => `${owner.role}: ${profile.summaries[owner.id as keyof typeof profile.summaries]} Proposed write: ${owner.permissions.map(effect => 'path' in effect ? effect.path : effect.operation).join(', ')} (proposed local write; separate action approval)`);
+  return [
+    `Bowerloom setup review — ${profile.label}`,
+    `Project: ${plan.input.brief.projectName}`,
+    `Goal: ${plan.input.brief.goal.replace(/\r(?!\n)/g, '\\r')}`,
+    `Target: ${plan.input.targetDir} (${plan.input.mode === 'new' ? 'new workspace' : 'existing project; add .bowerloom only'})`,
+    '', 'Your existing personal agent remains your interface.',
+    'Proposed team: ' + team.owners.map(owner => owner.role).join(' → '),
+    ...roles, '',
+    'Access: supplied brief assets and accepted task outputs only. No context or settings imported.',
+    'Limits: at most 2 active workers; 25% capacity reserve; no paid fallback.',
+    'Installation approval: create only the reviewed .bowerloom files. No workers, backend, network, or project execution.',
+    'Proposed task permissions are not granted by this approval. All future task writes require separate exact approval.',
+    '', `Creates ${plan.files.length} files, including startup-review.md with roles, access, limits, and expandable technical contents.`,
+    'For every file, content hash, and compiler detail, rerun this plan with --json before approval.',
+    `Exact approval revision: ${plan.revision}`,
+    'Review first. Apply with unchanged inputs and --approve followed by this exact revision.',
+    'Setup is ready for review. No team has started and no execution permission was granted.',
+  ].join('\n');
 }

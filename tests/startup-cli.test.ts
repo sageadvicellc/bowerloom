@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 function cli(...args: string[]) {
-  const result = spawnSync(process.execPath, ['dist/apps/cli/src/main.js', ...args], { encoding: 'utf8', timeout: 20000 });
+  const result = spawnSync(process.execPath, ['dist/apps/cli/src/main.js', ...args, ...(args[0] === 'init' && args[1] === 'plan' && !args.includes('--json') ? ['--json'] : [])], { encoding: 'utf8', timeout: 20000 });
   assert.equal(result.error, undefined);
   return { ...result, value: JSON.parse(result.status === 0 ? result.stdout : result.stderr) };
 }
@@ -92,4 +92,58 @@ test('startup CLI binds approval to brief content, including changes in a JSON f
     assert.notEqual(stale.status, 0);
     assert.deepEqual(readdirSync(f.root), ['brief.json']);
   } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+
+test('startup CLI renders a plain review by default, with JSON reserved for explicit plan output', () => {
+  const f = fixture();
+  try {
+    const args = ['init', 'plan', '--mode', 'new', '--target', f.target, '--name', brief.projectName, '--goal', brief.goal, '--profile', 'founder'];
+    const plain = spawnSync(process.execPath, ['dist/apps/cli/src/main.js', ...args], { encoding: 'utf8', timeout: 20000 });
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.match(plain.stdout, /Bowerloom setup review.*Founder/);
+    assert.match(plain.stdout, /Startup lead/);
+    assert.match(plain.stdout, /Installation approval:/);
+    assert.match(plain.stdout, /No team has started and no execution permission was granted/);
+    assert.throws(() => JSON.parse(plain.stdout));
+    const machine = cli(...args, '--json');
+    assert.equal(machine.value.input.brief.profile, 'founder');
+    assert.ok(plain.stdout.includes(machine.value.revision));
+    assert.equal(cli(...args, '--json', '--json').status, 2);
+    assert.equal(cli('init', 'status', '--target', f.target, '--json').status, 2);
+    assert.deepEqual(readdirSync(f.root), []);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test('startup CLI profile changes invalidate approval and JSON brief profiles are preserved', () => {
+  const f = fixture();
+  try {
+    const args = ['--mode', 'new', '--target', f.target, '--name', brief.projectName, '--goal', brief.goal];
+    const plan = cli('init', 'plan', ...args, '--profile', 'engineer');
+    assert.equal(plan.status, 0);
+    assert.notEqual(cli('init', 'apply', ...args, '--profile', 'research', '--approve', plan.value.revision).status, 0);
+    assert.equal(cli('init', 'plan', ...args, '--profile', 'administrator').value.error.code, 'STARTUP_PROFILE');
+    const file = join(f.root, 'brief.json');
+    writeFileSync(file, JSON.stringify({ ...brief, profile: 'research' }));
+    const fromFile = cli('init', 'plan', '--mode', 'new', '--target', f.target, '--brief', file);
+    assert.equal(fromFile.value.input.brief.profile, 'research');
+    assert.equal(cli('init', 'plan', '--mode', 'new', '--target', f.target, '--brief', file, '--profile', 'founder').status, 2);
+    assert.deepEqual(readdirSync(f.root), ['brief.json']);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+
+
+test('plain startup review escapes bare carriage returns without changing approved goal data', () => {
+  const f = fixture();
+  try {
+    const goal = 'visible text\rhidden replacement';
+    const args = ['init', 'plan', '--mode', 'new', '--target', f.target, '--name', brief.projectName, '--goal', goal];
+    const plain = spawnSync(process.execPath, ['dist/apps/cli/src/main.js', ...args], {encoding:'utf8', timeout:20000});
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.ok(!plain.stdout.includes('\r'));
+    assert.ok(plain.stdout.includes('visible text\\rhidden replacement'));
+    const machine = cli(...args, '--json');
+    assert.equal(machine.value.input.brief.goal, goal);
+    assert.ok(plain.stdout.includes(machine.value.revision));
+  } finally { rmSync(f.root, {recursive:true, force:true}); }
 });

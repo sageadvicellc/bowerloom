@@ -71,7 +71,7 @@ export class RecipeService {
   }
   async cancel(key: string): Promise<object> {
     await this.#job(key);
-    await this.dependencies.store.change(key,current => { if (!current) return fail('UNKNOWN_JOB'); current.cancelled = true; current.updatedAt = this.#time(); return {job:current,result:null}; });
+    await this.dependencies.store.change(key,current => { if (!current) return fail('UNKNOWN_JOB'); if(status(current)==='DRAFT_PR_READY')return{job:current,result:null}; current.cancelled = true; current.updatedAt = this.#time(); return {job:current,result:null}; });
     return this.review(key);
   }
   async #writeReceipt(job:Job):Promise<WriteReceipt|null>{
@@ -113,7 +113,7 @@ export class RecipeService {
     });
   }
   async #effect(key: string, expected: string, step: Step, guard: () => Promise<void>): Promise<boolean> {
-    await guard(); let job = await this.#job(key);
+    await guard(); this.dependencies.control?.guard(); let job = await this.#job(key);
     if (job.plan.digest !== expected) fail('PLAN_CHANGED');
     if (job.cancelled) return false;
     if (job.approval?.planDigest !== expected) fail('APPROVAL_REQUIRED');
@@ -143,7 +143,7 @@ export class RecipeService {
     });
     if (!claimed) return false;
     try {
-      await guard(); job = await this.#job(key); if (job.cancelled) return false;
+      await guard(); this.dependencies.control?.guard(); job = await this.#job(key); if (job.cancelled) return false;
       if (step === 'branch') { if (!p.expectedHead) await gh.createBranch(p.branch,p.baseSha); }
       if (step === 'file') await gh.writeFile(p.branch,p.spec.github.draftPath,p.content,p.expectedFileSha,p.expectedHead ?? p.baseSha,`docs: Labs draft ${p.digest}`);
       if (step === 'pull') {
@@ -164,6 +164,7 @@ export class RecipeService {
     }
   }
   async run(key: string): Promise<object> {
+    this.dependencies.control?.guard();
     // Upstream callbacks may consult ambient tracing after an async graph boundary.
     // Refuse that environment instead of changing global settings or quietly exporting private draft data.
     for (const name of ['LANGSMITH_TRACING','LANGCHAIN_TRACING','LANGCHAIN_TRACING_V2','LANGSMITH_OTEL_ENABLED','OTEL_ENABLED','LANGCHAIN_VERBOSE','LANGSMITH_DEBUG']) {

@@ -1,53 +1,39 @@
-# Build your first team tutorial
+# Set up your first Bowerloom team
 
-The landing page prepares a project prompt for your existing personal agent. It does not call a model or start workers.
+The setup builder prepares a short request for your existing personal agent. It does not call a model, start workers, or send your goal to a server.
 
-Choose a useful project, then describe your goal. Select a palette and a review style. Copy the resulting prompt into your personal agent.
+Choose Engineer, Founder, or Research & development. Describe a goal and a future review cadence. An optional demo idea adds a fictional blueprint to discuss; it never asks the agent to run it.
 
-The examples cover client onboarding, a product launch kit, and a weekly project review. Use fictional details for your first project.
+Your complete result is a reviewable `.bowerloom/` setup. You do not need to finish a full project or launch a team during this exercise.
 
-## Agree before work starts
+## Plan, review, install
 
-Your agent proposes a lead, a maker, and an independent reviewer. The agreement assigns files, deliverables, tools, and acceptance criteria.
+Copy the prompt into your existing personal agent. It asks for your project name, an absolute directory, and whether that directory is new or an existing project.
 
-Your agent inspects available capabilities before it proposes an execution path. General authored-team execution remains unproven in this alpha.
+Use an existing source checkout or review setup first. The source build requires Git, Node 24.11 or later within Node 24, and npm 11. The alpha has no published npm installer. Keep the source checkout separate from your selected project.
 
-If native subagents provide the available path, your agent names that path in the agreement. It asks for your approval before work starts.
+From the built source checkout:
 
-A native subagent run does not prove Bowerloom runtime support. A validated definition does not establish that a team ran.
+```sh
+node dist/apps/cli/src/main.js init plan --mode new --target /absolute/projects/my-team --profile engineer --name "My team" --goal "Plan an accessible project website and its meaningful checks."
+```
 
-If the required controls or account capacity are unavailable, your agent records the blocker. It does not simulate workers or claim execution.
+Use `--mode existing` to add only a new `.bowerloom` directory to a current project. Existing source and agent settings remain unchanged and unread. A previous `.bowerloom` directory blocks installation.
 
-## Review at milestones
+The plain review describes the roles, access, limits, installation effect, and exact revision. Add `--json` to inspect the full generated file texts and hashes. A structured `--brief /absolute/brief.json` can replace the inline brief fields, including `profile`.
 
-Both review styles require approval of the working agreement. Both end at your review of the final result.
+After reviewing, use `init apply` with the same inputs and `--approve EXACT_PLAN_REVISION`. A changed profile, goal, target, or template requires a new plan and approval. Then use `init status --target /absolute/projects/my-team` to inspect the actual files.
 
-With milestone review, the agent also waits for approval of the first draft. With more autonomy, it sends an update and continues within the agreement.
+## Read the result together
 
-Mandatory tool approvals always apply. Neither style permits spending, publication, messages to other people, connected-application writes, or a public deployment.
+Ask your personal agent to read `.bowerloom/startup-review.md` and `.bowerloom/START-HERE.md`. The review includes a plain explanation and an expandable technical snapshot. The setup includes a versioned explicit brief, personal-agent profile, first team, working agreement, and review milestones.
 
-The prompt limits the team to two active workers. It requires current account capacity and a reserve of at least 25 percent.
+Engineer supplies an engineering lead, implementation maker, and code reviewer. Founder supplies a startup lead, operations maker, and claims reviewer. Research supplies an experiment lead, protocol maker, and methods reviewer. These are deterministic templates, not bespoke model-designed teams.
 
-## Inspect the result
+The team definitions declare at most two active workers, a 25 percent capacity reserve, no paid fallback, and exact approvals for future task writes. Those declarations need a supported runtime before work can execute. The installation approval only creates the reviewed setup files.
 
-The team saves local artifacts in a new `tutorial-output` directory. Existing files require an explicit replacement decision or a new directory.
+The research blueprint can define a repeatable A/B protocol. It does not establish that a comparison ran or improved anything. No profile imports settings, starts workers, sets up Docker, creates connections, publishes, or spends money.
 
-The handoff includes the following artifacts:
+Stop and review the setup. Later execution and connected applications need their own scope and authorization. The separate [Labs-to-blog recipe](../recipes/labs-to-blog.md) has its own runtime evidence and approval controls.
 
-- The project brief and working agreement.
-- Proposed or validated team definitions and versioned skills.
-- Deliverables, milestone evidence, and independent review findings.
-
-The local `index.html` links to the work and uses your chosen palette. Claims of execution require actual tool evidence.
-
-## Setup and evidence limits
-
-Optional checkout setup requires Git, Node 24.11 within Node 24, and npm 11. The prompt contains the actual setup commands.
-
-The existing offline example returns `runtimeReady: false`. This result means that validation grants no execution authority.
-
-The earlier [report exercise](one-page-report.md) remains a historical example. The [Labs-to-blog workflow](../recipes/labs-to-blog.md) retains its separate runtime evidence and approval controls.
-
-The page stores choices only in React memory. It sends no goal text to a model, backend, or local storage.
-
-Prompt instructions do not enforce controls in another agent application. This tutorial does not establish general runtime acceptance or production readiness.
+The page stores choices in React memory only. The short prompt is guidance for the personal agent. File validation, path safety, stale-approval checks, and receipt inspection remain in the Bowerloom CLI.

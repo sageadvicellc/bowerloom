@@ -10,6 +10,7 @@ The scaffold uses deterministic templates. No model tailors a solution or checks
 planStartup(input: StartupInput): Promise<StartupPlan>
 applyStartup(input: StartupInput, exactRevision: string): Promise<StartupReceipt>
 inspectStartup(targetDir: string): Promise<StartupInspection>
+renderStartupReview(plan: StartupPlan): string
 ```
 
 ```ts
@@ -22,6 +23,7 @@ interface StartupInput {
     assistantName?: string;
     teamName?: string;
     reviewMode?: 'milestones' | 'handoff';
+    profile?: 'engineer' | 'founder' | 'research';
   };
 }
 ```
@@ -32,6 +34,8 @@ Project names have a 120-byte limit. Goals have a 6,000-byte limit. Assistant na
 
 Names must use one line. Other control characters, formatting controls, unknown fields, prototype keys, nonplain objects, and accessors are rejected.
 
+The default profile is `engineer`. The other profiles are `founder` and `research`. Unknown profiles are rejected. An explicit `engineer` and an omitted profile produce the same new plan.
+
 The default assistant name is “Personal assistant.” The default team name is “First team.” The default review mode is `milestones`.
 
 ## Plan
@@ -40,7 +44,11 @@ Planning reads directory identities and entry names. It writes no files and read
 
 The plan contains the normalized brief, target mode, directory identities, full generated text, byte counts, content hashes, and compiler output.
 
-The plan revision binds all those fields. A changed goal, target, template, or directory identity invalidates the earlier approval.
+The plan revision binds all those fields. A changed profile, goal, target, template, or directory identity invalidates the earlier approval.
+
+`init plan` shows a concise plain-language review by default. It explains the roles, proposed access, limits, target, and exact file-only approval effect. Add `--json` to receive the complete machine plan with every generated file and hash. `apply` and `status` retain JSON output. The renderer does not change the plan or approval revision.
+
+Select a profile with `--profile engineer|founder|research` when using inline `--name` and `--goal`. When using `--brief`, put `profile` in that JSON document; mixing inline brief fields with a brief file is rejected.
 
 The plan validates YAML through the existing crew parser and contracts. It pins generated assets in memory because planning cannot create temporary files.
 
@@ -55,6 +63,7 @@ The generated `.bowerloom` directory includes these portable definitions:
 - `teams/first-team/` contains readable YAML, prompts, skills, assets, and maps.
 - `working-agreement.md` records boundaries and responsibilities.
 - `milestones.md` describes review points and the selected review cadence.
+- `startup-review.md` gives the roles, proposed permissions, limits, and file-only approval effect. Its `<details>` block includes all other generated files and compiler evidence. The review cannot recursively contain itself; its own bytes are pinned by the exact plan and installation receipt.
 - `START-HERE.md` gives the user a short prompt for their personal agent.
 - `manifest.json` declares selectable parts in the portable bundle format.
 - `startup.json` identifies the startup template and its main documents.
@@ -69,7 +78,15 @@ The team uses the current `trellis/crew/v0.7-alpha` technical contract. Historic
 
 ## Team specification
 
-The lead proposes scope. The maker produces a draft. The reviewer compares the draft with both the accepted scope and the explicit brief.
+The three deterministic profiles have different roles and instructions:
+
+| Profile | Lead | Maker | Reviewer | Proposed draft |
+| --- | --- | --- | --- | --- |
+| Engineer | Engineering lead | Implementation maker | Code reviewer | Implementation scope, change proposal, and meaningful checks |
+| Founder | Startup lead | Operations maker | Claims reviewer | Business scope, operating draft, and decisions |
+| Research | Experiment lead | Protocol maker | Methods reviewer | Hypothesis, baseline, repeatable A/B protocol, and methods review |
+
+Each reviewer receives both accepted scope and draft. Research setup does not run comparisons or claim improvement. Engineering setup does not inspect source files or claim passing tests. Founder setup does not contact customers or publish a launch.
 
 Each task declares one bounded Markdown output and requires exact approval. Relay maps connect accepted scope and draft outputs to their consumers.
 
@@ -123,6 +140,12 @@ Repeated inspection is read-only. `specReady: true` means the specification matc
 
 Portable definitions still compile after a move. Installation inspection reports the changed location because the machine-specific receipt binds the original installation.
 
+## Historical compatibility
+
+New plans use `bowerloom/startup-template/v1alpha2`. The public plan and receipt envelopes remain `v1alpha1`. Inspection dispatches by the exact template version and reconstructs old receipts with the preserved `scaffold-v1alpha1.ts` implementation. It does not inject a default profile into a historical normalized brief, add new review files, rewrite an old receipt, or relax drift checks. Unknown template versions are rejected.
+
+An uninstalled historical approval does not authorize the new template. Request a fresh plan and approval. The frozen historical fixture contains its original normalized brief, complete file bytes, and compiler result.
+
 ## Tests
 
 From the repository root, run the build and package tests:
@@ -132,6 +155,6 @@ npm run build
 node --test packages/startup/test/startup.test.mjs
 ```
 
-The tests exercise new workspaces, existing-project preservation, the actual compiler, portable validation, stale approval, directory replacement, case collisions, locks, rollback, and drift.
+The tests exercise frozen historical receipt compatibility, all three profiles, profile-bound approval, readable review output, maximum-size escaped review contents, new workspaces, existing-project preservation, the actual compiler, portable validation, stale approval, directory replacement, case collisions, locks, rollback, and drift.
 
 The preservation test intercepts reads of existing project files and refuses them. The tests make no network or model calls.

@@ -11,7 +11,7 @@ import type { ObservationReader, ReserveResult } from '../../admission/src/index
 import { Coordinator } from './coordinator.js';
 import { RuntimeLedger, pin, runId } from './ledger.js';
 import { RuntimeError, identifier } from './types.js';
-import type { RunInput, RunState, ModelAdapter, ModelProcess, AcceptanceReader } from './types.js';
+import type { RunInput, RunState, ModelAdapter, ModelProcess, AcceptanceReader, CancellationEvidence } from './types.js';
 export type * from './types.js';
 export { RuntimeError, RuntimeLedger, SyntheticProcessAdapter };
 import { SyntheticProcessAdapter } from './process.js';
@@ -27,6 +27,7 @@ interface Dependencies {
   observations: ObservationReader;
   models: ModelAdapter;
   acceptance: AcceptanceReader;
+  control?: { guard(): void; signal: AbortSignal };
 }
 interface Options { installationId: string; schema: string; admissionSchema: string; systemDatabaseUrl: string }
 export class SupervisedRuntime {
@@ -44,7 +45,7 @@ export class SupervisedRuntime {
     this.#ledger = new RuntimeLedger(deps.pool, options.schema);
     this.#admission = new PostgresAdmission(deps.pool, { schema: options.admissionSchema, launcherId: coordinator.launcherId });
     this.#broker = new ActionBroker({ store: deps.brokerStore, identity: deps.identity, clock: systemClock, effects: {
-      apply: async (request, signal) => { await coordinator.guard(); return deps.effects.apply(request, AbortSignal.any([signal,coordinator.signal])); },
+      apply: async (request, signal) => { await coordinator.guard(); deps.control?.guard(); return deps.effects.apply(request, AbortSignal.any([signal,coordinator.signal,...(deps.control?[deps.control.signal]:[])])); },
       lookup: request => deps.effects.lookup(request),
     } });
     this.#workflow = DBOS.registerWorkflow(async (id: string) => this.#execute(id), { name: 'trellisSyntheticSupervisedV1' });
@@ -65,7 +66,7 @@ export class SupervisedRuntime {
     } catch { await coordinator.close(); throw new RuntimeError('RUNTIME_START_FAILED'); }
   }
   async #check(id: string): Promise<RunState> {
-    await this.#coordinator.guard();
+    await this.#coordinator.guard(); this.#deps.control?.guard();
     if (this.#closing) throw new RuntimeError('RUNTIME_CLOSING');
     const state = await this.#ledger.read(id);
     if (state.cancelled || this.#cancelled.has(id)) throw new RuntimeError('CANCELLED');
@@ -132,7 +133,7 @@ export class SupervisedRuntime {
           await this.#check(id); // Recheck the lock inside the consumed claim, immediately before creating a child.
           this.#coordinator.assert();
           worker = await this.#deps.models.start({ launcherId: this.launcherId, taskInput: state.input.taskInput, modelRoute: request.modelRoute },
-            AbortSignal.any([abort.signal, this.#coordinator.signal]));
+            AbortSignal.any([abort.signal, this.#coordinator.signal,...(this.#deps.control?[this.#deps.control.signal]:[])]));
           this.#active.set(id, { worker, abort });
           await this.#ledger.change(id, current => { current.process = { ...worker!.identity, reservationId: admission.reservation.reservationId,
             candidateRevision: current.input.plan.candidateRevision }; });
@@ -195,7 +196,7 @@ export class SupervisedRuntime {
             // Register cancellation before the last guard and the injected acceptance call.
             await this.#check(id);
             accepted = await this.#deps.acceptance.read(state.input, state.receipt, {
-              signal: AbortSignal.any([abort.signal, this.#coordinator.signal]), launcherId: this.launcherId,
+              signal: AbortSignal.any([abort.signal, this.#coordinator.signal,...(this.#deps.control?[this.#deps.control.signal]:[])]), launcherId: this.launcherId,
               ownerCredential: this.#owner(state.input), guard: async () => { await this.#check(id); },
             });
           } finally { this.#accepting.delete(id); finish(); }
@@ -223,20 +224,48 @@ export class SupervisedRuntime {
     await this.#broker.approve(state.proposal.scope, state.proposal.requestId, approval, credential);
     await DBOS.send(id, 'approved', 'approval-or-cancel', `approval-${state.inputDigest}`);
   }
-  async cancel(id: string): Promise<void> {
-    await this.#coordinator.guard();
+  async cancel(id: string): Promise<CancellationEvidence> {
+    // Local abort precedes storage. Cleanup must still finish if persistence fails.
     this.#cancelled.add(id); const inflight = this.#inflight.get(id); inflight?.abort.abort();
     const accepting = this.#accepting.get(id); accepting?.abort.abort();
-    const state = await this.#ledger.change(id, current => { current.cancelled = true; current.status = 'CANCELLED'; current.reason = 'CANCELLED'; });
-    await this.#broker.cancel({ workspaceId: state.input.task.workspaceId, runId: state.input.task.runId, taskId: state.input.task.taskId }, this.#owner(state.input));
-    if (inflight) await inflight.done;
-    await this.#deps.acceptance.cancel?.(state.input, state.receipt ?? undefined);
-    if (accepting && this.#deps.acceptance.cancel) await accepting.done;
-    const reservation = await this.#admission.lookup(state.input.reservation.accountAlias, state.input.reservation.jobId);
-    if (reservation?.status === 'RESERVED') await this.#admission.reconcile(state.input.reservation, {
-      kind: 'not-started', proofRef: `unused-${randomUUID()}`, observedAtMs: Date.now(), processRef: null, fencedLauncherId: null,
-    });
-    await DBOS.send(id, 'cancelled', 'approval-or-cancel', `cancel-${state.inputDigest}`);
+    const owned = this.#active.get(id)?.worker;
+    const result: CancellationEvidence = {runId:id,confirmed:false,alreadyCompleted:false,statePersisted:false,processes:[],acceptanceStopped:false,errors:[]};
+    const errorCode = (error:unknown):string => /^[A-Z_]{1,100}$/.test(String((error as {code?:string})?.code)) ? (error as {code:string}).code : 'STOP_STORAGE_UNAVAILABLE';
+    let state:RunState|undefined;
+    try {
+      await this.#coordinator.guard();
+      state = await this.#ledger.change(id, current => {
+        if (current.status === 'COMPLETED' || current.status === 'ACCEPTANCE_FAILED') { result.alreadyCompleted=true; return; }
+        current.cancelled=true; current.status='CANCELLED'; current.reason='CANCELLED';
+      }); result.statePersisted=true;
+      if(!result.alreadyCompleted) await this.#broker.cancel({workspaceId:state.input.task.workspaceId,runId:state.input.task.runId,taskId:state.input.task.taskId},this.#owner(state.input));
+    } catch(error) { result.errors.push(errorCode(error)); }
+    if(owned){
+      let reaped=false;try{await owned.terminate();reaped=true;}catch(error){result.errors.push(errorCode(error));}
+      result.processes.push({identity:structuredClone(owned.identity),reaped});
+    }
+    if(inflight)await inflight.done;
+    // A launch can return its handle after cancellation began. Capture retains an uncertain handle.
+    const remaining=this.#active.get(id)?.worker;
+    if(remaining&&remaining!==owned){let reaped=false;try{await remaining.terminate();reaped=true;}catch(error){result.errors.push(errorCode(error));}result.processes.push({identity:structuredClone(remaining.identity),reaped});}
+    if(state){
+      try{await this.#deps.acceptance.cancel?.(state.input,state.receipt??undefined);if(accepting&&this.#deps.acceptance.cancel)await accepting.done;result.acceptanceStopped=!accepting||Boolean(this.#deps.acceptance.cancel);}
+      catch(error){result.errors.push(errorCode(error));}
+      try{
+        const reservation=await this.#admission.lookup(state.input.reservation.accountAlias,state.input.reservation.jobId);
+        if(reservation?.status==='RESERVED')await this.#admission.reconcile(state.input.reservation,{kind:'not-started',proofRef:`unused-${randomUUID()}`,observedAtMs:Date.now(),processRef:null,fencedLauncherId:null});
+        await DBOS.send(id,'cancelled','approval-or-cancel',`cancel-${state.inputDigest}`);
+      }catch(error){result.errors.push(errorCode(error));}
+    }else result.acceptanceStopped=!accepting;
+    // A persisted foreign process is not an owned handle. Only recorded reap evidence can settle it.
+    try{
+      const final=await this.#ledger.read(id);
+      if(final.process&&!result.processes.some(p=>p.identity.processRef===final.process!.processRef)){
+        result.processes.push({identity:structuredClone(final.process),reaped:final.modelOutcome?.processRef===final.process.processRef});
+      }
+    }catch(error){result.errors.push(errorCode(error));}
+    result.confirmed=result.statePersisted&&result.acceptanceStopped&&result.processes.every(p=>p.reaped)&&result.errors.length===0;
+    return result;
   }
   async close(): Promise<void> {
     this.#closing = true;

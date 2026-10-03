@@ -12,6 +12,12 @@ Usage:
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
   bowerloom init status --target <absolute-directory>
+  bowerloom link plan|apply --from <root> --to <root> --file <definition> --out <private-new-file> [--approve <revision>]
+  bowerloom link read --connection <file> --target <receiving-root>
+  bowerloom link revoke --connection <file>
+  bowerloom control plan|register --root <root> --team <id> --spec <relative-team-file> [--adapter graph|recipe --installation <private.json>] [--registry <directory>] [--approve <revision>]
+  bowerloom destruct <team-id> --root <root> [--registry <directory>] [--timeout-ms <milliseconds>]
+  bowerloom destruct all [--registry <directory>] [--timeout-ms <milliseconds>]
   bowerloom backend doctor
   bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
   bowerloom backend status --root <private-installation-directory>
@@ -29,6 +35,11 @@ Usage:
 The trellis and trellis-mcp commands remain compatibility aliases.
 Init prepares a personal-agent profile and first team specification from your brief.
 Init apply requires the exact plan revision. It starts no workers or backend services.
+Init plan offers a plain-English review. Add --json for the complete machine-readable plan.
+Choose --profile engineer|founder|research, or set profile in the brief.
+Links share one approved definition between installed local roots. They grant no execution authority.
+Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
+Destruct all covers one local registry, not other users, remote machines, or unrelated agent sessions.
 Existing mode adds .bowerloom only. Claude and Codex settings import belongs to beta.
 Backend install requires --approve with the exact current plan revision.
 Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
@@ -47,8 +58,29 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
   if (args[0] === 'init') {
-    const { runStartupCommand } = await import('./startup.js');
-    process.stdout.write(`${canonicalJson(await runStartupCommand(args))}\n`);
+    const { runStartupCommand, renderStartupReview } = await import('./startup.js');
+    const result = await runStartupCommand(args);
+    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+      ? renderStartupReview(result as import('../../../packages/startup/src/index.js').StartupPlan)
+      : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'link') {
+    const { runLinkCommand, renderLinkReview } = await import('./link.js');
+    const result = await runLinkCommand(args);
+    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+      ? renderLinkReview(result as import('../../../packages/connections/src/index.js').LinkPlan)
+      : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'control') {
+    const { runControlCommand } = await import('./control.js');
+    process.stdout.write(`${canonicalJson(await runControlCommand(args))}\n`);
+    return;
+  }
+  if (args[0] === 'destruct') {
+    const { runDestructCommand } = await import('./destruct.js');
+    process.stdout.write(`${canonicalJson(await runDestructCommand(args))}\n`);
     return;
   }
   if (args[0] === 'backend') {
@@ -99,7 +131,9 @@ async function main(args: string[]): Promise<void> {
           async reap(operationId){await(await load()).reap(operationId);},
         }:await load();
       }
-      const port=await openLocalSession(config,executor,readOnly?'read':command.command==='cancel'?'cancel':'start');
+      const port=await openLocalSession(config,executor,readOnly?'read':command.command==='cancel'?'cancel':'start', {
+        installationPath: command.installation, ...(command.registry ? { registry: command.registry } : {}),
+      });
       await executeSession(command,port,value=>process.stdout.write(`${canonicalJson(value)}\n`),signal.signal);
     } finally { process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort); }
     return;

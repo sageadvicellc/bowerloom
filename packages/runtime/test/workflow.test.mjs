@@ -15,13 +15,14 @@ import { PostgresWorkspaceEffects } from '../../../dist/packages/workspace-effec
 import { PostgresAdmission } from '../../../dist/packages/admission/src/index.js';
 import { compileCrew } from '../../../dist/packages/crew/src/index.js';
 import { canonicalJson, digest } from '../../../dist/packages/contracts/src/index.js';
-const enabled = process.env.TRELLIS_RUNTIME_PROOF === 'trellis-alpha-proof@127.0.0.1:56582';
+const proofPort=Number(process.env.TRELLIS_RUNTIME_PORT??56582);
+const enabled = [56582,57582].includes(proofPort)&&process.env.TRELLIS_RUNTIME_PROOF === `trellis-alpha-proof@127.0.0.1:${proofPort}`;
 const enabledOptions = { skip: !enabled, timeout: 120000 };
 test('synthetic supervised workflows with real DBOS and isolated PostgreSQL databases', enabledOptions, async t => {
   if (!process.env.TRELLIS_RUNTIME_CREDENTIALS_FILE) throw new Error('Supply the private proof credentials path.');
   const { POSTGRES_PASSWORD: password } = JSON.parse(readFileSync(process.env.TRELLIS_RUNTIME_CREDENTIALS_FILE, 'utf8'));
   if (!password) throw new Error('Missing local proof credential.');
-  const config = { host: '127.0.0.1', port: 56582, user: 'postgres', password, ssl: false, connectionTimeoutMillis: 3000,
+  const config = { host: '127.0.0.1', port: proofPort, user: 'postgres', password, ssl: false, connectionTimeoutMillis: 3000,
     idleTimeoutMillis: 500, application_name: 'trellis_runtime_test' };
   const plan = await compileCrew(resolve('examples/endor/crew.yaml'));
   const report = { observedAt: new Date().toISOString(), dbosVersion: '5.2.11', modelCalls: 0, dockerOperations: 0, cases: [],
@@ -34,7 +35,7 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     await mkdir(join(root,'output/design'), { mode: 0o700 });
     const schemas = { runtime: 'trellis_runtime', admission: 'trellis_admission', broker: 'trellis_broker', effects: 'trellis_effects' };
     const accountId = 'synthetic-account'; const resetAtMs = Date.now() + 999000;
-    const uri = new URL('postgresql://127.0.0.1:56582'); uri.username = 'postgres'; uri.password = password; uri.pathname = `/${database}`;
+    const uri = new URL(`postgresql://127.0.0.1:${proofPort}`); uri.username = 'postgres'; uri.password = password; uri.pathname = `/${database}`;
     const options = { installationId: 'synthetic-installation', schema: schemas.runtime, admissionSchema: schemas.admission, systemDatabaseUrl: uri.href };
     const children = new Set(); const shutdown = new Map(); const caseResult = { name, database, passed: false }; let created = false;
     const spawnCoordinator = (mode = 'normal', usedPercent = 20, ownerMode = 'fallback') => {
@@ -289,6 +290,23 @@ test('synthetic supervised workflows with real DBOS and isolated PostgreSQL data
     const cancelled=await waitState(worker,id,value=>value.run.status==='CANCELLED' && value.reservation?.status==='COMPLETED');
     assert.equal(cancelled.allowanceHeld,true); assert.throws(()=>process.kill(-running.run.process.groupId,0),{code:'ESRCH'});
     await assert.rejects(stat(file),{code:'ENOENT'}); await worker.stop(); caseResult.ownedGroupAbsent=true;
+  });
+  await run('durable local registry request reaches the owning runtime and proves actual process termination',async({spawnCoordinator,input,waitState,file,caseResult})=>{
+    const {destruct}=await import('../../../dist/packages/local-control/src/index.js');
+    const worker=spawnCoordinator('registered-control'),ready=await worker.next('ready');const id=await worker.rpc('submit',{input:input('group')});
+    const running=await waitState(worker,id,s=>s.reservation?.status==='RUNNING');
+    const stopped=await destruct({team:'all',registry:ready.controlRegistry,timeoutMs:10000});
+    assert.equal(stopped.complete,true);assert.equal(stopped.teams[0].status,'STOPPED');
+    const evidence=stopped.teams[0].executions[0].evidence.tasks[0];assert.equal(evidence.confirmed,true);assert.equal(evidence.processes[0].reaped,true);
+    assert.throws(()=>process.kill(-running.run.process.groupId,0),{code:'ESRCH'});
+    const cancelled=await worker.rpc('status',{id});assert.equal(cancelled.allowanceHeld,true);assert.equal(cancelled.run.status,'CANCELLED');
+    await assert.rejects(stat(file),{code:'ENOENT'});await worker.stop();caseResult.registryStopConfirmed=true;caseResult.ownedGroupAbsent=true;
+  });
+  await run('cancellation storage failure still reaps the owned group and reports uncertainty',async({spawnCoordinator,input,waitState,caseResult})=>{
+    const worker=spawnCoordinator('cancel-storage-fail');await worker.next('ready');const id=await worker.rpc('submit',{input:input('group')});
+    const running=await waitState(worker,id,s=>s.reservation?.status==='RUNNING');const result=await worker.rpc('cancel',{id});
+    assert.equal(result.confirmed,false);assert.ok(result.errors.length);assert.equal(result.processes[0].reaped,true);
+    assert.throws(()=>process.kill(-running.run.process.groupId,0),{code:'ESRCH'});await worker.stop();caseResult.storageFailureDidNotSkipReap=true;
   });
   await run('lock connection loss refuses launches and terminates an owned child', async ({spawnCoordinator,input,waitState,pool,file,caseResult}) => {
     const worker=spawnCoordinator(); await worker.next('ready'); const value=input('hang'); const id=await worker.rpc('submit',{input:value});

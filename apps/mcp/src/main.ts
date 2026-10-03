@@ -10,7 +10,7 @@ if (args.length !== 2 || args[0] !== '--installation' || !args[1] || args[1].sta
   process.exitCode = 2;
 } else {
   try {
-    const controller = await openRecipeService(args[1]);
+    const controller = await openRecipeService(args[1], {requireControl:true});
     const server = createRecipeMcpServer(controller);
     const { close } = ownMcpLifecycle(server, controller, process.stdin, process, () => {
       process.stderr.write('Bowerloom MCP cleanup failed. Read the saved recipe state before retrying.\n');

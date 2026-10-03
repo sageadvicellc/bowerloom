@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
-import { planStartup, applyStartup, inspectStartup } from '../../../dist/packages/startup/src/index.js';
+import { planStartup, applyStartup, inspectStartup, renderStartupReview } from '../../../dist/packages/startup/src/index.js';
+import { canonicalJson } from '../../../dist/packages/contracts/src/index.js';
 import { compileCrew } from '../../../dist/packages/crew/src/index.js';
 import { validateBundle } from '../../../dist/packages/portable/src/index.js';
 const digest = text => createHash('sha256').update(text).digest('hex');
@@ -175,4 +176,67 @@ test('invalid UTF16 input cannot change meaning during UTF8 serialization', asyn
   const { input } = fixture(t);
   for (const field of ['projectName', 'goal', 'assistantName', 'teamName']) await assert.rejects(planStartup({ ...input, brief: { ...input.brief, [field]: 'unpaired \ud800 surrogate' } }), code('STARTUP_TEXT'));
   await assert.rejects(planStartup({ ...input, targetDir: input.targetDir + '\udfff' }), code('STARTUP_TARGET'));
+});
+
+
+for (const profile of ['engineer', 'founder', 'research']) test(`${profile} profile compiles distinct roles with file-only approval`, async t => {
+  const { input } = fixture(t);
+  input.brief.profile = profile;
+  const plan = await planStartup(input);
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1alpha2');
+  assert.equal(plan.input.brief.profile, profile);
+  const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
+  assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
+  const review = plan.files.find(file => file.path === 'startup-review.md').text;
+  assert.ok(review.includes('These proposed task permissions are not granted by installation'));
+  assert.ok(review.includes('<details>')); assert.ok(review.includes('Complete generated technical contents'));
+  assert.ok(review.includes('25 percent')); assert.ok(review.includes('two active workers'));
+  for (const label of labels[profile]) assert.ok(review.includes(label));
+  assert.ok(renderStartupReview(plan).includes(plan.revision));
+  await applyStartup(input, plan.revision);
+  assert.deepEqual(await compileCrew(join(input.targetDir, '.bowerloom/teams/first-team/team.yaml')), plan.compiled);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+  assert.equal(validateBundle(input.targetDir).manifest.schemaVersion, 'bowerloom/v1alpha1');
+});
+
+test('default engineer profile and exact profile approval cannot diverge', async t => {
+  const { input } = fixture(t);
+  const plan = await planStartup(input);
+  assert.equal(plan.input.brief.profile, 'engineer');
+  assert.equal((await planStartup({ ...input, brief: { ...input.brief, profile: 'engineer' } })).revision, plan.revision);
+  await assert.rejects(applyStartup({ ...input, brief: { ...input.brief, profile: 'founder' } }, plan.revision), code('STALE_APPROVAL'));
+  for (const profile of ['unknown', '__proto__', '', null, {}]) await assert.rejects(planStartup({ ...input, brief: { ...input.brief, profile } }), code('STARTUP_PROFILE'));
+  assert.equal(fs.existsSync(input.targetDir), false);
+});
+
+test('historical v1alpha1 receipt inspects without rewrite, default injection or lost drift checks', async t => {
+  const { input } = fixture(t);
+  const historic = JSON.parse(fs.readFileSync(new URL('./fixtures/scaffold-v1alpha1.json', import.meta.url), 'utf8'));
+  const currentPlan = await planStartup(input);
+  const body = { format: currentPlan.format, templateVersion: historic.templateVersion, input: { mode: input.mode, targetDir: input.targetDir, brief: historic.brief }, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const plan = { ...body, revision: digest(canonicalJson(body)) };
+  const root = join(input.targetDir, '.bowerloom'); fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  for (const file of historic.files) { const path = join(root, file.path); fs.mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path, file.text, { mode: 0o600 }); }
+  const identity = path => { const stat = fs.lstatSync(path, { bigint: true }); return { device: String(stat.dev), inode: String(stat.ino), birthtimeNs: String(stat.birthtimeNs), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 }; };
+  const receipt = { format: 'bowerloom/startup-receipt/v1alpha1', plan, installedTargetIdentity: identity(input.targetDir), installedBowerloomIdentity: identity(root), specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const path = join(root, 'installation-receipt.json');fs.writeFileSync(path, JSON.stringify(receipt), { mode: 0o600 });
+  const before = fs.readFileSync(path);
+  const result = await inspectStartup(input.targetDir);
+  assert.equal(result.specReady, true);assert.equal(result.revision, plan.revision);
+  assert.deepEqual(fs.readFileSync(path), before);assert.equal(Object.hasOwn(JSON.parse(before).plan.input.brief, 'profile'), false);
+  assert.equal(fs.existsSync(join(root, 'startup-review.md')), false);
+  fs.appendFileSync(join(root, 'brief.json'), ' ');
+  assert.ok((await inspectStartup(input.targetDir)).drift.some(item => item.path === '.bowerloom/brief.json' && item.kind === 'changed'));
+  receipt.plan.templateVersion = 'bowerloom/startup-template/unsupported';fs.writeFileSync(path, JSON.stringify(receipt));
+  assert.equal((await inspectStartup(input.targetDir)).drift[0].kind, 'invalid-receipt');
+});
+
+test('expanded technical review remains escaped and inspectable for a maximum-size brief', async t => {
+  const { input } = fixture(t);
+  input.brief.goal = '<script>\n'.repeat(666);
+  const plan = await planStartup(input);
+  const review = plan.files.find(file => file.path === 'startup-review.md');
+  assert.ok(review.text.includes('&lt;script&gt;'));assert.ok(!review.text.includes('<script>'));
+  await applyStartup(input, plan.revision);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
 });

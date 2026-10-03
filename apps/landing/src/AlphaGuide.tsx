@@ -25,25 +25,25 @@ export default function AlphaGuide() {
     return () => { cancelAnimationFrame(frame); window.removeEventListener('hashchange', followHash); document.removeEventListener('click', followSameHash); };
   }, []);
   return <details className="alpha-guide" id="alpha-guide" ref={guide} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary>Alpha guide: from a goal to a working agreement</summary>
+    <summary>Alpha guide: from a goal to a reviewable setup</summary>
     <div className="alpha-guide-body">
-      <p>Start with the tutorial maker below. Describe a result, choose your review cadence, and take the generated prompt to your existing personal agent. The page prepares text locally; it does not connect your account or start workers.</p>
-      <h3>Agree before the team begins</h3>
-      <p>Your agent inspects its available tools and proposes roles, file ownership, permissions, and milestones. You approve the working agreement before it starts workers. A proposed team, a validated definition, and a running team are different states.</p>
-      <p>Codex is the tested alpha path. If a project requires the personal agent’s native subagents, the agreement must say so. Native subagent work is not Bowerloom runtime evidence.</p>
+      <p>Start with the setup builder below. Choose Engineer, Founder, or Research, describe your goal, and take the short prompt to your existing personal agent. The page prepares text locally; it does not connect your account or start workers.</p>
+      <h3>Review before installation</h3>
+      <p>Your agent asks where the setup belongs and prepares a plan. The plain review explains the proposed roles, access, limits, and what your installation approval permits. You approve an exact set of files before anything is written.</p>
+      <p>Codex is the tested alpha path. A portable assistant profile and team blueprint in .bowerloom are the complete result of this exercise. Completing a project or starting a team is a later decision.</p>
       <h3>Try the source checkout</h3>
       <p>Ask your agent to inspect the public repository and the <a href={destinations.readme} target="_blank" rel="noopener noreferrer">README <span className="sr-only">(opens in a new tab)</span></a> first. It must review dependency installation with you and keep the source checkout separate from your project.</p>
       <p><ProductText>Source setup requires git, node 24.11 or later within version 24, and npm 11. These commands build the CLI and show its commands. They do not launch a team.</ProductText></p>
       <pre><code>{setupCommands}</code></pre>
       <h3>Choose your startup path</h3>
       <p>For a new workspace, choose <code>--mode new</code> and an unused directory. For an existing project, choose <code>--mode existing</code> and its directory. Both paths create a personal-agent profile and a first team from your goal.</p>
-      <p>The initial team uses a fixed lead, maker, and reviewer template. Your agent can propose changes after setup. Bowerloom compiles the generated definition against its actual crew contract.</p>
-      <pre><code>{`node dist/apps/cli/src/main.js init plan --mode new --target /absolute/projects/first-team --name "First team" --goal "Prepare a fictional client onboarding kit for my review."
-node dist/apps/cli/src/main.js init apply --mode new --target /absolute/projects/first-team --name "First team" --goal "Prepare a fictional client onboarding kit for my review." --approve REPLACE_WITH_EXACT_PLAN_REVISION
+      <p>Use --profile engineer for an implementation team, --profile founder for a lean business team, or --profile research for an A/B protocol and methods review. Each deterministic template defines a lead, maker, and reviewer with different responsibilities. The research setup prepares a test protocol; it does not run experiments. Bowerloom compiles each generated definition against its actual crew contract.</p>
+      <pre><code>{`node dist/apps/cli/src/main.js init plan --mode new --target /absolute/projects/first-team --profile founder --name "First team" --goal "Prepare a fictional client onboarding kit for my review."
+node dist/apps/cli/src/main.js init apply --mode new --target /absolute/projects/first-team --profile founder --name "First team" --goal "Prepare a fictional client onboarding kit for my review." --approve REPLACE_WITH_EXACT_PLAN_REVISION
 node dist/apps/cli/src/main.js init status --target /absolute/projects/first-team`}</code></pre>
-      <p>Use an existing parent directory. Read the full file plan before approval. Keep every input unchanged between <code>plan</code> and <code>apply</code>. Use <code>--brief /absolute/brief.json</code> for a structured project brief instead of inline text.</p>
+      <p>Use an existing parent directory. Read the plain setup review before approval; add --json to init plan to inspect every file, hash, and compiler detail. Keep every input unchanged between <code>plan</code> and <code>apply</code>. Use <code>--brief /absolute/brief.json</code> for a structured project brief instead of inline text.</p>
       <p>Existing mode adds only a new <code>.bowerloom</code> directory. It preserves project files and rejects a previous Bowerloom installation. It does not read or convert <code>.codex</code> or <code>.claude</code> settings.</p>
-      <p>Ask your personal agent to read <code>.bowerloom/START-HERE.md</code> after installation. The profile guides that existing agent. It does not create a hosted assistant or start workers. Review the agreement before any team execution.</p>
+      <p>Ask your personal agent to read <code>.bowerloom/startup-review.md</code> and <code>.bowerloom/START-HERE.md</code> after installation. The review includes an expandable technical snapshot. The profile guides that existing agent. It does not create a hosted assistant or start workers. Stop here to review your setup. Any later team execution needs its own scope and approval.</p>
       <p>The separate portable installer copies selected existing skill and team files. Startup and portable installation stay offline. Neither grants execution authority.</p>
       <h3 id="local-backend">A local backend, built on Supabase</h3>
       <p>Bowerloom builds on upstream tools. Supabase provides PostgreSQL and Studio, its database interface. Docker runs the local services. The tested controller uses the MIT DBOS library for durable work; the recorded blog-draft recipe uses LangGraph checkpoints in PostgreSQL.</p>

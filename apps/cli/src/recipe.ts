@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { openControlOwner, controlBindingForInstallation, destruct, ControlError, type ControlOwner } from '../../../packages/local-control/src/index.js';
 import pg from 'pg';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { RecipeService, PostgresRecipeStore, GitHubConnection, RecipeError } from '../../../packages/recipes/src/index.js';
@@ -27,7 +28,7 @@ export function recipeInstallation(value: unknown): RecipeInstallation {
   return v;
 }
 /** Private startup path is an operator capability. Never expose it as a per-tool argument. */
-export async function openRecipeService(installationPath: string): Promise<{dispatch(operation: string,args: unknown):Promise<object>;close():Promise<void>}> {
+export async function openRecipeService(installationPath: string, options:{registry?:string; requireControl?:boolean}={requireControl:false}): Promise<{dispatch(operation: string,args: unknown):Promise<object>;close():Promise<void>}> {
   const config = recipeInstallation(await privateJson(installationPath)), db = config.postgres;
   const secret = await privateJson(db.passwordFile,16384) as {password:string};
   if (!exact(secret,['password']) || typeof secret.password !== 'string' || !secret.password || secret.password.length > 8192) fail('DATABASE_CREDENTIAL');
@@ -36,14 +37,34 @@ export async function openRecipeService(installationPath: string): Promise<{disp
   pool.on('error',()=>{});
   const store = new PostgresRecipeStore(pool,db.controlSchema), saver = new PostgresSaver(pool,undefined,{schema:db.checkpointSchema});
   const issuer = Symbol('private-operator-issuer');
+  let owner:ControlOwner|undefined,stopJob:Promise<void>|undefined;const transportStop=new AbortController(),pending=new Set<Promise<unknown>>(),jobs=new Set<string>();
+  let stopConfirmed=true;const stopEvidence=new Map<string,unknown>();
+  const recordStop=(jobId:string,value:unknown)=>{const v=value as {status?:string;job?:{steps?:Record<string,{status:string;reason:string|null}>}};
+    stopEvidence.set(jobId,{jobId,status:v.status??'UNKNOWN',steps:Object.fromEntries(Object.entries(v.job?.steps??{}).map(([key,step])=>[key,{status:step.status,reason:step.reason}]))});
+  };
   const github = new GitHubConnection(config.recipe,async() => {
     const token = await privateJson(config.github.tokenFile,32768) as {token:string};
     if (!exact(token,['token']) || typeof token.token !== 'string') fail('GITHUB_CREDENTIAL'); return token.token;
-  });
-  const service = new RecipeService({store,github,allowedRecipe:config.recipe,authorizeApproval:async credential => {
+  },fetch,transportStop.signal);
+  const service = new RecipeService({store,github,allowedRecipe:config.recipe,control:{signal:transportStop.signal,guard(){owner?.guard();if(transportStop.signal.aborted)throw new ControlError('TEAM_STOPPED');}},authorizeApproval:async credential => {
     if (!config.approval.enabled || credential !== issuer) fail('APPROVAL_NOT_AUTHORIZED'); return {subject:config.approval.subject};
   }},saver);
   let closed = false;
+  const ensureOwner=()=>{
+    if(options.requireControl===false)return;
+    if(!owner){owner=openControlOwner(installationPath,'recipe',options.registry,config);owner.onStop(()=>stopJob??=(async()=>{
+      transportStop.abort();
+      const cancelled=await Promise.allSettled([...jobs].map(async jobId=>{const result=await service.cancel(jobId);recordStop(jobId,result);}));
+      if(cancelled.some(v=>v.status==='rejected'))stopConfirmed=false;
+      await Promise.allSettled([...pending]);
+      // A settled aborted HTTP write can have a remote effect. Keep the durable claim for reconciliation.
+      const observed=await Promise.allSettled([...jobs].map(async jobId=>{await service.cancel(jobId);recordStop(jobId,await service.status(jobId));}));
+      if(observed.some(v=>v.status==='rejected'))stopConfirmed=false;
+      await owner!.finish({adapter:'recipe',localRequestsSettled:true,jobs:[...stopEvidence.values()],remoteEffectsReverted:false},stopConfirmed);
+    })());}
+    owner.guard();
+  };
+
   const setup = async():Promise<object> => store.exclusive(digest(`setup:${db.controlSchema}:${db.checkpointSchema}`),async guard => {
     const rows = (await pool.query('SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[])',[[db.controlSchema,db.checkpointSchema]])).rows;
     const names = rows.map((r:{nspname:string})=>r.nspname);
@@ -55,24 +76,34 @@ export async function openRecipeService(installationPath: string): Promise<{disp
   });
   return {
     async dispatch(operation,args) {
+      let complete!:()=>void;const task=new Promise<void>(r=>{complete=r;});if(operation!=='cancel')pending.add(task);
       try {
       if (closed) fail('SERVICE_CLOSED'); const input = clone(args) as Record<string,unknown>;
       if (!recipeOperations.includes(operation as RecipeOperation)) fail('RECIPE_OPERATION');
       const keys = operation === 'plan' ? ['experiment','draft','metrics'] : operation === 'approve' ? ['jobId','planDigest']
         : ['inspect','setup'].includes(operation) ? [] : ['jobId'];
       if (!exact(input,keys)) fail('RECIPE_ARGUMENTS');
+      if(!['inspect','setup','plan'].includes(operation)&&typeof input.jobId!=='string')fail('INVALID_JOB_ID');
+      if(operation==='approve'){
+        if(typeof input.planDigest!=='string')fail('INVALID_APPROVAL');
+        if(!/^sha256:[a-f0-9]{64}$/.test(input.jobId as string)||!/^sha256:[a-f0-9]{64}$/.test(input.planDigest))fail('INVALID_APPROVAL');
+        if(!config.approval.enabled)fail('APPROVAL_NOT_AUTHORIZED');
+      }else if(!['inspect','setup','plan'].includes(operation)&&!/^sha256:[a-f0-9]{64}$/.test(input.jobId as string))fail('INVALID_JOB_ID');
+      if(['setup','plan','approve','run'].includes(operation))ensureOwner();
+      if(typeof input.jobId==='string'){if(jobs.size>=64&&!jobs.has(input.jobId))fail('RECIPE_JOB_LIMIT');jobs.add(input.jobId);}
       if (operation === 'inspect') return service.inspect();
       if (operation === 'setup') return await setup();
-      if (operation === 'plan') return await service.plan({experiment:input.experiment,draft:input.draft,metrics:input.metrics});
+      if (operation === 'plan') {const result=await service.plan({experiment:input.experiment,draft:input.draft,metrics:input.metrics});jobs.add(result.jobId);return result;}
       if (typeof input.jobId !== 'string') fail('INVALID_JOB_ID');
       if (operation === 'approve') {
         if (typeof input.planDigest !== 'string') fail('INVALID_APPROVAL');
         return await service.approve({jobId:input.jobId,planDigest:input.planDigest},issuer);
       }
+      if(operation==='cancel'&&options.requireControl!==false){const stopped=await destruct(controlBindingForInstallation(installationPath,'recipe',options.registry));if(!stopped.complete)throw new ControlError('STOP_UNCONFIRMED');}
       return await service[operation as 'review'|'status'|'run'|'reconcile'|'cancel'](input.jobId);
-      } catch (error) { throw error instanceof RecipeError ? error : new RecipeError('RECIPE_UNAVAILABLE'); }
+      } catch (error) { throw error instanceof RecipeError||error instanceof ControlError ? error : new RecipeError('RECIPE_UNAVAILABLE'); } finally {pending.delete(task);complete();}
     },
-    async close() { if (!closed) { closed = true; await pool.end(); } },
+    async close() { if (!closed) { closed = true; await Promise.allSettled([...pending]);if(stopJob)await stopJob;await owner?.finish({adapter:'recipe',localRequestsSettled:true,jobs:[...stopEvidence.values()],remoteEffectsReverted:false},stopConfirmed);await pool.end(); } },
   };
 }
 export const recipeHelp = 'recipe <inspect|setup|plan|review|approve|run|reconcile|cancel|status> --installation <private-json> [--input <request-json>]';
@@ -80,7 +111,7 @@ export const recipeHelp = 'recipe <inspect|setup|plan|review|approve|run|reconci
 export async function runRecipeCommand(args: string[]): Promise<object> {
   if (args[0] !== 'recipe' || !recipeOperations.includes(args[1] as RecipeOperation)) throw new RecipeError('RECIPE_USAGE');
   const flags = new Map<string,string>();
-  for (let i=2;i<args.length;i+=2) { const key=args[i]!,value=args[i+1]; if (!['--installation','--input'].includes(key) || flags.has(key) || !value) fail('RECIPE_USAGE'); flags.set(key,value); }
+  for (let i=2;i<args.length;i+=2) { const key=args[i]!,value=args[i+1]; if (!['--installation','--input','--registry'].includes(key) || flags.has(key) || !value) fail('RECIPE_USAGE'); flags.set(key,value); }
   const installation = flags.get('--installation'); if (!installation) fail('RECIPE_USAGE');
   // Agent input is data only. Bounded file loading prevents pipes/devices and oversized packets.
   let input: unknown = {};
@@ -96,6 +127,6 @@ export async function runRecipeCommand(args: string[]): Promise<object> {
       input = structuredClone(strictJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,size)),1024*1024));
     } finally { await file.close(); }
   }
-  const controller = await openRecipeService(installation);
+  const controller = await openRecipeService(installation,{requireControl:true,...(flags.has('--registry')?{registry:flags.get('--registry')!}:{})});
   try { return await controller.dispatch(args[1]!,input); } finally { await controller.close(); }
 }

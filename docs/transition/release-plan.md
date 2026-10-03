@@ -60,3 +60,20 @@ The converters bring supported harness settings into the portable `.bowerloom/` 
 They must show the proposed mapping and unsupported fields before writing files. They must preserve the original settings and require explicit conflict resolution.
 Credentials, tokens, and private session history stay outside the default import. Automatic context capture remains separate later work.
 These converters are planned, not implemented. Two-harness support alone does not establish import readiness.
+
+## October 3 alpha setup amendment
+
+The alpha outcome is a reviewed `.bowerloom` setup for an existing personal agent.
+Completing a whole project is not an onboarding requirement.
+The setup review explains roles, access, limits, and approval effects before technical details.
+The alpha supplies engineer, founder, and research profiles. Research setup defines an A/B protocol without claiming measured improvement.
+
+Local connections share one explicitly approved definition between two installed roots.
+They grant no execution, source writes, or stop authority over the other team.
+The alpha includes preserving emergency stops for explicitly registered local Bowerloom work.
+A stop command must distinguish requested cancellation from confirmed termination.
+It must preserve definitions, project files, results, and saved state.
+
+The beta expands control policies and connections after alpha evidence establishes their boundaries.
+Claude and Codex settings importers remain beta work. Automatic context capture remains separate later work.
+Neither a setup profile nor a linked definition proves generic team execution or automatic A/B testing.
