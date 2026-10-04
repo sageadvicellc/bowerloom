@@ -49,6 +49,6 @@ export default function AnimationSplash({ reducedMotion, onEnter }: { reducedMot
       <button type="button" className="splash-play" onClick={state === 'playing' ? () => playback.current?.pause() : play}>{state === 'playing' ? 'Pause animation' : state === 'ended' ? 'Replay animation' : 'Play animation'}</button>
       <p role="status">{failed ? 'Animation unavailable. You can enter the site now.' : reducedMotion && !requested ? 'Still view follows your reduced-motion preference.' : state === 'blocked' ? 'Your browser paused autoplay. Choose Play animation or Enter site.' : state === 'ended' ? 'You can replay this eight-second illustration or enter the site.' : 'You can enter the site at any time.'}</p>
     </div>
-    <p className="splash-boundary">{cinematicJourney.illustrationNote}</p>
+    <p className="splash-boundary">An illustrated visit to Bowerloom Labs.</p>
   </dialog>;
 }
