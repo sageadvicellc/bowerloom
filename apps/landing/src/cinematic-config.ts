@@ -36,3 +36,49 @@ export const cinematicJourney = {
     },
   ],
 };
+
+/** Brand coverage-01 ranges. Six page regions share one unchanged clip. */
+export const fullpageRegions = [
+  {
+    "id": "hero",
+    "selector": ".cinematic-world",
+    "start": 0,
+    "end": 0.9,
+    "poster": "/fullpage-coverage/hero.jpg"
+  },
+  {
+    "id": "portable-teams",
+    "selector": ".product-section",
+    "start": 0.9,
+    "end": 2.6,
+    "poster": "/fullpage-coverage/portable-teams.jpg"
+  },
+  {
+    "id": "labs",
+    "selector": "#recipe",
+    "start": 2.6,
+    "end": 4.5,
+    "poster": "/fullpage-coverage/labs.jpg"
+  },
+  {
+    "id": "build",
+    "selector": "#build",
+    "start": 4.5,
+    "end": 6.4,
+    "poster": "/fullpage-coverage/build.jpg"
+  },
+  {
+    "id": "questions",
+    "selector": ".faq-section",
+    "start": 6.4,
+    "end": 7.5,
+    "poster": "/fullpage-coverage/questions.jpg"
+  },
+  {
+    "id": "footer",
+    "selector": ".site-footer",
+    "start": 7.5,
+    "end": 8,
+    "poster": "/fullpage-coverage/footer.jpg"
+  }
+] as const;

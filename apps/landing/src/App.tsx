@@ -17,6 +17,7 @@ import ThemeControl from "./ThemeControl";
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
 import CinematicWorld from "./CinematicWorld";
+import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
@@ -99,6 +100,13 @@ export default function App() {
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => scheduleInitialAnchor(
+    window.location.hash,
+    id => document.getElementById(id),
+    { request: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id) },
+    () => window.dispatchEvent(new Event(INITIAL_ANCHOR_EVENT)),
+  ), []);
+
   useEffect(() => {
     let onScreen = true;
     const update = () => setVisible(onScreen && !document.hidden);
@@ -119,7 +127,7 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <div className={cinematic ? "fullpage-journey" : undefined}>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -298,6 +306,6 @@ export default function App() {
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
         <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
       </footer>
-    </>
+    </div>
   );
 }
