@@ -19,7 +19,7 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const alive=pid=>{try{process.kill(pid,0);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};
 async function bounded(promise,ms=12000){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('SYNTHETIC_BOUND_EXCEEDED')),ms);})]);}finally{clearTimeout(timer);}}
 
-test('approved container discovery composes with PostgreSQL and independent cleanup',{skip:!enabled,timeout:150000},async t=>{
+test('approved container discovery composes with PostgreSQL and independent cleanup',{skip:!enabled,timeout:240000},async t=>{
  const evidence=resolve(process.env.BOWERLOOM_MCP_CONTAINER_EVIDENCE);
  const blobs=Object.fromEntries(['Index','Manifest','Config'].map(k=>[`image${k}Json`,readFileSync(join(evidence,`image-${k.toLowerCase()}.json`),'utf8')]));
  const image=JSON.parse(blobs.imageConfigJson),directory=realpathSync(mkdtempSync(join(installedGuard?.proofRoot??tmpdir(),'bowerloom-container-db-')));chmodSync(directory,0o700);
@@ -95,6 +95,51 @@ test('approved container discovery composes with PostgreSQL and independent clea
    const wrapper={async transaction(scope,mutate){let entered=false;const result=await store.transaction(scope,state=>{const before=state.status;const value=mutate(state);entered=before==='PREPARED'&&state.status==='IN_FLIGHT';return value;});if(entered&&!lost){lost=true;throw Error('SYNTHETIC_LOST_ACK');}return result;}};
    await assert.rejects(controller(wrapper).dispatch(run.scope,'synthetic-owner'));assert.equal(existsSync(run.journal),false);
    assert.equal((await controller().recover(run.scope,'synthetic-owner')).status,'NEEDS_RECONCILIATION');await assert.rejects(controller().dispatch(run.scope,'synthetic-owner'));
+  });
+  if(process.env.BOWERLOOM_MCP_LEASE_PROOF==='1')for(const mode of ['second-process-stop','second-process-revocation','database-outage','approval-expiry'])await t.test(mode,async()=>{
+   const run=await fixture(mode,'hang',20000);
+   const approvalExpiresAtMs=Date.now()+(mode==='approval-expiry'?6000:30000);
+   await run.controller.approve(run.scope,{revision:run.proposal.revision,expiresAtMs:approvalExpiresAtMs},'synthetic-owner');
+   const settings=join(directory,mode+'.json'),result=join(directory,mode+'.result');
+   writeFileSync(settings,JSON.stringify({connection,schema,scope:run.scope,stateRoot,result}),{mode:0o600});
+   const parent=spawn(realpathSync(process.execPath),[parentFile,settings],{env:{BOWERLOOM_PROOF_CREDENTIALS:credentialsPath},stdio:'ignore'});
+   const exited=once(parent,'exit');exited.catch(()=>{});parents.push({parent,exited});
+   const j=await waitStage(run,'STARTED');assert.notEqual(j.guardianPid,parent.pid);
+   run.processesBeforeRevocation=(await descendant(j.cid)).out;
+   run.leaseObservation={mode,controllerPid:parent.pid,guardianPid:j.guardianPid,startedJournal:j,approvalExpiresAtMs};
+   let databaseDisabled=false;
+   try{
+    if(mode==='second-process-stop')await controller().stop(run.scope,'synthetic-owner');
+    if(mode==='second-process-revocation')await store.transaction(run.scope,state=>{state.grant.revoked=true;});
+    if(mode==='database-outage'){
+     await admin.query(`ALTER DATABASE "${database}" ALLOW_CONNECTIONS false`);databaseDisabled=true;
+     await admin.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1',[database]);
+    }
+    const changeAtMs=Date.now(),changeAtMonotonic=performance.now();run.leaseObservation.changeAtMs=changeAtMs;
+    const final=await cleaned(run);run.leaseObservation.absenceObservedAtMs=Date.now();
+    run.leaseObservation.changeToAbsenceMs=performance.now()-changeAtMonotonic;
+    run.leaseObservation.finalJournal=final;
+    assert.ok(final.lease?.sequence>=1,'Guardian must record an accepted authority renewal');
+    for(const field of ['lastRenewedAtMs','stopRequestedAtMs','containerAbsentAtMs','attachReapedAtMs'])assert.ok(Number.isFinite(final.lease[field]),'Missing guardian observation: '+field);
+    assert.ok(final.lease.stopRequestedAtMs>=final.lease.lastRenewedAtMs);
+    assert.ok(final.lease.containerAbsentAtMs>=final.lease.stopRequestedAtMs);
+    run.leaseObservation.lastRenewalToStopMs=final.lease.stopRequestedAtMs-final.lease.lastRenewedAtMs;
+    run.leaseObservation.cleanupToAbsenceMs=final.lease.containerAbsentAtMs-final.lease.stopRequestedAtMs;
+    run.leaseObservation.authorityLeaseMs=2000;
+    run.leaseObservation.renewalIntervalMs=500;
+    if(mode!=='approval-expiry'){
+     assert.ok(Date.now()<j.deadlineMs,'Lease cleanup must precede the original approval deadline');
+     assert.ok(run.leaseObservation.changeToAbsenceMs<8000,'Synthetic lease cleanup exceeded the measured test bound');
+    }else assert.ok(Date.now()<approvalExpiresAtMs+8000,'Expiry cleanup exceeded the measured test bound');
+    await bounded(exited,12000);assert.deepEqual(JSON.parse(readFileSync(result,'utf8')),{held:true});
+   }finally{if(databaseDisabled)await admin.query(`ALTER DATABASE "${database}" ALLOW_CONNECTIONS true`);}
+   const current=await store.read(run.scope);assert.notEqual(current.status,'COMPLETED');
+   if(current.status==='IN_FLIGHT')await controller().recover(run.scope,'synthetic-owner');
+   await assert.rejects(controller().dispatch(run.scope,'synthetic-owner'));
+   assert.equal((await store.read(run.scope)).status,'NEEDS_RECONCILIATION');
+   if(mode==='second-process-stop')assert.equal((await store.read(run.scope)).reason,'STOP_REQUESTED');
+   if(installedGuard){run.controllerProvenance=readFileSync(settings+'.provenance.jsonl','utf8').trim().split('\n').map(line=>JSON.parse(line));assert.ok(run.controllerProvenance.some(item=>item.event==='resolved'&&item.url===moduleUrl));assert.ok(run.controllerProvenance.some(item=>item.event==='resolved'&&item.url===pgUrl));}
+   const end=performance.now()+3000;while(alive(j.guardianPid)&&performance.now()<end)await wait(25);assert.equal(alive(j.guardianPid),false);
   });
   for(const mode of ['controller-killed','controller-suspended'])await t.test(mode,async()=>{
    const run=await fixture(mode,'hang',5000);await approve(run);

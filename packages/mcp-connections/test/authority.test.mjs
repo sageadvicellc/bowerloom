@@ -165,3 +165,28 @@ test('container effect refuses old stdio approvals, changed launch bytes and sec
  const altered=clone(f.raw);altered.effect.launch.spec.limits.cpuMillis=500;altered.effect.launchRevision=planMcpContainerDiscoveryLaunch(altered.effect.launch).revision;
  assert.notEqual(createDiscoveryProposal(altered).revision,f.proposal.revision);
 });
+
+test('container renewal rereads durable authority and refuses cross-controller stop, revoke, epoch, expiry and altered intent',async t=>{
+ for(const [name,change] of [
+  ['stop',async(f)=>{await f.controller().stop(selected,'founder');}],
+  ['revoked',async(f)=>{f.store.state.grant.revoked=true;}],
+  ['owner epoch',async(f)=>{f.store.state.grant.ownerEpoch=2;}],
+  ['approval expiry',async(f)=>{f.advance(8000);} ],
+  ['principal expiry',async(f)=>{f.advance(9000);} ],
+  ['intent mismatch',async(f)=>{f.store.state.intent.deadlineMs--;}],
+  ['database failure',async(f)=>{f.store.transaction=async()=>{throw Error('PRIVATE_DB_OUTAGE');};}],
+ ])await t.test(name,async()=>{
+  const f=containerAuthorityFixture(),original=f.getOpen();let checks=0,renew;
+  f.setOpen(async context=>{renew=context.renewAuthority;const transport=await original(context);return{...transport,initialize:async()=>{
+   await renew();checks++;await change(f);await assert.rejects(renew());checks++;throw Error('held session');
+  }};});const c=f.controller();await c.approve(selected,{revision:f.proposal.revision,expiresAtMs:8000},'founder');
+  await assert.rejects(c.dispatch(selected,'owner'),code('MCP_AUTHORITY_DISPATCH_UNCERTAIN'));
+  assert.equal(checks,2);assert.equal(f.observed.opens,1);await assert.rejects(renew());
+  if(name!=='database failure'){await assert.rejects(f.controller().dispatch(selected,'owner'));assert.equal(f.observed.opens,1);}
+ });
+});
+test('late renewal after completed discovery cannot reuse the approved authority',async()=>{
+ const f=containerAuthorityFixture(),c=f.controller();await c.approve(selected,{revision:f.proposal.revision,expiresAtMs:8000},'founder');await c.dispatch(selected,'owner');
+ await assert.rejects(f.observed.context.renewAuthority(),code('MCP_AUTHORITY_CANCELLED'));
+ assert.equal(f.store.state.status,'COMPLETED');assert.equal(f.observed.opens,1);
+});

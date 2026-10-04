@@ -32,9 +32,9 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
   const requestTimeoutMs = duration(options.requestTimeoutMs?.value, 5000), sessionTimeoutMs = duration(options.sessionTimeoutMs?.value, 10000), cleanupTimeoutMs = duration(options.cleanupTimeoutMs?.value, 9000, 15000);
   return async supplied => {
     if (process.platform !== 'darwin' || process.permission !== undefined) fail('MCP_CONTAINER_PLATFORM');
-    let selected: ContainerEffect, signal: AbortSignal, notify: (value: unknown) => void, operationKey: string, deadlineMs: number;
+    let selected: ContainerEffect, signal: AbortSignal, notify: (value: unknown) => void, operationKey: string, deadlineMs: number, renewAuthority: () => Promise<void>;
     try {
-      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs']);
+      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs', 'renewAuthority']);
       const effect = record(data(context.effect!.value), ['kind', 'launch', 'launchRevision']);
       if (effect.kind !== 'container-stdio') fail('MCP_CONTAINER_INPUT');
       selected = effect as unknown as ContainerEffect;
@@ -45,8 +45,8 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
       const authorizedDeadline = context.deadlineMs!.value;
       if (!Number.isSafeInteger(authorizedDeadline) || authorizedDeadline <= Date.now() || authorizedDeadline > Date.now() + 30000) fail('MCP_CONTAINER_DEADLINE');
       deadlineMs = Math.min(authorizedDeadline, Date.now() + sessionTimeoutMs);
-      signal = context.signal!.value; notify = context.onNotification!.value;
-      if (!(signal instanceof AbortSignal) || typeof notify !== 'function') fail('MCP_CONTAINER_INPUT');
+      signal = context.signal!.value; notify = context.onNotification!.value; renewAuthority = context.renewAuthority!.value;
+      if (!(signal instanceof AbortSignal) || typeof notify !== 'function' || typeof renewAuthority !== 'function') fail('MCP_CONTAINER_INPUT');
     } catch { return fail('MCP_CONTAINER_INPUT'); }
     let guardian: OwnedContainerGuardian | undefined, opening: Promise<OwnedContainerGuardian> | undefined, closing = false, closed = false;
     let failure: McpConnectionError | undefined, cleanup: Promise<void> | undefined;
@@ -55,7 +55,7 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
     const stopped = new Promise<never>((_, reject) => { rejectStopped = reject; }); void stopped.catch(() => undefined);
     let pending: { id: number; resolve: (value: unknown) => void; reject: (error: McpConnectionError) => void } | undefined;
     let busy = false, count = 0, phase: 'new' | 'initialized' | 'ready' = 'new', stdoutBytes = 0, messages = 0, buffer = Buffer.alloc(0);
-    function check(): void { if (closed || signal.aborted) throw failure ?? safe('MCP_CONTAINER_ABORTED'); }
+    function check(): void { if (closed || signal.aborted || Date.now() >= deadlineMs) throw failure ?? safe('MCP_CONTAINER_ABORTED'); }
     function cleanupOnce(): Promise<void> {
       if (cleanup) return cleanup;
       closing = true;
@@ -115,7 +115,7 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
         buffer = Buffer.concat([buffer, chunk]);
         for (;;) { const newline = buffer.indexOf(10); if (newline < 0) break; const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1); incoming(line); if (closed) return; }
         if (buffer.length > MAX_DOCUMENT_BYTES) stop('MCP_CONTAINER_OUTPUT_BOUND');
-      });
+      }, renewAuthority);
       void opening.then(owned => {
         guardian = owned;
         void owned.done.then(() => { if (!closing) stop('MCP_CONTAINER_EXIT'); }, () => stop('MCP_CONTAINER_PROCESS'));

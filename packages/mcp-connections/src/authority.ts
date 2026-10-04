@@ -28,7 +28,7 @@ export interface DiscoveryAuthorityStore {
   /** Serialize per scope, validate transitions, and durably commit before resolving. Never rerun a callback automatically. */
   transaction<T>(scope: Scope, mutate: (state: DiscoveryAuthorityState) => T): Promise<T>;
 }
-export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number }
+export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number; renewAuthority?: () => Promise<void> }
 export type DiscoveryAuthorityOpen = (context: Readonly<DiscoveryAuthorityContext>) => Promise<McpDiscoveryTransport>;
 const AUTHORITY_CODES = new Set(['MCP_AUTHORITY_FIELDS', 'MCP_AUTHORITY_IDENTIFIER', 'MCP_AUTHORITY_TIME', 'MCP_AUTHORITY_DIGEST',
   'MCP_AUTHORITY_TEXT', 'MCP_AUTHORITY_PATH', 'MCP_AUTHORITY_EFFECT', 'MCP_AUTHORITY_EFFECT_BINDING', 'MCP_AUTHORITY_EFFECT_BOUND',
@@ -260,7 +260,15 @@ export class DiscoveryAuthorityController {
               if (state.status !== 'IN_FLIGHT' || !same(state.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
               // The durable intent already committed. Invoke only while this final authorization row lock is held.
               opening = Promise.resolve(this.#open(Object.freeze({ ...context, effect: frozen(data(state.proposal.effect) as DiscoveryEffect), operationKey: state.operationKey, scope: frozen(scope(state.scope)),
-                ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs } : {}) })));
+                ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs, renewAuthority: async () => {
+                  // No cached authority: acknowledge only a fresh, committed durable check.
+                  await this.#transaction(s, current => {
+                    this.#live(current, p);
+                    if (current.status !== 'IN_FLIGHT' || !same(current.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
+                    return null;
+                  });
+                  if (controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
+                } } : {}) })));
               // Observe rejection before awaiting the store commit acknowledgement.
               // Keep the original promise so dispatch still receives the failure.
               void opening.catch(() => undefined);

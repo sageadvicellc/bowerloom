@@ -5,7 +5,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { userInfo } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { data, MCP_PROTOCOL_VERSION } from './model.js';
@@ -14,7 +14,27 @@ import type { ContainerGuardianJob } from './container-supervisor.js';
 
 const requireValue = (value: unknown): void => { if (!value) throw Error('REFUSED'); };
 const env: NodeJS.ProcessEnv = { HOME: userInfo().homedir, PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', NODE_V8_COVERAGE: undefined };
-type Journal = { format: 'bowerloom/mcp-container-journal/v1beta1'; operationKey: string; launchOperationKey: string; launchRevision: string; name: string; cid: string | null; stage: string; deadlineMs: number; guardianPid: number; attachPid: number | null; reason: string | null };
+type Journal = { format: 'bowerloom/mcp-container-journal/v1beta1'; operationKey: string; launchOperationKey: string; launchRevision: string; name: string; cid: string | null; stage: string; deadlineMs: number; guardianPid: number; attachPid: number | null; reason: string | null; lease: LeaseObservation };
+// Challenge age is measured here, never with a controller-supplied clock or TTL.
+const LEASE_MS = 2000, RENEW_MS = 500;
+type LeaseObservation = { sequence: number; lastRenewedAtMs: number | null; expiresMonotonicMs: number; stopRequestedAtMs: number | null; containerAbsentAtMs: number | null; attachReapedAtMs: number | null };
+const leaseObservation: LeaseObservation = { sequence: 0, lastRenewedAtMs: null, expiresMonotonicMs: 0, stopRequestedAtMs: null, containerAbsentAtMs: null, attachReapedAtMs: null };
+let absoluteMonotonicMs = 0, leaseExpiry = 0, challengeSequence = 0;
+let challenge: { token: string; sequence: number; expires: number } | undefined;
+let leaseTimer: ReturnType<typeof setTimeout> | undefined, renewalTimer: ReturnType<typeof setTimeout> | undefined;
+function armLease(): void {
+  clearTimeout(leaseTimer);
+  leaseTimer = setTimeout(() => {
+    if (performance.now() >= leaseExpiry) stop('AUTHORITY_LEASE_EXPIRED'); else armLease();
+  }, Math.max(1, leaseExpiry - performance.now()));
+}
+function requestLease(): void {
+  if (stopping || challenge) return;
+  const now = performance.now();
+  if (now >= leaseExpiry || Date.now() >= job!.deadlineMs) { stop('AUTHORITY_LEASE_EXPIRED'); return; }
+  challenge = { token: randomBytes(32).toString('hex'), sequence: ++challengeSequence, expires: Math.min(now + LEASE_MS, absoluteMonotonicMs) };
+  send({ type: 'lease-challenge', nonce: startNonce, operationKey: job!.operationKey, sequence: challenge.sequence, challenge: challenge.token });
+}
 let job: ContainerGuardianJob | undefined, plan: ReturnType<typeof planMcpContainerDiscoveryLaunch> | undefined, journal: Journal | undefined, directory: string | undefined;
 let started = false, stopping = false, ended = false, broken = false, creationAttempted = false, reason: string | null = null;
 let creation: Promise<void> | undefined, cleanup: Promise<void> | undefined, attach: ChildProcessWithoutNullStreams | undefined, attachReaped = true;
@@ -44,7 +64,7 @@ async function savedJournal(): Promise<void> {
 }
 async function stage(value: string, change: Partial<Journal> = {}): Promise<void> {
   requireValue(journal && directory); await savedJournal();
-  const next = { ...journal!, ...change, stage: value }; await synced(join(directory!, 'journal.json'), next); journal = next;
+  const next = { ...journal!, ...change, stage: value, lease: { ...leaseObservation } }; await synced(join(directory!, 'journal.json'), next); journal = next;
 }
 function docker(args: string[], timeoutMs = 2000): Promise<{ code: number | null; out: string }> {
   return new Promise((resolveResult, reject) => {
@@ -81,12 +101,12 @@ async function inspectOwned(): Promise<Record<string, any>> {
   requireValue((value.Mounts ?? []).every((mount: Record<string, unknown>) => mount.Type === 'tmpfs' && mount.Destination === '/scratch'));
   requireValue(typeof value.State.Running === 'boolean'); return value;
 }
-function live(): void { requireValue(!stopping && job && Date.now() < job.deadlineMs && process.connected); }
+function live(): void { requireValue(!stopping && job && leaseObservation.sequence > 0 && performance.now() < leaseExpiry && Date.now() < job.deadlineMs && process.connected); }
 async function create(): Promise<void> {
   live(); await privateDirectory(job!.stateRoot); live();
   directory = join(job!.stateRoot, job!.operationKey.slice(7)); await mkdir(directory, { mode: 0o700 }); await privateDirectory(directory);
   const parent = await open(job!.stateRoot, 'r'); try { await parent.sync(); } finally { await parent.close(); }
-  journal = { format: 'bowerloom/mcp-container-journal/v1beta1', operationKey: job!.operationKey, launchOperationKey: plan!.spec.operationKey, launchRevision: plan!.revision, name: 'bowerloom-mcp-' + plan!.spec.operationKey.slice(7), cid: null, stage: 'PREPARED', deadlineMs: job!.deadlineMs, guardianPid: process.pid, attachPid: null, reason: null };
+  journal = { format: 'bowerloom/mcp-container-journal/v1beta1', operationKey: job!.operationKey, launchOperationKey: plan!.spec.operationKey, launchRevision: plan!.revision, name: 'bowerloom-mcp-' + plan!.spec.operationKey.slice(7), cid: null, stage: 'PREPARED', deadlineMs: job!.deadlineMs, guardianPid: process.pid, attachPid: null, reason: null, lease: { ...leaseObservation } };
   await synced(join(directory, 'journal.json'), journal); live();
   requireValue(!await present(journal.name, true)); live();
   await stage('CREATING'); live(); creationAttempted = true;
@@ -97,7 +117,7 @@ async function create(): Promise<void> {
   await inspectOwned(); live();
   attachReaped = false;
   attach = spawn('/usr/local/bin/docker', ['--context', 'desktop-linux', 'container', 'start', '--attach', '--interactive', journal.cid!], { env, stdio: ['pipe', 'pipe', 'pipe'] });
-  attach.once('close', () => { attachReaped = true; resolveAttach(); if (!stopping) stop('ATTACH_ENDED'); });
+  attach.once('close', () => { attachReaped = true; leaseObservation.attachReapedAtMs = Date.now(); resolveAttach(); if (!stopping) stop('ATTACH_ENDED'); });
   attach.once('error', () => stop('ATTACH_FAILED'));
   attach.stdin.on('error', () => stop('ATTACH_FAILED'));
   attach.stderr.on('error', () => stop('ATTACH_FAILED')); attach.stdout.on('error', () => stop('ATTACH_FAILED'));
@@ -110,7 +130,7 @@ async function create(): Promise<void> {
 }
 let startNonce: string | undefined;
 function stop(code: string): void {
-  reason ??= code; stopping = true; clearTimeout(timer);
+  reason ??= code; stopping = true; leaseObservation.stopRequestedAtMs ??= Date.now(); clearTimeout(timer); clearTimeout(leaseTimer); clearTimeout(renewalTimer);
   if (cleanup) return;
   cleanup = (async () => {
     let absent = false;
@@ -121,7 +141,7 @@ function stop(code: string): void {
         if (found.State.Running) { const stopped = await docker(['container', 'stop', '--time', '1', journal.cid], 3000); requireValue(stopped.code === 0); }
         await inspectOwned();
         const removed = await docker(['container', 'rm', '--force', journal.cid], 2000); requireValue(removed.code === 0);
-        absent = !await present(journal.cid); requireValue(absent);
+        absent = !await present(journal.cid); requireValue(absent); leaseObservation.containerAbsentAtMs = Date.now();
       } else requireValue(!creationAttempted);
       if (attach && !attachReaped) { attach.kill('SIGTERM'); const bound = setTimeout(() => attach?.kill('SIGKILL'), 250); let end: ReturnType<typeof setTimeout> | undefined;
         try { await Promise.race([attachClosed, new Promise<never>((_, reject) => { end = setTimeout(() => reject(Error('ATTACH_UNCERTAIN')), 1000); })]); } finally { clearTimeout(bound); clearTimeout(end); } }
@@ -143,9 +163,19 @@ process.on('uncaughtException', () => stop('GUARDIAN_ERROR')); process.on('unhan
 process.on('message', supplied => {
   try {
     const message = data(supplied) as Record<string, unknown>;
-    if (message.type === 'cancel' && Object.keys(message).length === 1) { stop('CANCELLED'); return; }
+    if (message.type === 'cancel' && message.nonce === startNonce && Object.keys(message).length === 2) { stop('CANCELLED'); return; }
+    if (message.type === 'lease-renewal') {
+      requireValue(started && !stopping && process.connected && job && message.nonce === startNonce && message.operationKey === job!.operationKey
+        && Object.keys(message).length === 5 && challenge && message.sequence === challenge!.sequence && message.challenge === challenge!.token
+        && performance.now() < leaseExpiry && performance.now() < challenge!.expires && Date.now() < job!.deadlineMs);
+      leaseExpiry = challenge!.expires; leaseObservation.sequence = challenge!.sequence;
+      leaseObservation.lastRenewedAtMs = Date.now(); leaseObservation.expiresMonotonicMs = leaseExpiry;
+      challenge = undefined; armLease(); renewalTimer = setTimeout(requestLease, RENEW_MS);
+      if (!creation) { creation = create(); void creation.catch(() => stop('CREATION_UNCERTAIN')); }
+      return;
+    }
     if (message.type === 'write') {
-      requireValue(Object.keys(message).length === 2 && !stopping && attach && sentStarted && typeof message.data === 'string' && Buffer.byteLength(message.data as string) <= 2048 && (message.data as string).endsWith('\n'));
+      requireValue(Object.keys(message).length === 3 && message.nonce === startNonce && !stopping && attach && sentStarted && typeof message.data === 'string' && Buffer.byteLength(message.data as string) <= 2048 && (message.data as string).endsWith('\n'));
       const wire = message.data as string; requireValue((inputBytes += Buffer.byteLength(wire)) <= 16384 && ++inputCount <= 10);
       const value = data(strictJson(wire, 2048)) as Record<string, unknown>;
       requireValue(value.jsonrpc === '2.0');
@@ -165,6 +195,7 @@ process.on('message', supplied => {
     requireValue(process.platform === 'darwin' && process.permission === undefined && Number.isSafeInteger(value.deadlineMs) && value.deadlineMs > Date.now() && value.deadlineMs <= Date.now() + 30000);
     plan = planMcpContainerDiscoveryLaunch(value.launch); requireValue(plan.revision === value.launchRevision);
     job = value; startNonce = message.nonce as string; clearTimeout(timer); timer = setTimeout(() => stop('DEADLINE'), Math.max(1, job.deadlineMs - Date.now()));
-    creation = create(); void creation.catch(() => stop('CREATION_UNCERTAIN'));
+    absoluteMonotonicMs = performance.now() + Math.max(0, job.deadlineMs - Date.now());
+    leaseExpiry = Math.min(performance.now() + LEASE_MS, absoluteMonotonicMs); armLease(); requestLease();
   } catch { stop('GUARDIAN_PROTOCOL'); }
 });
