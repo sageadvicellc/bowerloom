@@ -153,3 +153,41 @@ A lost completion acknowledgement requires inspection of durable state. It does 
 The store validates closed state records and transitions, preserves immutable proposal history, and prevents terminal rollback.
 Identity proofs, the store, clock, and adapter remain trusted host components.
 This controller authorizes discovery contact only. It grants no tool call, native isolation, or public CLI execution authority.
+
+## Internal HTTPS discovery adapter
+
+`createMcpHttpDiscoveryFactory` supplies a real HTTPS adapter to `DiscoveryAuthorityController`.
+It exposes only initialization, the initialized notification, tool listing, and local cleanup.
+The exact endpoint and authentication binding revision must match the controller's approved effect envelope.
+There is no public connect command, tool invocation method, or automatic retry.
+The factory is trusted host code. Calling it directly does not create or verify an approval.
+
+The adapter uses POST with JSON or finite Server-Sent Events responses.
+It accepts at most ten requests per session: initialization, its notification, and up to eight catalog pages.
+Every response is bounded to 256 KiB, with strict UTF-8 and duplicate-key JSON checks.
+Request and session deadlines are bounded to at most thirty seconds.
+The initialized notification requires an empty `202` response. Other requests require `200` and one exact JSON-RPC response.
+Unknown envelopes, server requests, notifications, compression, redirects, authentication failures, session changes, and protocol changes fail closed.
+The adapter reports server messages through the discovery callback; it never executes them or forwards their private payloads.
+
+An optional session identifier comes only from the initialization response and is pinned for later requests.
+Later requests include the fixed protocol version. Finite SSE supports comments, message events, and empty priming events.
+It requires a complete stream with exactly one response. Retry directives, resumption, background GET streams, and session restart are unsupported.
+Cleanup closes local requests and sockets. It sends no DELETE or remote cancellation and does not prove that the server cancelled its work.
+This is a bounded subset of [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), not full transport conformance.
+
+Normal connections verify TLS with system trust and use no proxy environment configuration.
+DNS is resolved once per session. Every returned address must pass conservative public IPv4 admission.
+All IPv6 and special-use IPv4 ranges are refused in this slice, including mixed public/private DNS answers.
+One admitted address is pinned for every connection while the original hostname remains the TLS identity.
+No DNS resolver override is exposed. DNS queries already in progress cannot be cancelled, but late resolution cannot open a connection after cleanup.
+For isolated synthetic proof, `loopbackTls: { endpoint, ca }` permits only the exact selected HTTPS URL with literal `127.0.0.1` and its supplied CA.
+TLS verification remains enabled. That option is not a production private-network access policy.
+
+The trusted host supplies `resolveCredential` for OAuth bindings.
+Before each POST, the resolver must return an opaque token and matching binding revision, secret reference, issuer, audience, exact scopes, expiry, and revocation metadata.
+The adapter checks those fields again and sends the token only as the authorization header to the pinned endpoint.
+It never parses the token as a JWT, reads ambient credentials, logs credentials, or returns them in results and errors.
+Credential metadata is a host assertion, not cryptographic verification, OAuth enrollment, key discovery, or introspection.
+An uncooperative resolver cannot be cancelled internally; a late result is ignored after the bounded session ends.
+Full OAuth enrollment, company service readiness, durable supervision, and native process isolation remain unproven.

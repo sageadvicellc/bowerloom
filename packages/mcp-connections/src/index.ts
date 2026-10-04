@@ -9,3 +9,5 @@ export type { McpPublicRsaKey, McpTokenPolicy, McpRevocationSnapshot, McpAccessT
 export { createDiscoveryProposal, createDiscoveryAuthorityState, validateDiscoveryAuthorityState, validateDiscoveryAuthorityTransition, DiscoveryAuthorityController } from './authority.js';
 export type { DiscoveryEffect, DiscoveryProposalInput, DiscoveryProposal, DiscoveryGrant, DiscoveryApproval, DiscoveryIntent, DiscoveryAuthorityStatus, DiscoveryAuthorityState, DiscoveryAuthorityStore, DiscoveryAuthorityContext, DiscoveryAuthorityOpen } from './authority.js';
 export { PostgresDiscoveryAuthorityStore } from './authority-postgres.js';
+export { createMcpHttpDiscoveryFactory } from './http.js';
+export type { McpHttpOptions, McpHttpCredential, McpHttpCredentialRequest } from './http.js';
