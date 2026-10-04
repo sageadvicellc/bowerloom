@@ -76,3 +76,6 @@ The MCP [lifecycle specification](https://modelcontextprotocol.io/specification/
 The [tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) defines tool discovery and treats annotations as untrusted hints.
 The [authorization specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) defines HTTP authorization requirements.
 These references were read on October 4, 2026. A synthetic plan is not evidence that those runtime requirements passed.
+
+The separate [bounded discovery API](mcp-discovery.md) compares catalogs through trusted test adapters.
+It adds no connection operation to this CLI command. Production transport and authentication gates remain open.

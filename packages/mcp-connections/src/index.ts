@@ -2,3 +2,5 @@ export { MCP_PROTOCOL_VERSION, MAX_DOCUMENT_BYTES, McpConnectionError, validateM
 export type { TransportKind, PermissionClass, ServerIdentity, McpDeclaration, McpBinding, McpCatalog, McpPlanInput, McpConnectionPlan } from './model.js';
 export { planMcpConnectionFiles } from './files.js';
 export type { McpFilesInput, McpFilePlan, SourcePin } from './files.js';
+export { discoverMcpCatalog } from './discovery.js';
+export type { McpInitializeRequest, McpDiscoveryTransport, McpDiscoveryContext, McpDiscoveryOptions, McpDiscoveryResult } from './discovery.js';

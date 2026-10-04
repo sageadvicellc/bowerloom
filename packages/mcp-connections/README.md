@@ -55,3 +55,29 @@ Schema handling bounds and pins the recorded JSON. It requires object roots, but
 - Live stdio, Streamable HTTP, and two-harness execution remain unproven.
 
 The synthetic fixtures illustrate the accepted shapes. Their executable paths and domains identify no operational service.
+
+## Internal discovery session
+
+`discoverMcpCatalog` compares a supplied catalog with a bounded session through a trusted transport factory.
+It requires the exact pure plan revision before it calls the factory. The approval permits discovery only, not tool calls.
+The factory receives a frozen copy of the binding, an abort signal, and a notification callback.
+It supplies `initialize`, `initialized`, `listTools`, and `close` methods. The engine has no tool-call method.
+The adapter handles JSON-RPC envelopes and returns result objects to the engine.
+
+The engine initializes protocol `2025-11-25` with empty client capabilities.
+It requires the recorded server name and version, plus a tools capability.
+It then sends the initialized notification and requests each tools page.
+Eight pages and 256 tools are the maximum. The combined page data cannot exceed 256 KiB.
+The full tool catalog must match its recorded revision, including descriptions, annotations, and unselected tools.
+The engine refuses every incoming notification during the session, including a changed-catalog notification.
+
+The default session deadline is 5 seconds. Callers can select a deadline from 1 millisecond through 30 seconds.
+Cleanup has a separate 1-second limit. A cleanup failure or timeout prevents a successful result.
+If a factory resolves after cancellation, the engine attempts to close its returned transport once.
+An unresolved factory or late cleanup does not prove that every resource stopped.
+The trusted factory must honor cancellation and close all resources that it creates.
+
+A successful result states that the catalog matched through the adapter and that its close method completed.
+The result does not authenticate an arbitrary endpoint or validate OAuth tokens.
+This internal engine supplies no production connector, CLI discovery command, gateway, or harness projection.
+The trusted factory is host code with its existing authority. This interface is not a sandbox for that code.
