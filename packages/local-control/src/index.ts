@@ -37,11 +37,18 @@ function registryPath(path=defaultRegistry()):string {
   ancestors(path,true);if(existsSync(path)){identity(path);if((lstatSync(path).mode&0o077)!==0)fail('PRIVATE_REGISTRY_REQUIRED');}return path;
 }
 function registryAncestor(registry:string):ControlPlan['registryAncestor'] {let path=registry;while(!existsSync(path))path=dirname(path);return{path,identity:identity(path)};}
-function readBytes(path:string,max=2*1024*1024,privateFile=false):Buffer {
+function readBytes(path:string,max=2*1024*1024,privateFile=false,replacementRetries=0):Buffer {
   ancestors(dirname(path));const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try{const s=fstatSync(fd);if(!s.isFile()||s.nlink!==1||s.uid!==process.getuid?.()||(s.mode&(privateFile?0o077:0o022))||s.size>max)fail('CONTROL_FILE');
     const buffer=Buffer.alloc(max+1);let length=0;while(length<buffer.length){const count=readSync(fd,buffer,length,buffer.length-length,null);if(!count)break;length+=count;}
-    const after=fstatSync(fd),now=lstatSync(path);if(length>max||length!==s.size||after.size!==s.size||after.mtimeMs!==s.mtimeMs||after.ctimeMs!==s.ctimeMs||now.ino!==s.ino||now.dev!==s.dev)fail('CONTROL_FILE_CHANGED');return buffer.subarray(0,length);
+    const after=fstatSync(fd),now=lstatSync(path);if(length>max||length!==s.size||after.size!==s.size||after.mtimeMs!==s.mtimeMs)fail('CONTROL_FILE_CHANGED');
+    if(now.ino!==s.ino||now.dev!==s.dev){
+      // Registry writers replace whole snapshots. Reopen and repeat every file check.
+      if(replacementRetries>0)return readBytes(path,max,privateFile,replacementRetries-1);
+      fail('CONTROL_FILE_CHANGED');
+    }
+    if(after.ctimeMs!==s.ctimeMs)fail('CONTROL_FILE_CHANGED');
+    return buffer.subarray(0,length);
   }finally{closeSync(fd);}
 }
 function binding(input:ControlInput):Binding {
@@ -75,7 +82,7 @@ function validBinding(value:unknown):value is Binding {
 }
 function state(registry:string):State {
   const file=join(registry,'registry.json');if(!existsSync(file))return empty();
-  const v=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(readBytes(file,4*1024*1024,true)),4*1024*1024) as unknown as State;
+  const v=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(readBytes(file,4*1024*1024,true,2)),4*1024*1024) as unknown as State;
   if(!exactKeys(v,['format','epoch','allStop','entries'])||v.format!=='bowerloom/control-registry/v1alpha1'||!natural(v.epoch)||!validStop(v.allStop)||v.allStop!==null&&v.allStop.scope!=='registry'||(v.epoch===0)!==(v.allStop===null)||!v.entries||typeof v.entries!=='object'||Array.isArray(v.entries)||Object.keys(v.entries).length>128)fail('CONTROL_REGISTRY');
   const ownerIds=new Set<string>();
   for(const[k,e]of Object.entries(v.entries)){

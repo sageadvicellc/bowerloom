@@ -12,9 +12,12 @@ Usage:
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
   bowerloom init status --target <absolute-directory>
+  bowerloom init demo-plan --target <absolute-directory> --from <installed-revision> [--json]
   bowerloom revise plan|apply --target <directory> --brief <brief.json> [--from <installed-revision> --approve <plan-revision>]
   bowerloom revise recover --target <directory> --approve <plan-revision> --action resume|rollback
   bowerloom harness import|plan --harness codex|claude --file <absolute-fixture-file> --synthetic [--neutral <private-json-file>]
+  bowerloom harness managed-plan|apply --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic [--approve <revision>]
+  bowerloom harness removal-plan|remove|recover --state <private-directory> --synthetic [--approve <revision>]
   bowerloom link plan|apply --from <root> --to <root> --file <definition> --out <private-new-file> [--approve <revision>]
   bowerloom link read --connection <file> --target <receiving-root>
   bowerloom link revoke --connection <file>
@@ -39,9 +42,12 @@ The trellis and trellis-mcp commands remain compatibility aliases.
 Init prepares a personal-agent profile and first team specification from your brief.
 Init apply requires the exact plan revision. It starts no workers or backend services.
 Init plan offers a plain-English review. Add --json for the complete machine-readable plan.
+Init demo-plan offers an optional synthetic Workbench handoff. It does not execute the installed team or grant action approval.
 Revise plans changes to an installed specification. Apply requires the old revision and exact new approval.
 Revision recovery resumes the approved transaction or restores its recorded prior installation. It starts no workers.
 Harness import and plan are for synthetic files. They do not install settings, connect tools, or start a team.
+Harness apply and remove require separate exact approvals. They change only the selected synthetic configuration and retain recovery records.
+Harness recover requires the exact recorded operation approval. No harness command grants model execution authority.
 Choose --profile engineer|founder|research, or set profile in the brief.
 Links share one approved definition between installed local roots. They grant no execution authority.
 Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
@@ -64,9 +70,11 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
   if (args[0] === 'init') {
-    const { runStartupCommand, renderStartupReview } = await import('./startup.js');
+    const { runStartupCommand, renderStartupReview, renderStartupDemoReview } = await import('./startup.js');
     const result = await runStartupCommand(args);
-    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+    process.stdout.write(args[1] === 'demo-plan' && !args.includes('--json')
+      ? renderStartupDemoReview(result as import('../../../packages/startup/src/index.js').StartupDemoPlan)
+      : args[1] === 'plan' && !args.includes('--json')
       ? renderStartupReview(result as import('../../../packages/startup/src/index.js').StartupPlan)
       : `${canonicalJson(result)}\n`);
     return;

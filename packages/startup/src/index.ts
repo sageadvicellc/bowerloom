@@ -257,3 +257,5 @@ export function renderStartupReview(plan: StartupPlan): string {
 export const startupInternals = { canonicalTarget, ancestors, identity, ownedDirectory, names, hash, same, json, readManaged, receiptValue, normalize, record, validIdentity };
 export { planStartupRevision, applyStartupRevision, recoverStartupRevision, renderStartupRevisionReview } from './revision.js';
 export type { RevisionInput, StartupRevisionPlan, StartupRevisionRecovery } from './revision.js';
+export { planStartupDemo, verifyStartupDemoPlan, renderStartupDemoReview } from './demo.js';
+export type { StartupDemoInput, StartupDemoPlan, StartupDemoHandoff } from './demo.js';

@@ -114,3 +114,49 @@ test('revision observation reaps an actual registered worker at the next guard',
  const state=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));
  assert.equal(Object.values(state.entries)[0].executions[0].status,'STOPPED');
 });
+
+async function duringRegistryRead(file, replacement, body) {
+ const fs=await import('node:fs');const {syncBuiltinESMExports}=await import('node:module');
+ const original=fs.default.readSync;const seen=new Set();let replacements=0;
+ fs.default.readSync=(fd,buffer,offset,length,position)=>{
+  const count=original(fd,buffer,offset,length,position);const held=fs.fstatSync(fd);
+  if(count>0&&!seen.has(held.ino)&&held.ino===fs.lstatSync(file).ino){
+   seen.add(held.ino);if(replacement(replacements,fs)){replacements++;}
+  }
+  return count;
+ };syncBuiltinESMExports();
+ try{return await body(()=>replacements);}finally{fs.default.readSync=original;syncBuiltinESMExports();}
+}
+test('registry replacement rereads the new stop latch before an owner can proceed',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const file=join(f.registry,'registry.json'),value=JSON.parse(readFileSync(file,'utf8'));
+ Object.values(value.entries)[0].stop={id:'1'.repeat(64),at:Date.now(),scope:'team'};
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,JSON.stringify(value),{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});assert.equal(count(),1);assert.equal(owner.signal.aborted,true);
+ });
+ await owner.finish({notLaunched:true});
+});
+test('continuous registry replacement is bounded and refuses a snapshot',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json'),bytes=readFileSync(file);
+ await duringRegistryRead(file,(n,fs)=>{const next=join(f.registry,`next-${n}.json`);writeFileSync(next,bytes,{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE_CHANGED'});assert.equal(count(),3);
+ });
+});
+test('registry retry rejects unsafe replacement permissions',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json'),bytes=readFileSync(file);
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,bytes,{mode:0o644});chmodSync(next,0o644);fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE'});assert.equal(count(),1);
+ });
+});
+test('registry retry still rejects malformed replacement state',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json');
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,'{}',{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_REGISTRY'});assert.equal(count(),1);
+ });
+});
+test('same-inode registry growth stays a strict failure without retry',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json');
+ await duringRegistryRead(file,(n,fs)=>{fs.appendFileSync(file,' ');return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE_CHANGED'});assert.equal(count(),1);
+ });
+});

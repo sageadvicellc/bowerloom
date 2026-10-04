@@ -197,3 +197,6 @@ export async function planHarnessProjection(value:ProjectionInput):Promise<Proje
   const body={format:'bowerloom/harness-projection/v1beta1' as const,adapterVersion:'1' as const,syntaxVersion:VERSIONS[selected.harness],source,neutral,report:sorted(report),status:blocked?'blocked' as const:edits.length?'review-required' as const:'unchanged' as const,edits,proposedText,proposedSha256:proposedText===null?null:hash(proposedText),contentScope:'private-local-plan' as const,writesAuthorized:false as const,executionAuthorized:false as const};
   return {...body,revision:hash(canonicalJson(body))};
 }
+
+export { planManagedProjection, applyManagedProjection, planProjectionRemoval, removeManagedProjection, recoverManagedProjection } from './managed.js';
+export type { ManagedProjectionInput, ManagedProjectionPlan, ManagedProjectionReceipt, RemovalInput, RemovalPlan, RecoveryResult } from './managed.js';

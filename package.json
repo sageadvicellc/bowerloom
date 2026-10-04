@@ -39,10 +39,10 @@
     "bowerloom": "node dist/apps/cli/src/main.js",
     "test:portable": "npm run build && node --test packages/portable/test/*.test.mjs dist/tests/portable-cli.test.js",
     "test:local-backend": "npm run build && node --test packages/local-backend/test/*.test.mjs",
-    "test:startup": "npm run build && node --test packages/startup/test/*.test.mjs dist/tests/startup-cli.test.js",
+    "test:startup": "npm run build && node --test packages/startup/test/*.test.mjs dist/tests/startup-cli.test.js dist/tests/startup-demo-cli.test.js",
     "test:connections": "npm run build && node --test packages/connections/test/*.test.mjs",
     "test:revision": "npm run build && node --test packages/startup/test/*.test.mjs dist/tests/startup-cli.test.js dist/tests/revision-cli.test.js",
-    "test:harness-portability": "npm run build && node --test packages/harness-portability/test/*.test.mjs dist/tests/harness-cli.test.js"
+    "test:harness-portability": "npm run build && node --test packages/harness-portability/test/*.test.mjs dist/tests/harness-cli.test.js dist/tests/harness-managed-cli.test.js"
   },
   "devDependencies": {
     "@types/node": "24.11.0",

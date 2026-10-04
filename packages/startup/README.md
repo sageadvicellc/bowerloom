@@ -182,3 +182,21 @@ node --test packages/startup/test/*.test.mjs
 The tests exercise frozen historical receipt compatibility, all three profiles, profile-bound approval, readable review output, maximum-size escaped review contents, new workspaces, existing-project preservation, the actual compiler, portable validation, stale approval, directory replacement, case collisions, locks, rollback, and drift.
 
 The preservation test intercepts reads of existing project files and refuses them. The tests make no network or model calls.
+
+## Optional demo discussion
+
+`init demo-plan --target ABS --from INSTALLED_REVISION` inspects an exact installed setup and returns a plain-language, read-only proposal. `--json` includes a portable handoff. It derives the engineer, founder, or research lens from the installed receipt; there is no profile or scenario override. Skip it without changing setup.
+
+```ts
+planStartupDemo({ targetDir, expectedRevision }): Promise<StartupDemoPlan>
+verifyStartupDemoPlan(value: unknown): Promise<StartupDemoPlan>
+renderStartupDemoReview(plan: StartupDemoPlan): string
+```
+
+Verification re-inspects the live installation, receipt bytes and candidate, then reconstructs the exact deterministic proposal. Stale revisions, managed-file drift, pending revisions, and changed plan bytes are refused. Plan and handoff revisions use `sha256:` digests; the installed startup revision is the original bare 64-character hash. The handoff excludes installation paths, but includes the user-supplied project name and goal as discussion context. Keep that context private unless you separately choose to share it.
+
+The package carries the frozen `craft-shop-v1/r1` synthetic scenario and its exact inputs as compiled source. It needs no checkout to read these inputs. Tests compare them with the independently cleared Workbench source. The real project goal never substitutes for those inputs.
+
+The installed three-role Markdown scaffold is not a runnable Workbench crew. This proposal describes two sequential HTML tasks with two execution owners and a planning-only lead. It supplies no authored bundle, registered tester, grant, enrollment, runtime identity, model call, backend provisioning, or execution permission. The research lens proposes a comparison; it provides no measured improvement. Historical startup templates and installed files remain unchanged.
+
+If the user elects this demo, their personal agent first obtains a separate authoring scope and the actual registered tester manifest from a trusted controller. The existing `authoring validate|export` commands can then validate a separately authored project. Controller preparation (`prepareAuthoredCraftShop`, `provisionAuthoredInstallation`) and the Workbench runner (`createWorkbenchRunner`) require separate bindings and approvals. There is no demo apply/run alias. Full live demo acceptance remains pending in beta work #57/#60.

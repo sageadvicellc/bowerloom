@@ -72,6 +72,8 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  assert.equal(revision.fromRevision,plan.revision);assert.equal(revision.executionAuthorized,false);
  const revised=JSON.parse(run(['revise','apply',...revisionArgs,'--from',plan.revision,'--approve',revision.revision]).stdout);
  assert.equal(revised.plan.revision,revision.toRevision);assert.equal(revised.executionAuthorized,false);
+ const demo=JSON.parse(run(['init','demo-plan','--target',target,'--from',revised.plan.revision,'--json']).stdout);
+ assert.equal(demo.executionAuthorized,false);assert.equal(demo.runtimeReady,false);
  const synthetic=join(root,'synthetic');mkdirSync(synthetic,{mode:0o700});
  const codex=join(synthetic,'config.toml'),claude=join(synthetic,'settings.json'),neutral=join(synthetic,'neutral.json');
  writeFileSync(codex,'model = "o3"\nmodel_reasoning_effort = "high"\n',{mode:0o600});writeFileSync(claude,'{}\n',{mode:0o600});
@@ -80,6 +82,14 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  const projection=JSON.parse(run(['harness','plan','--harness','claude','--file',claude,'--neutral',neutral,'--synthetic']).stdout);
  assert.equal(projection.status,'review-required');assert.equal(projection.executionAuthorized,false);assert.equal(projection.writesAuthorized,false);
  assert.equal(readFileSync(claude,'utf8'),'{}\n');
+ const stateDir=join(root,'managed-projection'),managedArgs=['--harness','claude','--file',claude,'--neutral',neutral,'--state',stateDir,'--synthetic'];
+ const managed=JSON.parse(run(['harness','managed-plan',...managedArgs]).stdout);
+ assert.notEqual(run(['harness','apply',...managedArgs,'--approve','0'.repeat(64)],false).status,0);
+ const projected=JSON.parse(run(['harness','apply',...managedArgs,'--approve',managed.revision]).stdout);assert.equal(projected.executionAuthorized,false);
+ assert.notEqual(readFileSync(claude,'utf8'),'{}\n');
+ const removalArgs=['--state',stateDir,'--synthetic'],removal=JSON.parse(run(['harness','removal-plan',...removalArgs]).stdout);
+ const removed=JSON.parse(run(['harness','remove',...removalArgs,'--approve',removal.revision]).stdout);assert.equal(removed.executionAuthorized,false);
+ assert.equal(readFileSync(claude,'utf8'),'{}\n');
  const mcpResult=spawnSync(mcp,[],{cwd:install,env,encoding:'utf8',timeout:30000});assert.equal(mcpResult.status,2);assert.match(mcpResult.stderr,/--installation/);
- console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true}));
+ console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true}));
 });

@@ -3,11 +3,11 @@ import { open, realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { strictJson } from '../../../packages/codex-adapter/src/safe.js';
-import { planStartup, applyStartup, inspectStartup, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
+import { planStartup, applyStartup, inspectStartup, planStartupDemo, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
 
-export { renderStartupReview } from '../../../packages/startup/src/index.js';
+export { renderStartupReview, renderStartupDemoReview } from '../../../packages/startup/src/index.js';
 
-const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom init plan|apply --mode new|existing --target <absolute-directory> with --brief <brief.json> or --name <name> --goal <goal>, with --profile engineer|founder|research. Plan supports --json. Apply requires --approve <revision>. Use init status --target <directory> to inspect installed files.'); };
+const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom init plan|apply --mode new|existing --target <absolute-directory> with --brief <brief.json> or --name <name> --goal <goal>, with --profile engineer|founder|research. Plan supports --json. Apply requires --approve <revision>. Use init status --target <directory> to inspect installed files. Use init demo-plan --target <directory> --from <installed-revision> [--json] for an optional handoff without execution.'); };
 
 export async function readBrief(file: string): Promise<StartupInput['brief']> {
   const path = resolve(file);
@@ -34,13 +34,13 @@ export async function readBrief(file: string): Promise<StartupInput['brief']> {
 
 async function dispatchStartup(args: string[]): Promise<unknown> {
   const [, command, ...flags] = args;
-  if (args[0] !== 'init' || !['plan', 'apply', 'status'].includes(command ?? '')) usage();
+  if (args[0] !== 'init' || !['plan', 'apply', 'status', 'demo-plan'].includes(command ?? '')) usage();
   const values = new Map<string, string>();
-  const allowed = command === 'status' ? ['--target'] : ['--mode', '--target', '--brief', '--name', '--goal', '--assistant', '--team', '--review', '--profile', '--approve'];
+  const allowed = command === 'status' ? ['--target'] : command === 'demo-plan' ? ['--target', '--from'] : ['--mode', '--target', '--brief', '--name', '--goal', '--assistant', '--team', '--review', '--profile', '--approve'];
   let jsonRequested = false;
   for (let i = 0; i < flags.length; i += 2) {
     if (flags[i] === '--json') {
-      if (command !== 'plan' || jsonRequested) usage();
+      if ((command !== 'plan' && command !== 'demo-plan') || jsonRequested) usage();
       jsonRequested = true; i -= 1; continue;
     }
     const key = flags[i], value = flags[i + 1];
@@ -49,6 +49,10 @@ async function dispatchStartup(args: string[]): Promise<unknown> {
   }
   if (!values.has('--target')) usage();
   if (command === 'status') return inspectStartup(values.get('--target')!);
+  if (command === 'demo-plan') {
+    if (!values.has('--from')) usage();
+    return planStartupDemo({ targetDir: values.get('--target')!, expectedRevision: values.get('--from')! });
+  }
   const mode = values.get('--mode');
   if (mode !== 'new' && mode !== 'existing') usage();
   if ((command === 'apply') !== values.has('--approve')) usage();

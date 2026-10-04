@@ -1,6 +1,6 @@
 # Revision and harness plans
 
-This beta slice adds setup revision and read-only harness planning. It does not complete the two-harness runtime gate.
+This beta slice adds setup revision and synthetic harness projections. It does not complete the two-harness runtime gate.
 
 ## Revise a setup
 
@@ -68,6 +68,76 @@ The `--synthetic` flag records your assertion about the input. It does not prove
 
 The restricted TOML parser refuses syntax outside its supported subset. Read the harness package documentation for exact limits.
 
+## Install a synthetic projection
+
+The managed plan includes the exact source, proposed changes, and a new private recovery directory. This command still requires synthetic input.
+
+Use the neutral file and harness file from the previous example. Choose a new state directory with an existing parent.
+
+```sh
+node dist/apps/cli/src/main.js harness managed-plan \
+  --harness claude --file /absolute/synthetic/settings.json \
+  --neutral /absolute/synthetic/neutral.json \
+  --state /absolute/synthetic/projection-state --synthetic
+```
+
+Read the proposed changes. Apply the same inputs with the exact managed-plan revision.
+
+```sh
+node dist/apps/cli/src/main.js harness apply \
+  --harness claude --file /absolute/synthetic/settings.json \
+  --neutral /absolute/synthetic/neutral.json \
+  --state /absolute/synthetic/projection-state --synthetic \
+  --approve EXACT_MANAGED_PLAN_REVISION
+```
+
+The command preserves original bytes and file mode. Changed source or parent identity invalidates the approval.
+
+## Remove a synthetic projection
+
+Removal restores the original file only when the current projection still matches its receipt. A separate plan records that removal.
+
+```sh
+node dist/apps/cli/src/main.js harness removal-plan \
+  --state /absolute/synthetic/projection-state --synthetic
+node dist/apps/cli/src/main.js harness remove \
+  --state /absolute/synthetic/projection-state --synthetic \
+  --approve EXACT_REMOVAL_PLAN_REVISION
+```
+
+The state directory stays available after removal. The command does not delete its recovery records.
+
+If a recorded operation stops, use its exact approval for recovery.
+
+```sh
+node dist/apps/cli/src/main.js harness recover \
+  --state /absolute/synthetic/projection-state --synthetic \
+  --approve EXACT_RECORDED_OPERATION_REVISION
+```
+
+Unknown changes or incomplete records stop recovery. Inspect the preserved files before another action.
+
+## Choose an optional demo
+
+The installed setup can supply a read-only handoff for the frozen synthetic craft-shop exercise.
+
+Use the installed revision from `init status`. The command derives its explanation from the installed profile.
+
+```sh
+node dist/apps/cli/src/main.js init demo-plan \
+  --target /absolute/project --from INSTALLED_REVISION
+```
+
+Add `--json` for the complete plan. Your personal agent can explain its scenario, task bounds, milestones, and further approvals.
+
+The demo handoff differs from the installed three-role setup. It proposes two execution owners for the existing two-task Workbench scenario.
+
+The plan does not start a demo. Authoring, provisioning, capacity admission, and action approval remain separate steps.
+
+The research profile proposes a comparison. It does not claim a measured gain.
+
 ## Remaining work
 
-Live import, approved application, removal, effective configuration precedence, and two-harness execution remain open. These planning results grant no execution authority.
+Live configuration import, application, removal, and effective precedence remain open. Two-harness execution remains a separate gate.
+
+Synthetic projection approval grants only its recorded file changes. It grants no model execution authority.
