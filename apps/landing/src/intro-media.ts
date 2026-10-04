@@ -1,12 +1,14 @@
 export type IntroMedia = {
   kind: 'production' | 'fixture';
   src: string; poster: string; sha256: string; bytes: number;
-  width: number; height: number; duration: number; logoAt: number; revealAt: number;
+  width: number; height: number; duration: number; logoAt: number;
+  /** Historical field name for the final logo-hold cue. Never authorizes automatic entry. */
+  revealAt: number;
   audio: 'embedded' | 'silent';
 };
-/** Hash-verified Brand delivery for the protected founder review; not release acceptance. */
+/** Historical 23-second delivery remains preserved. Revised 10–15-second media awaits Brand delivery. */
 export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
-  status: 'ready',
+  status: 'awaiting-media',
   desktop: {
     kind: 'production', src: '/intro/cinematic-wide.mp4', poster: '/intro/wide-poster.webp',
     sha256: '9a9e4775250e18c753efef425bb2fdcc18acc906f91e3a68a2988e055d3bdd97', bytes: 10613793,
@@ -51,6 +53,7 @@ export function selectIntroMedia(fixture: boolean, portrait: boolean, delivery =
   if (fixture) return introFixtures[portrait ? 'portrait' : 'desktop'];
   if (delivery.status !== 'ready') return null;
   if (!validProductionMedia(delivery.desktop, false) || !validProductionMedia(delivery.portrait, true)) return null;
+  if (delivery.desktop.duration !== delivery.portrait.duration || delivery.desktop.logoAt !== delivery.portrait.logoAt || delivery.desktop.revealAt !== delivery.portrait.revealAt) return null;
   return portrait ? delivery.portrait : delivery.desktop;
 }
 
@@ -58,5 +61,7 @@ export function validProductionMedia(media: IntroMedia | null, portrait: boolean
   return Boolean(media && media.kind === 'production' && media.src.startsWith('/intro/') && media.poster.startsWith('/intro/')
     && /^[a-f0-9]{64}$/.test(media.sha256) && media.bytes > 0 && media.bytes <= 16 * 1024 * 1024
     && media.width === (portrait ? 1080 : 1920) && media.height === (portrait ? 1920 : 1080)
-    && media.duration === 23 && media.logoAt === 20 && media.revealAt === 22.2 && media.audio === 'embedded');
+    && Number.isFinite(media.duration) && media.duration >= 10 && media.duration <= 15
+    && Number.isFinite(media.logoAt) && media.logoAt >= 0 && media.logoAt + .8 <= media.revealAt
+    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && media.audio === 'embedded');
 }

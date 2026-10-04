@@ -91,7 +91,7 @@ export default function App() {
   const sessionKey = introMedia?.kind === 'fixture' ? SPLASH_FIXTURE_SESSION_KEY : SPLASH_SESSION_KEY;
   const [introExit, setIntroExit] = useState<IntroExit | null>(null);
   const [splashOpen, setSplashOpen] = useState(() => {
-    if (!introMedia || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    if (!introMedia) return false;
     try { return shouldShowSplash(window.location.hash, window.sessionStorage, sessionKey); }
     catch { return shouldShowSplash(window.location.hash, null, sessionKey); }
   });
@@ -157,7 +157,7 @@ export default function App() {
 
   return (
     <div className="normal-site" data-intro-exit={introExit ?? undefined}>
-      {splashOpen && introMedia && <CinematicIntro media={introMedia} reducedMotion={reduced} explicitReplay={replaying.current} onEnter={enterSite} />}
+      {splashOpen && introMedia && <CinematicIntro media={introMedia} reducedMotion={reduced} onEnter={enterSite} />}
       <a className="skip-link" href="#main">
         Skip to content
       </a>

@@ -195,3 +195,19 @@ Measure loading bounds and performance. Separate physical-device evidence from b
 Bind every result to exact code and media revisions. The prior 45-test result does not establish this new behavior.
 Brand reviews the sequence and sound. Content reviews visible copy. Independent review assesses source and evidence.
 Founder creative acceptance remains required. Only Hanna merges main or approves production publication.
+
+## Cinematic continuity revision
+
+Hanna requested a revised film on October 4 at 5:37 p.m. EDT. The 23-second candidate is not founder accepted.
+Use 10–15 seconds total, including the logo and automatic reveal. This timing replaces the earlier 23-second requirement.
+Restore the original approved laboratory style. Show one continuous drone journey through connected labs, with the established cast across those labs.
+Brand owns the cast map, reference frames, continuous route, and costed repair plan. Establish that plan before further generation.
+The recorded 118-credit cost leaves 58 credits within the approved 176-credit cap. No increased allowance is approved.
+Engineering reduces the logo shadow and keeps one media clock for the film, sound, logo, and automatic reveal.
+Both native formats must supply matching duration and cue times. Keep the small Skip control and existing playback alternatives.
+Preserve the earlier media and tests as history. They do not establish acceptance of the new film.
+
+Hanna replaced automatic entry at 5:41 p.m. EDT. Hold the final logo after the film ends.
+Enter fades the introduction to white, then fades into the site. The upward slide and automatic dismissal are superseded.
+Keep Enter available throughout playback. Failure and reduced-motion visits retain a still scene with Enter.
+Fade audio during entry, then stop it. Prevent duplicate transitions and restore useful keyboard focus.

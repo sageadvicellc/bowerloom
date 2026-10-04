@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { createIntroController, introFrame, type IntroExit, type IntroStatus } from './intro-controller';
+import { createIntroController, introFrame, type IntroEntryFrame, type IntroExit, type IntroStatus } from './intro-controller';
 import type { IntroMedia } from './intro-media';
 import './intro.css';
 
-export default function CinematicIntro({ media, reducedMotion, explicitReplay, onEnter }: {
-  media: IntroMedia; reducedMotion: boolean; explicitReplay: boolean; onEnter: (reason: IntroExit) => void;
+export default function CinematicIntro({ media, reducedMotion, onEnter }: {
+  media: IntroMedia; reducedMotion: boolean; onEnter: (reason: IntroExit) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null), video = useRef<HTMLVideoElement>(null);
   const controller = useRef<ReturnType<typeof createIntroController> | null>(null);
-  const enter = useRef(onEnter); enter.current = onEnter;
+  const enterCallback = useRef(onEnter); enterCallback.current = onEnter;
+  const reducedRef = useRef(reducedMotion); reducedRef.current = reducedMotion;
   const [status, setStatus] = useState<IntroStatus>('loading');
   const [frame, setFrame] = useState(() => introFrame(0, media));
+  const [entry, setEntry] = useState<IntroEntryFrame | null>(null);
   const [sound, setSound] = useState(false);
+  const [still, setStill] = useState(reducedMotion);
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
   useEffect(() => {
     const resized = () => setPortrait(window.innerHeight > window.innerWidth);
@@ -19,48 +22,59 @@ export default function CinematicIntro({ media, reducedMotion, explicitReplay, o
     return () => window.removeEventListener('resize', resized);
   }, []);
   const mismatch = (media.height > media.width) !== portrait;
-  const reducedRef = useRef(reducedMotion); reducedRef.current = reducedMotion;
   useEffect(() => {
-    if (reducedMotion && !explicitReplay) controller.current?.finish('reduced-motion');
-  }, [reducedMotion, explicitReplay]);
+    if (reducedMotion) { controller.current?.hold('reduced-motion'); setSound(false); }
+  }, [reducedMotion]);
   useEffect(() => {
-    if (reducedRef.current && !explicitReplay) { enter.current('reduced-motion'); return; }
     const element = dialog.current, picture = video.current;
     if (!element || !picture) return;
     element.showModal();
     const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    picture.src = media.src;
     const active = createIntroController(picture, document, media, {
       now: () => performance.now(), request: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id),
       after: (callback, milliseconds) => window.setTimeout(callback, milliseconds), clear: id => clearTimeout(id),
-    }, { frame: setFrame, status: setStatus, exit: reason => enter.current(reason) });
+    }, { frame: setFrame, status: next => {
+      setStatus(next);
+      if (next !== 'entering') setStill(['failure', 'timeout', 'reduced-motion', 'blocked'].includes(next));
+    }, entry: setEntry, exit: reason => enterCallback.current(reason) });
     controller.current = active;
-    void active.play();
+    if (reducedRef.current) active.hold('reduced-motion');
+    else { picture.src = media.src; void active.play(); }
     return () => {
       active.dispose(); controller.current = null; picture.removeAttribute('src'); picture.load();
       element.close(); document.body.style.overflow = overflow;
     };
-  }, [media, explicitReplay]);
-  const skip = () => controller.current?.finish('skip');
+  }, [media]);
+  const enter = (reason: IntroExit = 'enter') => controller.current?.enter(reason, reducedRef.current);
   const toggleSound = () => { const next = !sound; controller.current?.setSound(next); setSound(next); };
+  const fallback = still;
+  const settled = fallback || status === 'complete';
+  const entering = status === 'entering';
+  const message = status === 'complete' ? 'The introduction has ended. Choose Enter when you are ready.'
+    : status === 'reduced-motion' ? 'A still introduction is shown. Choose Enter when you are ready.'
+    : status === 'failure' || status === 'timeout' ? 'The film is unavailable. A still introduction is shown. Choose Enter when you are ready.'
+    : status === 'blocked' ? 'Playback needs your action. Choose Play or Enter.'
+    : entering ? 'Entering Bowerloom.' : 'Enter is available at any time.';
   return <dialog className={`cinematic-intro ${media.height > media.width ? 'intro-native-portrait' : ''} ${media.kind === 'fixture' ? 'intro-fixture' : ''} ${mismatch ? 'intro-orientation-mismatch' : ''}`} ref={dialog}
-    aria-label="Bowerloom introduction" data-phase={frame.phase} data-playback={status} data-time={frame.time.toFixed(3)}
-    onCancel={event => { event.preventDefault(); skip(); }}>
-    <div className="intro-picture" style={{ transform: reducedMotion ? 'none' : `translateY(${-100 * frame.reveal}%)` }}>
-    <video ref={video} poster={media.poster} muted playsInline preload="auto" aria-hidden="true" tabIndex={-1} />
-    <div className="intro-sky-shade" aria-hidden="true" style={{ opacity: frame.logo }} />
-    <img className="intro-logo" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom"
-      style={{ opacity: frame.logo, filter: `blur(${8 * (1 - frame.logo)}px)`, transform: `scale(${.97 + .03 * frame.logo})` }} />
+    aria-label="Bowerloom introduction" data-phase={frame.phase} data-entry={entry?.phase} data-playback={status} data-time={frame.time.toFixed(3)}
+    onCancel={event => { event.preventDefault(); enter('skip'); }}>
+    <div className="intro-picture" aria-hidden={entry?.phase === 'uncover' ? 'true' : undefined}>
+      <video ref={video} poster={media.poster} muted playsInline preload="none" aria-hidden="true" tabIndex={-1} />
+      {fallback && <img className="intro-still" src={media.poster} alt="" />}
+      <div className="intro-sky-shade" aria-hidden="true" style={{ opacity: settled ? 1 : frame.logo }} />
+      <img className="intro-logo" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom"
+        style={{ opacity: settled ? 1 : frame.logo, filter: reducedMotion || settled ? 'none' : `blur(${8 * (1 - frame.logo)}px)`, transform: reducedMotion || settled ? 'none' : `scale(${.97 + .03 * frame.logo})` }} />
     </div>
     {media.kind === 'fixture' && <p className="intro-fixture-label">Engineering fixture · test pattern and tone · not the cinematic film</p>}
     <div className="intro-controls">
-      {media.audio === 'embedded' && <button type="button" className="intro-sound" aria-label={sound ? 'Mute sound' : 'Enable sound'} aria-pressed={sound} onClick={toggleSound}>
+      {media.audio === 'embedded' && !settled && <button type="button" className="intro-sound" disabled={entering} aria-label={sound ? 'Mute sound' : 'Enable sound'} aria-pressed={sound} onClick={toggleSound}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Z" />{sound ? <path d="M16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14" /> : <path d="m17 9 5 6m0-6-5 6" />}</svg>
       </button>}
       {(status === 'blocked' || status === 'paused') && <button type="button" onClick={() => void controller.current?.play()}>Play</button>}
       {status === 'playing' && <button type="button" className="intro-pause" onClick={() => controller.current?.pause()}>Pause</button>}
-      <button type="button" autoFocus onClick={skip}>Skip</button>
+      <button type="button" className="intro-enter" autoFocus disabled={entering} onClick={() => enter()}>Enter</button>
     </div>
-    <span className="sr-only" role="status">{status === 'blocked' ? 'Playback needs your action. Choose Play or Skip.' : 'Skip is available at any time.'}</span>
+    <div className="intro-entry-white" aria-hidden="true" style={{ opacity: entry?.opacity ?? 0 }} />
+    <span className="sr-only" role="status">{message}</span>
   </dialog>;
 }

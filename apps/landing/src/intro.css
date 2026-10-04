@@ -2,7 +2,7 @@
   position: fixed; inset: 0; margin: 0; padding: 0; border: 0; width: 100%; max-width: none; height: 100dvh; max-height: none;
   overflow: hidden; background: transparent; color: #F6EEE8;
 }
-.intro-picture { position: absolute; inset: 0; background: #27262B; will-change: transform; }
+.intro-picture { position: absolute; inset: 0; background: #27262B; }
 .cinematic-intro::backdrop { background: transparent; }
 .intro-picture > video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .intro-native-portrait video { object-position: center bottom; }
@@ -19,7 +19,7 @@
 .intro-controls button:focus-visible { outline: 3px solid #F6EEE8; outline-offset: 3px; }
 .intro-controls .intro-sound { padding: 10px; }
 .intro-sound svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.6; fill: none; }
-.intro-sky-shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, #27262B52 0%, #27262B29 48%, transparent 85%); }
+.intro-sky-shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, #27262B14 0%, #27262B08 48%, transparent 85%); }
 .intro-logo { position: absolute; z-index: 1; top: 43%; left: 20%; width: 60%; height: auto; pointer-events: none; }
 .intro-fixture-label {
   position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); left: 18px; right: 18px;
@@ -28,3 +28,13 @@
 @media (prefers-reduced-motion: reduce) {
   .intro-picture { will-change: auto; }
 }
+
+.intro-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.intro-native-portrait .intro-still { object-position: center bottom; }
+.intro-orientation-mismatch .intro-still { object-fit: contain; object-position: center; }
+.intro-entry-white { position: absolute; z-index: 5; inset: 0; background: #fff; pointer-events: none; }
+.cinematic-intro[data-entry="uncover"] .intro-picture,
+.cinematic-intro[data-entry="uncover"] .intro-controls,
+.cinematic-intro[data-entry="uncover"] .intro-fixture-label { visibility: hidden; }
+.intro-controls .intro-enter { min-width: 84px; }
+.intro-controls button:disabled { cursor: default; }
