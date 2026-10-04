@@ -90,6 +90,20 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  const removalArgs=['--state',stateDir,'--synthetic'],removal=JSON.parse(run(['harness','removal-plan',...removalArgs]).stdout);
  const removed=JSON.parse(run(['harness','remove',...removalArgs,'--approve',removal.revision]).stdout);assert.equal(removed.executionAuthorized,false);
  assert.equal(readFileSync(claude,'utf8'),'{}\n');
+ const mcpFixture=join(root,'mcp-fixture');mkdirSync(mcpFixture,{mode:0o700});
+ const mcpArgs=['mcp','plan'];
+ const fixtureBefore=[];
+ for(const kind of ['declaration','binding','catalog']) {
+  const file=join(mcpFixture,kind+'.json'),bytes=readFileSync(join(repo,'packages/mcp-connections/test/fixtures/streamable-http-'+kind+'.json'));
+  writeFileSync(file,bytes,{mode:0o600});fixtureBefore.push([file,bytes]);mcpArgs.push('--'+kind,file);
+ }
+ mcpArgs.push('--synthetic');
+ const connectionPlan=JSON.parse(run(mcpArgs).stdout);
+ assert.equal(connectionPlan.status,'planning-only');assert.equal(connectionPlan.executionAuthorized,false);assert.equal(connectionPlan.authenticationVerified,false);
+ assert.equal(connectionPlan.selectedTools.find(tool=>tool.name==='create_draft').permissionClass,'external-write');
+ assert.notEqual(run(mcpArgs.slice(0,-1),false).status,0);
+ assert.notEqual(run(['mcp','invoke',...mcpArgs.slice(2)],false).status,0);
+ for(const [file,bytes] of fixtureBefore)assert.deepEqual(readFileSync(file),bytes);
  const mcpResult=spawnSync(mcp,[],{cwd:install,env,encoding:'utf8',timeout:30000});assert.equal(mcpResult.status,2);assert.match(mcpResult.stderr,/--installation/);
- console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true}));
+ console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
 });

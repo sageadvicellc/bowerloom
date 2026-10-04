@@ -9,6 +9,7 @@ import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 const HELP = `Bowerloom v0.7-alpha: local controlled workflows
 
 Usage:
+  bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
   bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
   bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
   bowerloom init plan --mode new|existing --target <absolute-directory> --brief <brief.json> [--json]
@@ -46,6 +47,9 @@ Usage:
   bowerloom status|review|cancel --installation <private.json>
   bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
+MCP plan reads three selected test files and prints a private review plan.
+The recorded catalog is untrusted input. This command does not discover tools, connect a server, resolve secrets, or grant authority.
+Keep its output private. It includes installed paths and connection details.
 The trellis and trellis-mcp commands remain compatibility aliases.
 Init prepares a personal-agent profile and first team specification from your brief.
 Init apply requires the exact plan revision. It starts no workers or backend services.
@@ -77,6 +81,11 @@ Recipe commands share their controller with MCP. The operator CLI owns exact app
 
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args[0] === 'mcp') {
+    const { runMcpPlanCommand } = await import('./mcp-plan.js');
+    process.stdout.write(`${canonicalJson(await runMcpPlanCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'init') {
     const { runStartupCommand, renderStartupReview, renderStartupDemoReview } = await import('./startup.js');
     const result = await runStartupCommand(args);

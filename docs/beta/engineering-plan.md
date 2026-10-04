@@ -143,3 +143,9 @@ Run documented commands against the packaged artifact. Test search, links, keybo
 Content review owns wording review. Independent review judges the supporting evidence.
 Hanna selected `bowerloom.ai/docs`. Build the documentation under `/docs` in the existing landing deployment project.
 Protected previews can proceed now. Public deployment remains a separate approval.
+
+## MCP planning slice
+
+The `mcp plan` command prepares a private plan from selected synthetic declarations, bindings, and recorded catalogs.
+Read [MCP connection plans](mcp-connection-plans.md) for its format and fixture procedure.
+The command does not contact an endpoint or grant authority. Live discovery and both transport boundaries remain separate acceptance work.

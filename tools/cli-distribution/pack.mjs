@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
-export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','portable','recipes','roots','runtime','runtime-bridge','startup','workbench','workspace-effects']);
+export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','runtime','runtime-bridge','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');

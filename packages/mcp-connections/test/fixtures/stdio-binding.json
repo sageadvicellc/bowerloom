@@ -1,0 +1,21 @@
+{
+  "format": "bowerloom/mcp-binding/v1beta1",
+  "connectionId": "labs",
+  "bindingId": "synthetic-labs",
+  "protocolVersion": "2025-11-25",
+  "serverIdentity": {
+    "name": "labs-fixture",
+    "version": "1.0.0"
+  },
+  "transport": {
+    "kind": "stdio",
+    "executable": "/synthetic/bin/labs-mcp",
+    "workingDirectory": "/synthetic/labs",
+    "secretReferences": [
+      {
+        "environmentVariable": "LABS_ACCESS",
+        "reference": "secret-ref:synthetic/labs-access"
+      }
+    ]
+  }
+}

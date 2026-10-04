@@ -41,3 +41,7 @@ The artifact proof verifies installed-bin help, standalone startup plan/apply/st
 Repeated packing of the same input snapshot is byte-deterministic under the recorded Node/npm toolchain. Cross-npm-version reproducibility is not claimed. Dependency integrity comes from the shrinkwrap, not a vendored dependency copy. Future dynamic resource patterns need explicit review and asset entries. The packer operates on a trusted same-user filesystem; concurrent hostile replacement by that same user is outside its guarantee. It never overwrites destinations, and removes only its newly created staging directory if a write fails. After npm errors, staged files/output are retained for diagnosis; no broad cleanup runs.
 
 The offline installation test also exercises exact setup revision and synthetic harness import/projection through the installed executable. These operations do not start a team. Live harness application and removal remain outside this proof.
+
+The installed executable also plans synthetic MCP connections from three private fixture files supplied by the test.
+The artifact excludes those fixtures. The proof rejects missing synthetic acknowledgment and tool invocation, then compares all input bytes.
+It records no live discovery, authentication, transport, or tool execution result.

@@ -1,0 +1,69 @@
+{
+  "format": "bowerloom/mcp-recorded-catalog/v1beta1",
+  "synthetic": true,
+  "connectionId": "labs",
+  "bindingId": "synthetic-labs",
+  "bindingRevision": "sha256:0760051031f144ce8c1ead62c06dd4799e3aa35e01c71e5da2ff0ed296a6b385",
+  "protocolVersion": "2025-11-25",
+  "serverIdentity": {
+    "name": "labs-fixture",
+    "version": "1.0.0"
+  },
+  "transport": "streamable-http",
+  "tools": [
+    {
+      "name": "read_experiment",
+      "description": "Caller-supplied synthetic fixture. Not authenticated discovery.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "experimentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "experimentId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create_draft",
+      "description": "An annotation must never authorize a write.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    }
+  ]
+}

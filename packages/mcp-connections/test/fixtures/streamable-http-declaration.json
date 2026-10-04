@@ -1,0 +1,16 @@
+{
+  "format": "bowerloom/mcp-declaration/v1beta1",
+  "connectionId": "labs",
+  "protocolVersion": "2025-11-25",
+  "transport": "streamable-http",
+  "tools": [
+    {
+      "name": "read_experiment",
+      "permissionClass": "read-only"
+    },
+    {
+      "name": "create_draft",
+      "permissionClass": "external-write"
+    }
+  ]
+}
