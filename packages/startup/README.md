@@ -63,8 +63,9 @@ The generated `.bowerloom` directory includes these portable definitions:
 - `teams/first-team/` contains readable YAML, prompts, skills, assets, and maps.
 - `working-agreement.md` records boundaries and responsibilities.
 - `milestones.md` describes review points and the selected review cadence.
-- `startup-review.md` gives the roles, proposed permissions, limits, and file-only approval effect. Its `<details>` block includes all other generated files and compiler evidence. The review cannot recursively contain itself; its own bytes are pinned by the exact plan and installation receipt.
-- `START-HERE.md` gives the user a short prompt for their personal agent.
+- `startup-review.md` shows the actual project and goal before any collapsed technical contents, then gives the roles, proposed permissions, limits, and file-only approval effect. Its `<details>` block includes all other generated files and compiler evidence. The review cannot recursively contain itself; its own bytes are pinned by the exact plan and installation receipt.
+- `START-HERE.md` gives the user a plain-language project/goal handoff and a short prompt for their personal agent. YAML and JSON reading is optional for the human.
+- `optional-controls.md` describes the existing separately approved local connection, revocation, and registered-work stop commands. None is a setup prerequisite.
 - `manifest.json` declares selectable parts in the portable bundle format.
 - `startup.json` identifies the startup template and its main documents.
 
@@ -140,9 +141,15 @@ Repeated inspection is read-only. `specReady: true` means the specification matc
 
 Portable definitions still compile after a move. Installation inspection reports the changed location because the machine-specific receipt binds the original installation.
 
+## Refining an installed goal
+
+Discuss refinements with the personal agent as proposals in the conversation. There is no in-place revision command in this change. Editing one generated copy does not update its duplicates or reapprove the pinned receipt. Existing `.bowerloom` collision protection remains enforced.
+
+For a changed setup now, plan a separate absent destination and obtain fresh exact approval while preserving this installation. This does not migrate prior work, connections, or stop registrations. A safe in-place revision workflow is later work.
+
 ## Historical compatibility
 
-New plans use `bowerloom/startup-template/v1alpha2`. The public plan and receipt envelopes remain `v1alpha1`. Inspection dispatches by the exact template version and reconstructs old receipts with the preserved `scaffold-v1alpha1.ts` implementation. It does not inject a default profile into a historical normalized brief, add new review files, rewrite an old receipt, or relax drift checks. Unknown template versions are rejected.
+New plans use `bowerloom/startup-template/v1beta1`. The public plan and receipt envelopes remain `v1alpha1`. Inspection dispatches by the exact template version and reconstructs old receipts with the preserved `scaffold-v1alpha1.ts` and `scaffold-v1alpha2.ts` implementations. Both historical versions remain inspectable without rewriting installed artifacts. It does not inject a default profile into a historical normalized brief, add new review files, rewrite an old receipt, or relax drift checks. Unknown template versions are rejected.
 
 An uninstalled historical approval does not authorize the new template. Request a fresh plan and approval. The frozen historical fixture contains its original normalized brief, complete file bytes, and compiler result.
 

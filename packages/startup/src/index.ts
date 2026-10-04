@@ -7,6 +7,7 @@ import type { CompiledPlan } from '../../contracts/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
 import { scaffold as legacyScaffold, TEMPLATE_VERSION as LEGACY_TEMPLATE_VERSION } from './scaffold-v1alpha1.js';
+import { scaffold as alpha2Scaffold, TEMPLATE_VERSION as ALPHA2_TEMPLATE_VERSION } from './scaffold-v1alpha2.js';
 import { startupProfiles } from './profiles.js';
 import type { StartupProfile } from './profiles.js';
 export { startupProfiles } from './profiles.js';
@@ -173,9 +174,9 @@ function receiptValue(raw: Buffer): StartupReceipt {
   const p = value.plan;
   record(p, ['format', 'templateVersion', 'input', 'binding', 'files', 'compiled', 'specReady', 'runtimeReady', 'executionAuthorized', 'reviewRequired', 'revision']);
   record(p.binding, ['parent', 'target']);
-  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
+  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION && p.templateVersion !== ALPHA2_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
   const legacy = p.templateVersion === LEGACY_TEMPLATE_VERSION;
-  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : scaffold(normalized.brief);
+  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : p.templateVersion === ALPHA2_TEMPLATE_VERSION ? alpha2Scaffold(normalized.brief) : scaffold(normalized.brief);
   if (!validIdentity(p.binding.parent) || (p.binding.target !== null && !validIdentity(p.binding.target)) || (normalized.mode === 'new') !== (p.binding.target === null)) fail('INVALID_RECEIPT');
   const expected = { format: STARTUP_FORMAT, templateVersion: p.templateVersion, input: normalized, binding: p.binding, ...generated,
     specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };

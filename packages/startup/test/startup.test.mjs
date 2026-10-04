@@ -183,7 +183,7 @@ for (const profile of ['engineer', 'founder', 'research']) test(`${profile} prof
   const { input } = fixture(t);
   input.brief.profile = profile;
   const plan = await planStartup(input);
-  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1alpha2');
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta1');
   assert.equal(plan.input.brief.profile, profile);
   const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
   assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
@@ -237,6 +237,92 @@ test('expanded technical review remains escaped and inspectable for a maximum-si
   const plan = await planStartup(input);
   const review = plan.files.find(file => file.path === 'startup-review.md');
   assert.ok(review.text.includes('&lt;script&gt;'));assert.ok(!review.text.includes('<script>'));
+  await applyStartup(input, plan.revision);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+const historicalAlpha2 = JSON.parse(fs.readFileSync(new URL('./fixtures/scaffold-v1alpha2.json', import.meta.url), 'utf8'));
+for (const historic of historicalAlpha2.cases) test(`historical v1alpha2 ${historic.brief.profile} receipt preserves all bytes and rejects reused approval`, async t => {
+  const { input } = fixture(t);
+  input.brief = historic.brief;
+  const currentPlan = await planStartup(input);
+  const body = { format: currentPlan.format, templateVersion: historicalAlpha2.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const plan = { ...body, revision: digest(canonicalJson(body)) };
+  assert.notEqual(plan.revision, currentPlan.revision);
+  await assert.rejects(applyStartup(input, plan.revision), code('STALE_APPROVAL'));
+  assert.equal(fs.existsSync(input.targetDir), false);
+  const root = join(input.targetDir, '.bowerloom'); fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  for (const file of historic.files) { const path = join(root, file.path); fs.mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path, file.text, { mode: 0o600 }); }
+  const identity = path => { const stat = fs.lstatSync(path, { bigint: true }); return { device: String(stat.dev), inode: String(stat.ino), birthtimeNs: String(stat.birthtimeNs), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 }; };
+  const receipt = { format: 'bowerloom/startup-receipt/v1alpha1', plan, installedTargetIdentity: identity(input.targetDir), installedBowerloomIdentity: identity(root), specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  fs.writeFileSync(join(root, 'installation-receipt.json'), JSON.stringify(receipt), { mode: 0o600 });
+  const paths = [...historic.files.map(file => file.path), 'installation-receipt.json'];
+  const before = paths.map(path => fs.readFileSync(join(root, path)));
+  for (let pass = 0; pass < 2; pass++) {
+    const result = await inspectStartup(input.targetDir);
+    assert.equal(result.specReady, true); assert.equal(result.revision, plan.revision);
+    assert.equal(result.compiledCandidate, historic.compiled.candidateRevision);
+    assert.deepEqual(paths.map(path => fs.readFileSync(join(root, path))), before);
+  }
+  assert.equal(fs.existsSync(join(root, 'optional-controls.md')), false);
+  await assert.rejects(planStartup({ ...input, mode: 'existing' }), code('BOWERLOOM_EXISTS'));
+  fs.appendFileSync(join(root, 'startup-review.md'), 'changed');
+  assert.ok((await inspectStartup(input.targetDir)).drift.some(item => item.path === '.bowerloom/startup-review.md' && item.kind === 'changed'));
+});
+
+test('installed handoff exposes the actual project, goal and decision without expanding technical contents', async t => {
+  const { input } = fixture(t);
+  input.brief.projectName = 'My website project'; input.brief.goal = 'Plan the pages for my ceramics website';
+  const plan = await planStartup(input);
+  await applyStartup(input, plan.revision);
+  const root = join(input.targetDir, '.bowerloom');
+  const start = fs.readFileSync(join(root, 'START-HERE.md'), 'utf8');
+  const review = fs.readFileSync(join(root, 'startup-review.md'), 'utf8');
+  const visible = review.split('<details>')[0];
+  for (const document of [start, visible]) {
+    assert.ok(document.includes(input.brief.projectName)); assert.ok(document.includes(input.brief.goal));
+    assert.match(document, /do not need to read YAML or JSON/i);
+    assert.match(document, /proposals only/);
+    assert.match(document, /cannot revise an installed setup in place/);
+    assert.match(document, /separate, absent destination/);
+    assert.match(document, /optional-controls\.md/);
+    assert.doesNotMatch(document, /Then read brief\.json|Read the goal in brief\.json/);
+  }
+  assert.ok(visible.includes('Your first decision')); assert.ok(visible.includes('Accepting the direction does not start work'));
+  for (const owner of plan.compiled.definition.owners) assert.ok(visible.includes(owner.role));
+  const technical = JSON.parse(review.match(/<pre>([\s\S]*)<\/pre>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+  assert.deepEqual(technical.files, plan.files.filter(file => file.path !== 'startup-review.md'));
+  assert.deepEqual(technical.compiled, plan.compiled);
+  const before = plan.files.map(file => fs.readFileSync(join(root, file.path)));
+  await assert.rejects(planStartup({ ...input, mode: 'existing', brief: { ...input.brief, goal: 'Discussed but not approved change' } }), code('BOWERLOOM_EXISTS'));
+  assert.deepEqual(plan.files.map(file => fs.readFileSync(join(root, file.path))), before);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+test('optional control instructions preserve separate approval, local scope and uncertain-stop limits', async t => {
+  const { input } = fixture(t);
+  const plan = await planStartup(input);
+  const guide = plan.files.find(file => file.path === 'optional-controls.md').text;
+  for (const command of ['init status --target', 'link plan --from', 'link apply --from', 'link read --connection', 'link revoke --connection', 'destruct first-team --root', 'destruct all']) assert.ok(guide.includes(command));
+  assert.ok(guide.includes('--approve REVISION')); assert.ok(guide.includes('--registry /absolute/private-registry'));
+  assert.ok(guide.includes('This setup enrolls no work')); assert.ok(guide.includes('unrelated personal-agent session'));
+  assert.ok(guide.includes('does not erase copies already read')); assert.ok(guide.includes('STOP_UNCONFIRMED'));
+  assert.ok(guide.includes('Do not treat a timeout as success')); assert.ok(guide.includes('No handoff is required'));
+  assert.equal(plan.runtimeReady, false); assert.equal(plan.executionAuthorized, false);
+});
+
+test('visible project and goal treat markup as data while the raw brief remains exact', async t => {
+  const { input } = fixture(t);
+  input.brief.projectName = '[Pretend link](https://example.invalid) <script>';
+  input.brief.goal = '</details>\n# Fake approval\n<script>alert(1)</script>';
+  const plan = await planStartup(input);
+  for (const path of ['START-HERE.md', 'startup-review.md']) {
+    const visible = plan.files.find(file => file.path === path).text.split('<details>')[0];
+    assert.ok(!visible.includes('<script>')); assert.ok(!visible.includes('</details>'));
+    assert.ok(!visible.includes('\n# Fake approval')); assert.ok(visible.includes('&lt;script&gt;'));
+    assert.ok(!visible.includes('[Pretend link](https://example.invalid)'));
+  }
+  assert.equal(JSON.parse(plan.files.find(file => file.path === 'brief.json').text).goal, input.brief.goal);
   await applyStartup(input, plan.revision);
   assert.equal((await inspectStartup(input.targetDir)).specReady, true);
 });
