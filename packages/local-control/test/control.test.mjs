@@ -89,3 +89,28 @@ for(const[name,corrupt]of[
 test('already finished execution reports not running without rewriting its receipt',async t=>{
  const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);await owner.finish({completedBeforeStop:true});const before=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));const result=await destruct({team:'all',registry:f.registry,timeoutMs:100});assert.equal(result.teams[0].status,'NOT_RUNNING');assert.deepEqual(result.teams[0].executions,JSON.parse(JSON.stringify(Object.values(before.entries)[0].executions)));
 });
+test('pending setup revision blocks enrollment and permanently aborts an active owner',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const marker=join(input.root,'.bowerloom-revision.json');writeFileSync(marker,'{}',{mode:0o600});
+ assert.throws(()=>planControl(input),{code:'CONTROL_REVISION_PENDING'});
+ assert.throws(()=>owner.guard(),{code:'CONTROL_REVISION_PENDING'});assert.equal(owner.signal.aborted,true);
+ rmSync(marker);assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});
+ await owner.finish({notLaunched:true});
+ const state=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));
+ assert.equal(Object.values(state.entries)[0].executions[0].status,'STOPPED');
+});
+test('changed live team definition aborts the owner and cannot regain its old authority',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const path=join(input.root,'.bowerloom',input.spec),before=readFileSync(path,'utf8');writeFileSync(path,before+'\n# revision change\n');
+ assert.throws(()=>owner.guard(),{code:'CONTROL_BINDING_CHANGED'});assert.equal(owner.signal.aborted,true);
+ writeFileSync(path,before);assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});
+ await owner.finish({notLaunched:true});
+});
+test('revision observation reaps an actual registered worker at the next guard',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const worker=runOwner(t,input);const started=await worker.next('started');
+ writeFileSync(join(input.root,'.bowerloom-revision.json'),'{}',{mode:0o600});
+ const result=await worker.next('stopped');assert.ok(result);
+ assert.throws(()=>process.kill(started.pid,0),{code:'ESRCH'});
+ const state=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));
+ assert.equal(Object.values(state.entries)[0].executions[0].status,'STOPPED');
+});

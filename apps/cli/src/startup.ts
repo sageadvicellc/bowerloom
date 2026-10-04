@@ -9,7 +9,7 @@ export { renderStartupReview } from '../../../packages/startup/src/index.js';
 
 const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom init plan|apply --mode new|existing --target <absolute-directory> with --brief <brief.json> or --name <name> --goal <goal>, with --profile engineer|founder|research. Plan supports --json. Apply requires --approve <revision>. Use init status --target <directory> to inspect installed files.'); };
 
-async function readBrief(file: string): Promise<StartupInput['brief']> {
+export async function readBrief(file: string): Promise<StartupInput['brief']> {
   const path = resolve(file);
   if (await realpath(path) !== path) throw new DefinitionError('UNSAFE_BRIEF', 'Use a regular brief file without symbolic links.');
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

@@ -12,6 +12,9 @@ Usage:
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
   bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
   bowerloom init status --target <absolute-directory>
+  bowerloom revise plan|apply --target <directory> --brief <brief.json> [--from <installed-revision> --approve <plan-revision>]
+  bowerloom revise recover --target <directory> --approve <plan-revision> --action resume|rollback
+  bowerloom harness import|plan --harness codex|claude --file <absolute-fixture-file> --synthetic [--neutral <private-json-file>]
   bowerloom link plan|apply --from <root> --to <root> --file <definition> --out <private-new-file> [--approve <revision>]
   bowerloom link read --connection <file> --target <receiving-root>
   bowerloom link revoke --connection <file>
@@ -36,6 +39,9 @@ The trellis and trellis-mcp commands remain compatibility aliases.
 Init prepares a personal-agent profile and first team specification from your brief.
 Init apply requires the exact plan revision. It starts no workers or backend services.
 Init plan offers a plain-English review. Add --json for the complete machine-readable plan.
+Revise plans changes to an installed specification. Apply requires the old revision and exact new approval.
+Revision recovery resumes the approved transaction or restores its recorded prior installation. It starts no workers.
+Harness import and plan are for synthetic files. They do not install settings, connect tools, or start a team.
 Choose --profile engineer|founder|research, or set profile in the brief.
 Links share one approved definition between installed local roots. They grant no execution authority.
 Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
@@ -71,6 +77,19 @@ async function main(args: string[]): Promise<void> {
     process.stdout.write(args[1] === 'plan' && !args.includes('--json')
       ? renderLinkReview(result as import('../../../packages/connections/src/index.js').LinkPlan)
       : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'revise') {
+    const { runRevisionCommand, renderStartupRevisionReview } = await import('./revision.js');
+    const result = await runRevisionCommand(args);
+    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+      ? renderStartupRevisionReview(result as import('../../../packages/startup/src/index.js').StartupRevisionPlan)
+      : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'harness') {
+    const { runHarnessCommand } = await import('./harness.js');
+    process.stdout.write(`${canonicalJson(await runHarnessCommand(args))}\n`);
     return;
   }
   if (args[0] === 'control') {

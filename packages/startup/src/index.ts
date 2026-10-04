@@ -8,6 +8,7 @@ import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
 import { scaffold as legacyScaffold, TEMPLATE_VERSION as LEGACY_TEMPLATE_VERSION } from './scaffold-v1alpha1.js';
 import { scaffold as alpha2Scaffold, TEMPLATE_VERSION as ALPHA2_TEMPLATE_VERSION } from './scaffold-v1alpha2.js';
+import { scaffold as beta1Scaffold, TEMPLATE_VERSION as BETA1_TEMPLATE_VERSION } from './scaffold-v1beta1.js';
 import { startupProfiles } from './profiles.js';
 import type { StartupProfile } from './profiles.js';
 export { startupProfiles } from './profiles.js';
@@ -29,9 +30,9 @@ export interface StartupReceipt {
   installedTargetIdentity: DirectoryIdentity; installedBowerloomIdentity: DirectoryIdentity;
   specReady: true; runtimeReady: false; executionAuthorized: false; reviewRequired: true;
 }
-export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' }
+export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' }
 export interface StartupInspection {
-  format: 'bowerloom/startup-inspection/v1alpha1'; status: 'ready-for-review' | 'drifted'; targetDir: string; revision: string | null;
+  format: 'bowerloom/startup-inspection/v1alpha1'; status: 'ready-for-review' | 'drifted' | 'revision-pending'; targetDir: string; revision: string | null;
   specReady: boolean; runtimeReady: false; executionAuthorized: false; reviewRequired: true;
   drift: Drift[]; compiledCandidate: string | null; contextImported: false; hostedAgentCreated: false;
 }
@@ -101,6 +102,7 @@ function pathState(input: NormalizedInput): StartupPlan['binding'] {
   }
   if (aliases.length !== 1 || aliases[0] !== basename(input.targetDir)) fail('TARGET_CASE_ALIAS');
   const target = identity(input.targetDir); ownedDirectory(target);
+  if (names(input.targetDir).some(name => fold(name) === '.bowerloom-revision.json')) fail('REVISION_PENDING');
   if (target.device !== parent.device) fail('CROSS_DEVICE_TARGET');
   if (names(input.targetDir).some(name => fold(name) === '.bowerloom')) fail('BOWERLOOM_EXISTS');
   return { parent, target };
@@ -174,9 +176,9 @@ function receiptValue(raw: Buffer): StartupReceipt {
   const p = value.plan;
   record(p, ['format', 'templateVersion', 'input', 'binding', 'files', 'compiled', 'specReady', 'runtimeReady', 'executionAuthorized', 'reviewRequired', 'revision']);
   record(p.binding, ['parent', 'target']);
-  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION && p.templateVersion !== ALPHA2_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
+  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION && p.templateVersion !== ALPHA2_TEMPLATE_VERSION && p.templateVersion !== BETA1_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
   const legacy = p.templateVersion === LEGACY_TEMPLATE_VERSION;
-  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : p.templateVersion === ALPHA2_TEMPLATE_VERSION ? alpha2Scaffold(normalized.brief) : scaffold(normalized.brief);
+  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : p.templateVersion === ALPHA2_TEMPLATE_VERSION ? alpha2Scaffold(normalized.brief) : p.templateVersion === BETA1_TEMPLATE_VERSION ? beta1Scaffold(normalized.brief) : scaffold(normalized.brief);
   if (!validIdentity(p.binding.parent) || (p.binding.target !== null && !validIdentity(p.binding.target)) || (normalized.mode === 'new') !== (p.binding.target === null)) fail('INVALID_RECEIPT');
   const expected = { format: STARTUP_FORMAT, templateVersion: p.templateVersion, input: normalized, binding: p.binding, ...generated,
     specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
@@ -186,6 +188,7 @@ function receiptValue(raw: Buffer): StartupReceipt {
 export async function inspectStartup(targetDir: string): Promise<StartupInspection> {
   const target = canonicalTarget(targetDir); ancestors(target); ownedDirectory(identity(target));
   const result: StartupInspection = { format: 'bowerloom/startup-inspection/v1alpha1', status: 'drifted', targetDir: target, revision: null, specReady: false, runtimeReady: false, executionAuthorized: false, reviewRequired: true, drift: [], compiledCandidate: null, contextImported: false, hostedAgentCreated: false };
+  if (names(target).some(name => fold(name) === '.bowerloom-revision.json')) { result.status = 'revision-pending'; result.drift.push({ path: '.bowerloom-revision.json', kind: 'revision-pending' }); return result; }
   const directory = join(target, '.bowerloom'), aliases = names(target).filter(name => fold(name) === '.bowerloom');
   if (aliases.length !== 1 || aliases[0] !== '.bowerloom') { result.drift.push({ path: '.bowerloom', kind: aliases.length ? 'unsafe' : 'missing' }); return result; }
   let receipt: StartupReceipt;
@@ -216,6 +219,11 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
       if (!same(compiled, receipt.plan.compiled)) result.drift.push({ path: `.bowerloom/${TEAM_PATH}`, kind: 'changed' });
     } catch { result.drift.push({ path: `.bowerloom/${TEAM_PATH}`, kind: 'compiler-failed' }); }
   }
+  if (names(target).some(name => fold(name) === '.bowerloom-revision.json')) { result.status = 'revision-pending'; result.drift.push({ path: '.bowerloom-revision.json', kind: 'revision-pending' }); return result; }
+  if (!result.drift.length) {
+    try { if (!same(identity(directory), receipt.installedBowerloomIdentity) || !same(receiptValue(readManaged(join(directory, RECEIPT), 1024 * 1024)), receipt)) result.drift.push({ path: '.bowerloom', kind: 'installation-binding-changed' }); }
+    catch { result.drift.push({ path: '.bowerloom', kind: 'unsafe' }); }
+  }
   result.specReady = result.drift.length === 0; result.status = result.specReady ? 'ready-for-review' : 'drifted';
   return result;
 }
@@ -244,3 +252,8 @@ export function renderStartupReview(plan: StartupPlan): string {
     'Setup is ready for review. No team has started and no execution permission was granted.',
   ].join('\n');
 }
+
+/** Package-internal primitives shared by exact startup revision; not a permission bypass. */
+export const startupInternals = { canonicalTarget, ancestors, identity, ownedDirectory, names, hash, same, json, readManaged, receiptValue, normalize, record, validIdentity };
+export { planStartupRevision, applyStartupRevision, recoverStartupRevision, renderStartupRevisionReview } from './revision.js';
+export type { RevisionInput, StartupRevisionPlan, StartupRevisionRecovery } from './revision.js';

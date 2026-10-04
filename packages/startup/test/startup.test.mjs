@@ -183,7 +183,7 @@ for (const profile of ['engineer', 'founder', 'research']) test(`${profile} prof
   const { input } = fixture(t);
   input.brief.profile = profile;
   const plan = await planStartup(input);
-  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta1');
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta2');
   assert.equal(plan.input.brief.profile, profile);
   const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
   assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
@@ -283,8 +283,8 @@ test('installed handoff exposes the actual project, goal and decision without ex
     assert.ok(document.includes(input.brief.projectName)); assert.ok(document.includes(input.brief.goal));
     assert.match(document, /do not need to read YAML or JSON/i);
     assert.match(document, /proposals only/);
-    assert.match(document, /cannot revise an installed setup in place/);
-    assert.match(document, /separate, absent destination/);
+    assert.match(document, /Revise apply requires both the exact old installation revision/);
+    assert.match(document, /revision-pending/);
     assert.match(document, /optional-controls\.md/);
     assert.doesNotMatch(document, /Then read brief\.json|Read the goal in brief\.json/);
   }

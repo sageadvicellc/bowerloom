@@ -1,5 +1,5 @@
 import { createHash, randomUUID, randomBytes } from 'node:crypto';
-import { constants, existsSync, lstatSync, mkdirSync, openSync, closeSync, fstatSync, readSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { constants, existsSync, lstatSync, mkdirSync, openSync, closeSync, fstatSync, readSync, renameSync, unlinkSync, writeFileSync, realpathSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -46,6 +46,7 @@ function readBytes(path:string,max=2*1024*1024,privateFile=false):Buffer {
 }
 function binding(input:ControlInput):Binding {
   const root=canonical(input.root);ancestors(root);const rootIdentity=identity(root);
+  if(readdirSync(root).some(name=>name.normalize('NFC').toLowerCase()==='.bowerloom-revision.json'))fail('CONTROL_REVISION_PENDING');
   if(!validId(input.team)||typeof input.spec!=='string'||!input.spec||input.spec.split('/').some(p=>!p||p==='.'||p==='..'||p.startsWith('.'))||input.spec.includes('\\')||!input.spec.startsWith(`teams/${input.team}/`))fail('CONTROL_TEAM');
   const specPath=join(root,'.bowerloom',input.spec),specBytes=readBytes(specPath,262144),specHash=hash(specBytes);
   const definition=parseCrew(specBytes.toString('utf8'));if(definition.id!==input.team)fail('CONTROL_TEAM_BINDING');
@@ -157,7 +158,10 @@ export function openControlOwner(installation:string,adapter:AdapterKind,registr
   });
   const abort=new AbortController();let handler:(()=>Promise<void>)|undefined,handling:Promise<void>|undefined,finished=false;
   const stopped=()=>{abort.abort();if(handler&&!handling){handling=Promise.resolve().then(handler);void handling.catch(()=>{});}};
-  const guard=()=>{if(finished)fail('CONTROL_OWNER_CLOSED');try{const v=state(registry),e=v.entries[entryKey];if(!e||e.generation!==generation||e.stop||v.epoch!==epoch||!e.executions.some(x=>x.id===id&&x.tokenHash===hash(nonce)&&x.status==='ACTIVE'))fail('TEAM_STOPPED');}catch(e){stopped();throw e;}};
+  const guard=()=>{if(finished)fail('CONTROL_OWNER_CLOSED');try{const v=state(registry),e=v.entries[entryKey];if(!e||e.generation!==generation||e.stop||v.epoch!==epoch||!e.executions.some(x=>x.id===id&&x.tokenHash===hash(nonce)&&x.status==='ACTIVE'))fail('TEAM_STOPPED');
+    if(abort.signal.aborted)fail('TEAM_STOPPED');
+    if(!same(binding({root:e!.binding.root,team:e!.binding.team,spec:e!.binding.spec,installation,adapter,registry}),e!.binding))fail('CONTROL_BINDING_CHANGED');
+  }catch(e){stopped();throw e;}};
   const timer=setInterval(()=>{try{guard();}catch{/* Stop callback records cleanup, not this observation. */}},100);timer.unref();
   return{id,signal:abort.signal,guard,onStop(fn){if(handler)fail('CONTROL_HANDLER_EXISTS');handler=fn;if(abort.signal.aborted)stopped();},
     async finish(evidence,confirmed=true){if(finished)return;clearInterval(timer);

@@ -1,0 +1,37 @@
+{
+  "observedDate": "2026-10-04",
+  "scope": "synthetic configuration syntax; no live config or model execution",
+  "versions": {
+    "codex": "0.157.0",
+    "claude": "2.1.288"
+  },
+  "commands": [
+    "codex --version",
+    "codex --help",
+    "claude --version",
+    "claude --help"
+  ],
+  "files": [
+    {
+      "path": "codex-help.txt",
+      "bytes": 5849,
+      "sha256": "4a7f0188d4d6e6d812c5cfbcf82468336b899acd5e437de7450421a403c0071e"
+    },
+    {
+      "path": "claude-help.txt",
+      "bytes": 22040,
+      "sha256": "a58ca2282c01312250fc8d861088dae6e46340ad55346557fcdbc0053f415367"
+    },
+    {
+      "path": "SOURCES.md",
+      "bytes": 2606,
+      "sha256": "f1cdfebd8c26a8d122fe7c167e872725f854ceb71b9ee211211ad69d07bad6dc"
+    }
+  ],
+  "sources": [
+    "https://developers.openai.com/codex/config-reference/",
+    "https://learn.chatgpt.com/docs/config-file/config-reference",
+    "https://code.claude.com/docs/en/settings",
+    "https://code.claude.com/docs/en/model-config"
+  ]
+}
