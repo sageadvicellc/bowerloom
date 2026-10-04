@@ -81,3 +81,41 @@ A successful result states that the catalog matched through the adapter and that
 The result does not authenticate an arbitrary endpoint or validate OAuth tokens.
 This internal engine supplies no production connector, CLI discovery command, gateway, or harness projection.
 The trusted factory is host code with its existing authority. This interface is not a sandbox for that code.
+
+## Internal resource-side token verification
+
+`validateMcpAccessToken` performs resource-side verification of supplied synthetic tokens against an OAuth HTTP binding, trusted policy, and current revocation snapshot.
+The caller supplies trusted time as `nowMs`. The function performs no file, network, process, or secret-resolution operation.
+It uses `jose` to import local public keys and verify signatures.
+
+This bounded profile accepts only `RS256`, the exact `at+jwt` type, and a selected `kid` identifier.
+RSA public keys contain a modulus from 2048 through 4096 bits. The policy accepts at most eight public keys.
+The validator rejects private key fields, symmetric keys, remote key URLs, extension headers, and duplicate key identifiers.
+It parses bounded header and claim data before signature validation. Duplicate JSON keys and noncanonical base64url encoding fail.
+
+The token requires one exact audience string, issuer, subject, client identifier, and scope set.
+It also requires expiry, activation time, issue time, and a token identifier.
+All binding scopes must appear exactly once. Extra scopes fail.
+Token age and lifetime cannot exceed the trusted policy limits. Those limits cannot exceed one hour.
+No clock tolerance applies.
+
+The policy pins the binding revision, expected subject, client identifier, public keys, issuer, audience, and exact revocation revision and epoch.
+`mcpRevocationRevision` computes the revision of a supplied snapshot.
+The snapshot must match the binding, issuer, subject, and policy epoch.
+It must remain current within the policy freshness limit, which cannot exceed five minutes.
+A matching token identifier, subject, or key identifier in its revocation lists blocks validation.
+
+The trusted host supplies a new policy pin when it accepts a new revocation snapshot.
+An old snapshot fails against that updated policy.
+This pure validator keeps no durable record that prevents rollback. The host must preserve its current policy and epoch separately.
+Replaying a mutually old policy and snapshot remains outside that protection when their supplied time permits them.
+
+The private result contains revision pins, the expected subject, key identifier, expiry, and validation time.
+It contains no token, raw key, or token identifier. It grants no tool or effect authority.
+This synthetic profile does not establish OAuth enrollment, key discovery, introspection, a real identity, or company-service readiness.
+Opaque tokens and other token profiles are unsupported.
+
+This verifier belongs on the resource side. It is not a requirement for outbound clients to inspect access tokens.
+OAuth clients treat access tokens as opaque. [RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html#section-6) explains that boundary.
+The required `client_id` claim follows [RFC 9068 section 2.2](https://www.rfc-editor.org/rfc/rfc9068.html#section-2.2).
+This deliberately narrower synthetic profile does not claim full RFC compliance.

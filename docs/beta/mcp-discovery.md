@@ -58,3 +58,6 @@ A matching catalog does not approve any tool effect.
 The [MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle) defines initialization, version negotiation, deadlines, and shutdown.
 The [tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) defines paginated discovery.
 These sources were read on October 4, 2026. The test results apply only to the reviewed adapters and fixtures.
+
+The separate [token validator](mcp-token-validation.md) tests a narrow signed-token profile against supplied trusted policy.
+It does not connect this engine to an OAuth flow or enable a production endpoint adapter.

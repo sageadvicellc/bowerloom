@@ -4,3 +4,5 @@ export { planMcpConnectionFiles } from './files.js';
 export type { McpFilesInput, McpFilePlan, SourcePin } from './files.js';
 export { discoverMcpCatalog } from './discovery.js';
 export type { McpInitializeRequest, McpDiscoveryTransport, McpDiscoveryContext, McpDiscoveryOptions, McpDiscoveryResult } from './discovery.js';
+export { validateMcpAccessToken, mcpRevocationRevision } from './auth.js';
+export type { McpPublicRsaKey, McpTokenPolicy, McpRevocationSnapshot, McpAccessTokenInput, McpTokenReceipt } from './auth.js';

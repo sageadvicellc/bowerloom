@@ -17,9 +17,9 @@ function fixture(t) {
 }
 test('runtime closure is deterministic, pins bins/assets/licenses and omits repository-only material',()=>{
  const a=collect({repoDir:repo}),b=collect({repoDir:repo});assert.deepEqual(a,b);
- assert.equal(a.manifest.private,true);assert.equal(a.manifest.name,'bowerloom');assert.deepEqual(Object.keys(a.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(a.manifest.scripts,undefined);
+ assert.equal(a.manifest.private,true);assert.equal(a.manifest.dependencies.jose,'6.2.12');assert.equal(a.manifest.name,'bowerloom');assert.deepEqual(Object.keys(a.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(a.manifest.scripts,undefined);
  for(const path of a.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|node_modules|\.git|\.env|work)(?:\/|$)|\.map$|\.ts$/.test(path),path);
- for(const path of ['LICENSE','docs/beta/license-boundary.md','dist/packages/codex-adapter/src/guardian.js','dist/packages/mcp-connections/src/discovery.js','packages/linux-browser/assets/runner.cjs','npm-shrinkwrap.json'])assert.ok(a.files.has(path),path);
+ for(const path of ['LICENSE','docs/beta/license-boundary.md','dist/packages/codex-adapter/src/guardian.js','dist/packages/mcp-connections/src/discovery.js','dist/packages/mcp-connections/src/auth.js','packages/linux-browser/assets/runner.cjs','npm-shrinkwrap.json'])assert.ok(a.files.has(path),path);
  const supabaseLicense='packages/local-backend/licenses/supabase-Apache-2.0.txt';
  assert.deepEqual(a.files.get(supabaseLicense),readFileSync(join(repo,supabaseLicense)));
  assert.match(a.files.get(supabaseLicense).toString('utf8'),/Apache License/);
