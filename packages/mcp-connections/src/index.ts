@@ -6,3 +6,6 @@ export { discoverMcpCatalog } from './discovery.js';
 export type { McpInitializeRequest, McpDiscoveryTransport, McpDiscoveryContext, McpDiscoveryOptions, McpDiscoveryResult } from './discovery.js';
 export { validateMcpAccessToken, mcpRevocationRevision } from './auth.js';
 export type { McpPublicRsaKey, McpTokenPolicy, McpRevocationSnapshot, McpAccessTokenInput, McpTokenReceipt } from './auth.js';
+export { createDiscoveryProposal, createDiscoveryAuthorityState, validateDiscoveryAuthorityState, validateDiscoveryAuthorityTransition, DiscoveryAuthorityController } from './authority.js';
+export type { DiscoveryEffect, DiscoveryProposalInput, DiscoveryProposal, DiscoveryGrant, DiscoveryApproval, DiscoveryIntent, DiscoveryAuthorityStatus, DiscoveryAuthorityState, DiscoveryAuthorityStore, DiscoveryAuthorityContext, DiscoveryAuthorityOpen } from './authority.js';
+export { PostgresDiscoveryAuthorityStore } from './authority-postgres.js';

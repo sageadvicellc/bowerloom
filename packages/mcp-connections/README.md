@@ -119,3 +119,37 @@ This verifier belongs on the resource side. It is not a requirement for outbound
 OAuth clients treat access tokens as opaque. [RFC 9068](https://www.rfc-editor.org/rfc/rfc9068.html#section-6) explains that boundary.
 The required `client_id` claim follows [RFC 9068 section 2.2](https://www.rfc-editor.org/rfc/rfc9068.html#section-2.2).
 This deliberately narrower synthetic profile does not claim full RFC compliance.
+
+## Internal discovery authority
+
+`DiscoveryAuthorityController` controls one discovery operation per task scope through a trusted transactional store.
+The trusted host provisions a grant with the owner, approvers, owner epoch, ready time, and lease expiry.
+An epoch identifies a grant generation. A changed epoch invalidates the earlier proposal.
+`createDiscoveryProposal` pins the complete discovery input, timeout, scope, request, owner epoch, and execution envelope.
+
+For stdio, the envelope pins the executable digest, entrypoint digests, exact arguments, working directory, and secret references.
+It forbids inherited environment values. A trusted adapter must enforce that declaration when it starts the process.
+For HTTP, the envelope pins the exact endpoint and authentication binding revision.
+The adapter must remeasure native executable and entrypoint bytes before it starts them. This controller does not prove that step.
+An approved executable is still host code. A digest does not establish safe behavior or a native sandbox.
+
+The approver authenticates and approves the exact proposal revision with an expiry.
+The owner authenticates before dispatch. The controller commits an `IN_FLIGHT` intent before it invokes any adapter.
+It then repeats the authority checks under the same scope lock immediately before synchronous adapter invocation.
+That lock defines the order between revocation and opening. The adapter returns its promise without delaying the callback.
+Stores must never retry transaction callbacks automatically because that callback can invoke the adapter.
+
+The record starts as `PREPARED`. Successful discovery and acknowledged cleanup can produce `COMPLETED` only through the controller.
+A completed record returns its saved result without contacting the adapter again.
+A stop before dispatch produces `CANCELLED`. A failed or uncertain session remains `NEEDS_RECONCILIATION`.
+Restart recovery moves an `IN_FLIGHT` record into that held state. It does not contact the adapter.
+There is no manual success-receipt API and no automatic retry of an uncertain operation.
+
+Local stop and recovery requests abort the known active session after authenticating the caller and task scope.
+They still request that abort if the store loses its commit acknowledgement.
+A stop from another process fences later completion. It does not prove remote process termination without a supervisor or polling connection.
+A lost completion acknowledgement requires inspection of durable state. It does not permit another dispatch.
+
+The store validates closed state records and transitions, preserves immutable proposal history, and prevents terminal rollback.
+Identity proofs, the store, clock, and adapter remain trusted host components.
+This controller authorizes discovery contact only. It grants no tool call, native isolation, or public CLI execution authority.
