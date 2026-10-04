@@ -149,3 +149,34 @@ Protected previews can proceed now. Public deployment remains a separate approva
 The `mcp plan` command prepares a private plan from selected synthetic declarations, bindings, and recorded catalogs.
 Read [MCP connection plans](mcp-connection-plans.md) for its format and fixture procedure.
 The command does not contact an endpoint or grant authority. Live discovery and both transport boundaries remain separate acceptance work.
+
+## README and full-page journey amendment
+
+Hanna added required README issue #67 on October 4.
+Brand owns fresh section headers, supporting artwork, and an Archify chart of the actual `.bowerloom/` hierarchy.
+Engineering derives that hierarchy from an exact reviewed source revision and synthetic generated setup output.
+The chart distinguishes portable files, private bindings, approval records, execution state, and planned paths.
+Show optional command output separately from files that startup creates.
+
+Try the approved site styling first. Standard dark mode is the accepted fallback.
+Deliver editable chart source, static GitHub images, provenance, alternative text, and a text equivalent.
+Keep headings and required instructions as real Markdown text.
+Test narrow screens and GitHub light and dark views.
+Content reviews wording and image descriptions. Knowledge receives the final approved package and its source record.
+Engineering integrates the reviewed package through the beta feature branch.
+
+Hanna clarified issue #58: the scroll journey covers the whole homepage, including sections after the hero.
+A persistent scene layer replaces static section backgrounds while foreground content remains readable and usable.
+Map the hero, product explanation, Labs workflow, tutorial builder, nested guide, FAQ, and footer to explicit scene ranges.
+Retain the accepted dark footer treatment, accessible still alternatives, keyboard access, and all ordinary page content.
+
+The approved eight-second `lab-robots-03` clip is one accepted component. It does not establish a complete narrative journey.
+The superseded six-scene study remains historical material. Its existence does not establish current approval.
+First build a protected full-page coverage prototype from approved footage and stills.
+Label its reuse and duration accurately. Record creative gaps before any further generation.
+Brand owns scene mapping and the asset inventory. Engineering owns the player, integration, and measured acceptance.
+
+Acceptance covers forward and reverse scrolling, deep links, expanded content, resize, readable overlays, and the end of the page.
+Also cover still selection, reduced motion, loading failure, phone and tablet framing, memory use, and media loading limits.
+An eight-second loop or a hero-only player does not satisfy all-section coverage.
+Use the existing reconciled media allowance. These amendments grant no additional spending or production publication.
