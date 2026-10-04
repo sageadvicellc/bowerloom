@@ -191,3 +191,47 @@ It never parses the token as a JWT, reads ambient credentials, logs credentials,
 Credential metadata is a host assertion, not cryptographic verification, OAuth enrollment, key discovery, or introspection.
 An uncooperative resolver cannot be cancelled internally; a late result is ignored after the bounded session ends.
 Full OAuth enrollment, company service readiness, durable supervision, and native process isolation remain unproven.
+
+## Internal trusted local stdio adapter
+
+`createMcpStdioDiscoveryFactory` is a prerequisite for discovery through a trusted local executable.
+The host must explicitly set `trustedLocalServerOnly: true` and provide a secret-reference resolver.
+This flag records a host precondition. It does not make an arbitrary server safe or authorize it.
+Use the factory through `DiscoveryAuthorityController` with a separately approved exact effect envelope.
+There is no public CLI connection command, shell execution path, tool invocation method, or automatic retry.
+
+The adapter matches the executable, working directory, and environment references to the binding.
+It pins exact arguments and entrypoint digests from the approved envelope.
+Each listed entrypoint must appear as an exact argument. Arguments receive no shell or PATH expansion.
+All paths must be canonical and absolute. Preflight rejects symlinks in selected paths and their ancestors, nonregular files, hardlinked files, and group/world-writable executable or entrypoint files.
+Executable measurement is bounded to 128 MiB and each entrypoint to 4 MiB.
+All secrets resolve before measurement. The adapter hashes open files, checks metadata and named-file identity for drift, and measures immediately before spawning.
+
+Preflight hashes do not make execution atomic. They cannot prevent concurrent replacement by another process with the same filesystem authority.
+They do not pin imported files, dynamic libraries, runtime configuration, or code fetched by the trusted executable.
+The server retains the host account's ambient filesystem and network access.
+This adapter does not prove native bypass denial, a sandbox, CPU or memory limits, or production containment.
+Those release gates remain open.
+
+The child receives only explicitly resolved environment references, with no inherited environment.
+Common loader and shell control names, including `NODE_OPTIONS`, `NODE_V8_COVERAGE`, `NODE_PATH`, `PATH`, `LD_*`, and `DYLD_*`, are refused.
+The Node 24 parent coverage propagation path is explicitly suppressed with an own undefined environment property, which is omitted from the actual child environment.
+A host running Node's permission model is unsupported in this slice because spawn can inject its permission flags into `NODE_OPTIONS`.
+On macOS, the child runtime can add `__CF_USER_TEXT_ENCODING` after startup; this is not an inherited application setting. The adapter does not claim byte-exact runtime environment immutability.
+This denylist is defense in depth for a trusted server, not complete control of every language runtime.
+Resolved values remain private, bounded to 8 KiB each and 32 KiB total, and never appear in results or diagnostics.
+
+Only initialization, its notification, and catalog listing can be written to stdin.
+There are at most ten outbound messages per session. Replies must be strict newline-delimited UTF-8 JSON with an exact request identifier and closed JSON-RPC envelope.
+Duplicate keys, unsolicited replies, server requests, notifications, partial output, and malformed data stop the session.
+Server messages reach the discovery callback only as a fixed sanitized method marker.
+Stdout is bounded to 512 KiB per session and 256 KiB per line. Stderr is discarded with a 16 KiB limit.
+Request and session time limits are at most thirty seconds. No raw output or native error payload is returned.
+
+On macOS and Linux, the adapter creates and owns one detached process group.
+Stop, timeout, and close signal that group, destroy local pipes, and escalate to SIGKILL within a bounded cleanup interval.
+Cleanup succeeds only after direct child exit is observed; otherwise it reports uncertainty.
+This does not establish that descendants which escape the group were contained or terminated.
+There is no Windows support in this slice.
+The adapter does not use the separate Codex guardian. Host crashes and orphan cleanup remain unproved; these time limits are not durable across controller death.
+Late secret resolution and cancelled queued work cannot spawn a child after the session closes.

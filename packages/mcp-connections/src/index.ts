@@ -11,3 +11,5 @@ export type { DiscoveryEffect, DiscoveryProposalInput, DiscoveryProposal, Discov
 export { PostgresDiscoveryAuthorityStore } from './authority-postgres.js';
 export { createMcpHttpDiscoveryFactory } from './http.js';
 export type { McpHttpOptions, McpHttpCredential, McpHttpCredentialRequest } from './http.js';
+export { createMcpStdioDiscoveryFactory } from './stdio.js';
+export type { McpStdioOptions, McpStdioSecretReference } from './stdio.js';
