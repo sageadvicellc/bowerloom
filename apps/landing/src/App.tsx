@@ -16,7 +16,9 @@ import ThemeControl from "./ThemeControl";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
-import CinematicWorld from "./CinematicWorld";
+import AnimationSplash from "./AnimationSplash";
+import { rememberSplash, shouldShowSplash } from "./splash-playback";
+import { cinematicJourney } from "./cinematic-config";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
@@ -35,7 +37,7 @@ const offers = [
 function CoreOffers() {
   const [active, setActive] = useState(0);
   const offer = offers[active];
-  return <section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+  return <div className="panel-unit-wrap panel-unit-s4"><img className="panel-unit" src="/panel-units/s4-rose-peek.webp" alt="" aria-hidden="true" draggable={false} loading="lazy" /><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
     <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
     <div className="offer-content">
       <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
@@ -52,7 +54,7 @@ function CoreOffers() {
         </div>
       </div>
     </div>
-  </section>;
+  </section></div>;
 }
 
 class SceneBoundary extends Component<
@@ -82,6 +84,21 @@ function useReducedMotion() {
 }
 
 export default function App() {
+  const [splashOpen, setSplashOpen] = useState(() => {
+    try { return shouldShowSplash(window.location.hash, window.sessionStorage); }
+    catch { return shouldShowSplash(window.location.hash, null); }
+  });
+  const replayRef = useRef<HTMLButtonElement>(null);
+  const replaying = useRef(false);
+  const enterSite = () => {
+    try { rememberSplash(window.sessionStorage); } catch { /* Entry never depends on storage. */ }
+    setSplashOpen(false);
+    requestAnimationFrame(() => {
+      if (replaying.current) replayRef.current?.focus();
+      else document.getElementById('hero-title')?.focus();
+    });
+  };
+  const replaySplash = () => { replaying.current = true; setSplashOpen(true); };
   const [selected, setSelected] = useState(0);
   const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -127,7 +144,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className={cinematic ? "fullpage-journey" : undefined}>
+    <div className="normal-site">
+      {splashOpen && <AnimationSplash reducedMotion={reduced} onEnter={enterSite} />}
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -142,13 +160,23 @@ export default function App() {
         </span>
       </header>
       <main id="main">
-        {cinematic ? <CinematicWorld reducedMotion={reduced} /> : (
+        {cinematic ? <section className="hero normal-hero" aria-labelledby="hero-title">
+          <div className="hero-copy">
+            <p className="eyebrow">{hero.Eyebrow}</p>
+            <h1 id="hero-title" tabIndex={-1}>Grow your capabilities with <em>Bowerloom</em></h1>
+            <p className="hero-description">{hero.Body}</p>
+            <a className="button primary" href="#build">Build with your agent</a>
+            <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
+            <button ref={replayRef} type="button" className="splash-replay" onClick={replaySplash}>Replay workshop animation</button>
+          </div>
+          <div className="normal-hero-art"><img src={cinematicJourney.openingPoster} alt="Hanna and a robot helper review a plan in a forest workshop." /></div>
+        </section> : (
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="eyebrow">
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
-            <h1 id="hero-title">
+            <h1 id="hero-title" tabIndex={-1}>
               Grow your capabilities with <em>Bowerloom</em>
             </h1>
             <p className="hero-description">
@@ -224,7 +252,7 @@ export default function App() {
         </section>
         )}
         <CoreOffers />
-        <LabsWorkflow />
+        <div className="panel-unit-wrap panel-unit-h4n"><img className="panel-unit" src="/panel-units/h4n-ochre-wave.webp" alt="" aria-hidden="true" draggable={false} loading="lazy" /><LabsWorkflow /></div>
         <TutorialBuilder />
         <section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>

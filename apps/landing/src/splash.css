@@ -1,0 +1,49 @@
+.animation-splash {
+  color-scheme: dark; --ui-bg: #27262B; --ui-surface: #343238; --ui-text: #F6EEE8; --ui-muted: #D0BEC6;
+  --ui-border: #665B63; --ui-primary: #E8B3BF; --ui-primary-fg: #27262B;
+  --trellis-control-border: #665B63; --trellis-primary-hover: #D0BEC6;
+  position: fixed; inset: 0; margin: 0; width: 100%; max-width: none; height: 100dvh; max-height: none;
+  padding: clamp(18px, 3vw, 36px); border: 0; background: var(--ui-bg); color: var(--ui-text);
+  overflow-y: auto;
+}
+.animation-splash::backdrop { background: #27262B; }
+.animation-splash[open] { display: flex; flex-direction: column; gap: 18px; }
+.splash-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; }
+.splash-heading p { font: 500 clamp(18px, 2.3vw, 26px)/1.4 var(--trellis-reading-font); }
+.splash-heading .button { white-space: nowrap; margin: 0; }
+.splash-frame { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; background: var(--ui-bg); overflow: hidden; }
+.splash-frame :is(video, img) { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }
+.splash-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+.splash-controls p, .splash-boundary { font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
+.splash-play, .splash-replay { min-height: 44px; padding: 10px 16px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); font: 14px/1.5 var(--ui-font); cursor: pointer; }
+.splash-replay { margin-top: 14px; }
+.normal-hero-art { display: grid; place-items: center; min-width: 0; }
+.normal-hero-art img { width: 100%; height: auto; display: block; }
+.normal-site .hero { align-items: center; }
+@media (max-width: 640px) {
+  .animation-splash { padding: 18px; }
+  .animation-splash[open] { gap: 16px; }
+  .splash-heading { align-items: start; }
+  .splash-heading .button { font-size: 13px; padding-inline: 14px; }
+  .splash-frame { min-height: 180px; }
+  .splash-controls { gap: 12px; }
+  .splash-boundary { font-size: 12px; }
+  .normal-hero-art { margin-top: 28px; }
+}
+
+.splash-wordmark { width: clamp(160px, 20vw, 240px); height: auto; display: block; margin-bottom: 8px; }
+.splash-heading p { font-size: 16px; color: var(--ui-muted); }
+.splash-controls .button { margin: 0; }
+
+/* Brand pose derivatives stay behind opaque panels, outside the reading area. */
+.normal-site .panel-unit-wrap { position: relative; isolation: isolate; width: min(1320px, calc(100% - 48px)); margin: 170px auto 0; }
+.normal-site .panel-unit { position: absolute; pointer-events: none; z-index: -1; height: auto; display: block; user-select: none; }
+.normal-site .panel-unit-s4 > .panel-unit { width: 180px; right: 20px; top: -135px; }
+.normal-site .panel-unit-h4n > .panel-unit { width: 210px; left: 20px; top: -118px; }
+.normal-site .panel-unit-wrap > :is(.product-section, .recipe-section) { position: relative; background: var(--ui-surface); border: 1px solid var(--ui-border); padding: 40px; }
+@media (max-width: 640px) {
+  .normal-site .panel-unit-wrap { width: calc(100% - 32px); margin-top: 130px; }
+  .normal-site .panel-unit-s4 > .panel-unit { width: 140px; right: 12px; top: -105px; }
+  .normal-site .panel-unit-h4n > .panel-unit { width: 166px; left: 12px; top: -94px; }
+  .normal-site .panel-unit-wrap > :is(.product-section, .recipe-section) { padding: 26px 22px; }
+}

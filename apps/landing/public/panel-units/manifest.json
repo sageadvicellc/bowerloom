@@ -1,0 +1,50 @@
+{
+  "status": "New pose derivatives for protected founder review; not canonical replacements",
+  "method": "Built-in image_gen, transparent_background=true; three calls including S4 cleanup",
+  "higgsfieldCredits": 0,
+  "assets": [
+    {
+      "path": "/panel-units/h4n-ochre-wave.webp",
+      "sha256": "139ccce1124f2250eb71430ea5a005991ab7e23a19b67b9136f19840ea8487ef",
+      "bytes": 73736
+    },
+    {
+      "path": "/panel-units/s4-rose-peek.webp",
+      "sha256": "4fb7af4ef853e518fb55d5141c1b84ba906573045d44fb7f685e422e6e4d96dc",
+      "bytes": 102990
+    }
+  ],
+  "sourcePng": [
+    {
+      "path": "assets/h4n-ochre-wave.png",
+      "sha256": "f9e87669090e902ffa807b056277b3dce4993d3f034ae9d93abc31f52ee1dc71",
+      "bytes": 1243505
+    },
+    {
+      "path": "assets/s4-rose-peek.png",
+      "sha256": "7a66df91622a76ea296525dd320576e3258e10727b3a6953a2d1418bd2a1566b",
+      "bytes": 1707568
+    }
+  ],
+  "references": [
+    {
+      "path": "outputs/character-sheets/s4-sheet.png",
+      "sha256": "b23d907b202140a8fe597c190d4087209122e9027dba9e6dfd49c30eafb8bdb2"
+    },
+    {
+      "path": "outputs/character-sheets/h4n-sheet.png",
+      "sha256": "24a2fe4bf80cc310c451e25a39d88ec0963ed14d6beb7b377bfc2c7286e0afe2"
+    },
+    {
+      "path": "outputs/character-sheets/bot-model-colors.png",
+      "sha256": "244162e1c7547bb85605900f7f6f075f7db8894712671dbaaab57ee9ba6b0524"
+    }
+  ],
+  "constraints": [
+    "Standard S4 uses a solid chest plate",
+    "Only S4-G3 has a planted chamber",
+    "H4N preserves low chassis and short stabilizer legs",
+    "Decoration never obscures text or controls"
+  ],
+  "sourceRetention": "PNG sources and prompts remain in the Brand round-01 source package."
+}

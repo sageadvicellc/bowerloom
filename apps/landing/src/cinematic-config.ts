@@ -82,3 +82,10 @@ export const fullpageRegions = [
     "poster": "/fullpage-coverage/footer.jpg"
   }
 ] as const;
+
+/** Exact four-second frame from the approved clip, reused as the splash resting image. */
+export const splashRestingFrame = {
+  poster: '/fullpage-coverage/labs.jpg',
+  seconds: 4,
+  sha256: 'dd0d210520c64fefa41c93f5ed6d01abe96daa017fd2bad8b7f3139b7ef1effb',
+};

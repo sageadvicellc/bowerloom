@@ -116,10 +116,11 @@ Name supported operating systems explicitly. Do not infer cross-platform support
 
 ## Website and release evidence
 
-The full homepage journey must feature Hanna, Miki, and S4-G3 with the approved brand references.
-Animation planning and browser engineering can proceed while the remaining media allowance is reconciled.
+The website opens with an animated splash on desktop and mobile. Hanna selected this direction on October 4 at 3:24 p.m. EDT.
+This replaces the earlier full-page animation background. Preserve the earlier previews as historical experiments.
+Keep approved character references and identify missing cast assets before further generation.
 Do not repeat completed media jobs. Generation stays within the approved allowance and needs a concrete cost estimate first.
-The final sequence requires Hanna's creative acceptance, reverse-scroll continuity, reduced motion, mobile framing, and loading-failure evidence.
+The splash needs founder acceptance, visible characters, immediate entry controls, reduced-motion alternatives, and loading-failure evidence.
 
 Preserve the accepted dark footer and current brand palette while reconciling the older green-footer wording in #42.
 Preserve the founder's explicit ban on seed and sprout wording. The spec's older seed-language sentence does not override that instruction.
@@ -165,18 +166,22 @@ Test narrow screens and GitHub light and dark views.
 Content reviews wording and image descriptions. Knowledge receives the final approved package and its source record.
 Engineering integrates the reviewed package through the beta feature branch.
 
-Hanna clarified issue #58: the scroll journey covers the whole homepage, including sections after the hero.
-A persistent scene layer replaces static section backgrounds while foreground content remains readable and usable.
-Map the hero, product explanation, Labs workflow, tutorial builder, nested guide, FAQ, and footer to explicit scene ranges.
-Retain the accepted dark footer treatment, accessible still alternatives, keyboard access, and all ordinary page content.
+Hanna replaced the full-page background direction on October 4 at 3:24 p.m. EDT.
+Issue #58 now requires an animated splash before the normal homepage on desktop and mobile.
+Content panels must not cover the animation. Normal mobile playback must animate rather than use only a still image.
+Retain an immediate Skip or Enter site control. Visitors do not need to finish playback.
+Use muted inline playback, an explicit play option when autoplay fails, and a still alternative for reduced motion or media failure.
+Keep the controls available during loading and failure. Restore useful keyboard focus when the visitor enters the site.
 
-The approved eight-second `lab-robots-03` clip is one accepted component. It does not establish a complete narrative journey.
-The superseded six-scene study remains historical material. Its existence does not establish current approval.
-First build a protected full-page coverage prototype from approved footage and stills.
-Label its reuse and duration accurately. Record creative gaps before any further generation.
-Brand owns scene mapping and the asset inventory. Engineering owns the player, integration, and measured acceptance.
+Brand owns desktop and phone framing, approved character references, and asset provenance.
+Reuse the approved eight-second clip where it fits. Preserve the full frame when a portrait crop hides characters.
+Identify missing cast assets before generation. Earlier clip approval does not approve the new splash experience.
+After entry, the homepage uses its ordinary readable surfaces rather than an animated background.
+Add selective H4N and S4 units at panel corners or edges. Keep text and controls clear at each supported width.
+Preserve established model shapes and individual unit colors. S4-G3 remains Hanna's bespoke unit.
 
-Acceptance covers forward and reverse scrolling, deep links, expanded content, resize, readable overlays, and the end of the page.
-Also cover still selection, reduced motion, loading failure, phone and tablet framing, memory use, and media loading limits.
-An eight-second loop or a hero-only player does not satisfy all-section coverage.
-Use the existing reconciled media allowance. These amendments grant no additional spending or production publication.
+Acceptance covers desktop and phone playback, blocked autoplay, immediate entry, replay, keyboard access, reduced motion, loading failure, and responsive framing.
+Measure loading limits and performance for this splash. Do not retain reverse-scroll or all-section background coverage as current release gates.
+Keep the earlier full-page prototype, its reviews, and its limitations as historical evidence.
+Provide a protected preview for founder review. Main merge and production publication remain Hanna's decisions.
+These changes grant no additional media spending. Use existing approved assets before any new generation.
