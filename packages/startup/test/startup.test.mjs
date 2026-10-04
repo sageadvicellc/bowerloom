@@ -183,7 +183,7 @@ for (const profile of ['engineer', 'founder', 'research']) test(`${profile} prof
   const { input } = fixture(t);
   input.brief.profile = profile;
   const plan = await planStartup(input);
-  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta2');
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta3');
   assert.equal(plan.input.brief.profile, profile);
   const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
   assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
@@ -241,12 +241,13 @@ test('expanded technical review remains escaped and inspectable for a maximum-si
   assert.equal((await inspectStartup(input.targetDir)).specReady, true);
 });
 
-const historicalAlpha2 = JSON.parse(fs.readFileSync(new URL('./fixtures/scaffold-v1alpha2.json', import.meta.url), 'utf8'));
-for (const historic of historicalAlpha2.cases) test(`historical v1alpha2 ${historic.brief.profile} receipt preserves all bytes and rejects reused approval`, async t => {
+for (const historical of ['v1alpha2', 'v1beta2']) {
+const historicalFixture = JSON.parse(fs.readFileSync(new URL(`./fixtures/scaffold-${historical}.json`, import.meta.url), 'utf8'));
+for (const historic of historicalFixture.cases) test(`historical ${historical} ${historic.brief.profile} receipt preserves all bytes and rejects reused approval`, async t => {
   const { input } = fixture(t);
   input.brief = historic.brief;
   const currentPlan = await planStartup(input);
-  const body = { format: currentPlan.format, templateVersion: historicalAlpha2.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const body = { format: currentPlan.format, templateVersion: historicalFixture.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
   const plan = { ...body, revision: digest(canonicalJson(body)) };
   assert.notEqual(plan.revision, currentPlan.revision);
   await assert.rejects(applyStartup(input, plan.revision), code('STALE_APPROVAL'));
@@ -264,11 +265,13 @@ for (const historic of historicalAlpha2.cases) test(`historical v1alpha2 ${histo
     assert.equal(result.compiledCandidate, historic.compiled.candidateRevision);
     assert.deepEqual(paths.map(path => fs.readFileSync(join(root, path))), before);
   }
-  assert.equal(fs.existsSync(join(root, 'optional-controls.md')), false);
+  assert.equal(fs.existsSync(join(root, 'optional-controls.md')), historical === 'v1beta2');
   await assert.rejects(planStartup({ ...input, mode: 'existing' }), code('BOWERLOOM_EXISTS'));
   fs.appendFileSync(join(root, 'startup-review.md'), 'changed');
   assert.ok((await inspectStartup(input.targetDir)).drift.some(item => item.path === '.bowerloom/startup-review.md' && item.kind === 'changed'));
 });
+
+}
 
 test('installed handoff exposes the actual project, goal and decision without expanding technical contents', async t => {
   const { input } = fixture(t);

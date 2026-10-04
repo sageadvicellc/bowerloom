@@ -6,7 +6,7 @@ This beta slice adds setup revision and synthetic harness projections. It does n
 
 A revision replaces an approved setup with a new exact plan. Bowerloom retains the previous installation in a private journal directory.
 
-Use the existing Node 24 installation and a freshly compiled checkout. Replace the example paths with absolute paths on your computer.
+Use Node 24.11 or a later Node 24 version. Start from the root of your compiled Bowerloom checkout. Replace the example paths with absolute paths on your computer.
 
 ```sh
 node dist/apps/cli/src/main.js revise plan \
@@ -42,7 +42,7 @@ Revision needs a temporary loopback socket for writer exclusion. A port collisio
 
 ## Plan harness preferences
 
-The importer reads an explicitly selected synthetic file. It does not discover or edit live Codex or Claude configuration.
+Synthetic files are fixtures created for testing. Select only a test fixture for this exercise. Do not select live Codex or Claude Code configuration. The importer reads the selected fixture without discovering or editing live configuration.
 
 ```sh
 node dist/apps/cli/src/main.js harness import \

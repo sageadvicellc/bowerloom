@@ -9,16 +9,24 @@ import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 const HELP = `Bowerloom v0.7-alpha: local controlled workflows
 
 Usage:
-  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
-  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
+  bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
+  bowerloom init plan --mode new|existing --target <absolute-directory> --brief <brief.json> [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --brief <brief.json> --approve <revision>
   bowerloom init status --target <absolute-directory>
   bowerloom init demo-plan --target <absolute-directory> --from <installed-revision> [--json]
-  bowerloom revise plan|apply --target <directory> --brief <brief.json> [--from <installed-revision> --approve <plan-revision>]
-  bowerloom revise recover --target <directory> --approve <plan-revision> --action resume|rollback
-  bowerloom harness import|plan --harness codex|claude --file <absolute-fixture-file> --synthetic [--neutral <private-json-file>]
-  bowerloom harness managed-plan|apply --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic [--approve <revision>]
-  bowerloom harness removal-plan|remove|recover --state <private-directory> --synthetic [--approve <revision>]
-  bowerloom link plan|apply --from <root> --to <root> --file <definition> --out <private-new-file> [--approve <revision>]
+  bowerloom revise plan --target <absolute-directory> --brief <brief.json>
+  bowerloom revise apply --target <absolute-directory> --brief <brief.json> --from <installed-revision> --approve <plan-revision>
+  bowerloom revise recover --target <absolute-directory> --approve <plan-revision> --action resume|rollback
+  bowerloom harness import --harness codex|claude --file <absolute-fixture-file> --synthetic
+  bowerloom harness plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --synthetic
+  bowerloom harness managed-plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic
+  bowerloom harness apply --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic --approve <revision>
+  bowerloom harness removal-plan --state <private-directory> --synthetic
+  bowerloom harness remove --state <private-directory> --synthetic --approve <removal-plan-revision>
+  bowerloom harness recover --state <private-directory> --synthetic --approve <recorded-operation-revision>
+  bowerloom link plan --from <root> --to <root> --file <definition> --out <private-new-file>
+  bowerloom link apply --from <root> --to <root> --file <definition> --out <private-new-file> --approve <revision>
   bowerloom link read --connection <file> --target <receiving-root>
   bowerloom link revoke --connection <file>
   bowerloom control plan|register --root <root> --team <id> --spec <relative-team-file> [--adapter graph|recipe --installation <private.json>] [--registry <directory>] [--approve <revision>]
@@ -52,7 +60,7 @@ Choose --profile engineer|founder|research, or set profile in the brief.
 Links share one approved definition between installed local roots. They grant no execution authority.
 Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
 Destruct all covers one local registry, not other users, remote machines, or unrelated agent sessions.
-Existing mode adds .bowerloom only. Claude and Codex settings import belongs to beta.
+Existing mode adds only .bowerloom. Harness commands process selected test fixtures. Live Codex and Claude Code configuration support and two-harness execution remain unproven.
 Backend install requires --approve with the exact current plan revision.
 Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
 Docker Desktop is a prerequisite. The CLI never installs privileged host software.
@@ -184,7 +192,7 @@ async function main(args: string[]): Promise<void> {
 
 main(process.argv.slice(2)).catch((error: unknown) => {
   const code=error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&/^[A-Z_]{1,100}$/.test(error.code)?error.code:'IO_ERROR';
-  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'Bowerloom stopped. Read the local session state before another action.');
+  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   process.stderr.write(`${JSON.stringify({ error: { code: safeError.code, message: safeError.message } })}\n`);
   process.exitCode = safeError.code === 'USAGE' ? 2 : 1;
 });

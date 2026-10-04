@@ -14,14 +14,14 @@ import {planControl,registerControl,openControlOwner} from '../../../dist/packag
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const code=expected=>error=>error?.code===expected;
 const identity=path=>{const s=fs.lstatSync(path,{bigint:true});return {device:String(s.dev),inode:String(s.ino),birthtimeNs:String(s.birthtimeNs),uid:Number(s.uid),mode:Number(s.mode)&0o777};};
-async function fixture(t,historical){
+async function fixture(t,historical,historicalProfile){
  const parent=fs.realpathSync(fs.mkdtempSync(join(tmpdir(),'bowerloom-revision-')));fs.chmodSync(parent,0o700);t.after(()=>fs.rmSync(parent,{recursive:true,force:true}));
  const targetDir=join(parent,'project'),brief={projectName:'Revision project',goal:'Draft the first weekly note',profile:'engineer'};
  const input={mode:'new',targetDir,brief},initial=await planStartup(input);
  let receipt;
  if(!historical)receipt=await applyStartup(input,initial.revision);
  else {
-  const h=JSON.parse(fs.readFileSync(new URL(`./fixtures/scaffold-${historical}.json`,import.meta.url),'utf8')),data=h.cases?.[0]??h;
+  const h=JSON.parse(fs.readFileSync(new URL(`./fixtures/scaffold-${historical}.json`,import.meta.url),'utf8')),data=(historicalProfile?h.cases.find(item=>item.brief.profile===historicalProfile):h.cases?.[0])??h;
   const body={format:initial.format,templateVersion:h.templateVersion,input:{...initial.input,brief:data.brief},binding:initial.binding,files:data.files,compiled:data.compiled,specReady:true,runtimeReady:false,executionAuthorized:false,reviewRequired:true};
   const root=join(targetDir,'.bowerloom');fs.mkdirSync(root,{recursive:true,mode:0o700});
   for(const file of data.files){fs.mkdirSync(dirname(join(root,file.path)),{recursive:true,mode:0o700});fs.writeFileSync(join(root,file.path),file.text,{mode:0o600});}
@@ -37,7 +37,7 @@ async function interrupt(f,plan,checkpoint,action){
  let output='';child.stdout.on('data',x=>output+=x);child.stderr.on('data',x=>output+=x);
  const status=await new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',resolve);});assert.equal(status,86,output);
 }
-for(const historical of ['v1alpha1','v1alpha2','v1beta1',null])test(`exact revision preserves ${historical??'current'} backup and unrelated files`,async t=>{
+for(const historical of ['v1alpha1','v1alpha2','v1beta1','v1beta2',null])test(`exact revision preserves ${historical??'current'} backup and unrelated files`,async t=>{
  const f=await fixture(t,historical);const before=fs.readFileSync(join(f.targetDir,'.bowerloom/installation-receipt.json'));
  const plan=await planStartupRevision(f.input);assert.equal(plan.fromRevision,f.receipt.plan.revision);assert.notEqual(plan.toRevision,plan.fromRevision);
  assert.equal(plan.executionAuthorized,false);assert.ok(renderStartupRevisionReview(plan).includes(f.input.brief.goal));
@@ -47,6 +47,28 @@ for(const historical of ['v1alpha1','v1alpha2','v1beta1',null])test(`exact revis
  assert.equal(fs.readFileSync(join(f.targetDir,'unrelated.txt'),'utf8'),'keep exact unrelated bytes');
  assert.equal((await inspectStartup(f.targetDir)).specReady,true);
  assert.equal((await recoverStartupRevision(f.targetDir,plan.revision,'resume')).state,'committed');
+});
+for(const profile of ['engineer','founder','research'])test(`v1beta2 ${profile}: copy-only revision preserves history and requires new exact approval`,async t=>{
+ const f=await fixture(t,'v1beta2',profile),old=f.receipt.plan;
+ const input={targetDir:f.targetDir,brief:old.input.brief};
+ const previous=old.files.map(file=>[file.path,fs.readFileSync(join(f.targetDir,'.bowerloom',file.path))]);
+ const receiptBytes=fs.readFileSync(join(f.targetDir,'.bowerloom/installation-receipt.json'));
+ assert.equal((await inspectStartup(f.targetDir)).revision,old.revision);
+ const plan=await planStartupRevision(input);
+ assert.equal(plan.after.templateVersion,'bowerloom/startup-template/v1beta3');
+ assert.deepEqual(plan.after.input.brief,old.input.brief);
+ assert.deepEqual(plan.after.compiled,old.compiled);
+ assert.notEqual(plan.toRevision,old.revision);
+ await assert.rejects(applyStartupRevision(input,old.revision,old.revision),code('STALE_APPROVAL'));
+ for(const [path,bytes] of previous)assert.deepEqual(fs.readFileSync(join(f.targetDir,'.bowerloom',path)),bytes);
+ assert.deepEqual(fs.readFileSync(join(f.targetDir,'.bowerloom/installation-receipt.json')),receiptBytes);
+ const result=await applyStartupRevision(input,old.revision,plan.revision);
+ assert.equal(result.plan.revision,plan.toRevision);
+ assert.equal(result.executionAuthorized,false);
+ const backup=join(f.targetDir,`.bowerloom-revision-${plan.revision}`,'previous');
+ for(const [path,bytes] of previous)assert.deepEqual(fs.readFileSync(join(backup,path)),bytes);
+ assert.deepEqual(fs.readFileSync(join(backup,'installation-receipt.json')),receiptBytes);
+ assert.equal((await inspectStartup(f.targetDir)).specReady,true);
 });
 test('changed old/new approval, managed drift, unexpected files and symlink paths are refused',async t=>{
  const f=await fixture(t);const p=await planStartupRevision(f.input);

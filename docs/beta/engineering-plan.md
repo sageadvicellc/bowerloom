@@ -66,6 +66,20 @@ Use a synthetic remote service if Greenhouse is unavailable. This does not estab
 Current vendor references are the [Codex MCP guide](https://developers.openai.com/codex/mcp) and [Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
 Implementation must compare their current syntax with the installed version and preserve a source snapshot for its support claims.
 
+## Portable routines
+
+Hanna approved issue #66 for beta on October 4, 2026. A routine is a reusable procedure with explicit inputs and outcomes.
+Store versioned definitions under `.bowerloom/routines/`. The first routine references the existing Labs-to-blog recipe.
+Reference pinned skills, existing team definitions, and approved MCP declarations. Do not duplicate their instructions in routine definitions.
+Keep installed bindings, credentials, execution state, and approvals separate from portable definitions.
+
+Complete the MCP and harness boundaries before manual execution trials. Prove the same bounded synthetic routine through Codex and Claude Code.
+Scheduling and event triggers remain deferred. This approval creates no recurring jobs.
+Test dependency changes, revoked access, bounded retries, interrupted work, and duplicate-effect prevention.
+Test that stop preserves routine files, project files, saved state, and completed evidence.
+Block native tool alternatives that bypass the approved execution boundary.
+Record exact revisions, independent review, security evidence, and documentation review before founder acceptance.
+
 ## Company pilot and lifecycle
 
 Hanna selected cast-based dummy accounts with synthetic project data for the first company trial.

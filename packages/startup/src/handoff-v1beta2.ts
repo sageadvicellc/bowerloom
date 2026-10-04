@@ -1,4 +1,4 @@
-import type { NormalizedBrief } from './scaffold.js';
+import type { NormalizedBrief } from './scaffold-v1beta2.js';
 
 // User-supplied names and goals stay visible data, not Markdown or HTML instructions.
 const plain = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -8,7 +8,7 @@ export const projectSummary = (brief: NormalizedBrief): string =>
 
 export const refinementGuidance = 'Goal refinements are discussion proposals only until you approve an exact revision plan. Ask your agent to inspect the installed setup, prepare a revise plan with the full proposed brief, and show the old goal, new goal, affected managed files, and approval revision. Revise apply requires both the exact old installation revision and the new plan approval. Do not edit one copy of the brief or delete the existing .bowerloom folder to force an update.\n\nRevision refuses changed or unexpected managed files, preserves unrelated project files, and keeps the old installation as a private backup. It grants no execution permission and does not carry old connection or runtime approvals onto the new specification. If interrupted, status reports revision-pending: keep work stopped and ask your agent to use revise recover with the exact original revision approval and an explicit resume or rollback choice. Do not treat a mixed or pending setup as ready. A finalized update retains its history; recovery is not permission to delete it.';
 
-export const personalAgentRequest = '> Read this project’s .bowerloom setup files for me, including its brief, assistant profile, working agreement, milestones, and team specification. Explain my saved project and goal, each proposed role, the limits, and the first milestone in plain English. Ask whether the direction fits. Treat changes we discuss as proposals only; do not edit or reapprove this installation. If I ask for a changed setup, show the installed revision and exact new revision plan. Obtain my approval of that plan before replacing managed files. Do not read other project files, import settings, start workers, or execute the team during this review.';
+export const personalAgentRequest = '> Read this project’s .bowerloom setup files for me, including its brief, assistant profile, working agreement, milestones, and team specification. Explain my saved project and goal, each proposed role, the limits, and the first milestone in plain English. Ask whether the direction fits. Treat changes we discuss as proposals only; do not edit or reapprove this installation. If I ask for a changed setup, prepare a separate revision review and obtain exact old-and-new approval before replacing any managed files. Do not read other project files, import settings, start workers, or execute the team during this review.';
 
 export const optionalControls = `# Optional connections and stopping work
 
@@ -63,13 +63,5 @@ node dist/apps/cli/src/main.js destruct all
 
 The default registry is \`~/.local/state/bowerloom\`. If registration used a different registry, append \`--registry /absolute/private-registry\` to the stop command. \`all\` means that one registry, not every machine, user, or process. It cannot stop an unrelated personal-agent session or unregistered work. No handoff is required.
 
-\`destruct\` requests a stop for registered Bowerloom work. It preserves project files, definitions, outputs, saved history, and backend services. It does not delete your setup or undo accepted external actions.
-
-Read the reported result:
-
-- \`STOPPED\`: The registered owner reported completed cleanup.
-- \`NOT_RUNNING\`: No execution began, or earlier executions finished.
-- \`STOP_UNCONFIRMED\`: Cleanup remains uncertain.
-
-Repeating the command observes the existing request. Do not treat a timeout as success. Do not restart work while its stop remains unresolved. A stopped team needs a separately approved new registration before work resumes.
+Despite its name, \`destruct\` stops work while preserving project files, definitions, outputs, saved history, and backend services. It does not delete your setup or undo external actions already accepted. Read the result: \`STOPPED\` means the owner confirmed cleanup; \`NOT_RUNNING\` means no execution began or earlier executions finished; \`STOP_UNCONFIRMED\` means cleanup remains uncertain. Repeating the command is safe and keeps observing the existing request. Do not treat a timeout as success or restart unresolved work. A stopped team remains blocked until a separately approved new registration is permitted.
 `;

@@ -118,14 +118,14 @@ export function renderStartupDemoReview(plan: StartupDemoPlan): string {
   const safe = (value: string) => value.replace(/\r(?!\n)/g, '\\r');
   return [ 'Optional Bowerloom demo — proposal only', `Project: ${safe(plan.handoff.project.name)}`, `Installed goal (context only): ${safe(plan.handoff.project.goal)}`,
     `Profile: ${plan.profile}`, `Installed revision: ${plan.binding.installedRevision}`, '',
-    'Try a synthetic craft-shop job board, or skip this step. Your real project goal does not replace the example’s frozen inputs.',
+    'Plan a fictional craft-shop job board, or skip this step. The example uses fixed test data. Your real project goal does not replace those inputs.',
     plan.handoff.lens.intent, plan.handoff.lens.reviewFocus, '',
     'A lead helps plan; a builder proposes the first HTML board; a refiner proposes a second version. Review the separate crew, its preparation, and each exact write before proceeding.',
     'This is a deterministic proposal, not model-authored work. The installed three-task team is not the runnable demo crew.',
     `Sequential work; at most 2 active workers; retain ${plan.handoff.requirements.reservePercent}% capacity; no paid fallback. Missing capacity stops admission.`,
     '', 'Neither setup nor this plan authorizes execution. Your personal agent needs a separate authoring scope and the actual registered tester. Controller preparation and execution need separate bindings and approvals.',
     'No measured comparison, improvement, or live acceptance is claimed.',
-    'Use --json for the portable personal-agent handoff, exact synthetic inputs, milestones and existing controller interfaces.',
+    'Use --json for the complete agent handoff, fixed test inputs, milestones, and controller interfaces. It includes your saved project name and goal. Keep that text private unless you choose to share it.',
     `Demo plan revision: ${plan.revision}`,
   ].join('\n');
 }

@@ -50,7 +50,7 @@ test('packaged frozen scenario and all input bytes match the cleared monorepo sc
  assert.equal(digest(DEMO_SOURCE_BYTES.scenario),DEMO_SCENARIO_DIGEST);
  const scenario=JSON.parse(DEMO_SOURCE_BYTES.scenario);for(const pin of [scenario.brief,...scenario.inputs]){assert.equal(digest(DEMO_SOURCE_BYTES[pin.asset]),pin.digest);assert.equal(Buffer.byteLength(DEMO_SOURCE_BYTES[pin.asset]),pin.bytes);}
 });
-for(const historical of ['v1alpha1','v1alpha2','v1beta1'])test(`historical ${historical} receipt stays byte-identical`,async t=>{
+for(const historical of ['v1alpha1','v1alpha2','v1beta1','v1beta2'])test(`historical ${historical} receipt stays byte-identical`,async t=>{
  const f=await fixture(t,'engineer',historical),before=snapshot(f.targetDir);assert.equal((await inspectStartup(f.targetDir)).specReady,true);
  const p=await planStartupDemo(f.demoInput);assert.equal(p.profile,f.receipt.plan.input.brief.profile??'engineer');assert.deepEqual(snapshot(f.targetDir),before);
 });
