@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Inside .bowerloom",
+    "subtitle": "Startup plan at d2e5847 \u00b7 no installation or execution in this example",
+    "output": "outputs/readme-kit/round-01/diagram/structure.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/sageadvicellc/bowerloom.git",
+      "revision": "d2e5847b3c78e728a441cf2c2777fd6652c26a2c",
+      "provider": "github",
+      "link_mode": "web"
+    },
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "Review documents"
+        },
+        "backend": {
+          "label": "Portable definitions"
+        },
+        "security": {
+          "label": "Private, conditional"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "startup-root",
+      "type": "backend",
+      "label": ".bowerloom/",
+      "sublabel": "20 portable files proposed",
+      "pos": [
+        35,
+        340
+      ],
+      "size": [
+        300,
+        92
+      ],
+      "sources": [
+        {
+          "path": "packages/startup/src/index.ts",
+          "line": 130,
+          "end_line": 142
+        }
+      ]
+    },
+    {
+      "id": "root-documents",
+      "type": "frontend",
+      "label": "Root review files",
+      "sublabel": "8 documents at directory root",
+      "pos": [
+        535,
+        25
+      ],
+      "size": [
+        300,
+        92
+      ],
+      "sources": [
+        {
+          "path": "packages/startup/src/scaffold.ts",
+          "line": 22,
+          "end_line": 48
+        }
+      ],
+      "tag": "REVIEW"
+    },
+    {
+      "id": "assistant",
+      "type": "backend",
+      "label": "skills/personal-assistant/",
+      "sublabel": "SKILL.md and profile.json",
+      "pos": [
+        535,
+        235
+      ],
+      "size": [
+        300,
+        92
+      ],
+      "sources": [
+        {
+          "path": "packages/startup/src/scaffold.ts",
+          "line": 23,
+          "end_line": 25
+        }
+      ],
+      "tag": "2 FILES"
+    },
+    {
+      "id": "first-team",
+      "type": "backend",
+      "label": "teams/first-team/",
+      "sublabel": "team.yaml and four subfolders",
+      "pos": [
+        535,
+        445
+      ],
+      "size": [
+        300,
+        92
+      ],
+      "sources": [
+        {
+          "path": "packages/startup/src/scaffold.ts",
+          "line": 49,
+          "end_line": 91
+        }
+      ],
+      "tag": "10 FILES"
+    },
+    {
+      "id": "private-receipt",
+      "type": "security",
+      "label": "installation-receipt.json",
+      "sublabel": "Private machine-specific record",
+      "pos": [
+        535,
+        655
+      ],
+      "size": [
+        300,
+        92
+      ],
+      "sources": [
+        {
+          "path": "packages/startup/src/index.ts",
+          "line": 130,
+          "end_line": 142
+        }
+      ],
+      "tag": "APPLY ONLY"
+    }
+  ],
+  "connections": [
+    {
+      "id": "root-review",
+      "from": "startup-root",
+      "to": "root-documents",
+      "label": "contains"
+    },
+    {
+      "id": "root-assistant",
+      "from": "startup-root",
+      "to": "assistant",
+      "label": "contains"
+    },
+    {
+      "id": "root-team",
+      "from": "startup-root",
+      "to": "first-team",
+      "label": "contains"
+    },
+    {
+      "id": "root-receipt",
+      "from": "startup-root",
+      "to": "private-receipt",
+      "label": "approved apply only",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "8 root documents",
+      "items": [
+        "START-HERE.md \u00b7 startup-review.md",
+        "brief.json \u00b7 manifest.json \u00b7 startup.json",
+        "milestones.md \u00b7 working-agreement.md",
+        "optional-controls.md"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Inside first-team/",
+      "items": [
+        "team.yaml: roles, tasks, permissions",
+        "assets/: brief, milestones, agreement",
+        "prompts/: lead, maker, reviewer",
+        "skills/: bounded-draft.md",
+        "maps/: relay.json and vines.json"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Sharing boundary",
+      "items": [
+        "Exclude installation-receipt.json.",
+        "Review brief and goal text before sharing.",
+        "Startup declares a team; it starts no workers."
+      ]
+    }
+  ]
+}

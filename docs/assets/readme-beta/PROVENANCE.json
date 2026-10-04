@@ -1,0 +1,177 @@
+{
+  "created": "2026-10-04",
+  "status": "Brand package for Content and engineering review",
+  "brand": "Rose Conservatory + After Hours; round-07 plain wordmark; round-05 mascot",
+  "approvedAnimation": {
+    "status": "founder_approved",
+    "founder": "Hanna",
+    "quote": "Approved!",
+    "observed_at": "2026-10-04T13:44:20.022036-04:00",
+    "candidate": "lab-robots-03",
+    "scope": "Creative approval of the reviewed lab animation with Hanna, S4-G3 assisting, and H4N-N4 building.",
+    "approved_delivery_sha256": "b7e80159d0d1a38bcf66c67ee82a5a3f1fcea34e24e166325e43d7db2215798b",
+    "preview_url": "https://trellis-preview-bk8qsd10i-hannas-projects-0ef1e44c.vercel.app/animation-review/",
+    "reviewed_deployed_revision": "e5ec094923da263a9cefdd191abf183fec012491",
+    "disclosed_visual_differences_accepted_for_this_clip": true,
+    "changes_to_canonical_character_sheets": false,
+    "new_generation_authorized": false,
+    "production_deployment_authorized_by_this_approval": false
+  },
+  "sourceRevision": "d2e5847b3c78e728a441cf2c2777fd6652c26a2c",
+  "archify": {
+    "upstream": "tt-a1i/archify",
+    "revision": "594f6087358610bd16e64e5602976020871b6bff",
+    "version": "3.0.1",
+    "canonical_sha256": "e4a28c5e7338f24509df81b02369377bc58ccd6815558c9a6c4e7c2ae5ac50eb",
+    "branded_sha256": "572e2275bedf669a4f790564bee4f1ccfef4ab6e6de8ff2c9c57348fa62f8f08",
+    "change": "Appended sources/archify-brand.css, styled the directory identifier in the HTML title, and preserved that mixed-font title in raster export. Topology, labels, source references, and other interactions are unchanged.",
+    "validation_boundary": "Archify finalize passes for canonical structure.html. The CSS-derived copy has separate browser and export evidence; it is not the byte-identical canonical artifact.",
+    "private_path_occurrences": 0
+  },
+  "newGenerationCredits": 0,
+  "notes": [
+    "World illustrations are approved frame extractions, not software execution evidence.",
+    "Canonical Archify finalize and branded browser evidence have separate scopes.",
+    "No raw startup plan or machine receipt is included in the public delivery."
+  ],
+  "sourceAssets": [
+    {
+      "path": "sources/Archify-LICENSE.txt",
+      "sha256": "b799ab081703e7821ae5096d2c1abdf14bbdc75e8ea1c4045998c36ed6db9706"
+    },
+    {
+      "path": "sources/Archify-THIRD-PARTY-NOTICES.md",
+      "sha256": "0b7fb59365dc21c93b0f62526d74ee913aeec9ae532c112bc76afa7edcd56e14"
+    },
+    {
+      "path": "sources/approvals-dark.svg",
+      "sha256": "5647328b1d9c1508cb5ae9842925d2465ac03b9d52fcc99bf4d180edee9209f0"
+    },
+    {
+      "path": "sources/approvals-light.svg",
+      "sha256": "1c424ff169aee3c8d5d0fe44f22f729090b194f01a38a74bed611844b9895743"
+    },
+    {
+      "path": "sources/archify-brand.css",
+      "sha256": "4192b589aa08ab17c6c45ec1e0b844a459961abe386aa8e99e16f55eee1f4f25"
+    },
+    {
+      "path": "sources/archify-export-title.txt",
+      "sha256": "2f6c100532d519a6367316d7abd0da61e7cf97658b7d222fd4b3f41b0fb37907"
+    },
+    {
+      "path": "sources/architecture-dark.svg",
+      "sha256": "1e18869426e3cce0f8e85f0a22f1203572b9d23ffcdbe3c71c4b8c32098b8cc5"
+    },
+    {
+      "path": "sources/architecture-light.svg",
+      "sha256": "5156aa071eaa4d85df46158944422195b0c0090230688976ec67068c81dcb33f"
+    },
+    {
+      "path": "sources/contributing-dark.svg",
+      "sha256": "90cf9d4ba713cab742e01fe7726a915fa4753b5f506d249f3804e1785aa423b8"
+    },
+    {
+      "path": "sources/contributing-light.svg",
+      "sha256": "47d7818d9400fb460504a680142ad0ca3a24790b8e00c0897b5183e2f9acf697"
+    },
+    {
+      "path": "sources/contributing-preview.jpg",
+      "sha256": "dd0d210520c64fefa41c93f5ed6d01abe96daa017fd2bad8b7f3139b7ef1effb"
+    },
+    {
+      "path": "sources/contributing.png",
+      "sha256": "2e19d2c9d8a263af1183d02ad14a58e5ee66751c8e1aeef5cda53d2be7ea14e5"
+    },
+    {
+      "path": "sources/getting-started-dark.svg",
+      "sha256": "e9fd086620e32ac8735285aeb67dc08b155caef903f2f004945618014557f1bf"
+    },
+    {
+      "path": "sources/getting-started-light.svg",
+      "sha256": "4865e6ae6b98e258895e58055d8a99ed249f4b7fc47cbd10ddb8b449b906e71d"
+    },
+    {
+      "path": "sources/hero-dark-narrow.svg",
+      "sha256": "e3e70a97feb60fe6e88898ac5a4b2492278cbb4cb9dcefa6bc9783a90d3db4f1"
+    },
+    {
+      "path": "sources/hero-dark.svg",
+      "sha256": "78862067a9cddd4b55d3bc961272501555b75cba758cd04eb1e5e95c5a9a2ca1"
+    },
+    {
+      "path": "sources/hero-light-narrow.svg",
+      "sha256": "d602c911283b90a180c0d7a25e8ba054dce12ecd0773f8d6febd7f128ad05264"
+    },
+    {
+      "path": "sources/hero-light.svg",
+      "sha256": "751ca70b3c690d684a22b4992009e5c7e0f50ef97c88b21b7fb32a2a280ede9b"
+    },
+    {
+      "path": "sources/hierarchy.json",
+      "sha256": "8966facf3f4446da0967f9d5566f0827b7132470d10c6951d5e9f1e3b8a75610"
+    },
+    {
+      "path": "sources/labs-workflow-dark.svg",
+      "sha256": "4b7112738c6645c67807d394f857cf5af3c8b9f0cb724e4f77be586414a8e8b8"
+    },
+    {
+      "path": "sources/labs-workflow-light.svg",
+      "sha256": "030dd9809d4c2dd28a8280604539ad80b2ab6574a7ca2c26c2bbe7938c1408de"
+    },
+    {
+      "path": "sources/mascot-dark.svg",
+      "sha256": "e3ade54d45cc0a0f72839299411c01af15092ba5e5c94b32b26758a874ebee6f"
+    },
+    {
+      "path": "sources/mascot-light.svg",
+      "sha256": "0285c6f2b60f97bb6c2dccb00ad95a570a8e261a32e5c2d3c7cd39f26c5e6d9f"
+    },
+    {
+      "path": "sources/palette.json",
+      "sha256": "5675fa00914ff98472745ae5ba96ef78463633e8a00e6999d688a433391ecfc6"
+    },
+    {
+      "path": "sources/portable-teams-dark.svg",
+      "sha256": "a94a3f7bc23e8818dcc4f67c7cdcccf3b7066a7e798b1a6a39cd0611d3f3a0d0"
+    },
+    {
+      "path": "sources/portable-teams-light.svg",
+      "sha256": "eb3e889c122066d7ca93ed7383088798ff1647deab160acc6897ee8d510f4acc"
+    },
+    {
+      "path": "sources/release-status-dark.svg",
+      "sha256": "501ff97723d28b9d32bdbea1dd5bb2467f56dd5a2574abeb53a6a68d9e309fe8"
+    },
+    {
+      "path": "sources/release-status-light.svg",
+      "sha256": "a8be77c5b48bfa57ce45f0df070e590bc75185c6de2823f642ce7123efb1ad80"
+    },
+    {
+      "path": "sources/startup.png",
+      "sha256": "25df52c506e788c6cc193b074dc3ec5e7fffa623762146b07453b68bd89577e2"
+    },
+    {
+      "path": "sources/wordmark-dark.svg",
+      "sha256": "fb81538f88a75f359df89c65c6ddabbb43d365641fa7c609e10be974ece59e76"
+    },
+    {
+      "path": "sources/wordmark-light.svg",
+      "sha256": "c31faca9b6d5efa64e901b678d7f7c5de241ebefb29abc41687dbba32c3830ea"
+    }
+  ],
+  "frameSources": [
+    {
+      "destination": "sources/startup.png",
+      "source": "lab-robots-03/evidence/first-frame.png",
+      "operation": "byte-identical copy; resized WEBP export",
+      "sha256": "25df52c506e788c6cc193b074dc3ec5e7fffa623762146b07453b68bd89577e2"
+    },
+    {
+      "destination": "sources/contributing.png",
+      "source": "lab-robots-03/evidence/geometry-frame.png",
+      "operation": "byte-identical copy; resized JPEG for hero and WEBP export",
+      "sha256": "2e19d2c9d8a263af1183d02ad14a58e5ee66751c8e1aeef5cda53d2be7ea14e5"
+    }
+  ]
+}

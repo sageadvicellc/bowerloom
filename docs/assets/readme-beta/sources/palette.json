@@ -1,0 +1,47 @@
+{
+  "status": "Founder selected: Rose Conservatory and After Hours, October 3, 2026",
+  "type_pair": "Newsreader + Manrope: founder selected",
+  "light": {
+    "ground": "#F6EEE8",
+    "surface": "#FFF9F4",
+    "ink": "#373A32",
+    "muted": "#655D61",
+    "rose": "#DFA4AB",
+    "foliage": "#B9C6A0",
+    "clay": "#B36D4B",
+    "water": "#668B95",
+    "line": "#D5C9C8",
+    "action": "#80515B"
+  },
+  "after_hours": {
+    "ground": "#27262B",
+    "surface": "#343238",
+    "ink": "#F6EEE8",
+    "muted": "#D0BEC6",
+    "rose": "#E8B3BF",
+    "foliage": "#C5D4AC",
+    "clay": "#E0A17D",
+    "water": "#A0C5CD",
+    "line": "#665B63",
+    "action": "#E8B3BF"
+  },
+  "contrast": {
+    "light": {
+      "ink_on_ground": 10.1,
+      "ink_on_surface": 11.09,
+      "muted_on_ground": 5.56,
+      "muted_on_surface": 6.11,
+      "action_on_ground": 5.64,
+      "action_on_surface": 6.2
+    },
+    "after_hours": {
+      "ink_on_ground": 13.1,
+      "ink_on_surface": 11.04,
+      "muted_on_ground": 8.48,
+      "muted_on_surface": 7.15,
+      "action_on_ground": 8.32,
+      "action_on_surface": 7.01
+    }
+  },
+  "decision_source": "Direct feedback in this conversation"
+}
