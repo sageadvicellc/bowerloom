@@ -32,9 +32,10 @@
 .tutorial-team span { flex: 1; min-width: 90px; }
 .tutorial-team small { display: block; font: 13px/1.6 var(--ui-font); color: var(--tutorial-accent); margin-top: 4px; }
 .tutorial-milestones { list-style: none; padding: 0; margin: 0; }
-.tutorial-milestones li { position: relative; padding: 0 0 22px 25px; border-left: 1px solid var(--tutorial-accent); margin-left: 5px; }
-.tutorial-milestones li::before { content: ''; position: absolute; top: 7px; left: -5px; width: 9px; height: 9px; background: var(--tutorial-accent); border-radius: 50%; }
-.tutorial-milestones li:last-child { border-color: transparent; padding-bottom: 0; }
+.tutorial-milestones li { position: relative; padding: 0 0 22px 25px; margin-left: 5px; }
+.tutorial-milestones li::before { content: ''; position: absolute; top: 7px; left: -5px; z-index: 1; width: 9px; height: 9px; background: var(--tutorial-accent); border-radius: 50%; }
+.tutorial-milestones li:not(:last-child)::after { content: ''; position: absolute; left: -1px; top: 11.5px; bottom: -11.5px; width: 1px; background: var(--tutorial-accent); }
+.tutorial-milestones li:last-child { padding-bottom: 0; }
 .tutorial-milestones strong { display: block; font-weight: 500; }
 .tutorial-milestones span, .tutorial-preview-cadence { display: block; color: var(--tutorial-accent); font: 14px/1.6 var(--ui-font); margin-top: 4px; }
 .tutorial-preview-cadence { border-top: 1px solid color-mix(in srgb, var(--tutorial-accent) 25%, transparent); padding-top: 20px; margin-top: 26px; }

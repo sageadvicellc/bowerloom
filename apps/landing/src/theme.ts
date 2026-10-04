@@ -4,6 +4,9 @@ export const THEME_STORAGE_KEY = 'bowerloom.theme';
 export function themePreference(value: unknown): ThemePreference {
   return value === 'light' || value === 'dark' ? value : 'system';
 }
+export function nextThemePreference(preference: ThemePreference): ThemePreference {
+  return preference === 'light' ? 'dark' : preference === 'dark' ? 'system' : 'light';
+}
 export function resolveTheme(preference: ThemePreference, systemDark: boolean): ResolvedTheme {
   return preference === 'system' ? systemDark ? 'dark' : 'light' : preference;
 }

@@ -1,28 +1,7 @@
 import { useState } from 'react';
 import { Propernoun } from './ProductText';
 import './labs.css';
-
-const roles = [
-  { id: 'knowledge-officer', name: 'Knowledge officer', file: 'knowledge-officer.yaml', job: 'Keeps the wiki and the source record readable.', skill: 'source-review', reads: 'sources', writes: 'wiki', modelClass: 'standard' },
-  { id: 'brand-review', name: 'Brand review', file: 'brand-review.yaml', job: 'Reviews language and visuals against the brand guidelines.', skill: 'brand-guidelines', reads: 'drafts', writes: 'reviews/brand', modelClass: 'economy' },
-  { id: 'tech-lead', name: 'Tech lead', file: 'tech-lead.yaml', job: 'Coordinates scoped work, peer review, and founder decisions.', skill: 'technical-review', reads: 'project', writes: 'plans', modelClass: 'standard' },
-  { id: 'project-team', name: '{Project} team', file: 'project-team.yaml', job: 'Scales the makers and reviewers within an agreed worker limit.', skill: 'project-delivery', reads: 'briefs', writes: 'output', modelClass: 'standard' },
-] as const;
-
-function roleYaml(role: typeof roles[number]) {
-  return `${role.id === 'project-team' ? 'id: workbench-alpha\nbudget:\n  maxActiveWorkers: 2\n  reservePercent: 25\n  paidFallback: false\n\n' : ''}owners:
-  - id: ${role.id}
-    role: "${role.name}"
-    prompt: ${role.id}-prompt
-    skills:
-      - ${role.skill}
-    modelClass: ${role.modelClass}
-    permissions:
-      - operation: workspace.read
-        path: ${role.reads}
-      - operation: workspace.write
-        path: ${role.writes}`;
-}
+import { labsRoles as roles, roleYaml } from './labs-roles';
 
 function YamlPreview({ source }: { source: string }) {
   return <pre className="labs-yaml" tabIndex={0} aria-label="YAML configuration excerpt"><code>{source.split('\n').map((line, index) => {
@@ -41,19 +20,19 @@ export default function LabsWorkflow() {
   return <section id="recipe" className="recipe-section labs-section" aria-labelledby="recipe-title">
     <div className="labs-intro">
       <h2 id="recipe-title">The Labs workflow</h2>
-      <p>Our first assignment was Bowerloom itself. A connected team worked on <code>v0.7-alpha</code> and the page you are reading, with knowledge, brand, and technical review around the project.</p>
+      <p>The first Sagespec team brought together a Knowledge officer, Brand review, and a Tech lead. Their work on Bowerloom connects source knowledge, brand direction, and technical delivery. Explore their responsibilities below.</p>
     </div>
     <div className="labs-graph" role="group" aria-label="Explore the Labs agent graph">
-      {roles.map((item, index) => <button type="button" key={item.id} aria-pressed={index === selected} aria-controls="labs-role" onClick={() => setSelected(index)}><span className="graph-node" aria-hidden="true" /><Propernoun>{item.name}</Propernoun><span className="graph-job">{['Knowledge & sources', 'Voice & claims', 'Scope & decisions', 'Makers & reviewers'][index]}</span></button>)}
+      {roles.map((item, index) => <button type="button" key={item.id} aria-pressed={index === selected} aria-controls="labs-role" onClick={() => setSelected(index)}><span className="graph-node" aria-hidden="true" /><Propernoun>{item.name}</Propernoun><span className="graph-job">{item.summary}</span></button>)}
     </div>
     <div className="labs-workspace">
       <div className="labs-files" aria-label="Illustrative Labs file structure">
-        <div className="finder-title"><FileIcon folder /><span>Bowerloom Labs</span><span className="finder-view" aria-hidden="true"><i /><i /><i /></span></div>
+        <div className="finder-title"><FileIcon folder /><span>Sagespec Labs</span><span className="finder-view" aria-hidden="true"><i /><i /><i /></span></div>
         <div className="finder-path">Labs / <code>v0.7-workbench</code></div>
         <ul className="file-list">
           <li><details open><summary><FileIcon folder /><span>teams</span></summary><ul>{roles.map((item, index) => <li key={item.id}><button className={selected === index ? 'file-row selected' : 'file-row'} type="button" onClick={() => setSelected(index)} aria-pressed={selected === index} aria-controls="labs-role"><FileIcon /><span>{item.file}</span></button></li>)}</ul></details></li>
         </ul>
-        <p className="finder-caption">Select a file to read its YAML. These excerpts use the alpha’s owner and budget fields. A full team also defines assets, tasks, and scope.</p>
+        <p className="finder-caption">Select a file to read its YAML. These illustrative excerpts use the alpha’s owner and permission fields. A full team also defines assets, tasks, and scope.</p>
       </div>
       <div className="labs-role" id="labs-role" aria-live="polite" aria-atomic="true">
         <span className="role-file"><FileIcon /><code>{role.file}</code></span>
@@ -64,15 +43,15 @@ export default function LabsWorkflow() {
       </div>
     </div>
     <div className="labs-loop">
-      <div><h3>The project becomes the next example.</h3><p>We called the first project team <code>v0.7-workbench</code>. Its assignment: build <code>v0.7-alpha</code> and this landing page. Review of the product informs the page; feedback on the page returns to the team.</p></div>
+      <div><h3>The project becomes the next example.</h3><p>The first Sagespec team used Bowerloom and its landing page as a shared project. The internal <code>v0.7-workbench</code> label marks that Labs experiment. Product review informs the page; feedback on the page returns to the team.</p></div>
       <ol aria-label="The Labs feedback loop">
-        <li><details><summary>Project team</summary><p>The Tech lead assigns a bounded change to the project team. Knowledge officer supplies context, and Brand review reviews the language and visuals.</p></details></li>
+        <li><details><summary>Shared brief</summary><p>Knowledge officer turns source material into usable context and specifications. Brand review sets the creative direction and delegates design. The Tech lead researches the request, defines scope, and assigns specialists.</p></details></li>
         <li><details><summary>Alpha + landing page</summary><p>The team develops the alpha and explains its capabilities here. Tests and peer review distinguish working behavior from proposed features.</p></details></li>
         <li><details><summary>Founder review</summary><p>The founder tries the result and returns feedback. Reviewed feature changes stay separate from the founder’s decision to merge into <code>main</code> or publish a release.</p></details></li>
         <li><details><summary>Next scoped change</summary><p>Feedback becomes a specific next task with an owner and acceptance criteria. The team records the result and brings it back for review.</p></details></li>
       </ol>
     </div>
-    <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. This is the development team’s workflow, not a claim that the alpha runtime independently executed the whole graph.</p>
+    <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. The diagram and YAML illustrate those responsibilities; they do not claim that the alpha runtime independently executed this Sagespec team.</p>
     <a className="hero-secondary" href="#build">Plan your own team</a>
   </section>;
 }

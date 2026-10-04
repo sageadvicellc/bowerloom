@@ -283,7 +283,7 @@ export default function App() {
           </p>
         </aside>
       )}
-      <footer className="site-footer">
+      <footer className="site-footer" data-theme="dark">
         <a className="brand" href="#" aria-label="Bowerloom home">
           <BrandIdentity />
         </a>

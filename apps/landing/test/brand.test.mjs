@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { applyTheme, resolveTheme, savedThemePreference, themePreference } from '../src/theme.ts';
+import { applyTheme, resolveTheme, savedThemePreference, themePreference, nextThemePreference } from '../src/theme.ts';
 const publicFile = path => readFileSync(new URL('../public/' + path, import.meta.url));
 
 test('theme resolution follows the system until an explicit preference overrides it', () => {
@@ -65,4 +65,20 @@ test('both palettes retain the exact approved color values', () => {
     { ground:'#27262B',surface:'#343238',ink:'#F6EEE8',muted:'#D0BEC6',rose:'#E8B3BF',foliage:'#C5D4AC',clay:'#E0A17D',water:'#A0C5CD',line:'#665B63',action:'#E8B3BF' },
   ];
   for (const palette of palettes) for (const [key,value] of Object.entries(palette)) assert.ok(css.includes(`--brand-${key}: ${value};`));
+});
+
+
+test('theme button cycles the selected day, night, and system preferences in order', () => {
+  for (const [start, expected] of [
+    ['light', ['dark', 'system', 'light']],
+    ['dark', ['system', 'light', 'dark']],
+    ['system', ['light', 'dark', 'system']],
+  ]) {
+    let preference = start;
+    for (const next of expected) { preference = nextThemePreference(preference); assert.equal(preference, next); }
+    assert.equal(preference, start);
+  }
+  // A dark OS must not turn the System preference into a Dark selection.
+  assert.equal(resolveTheme('system', true), 'dark');
+  assert.equal(nextThemePreference('system'), 'light');
 });

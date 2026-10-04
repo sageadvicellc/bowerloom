@@ -73,14 +73,16 @@
 [data-theme='dark'] .brand-mascot .brand-dark, [data-theme='dark'] .brand-wordmark .brand-dark { display: block; }
 :root .site-header .alpha-label { margin-left: 0; white-space: nowrap; color: var(--brand-ink); background: var(--brand-surface); border-color: var(--brand-line); font: 500 13px/1.5 var(--ui-font); }
 :root .desktop-navigation { gap: 22px; font: 500 14px/1.6 var(--ui-font); white-space: nowrap; color: var(--ui-muted); }
-.theme-control { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font: 500 14px/1.5 var(--ui-font); }
-.theme-control label { color: var(--ui-muted); }
-.theme-control select { min-height: 44px; width: 94px; padding: 8px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--trellis-control-border); border-radius: var(--ui-radius-sm); cursor: pointer; font-size: 14px; }
-.theme-control select:hover { border-color: var(--ui-primary); }
+/* The icon reflects the saved preference; system stays distinct from resolved color. */
+.theme-control.theme-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 10px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--trellis-control-border); border-radius: var(--ui-radius-sm); cursor: pointer; }
+.theme-toggle:hover { color: var(--ui-primary); border-color: var(--ui-primary); }
+.theme-icon { width: 22px; height: 22px; animation: theme-icon-enter 200ms cubic-bezier(.16, 1, .3, 1); }
+@keyframes theme-icon-enter { from { opacity: .65; transform: rotate(-18deg) scale(.85); } to { opacity: 1; transform: rotate(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .theme-icon { animation: none; } }
 :root .mobile-drawer-heading h2 { font-family: var(--trellis-reading-font); }
 :root .mobile-drawer nav { font-family: var(--ui-font); font-size: 20px; }
 :root .mobile-drawer, :root .mobile-drawer::backdrop { box-shadow: none; }
-:root .mobile-drawer::backdrop { background: color-mix(in srgb, var(--brand-ground) 50%, #000); }
+:root .mobile-drawer::backdrop { background: rgb(0 0 0 / 48%); }
 :root .tutorial-builder {
   --tutorial-bg: var(--brand-surface);
   --tutorial-accent: var(--brand-action);
@@ -103,7 +105,15 @@
 :root .tutorial-builder .alpha-guide pre code { font: inherit; }
 :root .yaml-key { color: var(--brand-action); }
 :root .yaml-value { color: var(--brand-muted); }
-:root .site-footer { border-color: var(--ui-border); }
+:root .site-footer {
+  color-scheme: dark;
+  --brand-ground: #27262B; --brand-surface: #343238; --brand-ink: #F6EEE8;
+  --brand-muted: #D0BEC6; --brand-line: #665B63; --brand-action: #E8B3BF; --brand-action-ink: #27262B;
+  --ui-bg: var(--brand-ground); --ui-surface: var(--brand-surface); --ui-text: var(--brand-ink);
+  --ui-muted: var(--brand-muted); --ui-border: var(--brand-line); --ui-primary: var(--brand-action); --ui-primary-fg: var(--brand-action-ink);
+  --trellis-link: var(--brand-action);
+  background: var(--brand-ground); color: var(--brand-ink); border-color: var(--brand-line);
+}
 :root .site-footer :is(p, .footer-note), :root .site-footer > div { font: 14px/1.65 var(--ui-font); color: var(--ui-muted); }
 :root .site-footer .brand-wordmark { width: 204px; }
 :root .render-diagnostics { background: var(--ui-surface); color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
@@ -118,7 +128,6 @@
   :root .site-header .brand-mascot { display: none; }
   :root .site-header .brand-wordmark { width: 184px; }
   :root .desktop-navigation { gap: 16px; }
-  :root .site-header .theme-control label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 @media (max-width: 1100px) {
   :root .site-header .theme-control { margin-left: auto; }
@@ -129,11 +138,8 @@
   :root .site-header { padding-inline: 16px; gap: 10px; }
   :root .site-header .brand-mascot { display: none; }
   :root .site-header .brand-wordmark { width: 158px; }
-  :root .theme-control label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .theme-control select { width: 88px; }
 }
 @media (max-width: 360px) {
   :root .site-header { padding-inline: 12px; gap: 8px; }
   :root .site-header .brand-wordmark { width: 138px; }
-  .theme-control select { width: 84px; }
 }

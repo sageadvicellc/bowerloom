@@ -2,9 +2,9 @@
 .labs-intro { max-width: 74ch; }
 .labs-intro h2 { margin: 0 0 20px; }
 .labs-intro p, .labs-role p, .labs-loop p { font-size: 18px; line-height: 1.7; color: var(--ui-muted); }
-.labs-graph { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 36px 0 28px; }
+.labs-graph { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 36px 0 28px; }
 .labs-graph button { position: relative; min-width: 0; padding: 18px 12px 18px 0; border: 0; text-align: left; background: transparent; }
-.labs-graph button::before { content: ''; position: absolute; top: 23px; left: 13px; right: 0; height: 1px; background: var(--ui-border); }
+.labs-graph button::before { content: ''; position: absolute; top: 23.5px; left: 12px; right: 0; height: 1px; background: var(--ui-border); }
 .labs-graph button:last-child::before { display: none; }
 .graph-node { display: block; position: relative; width: 12px; height: 12px; border: 2px solid var(--ui-primary); background: var(--ui-bg); border-radius: 50%; margin-bottom: 14px; }
 .labs-graph [aria-pressed="true"] .graph-node { background: var(--ui-primary); }
@@ -64,8 +64,10 @@
 @media (max-width: 760px) {
   .labs-workspace, .labs-loop { grid-template-columns: 1fr; }
   .labs-role { border-top: 1px solid var(--ui-border); }
-  .labs-graph { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin-top: 20px; }
-  .labs-graph button:nth-child(2)::before { display: none; }
+  .labs-graph { grid-template-columns: 1fr; gap: 0; margin-top: 20px; }
+  .labs-graph button { padding: 18px 0 18px 30px; }
+  .labs-graph .graph-node { position: absolute; top: 22px; left: 0; margin: 0; }
+  .labs-graph button::before { top: 28px; bottom: -28px; left: 5.5px; right: auto; width: 1px; height: auto; }
   .labs-graph .propernoun { font-size: 18px; }
   .graph-job { font-size: 14px; }
   .labs-loop { gap: 24px; margin-top: 28px; }

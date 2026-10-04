@@ -1,6 +1,6 @@
 .mobile-menu-toggle { display: none; }
 .mobile-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; padding: 0; width: min(420px, calc(100% - 24px)); max-width: none; height: 100dvh; max-height: 100dvh; border: 0; color: var(--ui-text); background: var(--ui-bg); box-shadow: -12px 0 40px #30382c26; overflow-y: auto; overscroll-behavior: contain; }
-.mobile-drawer::backdrop { background: #30382c70; }
+.mobile-drawer::backdrop { background: rgb(0 0 0 / 48%); }
 .mobile-drawer-content { min-height: 100%; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) 24px; }
 .mobile-drawer-heading { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 32px; }
 .mobile-drawer-heading h2 { margin: 0; font: 500 24px/1.3 var(--trellis-reading-font, Georgia, serif); }
