@@ -11,7 +11,7 @@ import {PassThrough} from 'node:stream';
 import {createHash} from 'node:crypto';
 import {canonicalJson} from '../../../dist/packages/contracts/src/index.js';
 import {createDiscoveryProposal,createDiscoveryAuthorityState,mcpBindingRevision,planMcpContainerDiscoveryLaunch,McpConnectionError} from '../../../dist/packages/mcp-connections/src/index.js';
-import {collectMcpContainerRecovery} from '../../../dist/packages/mcp-connections/src/container-recovery-collector.js';
+import {collectMcpContainerRecovery,collectAndPersistMcpContainerRecovery} from '../../../dist/packages/mcp-connections/src/container-recovery-collector.js';
 const hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex');
 const refused=e=>e instanceof McpConnectionError&&e.code==='MCP_RECOVERY_COLLECTOR_UNCERTAIN'&&e.message===e.code;
 function fixture(){
@@ -112,4 +112,18 @@ test('active durable authority and external observation overrides are rejected',
 test('unresponsive trusted store has a bounded collection deadline and cannot resume host reads later',{timeout:18000},async t=>{
  const f=await setup(t);let release;f.hooks.beforeTransaction=()=>new Promise(resolve=>{release=resolve;});
  await assert.rejects(f.collect(),refused);assert.equal(f.calls.length,0);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.length,0);
+});
+
+import {createMcpContainerRecoveryReceipt} from '../../../dist/packages/mcp-connections/src/container-recovery-receipt.js';
+test('collector-owned persistence takes only fresh observations and retains uncertainty',async t=>{
+ const f=await setup(t);let writes=0;f.store.recordRecoveryReceipt=async(expected,collection,check)=>{check();writes++;assert.equal(canonicalJson(expected),canonicalJson(f.state));return createMcpContainerRecoveryReceipt(expected,collection);};
+ const r=await collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);assert.equal(writes,1);assert.equal(r.persistence,'commit-acknowledged');assert.equal(r.receipt.collection.revision,r.collection.revision);assert.equal(r.receipt.hostSession,'unknown');assert.equal(r.receipt.executionAuthorized,false);
+ await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true,report:r.collection},f.state.scope),refused);assert.equal(writes,1);
+});
+test('collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty',async t=>{
+ for(const mode of ['error','corrupt','journal-change'])await t.test(mode,async t=>{const f=await setup(t);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{check();if(mode==='error')throw Error('PRIVATE_ACK');const r=createMcpContainerRecoveryReceipt(expected,collection);if(mode==='corrupt')r.hostSession='trusted';if(mode==='journal-change')writeFileSync(f.path,canonicalJson({...f.j,reason:'CHANGED'}));return r;};await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope),refused);assert.equal(f.state.status,'NEEDS_RECONCILIATION');});
+});
+test('collector timeout cannot turn a late persistence completion into success', {timeout:18000},async t=>{
+ const f=await setup(t);let release,entered;const started=new Promise(resolve=>entered=resolve);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{entered();await new Promise(resolve=>release=resolve);check();return createMcpContainerRecoveryReceipt(expected,collection);};
+ const pending=collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);await started;await assert.rejects(pending,refused);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.status,'NEEDS_RECONCILIATION');
 });

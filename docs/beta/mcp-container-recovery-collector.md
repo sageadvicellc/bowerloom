@@ -34,3 +34,7 @@ The before/after filesystem checks detect ordinary changes but do not provide an
 ## Validation scope
 
 Tests use actual private files for normal, missing, symlink, hardlink, unsafe-mode, oversized and changed snapshots. They test file/ancestor replacement, changed durable authority, failed database acknowledgements, and bounded/invalid Docker results. One test runs real read-only `ps` against the test process. Docker behavior is substituted only by private Node test instrumentation; the production API exposes no observation override. Root separately owns real PostgreSQL/read-only Docker proof. No live container cleanup, restart recovery or completed beta is established by these tests.
+
+## Optional durable observation receipt
+
+The separate internal `collectAndPersistMcpContainerRecovery` path records fresh collection evidence with an atomic full-authority comparison, then rechecks the journal. See [durable recovery observation receipts](mcp-container-recovery-receipt.md) for explicit schema initialization, idempotent evidence writes and uncertain commit handling. The original collection-only API remains unchanged. Neither path clears reconciliation or proves journal provenance.

@@ -12,6 +12,8 @@ import type { DiscoveryAuthorityState, DiscoveryAuthorityStore } from './authori
 import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
 import { planMcpContainerRecovery } from './container-recovery.js';
 import type { McpContainerRecoveryReport } from './container-recovery.js';
+import type { RecoveryReceiptStore, McpContainerRecoveryReceipt } from './container-recovery-receipt.js';
+import { createMcpContainerRecoveryReceipt, validateMcpContainerRecoveryReceipt } from './container-recovery-receipt.js';
 import { data, fail, sha256 } from './model.js';
 
 export interface McpContainerRecoveryCollectorDependencies { store: DiscoveryAuthorityStore; stateRoot: string; trustedDockerDesktop: true }
@@ -126,6 +128,14 @@ async function command(executable: '/bin/ps' | '/usr/local/bin/docker', args: st
 }
 /** Trusted-host read-only collector. There is deliberately no observation/clock/executable override argument. */
 export async function collectMcpContainerRecovery(dependencies: McpContainerRecoveryCollectorDependencies, selected: Scope): Promise<McpContainerRecoveryCollection> {
+  return collect(dependencies, selected, false) as Promise<McpContainerRecoveryCollection>;
+}
+export interface PersistedMcpContainerRecoveryCollection { collection: McpContainerRecoveryCollection; receipt: McpContainerRecoveryReceipt; persistence: 'commit-acknowledged' }
+/** Fresh collector-owned entry point. No report, digest or observation argument is accepted. */
+export async function collectAndPersistMcpContainerRecovery(dependencies: McpContainerRecoveryCollectorDependencies & { store: RecoveryReceiptStore }, selected: Scope): Promise<PersistedMcpContainerRecoveryCollection> {
+  return collect(dependencies, selected, true) as Promise<PersistedMcpContainerRecoveryCollection>;
+}
+async function collect(dependencies: McpContainerRecoveryCollectorDependencies, selected: Scope, persist: boolean): Promise<McpContainerRecoveryCollection | PersistedMcpContainerRecoveryCollection> {
   let active = true, timer: ReturnType<typeof setTimeout> | undefined;
   const check = () => requireValue(active, 'TIMEOUT');
   try {
@@ -135,9 +145,10 @@ export async function collectMcpContainerRecovery(dependencies: McpContainerReco
     requireValue(process.platform === 'darwin' && process.permission === undefined && process.getuid && trustedDockerDesktop === true
       && typeof stateRoot === 'string' && stateRoot.startsWith('/') && resolve(stateRoot) === stateRoot && !/[\p{Cc}\p{Cf}]/u.test(stateRoot), 'TRUST');
     requireValue(store && typeof store.transaction === 'function');
+    if (persist) requireValue(typeof (store as RecoveryReceiptStore).recordRecoveryReceipt === 'function');
     const scope = exact(data(selected), ['workspaceId', 'runId', 'taskId']);
     requireValue(Object.values(scope).every(v => typeof v === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9@._:-]{0,127}$/.test(v)));
-    const run = async (): Promise<McpContainerRecoveryCollection> => {
+    const run = async (): Promise<McpContainerRecoveryCollection | PersistedMcpContainerRecoveryCollection> => {
       const authority = await store.transaction(scope as unknown as Scope, raw => {
         check(); const state = validateDiscoveryAuthorityState(raw, scope as unknown as Scope);
         requireValue(state.status === 'NEEDS_RECONCILIATION' && state.intent && state.proposal.effect.kind === 'container-stdio', 'AUTHORITY'); return state;
@@ -180,7 +191,15 @@ export async function collectMcpContainerRecovery(dependencies: McpContainerReco
         journal: { status: first.text === null ? 'missing' as const : 'stable-private-file' as const, sha256: first.sha256, bytes: first.bytes },
         observations: { guardian, attach, container }, planner, authorityUnchangedAtFinalCheck: true as const, journalUnchangedAtFinalCheck: true as const,
         localUserTrustRequired: true as const, cleanupAuthorized: false as const, retryAuthorized: false as const, executionAuthorized: false as const, hostRestartSafetyVerified: false as const };
-      return { ...result, revision: 'sha256:' + sha256(canonicalJson(result)) };
+      const collection = { ...result, revision: 'sha256:' + sha256(canonicalJson(result)) };
+      if (!persist) return collection;
+      const expectedReceipt = createMcpContainerRecoveryReceipt(authority, collection);
+      check();
+      const receipt = validateMcpContainerRecoveryReceipt(await (store as RecoveryReceiptStore).recordRecoveryReceipt(authority, collection, check), authority.scope); check();
+      requireValue(same(receipt, expectedReceipt), 'RECEIPT_CHANGED');
+      requireValue(same(first, await snapshot(stateRoot, authority.operationKey)), 'JOURNAL_CHANGED'); check();
+      return { collection, receipt, persistence: 'commit-acknowledged' };
+
     };
     return await Promise.race([run(), new Promise<never>((_, reject) => { timer = setTimeout(() => { active = false; reject(Error('TIMEOUT')); }, 15000); })]);
   } catch { return fail('MCP_RECOVERY_COLLECTOR_UNCERTAIN'); } finally { active = false; clearTimeout(timer); }

@@ -5,6 +5,9 @@ import { canonicalJson, digest } from '../../contracts/src/index.js';
 import { data, McpConnectionError, fail } from './model.js';
 import { validateDiscoveryAuthorityState, validateDiscoveryAuthorityTransition } from './authority.js';
 import type { DiscoveryAuthorityState, DiscoveryAuthorityStore } from './authority.js';
+import { createMcpContainerRecoveryReceipt, validateMcpContainerRecoveryReceipt } from './container-recovery-receipt.js';
+import type { McpContainerRecoveryReceipt } from './container-recovery-receipt.js';
+import type { McpContainerRecoveryCollection } from './container-recovery-collector.js';
 
 const VERSION = 1;
 const SAFE_TRANSACTION_CODES = new Set(['MCP_AUTHORITY_SCHEMA_VERSION', 'MCP_AUTHORITY_SCOPE_EXISTS',
@@ -28,7 +31,7 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
     this.#pool = pool;
     this.#schema = schema(options.schema);
   }
-  async #transaction<T>(body: (client: PoolClient) => Promise<T>): Promise<T> {
+  async #transaction<T>(body: (client: PoolClient) => Promise<T>, checkActive: () => void = () => {}): Promise<T> {
     let client: PoolClient;
     try { client = await this.#pool.connect(); } catch { fail('MCP_AUTHORITY_STORE_UNAVAILABLE'); }
     let attempted = false, discard = false;
@@ -39,8 +42,10 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
       await client.query("SET LOCAL idle_in_transaction_session_timeout='10s'");
       await client.query("SET LOCAL synchronous_commit='on'");
       const result = await body(client);
+      checkActive();
       attempted = true;
       await client.query('COMMIT');
+      checkActive();
       return result;
     } catch (error) {
       if (attempted) { discard = true; fail('MCP_AUTHORITY_COMMIT_UNKNOWN'); }
@@ -107,4 +112,61 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
       return result as T;
     });
   }
+  /** Explicit optional schema initialization. Existing authority v1 tables and reads are unchanged. */
+  async initializeRecoveryReceipts(): Promise<void> {
+    await this.#transaction(async client => {
+      await this.#version(client);
+      await client.query(`CREATE TABLE ${this.#schema}.recovery_metadata(singleton boolean PRIMARY KEY CHECK(singleton),version integer NOT NULL)`);
+      await client.query(`INSERT INTO ${this.#schema}.recovery_metadata VALUES(true,1)`);
+      await client.query(`CREATE TABLE ${this.#schema}.recovery_receipts(
+        workspace_id text NOT NULL,run_id text NOT NULL,task_id text NOT NULL,
+        revision text NOT NULL,version integer NOT NULL,receipt jsonb NOT NULL,checksum text NOT NULL,
+        PRIMARY KEY(workspace_id,run_id,task_id,revision),
+        FOREIGN KEY(workspace_id,run_id,task_id) REFERENCES ${this.#schema}.discoveries(workspace_id,run_id,task_id))`);
+    });
+  }
+  async #recoveryVersion(client: PoolClient): Promise<void> {
+    const rows = (await client.query(`SELECT singleton,version FROM ${this.#schema}.recovery_metadata FOR SHARE`)).rows;
+    if (rows.length !== 1 || rows[0].singleton !== true || rows[0].version !== 1) fail('MCP_RECOVERY_RECEIPT_SCHEMA_VERSION');
+  }
+  #receiptRow(row: Record<string, unknown>, selected: Scope, revision: string): McpContainerRecoveryReceipt {
+    if (row.version !== 1 || digest(canonicalJson(data(row.receipt))) !== row.checksum) fail('MCP_RECOVERY_RECEIPT_CORRUPT');
+    const receipt = validateMcpContainerRecoveryReceipt(row.receipt, selected);
+    if (receipt.revision !== revision) fail('MCP_RECOVERY_RECEIPT_CORRUPT');
+    return receipt;
+  }
+  /** Trusted host-only persistence. Never clears uncertainty or verifies a supplied report's origin. */
+  async recordRecoveryReceipt(expected: DiscoveryAuthorityState, collection: McpContainerRecoveryCollection, checkActive: () => void): Promise<McpContainerRecoveryReceipt> {
+    if (typeof checkActive !== 'function') fail('MCP_RECOVERY_RECEIPT_INVALID');
+    checkActive();
+    const captured = validateDiscoveryAuthorityState(expected), s = scope(captured.scope);
+    const original = canonicalJson(captured), receipt = createMcpContainerRecoveryReceipt(captured, collection), json = canonicalJson(receipt);
+    return this.#transaction(async client => {
+      checkActive();
+      const current = await this.#read(client, s, 'UPDATE'); checkActive();
+      if (canonicalJson(current) !== original) fail('MCP_RECOVERY_RECEIPT_AUTHORITY_CHANGED');
+      await this.#recoveryVersion(client); checkActive();
+      await client.query(`INSERT INTO ${this.#schema}.recovery_receipts VALUES($1,$2,$3,$4,1,$5::jsonb,$6)
+        ON CONFLICT(workspace_id,run_id,task_id,revision) DO NOTHING`,
+      [s.workspaceId, s.runId, s.taskId, receipt.revision, json, digest(json)]); checkActive();
+      const rows = (await client.query(`SELECT version,receipt,checksum FROM ${this.#schema}.recovery_receipts
+        WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 AND revision=$4 FOR SHARE`,
+      [s.workspaceId, s.runId, s.taskId, receipt.revision])).rows; checkActive();
+      if (rows.length !== 1 || canonicalJson(this.#receiptRow(rows[0], s, receipt.revision)) !== json) fail('MCP_RECOVERY_RECEIPT_CORRUPT');
+      return receipt;
+    }, checkActive);
+  }
+  /** Historical observation only. This read neither refreshes evidence nor authorizes any effect. */
+  async readRecoveryReceipt(value: Scope, revision: string): Promise<McpContainerRecoveryReceipt> {
+    const s = scope(value);
+    if (typeof revision !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(revision)) fail('MCP_RECOVERY_RECEIPT_INVALID');
+    return this.#transaction(async client => {
+      await this.#version(client); await this.#recoveryVersion(client);
+      const rows = (await client.query(`SELECT version,receipt,checksum FROM ${this.#schema}.recovery_receipts
+        WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 AND revision=$4 FOR SHARE`, [s.workspaceId, s.runId, s.taskId, revision])).rows;
+      if (rows.length !== 1) fail('MCP_RECOVERY_RECEIPT_MISSING');
+      return this.#receiptRow(rows[0], s, revision);
+    });
+  }
+
 }
