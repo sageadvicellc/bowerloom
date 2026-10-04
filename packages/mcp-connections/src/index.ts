@@ -13,3 +13,5 @@ export { createMcpHttpDiscoveryFactory } from './http.js';
 export type { McpHttpOptions, McpHttpCredential, McpHttpCredentialRequest } from './http.js';
 export { createMcpStdioDiscoveryFactory } from './stdio.js';
 export type { McpStdioOptions, McpStdioSecretReference } from './stdio.js';
+export { planMcpContainerLaunch } from './container-policy.js';
+export type { McpContainerSpec, McpContainerPlanInput, McpContainerPlan } from './container-policy.js';
