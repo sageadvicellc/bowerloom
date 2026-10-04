@@ -11,6 +11,8 @@ import { destinations, hero, questions, repository } from "./content";
 import ProductText from "./ProductText";
 import LabsWorkflow from "./LabsWorkflow";
 import SiteNavigation from "./SiteNavigation";
+import BrandIdentity from "./BrandIdentity";
+import ThemeControl from "./ThemeControl";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
@@ -18,14 +20,6 @@ import CinematicWorld from "./CinematicWorld";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
-
-function Mark() {
-  return (
-    <svg viewBox="0 0 36 36" aria-hidden="true">
-      <path d="M8 29V7m10 22V7m10 22V7M5 12h26M5 24h26m-23 0 10-12 10 12" />
-    </svg>
-  );
-}
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return <a href={href} target="_blank" rel="noopener noreferrer">{children} <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span></a>;
@@ -131,12 +125,10 @@ export default function App() {
       </a>
       <header className="site-header">
         <a className="brand" href="#" aria-label="Bowerloom home">
-          <Mark />
-          <span>
-            bowerloom<span className="brand-period">.</span>
-          </span>
+          <BrandIdentity />
         </a>
         <SiteNavigation />
+        <ThemeControl />
         <span className="alpha-label">
           <span /> v0.7 alpha
         </span>
@@ -293,8 +285,7 @@ export default function App() {
       )}
       <footer className="site-footer">
         <a className="brand" href="#" aria-label="Bowerloom home">
-          <Mark />
-          <span>bowerloom.</span>
+          <BrandIdentity />
         </a>
         <p>An open-source framework for agent teams.</p>
         <div>

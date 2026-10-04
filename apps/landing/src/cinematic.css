@@ -1,32 +1,4 @@
-/* Founder-selected Sage Picnic. Projection typography and geometry stay intact. */
-@font-face {
-  font-family: Lora;
-  src: url("/fonts/lora/font.ttf") format("truetype");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
-:root.cinematic-theme {
-  color-scheme: light;
-  --ui-bg: #FFF8ED;
-  --ui-surface: #F4F0E3;
-  --ui-text: #34352F;
-  --ui-muted: #68685F;
-  --ui-primary: #667955;
-  --ui-primary-fg: #FFFFFF;
-  --ui-border: #898879;
-  --ui-danger: #A53D4F;
-  --trellis-link: #536344;
-  --trellis-primary-hover: #536344;
-  --trellis-control-border: #898879;
-  --trellis-soft-accent-1: #CCD9BE;
-  --trellis-soft-accent-2: #E9BCBF;
-  --trellis-mono-label-size: 13px;
-  --trellis-mono-control-size: 14px;
-  --trellis-mono-prompt-size: 14px;
-  --warm: var(--ui-primary);
-  --trellis-reading-font: Lora, Georgia, serif;
-}
+/* Presentation structure retained; current identity tokens are in brand.css. */
 .cinematic-theme body {
   font-family: var(--trellis-reading-font);
   font-size: 18px;

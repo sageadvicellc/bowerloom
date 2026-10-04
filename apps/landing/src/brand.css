@@ -1,0 +1,139 @@
+/* Approved Rose Conservatory / After Hours identity, October 3, 2026.
+   Projection UI keeps its spacing, borders, controls and focus behavior. */
+@font-face { font-family: Newsreader; src: url('/fonts/newsreader/roman.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: Newsreader; src: url('/fonts/newsreader/italic.ttf') format('truetype'); font-weight: 200 800; font-style: italic; font-display: swap; }
+@font-face { font-family: Manrope; src: url('/fonts/manrope/font.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+:root, :root.cinematic-theme {
+  color-scheme: light;
+  --brand-ground: #F6EEE8;
+  --brand-surface: #FFF9F4;
+  --brand-ink: #373A32;
+  --brand-muted: #655D61;
+  --brand-rose: #DFA4AB;
+  --brand-foliage: #B9C6A0;
+  --brand-clay: #B36D4B;
+  --brand-water: #668B95;
+  --brand-line: #D5C9C8;
+  --brand-action: #80515B;
+  --brand-action-ink: #FFF9F4;
+  --ui-bg: var(--brand-ground);
+  --ui-surface: var(--brand-surface);
+  --ui-text: var(--brand-ink);
+  --ui-muted: var(--brand-muted);
+  --ui-border: var(--brand-line);
+  --ui-primary: var(--brand-action);
+  --ui-primary-fg: var(--brand-action-ink);
+  --ui-danger: var(--brand-action);
+  --ui-font: Manrope, 'Segoe UI', sans-serif;
+  --ui-code-font: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --trellis-reading-font: Newsreader, Georgia, serif;
+  --trellis-link: var(--brand-action);
+  --trellis-primary-hover: var(--brand-ink);
+  --trellis-control-border: var(--brand-muted);
+  --trellis-soft-accent-1: var(--brand-foliage);
+  --trellis-soft-accent-2: var(--brand-rose);
+  --trellis-mono-label-size: 14px;
+  --trellis-mono-control-size: 15px;
+  --trellis-mono-prompt-size: 16px;
+  --warm: var(--brand-action);
+  font-family: var(--ui-font);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+:root[data-theme='dark'], :root.cinematic-theme[data-theme='dark'] {
+  color-scheme: dark;
+  --brand-ground: #27262B;
+  --brand-surface: #343238;
+  --brand-ink: #F6EEE8;
+  --brand-muted: #D0BEC6;
+  --brand-rose: #E8B3BF;
+  --brand-foliage: #C5D4AC;
+  --brand-clay: #E0A17D;
+  --brand-water: #A0C5CD;
+  --brand-line: #665B63;
+  --brand-action: #E8B3BF;
+  --brand-action-ink: #27262B;
+}
+:root body { font-family: var(--ui-font); font-size: 17px; line-height: 1.65; }
+:root :is(h1, h2, h3, .propernoun) { font-family: var(--trellis-reading-font); font-optical-sizing: auto; }
+:root :is(h1, h2, h3) { text-wrap: balance; letter-spacing: -.035em; }
+:root :is(button, select, input, textarea) { font-family: var(--ui-font); }
+:root :is(code, pre, kbd, samp), :root .labs-role .labs-yaml { font-family: var(--ui-code-font); font-size: max(14px, .9em); line-height: 1.7; }
+:root pre code { font: inherit; }
+:root :is(pre, code, kbd, samp) { font-variant-numeric: tabular-nums; }
+:root :is(input, textarea) { caret-color: var(--brand-action); }
+:root :is(textarea, input)::placeholder { color: var(--brand-muted); opacity: 1; }
+:root .site-header { gap: 20px; border-color: var(--ui-border); }
+:root .brand { gap: 10px; flex: 0 0 auto; min-height: 44px; }
+.brand-mascot { display: block; width: 44px; height: 44px; flex: 0 0 44px; }
+.brand-wordmark { display: block; width: 216px; aspect-ratio: 2044 / 374; }
+.brand-mascot img, .brand-wordmark img { display: block; width: 100%; height: auto; }
+.brand-mascot .brand-dark, .brand-wordmark .brand-dark { display: none; }
+[data-theme='dark'] .brand-mascot .brand-light, [data-theme='dark'] .brand-wordmark .brand-light { display: none; }
+[data-theme='dark'] .brand-mascot .brand-dark, [data-theme='dark'] .brand-wordmark .brand-dark { display: block; }
+:root .site-header .alpha-label { margin-left: 0; white-space: nowrap; color: var(--brand-ink); background: var(--brand-surface); border-color: var(--brand-line); font: 500 13px/1.5 var(--ui-font); }
+:root .desktop-navigation { gap: 22px; font: 500 14px/1.6 var(--ui-font); white-space: nowrap; color: var(--ui-muted); }
+.theme-control { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; font: 500 14px/1.5 var(--ui-font); }
+.theme-control label { color: var(--ui-muted); }
+.theme-control select { min-height: 44px; width: 94px; padding: 8px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--trellis-control-border); border-radius: var(--ui-radius-sm); cursor: pointer; font-size: 14px; }
+.theme-control select:hover { border-color: var(--ui-primary); }
+:root .mobile-drawer-heading h2 { font-family: var(--trellis-reading-font); }
+:root .mobile-drawer nav { font-family: var(--ui-font); font-size: 20px; }
+:root .mobile-drawer, :root .mobile-drawer::backdrop { box-shadow: none; }
+:root .mobile-drawer::backdrop { background: color-mix(in srgb, var(--brand-ground) 50%, #000); }
+:root .tutorial-builder {
+  --tutorial-bg: var(--brand-surface);
+  --tutorial-accent: var(--brand-action);
+  --tutorial-soft: var(--brand-rose);
+  --tutorial-ink: var(--brand-ink);
+  --tutorial-surface: var(--brand-ground);
+  font: 17px/1.65 var(--ui-font);
+  color-scheme: inherit;
+  border: 1px solid var(--brand-line);
+}
+:root .tutorial-choice-group legend, :root .tutorial-goal-label { font-family: var(--trellis-reading-font); font-size: 24px; }
+:root .tutorial-builder textarea { font: 16px/1.65 var(--ui-font); }
+:root .tutorial-option strong, :root .tutorial-milestones strong { font-weight: 650; }
+:root .tutorial-builder .tutorial-primary { background: var(--brand-action); color: var(--brand-action-ink); font-size: 15px; }
+:root .tutorial-builder .tutorial-primary:hover { background: var(--brand-ink); color: var(--brand-ground); }
+:root .button.primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--brand-ground); }
+:root .tutorial-builder ::selection { background: var(--brand-action); color: var(--brand-action-ink); }
+:root .tutorial-builder .alpha-guide pre { color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
+:root .tutorial-builder .alpha-guide code { font-family: var(--ui-code-font); font-size: max(14px, .9em); }
+:root .tutorial-builder .alpha-guide pre code { font: inherit; }
+:root .yaml-key { color: var(--brand-action); }
+:root .yaml-value { color: var(--brand-muted); }
+:root .site-footer { border-color: var(--ui-border); }
+:root .site-footer :is(p, .footer-note), :root .site-footer > div { font: 14px/1.65 var(--ui-font); color: var(--ui-muted); }
+:root .site-footer .brand-wordmark { width: 204px; }
+:root .render-diagnostics { background: var(--ui-surface); color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
+:root .hero-description, :root .hero-note, :root .hero-footer, :root .scene-caption, :root .scene-bottom { color: var(--ui-muted); }
+:root .hero-copy h1, :root .section-heading h2 { color: var(--ui-text); }
+:root .scene-caption, :root .scene-bottom, :root .hero-footer, :root .hero-note { font-family: var(--ui-font); font-size: 14px; }
+:root .alpha-label > span, :root .status-dot { box-shadow: none; }
+:root .offer-controls button { color: var(--ui-primary); }
+:root .offer-controls button[aria-pressed='true'] { color: var(--ui-primary-fg); }
+@media (max-width: 1280px) and (min-width: 1101px) {
+  :root .site-header { gap: 14px; padding-inline: 3%; }
+  :root .site-header .brand-mascot { display: none; }
+  :root .site-header .brand-wordmark { width: 184px; }
+  :root .desktop-navigation { gap: 16px; }
+  :root .site-header .theme-control label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 1100px) {
+  :root .site-header .theme-control { margin-left: auto; }
+  :root .site-header .mobile-menu-toggle { margin-left: 0; }
+  :root .site-header .alpha-label { margin-left: 0; }
+}
+@media (max-width: 600px) {
+  :root .site-header { padding-inline: 16px; gap: 10px; }
+  :root .site-header .brand-mascot { display: none; }
+  :root .site-header .brand-wordmark { width: 158px; }
+  :root .theme-control label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .theme-control select { width: 88px; }
+}
+@media (max-width: 360px) {
+  :root .site-header { padding-inline: 12px; gap: 8px; }
+  :root .site-header .brand-wordmark { width: 138px; }
+  .theme-control select { width: 84px; }
+}
