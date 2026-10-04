@@ -1,8 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark) and (max-width: 640px)" srcset="docs/assets/readme-beta/exports/hero-dark-narrow.png">
-  <source media="(max-width: 640px)" srcset="docs/assets/readme-beta/exports/hero-light-narrow.png">
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/hero-dark.png">
-  <img src="docs/assets/readme-beta/exports/hero-light.png" alt="Bowerloom, with Hanna, S4-G3, and H4N-N4 in the tree laboratory.">
+  <img src="docs/assets/readme-beta/exports/hero-light.png" alt="Bowerloom, with Hanna, S4-G3, and H4N-N4 in the tree laboratory." width="100%">
 </picture>
 
 # Grow your capabilities with Bowerloom
