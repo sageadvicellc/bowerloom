@@ -42,8 +42,8 @@ test('resolved theme changes native browser surfaces and the matching approved i
 });
 test('wordmarks and mascot exports match exact approved bytes', () => {
   const expected = {
-    'bowerloom-wordmark-ink.svg': '2bdefa242708640725f1c6c9e492f14aa945dbf85fa401c635d6e9d6bffc653e',
-    'bowerloom-wordmark-cream.svg': '80a1f2df070d72ab4fbc0a3f9eb8a2510d03be92c49de69e6507876a3a273f6b',
+    'bowerloom-wordmark-plain-ink.svg': 'c31faca9b6d5efa64e901b678d7f7c5de241ebefb29abc41687dbba32c3830ea',
+    'bowerloom-wordmark-plain-cream.svg': 'fb81538f88a75f359df89c65c6ddabbb43d365641fa7c609e10be974ece59e76',
     's4-g3-icon.svg': '0285c6f2b60f97bb6c2dccb00ad95a570a8e261a32e5c2d3c7cd39f26c5e6d9f',
     's4-g3-icon-dark.svg': 'e3ade54d45cc0a0f72839299411c01af15092ba5e5c94b32b26758a874ebee6f',
   };
