@@ -1,11 +1,12 @@
 export type SplashState = 'loading' | 'playing' | 'paused' | 'blocked' | 'ended' | 'error';
-export const SPLASH_SESSION_KEY = 'bowerloom-splash-lab03-v1';
-export function shouldShowSplash(hash: string, storage: Pick<Storage, 'getItem'> | null) {
+export const SPLASH_SESSION_KEY = 'bowerloom-cinematic-intro-v1';
+export const SPLASH_FIXTURE_SESSION_KEY = SPLASH_SESSION_KEY + '-fixture';
+export function shouldShowSplash(hash: string, storage: Pick<Storage, 'getItem'> | null, key = SPLASH_SESSION_KEY) {
   if (hash.length > 1) return false;
-  try { return storage?.getItem(SPLASH_SESSION_KEY) !== 'seen'; } catch { return true; }
+  try { return storage?.getItem(key) !== 'seen'; } catch { return true; }
 }
-export function rememberSplash(storage: Pick<Storage, 'setItem'> | null) {
-  try { storage?.setItem(SPLASH_SESSION_KEY, 'seen'); } catch { /* A blocked storage area does not block entry. */ }
+export function rememberSplash(storage: Pick<Storage, 'setItem'> | null, key = SPLASH_SESSION_KEY) {
+  try { storage?.setItem(key, 'seen'); } catch { /* A blocked storage area does not block entry. */ }
 }
 type Media = Pick<HTMLVideoElement, 'play' | 'pause' | 'paused' | 'ended' | 'addEventListener' | 'removeEventListener'>;
 type Visibility = Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>;

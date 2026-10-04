@@ -16,8 +16,11 @@ import ThemeControl from "./ThemeControl";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
-import AnimationSplash from "./AnimationSplash";
-import { rememberSplash, shouldShowSplash } from "./splash-playback";
+import CinematicIntro from "./CinematicIntro";
+import { selectIntroMedia } from "./intro-media";
+import type { IntroExit } from "./intro-controller";
+import "./splash.css";
+import { rememberSplash, shouldShowSplash, SPLASH_FIXTURE_SESSION_KEY, SPLASH_SESSION_KEY } from "./splash-playback";
 import { cinematicJourney } from "./cinematic-config";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
@@ -84,21 +87,30 @@ function useReducedMotion() {
 }
 
 export default function App() {
+  const [introMedia, setIntroMedia] = useState(() => selectIntroMedia(new URLSearchParams(window.location.search).get('intro') === 'fixture', window.innerHeight > window.innerWidth));
+  const sessionKey = introMedia?.kind === 'fixture' ? SPLASH_FIXTURE_SESSION_KEY : SPLASH_SESSION_KEY;
+  const [introExit, setIntroExit] = useState<IntroExit | null>(null);
   const [splashOpen, setSplashOpen] = useState(() => {
-    try { return shouldShowSplash(window.location.hash, window.sessionStorage); }
-    catch { return shouldShowSplash(window.location.hash, null); }
+    if (!introMedia || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    try { return shouldShowSplash(window.location.hash, window.sessionStorage, sessionKey); }
+    catch { return shouldShowSplash(window.location.hash, null, sessionKey); }
   });
   const replayRef = useRef<HTMLButtonElement>(null);
   const replaying = useRef(false);
-  const enterSite = () => {
-    try { rememberSplash(window.sessionStorage); } catch { /* Entry never depends on storage. */ }
+  const enterSite = (reason: IntroExit) => {
+    setIntroExit(reason);
+    try { rememberSplash(window.sessionStorage, sessionKey); } catch { /* Entry never depends on storage. */ }
     setSplashOpen(false);
     requestAnimationFrame(() => {
       if (replaying.current) replayRef.current?.focus();
       else document.getElementById('hero-title')?.focus();
     });
   };
-  const replaySplash = () => { replaying.current = true; setSplashOpen(true); };
+  const replaySplash = () => {
+    const next = selectIntroMedia(new URLSearchParams(window.location.search).get('intro') === 'fixture', window.innerHeight > window.innerWidth);
+    if (!next) return;
+    setIntroMedia(next); replaying.current = true; setSplashOpen(true);
+  };
   const [selected, setSelected] = useState(0);
   const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -144,8 +156,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="normal-site">
-      {splashOpen && <AnimationSplash reducedMotion={reduced} onEnter={enterSite} />}
+    <div className="normal-site" data-intro-exit={introExit ?? undefined}>
+      {splashOpen && introMedia && <CinematicIntro media={introMedia} reducedMotion={reduced} explicitReplay={replaying.current} onEnter={enterSite} />}
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -167,7 +179,7 @@ export default function App() {
             <p className="hero-description">{hero.Body}</p>
             <a className="button primary" href="#build">Build with your agent</a>
             <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
-            <button ref={replayRef} type="button" className="splash-replay" onClick={replaySplash}>Replay workshop animation</button>
+            <button ref={replayRef} type="button" className="splash-replay" disabled={!introMedia} onClick={replaySplash}>{introMedia ? "Replay workshop animation" : "Intro preview in preparation"}</button>
           </div>
           <div className="normal-hero-art"><img src={cinematicJourney.openingPoster} alt="Hanna and a robot helper review a plan in a forest workshop." /></div>
         </section> : (

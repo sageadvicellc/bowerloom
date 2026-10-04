@@ -127,7 +127,11 @@ Brand owns shot continuity, desktop and portrait framing, audio, and the product
 Engineering owns playback, automatic entry, accessibility, loading bounds, and new acceptance evidence.
 Sound effects and an original score remain requested if feasible within the existing allowance.
 The prior framed splash is not founder accepted. Preserve its evidence without applying its tests to the new behavior.
-Generation requires a concrete quoted estimate within the reported 198-credit remainder. This amendment increases no allowance.
+Hanna approved production on October 4 at 4:16 p.m. EDT, with a 176-credit cap inside the existing allowance.
+The estimate includes 96 credits for initial shots and 80 for repairs. Requote final inputs before each job.
+The selected plan lasts 23 seconds and includes native landscape and portrait footage, original local score, and synthesized effects.
+Miki remains in the opening with Hanna, S4-G3, and H4N-N4. The optional provider audio route is not selected.
+Production can proceed without another plan approval. Finished-film acceptance and publication remain separate gates.
 
 Preserve the accepted dark footer and current brand palette while reconciling the older green-footer wording in #42.
 Preserve the founder's explicit ban on seed and sprout wording. The spec's older seed-language sentence does not override that instruction.
