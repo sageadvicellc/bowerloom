@@ -32,7 +32,7 @@ test('trusted local stdio executes only frozen exact argv and explicit env, supp
  const f=await setup(t,'literal-$HOME-$(echo nope)');const previous=process.env.SYNTHETIC_AMBIENT;process.env.SYNTHETIC_AMBIENT='PRIVATE_AMBIENT';t.after(()=>{if(previous===undefined)delete process.env.SYNTHETIC_AMBIENT;else process.env.SYNTHETIC_AMBIENT=previous;});
  const adapter=await createMcpStdioDiscoveryFactory(f.options)(f.context);t.after(()=>adapter.close());
  assert.equal((await adapter.initialize(initial)).protocolVersion,'2025-11-25');await adapter.initialized();const first=await adapter.listTools({});assert.equal(first.nextCursor,'second');assert.deepEqual((await adapter.listTools({cursor:'second'})).tools,[]);await adapter.close();
- const events=await f.events(),start=events[0];assert.deepEqual(start.environment.filter(key=>!(process.platform==='darwin'&&key==='__CF_USER_TEXT_ENCODING')),['SYNTHETIC_LOG','SYNTHETIC_SECRET']);assert.equal(start.secretPresent,true);assert.equal(start.cwd,f.directory);assert.deepEqual(start.argv,['literal-$HOME-$(echo nope)']);assert.deepEqual(events.slice(1).map(x=>x.method),['initialize','notifications/initialized','tools/list','tools/list']);dead(start.pid);assert.equal(f.resolves,2);assert.deepEqual(Object.keys(adapter).sort(),['close','initialize','initialized','listTools']);await assert.rejects(adapter.listTools({}),refused);
+ const events=await f.events(),start=events[0];assert.deepEqual(start.environment.filter(key=>!(process.platform==='darwin'&&key==='__CF_USER_TEXT_ENCODING')),['SYNTHETIC_LOG','SYNTHETIC_SECRET']);assert.equal(start.secretPresent,true);assert.equal(start.cwd,f.directory);assert.deepEqual(start.argv,['literal-$HOME-$(echo nope)']);assert.deepEqual(events.slice(1).map(x=>x.method),['initialize','notifications/initialized','tools/list','tools/list']);dead(start.pid);dead(start.guardianPid);assert.equal(f.resolves,2);assert.deepEqual(Object.keys(adapter).sort(),['close','initialize','initialized','listTools']);await assert.rejects(adapter.listTools({}),refused);
 });
 test('trust acknowledgement and inert option/input fields are required',async t=>{
  const f=await setup(t);assert.throws(()=>createMcpStdioDiscoveryFactory({...f.options,trustedLocalServerOnly:false}),refused);const {trustedLocalServerOnly,...missing}=f.options;assert.throws(()=>createMcpStdioDiscoveryFactory(missing),refused);
@@ -86,13 +86,12 @@ test('invalid method order, parallel requests and request bounds never invoke to
  const parallel=await setup(t,'stall'),active=await createMcpStdioDiscoveryFactory(parallel.options)(parallel.context);const pending=active.initialize(initial);await assert.rejects(active.initialize(initial),refused);await assert.rejects(pending,refused);await active.close();
  const capped=await setup(t),bounded=await createMcpStdioDiscoveryFactory(capped.options)(capped.context);await bounded.initialize(initial);await bounded.initialized();for(let i=0;i<8;i++)await bounded.listTools({});await assert.rejects(bounded.listTools({}),refused);await bounded.close();assert.equal((await capped.events()).filter(x=>x.method).length,10);
 });
-test('cleanup reports uncertainty when direct child exit cannot be established',async t=>{
- const f=await setup(t,'ignore-term');f.options.cleanupTimeoutMs=30;const adapter=await createMcpStdioDiscoveryFactory(f.options)(f.context);const start=await f.started(),kill=process.kill.bind(process);t.mock.method(process,'kill',(pid,signal)=>pid===-start.pid?true:kill(pid,signal));
- try{await assert.rejects(adapter.close(),error=>error.code==='MCP_STDIO_CLEANUP_UNCERTAIN');}
- finally{t.mock.restoreAll();kill(-start.pid,'SIGKILL');for(let i=0;i<100;i++){try{kill(start.pid,0);}catch(error){if(error.code==='ESRCH')break;}await wait(5);}}
- dead(start.pid);
+test('short cleanup observation can report uncertainty while guardian independently finishes cleanup',async t=>{
+ const f=await setup(t,'ignore-term');f.options.cleanupTimeoutMs=1;const adapter=await createMcpStdioDiscoveryFactory(f.options)(f.context);const start=await f.started();
+ await assert.rejects(adapter.close(),error=>error.code==='MCP_STDIO_CLEANUP_UNCERTAIN');
+ for(let i=0;i<400;i++){let running=false;for(const pid of [start.pid,start.guardianPid]){try{process.kill(pid,0);running=true;}catch(error){if(error.code!=='ESRCH')throw error;}}if(!running)break;await wait(5);}
+ dead(start.pid);dead(start.guardianPid);
 });
-
 
 test('Node coverage environment propagation is suppressed without an effective child setting or files',async t=>{
  const f=await setup(t),previous=process.env.NODE_V8_COVERAGE,coverage=path.join(f.directory,'ambient-coverage');process.env.NODE_V8_COVERAGE=coverage;

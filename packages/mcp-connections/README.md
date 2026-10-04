@@ -215,7 +215,8 @@ Those release gates remain open.
 
 The child receives only explicitly resolved environment references, with no inherited environment.
 Common loader and shell control names, including `NODE_OPTIONS`, `NODE_V8_COVERAGE`, `NODE_PATH`, `PATH`, `LD_*`, and `DYLD_*`, are refused.
-The Node 24 parent coverage propagation path is explicitly suppressed with an own undefined environment property, which is omitted from the actual child environment.
+The shared supervisor and guardian suppress Node 24 implicit coverage propagation with an own undefined environment property, omitted from the actual child environment.
+The guardian itself starts with no job secrets or ambient application environment; the approved job arrives over its private original IPC channel.
 A host running Node's permission model is unsupported in this slice because spawn can inject its permission flags into `NODE_OPTIONS`.
 On macOS, the child runtime can add `__CF_USER_TEXT_ENCODING` after startup; this is not an inherited application setting. The adapter does not claim byte-exact runtime environment immutability.
 This denylist is defense in depth for a trusted server, not complete control of every language runtime.
@@ -228,10 +229,12 @@ Server messages reach the discovery callback only as a fixed sanitized method ma
 Stdout is bounded to 512 KiB per session and 256 KiB per line. Stderr is discarded with a 16 KiB limit.
 Request and session time limits are at most thirty seconds. No raw output or native error payload is returned.
 
-On macOS and Linux, the adapter creates and owns one detached process group.
-Stop, timeout, and close signal that group, destroy local pipes, and escalate to SIGKILL within a bounded cleanup interval.
-Cleanup succeeds only after direct child exit is observed; otherwise it reports uncertainty.
-This does not establish that descendants which escape the group were contained or terminated.
-There is no Windows support in this slice.
-The adapter does not use the separate Codex guardian. Host crashes and orphan cleanup remain unproved; these time limits are not durable across controller death.
-Late secret resolution and cancelled queued work cannot spawn a child after the session closes.
+On macOS and Linux, the adapter uses the shared trusted guardian and supervisor to own one detached server process group.
+The guardian watches its original IPC channel, has its own deadline, and terminates the server if the controller disconnects.
+The independent deadline uses the remaining session budget rounded up to whole seconds; guardian startup adds scheduling overhead. It does not promise exact subsecond termination.
+Stop, timeout, and close request guardian cleanup. The guardian signals the group, escalates to SIGKILL, reaps the direct child, and checks that the owned group is gone.
+Cleanup succeeds only when both `leaderReaped` and `groupGone` are confirmed and the guardian has exited. Otherwise it reports uncertainty.
+The `cleanupTimeoutMs` option is a local observation bound, with a default of 3000 ms. Shorter bounds can return uncertainty while guardian cleanup continues; they do not change its existing escalation or group-check timings.
+This closes the controller-disconnect and controller-stall cleanup path. It does not establish survival of guardian or machine failure, durable operating-system job supervision, or containment of descendants that escape the owned group.
+There is no Windows support in this slice. Native isolation and production containment remain open release gates.
+Late secret resolution and cancelled queued work cannot open a new guardian after the session closes. A guardian already opening receives cancellation, and its completion remains observed even when the local caller times out.

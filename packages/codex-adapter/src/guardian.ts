@@ -69,9 +69,13 @@ process.on('message', value => {
       && Number.isInteger(j.seconds) && j.seconds>0 && j.seconds<=60
       && Number.isInteger(j.stdoutBytes) && j.stdoutBytes>0 && j.stdoutBytes<=2097152
       && Number.isInteger(j.stderrBytes) && j.stderrBytes>0 && j.stderrBytes<=32768, 'INVALID_JOB');
+    check(process.permission === undefined, 'HOST_PERMISSION_MODEL_UNSUPPORTED');
     check(Object.values(object(j.env)).every(v=>typeof v==='string'), 'INVALID_ENV');
+    const env:NodeJS.ProcessEnv=Object.assign(Object.create(null),j.env);
+    // Preserve explicit job settings while blocking implicit parent coverage inheritance.
+    if(!Object.hasOwn(env,'NODE_V8_COVERAGE'))env.NODE_V8_COVERAGE=undefined;
     if(timer)clearTimeout(timer); timer=setTimeout(()=>stop('DEADLINE'),j.seconds*1000);
-    child=spawn(j.executable,j.argv,{cwd:j.cwd,env:j.env,detached:true,stdio:['pipe','pipe','pipe']});
+    child=spawn(j.executable,j.argv,{cwd:j.cwd,env,detached:true,stdio:['pipe','pipe','pipe']});
     child.on('error',()=>stop('SPAWN_FAILED'));
     child.stdin.on('error',()=>stop('STDIN_FAILED'));
     child.once('spawn',()=>send({type:'started',pid:child!.pid,guardianPid:process.pid,nonce:j.nonce}));

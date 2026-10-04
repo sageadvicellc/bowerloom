@@ -10,18 +10,32 @@ export interface OwnedGuardian {
 }
 export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChunk: (stream:'stdout'|'stderr',data:Buffer)=>void): Promise<OwnedGuardian> {
   check(!signal.aborted,'CANCELLED');
+  check(process.permission === undefined,'HOST_PERMISSION_MODEL_UNSUPPORTED');
   const nonce=randomBytes(32).toString('hex');
-  const guardian=fork(new URL('./guardian.js',import.meta.url),[],{execArgv:[],env:job.env,detached:true,stdio:['ignore','ignore','ignore','ipc']});
+  // Guardian startup receives no job secrets or ambient environment. Its job arrives only over owned IPC.
+  // The own undefined key blocks Node's implicit coverage propagation and is omitted from envPairs.
+  const guardian=fork(new URL('./guardian.js',import.meta.url),[],{execArgv:[],env:{NODE_V8_COVERAGE:undefined},detached:true,stdio:['ignore','ignore','ignore','ipc']});
   let hardStop:NodeJS.Timeout|null=null;
   let started=false, settled=false, failure:string|null=null, doneMessage:GuardianDone|null=null;
+  let cancelSent=false,channelFailed=false;
   let resolveStart:(v:OwnedGuardian['identity'])=>void,rejectStart:(e:unknown)=>void;
   const identity=new Promise<OwnedGuardian['identity']>((r,j)=>{resolveStart=r;rejectStart=j;});
   let resolveDone:(v:GuardianDone)=>void,rejectDone:(e:unknown)=>void;
   const done=new Promise<GuardianDone>((r,j)=>{resolveDone=r;rejectDone=j;});
   // A start error can precede the caller receiving the completion promise.
   void done.catch(()=>{});void identity.catch(()=>{});
-  const send=(v:unknown)=>{ if(guardian.connected)guardian.send(v as any,e=>{if(e)fail('CONTROL_CHANNEL');}); };
-  const cancel=()=>send({type:'cancel'});
+  const controlFailure=()=>{
+    if(settled||channelFailed)return;channelFailed=true;failure??='CONTROL_CHANNEL';
+    // Never send again through failed IPC. Repeated send-error cancellation can starve close events.
+    // SIGTERM targets our guardian, whose handler cleans its owned child group.
+    try{guardian.kill('SIGTERM');}catch{/* The existing watchdog and completion checks remain authoritative. */}
+  };
+  const send=(v:unknown)=>{
+    if(settled||channelFailed)return;
+    if(!guardian.connected){controlFailure();return;}
+    try{guardian.send(v as any,e=>{if(e)controlFailure();});}catch{controlFailure();}
+  };
+  const cancel=()=>{if(cancelSent||settled)return;cancelSent=true;send({type:'cancel'});};
   const fail=(code:string)=>{if(!settled){failure??=code;cancel();}};
   signal.addEventListener('abort',cancel,{once:true});
   const watchdog=setTimeout(()=>{fail('GUARDIAN_TIMEOUT');guardian.kill('SIGTERM');
@@ -48,8 +62,8 @@ export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChu
   guardian.on('close',()=>{
     settled=true;clearTimeout(watchdog);if(hardStop)clearTimeout(hardStop);signal.removeEventListener('abort',cancel);
     const m=doneMessage;if(m&&failure)m.reason=failure;
-    if(!started)rejectStart!(new AdapterError(m?.reason??'GUARDIAN_NOT_STARTED'));
-    if(m && m.leaderReaped)resolveDone!(m);else rejectDone!(new AdapterError(m?.reason??'GUARDIAN_LOST'));
+    if(!started)rejectStart!(new AdapterError(failure??m?.reason??'GUARDIAN_NOT_STARTED'));
+    if(m && m.leaderReaped)resolveDone!(m);else rejectDone!(new AdapterError(failure??m?.reason??'GUARDIAN_LOST'));
   });
   // Recheck after listeners are installed so cancellation cannot disappear between check and spawn.
   if(signal.aborted)cancel();else send({type:'start',job:{...job,nonce}});

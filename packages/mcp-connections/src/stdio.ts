@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { startGuardian } from '../../codex-adapter/src/supervisor.js';
+import type { OwnedGuardian } from '../../codex-adapter/src/supervisor.js';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -88,7 +88,7 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
   const options = fields(value, ['trustedLocalServerOnly', 'resolveSecret'], ['requestTimeoutMs', 'sessionTimeoutMs', 'cleanupTimeoutMs']);
   if (options.trustedLocalServerOnly!.value !== true || typeof options.resolveSecret!.value !== 'function') fail('MCP_STDIO_TRUST_REQUIRED');
   const resolveSecret = options.resolveSecret!.value as McpStdioOptions['resolveSecret'];
-  const requestTimeoutMs = duration(options.requestTimeoutMs?.value, 5000), sessionTimeoutMs = duration(options.sessionTimeoutMs?.value, 10000), cleanupTimeoutMs = duration(options.cleanupTimeoutMs?.value, 1000, 3000);
+  const requestTimeoutMs = duration(options.requestTimeoutMs?.value, 5000), sessionTimeoutMs = duration(options.sessionTimeoutMs?.value, 10000), cleanupTimeoutMs = duration(options.cleanupTimeoutMs?.value, 3000, 3000);
   return async supplied => {
     if (!['darwin', 'linux'].includes(process.platform) || process.permission !== undefined) fail('MCP_STDIO_PLATFORM');
     let selected: StdioEffect, signal: AbortSignal, notify: (value: unknown) => void;
@@ -97,31 +97,28 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
       selected = effect(context.effect!.value, validateMcpBinding(context.binding!.value)); signal = context.signal!.value; notify = context.onNotification!.value;
       if (!(signal instanceof AbortSignal) || typeof notify !== 'function') fail('MCP_STDIO_INPUT');
     } catch { return fail('MCP_STDIO_INPUT'); }
-    let child: ChildProcessWithoutNullStreams | undefined, directExit = false, closing = false, closed = false;
-    let failure: McpConnectionError | undefined, cleanup: Promise<void> | undefined, exitResolve: (() => void) | undefined;
-    const exited = new Promise<void>(resolve => { exitResolve = resolve; });
+    let guardian: OwnedGuardian | undefined, opening: Promise<OwnedGuardian> | undefined, closing = false, closed = false;
+    let failure: McpConnectionError | undefined, cleanup: Promise<void> | undefined;
+    const sessionDeadline = performance.now() + sessionTimeoutMs;
     let rejectStopped!: (error: McpConnectionError) => void;
     const stopped = new Promise<never>((_, reject) => { rejectStopped = reject; }); void stopped.catch(() => undefined);
     let pending: { id: number; resolve: (value: unknown) => void; reject: (error: McpConnectionError) => void } | undefined;
     let busy = false, count = 0, phase: 'new' | 'initialized' | 'ready' = 'new', stdoutBytes = 0, stderrBytes = 0, messages = 0, buffer = Buffer.alloc(0);
     function check(): void { if (closed || signal.aborted) throw failure ?? safe('MCP_STDIO_ABORTED'); }
-    function kill(kind: NodeJS.Signals): void {
-      if (child?.pid && child.pid > 0) { try { process.kill(-child.pid, kind); } catch { /* Exit event, not kill return, proves direct child cleanup. */ } }
-    }
     function cleanupOnce(): Promise<void> {
       if (cleanup) return cleanup;
       closing = true;
-      cleanup = (async () => {
-        if (!child) return;
-        kill('SIGTERM'); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
-        if (directExit) { kill('SIGKILL'); return; }
-        let escalation: ReturnType<typeof setTimeout> | undefined, deadline: ReturnType<typeof setTimeout> | undefined;
-        try {
-          escalation = setTimeout(() => kill('SIGKILL'), Math.min(100, Math.floor(cleanupTimeoutMs / 2)));
-          await Promise.race([exited, new Promise<never>((_, reject) => { deadline = setTimeout(() => reject(safe('MCP_STDIO_CLEANUP_UNCERTAIN')), cleanupTimeoutMs); })]);
-          kill('SIGKILL');
-        } finally { clearTimeout(escalation); clearTimeout(deadline); }
-      })();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const observe = async (): Promise<void> => {
+        const owned = guardian ?? (opening ? await opening : undefined);
+        if (!owned) return;
+        await owned.terminate();
+        const result = await owned.done;
+        if (!result.leaderReaped || !result.groupGone) fail('MCP_STDIO_CLEANUP_UNCERTAIN');
+      };
+      cleanup = Promise.race([observe(), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(safe('MCP_STDIO_CLEANUP_UNCERTAIN')), cleanupTimeoutMs);
+      })]).catch(() => { throw safe('MCP_STDIO_CLEANUP_UNCERTAIN'); }).finally(() => clearTimeout(timer));
       void cleanup.catch(() => undefined); return cleanup;
     }
     function stop(code: string): void {
@@ -154,9 +151,7 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
       } catch { stop('MCP_STDIO_RESPONSE'); }
     }
     try {
-      const environment: Record<string, string | undefined> = Object.create(null);
-      // Node propagates parent coverage unless this own property exists; undefined is omitted from envPairs.
-      environment.NODE_V8_COVERAGE = undefined;
+      const environment: Record<string, string> = Object.create(null);
       let environmentBytes = 0;
       for (const reference of selected.environment.secretReferences) {
         const secret = await bounded(() => resolveSecret(Object.freeze({ ...reference })));
@@ -172,25 +167,25 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
         await checkedPath(selected.cwd, true); check();
       });
       check();
-      child = spawn(selected.executable.path, [...selected.args], { cwd: selected.cwd, env: environment, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-      const spawned = new Promise<void>((resolve, reject) => { child!.once('spawn', resolve); child!.once('error', () => reject(safe('MCP_STDIO_PROCESS'))); });
-      void spawned.catch(() => undefined);
-      child.once('exit', () => { directExit = true; exitResolve?.(); if (!closing) stop('MCP_STDIO_EXIT'); });
-      child.once('error', () => { if (!child?.pid) { directExit = true; exitResolve?.(); } stop('MCP_STDIO_PROCESS'); });
-      child.stdout.on('error', () => { if (!closing) stop('MCP_STDIO_PROCESS'); });
-      child.stderr.on('error', () => { if (!closing) stop('MCP_STDIO_PROCESS'); });
-      child.stdin.on('error', () => { if (!closing) stop('MCP_STDIO_PROCESS'); });
-      child.stdout.on('data', (chunk: Buffer) => {
+      const remaining = sessionDeadline - performance.now();
+      if (remaining <= 0) fail('MCP_STDIO_TIMEOUT');
+      opening = startGuardian({ executable: selected.executable.path, argv: [...selected.args], cwd: selected.cwd,
+        env: environment, seconds: Math.max(1, Math.ceil(remaining / 1000)), stdoutBytes: 512 * 1024, stderrBytes: 16384 }, signal, (stream, chunk) => {
         if (closed) return;
+        if (stream === 'stderr') { stderrBytes += chunk.length; if (stderrBytes > 16384) stop('MCP_STDIO_OUTPUT_BOUND'); return; }
         stdoutBytes += chunk.length;
         if (stdoutBytes > 512 * 1024) { stop('MCP_STDIO_OUTPUT_BOUND'); return; }
         buffer = Buffer.concat([buffer, chunk]);
         for (;;) { const newline = buffer.indexOf(10); if (newline < 0) break; const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1); incoming(line); if (closed) return; }
         if (buffer.length > MAX_DOCUMENT_BYTES) stop('MCP_STDIO_OUTPUT_BOUND');
       });
-      child.stdout.on('end', () => { if (!closing) stop('MCP_STDIO_EXIT'); });
-      child.stderr.on('data', (chunk: Buffer) => { stderrBytes += chunk.length; if (stderrBytes > 16384) stop('MCP_STDIO_OUTPUT_BOUND'); });
-      await bounded(() => spawned);
+      // Observe immediately: the factory can reject or finish after local cancellation.
+      void opening.then(owned => {
+        guardian = owned;
+        void owned.done.then(() => { if (!closing) stop('MCP_STDIO_EXIT'); }, () => stop('MCP_STDIO_PROCESS'));
+        if (closed) void owned.terminate().catch(() => undefined);
+      }, () => undefined);
+      guardian = await bounded(() => opening!);
       check();
     } catch {
       stop('MCP_STDIO_OPEN_FAILED');
@@ -217,10 +212,8 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
         const result = await bounded(() => new Promise<unknown>((resolve, reject) => {
           check();
           if (id !== undefined) pending = { id, resolve, reject };
-          child!.stdin.write(payload, error => {
-            if (error) { reject(safe('MCP_STDIO_PROCESS')); return; }
-            if (id === undefined) resolve(undefined);
-          });
+          guardian!.write(payload);
+          if (id === undefined) resolve(undefined);
         }));
         check();
         if (method === 'initialize') phase = 'initialized'; else if (method === 'notifications/initialized') phase = 'ready';

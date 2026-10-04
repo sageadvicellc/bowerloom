@@ -32,11 +32,16 @@ Production acceptance still requires a stronger launch boundary and native bypas
 
 The adapter bounds message sizes, total output, diagnostics, requests, and session time.
 It exposes sanitized error codes. It never forwards raw process diagnostics or secret values.
-Close signals the owned process group and requires the direct child to exit within a bounded interval.
+A separate guardian owns the server process group and its deadline.
+Close succeeds only after the guardian reports that the leader exited and the group disappeared.
+The cleanup interval bounds observation. A short interval can report uncertainty while the guardian continues cleanup.
 This behavior targets macOS and Linux. Windows support remains unclaimed.
 A descendant can escape a process group. Group signaling does not prove complete descendant containment.
-This adapter does not install an independent guardian for host-process failure.
-Cleanup after a host crash remains unproved.
+If the controller dies, its private channel closes and the guardian terminates the owned group.
+The guardian enforces its own whole-second deadline if the controller stops responding.
+The guardian rounds the remaining session budget up to whole seconds.
+Its timer starts when it accepts the job. Guardian startup and message scheduling add time before that point.
+This does not protect against simultaneous guardian failure or an escaped descendant.
 CPU limits, memory limits, filesystem isolation, and network isolation remain separate work.
 
 Failed or interrupted contact leaves the durable intent held for reconciliation.
@@ -50,6 +55,11 @@ The composition test uses the dedicated PostgreSQL proof service on this Mac.
 It observes approval and committed intent before secret resolution permits process creation.
 It covers concurrent dispatch, changed entrypoint bytes, catalog drift, unexpected messages, process exit, and stop.
 Tests inspect direct-child termination and prevent inherited environment values from reaching the fixture.
+
+A separate PostgreSQL proof kills or suspends a synthetic controller after initialization.
+It observes server exit and guardian termination before explicit recovery holds the uncertain intent.
+A suspended parent can leave an exited guardian as a zombie until the parent resumes and reaps it.
+Recovery grants no replay authority. The test does not start a replacement process.
 
 The tests do not use an external MCP provider or a native agent session.
 Both harness boundaries, trusted credential storage, durable revocation integration, and production isolation remain release gates.

@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,readFile,rm } from 'node:fs/promises';
+import { mkdtemp,readFile,rm,stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { EventEmitter } from 'node:events';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startGuardian } from '../src/supervisor.js';
@@ -36,3 +39,44 @@ test('leader completion kills its owned descendant while unrelated process survi
   const code=`const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});process.stdout.write(String(c.pid));setTimeout(()=>process.exit(0),100);`;
   let pid='';const p=await startGuardian(job(cwd,code),new AbortController().signal,(_,b)=>pid+=b.toString());const done=await p.done;assert.equal(done.leaderReaped,true);assert.equal(done.groupGone,true,JSON.stringify(done));await gone(Number(pid));
 }));
+
+
+test('implicit parent coverage is suppressed for guardian and server without ambient job inheritance',()=>fixture(async cwd=>{
+  const previous=process.env.NODE_V8_COVERAGE,ambient=process.env.GUARDIAN_PRIVATE_AMBIENT,coverage=join(cwd,'unexpected-coverage');
+  process.env.NODE_V8_COVERAGE=coverage;process.env.GUARDIAN_PRIVATE_AMBIENT='PRIVATE_AMBIENT';
+  try{
+    let output='';const p=await startGuardian({...job(cwd,'process.stdout.write(JSON.stringify({coverage:process.env.NODE_V8_COVERAGE??null,ambient:process.env.GUARDIAN_PRIVATE_AMBIENT??null,secret:process.env.SYNTHETIC_SECRET}))'),env:{SYNTHETIC_SECRET:'explicit-synthetic'}},new AbortController().signal,(_,b)=>output+=b.toString());
+    const done=await p.done;assert.equal(done.leaderReaped,true);assert.equal(done.groupGone,true);assert.deepEqual(JSON.parse(output),{coverage:null,ambient:null,secret:'explicit-synthetic'});await gone(p.guardianPid);await assert.rejects(stat(coverage),(error:NodeJS.ErrnoException)=>error.code==='ENOENT');
+  }finally{if(previous===undefined)delete process.env.NODE_V8_COVERAGE;else process.env.NODE_V8_COVERAGE=previous;if(ambient===undefined)delete process.env.GUARDIAN_PRIVATE_AMBIENT;else process.env.GUARDIAN_PRIVATE_AMBIENT=ambient;}
+}));
+test('cancellation while guardian startup is pending still observes owned cleanup',()=>fixture(async cwd=>{
+  const abort=new AbortController();const pending=startGuardian(job(cwd,'setInterval(()=>{},1000)'),abort.signal,()=>{});abort.abort();
+  try{const owned=await pending;const result=await owned.done;assert.equal(result.leaderReaped,true);assert.equal(result.groupGone,true);await gone(owned.identity.pid);await gone(owned.guardianPid);}
+  catch(error){assert.match(String(error),/CANCELLED|GUARDIAN_NOT_STARTED/);}
+}));
+
+
+test('failed IPC with stale connected state is never retried through recursive cancellation',async t=>{
+  for(const failing of ['start','cancel'])for(const synchronous of [false,true]){
+    const messages:string[]=[],signals:string[]=[];let fake:EventEmitter&{pid:number;connected:boolean;send:(message:any,callback:(error:Error|null)=>void)=>boolean;kill:(signal:string)=>boolean};
+    t.mock.method(childProcess,'fork',()=>{
+      fake=Object.assign(new EventEmitter(),{pid:99999999,connected:true,
+        send(message:any,callback:(error:Error|null)=>void){
+          messages.push(message.type);
+          if(synchronous&&message.type===failing)throw new Error('PRIVATE_IPC_FAILURE');
+          queueMicrotask(()=>{
+            if(message.type===failing){callback(new Error('PRIVATE_IPC_FAILURE'));return;}
+            if(message.type==='start')fake.emit('message',{type:'started',pid:99999998,guardianPid:fake.pid,nonce:message.job.nonce});
+          });return true;
+        },
+        kill(signal:string){signals.push(signal);queueMicrotask(()=>fake.emit('close'));return true;}});
+      return fake as any;
+    });syncBuiltinESMExports();
+    try{
+      const pending=startGuardian(job('/synthetic-not-used',''),new AbortController().signal,()=>{});
+      if(failing==='start')await assert.rejects(pending,/CONTROL_CHANNEL/);
+      else{const owned=await pending;await assert.rejects(owned.terminate(),/CONTROL_CHANNEL/);}
+      assert.deepEqual(messages,failing==='start'?['start']:['start','cancel']);assert.deepEqual(signals,['SIGTERM']);
+    }finally{t.mock.restoreAll();syncBuiltinESMExports();}
+  }
+});

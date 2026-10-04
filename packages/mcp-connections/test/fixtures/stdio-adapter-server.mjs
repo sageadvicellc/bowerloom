@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { appendFileSync } from 'node:fs';
 const mode=process.argv[2]??'normal';
 const record=value=>{if(process.env.SYNTHETIC_LOG)appendFileSync(process.env.SYNTHETIC_LOG,JSON.stringify(value)+'\n');};
-record({started:true,pid:process.pid,cwd:process.cwd(),argv:process.argv.slice(2),environment:Object.keys(process.env).sort(),secretPresent:process.env.SYNTHETIC_SECRET==='PRIVATE_SYNTHETIC_VALUE'});
+record({started:true,pid:process.pid,guardianPid:process.ppid,cwd:process.cwd(),argv:process.argv.slice(2),environment:Object.keys(process.env).sort(),secretPresent:process.env.SYNTHETIC_SECRET==='PRIVATE_SYNTHETIC_VALUE'});
 const send=value=>process.stdout.write(JSON.stringify(value)+'\n');
 if(mode==='startup-message')send({jsonrpc:'2.0',method:'notifications/tools/list_changed'});
 if(mode==='ignore-term'){process.on('SIGTERM',()=>{});setInterval(()=>{},1000);}
