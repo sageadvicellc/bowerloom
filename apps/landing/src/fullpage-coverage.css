@@ -55,3 +55,27 @@
 }
 .fullpage-journey .labs-section > .hero-secondary { background: var(--ui-bg); padding: 16px 24px; margin-top: 20px; }
 .fullpage-journey .site-header { background: var(--ui-bg); }
+
+/* Keep the cast visible beside the opening and between dense reading sections. */
+@media (min-width: 1101px) and (pointer: fine) {
+  .fullpage-journey .cinematic-copy { width: clamp(320px, 28vw, 390px); padding: 26px; }
+  .fullpage-journey .cinematic-copy h1 { font-size: clamp(38px, 3.4vw, 50px); letter-spacing: -1.7px; }
+}
+@media (min-width: 861px) and (max-width: 1100px) and (pointer: fine) {
+  .fullpage-journey .cinematic-stage, .fullpage-journey .cinematic-static .cinematic-stage { padding-top: 36svh; }
+  .fullpage-journey .cinematic-copy { width: min(440px, 60%); }
+}
+.fullpage-journey .product-section::after,
+.fullpage-journey .labs-section::after {
+  content: ''; display: block; grid-column: 1 / -1;
+  height: clamp(260px, 48svh, 440px); pointer-events: none;
+}
+.fullpage-journey .tutorial-builder > form { background: transparent; box-shadow: none; padding: 0; }
+.fullpage-journey .tutorial-fields { background: var(--tutorial-bg); padding: clamp(22px, 3vw, 36px); box-shadow: 0 12px 48px #0002; }
+.fullpage-journey .tutorial-builder .tutorial-layout { gap: clamp(36px, 6vw, 88px); }
+.fullpage-journey .tutorial-builder .tutorial-action { background: var(--tutorial-bg); padding: 24px; box-shadow: 0 12px 48px #0002; }
+.fullpage-journey .tutorial-builder #tutorial-error { background: var(--tutorial-bg); padding: 18px 24px; }
+@media (max-width: 860px), (pointer: coarse) {
+  .fullpage-journey .product-section::after, .fullpage-journey .labs-section::after { height: clamp(180px, 36svh, 300px); }
+  .fullpage-journey .tutorial-builder .tutorial-layout { gap: 28px; }
+}
