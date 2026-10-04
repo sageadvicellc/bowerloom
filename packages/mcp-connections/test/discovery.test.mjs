@@ -122,3 +122,13 @@ for(const stage of ['open','initialize','listTools'])test(`${stage}: adapter err
  await assert.rejects(discoverMcpCatalog(input,h.options),code('MCP_DISCOVERY_ADAPTER'));
  assert.equal(h.observed.closed,stage==='open'?0:1);
 });
+
+test('cleanup observation is bounded separately and does not add protocol work',async()=>{
+ const input=fixture(),h=harness(input);let closed=false;
+ h.adapter.close=async()=>{await wait(30);closed=true;};
+ const result=await discoverMcpCatalog(input,{...h.options,cleanupTimeoutMs:100});assert.equal(result.cleanup,'closed');assert.equal(closed,true);
+ assert.deepEqual(h.observed.methods.map(x=>x[0]),['initialize','notifications/initialized','tools/list']);
+ const slow=harness(input,{close:async()=>new Promise(()=>{})});
+ await assert.rejects(discoverMcpCatalog(input,{...slow.options,cleanupTimeoutMs:5}),code('MCP_DISCOVERY_CLEANUP_TIMEOUT'));
+ for(const value of [0,15001,'100',NaN]){const refused=harness(input);await assert.rejects(discoverMcpCatalog(input,{...refused.options,cleanupTimeoutMs:value}),code('MCP_DISCOVERY_OPTIONS'));assert.equal(refused.observed.opens,0);}
+});

@@ -16,6 +16,9 @@ export interface McpContainerPlan {
   spec: McpContainerSpec; argv: string[]; revision: string;
   executionAuthorized: false; containmentVerified: false; transportVerified: false; grants: [];
 }
+export interface McpContainerDiscoveryPlan extends Omit<McpContainerPlan, 'format'> {
+  format: 'bowerloom/mcp-container-discovery-launch/v1beta1';
+}
 const INDEX = 'application/vnd.oci.image.index.v1+json', MANIFEST = 'application/vnd.oci.image.manifest.v1+json', CONFIG = 'application/vnd.oci.image.config.v1+json';
 const blockedEnvironment = /^(?:HOME|SHELL|ENV|BASH_ENV|IFS|CDPATH|NODE_OPTIONS|NODE_PATH|NODE_V8_COVERAGE|NODE_EXTRA_CA_CERTS|NODE_USE_ENV_PROXY|NODE_REPL_EXTERNAL_MODULE|OPENSSL_CONF|OPENSSL_MODULES|SSL_CERT_FILE|SSL_CERT_DIR|PYTHON.*|PERL.*|RUBY.*|GEM_.*|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|_JAVA_OPTIONS|CLASSPATH|LD_.*|DYLD_.*|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY)$/;
 function record(value: unknown, required: string[], optional: string[] = []): Record<string, unknown> {
@@ -127,4 +130,12 @@ export function planMcpContainerLaunch(value: McpContainerPlanInput): McpContain
     const codes = ['MCP_CONTAINER_FIELDS', 'MCP_CONTAINER_LIMIT', 'MCP_CONTAINER_TEXT', 'MCP_CONTAINER_DIGEST', 'MCP_CONTAINER_BOUND', 'MCP_CONTAINER_PATH', 'MCP_CONTAINER_ENVIRONMENT', 'MCP_CONTAINER_PLATFORM', 'MCP_CONTAINER_METADATA', 'MCP_CONTAINER_ARTIFACT', 'MCP_CONTAINER_IMAGE_DEFAULT', 'MCP_CONTAINER_SYNTHETIC_REQUIRED'];
     return fail(error instanceof McpConnectionError && codes.includes(error.code) ? error.code : 'MCP_CONTAINER_INPUT');
   }
+}
+
+/** Separate revision domain: historical noninteractive plans retain their exact bytes. */
+export function planMcpContainerDiscoveryLaunch(value: McpContainerPlanInput): McpContainerDiscoveryPlan {
+  const { revision: _revision, ...base } = planMcpContainerLaunch(value);
+  const body = { ...base, format: 'bowerloom/mcp-container-discovery-launch/v1beta1' as const,
+    argv: [...base.argv.slice(0, 2), '--interactive', ...base.argv.slice(2)] };
+  return frozen({ ...body, revision: 'sha256:' + sha256(canonicalJson(body)) });
 }

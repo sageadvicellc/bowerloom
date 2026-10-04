@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createDiscoveryProposal,createDiscoveryAuthorityState,validateDiscoveryAuthorityState,validateDiscoveryAuthorityTransition,DiscoveryAuthorityController,McpConnectionError,mcpBindingRevision } from '../../../dist/packages/mcp-connections/src/index.js';
+import {createHash} from 'node:crypto';
+import { createDiscoveryProposal,createDiscoveryAuthorityState,validateDiscoveryAuthorityState,validateDiscoveryAuthorityTransition,DiscoveryAuthorityController,McpConnectionError,mcpBindingRevision,planMcpContainerDiscoveryLaunch } from '../../../dist/packages/mcp-connections/src/index.js';
 const clone=value=>structuredClone(value);
 const input=kind=>({...Object.fromEntries(['declaration','binding','catalog'].map(part=>[part,JSON.parse(fs.readFileSync(new URL(`./fixtures/${kind}-${part}.json`,import.meta.url),'utf8'))])),synthetic:true});
 const code=expected=>error=>error instanceof McpConnectionError&&error.code===expected&&error.message===expected;
@@ -132,4 +133,35 @@ test('immediately rejected adapter is observed while its invocation commit ackno
  await assert.rejects(c.dispatch(selected,'owner'),code('MCP_AUTHORITY_DISPATCH_UNCERTAIN'));
  assert.equal(eventLoopCrossed,true);assert.equal(attempts,1);assert.equal(f.store.state.status,'NEEDS_RECONCILIATION');assert.equal(f.store.state.result,null);
  await assert.rejects(f.controller().dispatch(selected,'owner'));assert.equal(attempts,1);
+});
+
+function containerAuthorityFixture(){
+ const f=fixture(),hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex'),d='sha256:'+'a'.repeat(64);
+ const imageConfigJson=JSON.stringify({architecture:'arm64',os:'linux',config:{Env:[]},rootfs:{type:'layers',diff_ids:[d]}});
+ const imageManifestJson=JSON.stringify({schemaVersion:2,mediaType:'application/vnd.oci.image.manifest.v1+json',config:{mediaType:'application/vnd.oci.image.config.v1+json',digest:hash(imageConfigJson),size:Buffer.byteLength(imageConfigJson)},layers:[{mediaType:'application/vnd.oci.image.layer.v1.tar',digest:d,size:1000}]});
+ const imageIndexJson=JSON.stringify({schemaVersion:2,mediaType:'application/vnd.oci.image.index.v1+json',manifests:[{mediaType:'application/vnd.oci.image.manifest.v1+json',digest:hash(imageManifestJson),size:Buffer.byteLength(imageManifestJson),platform:{architecture:'arm64',os:'linux'}}]});
+ const launch={synthetic:true,imageIndexJson,imageManifestJson,imageConfigJson,spec:{format:'bowerloom/mcp-container-launch/v1beta1',operationKey:d,imageIndexDigest:hash(imageIndexJson),imageManifestDigest:hash(imageManifestJson),imageConfigDigest:hash(imageConfigJson),platform:'linux/arm64',entrypoint:'/usr/local/bin/node',args:['-e','process.stdin.resume()'],workingDirectory:'/tmp',user:{uid:10001,gid:10001},imageEnvironment:[],limits:{cpuMillis:250,memoryBytes:134217728,pids:32,scratchBytes:8388608,shmBytes:1048576}}};
+ f.plan.binding.transport={kind:'stdio',executable:'/usr/local/bin/node',workingDirectory:'/tmp',secretReferences:[]};
+ f.plan.catalog.bindingRevision=mcpBindingRevision(f.plan.binding);
+ const effect={kind:'container-stdio',launch,launchRevision:planMcpContainerDiscoveryLaunch(launch).revision};
+ const raw={scope:selected,requestId:'container-discovery',ownerEpoch:1,input:f.plan,effect,timeoutMs:1000};
+ const proposal=createDiscoveryProposal(raw);f.store.state=createDiscoveryAuthorityState(proposal,f.grant);
+ return {...f,raw,proposal};
+}
+test('container discovery approval pins its separate interactive launch and durable deadline',async()=>{
+ const f=containerAuthorityFixture(),c=f.controller();
+ await assert.rejects(c.dispatch(selected,'owner'));assert.equal(f.observed.opens,0);
+ await c.approve(selected,{revision:f.proposal.revision,expiresAtMs:8000},'founder');
+ const result=await c.dispatch(selected,'owner');assert.equal(result.status,'COMPLETED');
+ assert.equal(f.observed.context.deadlineMs,3000);assert.equal(f.observed.context.effect.launchRevision,f.raw.effect.launchRevision);
+ assert.ok(Object.isFrozen(f.observed.context.effect.launch.spec.args));assert.equal(result.result.toolCalls,0);
+ await c.dispatch(selected,'owner');assert.equal(f.observed.opens,1);
+});
+test('container effect refuses old stdio approvals, changed launch bytes and secret-bearing bindings',()=>{
+ const f=containerAuthorityFixture();
+ for(const change of [v=>v.effect.launch.spec.args.push('changed'),v=>v.effect.launchRevision='sha256:'+'0'.repeat(64),v=>v.effect.kind='stdio',v=>v.effect.launch.spec.imageIndexDigest='node:24',v=>v.input.binding.transport.secretReferences=[{environmentVariable:'KEY',reference:'secret-ref:test'}],v=>v.input.binding.transport.executable='/other',v=>v.effect.deadlineMs=9000]){
+  const v=clone(f.raw);change(v);assert.throws(()=>createDiscoveryProposal(v),McpConnectionError);
+ }
+ const altered=clone(f.raw);altered.effect.launch.spec.limits.cpuMillis=500;altered.effect.launchRevision=planMcpContainerDiscoveryLaunch(altered.effect.launch).revision;
+ assert.notEqual(createDiscoveryProposal(altered).revision,f.proposal.revision);
 });

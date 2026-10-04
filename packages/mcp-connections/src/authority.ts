@@ -5,11 +5,14 @@ import { data, fail, McpConnectionError, planMcpConnection, sha256 } from './mod
 import type { McpPlanInput, McpBinding } from './model.js';
 import { discoverMcpCatalog } from './discovery.js';
 import type { McpDiscoveryContext, McpDiscoveryTransport, McpDiscoveryResult } from './discovery.js';
+import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
+import type { McpContainerPlanInput } from './container-policy.js';
 
 export type DiscoveryEffect = {
   kind: 'stdio'; executable: { path: string; digest: string }; entrypoints: { path: string; digest: string }[];
   args: string[]; cwd: string; environment: { inherit: false; secretReferences: { environmentVariable: string; reference: string }[] };
-} | { kind: 'streamable-http'; endpoint: string; authBindingRevision: string };
+} | { kind: 'streamable-http'; endpoint: string; authBindingRevision: string }
+  | { kind: 'container-stdio'; launch: McpContainerPlanInput; launchRevision: string };
 export interface DiscoveryProposalInput { scope: Scope; requestId: string; ownerEpoch: number; input: McpPlanInput; effect: DiscoveryEffect; timeoutMs: number }
 export interface DiscoveryProposal extends DiscoveryProposalInput { format: 'bowerloom/mcp-discovery-proposal/v1beta1'; planRevision: string; revision: string }
 export interface DiscoveryGrant { scope: Scope; ownerSubject: string; ownerEpoch: number; approverSubjects: string[]; readyAtMs: number; leaseExpiresAtMs: number; revoked: boolean }
@@ -25,7 +28,7 @@ export interface DiscoveryAuthorityStore {
   /** Serialize per scope, validate transitions, and durably commit before resolving. Never rerun a callback automatically. */
   transaction<T>(scope: Scope, mutate: (state: DiscoveryAuthorityState) => T): Promise<T>;
 }
-export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope }
+export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number }
 export type DiscoveryAuthorityOpen = (context: Readonly<DiscoveryAuthorityContext>) => Promise<McpDiscoveryTransport>;
 const AUTHORITY_CODES = new Set(['MCP_AUTHORITY_FIELDS', 'MCP_AUTHORITY_IDENTIFIER', 'MCP_AUTHORITY_TIME', 'MCP_AUTHORITY_DIGEST',
   'MCP_AUTHORITY_TEXT', 'MCP_AUTHORITY_PATH', 'MCP_AUTHORITY_EFFECT', 'MCP_AUTHORITY_EFFECT_BINDING', 'MCP_AUTHORITY_EFFECT_BOUND',
@@ -56,6 +59,15 @@ function pinned(value: unknown): { path: string; digest: string } { const v = ob
 function effect(value: unknown, binding: McpBinding, bindingRevision: string): DiscoveryEffect {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('MCP_AUTHORITY_EFFECT');
   const kind = (value as Record<string, unknown>).kind;
+  if (kind === 'container-stdio' && binding.transport.kind === 'stdio') {
+    const v = object(value, ['kind', 'launch', 'launchRevision']);
+    let launchPlan;
+    try { launchPlan = planMcpContainerDiscoveryLaunch(v.launch as McpContainerPlanInput); }
+    catch { return fail('MCP_AUTHORITY_EFFECT'); }
+    if (v.launchRevision !== launchPlan.revision || binding.transport.secretReferences.length !== 0
+      || binding.transport.executable !== launchPlan.spec.entrypoint || binding.transport.workingDirectory !== launchPlan.spec.workingDirectory) fail('MCP_AUTHORITY_EFFECT_BINDING');
+    return { kind, launch: data(v.launch) as McpContainerPlanInput, launchRevision: launchPlan.revision };
+  }
   if (kind === 'stdio' && binding.transport.kind === 'stdio') {
     const v = object(value, ['kind', 'executable', 'entrypoints', 'args', 'cwd', 'environment']);
     const executable = pinned(v.executable), cwd = path(v.cwd), environment = object(v.environment, ['inherit', 'secretReferences']);
@@ -239,7 +251,7 @@ export class DiscoveryAuthorityController {
     let cancelAlarm: (() => void) | undefined;
     try {
       cancelAlarm = this.#clock.alarm(intent.intent!.deadlineMs, () => controller.abort());
-      const result = await discoverMcpCatalog(intent.proposal.input, { approve: intent.proposal.planRevision, timeoutMs: Math.max(1, Math.min(30000, intent.intent!.deadlineMs - this.#now())), signal: controller.signal,
+      const result = await discoverMcpCatalog(intent.proposal.input, { approve: intent.proposal.planRevision, timeoutMs: Math.max(1, Math.min(30000, intent.intent!.deadlineMs - this.#now())), signal: controller.signal, ...(intent.proposal.effect.kind === 'container-stdio' ? { cleanupTimeoutMs: 10000 } : {}),
         open: async context => {
           let opening: Promise<McpDiscoveryTransport> | undefined;
           try {
@@ -247,7 +259,8 @@ export class DiscoveryAuthorityController {
               this.#live(state, p);
               if (state.status !== 'IN_FLIGHT' || !same(state.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
               // The durable intent already committed. Invoke only while this final authorization row lock is held.
-              opening = Promise.resolve(this.#open(Object.freeze({ ...context, effect: frozen(data(state.proposal.effect) as DiscoveryEffect), operationKey: state.operationKey, scope: frozen(scope(state.scope)) })));
+              opening = Promise.resolve(this.#open(Object.freeze({ ...context, effect: frozen(data(state.proposal.effect) as DiscoveryEffect), operationKey: state.operationKey, scope: frozen(scope(state.scope)),
+                ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs } : {}) })));
               // Observe rejection before awaiting the store commit acknowledgement.
               // Keep the original promise so dispatch still receives the failure.
               void opening.catch(() => undefined);

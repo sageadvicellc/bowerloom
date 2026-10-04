@@ -17,7 +17,7 @@ export interface McpDiscoveryContext {
 }
 export interface McpDiscoveryOptions {
   approve: string; open: (context: Readonly<McpDiscoveryContext>) => Promise<McpDiscoveryTransport>;
-  timeoutMs?: number; signal?: AbortSignal;
+  timeoutMs?: number; signal?: AbortSignal; cleanupTimeoutMs?: number;
 }
 export interface McpDiscoveryResult {
   format: 'bowerloom/mcp-discovery-result/v1beta1'; contentScope: 'private-local-result';
@@ -53,15 +53,16 @@ function response(value: unknown): unknown {
     return fail('MCP_DISCOVERY_RESPONSE');
   }
 }
-function options(value: McpDiscoveryOptions): Required<Pick<McpDiscoveryOptions, 'approve' | 'open' | 'timeoutMs'>> & Pick<McpDiscoveryOptions, 'signal'> {
+function options(value: McpDiscoveryOptions): Required<Pick<McpDiscoveryOptions, 'approve' | 'open' | 'timeoutMs' | 'cleanupTimeoutMs'>> & Pick<McpDiscoveryOptions, 'signal'> {
   if (!value || typeof value !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail('MCP_DISCOVERY_OPTIONS');
   const descriptors = Object.getOwnPropertyDescriptors(value), keys = Reflect.ownKeys(value);
-  if (keys.some(key => typeof key !== 'string' || !['approve', 'open', 'timeoutMs', 'signal'].includes(key) || !('value' in descriptors[key]!))
+  if (keys.some(key => typeof key !== 'string' || !['approve', 'open', 'timeoutMs', 'signal', 'cleanupTimeoutMs'].includes(key) || !('value' in descriptors[key]!))
     || !descriptors.approve || !descriptors.open) fail('MCP_DISCOVERY_OPTIONS');
-  const approve = descriptors.approve.value, open = descriptors.open.value, timeoutMs = descriptors.timeoutMs?.value ?? 5000, signal = descriptors.signal?.value;
+  const approve = descriptors.approve.value, open = descriptors.open.value, timeoutMs = descriptors.timeoutMs?.value ?? 5000, signal = descriptors.signal?.value, cleanupTimeoutMs = descriptors.cleanupTimeoutMs?.value ?? CLEANUP_MS;
   if (typeof approve !== 'string' || typeof open !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000
+    || !Number.isInteger(cleanupTimeoutMs) || cleanupTimeoutMs < 1 || cleanupTimeoutMs > 15000
     || (signal !== undefined && !(signal instanceof AbortSignal))) fail('MCP_DISCOVERY_OPTIONS');
-  return { approve, open, timeoutMs, ...(signal ? { signal } : {}) };
+  return { approve, open, timeoutMs, cleanupTimeoutMs, ...(signal ? { signal } : {}) };
 }
 
 /** The factory is trusted host code. This engine limits its own protocol operations, not that code's authority. */
@@ -158,7 +159,7 @@ export async function discoverMcpCatalog(input: McpPlanInput, supplied: McpDisco
     if (transport) {
       let closeTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await Promise.race([closeOnce(transport), new Promise<never>((_, reject) => { closeTimer = setTimeout(() => reject(new McpConnectionError('MCP_DISCOVERY_CLEANUP_TIMEOUT')), CLEANUP_MS); })]);
+        await Promise.race([closeOnce(transport), new Promise<never>((_, reject) => { closeTimer = setTimeout(() => reject(new McpConnectionError('MCP_DISCOVERY_CLEANUP_TIMEOUT')), opts.cleanupTimeoutMs); })]);
       } catch (error) {
         failed = new McpConnectionError(error instanceof McpConnectionError && error.code === 'MCP_DISCOVERY_CLEANUP_TIMEOUT' ? 'MCP_DISCOVERY_CLEANUP_TIMEOUT' : 'MCP_DISCOVERY_CLEANUP_FAILED');
       } finally { clearTimeout(closeTimer); }

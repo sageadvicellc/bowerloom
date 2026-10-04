@@ -5,7 +5,7 @@ import cp from 'node:child_process';
 import https from 'node:https';
 import dns from 'node:dns/promises';
 import fs from 'node:fs/promises';
-import { planMcpContainerLaunch, McpConnectionError } from '../../../dist/packages/mcp-connections/src/index.js';
+import { planMcpContainerLaunch, planMcpContainerDiscoveryLaunch, McpConnectionError } from '../../../dist/packages/mcp-connections/src/index.js';
 const hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex');
 const DIGEST='sha256:'+'a'.repeat(64), MANIFEST='application/vnd.oci.image.manifest.v1+json';
 const refused=error=>error instanceof McpConnectionError&&/^MCP_CONTAINER_[A-Z_]+$/.test(error.code)&&error.code===error.message&&!error.message.includes('PRIVATE');
@@ -61,4 +61,12 @@ test('getters, serialization hooks, prototypes and caller mutation cannot execut
  let reads=0;const getter=fixture();Object.defineProperty(getter.spec,'args',{enumerable:true,get(){reads++;return ['PRIVATE'];}});assert.throws(()=>planMcpContainerLaunch(getter),refused);assert.equal(reads,0);
  const hook=fixture();hook.spec.toJSON=()=>{reads++;return {};};assert.throws(()=>planMcpContainerLaunch(hook),refused);assert.equal(reads,0);
  const proto=fixture();Object.setPrototypeOf(proto.spec,{PRIVATE:'inherited'});assert.throws(()=>planMcpContainerLaunch(proto),refused);
+});
+
+test('interactive discovery has a separate revision domain and leaves historical plans unchanged',()=>{
+ const input=fixture(),original=planMcpContainerLaunch(input),discovery=planMcpContainerDiscoveryLaunch(input);
+ assert.equal(original.argv.includes('--interactive'),false);assert.equal(discovery.argv.filter(x=>x==='--interactive').length,1);
+ assert.deepEqual(discovery.argv.filter(x=>x!=='--interactive'),original.argv);
+ assert.notEqual(discovery.revision,original.revision);assert.equal(discovery.format,'bowerloom/mcp-container-discovery-launch/v1beta1');
+ assert.deepEqual(planMcpContainerLaunch(input),original);assert.equal(discovery.executionAuthorized,false);assert.ok(Object.isFrozen(discovery.argv));
 });
