@@ -116,11 +116,18 @@ Name supported operating systems explicitly. Do not infer cross-platform support
 
 ## Website and release evidence
 
-The website opens with an animated splash on desktop and mobile. Hanna selected this direction on October 4 at 3:24 p.m. EDT.
-This replaces the earlier full-page animation background. Preserve the earlier previews as historical experiments.
-Keep approved character references and identify missing cast assets before further generation.
-Do not repeat completed media jobs. Generation stays within the approved allowance and needs a concrete cost estimate first.
-The splash needs founder acceptance, visible characters, immediate entry controls, reduced-motion alternatives, and loading-failure evidence.
+Hanna replaced the framed splash on October 4 at 4:01 p.m. EDT.
+The website opens with a cinematic intro that fills desktop and mobile viewports.
+The camera pivots around Hanna's shop, follows a bridge to a second lab, and reveals the connected tree habitat.
+The second lab includes its own S4 pair and several H4Ns. The camera then pans toward a sun flare.
+Animate the Bowerloom logo into that scene. Automatically slide the intro upward to reveal the site underneath.
+Keep Skip small and out of the way, with usable touch and keyboard access.
+Keep the H4N and S4 panel accents on the entered site.
+Brand owns shot continuity, desktop and portrait framing, audio, and the production estimate.
+Engineering owns playback, automatic entry, accessibility, loading bounds, and new acceptance evidence.
+Sound effects and an original score remain requested if feasible within the existing allowance.
+The prior framed splash is not founder accepted. Preserve its evidence without applying its tests to the new behavior.
+Generation requires a concrete quoted estimate within the reported 198-credit remainder. This amendment increases no allowance.
 
 Preserve the accepted dark footer and current brand palette while reconciling the older green-footer wording in #42.
 Preserve the founder's explicit ban on seed and sprout wording. The spec's older seed-language sentence does not override that instruction.
@@ -166,22 +173,21 @@ Test narrow screens and GitHub light and dark views.
 Content reviews wording and image descriptions. Knowledge receives the final approved package and its source record.
 Engineering integrates the reviewed package through the beta feature branch.
 
-Hanna replaced the full-page background direction on October 4 at 3:24 p.m. EDT.
-Issue #58 now requires an animated splash before the normal homepage on desktop and mobile.
-Content panels must not cover the animation. Normal mobile playback must animate rather than use only a still image.
-Retain an immediate Skip or Enter site control. Visitors do not need to finish playback.
-Use muted inline playback, an explicit play option when autoplay fails, and a still alternative for reduced motion or media failure.
-Keep the controls available during loading and failure. Restore useful keyboard focus when the visitor enters the site.
+Hanna replaced both earlier animation layouts with the cinematic intro described above.
+The earlier full-page background and framed-player previews remain historical experiments.
+Issue #58 requires the full sequence and automatic entry, with protected desktop and mobile review.
+Do not crop required characters from a portrait frame. Brand must approve each supported shot composition.
+If separate portrait assets are needed, include them in the production estimate before generation.
 
-Brand owns desktop and phone framing, approved character references, and asset provenance.
-Reuse the approved eight-second clip where it fits. Preserve the full frame when a portrait crop hides characters.
-Identify missing cast assets before generation. Earlier clip approval does not approve the new splash experience.
-After entry, the homepage uses its ordinary readable surfaces rather than an animated background.
-Add selective H4N and S4 units at panel corners or edges. Keep text and controls clear at each supported width.
-Preserve established model shapes and individual unit colors. S4-G3 remains Hanna's bespoke unit.
+Use muted inline autoplay and a discreet sound opt-in. Provide Play when browser policy blocks automatic playback.
+Skip remains available during loading, playback, and failure. Reduced-motion visits bypass automatic camera and slide motion.
+Stop active media after entry and restore useful keyboard focus. Keep session and direct-link behavior predictable.
+The site beneath the intro uses its ordinary readable surfaces and selective H4N and S4 panel accents.
+Preserve established unit shapes and colors. S4-G3 remains Hanna's bespoke unit.
 
-Acceptance covers desktop and phone playback, blocked autoplay, immediate entry, replay, keyboard access, reduced motion, loading failure, and responsive framing.
-Measure loading limits and performance for this splash. Do not retain reverse-scroll or all-section background coverage as current release gates.
-Keep the earlier full-page prototype, its reviews, and its limitations as historical evidence.
-Provide a protected preview for founder review. Main merge and production publication remain Hanna's decisions.
-These changes grant no additional media spending. Use existing approved assets before any new generation.
+Acceptance covers completion, automatic reveal, Skip, audio opt-in, blocked autoplay, keyboard access, reduced motion, and media failure.
+Test continuity and framing across the whole sequence on desktop, phone, and tablet layouts.
+Measure loading bounds and performance. Separate physical-device evidence from browser viewport tests.
+Bind every result to exact code and media revisions. The prior 45-test result does not establish this new behavior.
+Brand reviews the sequence and sound. Content reviews visible copy. Independent review assesses source and evidence.
+Founder creative acceptance remains required. Only Hanna merges main or approves production publication.
