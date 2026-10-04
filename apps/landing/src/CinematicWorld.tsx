@@ -62,7 +62,6 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
   const poster = scene.posterReady ? scene.poster : journey.openingPoster;
   const clipUrl = clip?.id === scene.id ? clip.url : null;
   const frameVisible = presented && Boolean(clipUrl);
-  const beyondOpening = motion && index > 0;
 
   useEffect(() => { setPosterFailed(false); }, [poster]);
   useEffect(() => {
@@ -235,19 +234,23 @@ export default function CinematicWorld({ reducedMotion }: { reducedMotion: boole
         <div className="cinematic-media" aria-hidden="true">
           {!posterFailed && <img src={poster} alt="" onError={() => setPosterFailed(true)} className={frameVisible ? "cinematic-poster presented" : "cinematic-poster"} />}
           {clipUrl && motion && <video key={clipUrl} ref={videoRef} src={clipUrl} muted playsInline preload="auto" tabIndex={-1} className={frameVisible ? "cinematic-video presented" : "cinematic-video"} />}
-        {motion && index > 0 && <img className="cinematic-seam" src={`/scroll-world/${journey.scenes[index - 1].id}-end.webp`} alt="" />}
         </div>
         <div className="cinematic-scrim" />
-        <div className={`cinematic-copy${beyondOpening ? " cinematic-copy-chapter" : ""}`}>
+        <div className="cinematic-copy">
           <p className="eyebrow">{hero.Eyebrow}</p>
           <h1 id="hero-title">Grow your capabilities with <em>Bowerloom</em></h1>
           <p className="cinematic-description">{hero.Body}</p>
           <a className="button primary" href="#build">Build with your agent</a>
           <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
-          {motion && index > 0 && <div className="cinematic-chapter"><h2>{scene.title}</h2><p>{scene.body}</p></div>}
         </div>
         <div className="cinematic-bottom">
-          <div><p className="cinematic-label">{motion ? "Animation study · art direction under review" : "Workshop illustration"}</p><p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the workflow." : hero["Illustration caption"]}</p>{status && <p className="cinematic-media-status">{status}</p>}</div>
+          <div className="cinematic-illustration-note">
+            <p className="cinematic-label">{motion ? "Illustrated preview · one 8-second scene" : "Workshop illustration"}</p>
+            <p className="cinematic-image-caption">{posterFailed ? "Workshop image unavailable. Continue to the workflow." : scene.label}</p>
+            <p className="cinematic-image-caption">{journey.illustrationNote}</p>
+            <p className="cinematic-approval-note">{journey.approvalNote}</p>
+            {status && <p className="cinematic-media-status">{status}</p>}
+          </div>
           <div className="cinematic-actions">
             {preview && hasClips && !mobile && !reducedMotion && <button className="motion-toggle" aria-pressed={staticView} onClick={() => setStaticView(!staticView)}>{staticView ? "Use motion view" : "Use still view"}</button>}
             <a href="#recipe">Go to the workflow</a>

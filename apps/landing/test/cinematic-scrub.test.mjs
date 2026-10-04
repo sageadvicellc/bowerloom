@@ -50,3 +50,30 @@ test("backscroll during decoding replaces the forward target", () => {
   assert.ok(f.seeks[1] < f.seeks[0]);
   assert.ok(Math.abs(f.seeks[1] - .2 * (10 - 1 / 30)) < .00001);
 });
+
+
+test("active preview contains only the exact approved eight-second lab scene", async () => {
+  const { cinematicJourney: journey, historicalCinematicJourney } = await import("../src/cinematic-config.ts");
+  const { readFile } = await import("node:fs/promises");
+  const { createHash } = await import("node:crypto");
+  assert.equal(journey.scenes.length, 1);
+  assert.equal(journey.scenes[0].id, "lab-robots-03");
+  assert.equal(journey.scenes[0].durationSeconds, 8.04);
+  assert.equal(journey.maxClipSeconds, 8.1);
+  assert.equal(historicalCinematicJourney.scenes.length, 6);
+  assert.ok(journey.scenes.every(scene => !scene.clip.startsWith("/scroll-world/")));
+  const clip = await readFile(new URL("../public" + journey.scenes[0].clip, import.meta.url));
+  const poster = await readFile(new URL("../public" + journey.openingPoster, import.meta.url));
+  assert.equal(createHash("sha256").update(clip).digest("hex"), "b7e80159d0d1a38bcf66c67ee82a5a3f1fcea34e24e166325e43d7db2215798b");
+  assert.equal(createHash("sha256").update(poster).digest("hex"), "d2cafbb6dac90981244f0f1f893cb21fac52af98a52bbf392dfeb566c8465505");
+  assert.equal(journey.illustrationNote, "This illustrated preview represents an intended workflow. It does not establish software behavior, benchmark results, or a winning model.");
+  assert.equal(journey.approvalNote, "Review the exact plan. Approve only the actions you choose.");
+});
+
+test("scrolling the approved clip does not loop or stretch its playback range", () => {
+  const f = fixture(); f.video.duration = 8.04;
+  f.scrub.setProgress(0.5); f.flush(); assert.ok(f.seeks[0] > 3.9 && f.seeks[0] < 4.1);
+  f.scrub.setProgress(1); f.flush(); assert.ok(f.seeks[1] > 8 && f.seeks[1] < 8.04);
+  f.scrub.setProgress(20); f.flush(); assert.equal(f.seeks.length, 2);
+  f.scrub.setProgress(0); f.flush(); assert.equal(f.seeks.at(-1), 0);
+});
