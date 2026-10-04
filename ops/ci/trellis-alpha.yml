@@ -1,0 +1,33 @@
+# Prepared workflow. This file is inactive outside .github/workflows.
+name: Trellis alpha checks
+on:
+  pull_request:
+    branches: [main, feature/trellis-v1]
+  push:
+    branches: [feature/trellis-v1, 'task/**']
+permissions:
+  contents: read
+concurrency:
+  group: alpha-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.11.0'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node tools/verify.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: alpha-verification
+          path: .trellis/verification/
+          include-hidden-files: true
+          retention-days: 7

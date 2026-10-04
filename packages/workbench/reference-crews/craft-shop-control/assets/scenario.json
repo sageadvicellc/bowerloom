@@ -1,0 +1,35 @@
+{
+  "format": "trellis/workbench-scenario/v0.7-alpha",
+  "id": "craft-shop-v1",
+  "revision": "r1",
+  "classification": "synthetic",
+  "brief": {
+    "asset": "project-brief",
+    "digest": "sha256:630be0f0a66f0c0e2c445ad476a3f254894e43c045821b6c5a26c592f51a5c6a",
+    "bytes": 667
+  },
+  "inputs": [
+    {
+      "asset": "contract",
+      "digest": "sha256:209ec76881da3c3dde0ff52a569dd7a0991dd33d9a0aa85226a9a42bee510dac",
+      "bytes": 1764
+    },
+    {
+      "asset": "orders",
+      "digest": "sha256:b98257ea28d6abca6d9ffdc6f2dd1341cc2768fb28ef7063718910d463881800",
+      "bytes": 241
+    }
+  ],
+  "testId": "craft-shop-ui-v1",
+  "criteria": [
+    "add-job",
+    "change-stage",
+    "reload",
+    "export"
+  ],
+  "taskCount": 2,
+  "writePaths": [
+    "output/design/index.html",
+    "output/job-board/index.html"
+  ]
+}

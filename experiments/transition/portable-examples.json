@@ -1,0 +1,94 @@
+[
+  {
+    "schema_version": "0.1-research",
+    "team": "framework",
+    "lead": "coda",
+    "design_lead": "emery",
+    "workers": 2,
+    "source": "b74d791b5458648d89b53b513eae4dbbe5122a0676ce947d63e16841a1614e2e",
+    "assets": [
+      "prompts/lead.md",
+      "skills/acceptance.md"
+    ],
+    "pins": {
+      "modules": "fixture:modules:1",
+      "adapter": "fixture:adapter:1",
+      "model": "fixture:model:1",
+      "dataset": "fixture:dataset:1"
+    },
+    "required_capabilities": [
+      "artifacts",
+      "cancel",
+      "exact-approval",
+      "handoff",
+      "team-scope"
+    ],
+    "nodes": [
+      {
+        "id": "propose",
+        "depends_on": [],
+        "owner": "framework"
+      },
+      {
+        "id": "approve",
+        "depends_on": [
+          "propose"
+        ],
+        "owner": "framework"
+      },
+      {
+        "id": "publish",
+        "depends_on": [
+          "approve"
+        ],
+        "owner": "framework"
+      }
+    ]
+  },
+  {
+    "schema_version": "0.1-research",
+    "team": "downstream-demo",
+    "lead": "separate-demo-lead",
+    "design_lead": "demo-designer",
+    "workers": 2,
+    "source": "2ad557ca8a249a93dcacb62a17850f33a6ffed745dc7c9046ee690d8ed3e7e03",
+    "assets": [
+      "prompts/lead.md",
+      "skills/acceptance.md"
+    ],
+    "pins": {
+      "modules": "fixture:modules:1",
+      "adapter": "fixture:adapter:1",
+      "model": "fixture:model:1",
+      "dataset": "fixture:dataset:1"
+    },
+    "required_capabilities": [
+      "artifacts",
+      "cancel",
+      "exact-approval",
+      "handoff",
+      "team-scope"
+    ],
+    "nodes": [
+      {
+        "id": "propose",
+        "depends_on": [],
+        "owner": "downstream-demo"
+      },
+      {
+        "id": "approve",
+        "depends_on": [
+          "propose"
+        ],
+        "owner": "downstream-demo"
+      },
+      {
+        "id": "publish",
+        "depends_on": [
+          "approve"
+        ],
+        "owner": "downstream-demo"
+      }
+    ]
+  }
+]

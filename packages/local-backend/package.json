@@ -1,0 +1,8 @@
+{
+  "name": "@bowerloom/local-backend",
+  "version": "0.7.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "dependencies": { "pg": "8.16.3" }
+}

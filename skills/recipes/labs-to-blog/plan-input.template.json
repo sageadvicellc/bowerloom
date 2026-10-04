@@ -1,0 +1,16 @@
+{
+  "experiment": {
+    "id": "experiment-id",
+    "status": "completed",
+    "completedAt": "2026-10-01T00:00:00.000Z",
+    "commit": "REPLACE_WITH_EXACT_GITHUB_COMMIT",
+    "record": { "id": "record", "path": "experiments/example/record.md", "content": "REPLACE_WITH_COMMITTED_TEXT", "digest": "REPLACE_WITH_SHA256" },
+    "evidence": [{ "id": "results", "path": "experiments/example/results.json", "content": "REPLACE_WITH_COMMITTED_TEXT", "digest": "REPLACE_WITH_SHA256" }]
+  },
+  "draft": {
+    "title": "A measured experiment result",
+    "markdown": "REPLACE_WITH_EVIDENCE_LINKED_MARKDOWN",
+    "claims": [{ "text": "REPLACE_WITH_EXACT_CLAIM_TEXT", "evidenceIds": ["results"] }]
+  },
+  "metrics": { "setupMinutes": null, "draftingMinutes": null, "reviewMinutes": null, "corrections": null, "inputTokens": null, "outputTokens": null, "baselineMinutes": null }
+}

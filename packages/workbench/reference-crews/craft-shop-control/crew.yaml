@@ -1,0 +1,185 @@
+format: trellis/crew/v0.7-alpha
+id: craft-shop-control
+description: Two leads build and test a synthetic craft-shop job board, one
+  approved HTML artifact at a time.
+requiredCapabilities:
+  - workspace.write
+  - command.test
+  - approval.exact-revision
+budget:
+  maxActiveWorkers: 2
+  reservePercent: 25
+  paidFallback: false
+scope:
+  - operation: workspace.write
+    path: output/design/index.html
+  - operation: workspace.write
+    path: output/job-board/index.html
+  - operation: command.test
+    command: craft-shop-ui-v1
+assets:
+  coda-prompt:
+    path: prompts/coda.md
+    mediaType: text/markdown
+  emery-prompt:
+    path: prompts/emery.md
+    mediaType: text/markdown
+  contract:
+    path: assets/craft-shop-contract.md
+    mediaType: text/markdown
+  orders:
+    path: assets/orders.json
+    mediaType: application/json
+  test-manifest:
+    path: assets/test-manifest.json
+    mediaType: application/json
+  authoring:
+    path: authoring.json
+    mediaType: application/json
+  project-brief:
+    path: assets/project-brief.md
+    mediaType: text/markdown
+  scenario:
+    path: assets/scenario.json
+    mediaType: application/json
+  relay-map:
+    path: maps/relay.json
+    mediaType: application/json
+  vines-map:
+    path: maps/vines.json
+    mediaType: application/json
+  craft-ui-definition:
+    path: skills/craft-ui.json
+    mediaType: application/json
+  craft-ui:
+    path: skills/craft-ui.md
+    mediaType: text/markdown
+owners:
+  - id: emery
+    role: Design Lead
+    prompt: emery-prompt
+    skills:
+      - craft-ui
+    modelClass: economy
+    permissions:
+      - operation: workspace.write
+        path: output/design/index.html
+      - operation: command.test
+        command: craft-shop-ui-v1
+  - id: coda
+    role: Solution Lead
+    prompt: coda-prompt
+    skills:
+      - craft-ui
+    modelClass: standard
+    permissions:
+      - operation: workspace.write
+        path: output/job-board/index.html
+      - operation: command.test
+        command: craft-shop-ui-v1
+tasks:
+  - id: design
+    owner: emery
+    description: Build a complete functional HTML prototype for the fictional Endor
+      craft shop. Follow the contract and include the synthetic orders.
+    dependsOn: []
+    requires:
+      - workspace.write
+      - command.test
+      - approval.exact-revision
+    inputs:
+      contract:
+        type:
+          kind: artifact
+          mediaType: text/markdown
+        source:
+          asset: contract
+      orders:
+        type:
+          kind: artifact
+          mediaType: application/json
+        source:
+          asset: orders
+      brief:
+        type:
+          kind: artifact
+          mediaType: text/markdown
+        source:
+          asset: project-brief
+    outputs:
+      draft:
+        kind: artifact
+        mediaType: text/html
+    effects:
+      - operation: workspace.write
+        path: output/design/index.html
+      - operation: command.test
+        command: craft-shop-ui-v1
+    approval: required
+    policy:
+      maxAttempts: 1
+      timeoutSeconds: 300
+      deadlineSeconds: 1800
+      backoffSeconds: 0
+      onFailure: escalate
+    acceptance:
+      - Add a job through the form and change its stage.
+      - Reload preserves the same job identifier, title and stage.
+      - Export downloads the contract JSON with that same job.
+  - id: build
+    owner: coda
+    description: Refine the accepted HTML prototype into the final craft-shop job
+      board. Preserve all contract identifiers and behaviors; improve clarity,
+      accessibility and visual hierarchy.
+    dependsOn:
+      - design
+    requires:
+      - workspace.write
+      - command.test
+      - approval.exact-revision
+    inputs:
+      draft:
+        type:
+          kind: artifact
+          mediaType: text/html
+        source:
+          task: design
+          output: draft
+      contract:
+        type:
+          kind: artifact
+          mediaType: text/markdown
+        source:
+          asset: contract
+      orders:
+        type:
+          kind: artifact
+          mediaType: application/json
+        source:
+          asset: orders
+      brief:
+        type:
+          kind: artifact
+          mediaType: text/markdown
+        source:
+          asset: project-brief
+    outputs:
+      application:
+        kind: artifact
+        mediaType: text/html
+    effects:
+      - operation: workspace.write
+        path: output/job-board/index.html
+      - operation: command.test
+        command: craft-shop-ui-v1
+    approval: required
+    policy:
+      maxAttempts: 1
+      timeoutSeconds: 300
+      deadlineSeconds: 1800
+      backoffSeconds: 0
+      onFailure: escalate
+    acceptance:
+      - Add a job through the form and change its stage.
+      - Reload preserves the same job identifier, title and stage.
+      - Export downloads the contract JSON with that same job.

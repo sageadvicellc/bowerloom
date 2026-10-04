@@ -1,0 +1,14 @@
+{
+  "format": "trellis/skill/v0.7-alpha",
+  "id": "craft-ui",
+  "instructions": "craft-ui",
+  "owners": [
+    "emery",
+    "coda"
+  ],
+  "requiredCapabilities": [
+    "workspace.write",
+    "command.test",
+    "approval.exact-revision"
+  ]
+}

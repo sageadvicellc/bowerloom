@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "bowerloom/v1alpha1",
+  "parts": [
+    { "id": "report", "kind": "skill", "files": ["skills/report/SKILL.md", "skills/report/sample.csv"], "dependsOn": [], "requiredControls": ["installer-local-files-only", "installer-explicit-review"] },
+    { "id": "editorial", "kind": "team", "files": ["teams/editorial/team.json"], "dependsOn": ["report"], "requiredControls": ["installer-explicit-review"] }
+  ]
+}

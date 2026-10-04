@@ -1,0 +1,562 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:trellis:proposal:contracts:0.1",
+  "title": "Trellis research proposal, not a released contract",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/artifact"
+    },
+    {
+      "$ref": "#/$defs/approval"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/budget"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/event"
+    },
+    {
+      "$ref": "#/$defs/retrieval"
+    },
+    {
+      "$ref": "#/$defs/handoff"
+    }
+  ],
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "team",
+        "run",
+        "task"
+      ],
+      "properties": {
+        "team": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "task": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "artifact_id",
+        "digest",
+        "media_type",
+        "relative_path",
+        "classification",
+        "source_revision"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "enum": [
+            "synthetic",
+            "public",
+            "private"
+          ]
+        },
+        "source_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "action_digest",
+        "candidate_revision",
+        "approver_reference",
+        "expires_at",
+        "evidence_reference"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "action_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "candidate_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "approver_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "name",
+        "required",
+        "owner",
+        "semantics_version",
+        "platform",
+        "declared",
+        "runtime_evidence"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semantics_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declared": {
+          "type": "boolean"
+        },
+        "runtime_evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "account_reference",
+        "usage_source",
+        "observed_at",
+        "windows",
+        "allowance_percent",
+        "stop_percent",
+        "worker_limit",
+        "paid_fallback"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "account_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "usage_source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "used_percent",
+              "reset_at"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "used_percent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "reset_at": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "allowance_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "stop_percent": {
+          "const": 75
+        },
+        "worker_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "paid_fallback": {
+          "const": false
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "code",
+        "retry_class",
+        "message",
+        "evidence_reference"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "retry_class": {
+          "enum": [
+            "safe",
+            "after-reconciliation",
+            "never"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "request_id",
+        "operation",
+        "source_revision",
+        "payload_digest",
+        "payload_reference"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "operation": {
+          "enum": [
+            "setup",
+            "plan",
+            "start",
+            "progress",
+            "approve",
+            "result",
+            "cancel",
+            "handoff"
+          ]
+        },
+        "source_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "payload_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "payload_reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "event_id",
+        "sequence",
+        "kind",
+        "actor_reference",
+        "correlation_id",
+        "causation_id",
+        "payload_digest",
+        "payload_reference"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "event_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correlation_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "causation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "payload_reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "query_digest",
+        "snapshot_digest",
+        "principal_reference",
+        "sources",
+        "abstained"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "query_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "snapshot_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "document_id",
+              "revision",
+              "span",
+              "policy_reference",
+              "freshness"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "span": {
+                "type": "string",
+                "minLength": 1
+              },
+              "policy_reference": {
+                "type": "string",
+                "minLength": 1
+              },
+              "freshness": {
+                "enum": [
+                  "current",
+                  "superseded",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        },
+        "abstained": {
+          "type": "boolean"
+        }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scope",
+        "source_revision",
+        "completed_tasks",
+        "pending_tasks",
+        "artifact_digests",
+        "ambiguous_actions",
+        "remaining_budget_reference",
+        "approval_references"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1-research"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "source_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "completed_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+          }
+        },
+        "pending_tasks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+          }
+        },
+        "artifact_digests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "ambiguous_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+          }
+        },
+        "remaining_budget_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approval_references": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

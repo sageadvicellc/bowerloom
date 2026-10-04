@@ -1,0 +1,49 @@
+{
+  "name": "bowerloom",
+  "version": "0.7.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "bin": {
+    "bowerloom": "dist/apps/cli/src/main.js",
+    "bowerloom-mcp": "dist/apps/mcp/src/main.js",
+    "trellis": "dist/apps/cli/src/main.js",
+    "trellis-mcp": "dist/apps/mcp/src/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.31.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/tests/*.test.js dist/packages/codex-adapter/test/*.test.js dist/packages/roots/test/*.test.js packages/broker-postgres/test/*.test.mjs packages/workspace-effects/test/*.test.mjs packages/admission/test/*.test.mjs packages/runtime/test/*.test.mjs packages/graph/test/*.test.mjs packages/runtime-bridge/test/*.test.mjs packages/controlled-tests/test/*.test.mjs packages/linux-browser/test/*.test.mjs apps/mcp/test/*.test.mjs connections/n8n/*.test.mjs packages/portable/test/*.test.mjs packages/local-backend/test/*.test.mjs packages/startup/test/*.test.mjs packages/connections/test/*.test.mjs packages/local-control/test/*.test.mjs",
+    "trellis": "node dist/apps/cli/src/main.js",
+    "test:broker-postgres": "npm run build && node --test packages/broker-postgres/test/*.test.mjs",
+    "test:workspace-effects": "npm run build && node --test packages/workspace-effects/test/*.test.mjs",
+    "test:admission": "npm run build && node --test packages/admission/test/*.test.mjs",
+    "test:runtime": "npm run build && node --test packages/runtime/test/*.test.mjs",
+    "test:roots": "npm run build && node --test dist/packages/roots/test/*.test.js",
+    "test:graph": "npm run build && node --test packages/graph/test/*.test.mjs",
+    "test:runtime-bridge": "npm run build && node --test packages/runtime-bridge/test/*.test.mjs",
+    "test:controlled-tests": "npm run build && node --test packages/controlled-tests/test/*.test.mjs",
+    "test:linux-browser": "npm run build && node --test packages/linux-browser/test/*.test.mjs",
+    "test:mcp": "npm run build && node --test apps/mcp/test/*.test.mjs",
+    "test:n8n-export": "node --test connections/n8n/*.test.mjs",
+    "bowerloom": "node dist/apps/cli/src/main.js",
+    "test:portable": "npm run build && node --test packages/portable/test/*.test.mjs dist/tests/portable-cli.test.js",
+    "test:local-backend": "npm run build && node --test packages/local-backend/test/*.test.mjs",
+    "test:startup": "npm run build && node --test packages/startup/test/*.test.mjs dist/tests/startup-cli.test.js",
+    "test:connections": "npm run build && node --test packages/connections/test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "24.11.0",
+    "typescript": "7.0.2"
+  }
+}

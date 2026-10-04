@@ -1,0 +1,9 @@
+{
+  "name": "Synthetic editorial team",
+  "status": "data-only-not-executable",
+  "roles": [
+    { "id": "author", "skill": "report", "purpose": "Draft a synthetic packing report when explicitly requested." },
+    { "id": "reviewer", "purpose": "Compare the draft with the supplied rows." }
+  ],
+  "executionAuthorized": false
+}

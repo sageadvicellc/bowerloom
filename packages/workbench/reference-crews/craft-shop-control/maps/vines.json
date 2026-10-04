@@ -1,0 +1,26 @@
+{
+  "format": "trellis/vines-map/v0.7-alpha",
+  "purpose": "logging-only",
+  "entries": [
+    {
+      "task": "design",
+      "owner": "emery",
+      "evidence": [
+        "runtime.status",
+        "workspace.receipt",
+        "test.acceptance"
+      ],
+      "sink": "local-session"
+    },
+    {
+      "task": "build",
+      "owner": "coda",
+      "evidence": [
+        "runtime.status",
+        "workspace.receipt",
+        "test.acceptance"
+      ],
+      "sink": "local-session"
+    }
+  ]
+}

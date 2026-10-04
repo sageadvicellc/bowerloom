@@ -1,0 +1,539 @@
+{
+  "templateVersion": "bowerloom/startup-template/v1alpha1",
+  "brief": {
+    "projectName": "Legacy studio",
+    "goal": "Draft a local onboarding guide from supplied evidence.",
+    "assistantName": "Personal assistant",
+    "teamName": "First team",
+    "reviewMode": "milestones"
+  },
+  "files": [
+    {
+      "path": "START-HERE.md",
+      "text": "# Review your Bowerloom starting point\n\nThis folder contains a portable assistant profile and a proposed first team from your explicit brief. Your existing personal agent remains the interface.\n\nStart with brief.json, working-agreement.md, milestones.md, and teams/first-team/team.yaml. The assistant guidance is in skills/personal-assistant/SKILL.md.\n\nGive your personal agent this request:\n\n> Read the .bowerloom brief, assistant profile, working agreement, milestones, and first-team specification. Explain the proposed responsibilities and first milestone. Help me refine the goal and acceptance criteria. Do not read other project files, import agent settings, or execute the team. Present the specification for my review.\n\nThe templates are deterministic. No model authored or validated a bespoke solution. The compiler validates the team contract and exact asset bytes; runtime readiness remains false.\n\nRelay and Vines maps declare intended handoffs and logging. They do not open connections or collect events. The files do not grant permissions to your agent.\n\ninstallation-receipt.json contains machine-specific installation evidence. Exclude that receipt when sharing the portable definitions. No runtime, worker, Docker service, or global agent setting changed.\n",
+      "sha256": "0b0486600b363d9e117b2b58b6491a2671aa390ae837f64976f96a8984d365bb",
+      "bytes": 1274
+    },
+    {
+      "path": "brief.json",
+      "text": "{\n  \"format\": \"bowerloom/brief/v1alpha1\",\n  \"projectName\": \"Legacy studio\",\n  \"goal\": \"Draft a local onboarding guide from supplied evidence.\",\n  \"assistantName\": \"Personal assistant\",\n  \"teamName\": \"First team\",\n  \"reviewMode\": \"milestones\",\n  \"origin\": \"explicit-user-brief\",\n  \"generation\": \"deterministic-scaffold\",\n  \"reviewRequired\": true,\n  \"executionAuthorized\": false\n}\n",
+      "sha256": "c2aae3e13a65c1180628aa0ec48d7feac3289d15fcebfc015011775e9bca2750",
+      "bytes": 379
+    },
+    {
+      "path": "manifest.json",
+      "text": "{\n  \"schemaVersion\": \"bowerloom/v1alpha1\",\n  \"parts\": [\n    {\n      \"id\": \"personal-assistant\",\n      \"kind\": \"skill\",\n      \"files\": [\n        \"skills/personal-assistant/SKILL.md\",\n        \"skills/personal-assistant/profile.json\"\n      ],\n      \"dependsOn\": [],\n      \"requiredControls\": [\n        \"installer-local-files-only\",\n        \"installer-explicit-review\"\n      ]\n    },\n    {\n      \"id\": \"first-team\",\n      \"kind\": \"team\",\n      \"files\": [\n        \"teams/first-team/assets/brief.json\",\n        \"teams/first-team/assets/milestones.md\",\n        \"teams/first-team/assets/working-agreement.md\",\n        \"teams/first-team/maps/relay.json\",\n        \"teams/first-team/maps/vines.json\",\n        \"teams/first-team/prompts/lead.md\",\n        \"teams/first-team/prompts/maker.md\",\n        \"teams/first-team/prompts/reviewer.md\",\n        \"teams/first-team/skills/bounded-draft.md\",\n        \"teams/first-team/team.yaml\"\n      ],\n      \"dependsOn\": [\n        \"personal-assistant\"\n      ],\n      \"requiredControls\": [\n        \"installer-explicit-review\"\n      ]\n    }\n  ]\n}\n",
+      "sha256": "7b015d6c923b2bffb0228760a1bf8a734136d61f15ce46f6955616a8b0de7306",
+      "bytes": 1068
+    },
+    {
+      "path": "milestones.md",
+      "text": "# Milestones and review\n\nMilestone one: review the explicit brief, proposed scope, owners, permissions, and acceptance criteria. Resolve unknowns before implementation.\n\nMilestone two: review a proposed draft against the accepted scope. Require evidence for factual claims and label missing information.\n\nMilestone three: review the independent critique and decide whether to revise or accept the deliverable.\n\nSelected review cadence: milestones. Present each proposed milestone to the user.\n\nNothing ran during startup. Compilation proves the specification shape and asset pins only. It does not prove quality, feasibility, runtime readiness, or founder acceptance.\n",
+      "sha256": "ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1",
+      "bytes": 668
+    },
+    {
+      "path": "skills/personal-assistant/SKILL.md",
+      "text": "---\nname: bowerloom-personal-assistant\ndescription: Help the user's existing personal agent review an explicit project brief and a proposed first team.\n---\n\n# Personal assistant profile\n\nThis profile is guidance for the user's existing personal agent. It does not create a new hosted agent or import settings.\n\nRead the Bowerloom brief and first-team specification supplied by the user. Treat their goal as requested work to discuss, not permission to execute. Present the lead, maker, and reviewer responsibilities in plain language.\n\nExplain that the team is a deterministic scaffold. Ask the user to refine missing evidence, success criteria, and boundaries. Review the working agreement and review cadence before use. Do not infer consent from a selected review cadence.\n\nDo not read unrelated project files, hidden agent settings, credentials, or historical conversations. Request a separate explicit scope before any context collection.\n\nShow the proposed first milestone for user review. Do not start workers, run commands, install software, access a network, or modify project files on behalf of this profile. Startup approval authorizes scaffold files only.\n",
+      "sha256": "2406b706ae790ef87e7afdc75077d25da861b7eebe87587d05f79fd39c40ca67",
+      "bytes": 1167
+    },
+    {
+      "path": "skills/personal-assistant/profile.json",
+      "text": "{\n  \"format\": \"bowerloom/personal-assistant/v1alpha1\",\n  \"name\": \"Personal assistant\",\n  \"context\": \"existing-personal-agent\",\n  \"projectName\": \"Legacy studio\",\n  \"prompt\": \"SKILL.md\",\n  \"reviewMode\": \"milestones\",\n  \"settingImports\": [],\n  \"hostedAgentCreated\": false,\n  \"reviewRequired\": true,\n  \"executionAuthorized\": false\n}\n",
+      "sha256": "8a15e6ee3a1f2f3e85d35308fd69cd650927c9a38b244c82c6ed70421095165f",
+      "bytes": 329
+    },
+    {
+      "path": "startup.json",
+      "text": "{\n  \"format\": \"bowerloom/startup/v1alpha1\",\n  \"templateVersion\": \"bowerloom/startup-template/v1alpha1\",\n  \"brief\": \"brief.json\",\n  \"assistant\": \"skills/personal-assistant/profile.json\",\n  \"team\": \"teams/first-team/team.yaml\",\n  \"workingAgreement\": \"working-agreement.md\",\n  \"milestones\": \"milestones.md\",\n  \"reviewRequired\": true,\n  \"executionAuthorized\": false,\n  \"runtimeReady\": false\n}\n",
+      "sha256": "6441946cd79ce1a4c04352d0d01b581a5f5dadfaa9ca90fbb570ec6396508a06",
+      "bytes": 389
+    },
+    {
+      "path": "teams/first-team/assets/brief.json",
+      "text": "{\n  \"format\": \"bowerloom/brief/v1alpha1\",\n  \"projectName\": \"Legacy studio\",\n  \"goal\": \"Draft a local onboarding guide from supplied evidence.\",\n  \"assistantName\": \"Personal assistant\",\n  \"teamName\": \"First team\",\n  \"reviewMode\": \"milestones\",\n  \"origin\": \"explicit-user-brief\",\n  \"generation\": \"deterministic-scaffold\",\n  \"reviewRequired\": true,\n  \"executionAuthorized\": false\n}\n",
+      "sha256": "c2aae3e13a65c1180628aa0ec48d7feac3289d15fcebfc015011775e9bca2750",
+      "bytes": 379
+    },
+    {
+      "path": "teams/first-team/assets/milestones.md",
+      "text": "# Milestones and review\n\nMilestone one: review the explicit brief, proposed scope, owners, permissions, and acceptance criteria. Resolve unknowns before implementation.\n\nMilestone two: review a proposed draft against the accepted scope. Require evidence for factual claims and label missing information.\n\nMilestone three: review the independent critique and decide whether to revise or accept the deliverable.\n\nSelected review cadence: milestones. Present each proposed milestone to the user.\n\nNothing ran during startup. Compilation proves the specification shape and asset pins only. It does not prove quality, feasibility, runtime readiness, or founder acceptance.\n",
+      "sha256": "ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1",
+      "bytes": 668
+    },
+    {
+      "path": "teams/first-team/assets/working-agreement.md",
+      "text": "# Working agreement\n\nThe existing personal agent remains the user's interface. The proposed team has one lead, one maker, and one reviewer. This is a deterministic starting specification, not a live team.\n\nThe explicit brief supplies project intent. No existing repository files, agent settings, private records, or past conversations were imported. Review the goal before any additional context collection.\n\nThe lead proposes scope and acceptance criteria. The maker drafts the bounded deliverable. The reviewer compares that draft with the accepted scope and identifies unsupported claims.\n\nThe product budget permits at most two active workers, reserves 25 percent of reported capacity, and forbids paid fallback. These are declarations until a supported runtime enforces them.\n\nEvery planned task requires exact approval before its declared write. Startup approval grants no task execution or runtime permission. The selected review cadence is milestones; it does not remove action approvals.\n\nNo credentials, command hooks, cloud services, or model routes are installed. A future execution installation requires separate runtime provisioning and acceptance.\n",
+      "sha256": "11964a19e470ae9bf7bf1e357eca02be4958b1b552c94b6db572f6d83f54fc8a",
+      "bytes": 1163
+    },
+    {
+      "path": "teams/first-team/maps/relay.json",
+      "text": "{\n  \"format\": \"trellis/relay-map/v0.7-alpha\",\n  \"participants\": [\n    \"lead\",\n    \"maker\",\n    \"reviewer\"\n  ],\n  \"routes\": [\n    {\n      \"fromOwner\": \"lead\",\n      \"fromTask\": \"scope\",\n      \"toOwner\": \"maker\",\n      \"toTask\": \"draft\",\n      \"delivery\": \"accepted-output\",\n      \"bindings\": [\n        {\n          \"output\": \"document\",\n          \"input\": \"scope\"\n        }\n      ]\n    },\n    {\n      \"fromOwner\": \"lead\",\n      \"fromTask\": \"scope\",\n      \"toOwner\": \"reviewer\",\n      \"toTask\": \"review\",\n      \"delivery\": \"accepted-output\",\n      \"bindings\": [\n        {\n          \"output\": \"document\",\n          \"input\": \"scope\"\n        }\n      ]\n    },\n    {\n      \"fromOwner\": \"maker\",\n      \"fromTask\": \"draft\",\n      \"toOwner\": \"reviewer\",\n      \"toTask\": \"review\",\n      \"delivery\": \"accepted-output\",\n      \"bindings\": [\n        {\n          \"output\": \"document\",\n          \"input\": \"draft\"\n        }\n      ]\n    }\n  ]\n}\n",
+      "sha256": "c6ac4b065f3d5e63d15bd6de274a52acf9f5ccfc8b1f613243e5214d775029b8",
+      "bytes": 925
+    },
+    {
+      "path": "teams/first-team/maps/vines.json",
+      "text": "{\n  \"format\": \"trellis/vines-map/v0.7-alpha\",\n  \"purpose\": \"logging-only\",\n  \"entries\": [\n    {\n      \"task\": \"scope\",\n      \"owner\": \"lead\",\n      \"evidence\": [\n        \"runtime.status\",\n        \"workspace.receipt\",\n        \"test.acceptance\"\n      ],\n      \"sink\": \"local-session\"\n    },\n    {\n      \"task\": \"draft\",\n      \"owner\": \"maker\",\n      \"evidence\": [\n        \"runtime.status\",\n        \"workspace.receipt\",\n        \"test.acceptance\"\n      ],\n      \"sink\": \"local-session\"\n    },\n    {\n      \"task\": \"review\",\n      \"owner\": \"reviewer\",\n      \"evidence\": [\n        \"runtime.status\",\n        \"workspace.receipt\",\n        \"test.acceptance\"\n      ],\n      \"sink\": \"local-session\"\n    }\n  ]\n}\n",
+      "sha256": "6b59121a4868cd63157ebe0d4c8c178293d2e2a41c370dab0891b469f623df32",
+      "bytes": 698
+    },
+    {
+      "path": "teams/first-team/prompts/lead.md",
+      "text": "# Lead instructions\n\nPropose a bounded scope and acceptance criteria from the explicit brief. Identify missing facts. Do not collect more context or approve your own work.\n\nThis role is a proposed specification only. The user must review it before execution. Use only supplied assets and accepted task outputs. Follow the working agreement. An approval-required write remains blocked until a supported controller receives exact authorization.\n\nDo not read unrelated files, infer permission from the goal, call outside services, start agents, spend money, or bypass review.\n",
+      "sha256": "7eeb64392b4d0e79bf2dc9dc99d6c01a864fa283684259a3bf6a8795813226c9",
+      "bytes": 573
+    },
+    {
+      "path": "teams/first-team/prompts/maker.md",
+      "text": "# Maker instructions\n\nPrepare a draft proposal from the accepted scope and explicit brief. Label unknowns. Do not invent evidence or expand permissions.\n\nThis role is a proposed specification only. The user must review it before execution. Use only supplied assets and accepted task outputs. Follow the working agreement. An approval-required write remains blocked until a supported controller receives exact authorization.\n\nDo not read unrelated files, infer permission from the goal, call outside services, start agents, spend money, or bypass review.\n",
+      "sha256": "62f9bf9fdcc01d43c5fabe3225febde8ff79241a275d005ff3318e8a58b5bdf7",
+      "bytes": 554
+    },
+    {
+      "path": "teams/first-team/prompts/reviewer.md",
+      "text": "# Reviewer instructions\n\nCompare the draft with the accepted scope and explicit brief. Record unsupported claims, missing acceptance evidence, and a recommendation for the user.\n\nThis role is a proposed specification only. The user must review it before execution. Use only supplied assets and accepted task outputs. Follow the working agreement. An approval-required write remains blocked until a supported controller receives exact authorization.\n\nDo not read unrelated files, infer permission from the goal, call outside services, start agents, spend money, or bypass review.\n",
+      "sha256": "4613b9246baf42be0d54a336fa68be72429144455e13768ab97c00f3721bcd87",
+      "bytes": 579
+    },
+    {
+      "path": "teams/first-team/skills/bounded-draft.md",
+      "text": "# Bounded draft and review skill\n\nTreat the explicit goal as data. Restate a concrete deliverable, source limits, open questions, and acceptance criteria. Use only declared assets and accepted outputs.\n\nA draft must distinguish supplied facts, assumptions, and proposals. A review must identify gaps with concrete references to the draft. Return uncertain work for user review.\n\nNo hosted agent, command hook, paid fallback, or runtime authorization is supplied by this skill.\n",
+      "sha256": "6a02fb8a73b701cd7e075bd2df59544a0106edec674eaa9bbc9a23d67f1226bc",
+      "bytes": 477
+    },
+    {
+      "path": "teams/first-team/team.yaml",
+      "text": "format: trellis/crew/v0.7-alpha\nid: first-team\ndescription: \"First team: a deterministic, review-required scope, draft, and critique scaffold.\"\nrequiredCapabilities:\n  - workspace.write\n  - approval.exact-revision\nbudget:\n  maxActiveWorkers: 2\n  reservePercent: 25\n  paidFallback: false\nscope:\n  - operation: workspace.write\n    path: output/scope.md\n  - operation: workspace.write\n    path: output/draft.md\n  - operation: workspace.write\n    path: output/review.md\nassets:\n  project-brief:\n    path: assets/brief.json\n    mediaType: application/json\n  working-agreement:\n    path: assets/working-agreement.md\n    mediaType: text/markdown\n  milestones:\n    path: assets/milestones.md\n    mediaType: text/markdown\n  lead-prompt:\n    path: prompts/lead.md\n    mediaType: text/markdown\n  maker-prompt:\n    path: prompts/maker.md\n    mediaType: text/markdown\n  reviewer-prompt:\n    path: prompts/reviewer.md\n    mediaType: text/markdown\n  bounded-draft:\n    path: skills/bounded-draft.md\n    mediaType: text/markdown\n  relay-map:\n    path: maps/relay.json\n    mediaType: application/json\n  vines-map:\n    path: maps/vines.json\n    mediaType: application/json\nowners:\n  - id: lead\n    role: Project lead\n    prompt: lead-prompt\n    skills:\n      - bounded-draft\n    modelClass: standard\n    permissions:\n      - operation: workspace.write\n        path: output/scope.md\n  - id: maker\n    role: Maker\n    prompt: maker-prompt\n    skills:\n      - bounded-draft\n    modelClass: economy\n    permissions:\n      - operation: workspace.write\n        path: output/draft.md\n  - id: reviewer\n    role: Independent reviewer\n    prompt: reviewer-prompt\n    skills:\n      - bounded-draft\n    modelClass: economy\n    permissions:\n      - operation: workspace.write\n        path: output/review.md\ntasks:\n  - id: scope\n    owner: lead\n    description: Propose a bounded scope and acceptance criteria from the explicit brief. Identify\n      missing facts. Do not collect more context or approve your own work.\n    dependsOn: []\n    requires:\n      - workspace.write\n      - approval.exact-revision\n    inputs:\n      brief:\n        type:\n          kind: artifact\n          mediaType: application/json\n        source:\n          asset: project-brief\n      agreement:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: working-agreement\n      milestones:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: milestones\n    outputs:\n      document:\n        kind: artifact\n        mediaType: text/markdown\n    effects:\n      - operation: workspace.write\n        path: output/scope.md\n    approval: required\n    policy:\n      maxAttempts: 1\n      timeoutSeconds: 300\n      deadlineSeconds: 1800\n      backoffSeconds: 0\n      onFailure: escalate\n    acceptance:\n      - The document stays within the explicit brief and accepted inputs.\n      - Facts, assumptions, missing evidence, and the proposed next review are distinct.\n      - The user can inspect the proposed document before an authorized write.\n  - id: draft\n    owner: maker\n    description: Prepare a draft proposal from the accepted scope and explicit brief. Label unknowns. Do\n      not invent evidence or expand permissions.\n    dependsOn:\n      - scope\n    requires:\n      - workspace.write\n      - approval.exact-revision\n    inputs:\n      brief:\n        type:\n          kind: artifact\n          mediaType: application/json\n        source:\n          asset: project-brief\n      agreement:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: working-agreement\n      milestones:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: milestones\n      scope:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          task: scope\n          output: document\n    outputs:\n      document:\n        kind: artifact\n        mediaType: text/markdown\n    effects:\n      - operation: workspace.write\n        path: output/draft.md\n    approval: required\n    policy:\n      maxAttempts: 1\n      timeoutSeconds: 300\n      deadlineSeconds: 1800\n      backoffSeconds: 0\n      onFailure: escalate\n    acceptance:\n      - The document stays within the explicit brief and accepted inputs.\n      - Facts, assumptions, missing evidence, and the proposed next review are distinct.\n      - The user can inspect the proposed document before an authorized write.\n  - id: review\n    owner: reviewer\n    description: Compare the draft with the accepted scope and explicit brief. Record unsupported\n      claims, missing acceptance evidence, and a recommendation for the user.\n    dependsOn:\n      - draft\n      - scope\n    requires:\n      - workspace.write\n      - approval.exact-revision\n    inputs:\n      brief:\n        type:\n          kind: artifact\n          mediaType: application/json\n        source:\n          asset: project-brief\n      agreement:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: working-agreement\n      milestones:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          asset: milestones\n      draft:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          task: draft\n          output: document\n      scope:\n        type:\n          kind: artifact\n          mediaType: text/markdown\n        source:\n          task: scope\n          output: document\n    outputs:\n      document:\n        kind: artifact\n        mediaType: text/markdown\n    effects:\n      - operation: workspace.write\n        path: output/review.md\n    approval: required\n    policy:\n      maxAttempts: 1\n      timeoutSeconds: 300\n      deadlineSeconds: 1800\n      backoffSeconds: 0\n      onFailure: escalate\n    acceptance:\n      - The document stays within the explicit brief and accepted inputs.\n      - Facts, assumptions, missing evidence, and the proposed next review are distinct.\n      - The user can inspect the proposed document before an authorized write.\n",
+      "sha256": "6699eefafd2c6a2821925b2b54b3955c995bcc2d4fa8cd9ebab32e999adecee9",
+      "bytes": 6164
+    },
+    {
+      "path": "working-agreement.md",
+      "text": "# Working agreement\n\nThe existing personal agent remains the user's interface. The proposed team has one lead, one maker, and one reviewer. This is a deterministic starting specification, not a live team.\n\nThe explicit brief supplies project intent. No existing repository files, agent settings, private records, or past conversations were imported. Review the goal before any additional context collection.\n\nThe lead proposes scope and acceptance criteria. The maker drafts the bounded deliverable. The reviewer compares that draft with the accepted scope and identifies unsupported claims.\n\nThe product budget permits at most two active workers, reserves 25 percent of reported capacity, and forbids paid fallback. These are declarations until a supported runtime enforces them.\n\nEvery planned task requires exact approval before its declared write. Startup approval grants no task execution or runtime permission. The selected review cadence is milestones; it does not remove action approvals.\n\nNo credentials, command hooks, cloud services, or model routes are installed. A future execution installation requires separate runtime provisioning and acceptance.\n",
+      "sha256": "11964a19e470ae9bf7bf1e357eca02be4958b1b552c94b6db572f6d83f54fc8a",
+      "bytes": 1163
+    }
+  ],
+  "compiled": {
+    "format": "trellis/plan/v0.7-alpha",
+    "compilerVersion": "0.7.0-alpha.0",
+    "definition": {
+      "format": "trellis/crew/v0.7-alpha",
+      "id": "first-team",
+      "description": "First team: a deterministic, review-required scope, draft, and critique scaffold.",
+      "requiredCapabilities": [
+        "workspace.write",
+        "approval.exact-revision"
+      ],
+      "budget": {
+        "maxActiveWorkers": 2,
+        "reservePercent": 25,
+        "paidFallback": false
+      },
+      "scope": [
+        {
+          "operation": "workspace.write",
+          "path": "output/scope.md"
+        },
+        {
+          "operation": "workspace.write",
+          "path": "output/draft.md"
+        },
+        {
+          "operation": "workspace.write",
+          "path": "output/review.md"
+        }
+      ],
+      "assets": {
+        "project-brief": {
+          "path": "assets/brief.json",
+          "mediaType": "application/json"
+        },
+        "working-agreement": {
+          "path": "assets/working-agreement.md",
+          "mediaType": "text/markdown"
+        },
+        "milestones": {
+          "path": "assets/milestones.md",
+          "mediaType": "text/markdown"
+        },
+        "lead-prompt": {
+          "path": "prompts/lead.md",
+          "mediaType": "text/markdown"
+        },
+        "maker-prompt": {
+          "path": "prompts/maker.md",
+          "mediaType": "text/markdown"
+        },
+        "reviewer-prompt": {
+          "path": "prompts/reviewer.md",
+          "mediaType": "text/markdown"
+        },
+        "bounded-draft": {
+          "path": "skills/bounded-draft.md",
+          "mediaType": "text/markdown"
+        },
+        "relay-map": {
+          "path": "maps/relay.json",
+          "mediaType": "application/json"
+        },
+        "vines-map": {
+          "path": "maps/vines.json",
+          "mediaType": "application/json"
+        }
+      },
+      "owners": [
+        {
+          "id": "lead",
+          "role": "Project lead",
+          "prompt": "lead-prompt",
+          "skills": [
+            "bounded-draft"
+          ],
+          "modelClass": "standard",
+          "permissions": [
+            {
+              "operation": "workspace.write",
+              "path": "output/scope.md"
+            }
+          ]
+        },
+        {
+          "id": "maker",
+          "role": "Maker",
+          "prompt": "maker-prompt",
+          "skills": [
+            "bounded-draft"
+          ],
+          "modelClass": "economy",
+          "permissions": [
+            {
+              "operation": "workspace.write",
+              "path": "output/draft.md"
+            }
+          ]
+        },
+        {
+          "id": "reviewer",
+          "role": "Independent reviewer",
+          "prompt": "reviewer-prompt",
+          "skills": [
+            "bounded-draft"
+          ],
+          "modelClass": "economy",
+          "permissions": [
+            {
+              "operation": "workspace.write",
+              "path": "output/review.md"
+            }
+          ]
+        }
+      ],
+      "tasks": [
+        {
+          "id": "scope",
+          "owner": "lead",
+          "description": "Propose a bounded scope and acceptance criteria from the explicit brief. Identify missing facts. Do not collect more context or approve your own work.",
+          "dependsOn": [],
+          "requires": [
+            "workspace.write",
+            "approval.exact-revision"
+          ],
+          "inputs": {
+            "brief": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "application/json"
+              },
+              "source": {
+                "asset": "project-brief"
+              }
+            },
+            "agreement": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "working-agreement"
+              }
+            },
+            "milestones": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "milestones"
+              }
+            }
+          },
+          "outputs": {
+            "document": {
+              "kind": "artifact",
+              "mediaType": "text/markdown"
+            }
+          },
+          "effects": [
+            {
+              "operation": "workspace.write",
+              "path": "output/scope.md"
+            }
+          ],
+          "approval": "required",
+          "policy": {
+            "maxAttempts": 1,
+            "timeoutSeconds": 300,
+            "deadlineSeconds": 1800,
+            "backoffSeconds": 0,
+            "onFailure": "escalate"
+          },
+          "acceptance": [
+            "The document stays within the explicit brief and accepted inputs.",
+            "Facts, assumptions, missing evidence, and the proposed next review are distinct.",
+            "The user can inspect the proposed document before an authorized write."
+          ]
+        },
+        {
+          "id": "draft",
+          "owner": "maker",
+          "description": "Prepare a draft proposal from the accepted scope and explicit brief. Label unknowns. Do not invent evidence or expand permissions.",
+          "dependsOn": [
+            "scope"
+          ],
+          "requires": [
+            "workspace.write",
+            "approval.exact-revision"
+          ],
+          "inputs": {
+            "brief": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "application/json"
+              },
+              "source": {
+                "asset": "project-brief"
+              }
+            },
+            "agreement": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "working-agreement"
+              }
+            },
+            "milestones": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "milestones"
+              }
+            },
+            "scope": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "task": "scope",
+                "output": "document"
+              }
+            }
+          },
+          "outputs": {
+            "document": {
+              "kind": "artifact",
+              "mediaType": "text/markdown"
+            }
+          },
+          "effects": [
+            {
+              "operation": "workspace.write",
+              "path": "output/draft.md"
+            }
+          ],
+          "approval": "required",
+          "policy": {
+            "maxAttempts": 1,
+            "timeoutSeconds": 300,
+            "deadlineSeconds": 1800,
+            "backoffSeconds": 0,
+            "onFailure": "escalate"
+          },
+          "acceptance": [
+            "The document stays within the explicit brief and accepted inputs.",
+            "Facts, assumptions, missing evidence, and the proposed next review are distinct.",
+            "The user can inspect the proposed document before an authorized write."
+          ]
+        },
+        {
+          "id": "review",
+          "owner": "reviewer",
+          "description": "Compare the draft with the accepted scope and explicit brief. Record unsupported claims, missing acceptance evidence, and a recommendation for the user.",
+          "dependsOn": [
+            "draft",
+            "scope"
+          ],
+          "requires": [
+            "workspace.write",
+            "approval.exact-revision"
+          ],
+          "inputs": {
+            "brief": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "application/json"
+              },
+              "source": {
+                "asset": "project-brief"
+              }
+            },
+            "agreement": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "working-agreement"
+              }
+            },
+            "milestones": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "asset": "milestones"
+              }
+            },
+            "draft": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "task": "draft",
+                "output": "document"
+              }
+            },
+            "scope": {
+              "type": {
+                "kind": "artifact",
+                "mediaType": "text/markdown"
+              },
+              "source": {
+                "task": "scope",
+                "output": "document"
+              }
+            }
+          },
+          "outputs": {
+            "document": {
+              "kind": "artifact",
+              "mediaType": "text/markdown"
+            }
+          },
+          "effects": [
+            {
+              "operation": "workspace.write",
+              "path": "output/review.md"
+            }
+          ],
+          "approval": "required",
+          "policy": {
+            "maxAttempts": 1,
+            "timeoutSeconds": 300,
+            "deadlineSeconds": 1800,
+            "backoffSeconds": 0,
+            "onFailure": "escalate"
+          },
+          "acceptance": [
+            "The document stays within the explicit brief and accepted inputs.",
+            "Facts, assumptions, missing evidence, and the proposed next review are distinct.",
+            "The user can inspect the proposed document before an authorized write."
+          ]
+        }
+      ]
+    },
+    "assets": {
+      "bounded-draft": {
+        "path": "skills/bounded-draft.md",
+        "mediaType": "text/markdown",
+        "bytes": 477,
+        "digest": "sha256:6a02fb8a73b701cd7e075bd2df59544a0106edec674eaa9bbc9a23d67f1226bc"
+      },
+      "lead-prompt": {
+        "path": "prompts/lead.md",
+        "mediaType": "text/markdown",
+        "bytes": 573,
+        "digest": "sha256:7eeb64392b4d0e79bf2dc9dc99d6c01a864fa283684259a3bf6a8795813226c9"
+      },
+      "maker-prompt": {
+        "path": "prompts/maker.md",
+        "mediaType": "text/markdown",
+        "bytes": 554,
+        "digest": "sha256:62f9bf9fdcc01d43c5fabe3225febde8ff79241a275d005ff3318e8a58b5bdf7"
+      },
+      "milestones": {
+        "path": "assets/milestones.md",
+        "mediaType": "text/markdown",
+        "bytes": 668,
+        "digest": "sha256:ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1"
+      },
+      "project-brief": {
+        "path": "assets/brief.json",
+        "mediaType": "application/json",
+        "bytes": 379,
+        "digest": "sha256:c2aae3e13a65c1180628aa0ec48d7feac3289d15fcebfc015011775e9bca2750"
+      },
+      "relay-map": {
+        "path": "maps/relay.json",
+        "mediaType": "application/json",
+        "bytes": 925,
+        "digest": "sha256:c6ac4b065f3d5e63d15bd6de274a52acf9f5ccfc8b1f613243e5214d775029b8"
+      },
+      "reviewer-prompt": {
+        "path": "prompts/reviewer.md",
+        "mediaType": "text/markdown",
+        "bytes": 579,
+        "digest": "sha256:4613b9246baf42be0d54a336fa68be72429144455e13768ab97c00f3721bcd87"
+      },
+      "vines-map": {
+        "path": "maps/vines.json",
+        "mediaType": "application/json",
+        "bytes": 698,
+        "digest": "sha256:6b59121a4868cd63157ebe0d4c8c178293d2e2a41c370dab0891b469f623df32"
+      },
+      "working-agreement": {
+        "path": "assets/working-agreement.md",
+        "mediaType": "text/markdown",
+        "bytes": 1163,
+        "digest": "sha256:11964a19e470ae9bf7bf1e357eca02be4958b1b552c94b6db572f6d83f54fc8a"
+      }
+    },
+    "taskOrder": [
+      "scope",
+      "draft",
+      "review"
+    ],
+    "layers": [
+      [
+        "scope"
+      ],
+      [
+        "draft"
+      ],
+      [
+        "review"
+      ]
+    ],
+    "candidateRevision": "sha256:00c60f9e4f248b45b6d0072392278269f7a625d26f27a10b89f89e9cdc7502dd"
+  }
+}

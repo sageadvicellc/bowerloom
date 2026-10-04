@@ -1,0 +1,206 @@
+{
+  "observed_on": "2026-10-01",
+  "scope": "Bounded engineering research, not release readiness.",
+  "private_records_root": "work/campaign/research in the campaign workspace",
+  "records": [
+    {
+      "record": "notes/durable-execution.md",
+      "sha256": "367bf020f32559525d77ebcdce6fd912f86e645a11b6516dae7f8694e7223d30",
+      "fact_prefix": "durable-F",
+      "facts": 11
+    },
+    {
+      "record": "notes/harness-portability.md",
+      "sha256": "a6b0fdbffb9fdb256a498d5dda14648ad61cf8656b70d7e03ecbe408d55dafa1",
+      "fact_prefix": "hp-F",
+      "facts": 21
+    },
+    {
+      "record": "notes/module-contracts.md",
+      "sha256": "0a74b9b4bb5122d2b8bd56b7e8bf88b1f51d80d991a35c069667a20dad0f8a16",
+      "fact_prefix": "contracts-F",
+      "facts": 4
+    },
+    {
+      "record": "notes/qmd-scaling.md",
+      "sha256": "72b732a922d297d6fcf3f796488cf0067e40221531e955f7c6abc8505c0de78c",
+      "fact_prefix": "qmd-F",
+      "facts": 12
+    },
+    {
+      "record": "notes/repository-structure.md",
+      "sha256": "03189c9defaf1108db435b835d0aad6ef9bfedbbdb95bbf30445fef2fee3e521",
+      "fact_prefix": "rstruct-F",
+      "facts": 10
+    },
+    {
+      "record": "notes/subscription-capacity.md",
+      "sha256": "4df269a2f6b8b335e83d6c4532b00d91ef28aef502a3f38f794216eea516c7b4",
+      "fact_prefix": "capacity-F",
+      "facts": 9
+    },
+    {
+      "record": "CHECK.md",
+      "sha256": "da0c38927cd79f625822001d0ef60940b24d36a9e07cced065aa77e191750263",
+      "confirmed": 67,
+      "changed": 0,
+      "failed": 0,
+      "unsupported": 0
+    },
+    {
+      "record": "SPEC-REVIEW.md",
+      "sha256": "29d8495c854cc57f62c19f06d99a4a0f3ef875521e9ba01be89eb9b97ea2591a",
+      "verdict": "Pass for founder review after three resolved findings."
+    }
+  ],
+  "candidate": {
+    "private_original": "outputs/trellis-v1-specification-candidate.md",
+    "original_sha256": "07c409ddbaf619fb939d81d62ecca5858a587fd4ac9f27b9cff162c0275018a8",
+    "repository_copy": "v1-specification-candidate.md",
+    "repository_sha256": "e8c45e81a6921904f5ad0ede88eb2eec90570a49707993050829b39492ef2e42",
+    "adaptation": "Only frontmatter and local source-link destinations differ.",
+    "post_review_amendment": {
+      "date": "2026-10-01",
+      "source": "Founder instruction in the current chat",
+      "change": "The sole-merger rule applies only to main. Agents peer-review and merge feature branches within approved scope.",
+      "independently_reviewed_pre_amendment_sha256": "98920f89111c073c1650495f45e5878b2ed6049d631fab18efec2a96a17ff674",
+      "research_and_fixtures_changed": false
+    },
+    "founder_decisions": [
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Trellis monorepo. Retire the five dispersed framework repositories after migration and cutover. Sagespec stays separate.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Add Codex-first v0.7-alpha for founder testing, beta baseline measurements, and marketing/social preparation before beta. Sagespec product development remains after beta.",
+        "acceptance_criteria": "Detailed alpha tests are proposed, not measured release readiness.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Canonical milestones: v0.7-alpha, v0.7-beta, v1-beta, v1-rc. Codex and Claude Code are required for v0.7-beta. Sagespec is the flagship for automation of the entire business.",
+        "acceptance_criteria": "Detailed release and release-candidate criteria remain proposals.",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "decision": "Beta supports independent personal installations and simultaneous company participation. One company server supports multiple employees who retain personal autonomy.",
+        "scope": "Requirement amendment. Storage and workflow engine selection remain open. Proposed access, outage, and reconnection tests are not implementation results.",
+        "files": [
+          "founder-requirements.md",
+          "release-plan.md",
+          "v1-specification-candidate.md"
+        ],
+        "source": "Founder instruction in the current chat",
+        "research_and_fixtures_changed": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Supabase including Studio is conditionally required. PostgreSQL throughout is favored for ease of use. The v1 core excludes proprietary coordination dependencies. Shared knowledge needs scoped access, and opt-in telemetry needs deletion policy.",
+        "proposal": "MIT DBOS library without Conductor, one supervised coordinator per installation, and explicit data lifecycle controls.",
+        "not_selected": "Exact packaging, runtime adoption, and retention durations.",
+        "runtime_tests_added": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Include Endor and Star Wars references in nomenclature, tutorials, examples, and easter eggs, inspired by connected tree habitats.",
+        "proposed_details": "Tutorial vocabulary and synthetic Endor demo. Keep technical and permission language explicit.",
+        "implementation_approved": false,
+        "runtime_tests_added": false
+      },
+      {
+        "date": "2026-10-01",
+        "source": "Founder instruction in the current chat",
+        "decision": "Approved the alpha build and confirmed sageadvicellc/trellis as the canonical repository.",
+        "approved_candidate_revision": "4c8ae90f98964aa1325185adc51ffa1c22b9738e",
+        "scope": "Bounded implementation. Release acceptance and founder main merge remain pending.",
+        "runtime_tests_added": false
+      }
+    ]
+  },
+  "shared_durability_followup": {
+    "date": "2026-10-01",
+    "fact_ids": "sd-F1 through sd-F10",
+    "verdicts": {
+      "confirmed": 10,
+      "changed": 0,
+      "failed": 0,
+      "unsupported": 0
+    },
+    "scope": "Documentary source review. No runtime tests or technology selection. Recheck chosen releases before implementation.",
+    "retained_records": [
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/BRIEF.md",
+        "sha256": "39c0b304fdab4b98cce33ba2ba9363f79bdea98f1f95c32df99126f34b85b787"
+      },
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/notes/shared-durability.md",
+        "sha256": "9b5313ec73ef4e71f647ddc123349cd7030913995008563733a3bcfa67e1d127"
+      },
+      {
+        "path": "work/campaign/research/2026-10-01-shared-durability/CHECK.md",
+        "sha256": "31fabad2dd913b0f59d5b4f5f742937e4f5eb84f5db4aed82f1a04ea16b0f096"
+      },
+      {
+        "path": "outputs/trellis-shared-durability-options.md",
+        "sha256": "77450e5cc6a8ae6a639b6d015d0e489a62f6e8f862d367145e2ebb892b1caf99"
+      }
+    ],
+    "repository_copy": {
+      "path": "shared-durability-options.md",
+      "sha256": "fabcebd4d0cbc9eead497cae365d211985153cdf977a88c961463454abd12180",
+      "adaptation": "Only brief and check frontmatter destinations differ."
+    }
+  },
+  "storage_direction_amendment": {
+    "date": "2026-10-01",
+    "private_original": "outputs/trellis-storage-direction.md",
+    "original_sha256": "00baa0f0236064c505359f157cebdb2e7b08b0d68643a431af0706e209a51c92",
+    "repository_copy": "storage-and-data-policy.md",
+    "repository_sha256": "00baa0f0236064c505359f157cebdb2e7b08b0d68643a431af0706e209a51c92",
+    "review": "Independent review found no actionable issues, re-retrieved cited product documentation, and separately reviewed the cache and backup-record additions.",
+    "evidence_limit": "No live integration, access, deletion, or recovery test. Historical comparison unchanged."
+  },
+  "alpha_approval_packet": {
+    "status": "Approved by Hanna on October 1, 2026. Implementation is active. Release acceptance remains pending.",
+    "scope": "Codex-first alpha only; later roadmap stages remain gated.",
+    "files": [
+      {
+        "source": "outputs/trellis-alpha-build-approval.md",
+        "source_sha256": "7c3680f2eab958b15e224826cfe010526e71d0c66ede8ab03a1a109a0a5b302c",
+        "repository_copy": "alpha-build-approval.md",
+        "repository_sha256": "7c3680f2eab958b15e224826cfe010526e71d0c66ede8ab03a1a109a0a5b302c"
+      },
+      {
+        "source": "outputs/trellis-language-and-tutorials.md",
+        "source_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67",
+        "repository_copy": "language-and-tutorials.md",
+        "repository_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67"
+      }
+    ],
+    "review": "Independent review found no actionable findings in scope, proposal status, later gates, or theme clarity.",
+    "approved_candidate_revision": "4c8ae90f98964aa1325185adc51ffa1c22b9738e",
+    "approval_source": "Founder instruction in the current chat: Approved the alpha build",
+    "pre_approval_files": [
+      {
+        "source": "outputs/trellis-alpha-build-approval.md",
+        "source_sha256": "e5cba1e649a7ba6b72649d87577550b2c264fab1c5e7bfaf6e43e77dde8f831c",
+        "repository_copy": "alpha-build-approval.md",
+        "repository_sha256": "e5cba1e649a7ba6b72649d87577550b2c264fab1c5e7bfaf6e43e77dde8f831c"
+      },
+      {
+        "source": "outputs/trellis-language-and-tutorials.md",
+        "source_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67",
+        "repository_copy": "language-and-tutorials.md",
+        "repository_sha256": "e6ff298aaf0c6016e70550d558d4e7525e339d9c0b54a086e1280b74c586fb67"
+      }
+    ]
+  }
+}

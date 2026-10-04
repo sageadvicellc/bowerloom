@@ -1,0 +1,42 @@
+{
+  "kind": "research-proposal",
+  "production": false,
+  "observed_on": "2026-10-01",
+  "files": [
+    {
+      "file": "admission_experiment.py",
+      "sha256": "07cfd85997e589552840893eaac715e0ed329202e7bca27274849caad61d5d64",
+      "research_source": "subscription-capacity/admission_experiment.py"
+    },
+    {
+      "file": "contract_fixture.py",
+      "sha256": "b24742ddb1845dfd1094f496bb6d13ba4c20551471386f7cca79d0b3461eb709",
+      "research_source": "module-contracts/contract_fixture.py"
+    },
+    {
+      "file": "portability_fixture.py",
+      "sha256": "58ed5b1f954b73dcf41c050ca7ea2cb9cb6de760c0d89a529b1c447107ecb355",
+      "research_source": "harness-portability/fixture.py"
+    },
+    {
+      "file": "failure_fixture.py",
+      "sha256": "fbb4b15a417042fd44c15089464999869806e822d0a67d2b87ef13bce9cc525c",
+      "research_source": "durable-execution/failure_fixture.py"
+    },
+    {
+      "file": "repository_shape_model.py",
+      "sha256": "18157ed2581a16a825cf6558c8c37b5ec29850fdb526bf6c98638e44f768325a",
+      "research_source": "repository-structure/repository_shape_model.py"
+    },
+    {
+      "file": "contracts.schema.json",
+      "sha256": "27c4a38ce42030f0bdfaa36d4b0a82c6926362e7ed9f0a9d0c09b2c5f415978a",
+      "research_source": "module-contracts/contracts.schema.json"
+    },
+    {
+      "file": "portable-examples.json",
+      "sha256": "912c9544ece8210c278d43ee21604224d8612b026c7ecc041248c9bac37b5186",
+      "research_source": "module-contracts/portable-examples.json"
+    }
+  ]
+}
