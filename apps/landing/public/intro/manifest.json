@@ -1,0 +1,90 @@
+{
+  "status": "founder review candidate",
+  "duration_seconds": 23,
+  "frame_rate": 24,
+  "frames": 552,
+  "cuts_seconds": [
+    5,
+    10,
+    15
+  ],
+  "sky_hold_seconds": [
+    20,
+    23
+  ],
+  "logo_baked": false,
+  "audio_embedded": true,
+  "audio_listening_review": "pending",
+  "files": [
+    {
+      "path": "cinematic-tall.mp4",
+      "bytes": 10916915,
+      "sha256": "c58a64b98f00ab9897e4c662017ee0e819b48ecc67e23f74596e07f4ff257d80",
+      "streams": [
+        {
+          "type": "video",
+          "codec": "h264",
+          "width": 1080,
+          "height": 1920,
+          "duration": "23.000000",
+          "frames": "552",
+          "time_base": "1/12288"
+        },
+        {
+          "type": "audio",
+          "codec": "aac",
+          "width": null,
+          "height": null,
+          "duration": "23.000000",
+          "frames": "1080",
+          "time_base": "1/48000"
+        }
+      ]
+    },
+    {
+      "path": "cinematic-wide.mp4",
+      "bytes": 10613793,
+      "sha256": "9a9e4775250e18c753efef425bb2fdcc18acc906f91e3a68a2988e055d3bdd97",
+      "streams": [
+        {
+          "type": "video",
+          "codec": "h264",
+          "width": 1920,
+          "height": 1080,
+          "duration": "23.000000",
+          "frames": "552",
+          "time_base": "1/12288"
+        },
+        {
+          "type": "audio",
+          "codec": "aac",
+          "width": null,
+          "height": null,
+          "duration": "23.000000",
+          "frames": "1080",
+          "time_base": "1/48000"
+        }
+      ]
+    },
+    {
+      "path": "tall-poster.webp",
+      "bytes": 219544,
+      "sha256": "26d0fb8f9fc5149747fd0d82990463e442464124123ab661365d6262aa8761b3"
+    },
+    {
+      "path": "tall-sky.webp",
+      "bytes": 76442,
+      "sha256": "5b6a98c234ff0e3fbb8e8299af44597ea70e20ec1f2d0766e9db1ab607051e65"
+    },
+    {
+      "path": "wide-poster.webp",
+      "bytes": 205732,
+      "sha256": "dc46f2070c6e8b336a6c0337e25086570a522a63b3469c52fa18920f8f6d43ef"
+    },
+    {
+      "path": "wide-sky.webp",
+      "bytes": 51056,
+      "sha256": "1ee36daa9c9c36ad5711bdd1339e8c57b25908af9267019cfcf2150b460d671e"
+    }
+  ]
+}

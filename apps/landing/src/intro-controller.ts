@@ -10,7 +10,7 @@ const clamp = (value: number) => Math.max(0, Math.min(1, value));
 export function introFrame(time: number, media: Pick<IntroMedia, 'duration' | 'logoAt' | 'revealAt'>): IntroFrame {
   const bounded = Math.max(0, Math.min(media.duration, Number.isFinite(time) ? time : 0));
   return { time: bounded, phase: bounded >= media.revealAt ? 'reveal' : bounded >= media.logoAt ? 'logo' : 'film',
-    logo: clamp((bounded - media.logoAt) / .6), reveal: clamp((bounded - media.revealAt) / (media.duration - media.revealAt)) };
+    logo: clamp((bounded - media.logoAt) / .8), reveal: clamp((bounded - media.revealAt) / (media.duration - media.revealAt)) };
 }
 export function createIntroController(video: Media, visibility: Visibility, media: IntroMedia, clock: IntroClock, callbacks: {
   frame: (frame: IntroFrame) => void; status: (status: IntroStatus) => void; exit: (reason: IntroExit) => void;

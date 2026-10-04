@@ -43,15 +43,16 @@ export default function CinematicIntro({ media, reducedMotion, explicitReplay, o
   }, [media, explicitReplay]);
   const skip = () => controller.current?.finish('skip');
   const toggleSound = () => { const next = !sound; controller.current?.setSound(next); setSound(next); };
-  return <dialog className={`cinematic-intro ${media.kind === 'fixture' ? 'intro-fixture' : ''} ${mismatch ? 'intro-orientation-mismatch' : ''}`} ref={dialog}
+  return <dialog className={`cinematic-intro ${media.height > media.width ? 'intro-native-portrait' : ''} ${media.kind === 'fixture' ? 'intro-fixture' : ''} ${mismatch ? 'intro-orientation-mismatch' : ''}`} ref={dialog}
     aria-label="Bowerloom introduction" data-phase={frame.phase} data-playback={status} data-time={frame.time.toFixed(3)}
     onCancel={event => { event.preventDefault(); skip(); }}>
     <div className="intro-picture" style={{ transform: reducedMotion ? 'none' : `translateY(${-100 * frame.reveal}%)` }}>
     <video ref={video} poster={media.poster} muted playsInline preload="auto" aria-hidden="true" tabIndex={-1} />
+    <div className="intro-sky-shade" aria-hidden="true" style={{ opacity: frame.logo }} />
     <img className="intro-logo" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom"
-      style={{ opacity: frame.logo, transform: `translateY(${(1 - frame.logo) * 14}px) scale(${.96 + .04 * frame.logo})` }} />
+      style={{ opacity: frame.logo, filter: `blur(${8 * (1 - frame.logo)}px)`, transform: `scale(${.97 + .03 * frame.logo})` }} />
     </div>
-    {media.kind === 'fixture' && <p className="intro-fixture-label">Engineering fixture · test pattern and tone · final film pending</p>}
+    {media.kind === 'fixture' && <p className="intro-fixture-label">Engineering fixture · test pattern and tone · not the cinematic film</p>}
     <div className="intro-controls">
       {media.audio === 'embedded' && <button type="button" className="intro-sound" aria-label={sound ? 'Mute sound' : 'Enable sound'} aria-pressed={sound} onClick={toggleSound}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Z" />{sound ? <path d="M16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14" /> : <path d="m17 9 5 6m0-6-5 6" />}</svg>

@@ -5,7 +5,8 @@
 .intro-picture { position: absolute; inset: 0; background: #27262B; will-change: transform; }
 .cinematic-intro::backdrop { background: transparent; }
 .intro-picture > video { display: block; width: 100%; height: 100%; object-fit: cover; }
-.intro-orientation-mismatch video { object-fit: contain; }
+.intro-native-portrait video { object-position: center bottom; }
+.intro-orientation-mismatch video { object-fit: contain; object-position: center; }
 .intro-controls {
   position: absolute; z-index: 2; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
   display: flex; align-items: center; gap: 8px;
@@ -18,6 +19,7 @@
 .intro-controls button:focus-visible { outline: 3px solid #F6EEE8; outline-offset: 3px; }
 .intro-controls .intro-sound { padding: 10px; }
 .intro-sound svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.6; fill: none; }
+.intro-sky-shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, #27262B52 0%, #27262B29 48%, transparent 85%); }
 .intro-logo { position: absolute; z-index: 1; top: 43%; left: 20%; width: 60%; height: auto; pointer-events: none; }
 .intro-fixture-label {
   position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); left: 18px; right: 18px;

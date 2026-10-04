@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createIntroController,introFrame} from '../src/intro-controller.ts';
-import {selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
+import {introDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
 const media={kind:'production',src:'/intro/desktop.mp4',poster:'/intro/desktop.jpg',sha256:'a'.repeat(64),bytes:100,width:1920,height:1080,duration:23,logoAt:20,revealAt:22.2,audio:'embedded'};
 function fixture() {
   let now=0,id=0;const rafs=new Map(),timers=new Map();
@@ -15,11 +15,15 @@ function fixture() {
 }
 test('logo and reveal follow one23-second media clock',()=>{
   assert.deepEqual(introFrame(19.9,media),{time:19.9,phase:'film',logo:0,reveal:0});
-  assert.equal(introFrame(20.6,media).logo,1);assert.equal(introFrame(22.2,media).phase,'reveal');
+  assert.ok(Math.abs(introFrame(20.4,media).logo-.5)<.00001);assert.equal(introFrame(20.8,media).logo,1);assert.equal(introFrame(22.19,media).logo,1);assert.equal(introFrame(22.2,media).phase,'reveal');
   assert.ok(Math.abs(introFrame(22.6,media).reveal-.5)<.00001);assert.equal(introFrame(23,media).reveal,1);
 });
 test('production remains gated until both exact native variant contracts are supplied',()=>{
-  assert.equal(selectIntroMedia(false,false),null);assert.equal(selectIntroMedia(false,true),null);
+  assert.equal(selectIntroMedia(false,false),introDelivery.desktop);assert.equal(selectIntroMedia(false,true),introDelivery.portrait);
+  for(const invalid of [{...introDelivery,status:'awaiting-media'},{...introDelivery,desktop:null},{...introDelivery,portrait:null},
+    {...introDelivery,portrait:{...introDelivery.portrait,duration:8}},{...introDelivery,desktop:{...introDelivery.desktop,sha256:'corrupt'}}]){
+    assert.equal(selectIntroMedia(false,false,invalid),null);assert.equal(selectIntroMedia(false,true,invalid),null);
+  }
   assert.equal(validProductionMedia(media,false),true);assert.equal(validProductionMedia(media,true),false);
   for(const patch of [{duration:8},{audio:'silent'},{bytes:17*1024*1024},{sha256:'none'},{src:'/historical.mp4'}])assert.equal(validProductionMedia({...media,...patch},false),false);
 });
@@ -106,4 +110,20 @@ test('manual and hidden pause events do not become playback-policy failures',asy
 test('a queued old pause event cannot stop resumed playback',async()=>{
   const f=fixture();await f.controller.play();f.controller.pause();await f.controller.play();
   f.video.dispatchEvent(new Event('pause'));assert.equal(f.statuses.at(-1),'playing');assert.ok(f.pending()>0);f.controller.dispose();
+});
+
+test('protected production assets match all seven exact Brand delivery files',async()=>{
+  const {readFile,readdir}=await import('node:fs/promises'),{createHash}=await import('node:crypto');
+  const directory=new URL('../public/intro/',import.meta.url);
+  const manifestBytes=await readFile(new URL('manifest.json',directory));
+  assert.equal(manifestBytes.length,2157);assert.equal(createHash('sha256').update(manifestBytes).digest('hex'),'35ea045a4d19a66037c671bb2c43d27f0dee954f06451aa9c6efed80f068df3a');
+  const manifest=JSON.parse(manifestBytes);assert.equal(manifest.status,'founder review candidate');assert.equal(manifest.audio_listening_review,'pending');
+  assert.equal(manifest.duration_seconds,23);assert.equal(manifest.frames,552);assert.equal(manifest.audio_embedded,true);assert.equal(manifest.logo_baked,false);
+  assert.deepEqual((await readdir(directory)).sort(),[...manifest.files.map(x=>x.path),'manifest.json'].sort());
+  for(const asset of manifest.files){const bytes=await readFile(new URL(asset.path,directory));assert.equal(bytes.length,asset.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),asset.sha256);}
+  for(const asset of [introDelivery.desktop,introDelivery.portrait]){
+    const declared=manifest.files.find(row=>'/intro/'+row.path===asset.src);assert.equal(asset.kind,'production');assert.equal(asset.sha256,declared.sha256);assert.equal(asset.bytes,declared.bytes);
+    const stream=declared.streams.find(row=>row.type==='video');assert.equal(stream.width,asset.width);assert.equal(stream.height,asset.height);
+    assert.ok(manifest.files.some(row=>'/intro/'+row.path===asset.poster));
+  }
 });

@@ -4,9 +4,19 @@ export type IntroMedia = {
   width: number; height: number; duration: number; logoAt: number; revealAt: number;
   audio: 'embedded' | 'silent';
 };
-/** Brand must supply revision-bound desktop and portrait exports before this gate opens. */
+/** Hash-verified Brand delivery for the protected founder review; not release acceptance. */
 export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
-  status: 'awaiting-media', desktop: null, portrait: null,
+  status: 'ready',
+  desktop: {
+    kind: 'production', src: '/intro/cinematic-wide.mp4', poster: '/intro/wide-poster.webp',
+    sha256: '9a9e4775250e18c753efef425bb2fdcc18acc906f91e3a68a2988e055d3bdd97', bytes: 10613793,
+    width: 1920, height: 1080, duration: 23, logoAt: 20, revealAt: 22.2, audio: 'embedded',
+  },
+  portrait: {
+    kind: 'production', src: '/intro/cinematic-tall.mp4', poster: '/intro/tall-poster.webp',
+    sha256: 'c58a64b98f00ab9897e4c662017ee0e819b48ecc67e23f74596e07f4ff257d80', bytes: 10916915,
+    width: 1080, height: 1920, duration: 23, logoAt: 20, revealAt: 22.2, audio: 'embedded',
+  },
 };
 /** Technical patterns and test tone, admitted only by ?intro=fixture. Never final media. */
 export const introFixtures: Record<'desktop' | 'portrait', IntroMedia> = {
@@ -37,11 +47,11 @@ export const introFixtures: Record<'desktop' | 'portrait', IntroMedia> = {
     "audio": "embedded"
   }
 };
-export function selectIntroMedia(fixture: boolean, portrait: boolean): IntroMedia | null {
+export function selectIntroMedia(fixture: boolean, portrait: boolean, delivery = introDelivery): IntroMedia | null {
   if (fixture) return introFixtures[portrait ? 'portrait' : 'desktop'];
-  if (introDelivery.status !== 'ready') return null;
-  if (!validProductionMedia(introDelivery.desktop, false) || !validProductionMedia(introDelivery.portrait, true)) return null;
-  return portrait ? introDelivery.portrait : introDelivery.desktop;
+  if (delivery.status !== 'ready') return null;
+  if (!validProductionMedia(delivery.desktop, false) || !validProductionMedia(delivery.portrait, true)) return null;
+  return portrait ? delivery.portrait : delivery.desktop;
 }
 
 export function validProductionMedia(media: IntroMedia | null, portrait: boolean): media is IntroMedia {
