@@ -9,8 +9,8 @@ const sha = value => createHash('sha256').update(value).digest('hex');
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-codex-identity-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['index','boundary','installation','policy','supervisor','guardian'].map(name => {
-    const path = `dist/packages/codex-adapter/src/${name}.js`, bytes = Buffer.from('export const inert = true;\n');
+  const files = ['index','boundary','adapter-core','startup-deadline','installation','policy','supervisor','guardian'].map(name=>`dist/packages/codex-adapter/src/${name}.js`).concat(['dist/packages/mcp-connections/src/darwin-boot-session.js','dist/packages/mcp-connections/src/model.js','dist/packages/contracts/src/index.js']).map(path => {
+    const bytes = Buffer.from('export const inert = true;\n');
     mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root,path),bytes);
     return { path, bytes: bytes.length, sha256: sha(bytes) };
   });
@@ -20,7 +20,7 @@ function fixture(t) {
 }
 test('host-pinned complete installed inventory is measured without importing package code', t => {
   const f=fixture(t), identity=inspectInstalledCodex(f.pins);
-  assert.equal(identity.files.length,6); assert.equal(identity.root,f.root); assert.ok(Object.isFrozen(identity.files));
+  assert.equal(identity.files.length,11); assert.equal(identity.root,f.root); assert.ok(Object.isFrozen(identity.files));
 });
 test('changed installed bytes and changed manifest refuse even with unchanged path', t => {
   const f=fixture(t); writeFileSync(join(f.root,f.manifest.files[0].path),'changed');

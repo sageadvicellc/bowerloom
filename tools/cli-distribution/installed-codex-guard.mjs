@@ -36,9 +36,10 @@ export function inspectInstalledCodex({ root, distributionSha256, tarballSha256 
       if (bytes.length !== file.bytes || sha(bytes) !== file.sha256) fail();
       return Object.freeze({ path: file.path, sha256: file.sha256 });
     });
-    for (const file of ['index', 'boundary', 'installation', 'policy', 'supervisor', 'guardian']) {
+    for (const file of ['index', 'boundary', 'adapter-core', 'startup-deadline', 'installation', 'policy', 'supervisor', 'guardian']) {
       if (!seen.has(`dist/packages/codex-adapter/src/${file}.js`)) fail();
     }
+    for (const path of ['dist/packages/mcp-connections/src/darwin-boot-session.js','dist/packages/mcp-connections/src/model.js','dist/packages/contracts/src/index.js']) if (!seen.has(path)) fail();
     return Object.freeze({ root, tarballSha256, files: Object.freeze(files), distributionSha256, version: manifest.version });
   } catch { fail(); }
 }

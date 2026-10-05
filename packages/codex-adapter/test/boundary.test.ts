@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { CodexProposalBoundary, planCodexProposalLaunch, codexArtifactRevision, measureCodexInstalledArtifact, codexQualificationRevision, codexBoundaryAccountRevision, refuseCodexQualificationProbe } from '../src/boundary.js';
+import { CodexAdapterCore } from '../src/adapter-core.js';
 import { CodexBetaAdapter, CodexAdapter } from '../src/index.js';
 import { SUPPORTED_NATIVE_SHA256, MODEL_ROUTE } from '../src/policy.js';
 import { CodexObservationReader } from '../src/reader.js';
@@ -17,7 +18,7 @@ const root = resolve(fileURLToPath(new URL('../../../../', import.meta.url)));
 const native = { version: '0.157.0' as const, nativeSha256: SUPPORTED_NATIVE_SHA256 };
 const installation: Installation = { ...native, nativePath: '/does-not-exist-native-boundary-test', workRoot: '/does-not-exist-work-root' };
 const binding: AccountBinding = { canonicalAccountId: 'synthetic', aliases: ['synthetic'], providerAccountSha256: 'a'.repeat(64), requiredWindows: ['primary'], optionalWindows: ['secondary'] };
-const paths = ['boundary','index','installation','policy','protocol','reader','observation','safe','supervisor','guardian'].map(n => `dist/packages/codex-adapter/src/${n}.js`).concat(['dist/packages/broker/src/index.js','dist/packages/contracts/src/index.js']);
+const paths = ['boundary','index','adapter-core','startup-deadline','installation','policy','protocol','reader','observation','safe','supervisor','guardian'].map(n => `dist/packages/codex-adapter/src/${n}.js`).concat(['dist/packages/broker/src/index.js','dist/packages/contracts/src/index.js','dist/packages/mcp-connections/src/darwin-boot-session.js','dist/packages/mcp-connections/src/model.js']);
 async function setup() {
   const artifact: CodexArtifactBinding = { root, tarballSha256: 'b'.repeat(64), files: await Promise.all(paths.map(async path => ({ path, sha256: hash(await readFile(join(root,path))) }))) };
   const body = { format: 'bowerloom/codex-boundary-qualification/v1beta1' as const, receiptId: 'review-01', status: 'active' as const, launchPlanRevision: planCodexProposalLaunch(native).revision, artifactRevision: codexArtifactRevision(artifact), ...{ nativeSha256: native.nativeSha256, nativeVersion: native.version }, accountBindingDigest: codexBoundaryAccountRevision(binding,'synthetic'), issuedAtMs: Date.now()-1000, expiresAtMs: Date.now()+60000, reviewRevision: 'c'.repeat(64), probeSuiteRevision: 'd'.repeat(64) };
@@ -164,4 +165,15 @@ test('overdue fulfillment refuses even when a blocked event loop delays the time
     await assert.rejects(adapter.start({launcherId:'synthetic',taskInput:'brief',modelRoute:MODEL_ROUTE},signal()),{message:'BOUNDARY_LOOKUP_TIMEOUT'});
     assert.equal(reads,0);
   }finally{CodexObservationReader.prototype.read=old;}
+});
+
+
+test('private constructor captures gate methods; public constructors do not accept a mutable gate',async()=>{
+ let checks=0,changed=0;const gate={async check():Promise<void>{checks++;throw Error('initial-private-refusal');},assertCurrent(){},consume(){throw Error('unavailable');}};
+ const core=new CodexAdapterCore({installation,binding,accountAlias:'synthetic'},gate);
+ gate.check=async()=>{changed++;};
+ await assert.rejects(core.start({launcherId:'synthetic',taskInput:'task',modelRoute:MODEL_ROUTE},signal()));
+ assert.equal(checks,1);assert.equal(changed,0);
+ const {options}=await setup();const beta=new CodexBetaAdapter({installation,binding,accountAlias:'synthetic',boundary:{...options,lookupQualification:async()=>null},gate} as any);
+ await assert.rejects(beta.start({launcherId:'synthetic',taskInput:'task',modelRoute:MODEL_ROUTE},signal()),{message:'BOUNDARY_SCHEMA'});assert.equal(checks,1);
 });

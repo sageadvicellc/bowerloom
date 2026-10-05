@@ -1,7 +1,8 @@
 import { fork } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { StartupDeadline, verifyStartupHost, startupJobCopy, startupMessageDigest, type StartupAuthorization } from './startup-deadline.js';
 import { AdapterError, check, object, sha } from './safe.js';
-export interface GuardianJob { executable: string; argv: string[]; cwd: string; env: Record<string,string>; seconds: number; stdoutBytes: number; stderrBytes: number }
+export interface GuardianJob { executable: string; argv: string[]; cwd: string; env: Record<string,string>; seconds: number; stdoutBytes: number; stderrBytes: number; startup?: Readonly<StartupAuthorization> }
 export interface GuardianDone { code: number | null; reason: string | null; leaderReaped: boolean; groupGone:boolean; groupCheckStatus:string; sizes: { stdout: number; stderr: number } }
 export interface OwnedGuardian {
   guardianPid:number;
@@ -12,9 +13,16 @@ export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChu
   check(!signal.aborted,'CANCELLED');
   check(process.permission === undefined,'HOST_PERMISSION_MODEL_UNSUPPORTED');
   const nonce=randomBytes(32).toString('hex');
+  const startup=job.startup ? new StartupDeadline(job.startup) : undefined;
+  const {startup:_,...jobFields}=job;
+  const pinnedJob=startup ? startupJobCopy({...jobFields,nonce}) : {...jobFields,nonce};
+  const active=()=>check(!signal.aborted,'CANCELLED');
+  const bootSession=startup ? await verifyStartupHost(startup,active) : null;
+  active(); startup?.check();
+  let bindingDigest:string|null=null;
   // Guardian startup receives no job secrets or ambient environment. Its job arrives only over owned IPC.
   // The own undefined key blocks Node's implicit coverage propagation and is omitted from envPairs.
-  const guardian=fork(new URL('./guardian.js',import.meta.url),[],{execArgv:[],env:{NODE_V8_COVERAGE:undefined},detached:true,stdio:['ignore','ignore','ignore','ipc']});
+  const guardian=fork(new URL('./guardian.js',import.meta.url),[],{execPath:process.execPath,execArgv:[],env:{NODE_V8_COVERAGE:undefined},detached:true,stdio:['ignore','ignore','ignore','ipc']});
   let hardStop:NodeJS.Timeout|null=null;
   let started=false, settled=false, failure:string|null=null, doneMessage:GuardianDone|null=null;
   let cancelSent=false,channelFailed=false;
@@ -45,8 +53,10 @@ export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChu
     try {
       const m=object(value);
       if(m.type==='started') {
+        if(startup){if(cancelSent||signal.aborted||failure!==null){fail('CANCELLED');return;}startup.check();}
+        check(startup ? m.bindingDigest===bindingDigest && Object.keys(m).sort().join()==='bindingDigest,guardianPid,nonce,pid,type' : m.bindingDigest===undefined,'GUARDIAN_BINDING');
         check(!started && m.nonce===nonce && Number.isSafeInteger(m.pid)&&m.pid>0 && m.guardianPid===guardian.pid,'GUARDIAN_IDENTITY');
-        started=true;resolveStart!({pid:m.pid,groupId:m.pid,ownershipDigest:sha(`${nonce}:${m.pid}:${m.guardianPid}`)});
+        started=true;resolveStart!({pid:m.pid,groupId:m.pid,ownershipDigest:sha(`${nonce}:${m.pid}:${m.guardianPid}${bindingDigest?`:${bindingDigest}`:''}`)});
       } else if(m.type==='chunk') {
         check(started && (m.stream==='stdout'||m.stream==='stderr') && typeof m.data==='string','GUARDIAN_CHUNK');
         try {onChunk(m.stream,Buffer.from(m.data,'base64'));} catch {fail('OUTPUT_REJECTED');}
@@ -66,7 +76,17 @@ export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChu
     if(m && m.leaderReaped)resolveDone!(m);else rejectDone!(new AdapterError(failure??m?.reason??'GUARDIAN_LOST'));
   });
   // Recheck after listeners are installed so cancellation cannot disappear between check and spawn.
-  if(signal.aborted)cancel();else send({type:'start',job:{...job,nonce}});
+  if(signal.aborted)cancel();else {
+    try {
+      if(startup){
+        // This sample and its immutable transfer are adjacent to owned IPC: no await or host callback.
+        startup.check(); const transfer=startup.transferSnapshot();
+        bindingDigest=startupMessageDigest(pinnedJob,transfer,bootSession!);
+        send({type:'start-v2',job:pinnedJob,startup:transfer,bootSession,bindingDigest});
+      }else send({type:'start',job:pinnedJob});
+    }
+    catch { fail('STARTUP_EXPIRED'); }
+  }
   const own=await identity;
   return {identity:own,guardianPid:guardian.pid!,done,write(data){check(!settled,'PROCESS_ENDED');send({type:'write',data});},end(){send({type:'end'});},
     async terminate(){cancel();const end=await done;check(end.leaderReaped&&end.groupGone,'REAP_UNVERIFIED');} };

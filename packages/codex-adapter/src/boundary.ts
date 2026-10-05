@@ -7,6 +7,8 @@ import { CONTROLS, LIMITS, MODEL_ROUTE, POLICY_VERSION } from './policy.js';
 import { execArgs, requireNativePin } from './installation.js';
 import { PROPOSAL_SCHEMA } from './protocol.js';
 import { AdapterError, check, sha } from './safe.js';
+import type { StartupAuthorization, StartupPreparation } from './startup-deadline.js';
+import { STARTUP_CLOCK } from './startup-deadline.js';
 import type { AccountBinding, Installation } from './types.js';
 
 export interface CodexArtifactBinding {
@@ -21,12 +23,18 @@ export interface CodexBetaBoundaryOptions {
   /** Trusted host registry, never a task-supplied record or model callback. */
   lookupQualification(receiptId: string): Promise<unknown>;
 }
-const FORMAT = 'bowerloom/codex-proposal-launch/v1beta1';
+const FORMAT = 'bowerloom/codex-proposal-launch/v1beta2';
+/** Private constructor capability; no mutable setter and no public bootstrap export. */
+export interface AdapterBoundaryGate {
+  check(signal: AbortSignal, observation?: unknown): Promise<void>;
+  assertCurrent(signal: AbortSignal): void;
+  consume?(preparation: Readonly<StartupPreparation>, signal: AbortSignal): Readonly<StartupAuthorization>;
+}
 const QUALIFICATION_LOOKUP_TIMEOUT_MS = 1000;
 const RECEIPT = 'bowerloom/codex-boundary-qualification/v1beta1';
 const DIGEST = /^[a-f0-9]{64}$/;
 const PREFIX = 'dist/packages/codex-adapter/src/';
-const REQUIRED = ['boundary', 'index', 'installation', 'policy', 'protocol', 'reader', 'observation', 'safe', 'supervisor', 'guardian'].map(n => `${PREFIX}${n}.js`).concat(['dist/packages/broker/src/index.js', 'dist/packages/contracts/src/index.js']);
+const REQUIRED = ['boundary', 'index', 'adapter-core', 'startup-deadline', 'installation', 'policy', 'protocol', 'reader', 'observation', 'safe', 'supervisor', 'guardian'].map(n => `${PREFIX}${n}.js`).concat(['dist/packages/broker/src/index.js', 'dist/packages/contracts/src/index.js', 'dist/packages/mcp-connections/src/darwin-boot-session.js', 'dist/packages/mcp-connections/src/model.js']);
 
 // Read only data descriptors. Neither JSON serialization nor validation invokes getters.
 function data(input: unknown, depth = 0, count = { n: 0 }): any {
@@ -98,6 +106,7 @@ function lookupBounded(lookup: CodexBetaBoundaryOptions['lookupQualification'], 
 export function planCodexProposalLaunch(input: { version: string; nativeSha256: string }) {
   const v = data(input); exact(v, ['version', 'nativeSha256']); requireNativePin(v.version, v.nativeSha256);
   const body = { format: FORMAT, platform: 'darwin-arm64', nativeVersion: v.version as string, nativeSha256: v.nativeSha256 as string,
+    startupProtocol: 'bowerloom/codex-startup/v1', startupClock: STARTUP_CLOCK, startupValidationTimeoutMs: 2000,
     policyVersion: POLICY_VERSION, modelRoute: MODEL_ROUTE, qualificationLookupTimeoutMs: QUALIFICATION_LOOKUP_TIMEOUT_MS, controls: [...CONTROLS],
     argvTemplate: execArgs('/BOWERLOOM_PRIVATE_WORKSPACE', '/BOWERLOOM_PRIVATE_SCHEMA'),
     environmentPolicy: { inherited: ['HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL'], fixed: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', CODEX_EXEC_SERVER_URL: 'none', CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED: '1' } },
