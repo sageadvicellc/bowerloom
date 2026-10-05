@@ -1,0 +1,8 @@
+@font-face { font-family: Lora; src: url('/docs/fonts/lora.ttf') format('truetype'); font-display: swap; font-weight: 400 700; }
+:root { --sl-font: Lora, Georgia, serif; --sl-font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace; --sl-color-accent-low: #293b30; --sl-color-accent: #b9c6a0; --sl-color-accent-high: #e2ebd5; --sl-color-white: #fff8ed; --sl-color-gray-1: #eee8df; --sl-color-gray-2: #c5c8bc; --sl-color-gray-3: #a2aa99; --sl-color-gray-4: #5c685b; --sl-color-gray-5: #374138; --sl-color-gray-6: #252d28; --sl-color-black: #1b231e; --sl-text-code: .875rem; --sl-text-sm: 1rem; --sl-text-xs: .875rem; --sl-content-width: 48rem; }
+:root[data-theme='light'] { --sl-color-accent-low: #e8eddf; --sl-color-accent: #4a644d; --sl-color-accent-high: #29452f; --sl-color-white: #343a32; --sl-color-gray-1: #4b5348; --sl-color-gray-2: #586353; --sl-color-gray-3: #71816a; --sl-color-gray-4: #a7b3a0; --sl-color-gray-5: #dce2d4; --sl-color-gray-6: #f2f2e9; --sl-color-gray-7: #faf6ee; --sl-color-black: #fffaf2; }
+header, nav, .sidebar-content, .pagination-links, button { font-family: var(--sl-font-mono); }
+.sl-markdown-content { line-height: 1.75; }
+.sl-markdown-content :is(h1,h2,h3,h4) { letter-spacing: -.025em; }
+.sl-markdown-content a { text-underline-offset: .2em; }
+:focus-visible { outline: 3px solid var(--sl-color-accent); outline-offset: 4px; }

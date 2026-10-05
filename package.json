@@ -9,7 +9,9 @@
   },
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/cli",
+    "apps/landing",
+    "apps/mcp"
   ],
   "bin": {
     "bowerloom": "dist/apps/cli/src/main.js",
