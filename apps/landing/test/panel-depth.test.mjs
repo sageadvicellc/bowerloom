@@ -34,7 +34,7 @@ test('surface occlusion sits between common-coordinate vine layers and controls 
 });
 test('phone styles retain the masks and reserve reading space without decorative motion', () => {
   const mobile=css.slice(css.indexOf('@media (max-width: 640px)'));
-  assert.match(mobile, /--robot-width: 140px; --robot-top: -92px/);
+  assert.match(mobile, /--robot-width: 140px; --robot-top: -98px/);
   assert.match(mobile, /--robot-width: 166px/);assert.match(mobile,/padding: 56px 24px 28px/);
   assert.doesNotMatch(mobile,/companion[^}]*clip-path: none|companion[^}]*position: static/);
   const companions=css.slice(css.indexOf('/* Three panel-bound'),css.indexOf('@media (prefers-reduced-motion'));
@@ -54,4 +54,16 @@ test('H4N registration leaves the cap and central face intact with at least24px 
   }
   assert.match(css,/companion-h4n \.companion-robot \{ top: auto; bottom: -106px/);
   assert.match(css,/companion-h4n \.companion-robot \{ bottom: -83px/);
+});
+
+test('mobile S4 foreground contains both grips but excludes the central chest sticker',()=>{
+  const points=[...source.matchAll(/<polygon points="([^"]+)"/g)].map(m=>m[1].split(' ').map(p=>p.split(',').map(Number)));
+  assert.equal(points.length,2);
+  const inside=(x,y,poly)=>{let hit=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const[a,b]=poly[i],[c,d]=poly[j];if((b>y)!==(d>y)&&x<(c-a)*(y-b)/(d-b)+a)hit=!hit;}return hit;};
+  assert.ok(points.some(p=>inside(.385,.43,p)));assert.ok(points.some(p=>inside(.725,.435,p)));
+  assert.ok(points.every(p=>!inside(.55,.48,p)));assert.ok(points.every(p=>!inside(.55,.55,p)));
+  assert.match(source,/clipPathUnits="objectBoundingBox"/);assert.match(source,/useId\(\)/);
+  const mobile=css.slice(css.indexOf('@media (max-width: 640px)'));
+  assert.match(mobile,/companion-s4 \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
+  const borderSourceY=98/(140*960/640)*960;assert.ok(borderSourceY>440&&borderSourceY<460);
 });

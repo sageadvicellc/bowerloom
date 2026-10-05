@@ -158,7 +158,7 @@ test('React entry wiring retains a native modal, persistent Enter, still fallbac
   const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
   const css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
   assert.match(component,/element.showModal\(\)/);assert.match(component,/onCancel=.*enter\('skip'\)/);
-  assert.match(component,/autoFocus disabled=\{entering\} onClick=\{\(\) => enter\(\)\}>Enter/);
+  assert.match(component,/autoFocus disabled=\{entering\} aria-label="Enter Bowerloom"[^>]*onClick=\{\(\) => enter\(\)\}/);
   assert.match(component,/if \(reducedRef.current\) active.hold\('reduced-motion'\)/);
   assert.match(component,/fallback && <img className="intro-still"/);assert.match(component,/active.dispose\(\)/);
   assert.doesNotMatch(component,/translateY|finish\(|enter.current\('reduced-motion'\)/);
@@ -246,4 +246,20 @@ test('invalid logo timing cannot admit production media',()=>{
  const m=introDelivery.desktop;
  for(const logoSeconds of [0,NaN,3])assert.equal(validProductionMedia({...m,ending:{logoSeconds}},false),false);
  assert.equal(validProductionMedia({...m,audio:'embedded'},false),false);
+});
+
+test('glass splash controls use named icons, text Skip and an Enter below the logo',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8');
+  const css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
+  const center=component.slice(component.indexOf('<div className="intro-center">'),component.indexOf('{media.kind ===',component.indexOf('<div className="intro-center">')));
+  assert.ok(center.indexOf('className="intro-logo"')<center.indexOf('aria-label="Enter Bowerloom"'));
+  assert.match(center,/<svg[^>]*aria-hidden="true"/);assert.doesNotMatch(center,/>Enter<\/button>/);
+  assert.match(component,/aria-label="Play"/);assert.match(component,/aria-label="Pause"/);
+  assert.match(component,/onClick=\{\(\) => enter\('skip'\)\}>Skip/);
+  assert.match(css,/intro-glass[^}]*min-width: 44px; min-height: 44px/);
+  assert.match(css,/intro-enter[^}]*width: 56px; height: 56px/);
+  assert.match(css,/intro-center[^}]*flex-direction: column[^}]*gap: 24px/);
+  assert.match(css,/backdrop-filter: blur\(16px\)/);
+  assert.match(css,/data-entry="uncover"\] \.intro-center/);
 });

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 
 /** Identical aligned layers let the panel occlude approved artwork without redrawing it. */
 export default function SectionCompanion({ unit, side, children }: { unit: 's4' | 'h4n'; side: 'left' | 'right'; children: ReactNode }) {
+  const gripId = `companion-grip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [available, setAvailable] = useState(true);
   const source = unit === 's4' ? '/panel-units/s4-rose-peek.webp' : '/panel-units/h4n-ochre-wave.webp';
   const illustration = (layer: 'back' | 'front') => available && <img className={`companion-robot companion-robot-${layer}`} src={source}
@@ -11,7 +12,13 @@ export default function SectionCompanion({ unit, side, children }: { unit: 's4' 
     <path className="vine-stem" d="M14 153C8 121 38 112 26 84S15 42 51 44S105 14 127 36S171 63 190 29S223 6 232 16" />
     <path className="vine-leaf" d="M26 109C7 102 2 88 9 83C24 84 31 94 26 109ZM28 65C45 58 51 43 45 39C32 39 25 52 28 65ZM96 31C87 12 69 8 66 14C66 27 79 34 96 31ZM166 47C177 60 193 55 192 47C185 38 172 38 166 47ZM212 13C208 0 218 0 225 2L225 11Z" />
   </svg>;
-  return <div className={`companion-panel-wrap companion-${unit} companion-${side}`} data-panel-depth="layered">
+  return <div className={`companion-panel-wrap companion-${unit} companion-${side}`} data-panel-depth="layered" style={{ '--companion-grip': `url(#${gripId})` } as CSSProperties}>
+    {unit === 's4' && <svg className="companion-mask-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs><clipPath id={gripId} clipPathUnits="objectBoundingBox">
+        <polygon points=".30,.37 .36,.355 .435,.37 .46,.414 .42,.495 .33,.495 .305,.45" />
+        <polygon points=".61,.325 .69,.32 .76,.35 .79,.405 .80,.49 .73,.49 .64,.42" />
+      </clipPath></defs>
+    </svg>}
     <div className="companion-decoration companion-behind" aria-hidden="true">{illustration('back')}{vine('back')}</div>
     <div className="companion-surface">{children}</div>
     <div className="companion-decoration companion-ahead" aria-hidden="true">{illustration('front')}{vine('front')}</div>

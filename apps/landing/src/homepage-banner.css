@@ -13,6 +13,7 @@
 /* Three panel-bound compositions: artwork behind the surface, hands and vine loops above its rim. */
 .normal-site .companion-panel-wrap { --robot-width: 180px; --robot-top: -118px; position: relative; isolation: isolate; width: min(1320px, calc(100% - 48px)); margin: 156px auto 40px; }
 .normal-site .companion-h4n { --robot-width: 210px; margin-top: 48px; margin-bottom: 164px; }
+.companion-mask-defs { position: absolute; pointer-events: none; }
 .companion-decoration { position: absolute; inset: 0; pointer-events: none; user-select: none; }
 .companion-behind { z-index: 0; }
 .companion-ahead { z-index: 2; }
@@ -43,7 +44,9 @@
 @media (max-width: 640px) {
   .normal-site .normal-hero .hero-copy { padding: 24px 24px 8px; }
   .homepage-banner-brand { bottom: 10px; }
-  .normal-site .companion-panel-wrap { --robot-width: 140px; --robot-top: -92px; width: calc(100% - 32px); margin-top: 122px; margin-bottom: 32px; }
+  .normal-site .companion-panel-wrap { --robot-width: 140px; --robot-top: -98px; width: calc(100% - 32px); margin-top: 122px; margin-bottom: 32px; }
+  /* Keep only the original hands/forearms above the rim; the panel hides the chest. */
+  .companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }
   .normal-site .companion-h4n { --robot-width: 166px; margin-top: 40px; margin-bottom: 130px; }
   .companion-h4n .companion-robot { bottom: -83px; }
   .companion-right .companion-robot { right: 16px; }

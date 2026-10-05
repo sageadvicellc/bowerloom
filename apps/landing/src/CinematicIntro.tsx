@@ -62,17 +62,22 @@ export default function CinematicIntro({ media, reducedMotion, onEnter }: {
       <video ref={video} poster={media.poster} muted playsInline preload="none" aria-hidden="true" tabIndex={-1} />
       {fallback && <img className="intro-still" src={media.poster} alt="" />}
       <div className="intro-sky-shade" aria-hidden="true" style={{ opacity: settled ? 1 : frame.logo }} />
-      <img className="intro-logo" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom"
+    </div>
+    <div className="intro-center">
+      <img className="intro-logo" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="Bowerloom" width="2044" height="374"
         style={{ opacity: settled ? 1 : frame.logo, filter: reducedMotion || settled ? 'none' : `blur(${8 * (1 - frame.logo)}px)`, transform: reducedMotion || settled ? 'none' : `scale(${.97 + .03 * frame.logo})` }} />
+      <button type="button" className="intro-glass intro-enter" autoFocus disabled={entering} aria-label="Enter Bowerloom" title="Enter Bowerloom" onClick={() => enter()}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h13m-5-5 5 5-5 5M17 4h4v16h-4" /></svg>
+      </button>
     </div>
     {media.kind === 'fixture' && <p className="intro-fixture-label">Engineering fixture · test pattern and tone · not the cinematic film</p>}
     <div className="intro-controls">
-      {media.audio === 'embedded' && !settled && <button type="button" className="intro-sound" disabled={entering} aria-label={sound ? 'Mute sound' : 'Enable sound'} aria-pressed={sound} onClick={toggleSound}>
+      {media.audio === 'embedded' && !settled && <button type="button" className="intro-glass intro-sound" disabled={entering} aria-label={sound ? 'Mute sound' : 'Enable sound'} aria-pressed={sound} onClick={toggleSound}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Z" />{sound ? <path d="M16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14" /> : <path d="m17 9 5 6m0-6-5 6" />}</svg>
       </button>}
-      {(status === 'blocked' || status === 'paused') && <button type="button" onClick={() => void controller.current?.play()}>Play</button>}
-      {status === 'playing' && <button type="button" className="intro-pause" onClick={() => controller.current?.pause()}>Pause</button>}
-      <button type="button" className="intro-enter" autoFocus disabled={entering} onClick={() => enter()}>Enter</button>
+      {(status === 'blocked' || status === 'paused') && <button type="button" className="intro-glass" disabled={entering} aria-label="Play" title="Play" onClick={() => void controller.current?.play()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z" /></svg></button>}
+      {status === 'playing' && <button type="button" className="intro-glass intro-pause" disabled={entering} aria-label="Pause" title="Pause" onClick={() => controller.current?.pause()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg></button>}
+      <button type="button" className="intro-glass intro-skip" disabled={entering} onClick={() => enter('skip')}>Skip</button>
     </div>
     <div className="intro-entry-white" aria-hidden="true" style={{ opacity: entry?.opacity ?? 0 }} />
     <span className="sr-only" role="status">{message}</span>
