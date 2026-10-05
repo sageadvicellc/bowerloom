@@ -1,12 +1,19 @@
-/** Existing approved pose derivatives, shown intact in their own document-flow space. */
-export default function SectionCompanion({ unit, side }: { unit: 's4' | 'h4n'; side: 'left' | 'right' }) {
-  return <div className={`section-companion companion-${unit} companion-${side}`} aria-hidden="true">
-    <svg className="companion-vine" viewBox="0 0 280 110" focusable="false" aria-hidden="true">
-      <path className="vine-stem" d="M6 99C50 100 35 59 78 66S134 109 163 69S221 23 274 29" />
-      <path className="vine-leaf" d="M61 67C47 48 29 47 28 53C30 68 46 75 61 67ZM124 87C130 68 115 56 109 61C106 73 113 82 124 87ZM187 46C188 22 205 15 209 21C211 34 198 45 187 46ZM238 27C246 42 262 42 266 35C259 25 249 23 238 27Z" />
-    </svg>
-    <img src={unit === 's4' ? '/panel-units/s4-rose-peek.webp' : '/panel-units/h4n-ochre-wave.webp'}
-      alt="" aria-hidden="true" draggable={false} loading="lazy" decoding="async" width="640" height={unit === 's4' ? 960 : 530}
-      onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />
+import { useState, type ReactNode } from 'react';
+
+/** Identical aligned layers let the panel occlude approved artwork without redrawing it. */
+export default function SectionCompanion({ unit, side, children }: { unit: 's4' | 'h4n'; side: 'left' | 'right'; children: ReactNode }) {
+  const [available, setAvailable] = useState(true);
+  const source = unit === 's4' ? '/panel-units/s4-rose-peek.webp' : '/panel-units/h4n-ochre-wave.webp';
+  const illustration = (layer: 'back' | 'front') => available && <img className={`companion-robot companion-robot-${layer}`} src={source}
+    alt="" aria-hidden="true" draggable={false} loading="lazy" decoding="async" width="640" height={unit === 's4' ? 960 : 530}
+    onError={() => setAvailable(false)} />;
+  const vine = (layer: 'back' | 'front') => <svg className={`companion-vine companion-vine-${layer}`} viewBox="0 0 240 160" focusable="false" aria-hidden="true">
+    <path className="vine-stem" d="M14 153C8 121 38 112 26 84S15 42 51 44S105 14 127 36S171 63 190 29S223 6 232 16" />
+    <path className="vine-leaf" d="M26 109C7 102 2 88 9 83C24 84 31 94 26 109ZM28 65C45 58 51 43 45 39C32 39 25 52 28 65ZM96 31C87 12 69 8 66 14C66 27 79 34 96 31ZM166 47C177 60 193 55 192 47C185 38 172 38 166 47ZM212 13C208 0 218 0 225 2L225 11Z" />
+  </svg>;
+  return <div className={`companion-panel-wrap companion-${unit} companion-${side}`} data-panel-depth="layered">
+    <div className="companion-decoration companion-behind" aria-hidden="true">{illustration('back')}{vine('back')}</div>
+    <div className="companion-surface">{children}</div>
+    <div className="companion-decoration companion-ahead" aria-hidden="true">{illustration('front')}{vine('front')}</div>
   </div>;
 }

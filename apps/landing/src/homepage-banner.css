@@ -10,28 +10,50 @@
 .normal-site .normal-hero .hero-copy { max-width: 1040px; margin: auto; padding: 24px 5% 16px; text-align: center; }
 .normal-site .normal-hero .hero-description { margin-inline: auto; }
 .normal-site .normal-hero :is(.eyebrow, .hero-secondary) { margin-inline: auto; justify-content: center; }
-/* All three companions are static, complete silhouettes with 24px minimum clearance. */
-.normal-site .section-companion { position: relative; display: flex; align-items: end; gap: 24px; width: min(1120px, calc(100% - 64px)); margin: 0 auto; padding: 24px 0; pointer-events: none; user-select: none; }
-.section-companion > img { display: block; flex: 0 0 auto; height: auto; object-fit: contain; }
-.companion-s4 > img { width: 160px; }
-.companion-h4n > img { width: 190px; }
-.companion-right { justify-content: end; }
-.companion-left { justify-content: start; }
-.companion-left > img { order: -1; }
-.companion-vine { width: min(280px, 34vw); height: auto; margin-bottom: 24px; color: var(--brand-foliage, #B9C6A0); opacity: .65; }
-.vine-stem { stroke: currentColor; stroke-width: 1.5; fill: none; }
-.vine-leaf { fill: currentColor; opacity: .7; }
-.normal-site main .panel-unit-wrap { margin-top: 32px; }
-.normal-site main .section-companion + .panel-unit-wrap { margin-top: 0; }
+/* Three panel-bound compositions: artwork behind the surface, hands and vine loops above its rim. */
+.normal-site .companion-panel-wrap { --robot-width: 180px; --robot-top: -118px; position: relative; isolation: isolate; width: min(1320px, calc(100% - 48px)); margin: 156px auto 40px; }
+.normal-site .companion-h4n { --robot-width: 210px; margin-top: 48px; margin-bottom: 164px; }
+.companion-decoration { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.companion-behind { z-index: 0; }
+.companion-ahead { z-index: 2; }
+.companion-robot { position: absolute; width: var(--robot-width); height: auto; top: var(--robot-top); object-fit: contain; display: block; }
+.companion-right .companion-robot { right: 24px; }
+.companion-left .companion-robot { left: 24px; }
+.companion-robot-front { clip-path: inset(34% 0 49% 0); filter: drop-shadow(0 3px 2px #27262b20); }
+.companion-h4n .companion-robot { top: auto; bottom: -106px; }
+/* Preserve the complete cylinder and face; only the far-left arm passes behind the panel. */
+.companion-h4n .companion-robot-front { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 47%, 21% 47%, 25% 43%, 25% 35%, 21% 32%, 0 32%); }
+.companion-surface { position: relative; }
+.companion-surface::before { content: ''; position: absolute; z-index: 1; inset: 0; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 14px; box-shadow: 0 8px 24px #27262b08; pointer-events: none; }
+.normal-site .companion-surface > :is(.product-section, .recipe-section, .faq-section) { position: relative; z-index: 3; width: 100%; max-width: none; margin: 0; border: 0; background: transparent; padding: 64px 40px 40px; }
+.normal-site .companion-h4n .companion-surface > .recipe-section { padding-bottom: 96px; }
+.companion-vine { position: absolute; width: 160px; height: auto; top: -28px; color: var(--brand-foliage, #B9C6A0); }
+.companion-right .companion-vine { left: -12px; }
+.companion-left .companion-vine { right: -12px; transform: scaleX(-1); }
+.companion-h4n .companion-vine { top: auto; bottom: -28px; transform: rotate(180deg); }
+/* Underpass is hidden by the actual panel surface; only the narrow outer rim and top loop re-emerge. */
+.companion-vine-front { clip-path: polygon(0 0, 100% 0, 100% 40%, 17% 40%, 17% 100%, 0 100%); filter: drop-shadow(0 2px 1px #27262b14); }
+.vine-stem { stroke: currentColor; stroke-width: 2; fill: none; }
+.vine-leaf { fill: currentColor; }
+/* Tablet columns must not squeeze carousel controls into the heading column. */
+@media (min-width: 641px) and (max-width: 900px) {
+  .normal-site .companion-surface > .product-section { display: block; }
+  .normal-site .companion-surface > .product-section h2 { margin-bottom: 24px; max-width: none; }
+}
 @media (max-width: 640px) {
   .normal-site .normal-hero .hero-copy { padding: 24px 24px 8px; }
   .homepage-banner-brand { bottom: 10px; }
-  .normal-site .section-companion { width: calc(100% - 48px); }
-  .companion-s4 > img { width: 110px; }
-  .companion-h4n > img { width: 140px; }
-  .companion-vine { width: 100px; opacity: .45; }
-  .normal-site main .panel-unit-wrap { margin-top: 24px; }
-  .normal-site main .section-companion + .panel-unit-wrap { margin-top: 0; }
+  .normal-site .companion-panel-wrap { --robot-width: 140px; --robot-top: -92px; width: calc(100% - 32px); margin-top: 122px; margin-bottom: 32px; }
+  .normal-site .companion-h4n { --robot-width: 166px; margin-top: 40px; margin-bottom: 130px; }
+  .companion-h4n .companion-robot { bottom: -83px; }
+  .companion-right .companion-robot { right: 16px; }
+  .companion-left .companion-robot { left: 16px; }
+  .normal-site .companion-surface > :is(.product-section, .recipe-section, .faq-section) { padding: 56px 24px 28px; }
+  .companion-vine { width: 120px; top: -22px; }
+  .companion-right .companion-vine { left: -8px; }
+  .companion-left .companion-vine { right: -8px; }
+  .companion-h4n .companion-vine { top: auto; bottom: -22px; }
+  .normal-site .companion-h4n .companion-surface > .recipe-section { padding-bottom: 80px; }
 }
 @media (prefers-reduced-motion: reduce) { .homepage-banner > img { transition: none; } }
 

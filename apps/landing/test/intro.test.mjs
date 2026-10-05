@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIntroController,introFrame,introPlaybackRate} from '../src/intro-controller.ts';
+import {createIntroController,introFrame} from '../src/intro-controller.ts';
 import {introDelivery,historicalIntroDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
 const media={kind:'production',src:'/intro/desktop.mp4',poster:'/intro/desktop.jpg',sha256:'a'.repeat(64),bytes:100,width:1920,height:1080,duration:23,logoAt:20,revealAt:22.2,audio:'embedded'};
 function fixture(selectedMedia=media) {
@@ -228,25 +228,22 @@ test('full-frame selected artwork and silent controls are kept in video and fall
   assert.match(component,/media.audio === 'embedded' && !settled/);
 });
 
- test('selected silent finish eases the logo and movement into a persistent manual hold',async()=>{
-  const selected=introDelivery.desktop;
+test('selected films retain native speed through final hold, pause and visibility changes',async()=>{
+ for(const selected of [introDelivery.desktop,introDelivery.portrait]){
   assert.equal(introFrame(selected.logoAt,selected).logo,0);
   assert.ok(Math.abs(introFrame(selected.logoAt+.9,selected).logo-.5)<.00001);
   assert.equal(introFrame(selected.revealAt,selected).logo,1);
-  const e=selected.ending;
-  assert.equal(introPlaybackRate(e.slowAt,selected),1);
-  assert.ok(Math.abs(introPlaybackRate((e.slowAt+e.settleAt)/2,selected)-.675)<.00001);
-  assert.equal(introPlaybackRate(e.settleAt,selected),.35);
-  assert.equal(introPlaybackRate(100,{...selected,audio:'embedded'}),1);
-  const f=fixture(selected);await f.controller.play();f.advance(100,e.settleAt);assert.equal(f.video.playbackRate,.35);
-  f.controller.pause();f.advance(10000,e.settleAt);assert.deepEqual(f.exits,[]);await f.controller.play();assert.equal(f.video.playbackRate,.35);
+  const f=fixture(selected);await f.controller.play();
+  for(const time of [8,8.85,9,9.5,9.95]){f.advance(100,time);assert.equal(f.video.playbackRate,1);}
+  f.controller.pause();await f.controller.play();assert.equal(f.video.playbackRate,1);
   f.visibility.hidden=true;f.visibility.dispatchEvent(new Event('visibilitychange'));f.advance(10000);assert.deepEqual(f.exits,[]);
-  f.visibility.hidden=false;f.visibility.dispatchEvent(new Event('visibilitychange'));await Promise.resolve();assert.equal(f.video.playbackRate,.35);
-  f.video.currentTime=selected.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));f.advance(60000);assert.deepEqual(f.exits,[]);
-  f.controller.enter();f.advance(350);f.advance(450);assert.deepEqual(f.exits,['enter']);f.controller.dispose();assert.equal(f.video.playbackRate,1);
+  f.visibility.hidden=false;f.visibility.dispatchEvent(new Event('visibilitychange'));await Promise.resolve();assert.equal(f.video.playbackRate,1);
+  f.video.currentTime=selected.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));f.advance(60000);assert.deepEqual(f.exits,[]);assert.equal(f.frames.at(-1).logo,1);
+  f.controller.enter();f.advance(350);f.advance(450);assert.deepEqual(f.exits,['enter']);f.controller.dispose();
+ }
 });
-test('invalid finishing parameters cannot admit production media',()=>{
-  const m=introDelivery.desktop;
-  for(const ending of [{...m.ending,rate:0},{...m.ending,slowAt:11},{...m.ending,settleAt:NaN},{...m.ending,logoSeconds:3}])assert.equal(validProductionMedia({...m,ending},false),false);
-  assert.equal(validProductionMedia({...m,audio:'embedded'},false),false);
+test('invalid logo timing cannot admit production media',()=>{
+ const m=introDelivery.desktop;
+ for(const logoSeconds of [0,NaN,3])assert.equal(validProductionMedia({...m,ending:{logoSeconds}},false),false);
+ assert.equal(validProductionMedia({...m,audio:'embedded'},false),false);
 });

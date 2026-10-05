@@ -10,11 +10,6 @@ export type IntroClock = { now: () => number; request: (callback: () => void) =>
 const owners = new WeakMap<object, symbol>();
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const ease = (value: number) => { const t = clamp(value); return t * t * (3 - 2 * t); };
-export function introPlaybackRate(time: number, media: Pick<IntroMedia, 'audio' | 'ending'>): number {
-  const ending = media.ending;
-  if (!ending || media.audio !== 'silent' || !Number.isFinite(time)) return 1;
-  return 1 - (1 - ending.rate) * ease((time - ending.slowAt) / (ending.settleAt - ending.slowAt));
-}
 /** revealAt is the historical cue name. It now starts a logo hold, never site entry. */
 export function introFrame(time: number, media: Pick<IntroMedia, 'duration' | 'logoAt' | 'revealAt' | 'ending'>): IntroFrame {
   const bounded = Math.max(0, Math.min(media.duration, Number.isFinite(time) ? time : 0));
@@ -51,7 +46,6 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     if (closed || held || entering || !desired || visibility.hidden || !isOwner()) return;
     if (!validate()) { hold('failure'); return; }
     if (video.currentTime > lastTime + .001) { lastTime = video.currentTime; deadline = clock.now() + 8000; }
-    video.playbackRate = introPlaybackRate(video.currentTime, media);
     callbacks.frame(introFrame(video.currentTime, media));
     // Missing ended can settle on a near-final decoded frame; it never enters the site.
     if (video.ended || (video.currentTime >= media.duration - .06 && clock.now() - (deadline - 8000) >= 250)) { hold('complete'); return; }
@@ -73,7 +67,6 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     if (visibility.hidden) { resume = true; return; }
     const current = ++request;
     deadline = clock.now() + remaining;
-    video.playbackRate = introPlaybackRate(video.currentTime, media);
     video.muted = !sound; video.volume = sound ? 1 : 0;
     callbacks.status('loading'); schedule();
     try {

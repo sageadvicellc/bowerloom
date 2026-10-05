@@ -41,7 +41,7 @@ const offers = [
 function CoreOffers() {
   const [active, setActive] = useState(0);
   const offer = offers[active];
-  return <div className="panel-unit-wrap"><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+  return <SectionCompanion unit="s4" side="right"><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
     <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
     <div className="offer-content">
       <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
@@ -58,7 +58,7 @@ function CoreOffers() {
         </div>
       </div>
     </div>
-  </section></div>;
+  </section></SectionCompanion>;
 }
 
 class SceneBoundary extends Component<
@@ -264,12 +264,10 @@ export default function App() {
           </div>
         </section>
         )}
-        <SectionCompanion unit="s4" side="right" />
         <CoreOffers />
-        <div className="panel-unit-wrap"><LabsWorkflow /></div>
-        <SectionCompanion unit="h4n" side="left" />
+        <SectionCompanion unit="h4n" side="left"><LabsWorkflow /></SectionCompanion>
         <TutorialBuilder />
-        <section className="faq-section" aria-labelledby="faq-title">
+        <SectionCompanion unit="s4" side="right"><section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
           <div className="faq-list">
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
@@ -279,7 +277,7 @@ export default function App() {
             <a href="#release-plan">Explore the release plan</a>
             <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
-        </section>
+        </section></SectionCompanion>
       </main>
       {diagnostics && !cinematic && (
         <aside
@@ -334,7 +332,6 @@ export default function App() {
           </p>
         </aside>
       )}
-      <SectionCompanion unit="s4" side="right" />
       <footer className="site-footer" data-theme="dark">
         <a className="brand" href="#" aria-label="Bowerloom home">
           <BrandIdentity />
