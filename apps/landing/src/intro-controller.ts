@@ -4,15 +4,21 @@ export type IntroFrame = { time: number; phase: 'film' | 'logo' | 'hold'; logo: 
 export type IntroExit = 'enter' | 'skip';
 export type IntroHold = 'complete' | 'failure' | 'timeout' | 'reduced-motion';
 export type IntroEntryFrame = { phase: 'cover' | 'uncover'; opacity: number };
-type Media = Pick<HTMLVideoElement, 'currentTime' | 'duration' | 'videoWidth' | 'videoHeight' | 'readyState' | 'paused' | 'ended' | 'muted' | 'volume' | 'play' | 'pause' | 'addEventListener' | 'removeEventListener'>;
+type Media = Pick<HTMLVideoElement, 'currentTime' | 'playbackRate' | 'duration' | 'videoWidth' | 'videoHeight' | 'readyState' | 'paused' | 'ended' | 'muted' | 'volume' | 'play' | 'pause' | 'addEventListener' | 'removeEventListener'>;
 type Visibility = Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>;
 export type IntroClock = { now: () => number; request: (callback: () => void) => number; cancel: (id: number) => void; after: (callback: () => void, ms: number) => number; clear: (id: number) => void };
 const owners = new WeakMap<object, symbol>();
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
+const ease = (value: number) => { const t = clamp(value); return t * t * (3 - 2 * t); };
+export function introPlaybackRate(time: number, media: Pick<IntroMedia, 'audio' | 'ending'>): number {
+  const ending = media.ending;
+  if (!ending || media.audio !== 'silent' || !Number.isFinite(time)) return 1;
+  return 1 - (1 - ending.rate) * ease((time - ending.slowAt) / (ending.settleAt - ending.slowAt));
+}
 /** revealAt is the historical cue name. It now starts a logo hold, never site entry. */
-export function introFrame(time: number, media: Pick<IntroMedia, 'duration' | 'logoAt' | 'revealAt'>): IntroFrame {
+export function introFrame(time: number, media: Pick<IntroMedia, 'duration' | 'logoAt' | 'revealAt' | 'ending'>): IntroFrame {
   const bounded = Math.max(0, Math.min(media.duration, Number.isFinite(time) ? time : 0));
-  return { time: bounded, phase: bounded >= media.revealAt ? 'hold' : bounded >= media.logoAt ? 'logo' : 'film', logo: clamp((bounded - media.logoAt) / .8) };
+  return { time: bounded, phase: bounded >= media.revealAt ? 'hold' : bounded >= media.logoAt ? 'logo' : 'film', logo: ease((bounded - media.logoAt) / (media.ending?.logoSeconds ?? .8)) };
 }
 export function createIntroController(video: Media, visibility: Visibility, media: IntroMedia, clock: IntroClock, callbacks: {
   frame: (frame: IntroFrame) => void; status: (status: IntroStatus) => void; entry: (frame: IntroEntryFrame) => void; exit: (reason: IntroExit) => void;
@@ -45,6 +51,7 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     if (closed || held || entering || !desired || visibility.hidden || !isOwner()) return;
     if (!validate()) { hold('failure'); return; }
     if (video.currentTime > lastTime + .001) { lastTime = video.currentTime; deadline = clock.now() + 8000; }
+    video.playbackRate = introPlaybackRate(video.currentTime, media);
     callbacks.frame(introFrame(video.currentTime, media));
     // Missing ended can settle on a near-final decoded frame; it never enters the site.
     if (video.ended || (video.currentTime >= media.duration - .06 && clock.now() - (deadline - 8000) >= 250)) { hold('complete'); return; }
@@ -66,6 +73,7 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     if (visibility.hidden) { resume = true; return; }
     const current = ++request;
     deadline = clock.now() + remaining;
+    video.playbackRate = introPlaybackRate(video.currentTime, media);
     video.muted = !sound; video.volume = sound ? 1 : 0;
     callbacks.status('loading'); schedule();
     try {
@@ -131,7 +139,7 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     };
     raf = clock.request(fade);
   };
-  video.muted = true; video.volume = 0;
+  video.playbackRate = 1; video.muted = true; video.volume = 0;
   video.addEventListener('ended', ended); video.addEventListener('error', failed);
   video.addEventListener('loadedmetadata', metadata); video.addEventListener('pause', unexpectedPause); visibility.addEventListener('visibilitychange', changed);
   return { play, pause, hold, enter, setSound(enabled: boolean) {
@@ -139,6 +147,7 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     sound = enabled; video.muted = !enabled; video.volume = enabled ? 1 : 0;
   }, dispose() {
     if (!closed) { closed = true; desired = false; resume = false; request++; stopScheduling(); silence(); remove(); }
+    if (isOwner()) video.playbackRate = 1;
     // Late play promises retain ownership until replaced, so they cannot restart disposed media.
   } };
 }

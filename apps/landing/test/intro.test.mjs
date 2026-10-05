@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIntroController,introFrame} from '../src/intro-controller.ts';
+import {createIntroController,introFrame,introPlaybackRate} from '../src/intro-controller.ts';
 import {introDelivery,historicalIntroDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
 const media={kind:'production',src:'/intro/desktop.mp4',poster:'/intro/desktop.jpg',sha256:'a'.repeat(64),bytes:100,width:1920,height:1080,duration:23,logoAt:20,revealAt:22.2,audio:'embedded'};
 function fixture(selectedMedia=media) {
   let now=0,id=0;const rafs=new Map(),timers=new Map();
   const clock={now:()=>now,request:fn=>{rafs.set(++id,fn);return id;},cancel:id=>rafs.delete(id),after:(fn,ms)=>{timers.set(++id,{at:now+ms,fn});return id;},clear:id=>timers.delete(id)};
-  class Video extends EventTarget {currentTime=0;duration=23;videoWidth=1920;videoHeight=1080;readyState=2;paused=true;ended=false;muted=true;volume=0;plays=0;pauses=0;async play(){this.plays++;this.paused=false;}pause(){this.pauses++;this.paused=true;}}
+  class Video extends EventTarget {currentTime=0;playbackRate=1;duration=23;videoWidth=1920;videoHeight=1080;readyState=2;paused=true;ended=false;muted=true;volume=0;plays=0;pauses=0;async play(){this.plays++;this.paused=false;}pause(){this.pauses++;this.paused=true;}}
   class Visibility extends EventTarget{hidden=false;}
   const video=new Video(),visibility=new Visibility(),frames=[],statuses=[],exits=[],entries=[];video.duration=selectedMedia.duration;video.videoWidth=selectedMedia.width;video.videoHeight=selectedMedia.height;
   const callbacks={frame:f=>frames.push(f),status:s=>statuses.push(s),entry:e=>entries.push(e),exit:r=>exits.push(r)};
@@ -207,7 +207,7 @@ test('selected films remain silent, byte pinned, and hold until explicit entry i
     assert.equal(bytes.length,selected.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),selected.sha256);
     assert.ok((await readFile(new URL('../public'+selected.poster,import.meta.url))).length>0);
     const f=fixture(selected);await f.controller.play();assert.equal(f.video.muted,true);
-    f.advance(100,selected.logoAt+.8);assert.ok(f.frames.at(-1).logo>.9999);
+    f.advance(100,selected.revealAt);assert.ok(f.frames.at(-1).logo>.9999);
     f.video.currentTime=selected.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));f.advance(30000);
     assert.equal(f.statuses.at(-1),'complete');assert.deepEqual(f.exits,[]);
     f.controller.enter();f.advance(350);f.advance(450);assert.deepEqual(f.exits,['enter']);
@@ -226,4 +226,27 @@ test('full-frame selected artwork and silent controls are kept in video and fall
   assert.match(css,/intro-picture > video[^}]*object-fit: contain/);assert.match(css,/intro-still[^}]*object-fit: contain/);
   assert.doesNotMatch(css,/object-fit: cover|object-position: center bottom/);
   assert.match(component,/media.audio === 'embedded' && !settled/);
+});
+
+ test('selected silent finish eases the logo and movement into a persistent manual hold',async()=>{
+  const selected=introDelivery.desktop;
+  assert.equal(introFrame(selected.logoAt,selected).logo,0);
+  assert.ok(Math.abs(introFrame(selected.logoAt+.9,selected).logo-.5)<.00001);
+  assert.equal(introFrame(selected.revealAt,selected).logo,1);
+  const e=selected.ending;
+  assert.equal(introPlaybackRate(e.slowAt,selected),1);
+  assert.ok(Math.abs(introPlaybackRate((e.slowAt+e.settleAt)/2,selected)-.675)<.00001);
+  assert.equal(introPlaybackRate(e.settleAt,selected),.35);
+  assert.equal(introPlaybackRate(100,{...selected,audio:'embedded'}),1);
+  const f=fixture(selected);await f.controller.play();f.advance(100,e.settleAt);assert.equal(f.video.playbackRate,.35);
+  f.controller.pause();f.advance(10000,e.settleAt);assert.deepEqual(f.exits,[]);await f.controller.play();assert.equal(f.video.playbackRate,.35);
+  f.visibility.hidden=true;f.visibility.dispatchEvent(new Event('visibilitychange'));f.advance(10000);assert.deepEqual(f.exits,[]);
+  f.visibility.hidden=false;f.visibility.dispatchEvent(new Event('visibilitychange'));await Promise.resolve();assert.equal(f.video.playbackRate,.35);
+  f.video.currentTime=selected.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));f.advance(60000);assert.deepEqual(f.exits,[]);
+  f.controller.enter();f.advance(350);f.advance(450);assert.deepEqual(f.exits,['enter']);f.controller.dispose();assert.equal(f.video.playbackRate,1);
+});
+test('invalid finishing parameters cannot admit production media',()=>{
+  const m=introDelivery.desktop;
+  for(const ending of [{...m.ending,rate:0},{...m.ending,slowAt:11},{...m.ending,settleAt:NaN},{...m.ending,logoSeconds:3}])assert.equal(validProductionMedia({...m,ending},false),false);
+  assert.equal(validProductionMedia({...m,audio:'embedded'},false),false);
 });

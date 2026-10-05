@@ -38,3 +38,8 @@
 .cinematic-intro[data-entry="uncover"] .intro-fixture-label { visibility: hidden; }
 .intro-controls .intro-enter { min-width: 84px; }
 .intro-controls button:disabled { cursor: default; }
+
+/* A quiet final settle; the decoded final frame stays visible until Enter. */
+.cinematic-intro[data-playback="complete"] .intro-logo { animation: intro-logo-settle 600ms ease-out both; }
+@keyframes intro-logo-settle { from { transform: scale(.994); filter: blur(.35px); } to { transform: scale(1); filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) { .cinematic-intro[data-playback="complete"] .intro-logo { animation: none; } }

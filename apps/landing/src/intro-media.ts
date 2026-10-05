@@ -5,6 +5,8 @@ export type IntroMedia = {
   /** Historical field name for the final logo-hold cue. Never authorizes automatic entry. */
   revealAt: number;
   audio: 'embedded' | 'silent';
+  /** Optional silent-film finish, driven only by the source media clock. */
+  ending?: { logoSeconds: number; slowAt: number; settleAt: number; rate: number };
 };
 /** Historical 23-second delivery remains preserved and is never selected for the active preview. */
 export const historicalIntroDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
@@ -32,9 +34,10 @@ export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: Intro
     "width": 1920,
     "height": 1080,
     "duration": 10.041667,
-    "logoAt": 8,
-    "revealAt": 9,
-    "audio": "silent"
+    "logoAt": 7,
+    "revealAt": 8.8,
+    "audio": "silent",
+    "ending": { "logoSeconds": 1.8, "slowAt": 8.841667, "settleAt": 10.041667, "rate": 0.35 }
   },
   "portrait": {
     "kind": "production",
@@ -45,9 +48,10 @@ export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: Intro
     "width": 1080,
     "height": 1920,
     "duration": 10.041667,
-    "logoAt": 8,
-    "revealAt": 9,
-    "audio": "silent"
+    "logoAt": 7,
+    "revealAt": 8.8,
+    "audio": "silent",
+    "ending": { "logoSeconds": 1.8, "slowAt": 8.841667, "settleAt": 10.041667, "rate": 0.35 }
   }
 };
 /** Technical patterns and test tone, admitted only by ?intro=fixture. Never final media. */
@@ -92,5 +96,10 @@ export function validProductionMedia(media: IntroMedia | null, portrait: boolean
     && media.width === (portrait ? 1080 : 1920) && media.height === (portrait ? 1920 : 1080)
     && Number.isFinite(media.duration) && media.duration >= 10 && media.duration <= 15
     && Number.isFinite(media.logoAt) && media.logoAt >= 0 && media.logoAt + .8 <= media.revealAt
-    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && (media.audio === 'embedded' || media.audio === 'silent'));
+    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && (media.audio === 'embedded' || media.audio === 'silent')
+    && (!media.ending || (media.audio === 'silent' && Number.isFinite(media.ending.logoSeconds) && media.ending.logoSeconds >= .8 && media.ending.logoSeconds <= 3
+      && media.logoAt + media.ending.logoSeconds <= media.revealAt + .00001
+      && Number.isFinite(media.ending.slowAt) && media.ending.slowAt >= 0 && media.ending.slowAt < media.ending.settleAt
+      && Number.isFinite(media.ending.settleAt) && media.ending.settleAt <= media.duration
+      && Number.isFinite(media.ending.rate) && media.ending.rate >= .25 && media.ending.rate <= 1)));
 }

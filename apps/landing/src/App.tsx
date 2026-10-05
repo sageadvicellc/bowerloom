@@ -21,7 +21,8 @@ import { selectIntroMedia } from "./intro-media";
 import type { IntroExit } from "./intro-controller";
 import "./splash.css";
 import { rememberSplash, shouldShowSplash, SPLASH_FIXTURE_SESSION_KEY, SPLASH_SESSION_KEY } from "./splash-playback";
-import { cinematicJourney } from "./cinematic-config";
+import HomepageBanner from "./HomepageBanner";
+import SectionCompanion from "./SectionCompanion";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
@@ -40,7 +41,7 @@ const offers = [
 function CoreOffers() {
   const [active, setActive] = useState(0);
   const offer = offers[active];
-  return <div className="panel-unit-wrap panel-unit-s4"><img className="panel-unit" src="/panel-units/s4-rose-peek.webp" alt="" aria-hidden="true" draggable={false} loading="lazy" /><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+  return <div className="panel-unit-wrap"><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
     <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
     <div className="offer-content">
       <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
@@ -173,6 +174,7 @@ export default function App() {
       </header>
       <main id="main">
         {cinematic ? <section className="hero normal-hero" aria-labelledby="hero-title">
+          <HomepageBanner />
           <div className="hero-copy">
             <p className="eyebrow">{hero.Eyebrow}</p>
             <h1 id="hero-title" tabIndex={-1}>Grow your capabilities with <em>Bowerloom</em></h1>
@@ -181,7 +183,6 @@ export default function App() {
             <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
             <button ref={replayRef} type="button" className="splash-replay" disabled={!introMedia} onClick={replaySplash}>{introMedia ? "Replay workshop animation" : "Intro preview in preparation"}</button>
           </div>
-          <div className="normal-hero-art"><img src={cinematicJourney.openingPoster} alt="Hanna and a robot helper review a plan in a forest workshop." /></div>
         </section> : (
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
@@ -263,8 +264,10 @@ export default function App() {
           </div>
         </section>
         )}
+        <SectionCompanion unit="s4" side="right" />
         <CoreOffers />
-        <div className="panel-unit-wrap panel-unit-h4n"><img className="panel-unit" src="/panel-units/h4n-ochre-wave.webp" alt="" aria-hidden="true" draggable={false} loading="lazy" /><LabsWorkflow /></div>
+        <div className="panel-unit-wrap"><LabsWorkflow /></div>
+        <SectionCompanion unit="h4n" side="left" />
         <TutorialBuilder />
         <section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
@@ -331,6 +334,7 @@ export default function App() {
           </p>
         </aside>
       )}
+      <SectionCompanion unit="s4" side="right" />
       <footer className="site-footer" data-theme="dark">
         <a className="brand" href="#" aria-label="Bowerloom home">
           <BrandIdentity />

@@ -1,0 +1,40 @@
+/* The image fades into the active theme ground; copy is below the art. */
+.homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
+.homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms ease; }
+.homepage-banner[data-artwork="ready"] > img { opacity: 1; }
+.homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 70%, var(--ui-bg) 100%); }
+.homepage-banner-brand { position: absolute; z-index: 2; bottom: 16px; left: 50%; transform: translateX(-50%); width: clamp(150px, 22vw, 250px); pointer-events: none; }
+.homepage-banner-brand img { width: 100%; height: auto; }
+.normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }
+.normal-site .normal-hero::before { display: none; }
+.normal-site .normal-hero .hero-copy { max-width: 1040px; margin: auto; padding: 24px 5% 16px; text-align: center; }
+.normal-site .normal-hero .hero-description { margin-inline: auto; }
+.normal-site .normal-hero :is(.eyebrow, .hero-secondary) { margin-inline: auto; justify-content: center; }
+/* All three companions are static, complete silhouettes with 24px minimum clearance. */
+.normal-site .section-companion { position: relative; display: flex; align-items: end; gap: 24px; width: min(1120px, calc(100% - 64px)); margin: 0 auto; padding: 24px 0; pointer-events: none; user-select: none; }
+.section-companion > img { display: block; flex: 0 0 auto; height: auto; object-fit: contain; }
+.companion-s4 > img { width: 160px; }
+.companion-h4n > img { width: 190px; }
+.companion-right { justify-content: end; }
+.companion-left { justify-content: start; }
+.companion-left > img { order: -1; }
+.companion-vine { width: min(280px, 34vw); height: auto; margin-bottom: 24px; color: var(--brand-foliage, #B9C6A0); opacity: .65; }
+.vine-stem { stroke: currentColor; stroke-width: 1.5; fill: none; }
+.vine-leaf { fill: currentColor; opacity: .7; }
+.normal-site main .panel-unit-wrap { margin-top: 32px; }
+.normal-site main .section-companion + .panel-unit-wrap { margin-top: 0; }
+@media (max-width: 640px) {
+  .normal-site .normal-hero .hero-copy { padding: 24px 24px 8px; }
+  .homepage-banner-brand { bottom: 10px; }
+  .normal-site .section-companion { width: calc(100% - 48px); }
+  .companion-s4 > img { width: 110px; }
+  .companion-h4n > img { width: 140px; }
+  .companion-vine { width: 100px; opacity: .45; }
+  .normal-site main .panel-unit-wrap { margin-top: 24px; }
+  .normal-site main .section-companion + .panel-unit-wrap { margin-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .homepage-banner > img { transition: none; } }
+
+.homepage-banner-brand .brand-dark { display: none; }
+[data-theme='dark'] .homepage-banner-brand .brand-light { display: none; }
+[data-theme='dark'] .homepage-banner-brand .brand-dark { display: block; }
