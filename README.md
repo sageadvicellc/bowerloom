@@ -9,7 +9,7 @@
   <a href="https://github.com/sageadvicellc/bowerloom/releases/tag/v0.7.0-alpha.0"><img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28"></a>
   <a href="LICENSE"><img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28"></a>
   <a href="package.json"><img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28"></a>
-  <a href="package.json"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
+  <a href="#prepare-the-development-checkout"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
 </p>
 
 Bowerloom is an open-source framework for building agent teams in files you can read.
