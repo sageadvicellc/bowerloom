@@ -9,6 +9,9 @@ import { createMcpContainerRecoveryReceipt, validateMcpContainerRecoveryReceipt 
 import type { McpContainerRecoveryReceipt } from './container-recovery-receipt.js';
 import type { McpContainerRecoveryCollection } from './container-recovery-collector.js';
 
+import { createGuardianBinding, validateGuardianBinding } from './container-guardian-provenance.js';
+import type { GuardianBinding, GuardianDescriptor, GuardianEvidence } from './container-guardian-provenance.js';
+
 const VERSION = 1;
 const SAFE_TRANSACTION_CODES = new Set(['MCP_AUTHORITY_SCHEMA_VERSION', 'MCP_AUTHORITY_SCOPE_EXISTS',
   'MCP_AUTHORITY_SCOPE_MISSING', 'MCP_AUTHORITY_STATE_CORRUPT', 'MCP_AUTHORITY_ASYNC_MUTATOR']);
@@ -31,30 +34,59 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
     this.#pool = pool;
     this.#schema = schema(options.schema);
   }
-  async #transaction<T>(body: (client: PoolClient) => Promise<T>, checkActive: () => void = () => {}): Promise<T> {
+  async #transaction<T>(body: (client: Pick<PoolClient, 'query'>) => Promise<T>, checkActive: () => void = () => {}): Promise<T> {
     let client: PoolClient;
     try { client = await this.#pool.connect(); } catch { fail('MCP_AUTHORITY_STORE_UNAVAILABLE'); }
-    let attempted = false, discard = false;
+    let attempted = false, discard = false, fault = false, released = false, returning = false;
+    let rejectFault!: (error: McpConnectionError) => void;
+    const failure = new Promise<never>((_, reject) => { rejectFault = reject; });
+    void failure.catch(() => {});
+    // pg-pool removes its idle error listener while a client is checked out.
+    // Consume errors here without retaining driver messages or allowing later queries.
+    const onError = () => { if (fault) return; fault = true; discard = true; rejectFault(new McpConnectionError('MCP_AUTHORITY_DATABASE_ERROR')); };
+    const check = () => { if (fault) fail('MCP_AUTHORITY_DATABASE_ERROR'); checkActive(); if (fault) fail('MCP_AUTHORITY_DATABASE_ERROR'); };
+    if (typeof client.on !== 'function' || typeof client.removeListener !== 'function') {
+      try { client.release(true); } catch {} fail('MCP_AUTHORITY_STORE_UNAVAILABLE');
+    }
+    client.on('error', onError);
+    const guarded = { query: async (...args: unknown[]) => {
+      check();
+      const result = await Promise.race([Promise.resolve(Reflect.apply(client.query, client, args)), failure]);
+      check(); return result;
+    } } as unknown as Pick<PoolClient, 'query'>;
     try {
-      await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
-      await client.query("SET LOCAL lock_timeout='5s'");
-      await client.query("SET LOCAL statement_timeout='10s'");
-      await client.query("SET LOCAL idle_in_transaction_session_timeout='10s'");
-      await client.query("SET LOCAL synchronous_commit='on'");
-      const result = await body(client);
-      checkActive();
+      await guarded.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+      await guarded.query("SET LOCAL lock_timeout='5s'");
+      await guarded.query("SET LOCAL statement_timeout='10s'");
+      await guarded.query("SET LOCAL idle_in_transaction_session_timeout='10s'");
+      await guarded.query("SET LOCAL synchronous_commit='on'");
+      const result = await Promise.race([body(guarded), failure]);
+      check();
       attempted = true;
-      await client.query('COMMIT');
-      checkActive();
-      return result;
+      await guarded.query('COMMIT');
+      check();
+      returning = true; return result;
     } catch (error) {
       if (attempted) { discard = true; fail('MCP_AUTHORITY_COMMIT_UNKNOWN'); }
-      try { await client.query('ROLLBACK'); } catch { discard = true; fail('MCP_AUTHORITY_ROLLBACK_FAILED'); }
+      if (fault) { discard = true; fail('MCP_AUTHORITY_DATABASE_ERROR'); }
+      // An expired caller can still roll back a healthy connection. A failed
+      // connection is discarded, never used for another command.
+      try { await Promise.race([client.query('ROLLBACK'), failure]); }
+      catch { discard = true; fail('MCP_AUTHORITY_ROLLBACK_FAILED'); }
+      if (fault) { discard = true; fail('MCP_AUTHORITY_DATABASE_ERROR'); }
       if (error instanceof McpConnectionError) throw new McpConnectionError(SAFE_TRANSACTION_CODES.has(error.code) ? error.code : 'MCP_AUTHORITY_STATE_REFUSED');
       fail('MCP_AUTHORITY_DATABASE_ERROR');
-    } finally { client.release(discard); }
+    } finally {
+      // Keep our listener through release; pg-pool reinstalls its idle listener
+      // synchronously there. Remove only our own handler after that handoff.
+      try { client.release(discard || fault); released = true; }
+      catch { fail(attempted ? 'MCP_AUTHORITY_COMMIT_UNKNOWN' : 'MCP_AUTHORITY_DATABASE_ERROR'); }
+      finally { if (released) client.removeListener('error', onError); }
+      if (fault && returning) fail(attempted ? 'MCP_AUTHORITY_COMMIT_UNKNOWN' : 'MCP_AUTHORITY_DATABASE_ERROR');
+    }
+    return fail('MCP_AUTHORITY_DATABASE_ERROR');
   }
-  async #version(client: PoolClient): Promise<void> {
+  async #version(client: Pick<PoolClient, 'query'>): Promise<void> {
     const rows = (await client.query(`SELECT singleton,version FROM ${this.#schema}.metadata FOR SHARE`)).rows;
     if (rows.length !== 1 || rows[0].singleton !== true || rows[0].version !== VERSION) fail('MCP_AUTHORITY_SCHEMA_VERSION');
   }
@@ -81,7 +113,7 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
       if (inserted.rowCount !== 1) fail('MCP_AUTHORITY_SCOPE_EXISTS');
     });
   }
-  async #read(client: PoolClient, s: Scope, lock: 'UPDATE' | 'SHARE'): Promise<DiscoveryAuthorityState> {
+  async #read(client: Pick<PoolClient, 'query'>, s: Scope, lock: 'UPDATE' | 'SHARE'): Promise<DiscoveryAuthorityState> {
     await this.#version(client);
     const rows = (await client.query(`SELECT version,state,checksum FROM ${this.#schema}.discoveries
       WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 FOR ${lock}`, [s.workspaceId, s.runId, s.taskId])).rows;
@@ -125,7 +157,7 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
         FOREIGN KEY(workspace_id,run_id,task_id) REFERENCES ${this.#schema}.discoveries(workspace_id,run_id,task_id))`);
     });
   }
-  async #recoveryVersion(client: PoolClient): Promise<void> {
+  async #recoveryVersion(client: Pick<PoolClient, 'query'>): Promise<void> {
     const rows = (await client.query(`SELECT singleton,version FROM ${this.#schema}.recovery_metadata FOR SHARE`)).rows;
     if (rows.length !== 1 || rows[0].singleton !== true || rows[0].version !== 1) fail('MCP_RECOVERY_RECEIPT_SCHEMA_VERSION');
   }
@@ -166,6 +198,62 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
         WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 AND revision=$4 FOR SHARE`, [s.workspaceId, s.runId, s.taskId, revision])).rows;
       if (rows.length !== 1) fail('MCP_RECOVERY_RECEIPT_MISSING');
       return this.#receiptRow(rows[0], s, revision);
+    });
+  }
+
+  async initializeGuardianBindings(): Promise<void> {
+    await this.#transaction(async client => {
+      await this.#version(client);
+      await client.query(`CREATE TABLE ${this.#schema}.guardian_metadata(singleton boolean PRIMARY KEY CHECK(singleton),version integer NOT NULL)`);
+      await client.query(`INSERT INTO ${this.#schema}.guardian_metadata VALUES(true,1)`);
+      await client.query(`CREATE TABLE ${this.#schema}.guardian_bindings(
+        workspace_id text NOT NULL,run_id text NOT NULL,task_id text NOT NULL,
+        version integer NOT NULL,binding jsonb NOT NULL,checksum text NOT NULL,
+        PRIMARY KEY(workspace_id,run_id,task_id),
+        FOREIGN KEY(workspace_id,run_id,task_id) REFERENCES ${this.#schema}.discoveries(workspace_id,run_id,task_id))`);
+    });
+  }
+  async #guardianVersion(client: Pick<PoolClient, 'query'>): Promise<void> {
+    const rows = (await client.query(`SELECT singleton,version FROM ${this.#schema}.guardian_metadata FOR SHARE`)).rows;
+    if (rows.length !== 1 || rows[0].singleton !== true || rows[0].version !== 1) fail('MCP_GUARDIAN_BINDING_SCHEMA');
+  }
+  async #guardianBinding(client: Pick<PoolClient, 'query'>, authority: DiscoveryAuthorityState): Promise<GuardianBinding | null> {
+    await this.#guardianVersion(client);
+    const s = authority.scope;
+    const rows = (await client.query(`SELECT version,binding,checksum FROM ${this.#schema}.guardian_bindings
+      WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 FOR SHARE`, [s.workspaceId, s.runId, s.taskId])).rows;
+    if (!rows.length) return null;
+    if (rows.length !== 1 || rows[0].version !== 1 || digest(canonicalJson(data(rows[0].binding))) !== rows[0].checksum) fail('MCP_GUARDIAN_BINDING_CORRUPT');
+    return validateGuardianBinding(rows[0].binding, authority);
+  }
+  /** Callback executes synchronously under the authority row lock. No binding grants effect authority. */
+  async bindContainerGuardian(expected: DiscoveryAuthorityState, descriptor: GuardianDescriptor, assertLive: (state: DiscoveryAuthorityState) => void): Promise<GuardianBinding> {
+    if (typeof assertLive !== 'function') fail('MCP_GUARDIAN_BINDING_INVALID');
+    const captured = validateDiscoveryAuthorityState(expected), binding = createGuardianBinding(captured, descriptor), s = scope(captured.scope);
+    const check = (state = captured) => {
+      if (state.status !== 'IN_FLIGHT') fail('MCP_GUARDIAN_BINDING_REFUSED');
+      const before = canonicalJson(state), returned: unknown = assertLive(state);
+      if (isPromise(returned)) { void returned.catch(() => {}); fail('MCP_GUARDIAN_BINDING_REFUSED'); }
+      if (before !== canonicalJson(state)) fail('MCP_GUARDIAN_BINDING_REFUSED');
+    };
+    check();
+    return this.#transaction(async client => {
+      const current = await this.#read(client, s, 'UPDATE');
+      if (canonicalJson(current) !== canonicalJson(captured)) fail('MCP_GUARDIAN_BINDING_AUTHORITY_CHANGED'); check(current);
+      await this.#guardianVersion(client); check();
+      const json = canonicalJson(binding);
+      await client.query(`INSERT INTO ${this.#schema}.guardian_bindings VALUES($1,$2,$3,1,$4::jsonb,$5)
+        ON CONFLICT(workspace_id,run_id,task_id) DO NOTHING`, [s.workspaceId, s.runId, s.taskId, json, digest(json)]); check();
+      const stored = await this.#guardianBinding(client, captured);
+      if (canonicalJson(stored) !== json) fail('MCP_GUARDIAN_BINDING_CONFLICT');
+      return binding;
+    }, () => check());
+  }
+  async readGuardianEvidence(value: Scope): Promise<GuardianEvidence> {
+    const s = scope(value);
+    return this.#transaction(async client => {
+      const authority = await this.#read(client, s, 'SHARE');
+      return { authority, binding: await this.#guardianBinding(client, authority) };
     });
   }
 

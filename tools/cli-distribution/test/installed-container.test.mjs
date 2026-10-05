@@ -28,7 +28,7 @@ function fixture(t){
 }
 test('inventory and module resolution allow subpath-only packages without checkout access or external processes',t=>{
  const f=fixture(t);t.mock.method(cp,'spawnSync',()=>{throw Error('unexpected effect');});syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
- const pin=verifyInstalledContainerProof(f.configPath,{});assert.equal(pin.inventoryCount,7);assert.ok(pin.moduleUrl.startsWith(pathToFileURL(f.installedRoot).href));assert.ok(pin.pgUrl.startsWith(pathToFileURL(dirname(f.installedRoot)).href));assert.equal(existsSync(f.config.checkout),false);
+ const pin=verifyInstalledContainerProof(f.configPath,{});assert.equal(pin.inventoryCount,3+CONTAINER_RUNTIME_FILES.length);assert.ok(pin.moduleUrl.startsWith(pathToFileURL(f.installedRoot).href));assert.ok(pin.pgUrl.startsWith(pathToFileURL(dirname(f.installedRoot)).href));assert.equal(existsSync(f.config.checkout),false);
 });
 test('modified tarball, inventory, runtime, fixture or missing guardian refuses before external effects',t=>{
  for(const alter of [f=>writeFileSync(join(f.proofRoot,'artifact.tgz'),'changed'),f=>writeFileSync(join(f.installedRoot,'DISTRIBUTION.json'),'{}'),f=>writeFileSync(join(f.installedRoot,CONTAINER_RUNTIME_FILES[0]),'changed'),f=>rmSync(join(f.installedRoot,CONTAINER_RUNTIME_FILES[2])),f=>writeFileSync(join(f.proofRoot,'fixtures/stdio-binding.json'),'changed'),f=>writeFileSync(join(f.installedRoot,'unexpected.js'),'changed')]){const f=fixture(t);alter(f);assert.throws(()=>verifyInstalledContainerProof(f.configPath,{}),refused);}
@@ -54,6 +54,6 @@ test('preparation rejects bad artifact identity before invoking npm or creating 
 
 test('real node --test subprocess permits only its exact child-v8 bookkeeping metadata',t=>{
  const f=fixture(t),script=join(f.root,'runner.test.mjs'),guard=pathToFileURL(join(f.proofRoot,'driver/installed-container-guard.mjs')).href;
- writeFileSync(script,`import test from 'node:test';import assert from 'node:assert/strict';import {verifyInstalledContainerProof} from ${JSON.stringify(guard)};test('verified before any service contact',()=>{assert.equal(process.env.NODE_TEST_CONTEXT,'child-v8');assert.equal(verifyInstalledContainerProof(${JSON.stringify(f.configPath)}).inventoryCount,7);});`);
+ writeFileSync(script,`import test from 'node:test';import assert from 'node:assert/strict';import {verifyInstalledContainerProof} from ${JSON.stringify(guard)};test('verified before any service contact',()=>{assert.equal(process.env.NODE_TEST_CONTEXT,'child-v8');assert.equal(verifyInstalledContainerProof(${JSON.stringify(f.configPath)}).inventoryCount,${3+CONTAINER_RUNTIME_FILES.length});});`);
  const result=cp.spawnSync(process.execPath,['--test',script],{cwd:f.proofRoot,env:{},encoding:'utf8',timeout:10000,maxBuffer:65536});assert.equal(result.status,0,result.stderr+result.stdout);assert.match(result.stdout,/verified before any service contact/);
 });

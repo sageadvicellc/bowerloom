@@ -6,6 +6,7 @@ import type { McpPlanInput, McpBinding } from './model.js';
 import { discoverMcpCatalog } from './discovery.js';
 import type { McpDiscoveryContext, McpDiscoveryTransport, McpDiscoveryResult } from './discovery.js';
 import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
+import type { GuardianBindingStore, GuardianDescriptor, GuardianBinding } from './container-guardian-provenance.js';
 import type { McpContainerPlanInput } from './container-policy.js';
 
 export type DiscoveryEffect = {
@@ -28,7 +29,7 @@ export interface DiscoveryAuthorityStore {
   /** Serialize per scope, validate transitions, and durably commit before resolving. Never rerun a callback automatically. */
   transaction<T>(scope: Scope, mutate: (state: DiscoveryAuthorityState) => T): Promise<T>;
 }
-export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number; renewAuthority?: () => Promise<void> }
+export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number; renewAuthority?: () => Promise<void>; bindGuardian?: (descriptor: GuardianDescriptor) => Promise<GuardianBinding> }
 export type DiscoveryAuthorityOpen = (context: Readonly<DiscoveryAuthorityContext>) => Promise<McpDiscoveryTransport>;
 const AUTHORITY_CODES = new Set(['MCP_AUTHORITY_FIELDS', 'MCP_AUTHORITY_IDENTIFIER', 'MCP_AUTHORITY_TIME', 'MCP_AUTHORITY_DIGEST',
   'MCP_AUTHORITY_TEXT', 'MCP_AUTHORITY_PATH', 'MCP_AUTHORITY_EFFECT', 'MCP_AUTHORITY_EFFECT_BINDING', 'MCP_AUTHORITY_EFFECT_BOUND',
@@ -260,7 +261,14 @@ export class DiscoveryAuthorityController {
               if (state.status !== 'IN_FLIGHT' || !same(state.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
               // The durable intent already committed. Invoke only while this final authorization row lock is held.
               opening = Promise.resolve(this.#open(Object.freeze({ ...context, effect: frozen(data(state.proposal.effect) as DiscoveryEffect), operationKey: state.operationKey, scope: frozen(scope(state.scope)),
-                ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs, renewAuthority: async () => {
+                ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs, bindGuardian: async (descriptor: GuardianDescriptor) => {
+                  const store = this.#store as DiscoveryAuthorityStore & Partial<GuardianBindingStore>;
+                  if (typeof store.bindContainerGuardian !== 'function') fail('MCP_AUTHORITY_STORE_UNCERTAIN');
+                  return store.bindContainerGuardian(intent, descriptor, current => {
+                    this.#live(current, p);
+                    if (current.status !== 'IN_FLIGHT' || !same(current.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
+                  });
+                }, renewAuthority: async () => {
                   // No cached authority: acknowledge only a fresh, committed durable check.
                   await this.#transaction(s, current => {
                     this.#live(current, p);

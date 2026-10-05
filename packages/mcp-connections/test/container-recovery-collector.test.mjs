@@ -127,3 +127,7 @@ test('collector timeout cannot turn a late persistence completion into success',
  const f=await setup(t);let release,entered;const started=new Promise(resolve=>entered=resolve);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{entered();await new Promise(resolve=>release=resolve);check();return createMcpContainerRecoveryReceipt(expected,collection);};
  const pending=collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);await started;await assert.rejects(pending,refused);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.status,'NEEDS_RECONCILIATION');
 });
+test('v2 envelope normalization does not promote signature-shaped bytes into origin or host trust',async t=>{
+ const f=await setup(t);const envelope={format:'bowerloom/mcp-container-journal/v1beta2',bindingRevision:'sha256:'+'a'.repeat(64),sequence:1,body:f.j,signature:Buffer.alloc(64).toString('base64')};await writeFile(f.path,canonicalJson(envelope));
+ const r=await f.collect();assert.equal(r.journalOrigin,'unverified-local-user-file');assert.equal(r.planner.finding,'HOLD_HOST_SESSION');assert.equal(r.cleanupAuthorized,false);assert.equal(r.retryAuthorized,false);assert.equal(r.executionAuthorized,false);assert.equal(r.journal.bytes,Buffer.byteLength(canonicalJson(envelope)));
+});

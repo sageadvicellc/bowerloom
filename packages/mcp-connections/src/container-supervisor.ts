@@ -1,15 +1,22 @@
 import { fork } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { canonicalJson } from '../../contracts/src/index.js';
+import { readDarwinBootSession } from './darwin-boot-session.js';
+import { validateGuardianDescriptor } from './container-guardian-provenance.js';
+import type { GuardianDescriptor, GuardianBinding } from './container-guardian-provenance.js';
 import { data, fail, McpConnectionError } from './model.js';
 import type { McpContainerPlanInput } from './container-policy.js';
 export interface ContainerGuardianJob { stateRoot: string; operationKey: string; launch: McpContainerPlanInput; launchRevision: string; deadlineMs: number }
 export interface ContainerGuardianDone { containerAbsent: boolean; noContainerCreated: boolean; attachReaped: boolean; stage: string; reason: string | null }
 export interface OwnedContainerGuardian { guardianPid: number; done: Promise<ContainerGuardianDone>; write(data: string): void; terminate(): Promise<void> }
-export async function startContainerGuardian(value: ContainerGuardianJob, signal: AbortSignal, onChunk: (data: Buffer) => void, renewAuthority: () => Promise<void>): Promise<OwnedContainerGuardian> {
+export async function startContainerGuardian(value: ContainerGuardianJob, signal: AbortSignal, onChunk: (data: Buffer) => void, renewAuthority: () => Promise<void>, bindGuardian: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>): Promise<OwnedContainerGuardian> {
   const job = data(value) as unknown as ContainerGuardianJob;
-  if (typeof renewAuthority !== 'function' || signal.aborted || process.permission !== undefined || !Number.isSafeInteger(job.deadlineMs) || job.deadlineMs <= Date.now() || job.deadlineMs > Date.now() + 30000) fail('MCP_CONTAINER_GUARDIAN_INPUT');
+  if (typeof bindGuardian !== 'function' || typeof renewAuthority !== 'function' || signal.aborted || process.permission !== undefined || !Number.isSafeInteger(job.deadlineMs) || job.deadlineMs <= Date.now() || job.deadlineMs > Date.now() + 30000) fail('MCP_CONTAINER_GUARDIAN_INPUT');
+  const bootSessionId = await readDarwinBootSession();
+  if (signal.aborted || Date.now() >= job.deadlineMs) fail('MCP_CONTAINER_GUARDIAN_INPUT');
   const nonce = randomBytes(32).toString('hex');
   const processOwned = fork(new URL('./container-guardian.js', import.meta.url), [], { execArgv: [], env: { NODE_V8_COVERAGE: undefined }, detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+  let helloReceived = false, bound = false;
   let started = false, ended = false, cancelSent = false, broken = false, receipt: ContainerGuardianDone | undefined, leaseSequence = 0, renewing = false;
   let resolveStart!: () => void, rejectStart!: (error: McpConnectionError) => void, resolveDone!: (value: ContainerGuardianDone) => void, rejectDone!: (error: McpConnectionError) => void;
   const start = new Promise<void>((resolve, reject) => { resolveStart = resolve; rejectStart = reject; });
@@ -26,7 +33,23 @@ export async function startContainerGuardian(value: ContainerGuardianJob, signal
   processOwned.on('message', supplied => {
     try {
       const message = data(supplied) as Record<string, unknown>;
-      if (message.type === 'lease-challenge') {
+      if (message.type === 'guardian-hello') {
+        if (helloReceived || ended || broken || cancelSent || message.nonce !== nonce || message.operationKey !== job.operationKey || message.launchRevision !== job.launchRevision || Object.keys(message).length !== 5) throw error();
+        const descriptor = validateGuardianDescriptor(message.descriptor);
+        if (descriptor.guardianPid !== processOwned.pid || descriptor.bootSessionId !== bootSessionId) throw error();
+        helloReceived = true;
+        void Promise.resolve().then(() => {
+          if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
+          return bindGuardian(descriptor);
+        }).then(async binding => {
+          if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
+          if (binding.operationKey !== job.operationKey || binding.launchRevision !== job.launchRevision || canonicalJson(binding.descriptor) !== canonicalJson(descriptor)
+            || !/^sha256:[a-f0-9]{64}$/.test(binding.revision) || await readDarwinBootSession() !== bootSessionId) throw error();
+          if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
+          bound = true; send({ type: 'guardian-bound', nonce, bindingRevision: binding.revision });
+        }).catch(() => cancel());
+      } else if (message.type === 'lease-challenge') {
+        if (!bound) throw error();
         if (ended || broken || cancelSent || renewing || message.nonce !== nonce || message.operationKey !== job.operationKey || Object.keys(message).length !== 5
           || message.sequence !== leaseSequence + 1 || typeof message.challenge !== 'string' || !/^[a-f0-9]{64}$/.test(message.challenge)) throw error();
         leaseSequence++; renewing = true;
@@ -35,7 +58,7 @@ export async function startContainerGuardian(value: ContainerGuardianJob, signal
           if (!ended && !broken && !cancelSent && !signal.aborted) send({ type: 'lease-renewal', nonce, operationKey: job.operationKey, sequence: message.sequence, challenge: message.challenge });
         }, () => { renewing = false; cancel(); });
       } else if (message.type === 'started') {
-        if (started || message.nonce !== nonce || message.guardianPid !== processOwned.pid || Object.keys(message).length !== 3) throw error(); started = true; resolveStart();
+        if (!bound || started || message.nonce !== nonce || message.guardianPid !== processOwned.pid || Object.keys(message).length !== 3) throw error(); started = true; resolveStart();
       } else if (message.type === 'chunk') {
         if (!started || Object.keys(message).length !== 2 || typeof message.data !== 'string' || message.data.length > 90000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(message.data)) throw error();
         const bytes = Buffer.from(message.data, 'base64'); if (bytes.toString('base64') !== message.data) throw error();

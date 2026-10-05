@@ -5,6 +5,7 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import { data, fail, McpConnectionError, validateMcpBinding, MCP_PROTOCOL_VERSION, MAX_DOCUMENT_BYTES } from './model.js';
 import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
 import { startContainerGuardian } from './container-supervisor.js';
+import type { GuardianDescriptor, GuardianBinding } from './container-guardian-provenance.js';
 import type { OwnedContainerGuardian } from './container-supervisor.js';
 import type { DiscoveryAuthorityOpen, DiscoveryEffect } from './authority.js';
 import type { McpDiscoveryTransport, McpInitializeRequest } from './discovery.js';
@@ -32,9 +33,9 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
   const requestTimeoutMs = duration(options.requestTimeoutMs?.value, 5000), sessionTimeoutMs = duration(options.sessionTimeoutMs?.value, 10000), cleanupTimeoutMs = duration(options.cleanupTimeoutMs?.value, 9000, 15000);
   return async supplied => {
     if (process.platform !== 'darwin' || process.permission !== undefined) fail('MCP_CONTAINER_PLATFORM');
-    let selected: ContainerEffect, signal: AbortSignal, notify: (value: unknown) => void, operationKey: string, deadlineMs: number, renewAuthority: () => Promise<void>;
+    let selected: ContainerEffect, signal: AbortSignal, notify: (value: unknown) => void, operationKey: string, deadlineMs: number, renewAuthority: () => Promise<void>, bindGuardian: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>;
     try {
-      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs', 'renewAuthority']);
+      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs', 'renewAuthority', 'bindGuardian']);
       const effect = record(data(context.effect!.value), ['kind', 'launch', 'launchRevision']);
       if (effect.kind !== 'container-stdio') fail('MCP_CONTAINER_INPUT');
       selected = effect as unknown as ContainerEffect;
@@ -45,8 +46,8 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
       const authorizedDeadline = context.deadlineMs!.value;
       if (!Number.isSafeInteger(authorizedDeadline) || authorizedDeadline <= Date.now() || authorizedDeadline > Date.now() + 30000) fail('MCP_CONTAINER_DEADLINE');
       deadlineMs = Math.min(authorizedDeadline, Date.now() + sessionTimeoutMs);
-      signal = context.signal!.value; notify = context.onNotification!.value; renewAuthority = context.renewAuthority!.value;
-      if (!(signal instanceof AbortSignal) || typeof notify !== 'function' || typeof renewAuthority !== 'function') fail('MCP_CONTAINER_INPUT');
+      signal = context.signal!.value; notify = context.onNotification!.value; renewAuthority = context.renewAuthority!.value; bindGuardian = context.bindGuardian!.value;
+      if (!(signal instanceof AbortSignal) || typeof notify !== 'function' || typeof renewAuthority !== 'function' || typeof bindGuardian !== 'function') fail('MCP_CONTAINER_INPUT');
     } catch { return fail('MCP_CONTAINER_INPUT'); }
     let guardian: OwnedContainerGuardian | undefined, opening: Promise<OwnedContainerGuardian> | undefined, closing = false, closed = false;
     let failure: McpConnectionError | undefined, cleanup: Promise<void> | undefined;
@@ -115,7 +116,7 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
         buffer = Buffer.concat([buffer, chunk]);
         for (;;) { const newline = buffer.indexOf(10); if (newline < 0) break; const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1); incoming(line); if (closed) return; }
         if (buffer.length > MAX_DOCUMENT_BYTES) stop('MCP_CONTAINER_OUTPUT_BOUND');
-      }, renewAuthority);
+      }, renewAuthority, bindGuardian);
       void opening.then(owned => {
         guardian = owned;
         void owned.done.then(() => { if (!closing) stop('MCP_CONTAINER_EXIT'); }, () => stop('MCP_CONTAINER_PROCESS'));

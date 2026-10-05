@@ -39,7 +39,7 @@ function collectionValue(value: unknown): McpContainerRecoveryCollection {
   for (const k of ['cleanupAuthorized', 'retryAuthorized', 'executionAuthorized', 'hostRestartSafetyVerified']) requireValue(c[k] === false);
   revision(c.operationKey); revision(c.authorityRevision); revised(c);
   const j = exact(c.journal, ['status', 'sha256', 'bytes']); integer(j.bytes);
-  requireValue(j.status === 'missing' ? j.sha256 === null && j.bytes === 0 : j.status === 'stable-private-file' && (j.bytes as number) > 0 && (j.bytes as number) <= 8192);
+  requireValue(j.status === 'missing' ? j.sha256 === null && j.bytes === 0 : j.status === 'stable-private-file' && (j.bytes as number) > 0 && (j.bytes as number) <= 12288);
   if (j.status === 'stable-private-file') revision(j.sha256);
   const o = exact(c.observations, ['guardian', 'attach', 'container']);
   for (const key of ['guardian', 'attach']) {

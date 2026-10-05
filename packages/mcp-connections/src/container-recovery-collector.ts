@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process';
-import { constants } from 'node:fs';
-import { lstat, open, realpath } from 'node:fs/promises';
-import type { BigIntStats } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { snapshotContainerJournal as snapshot } from './container-journal-snapshot.js';
+import { guardianJournalBody } from './container-guardian-provenance.js';
 import { userInfo } from 'node:os';
 import type { Scope } from '../../broker/src/types.js';
 import { canonicalJson } from '../../contracts/src/index.js';
@@ -33,59 +32,12 @@ function exact(value: unknown, keys: string[]): Record<string, unknown> {
   requireValue(value && typeof value === 'object' && !Array.isArray(value)); const v = value as Record<string, unknown>;
   requireValue(Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k))); return v;
 }
-const pin = (s: BigIntStats) => ({ dev: String(s.dev), ino: String(s.ino), uid: String(s.uid), gid: String(s.gid), mode: String(s.mode), nlink: String(s.nlink), size: String(s.size), mtime: String(s.mtimeNs), ctime: String(s.ctimeNs) });
-const directoryPin = (s: BigIntStats) => ({ dev: String(s.dev), ino: String(s.ino), uid: String(s.uid), gid: String(s.gid), mode: String(s.mode) });
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
-type Snapshot = { text: string | null; sha256: string | null; bytes: number; pins: unknown };
-async function ancestors(path: string, privateRoot: string): Promise<Record<string, unknown>> {
-  requireValue(await realpath(path) === path, 'FILESYSTEM');
-  const result: Record<string, unknown> = {}, uid = BigInt(process.getuid!());
-  for (let p = path; ; p = dirname(p)) {
-    const stat = await lstat(p, { bigint: true });
-    requireValue(stat.isDirectory() && !stat.isSymbolicLink() && (stat.uid === uid || stat.uid === 0n) && (stat.mode & 0o022n) === 0n, 'FILESYSTEM');
-    if (p === privateRoot || p.startsWith(privateRoot + '/')) requireValue(stat.uid === uid && (stat.mode & 0o7777n) === 0o700n, 'FILESYSTEM');
-    result[p] = directoryPin(stat); if (p === '/') break;
-  }
-  return result;
-}
-async function snapshot(root: string, operationKey: string): Promise<Snapshot> {
-  const rootPins = await ancestors(root, root), directory = join(root, operationKey.slice(7)), path = join(directory, 'journal.json');
-  try {
-    const directoryStat = await lstat(directory, { bigint: true });
-    requireValue(directoryStat.isDirectory() && !directoryStat.isSymbolicLink(), 'FILESYSTEM');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-    requireValue(same(rootPins, await ancestors(root, root)), 'FILESYSTEM_CHANGED');
-    return { text: null, sha256: null, bytes: 0, pins: { rootPins, missing: 'operation-directory' } };
-  }
-  const before = await ancestors(directory, root);
-  requireValue(Object.entries(rootPins).every(([p, value]) => same(value, before[p])), 'FILESYSTEM_CHANGED');
-  let named: BigIntStats;
-  try { named = await lstat(path, { bigint: true }); } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-    requireValue(same(before, await ancestors(directory, root)), 'FILESYSTEM_CHANGED');
-    return { text: null, sha256: null, bytes: 0, pins: { before, missing: 'journal' } };
-  }
-  function file(s: BigIntStats): void {
-    requireValue(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && s.uid === BigInt(process.getuid!()) && (s.mode & 0o7777n) === 0o600n && s.size > 0n && s.size <= 8192n, 'FILESYSTEM');
-  }
-  file(named);
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const first = await handle.stat({ bigint: true }); file(first); requireValue(same(pin(named), pin(first)), 'FILESYSTEM_CHANGED');
-    const buffer = Buffer.alloc(8193); let size = 0;
-    for (;;) { const chunk = await handle.read(buffer, size, buffer.length - size, null); if (!chunk.bytesRead) break; size += chunk.bytesRead; requireValue(size <= 8192, 'FILESYSTEM'); }
-    const after = await handle.stat({ bigint: true }), finalNamed = await lstat(path, { bigint: true }); file(after); file(finalNamed);
-    requireValue(same(pin(first), pin(after)) && same(pin(first), pin(finalNamed)) && same(before, await ancestors(directory, root)), 'FILESYSTEM_CHANGED');
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, size));
-    return { text, sha256: 'sha256:' + sha256(text), bytes: size, pins: { before, file: pin(first) } };
-  } finally { await handle.close(); }
-}
 function journal(text: string, authority: DiscoveryAuthorityState): { cid: string | null; guardianPid: number; attachPid: number | null; deadlineMs: number } {
   const effect = authority.proposal.effect; requireValue(effect.kind === 'container-stdio' && authority.intent, 'AUTHORITY');
   const plan = planMcpContainerDiscoveryLaunch(effect.launch);
-  const j = exact(data(strictJson(text, 8192)), ['format', 'operationKey', 'launchOperationKey', 'launchRevision', 'name', 'cid', 'stage', 'deadlineMs', 'guardianPid', 'attachPid', 'reason', 'lease']);
-  requireValue(canonicalJson(j) === text && j.format === 'bowerloom/mcp-container-journal/v1beta1' && j.operationKey === authority.operationKey
+  const j = exact(guardianJournalBody(text), ['format', 'operationKey', 'launchOperationKey', 'launchRevision', 'name', 'cid', 'stage', 'deadlineMs', 'guardianPid', 'attachPid', 'reason', 'lease']);
+  requireValue(canonicalJson(j) === canonicalJson(guardianJournalBody(text)) && j.format === 'bowerloom/mcp-container-journal/v1beta1' && j.operationKey === authority.operationKey
     && j.launchOperationKey === plan.spec.operationKey && j.launchRevision === effect.launchRevision && plan.revision === effect.launchRevision
     && j.name === 'bowerloom-mcp-' + plan.spec.operationKey.slice(7), 'JOURNAL');
   const pid = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0 && (v as number) <= 2147483647;

@@ -9,7 +9,7 @@ The injected `DiscoveryAuthorityStore` is a trusted host dependency, not agent i
 The collector derives the operation directory from the validated authority key. Under the configured canonical state root it reads only `<operation-key-hex>/journal.json`:
 
 - The state root and operation directory must be owned by the current user and have exactly mode `0700`. Every ancestor must be a real directory owned by that user or root, without group/other write permission. Symlinks and noncanonical roots are refused.
-- The journal must be a regular file, owned by the current user, mode `0600`, a single hard link, and at most 8,192 bytes. Special permission bits are refused. The final open uses `O_NOFOLLOW` and `O_NONBLOCK`, then checks the opened file against the named file.
+- The journal must be a regular file, owned by the current user, mode `0600`, a single hard link, and at most 12,288 bytes for a signed v2 envelope; the nested or legacy journal body remains bounded to 8,192 bytes. Special permission bits are refused. The final open uses `O_NOFOLLOW` and `O_NONBLOCK`, then checks the opened file against the named file.
 - Device, inode, owner, group, mode, link count, size, and nanosecond modification/change times are pinned before and after the bounded read. Ancestor identities and permissions are checked again. The entire snapshot is re-read after host observations and again after the final authority transaction. Missing files are also rechecked: a later appearance invalidates the result.
 - Canonical JSON, strict journal fields, exact operation/launch/name binding, allowed lifecycle state, PIDs, full CID and the deadline within the original intent are validated before host queries. The name is a consistency check, never ownership authority.
 
@@ -38,3 +38,5 @@ Tests use actual private files for normal, missing, symlink, hardlink, unsafe-mo
 ## Optional durable observation receipt
 
 The separate internal `collectAndPersistMcpContainerRecovery` path records fresh collection evidence with an atomic full-authority comparison, then rechecks the journal. See [durable recovery observation receipts](mcp-container-recovery-receipt.md) for explicit schema initialization, idempotent evidence writes and uncertain commit handling. The original collection-only API remains unchanged. Neither path clears reconciliation or proves journal provenance.
+
+New signed launches and the separate historical-provenance inspection are described in [guardian-issued provenance](mcp-guardian-provenance.md). The ordinary collection and receipt format deliberately retain their unverified-origin and unknown-host fields.

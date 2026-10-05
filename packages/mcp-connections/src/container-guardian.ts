@@ -5,13 +5,16 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { userInfo } from 'node:os';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { data, MCP_PROTOCOL_VERSION } from './model.js';
 import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
+import { readDarwinBootSession } from './darwin-boot-session.js';
+import { guardianSignaturePayload } from './container-guardian-provenance.js';
 import type { ContainerGuardianJob } from './container-supervisor.js';
 
+let signingKey: ReturnType<typeof generateKeyPairSync>['privateKey'] | undefined, bindingRevision: string | undefined, signedSnapshot: unknown, snapshotSequence = 0, helloSent = false;
 const requireValue = (value: unknown): void => { if (!value) throw Error('REFUSED'); };
 const env: NodeJS.ProcessEnv = { HOME: userInfo().homedir, PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', NODE_V8_COVERAGE: undefined };
 type Journal = { format: 'bowerloom/mcp-container-journal/v1beta1'; operationKey: string; launchOperationKey: string; launchRevision: string; name: string; cid: string | null; stage: string; deadlineMs: number; guardianPid: number; attachPid: number | null; reason: string | null; lease: LeaseObservation };
@@ -56,15 +59,22 @@ async function savedJournal(): Promise<void> {
   requireValue(journal && directory); await privateDirectory(directory!);
   const file = await open(join(directory!, 'journal.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const before = await file.stat({ bigint: true }); requireValue(before.isFile() && before.nlink === 1n && before.uid === BigInt(process.getuid!()) && (before.mode & 0o777n) === 0o600n && before.size <= 8192n);
-    const buffer = Buffer.alloc(8193); let length = 0; for (;;) { const { bytesRead } = await file.read(buffer, length, buffer.length - length, null); if (!bytesRead) break; length += bytesRead; requireValue(length <= 8192); } const bytes = buffer.subarray(0, length); const after = await file.stat({ bigint: true }), named = await lstat(join(directory!, 'journal.json'), { bigint: true });
+    const before = await file.stat({ bigint: true }); requireValue(before.isFile() && before.nlink === 1n && before.uid === BigInt(process.getuid!()) && (before.mode & 0o777n) === 0o600n && before.size <= 12288n);
+    const buffer = Buffer.alloc(12289); let length = 0; for (;;) { const { bytesRead } = await file.read(buffer, length, buffer.length - length, null); if (!bytesRead) break; length += bytesRead; requireValue(length <= 12288); } const bytes = buffer.subarray(0, length); const after = await file.stat({ bigint: true }), named = await lstat(join(directory!, 'journal.json'), { bigint: true });
     for (const key of ['ino', 'dev', 'size', 'mtimeNs', 'ctimeNs', 'mode', 'nlink'] as const) requireValue(before[key] === after[key] && before[key] === named[key]);
-    requireValue(canonicalJson(strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes), 8192)) === canonicalJson(journal));
+    requireValue(canonicalJson(strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes), 12288)) === canonicalJson(signedSnapshot));
   } finally { await file.close(); }
+}
+async function saveSnapshot(body: Journal): Promise<void> {
+  requireValue(signingKey && bindingRevision && directory);
+  const payload = { format: 'bowerloom/mcp-container-journal/v1beta2', bindingRevision, sequence: ++snapshotSequence, body };
+  const envelope = { ...payload, signature: sign(null, guardianSignaturePayload(payload), signingKey!).toString('base64') };
+  requireValue(Buffer.byteLength(canonicalJson(envelope)) <= 12288);
+  await synced(join(directory!, 'journal.json'), envelope); signedSnapshot = envelope;
 }
 async function stage(value: string, change: Partial<Journal> = {}): Promise<void> {
   requireValue(journal && directory); await savedJournal();
-  const next = { ...journal!, ...change, stage: value, lease: { ...leaseObservation } }; await synced(join(directory!, 'journal.json'), next); journal = next;
+  const next = { ...journal!, ...change, stage: value, lease: { ...leaseObservation } }; await saveSnapshot(next); journal = next;
 }
 function docker(args: string[], timeoutMs = 2000): Promise<{ code: number | null; out: string }> {
   return new Promise((resolveResult, reject) => {
@@ -101,13 +111,13 @@ async function inspectOwned(): Promise<Record<string, any>> {
   requireValue((value.Mounts ?? []).every((mount: Record<string, unknown>) => mount.Type === 'tmpfs' && mount.Destination === '/scratch'));
   requireValue(typeof value.State.Running === 'boolean'); return value;
 }
-function live(): void { requireValue(!stopping && job && leaseObservation.sequence > 0 && performance.now() < leaseExpiry && Date.now() < job.deadlineMs && process.connected); }
+function live(): void { requireValue(!stopping && bindingRevision && job && leaseObservation.sequence > 0 && performance.now() < leaseExpiry && Date.now() < job.deadlineMs && process.connected); }
 async function create(): Promise<void> {
   live(); await privateDirectory(job!.stateRoot); live();
   directory = join(job!.stateRoot, job!.operationKey.slice(7)); await mkdir(directory, { mode: 0o700 }); await privateDirectory(directory);
   const parent = await open(job!.stateRoot, 'r'); try { await parent.sync(); } finally { await parent.close(); }
   journal = { format: 'bowerloom/mcp-container-journal/v1beta1', operationKey: job!.operationKey, launchOperationKey: plan!.spec.operationKey, launchRevision: plan!.revision, name: 'bowerloom-mcp-' + plan!.spec.operationKey.slice(7), cid: null, stage: 'PREPARED', deadlineMs: job!.deadlineMs, guardianPid: process.pid, attachPid: null, reason: null, lease: { ...leaseObservation } };
-  await synced(join(directory, 'journal.json'), journal); live();
+  await saveSnapshot(journal); live();
   requireValue(!await present(journal.name, true)); live();
   await stage('CREATING'); live(); creationAttempted = true;
   const created = await docker(plan!.argv, 5000);
@@ -164,8 +174,14 @@ process.on('message', supplied => {
   try {
     const message = data(supplied) as Record<string, unknown>;
     if (message.type === 'cancel' && message.nonce === startNonce && Object.keys(message).length === 2) { stop('CANCELLED'); return; }
+    if (message.type === 'guardian-bound') {
+      requireValue(started && helloSent && !bindingRevision && !stopping && job && message.nonce === startNonce && Object.keys(message).length === 3
+        && typeof message.bindingRevision === 'string' && /^sha256:[a-f0-9]{64}$/.test(message.bindingRevision) && Date.now() < job!.deadlineMs);
+      bindingRevision = message.bindingRevision as string;
+      leaseExpiry = Math.min(performance.now() + LEASE_MS, absoluteMonotonicMs); armLease(); requestLease(); return;
+    }
     if (message.type === 'lease-renewal') {
-      requireValue(started && !stopping && process.connected && job && message.nonce === startNonce && message.operationKey === job!.operationKey
+      requireValue(started && bindingRevision && !stopping && process.connected && job && message.nonce === startNonce && message.operationKey === job!.operationKey
         && Object.keys(message).length === 5 && challenge && message.sequence === challenge!.sequence && message.challenge === challenge!.token
         && performance.now() < leaseExpiry && performance.now() < challenge!.expires && Date.now() < job!.deadlineMs);
       leaseExpiry = challenge!.expires; leaseObservation.sequence = challenge!.sequence;
@@ -196,6 +212,13 @@ process.on('message', supplied => {
     plan = planMcpContainerDiscoveryLaunch(value.launch); requireValue(plan.revision === value.launchRevision);
     job = value; startNonce = message.nonce as string; clearTimeout(timer); timer = setTimeout(() => stop('DEADLINE'), Math.max(1, job.deadlineMs - Date.now()));
     absoluteMonotonicMs = performance.now() + Math.max(0, job.deadlineMs - Date.now());
-    leaseExpiry = Math.min(performance.now() + LEASE_MS, absoluteMonotonicMs); armLease(); requestLease();
+    void (async () => {
+      const keys = generateKeyPairSync('ed25519'); signingKey = keys.privateKey;
+      const bootSessionId = await readDarwinBootSession();
+      requireValue(!stopping && process.connected && Date.now() < job!.deadlineMs);
+      helloSent = true;
+      send({ type: 'guardian-hello', nonce: startNonce, operationKey: job!.operationKey, launchRevision: job!.launchRevision,
+        descriptor: { guardianPid: process.pid, bootSessionId, guardianSessionId: randomBytes(32).toString('hex'), publicKey: keys.publicKey.export({ format: 'der', type: 'spki' }).toString('base64') } });
+    })().catch(() => stop('GUARDIAN_BINDING_FAILED'));
   } catch { stop('GUARDIAN_PROTOCOL'); }
 });

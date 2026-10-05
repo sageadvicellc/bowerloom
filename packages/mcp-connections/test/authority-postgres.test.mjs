@@ -37,6 +37,7 @@ function controller(store, observed, open=adapter(observed)) {
 }
 const intercept = (pool, hook) => ({async connect(){const client=await pool.connect();return {
   query:(sql,params)=>hook(client,sql,params), release:discard=>client.release(discard),
+  on:client.on.bind(client), removeListener:client.removeListener.bind(client),
 };}});
 
 test('authority store rejects unsafe namespaces before database contact',()=>{

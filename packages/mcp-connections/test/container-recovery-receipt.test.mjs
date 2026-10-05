@@ -46,7 +46,7 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 function fake(){
  const authority=fixture().authority,queries=[],rows=new Map();let metadata=true,version=1,pending,commitHook,queryHook,discarded=false;
  const key=p=>p.slice(0,4).join('|');
- const client={async query(sql,p){queries.push({sql,p});await queryHook?.(sql,p);
+ const client=Object.assign(new EventEmitter(),{async query(sql,p){queries.push({sql,p});await queryHook?.(sql,p);
   if(sql.startsWith('BEGIN')){pending=new Map(rows);return{rows:[]};}
   if(sql==='ROLLBACK'){pending=null;return{rows:[]};}
   if(sql==='COMMIT'){if(pending){rows.clear();for(const[k,v]of pending)rows.set(k,v);}pending=null;await commitHook?.();return{rows:[]};}
@@ -62,7 +62,7 @@ function fake(){
   if(sql.startsWith('INSERT')&&sql.includes('recovery_receipts')){if(!pending.has(key(p)))pending.set(key(p),{version:1,receipt:JSON.parse(p[4]),checksum:p[5]});return{rows:[]};}
   if(sql.startsWith('SELECT')&&sql.includes('recovery_receipts'))return{rows:pending?.has(key(p))?[clone(pending.get(key(p)))]:rows.has(key(p))?[clone(rows.get(key(p)))]:[]};
   throw Error('UNEXPECTED SQL '+sql);
- },release(discard){discarded ||= !!discard;}};
+ },release(discard){discarded ||= !!discard;}});
  const store=new PostgresDiscoveryAuthorityStore({async connect(){return client;}},{schema:'bowerloom_mcp_receipt_test'});
  return{store,authority,queries,rows,set metadata(v){metadata=v;},set version(v){version=v;},set commitHook(v){commitHook=v;},set queryHook(v){queryHook=v;},get discarded(){return discarded;}};
 }
