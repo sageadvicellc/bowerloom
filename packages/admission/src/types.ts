@@ -77,3 +77,26 @@ export type ReserveResult = { kind: 'accepted'; reservation: ReservationView; la
   | { kind: 'denied'; reason: string };
 export type LaunchResult = { kind: 'started'; reservation: ReservationView }
   | { kind: 'denied'; reason: string };
+
+/** Trusted host configuration. Never supplied by task text or a model. */
+export interface AdmissionControlIdentity { installationId: string; databaseName: string }
+export interface AdmissionControlBinding extends AdmissionControlIdentity {
+  admissionSchema: string; launcherId: string; accountId: string; accountAlias: string;
+  requestDigest: string; authorizationRevision: string; expiresAtMs: number;
+}
+export interface AdmissionControl {
+  binding: AdmissionControlBinding;
+  signal: AbortSignal;
+  /** Synchronous host coordinator/local-control fence. A Promise result is refused. */
+  assert(): void;
+}
+export interface AdmissionDispatchEnvelope {
+  format: 'bowerloom/admission-dispatch/v1';
+  binding: Readonly<AdmissionControlBinding>;
+  reservationId: string; requestDigest: string; claimedAtMs: number;
+  notAfterWallMs: number; notAfterHrNs: string; parentWallMs: number; parentHrNs: string;
+}
+export interface AdmissionDispatchGate {
+  check(observation: unknown): Promise<void>;
+  consume(): Readonly<AdmissionDispatchEnvelope>;
+}
