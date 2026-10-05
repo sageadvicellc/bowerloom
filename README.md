@@ -47,8 +47,6 @@ Bowerloom is free and open source. Model providers, hosting, and connected servi
 
 ![Hanna and S4-G3 study a holographic plan in a tree laboratory.](docs/assets/readme-beta/images/startup.webp)
 
-Hanna and S4-G3 review a plan in the illustrated lab. The scene represents an intended workflow. It does not establish software behavior.
-
 Start with the [team setup guide](docs/tutorials/team-tutorial-maker.md). Choose Engineer, Founder, or Research & development. Describe your goal and review cadence.
 
 Your personal agent helps you review the proposed roles, access, worker limit, files, and working agreement. A working agreement records scope, responsibilities, and review points.
@@ -153,8 +151,6 @@ This setup separates portable definitions from its private installation receipt.
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/structure-dark.png">
   <img src="docs/assets/readme-beta/exports/structure-light.png" alt="Startup proposes 20 portable files under .bowerloom. Approved installation adds one private receipt. The text tree below lists every file.">
 </picture>
-
-Generated startup definitions and the private installation receipt. Routines are planned. Connections, credentials, and runtime state remain separate.
 
 ```text
 .bowerloom/
@@ -287,8 +283,6 @@ See the [local controls guide](packages/local-control/README.md) for registratio
 
 
 ![H4N-N4 assembles a small device while S4-G3 assists Hanna at the neighboring screen.](docs/assets/readme-beta/images/contributing.webp)
-
-H4N-N4 builds at the illustrated lab workbench. The scene represents collaboration. It does not establish a software capability.
 
 Bring a small, reproducible change that the team can review.
 
