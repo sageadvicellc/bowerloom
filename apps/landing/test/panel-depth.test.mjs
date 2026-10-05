@@ -9,7 +9,7 @@ test('decorations wrap their panels instead of occupying standalone section gaps
   assert.match(source, /companion-surface">\{children\}/);
   assert.match(app, /<SectionCompanion unit="h4n" side="left"><LabsWorkflow \/><\/SectionCompanion>/);
   assert.match(app, /<SectionCompanion unit="s4" side="right"><section className="product-section"/);
-  assert.match(app, /<SectionCompanion unit="s4" side="right"><section className="faq-section"/);
+  assert.match(app, /<SectionCompanion unit="s4-slate" side="right"><section className="faq-section"/);
   assert.doesNotMatch(app, /<SectionCompanion[^>]+\/>/);
 });
 test('robot layers use one unchanged source and shared position; only visibility changes', async () => {

@@ -23,6 +23,7 @@ import "./splash.css";
 import { rememberSplash, shouldShowSplash, SPLASH_FIXTURE_SESSION_KEY, SPLASH_SESSION_KEY } from "./splash-playback";
 import HomepageBanner from "./HomepageBanner";
 import SectionCompanion from "./SectionCompanion";
+import FooterCompanion from "./FooterCompanion";
 import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
@@ -267,7 +268,7 @@ export default function App() {
         <CoreOffers />
         <SectionCompanion unit="h4n" side="left"><LabsWorkflow /></SectionCompanion>
         <TutorialBuilder />
-        <SectionCompanion unit="s4" side="right"><section className="faq-section" aria-labelledby="faq-title">
+        <SectionCompanion unit="s4-slate" side="right"><section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
           <div className="faq-list">
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
@@ -332,7 +333,7 @@ export default function App() {
           </p>
         </aside>
       )}
-      <footer className="site-footer" data-theme="dark">
+      <FooterCompanion><footer className="site-footer" data-theme="dark">
         <a className="brand" href="#" aria-label="Bowerloom home">
           <BrandIdentity />
         </a>
@@ -346,7 +347,7 @@ export default function App() {
         <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
         <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
-      </footer>
+      </footer></FooterCompanion>
     </div>
   );
 }

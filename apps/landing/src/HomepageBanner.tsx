@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { watchBannerImage } from './banner-loading';
 import './homepage-banner.css';
 
-/** Canonical public artwork only; diagnostic routes must never supply the homepage. */
-function BannerImage({ source, fallback, alt }: { source: string; fallback: string; alt: string }) {
+type Artwork = { src: string; width: number; height: number };
+const circuit: Artwork = { src: "/banner/lab-circuit-hero.png", width: 1672, height: 941 };
+const nativeFrame: Artwork = { src: "/banner/lab-hero-source-1920.png", width: 1920, height: 1080 };
+
+/** Public preview artwork only; diagnostic routes must never supply the homepage. */
+function BannerImage({ source, fallback, alt }: { source: Artwork; fallback: Artwork; alt: string }) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const image = useRef<HTMLImageElement>(null);
@@ -17,7 +21,7 @@ function BannerImage({ source, fallback, alt }: { source: string; fallback: stri
     });
   }, [selected, attempt, fallback, source, state === 'unavailable']);
   return <div className="homepage-banner" data-artwork={state} data-artwork-source={attempt === 0 ? 'primary' : 'fallback'}>
-    {state !== 'unavailable' && <img key={selected} ref={image} src={selected} alt={alt} loading="eager" decoding="async" fetchPriority="high" width="1440" height="810" />}
+    {state !== 'unavailable' && <img key={selected.src} ref={image} src={selected.src} alt={alt} loading="eager" decoding="async" fetchPriority="high" width={selected.width} height={selected.height} />}
     <span className="homepage-banner-brand" aria-hidden="true">
       <img className="brand-light" src="/brand/rose-conservatory/bowerloom-wordmark-plain-ink.svg" alt="" width="2044" height="374" />
       <img className="brand-dark" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="" width="2044" height="374" />
@@ -27,13 +31,6 @@ function BannerImage({ source, fallback, alt }: { source: string; fallback: stri
 }
 
 export default function HomepageBanner() {
-  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 640px)').matches);
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 640px)');
-    const update = () => setNarrow(query.matches);
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-  return <BannerImage key={narrow ? 'mobile' : 'wide'} source={narrow ? '/banner/hero.jpg' : '/banner/labs.jpg'}
-    fallback={narrow ? '/banner/labs.jpg' : '/banner/hero.jpg'} alt="Hanna and robot helpers in a sunlit forest workshop, surrounded by connected labs." />;
+  return <BannerImage source={circuit} fallback={nativeFrame}
+    alt="Hanna and robot helpers in a sunlit forest workshop, surrounded by connected labs." />;
 }

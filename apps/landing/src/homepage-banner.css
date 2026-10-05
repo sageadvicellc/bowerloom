@@ -63,3 +63,21 @@
 .homepage-banner-brand .brand-dark { display: none; }
 [data-theme='dark'] .homepage-banner-brand .brand-light { display: none; }
 [data-theme='dark'] .homepage-banner-brand .brand-dark { display: block; }
+
+/* Slate pose: the edge meets the bent forearm at 47% of its unchanged image height. */
+.normal-site .companion-s4-slate { --robot-width: 200px; --robot-top: -112.18px; margin-top: 144px; }
+.companion-s4-slate .companion-robot-front { clip-path: var(--companion-grip); }
+/* The footer edge crosses the seated pose at 61%; knees, feet and resting palm stay in front. */
+.footer-companion { --footer-robot-width: 240px; --footer-robot-height: 360px; position: relative; isolation: isolate; max-width: 1440px; margin: 240px auto 0; }
+.footer-companion-art { position: absolute; right: 48px; top: calc(var(--footer-robot-height) * -.61); width: var(--footer-robot-width); height: auto; pointer-events: none; user-select: none; }
+.footer-companion-back { z-index: 0; }
+.footer-companion-front { z-index: 2; clip-path: inset(58% 0 0); }
+:root .footer-companion > .site-footer { position: relative; z-index: 1; min-height: 220px; padding-right: 336px; }
+@media (max-width: 900px) {
+  .footer-companion { --footer-robot-width: 180px; --footer-robot-height: 270px; margin-top: 188px; }
+  .footer-companion-art { right: calc(50% - 90px); }
+  :root .footer-companion > .site-footer { padding: 132px 24px 32px; }
+}
+@media (max-width: 640px) {
+  .normal-site .companion-s4-slate { --robot-width: 160px; --robot-top: -89.74px; margin-top: 122px; }
+}

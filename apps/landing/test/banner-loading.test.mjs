@@ -19,5 +19,5 @@ test('canonical banner alternatives are available and match the exact approved s
   assert.doesNotMatch(app,/cinematicJourney.openingPoster|animation-review/);
   assert.equal((app.match(/<SectionCompanion /g)||[]).length,3);
   const banner=await readFile(new URL('../src/HomepageBanner.tsx',import.meta.url),'utf8');
-  assert.match(banner,/width="1440" height="810"/);assert.match(banner,/\/banner\/labs.jpg/);assert.match(banner,/\/banner\/hero.jpg/);
+  assert.match(banner,/width=\{selected.width\} height=\{selected.height\}/);assert.match(banner,/\/banner\/lab-circuit-hero.png/);assert.match(banner,/\/banner\/lab-hero-source-1920.png/);
 });
