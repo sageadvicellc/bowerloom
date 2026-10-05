@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { CodexProposalBoundary, type CodexBetaBoundaryOptions } from './boundary.js';
+export { planCodexProposalLaunch, codexBoundaryAccountRevision, codexArtifactRevision, measureCodexInstalledArtifact, codexQualificationRevision, refuseCodexQualificationProbe } from './boundary.js';
+export type { CodexArtifactBinding, CodexBetaBoundaryOptions, CodexBoundaryQualification } from './boundary.js';
 import { CodexObservationReader } from './reader.js';
 import { installationChecks,workspace,execArgs,childEnvironment } from './installation.js';
 import { bindingCopy,sanitized } from './observation.js';
@@ -18,10 +21,12 @@ export function proposalPrompt(taskInput: string): string {
   check(Buffer.byteLength(prompt)<=LIMITS.inputBytes,'TASK_INPUT_BOUND');
   return prompt;
 }
+const betaBoundaries = new WeakMap<CodexAdapter, CodexProposalBoundary>();
+export interface CodexAdapterOptions { installation:Installation;binding:AccountBinding;accountAlias:string;stopUsedPercent?:number;provisionalPercent?:number;onEvidence?:(evidence:AdapterEvidence)=>void }
 export class CodexAdapter implements ModelAdapter {
   readonly #reader:CodexObservationReader;readonly #installation:Installation;readonly #binding:AccountBinding;readonly #accountAlias:string;
   readonly #evidence:(evidence:AdapterEvidence)=>void;#busy=false;#quarantined=false;
-  constructor(options:{installation:Installation;binding:AccountBinding;accountAlias:string;stopUsedPercent?:number;provisionalPercent?:number;onEvidence?:(evidence:AdapterEvidence)=>void}){
+  constructor(options:CodexAdapterOptions){
     this.#installation=structuredClone(options.installation);this.#binding=bindingCopy(options.binding);
     check(this.#binding.aliases.includes(options.accountAlias),'UNKNOWN_ACCOUNT_ALIAS');this.#accountAlias=options.accountAlias;this.#reader=new CodexObservationReader(this.#installation,this.#binding,options.stopUsedPercent,options.provisionalPercent);
     this.#evidence=options.onEvidence??(()=>{});
@@ -33,12 +38,22 @@ export class CodexAdapter implements ModelAdapter {
     let attempted=false;let owned:OwnedGuardian|undefined,work:Awaited<ReturnType<typeof workspace>>|undefined;
     const stream=new ProposalStream(),processRef=randomUUID();let environmentDigest:string;
     try {
-      const env=await installationChecks(this.#installation);environmentDigest=sha(JSON.stringify(env));
+      const boundary=betaBoundaries.get(this);
+      if(boundary)await boundary.check(signal);
+      const env=await installationChecks(this.#installation);if(boundary)check(!signal.aborted,'CANCELLED');environmentDigest=sha(JSON.stringify(env));
       work=await workspace(this.#installation.workRoot,PROPOSAL_SCHEMA);
+      if(boundary)check(!signal.aborted,'CANCELLED');
       const observation=await this.#reader.read(this.#accountAlias);
       await installationChecks(this.#installation);await work.verify();
       check(sha(JSON.stringify(childEnvironment()))===environmentDigest,'ENVIRONMENT_CHANGED');
       check(Date.now()>=observation.observedAtMs&&Date.now()-observation.observedAtMs<=LIMITS.observationAgeMs,'STALE_OBSERVATION');check(!signal.aborted,'CANCELLED');
+      if(boundary)await boundary.check(signal);
+      check(!signal.aborted,'CANCELLED');
+      // Beta remeasures the native executable after asynchronous registry/artifact checks.
+      if(boundary){await installationChecks(this.#installation);check(!signal.aborted,'CANCELLED');await work.verify();check(!signal.aborted,'CANCELLED');
+        check(sha(JSON.stringify(childEnvironment()))===environmentDigest,'ENVIRONMENT_CHANGED');
+        check(Date.now()>=observation.observedAtMs&&Date.now()-observation.observedAtMs<=LIMITS.observationAgeMs,'STALE_OBSERVATION');}
+      boundary?.assertCurrent(signal);
       attempted=true;owned=await startGuardian({executable:this.#installation.nativePath,argv:execArgs(work.cwd,work.schema),cwd:work.cwd,env,
         seconds:LIMITS.seconds,stdoutBytes:LIMITS.stdoutBytes,stderrBytes:LIMITS.stderrBytes},signal,(which,data)=>{if(which==='stdout')stream.feed(data);});
       if(signal.aborted){await owned.terminate();check(false,'CANCELLED');}
@@ -65,5 +80,18 @@ export class CodexAdapter implements ModelAdapter {
       if(attempted&&!owned)this.#quarantined=true;
       try{try{if(owned)await owned.terminate();}catch{this.#quarantined=true;}finally{if(work)await work.close();}}finally{this.#busy=false;}throw sanitized(error);
     }
+  }
+}
+
+/** Explicit beta selection. Missing qualification never selects the historical alpha route. */
+export class CodexBetaAdapter implements ModelAdapter {
+  readonly #adapter: CodexAdapter;
+  constructor(options: CodexAdapterOptions & { boundary: CodexBetaBoundaryOptions }) {
+    const gate = new CodexProposalBoundary(options.boundary, options.installation, options.binding, options.accountAlias);
+    this.#adapter = new CodexAdapter(options);
+    betaBoundaries.set(this.#adapter, gate);
+  }
+  start(input: { launcherId: string; taskInput: string; modelRoute: string }, signal: AbortSignal): Promise<ModelProcess> {
+    return this.#adapter.start(input, signal);
   }
 }
