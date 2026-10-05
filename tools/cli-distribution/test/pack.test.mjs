@@ -60,6 +60,10 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  const bin=join(install,'node_modules/.bin/bowerloom'),mcp=join(install,'node_modules/.bin/bowerloom-mcp');assert.ok(existsSync(bin));assert.ok(existsSync(mcp));
  function run(args,success=true) {const r=spawnSync(bin,args,{cwd:install,env,encoding:'utf8',timeout:30000,maxBuffer:2**20});if(success)assert.equal(r.status,0,r.stderr||r.stdout);return r;}
  assert.match(run(['--help']).stdout,/Bowerloom/);
+ const installedVersion=JSON.parse(readFileSync(join(install,'node_modules/bowerloom/package.json'),'utf8')).version;
+ assert.equal(run(['--version']).stdout.trim(),`Bowerloom ${installedVersion}`);
+ assert.equal(run(['-V']).stdout.trim(),`Bowerloom ${installedVersion}`);
+ assert.match(run(['init','--help']).stdout,/init plan/);
  const target=join(root,'Reviewed Project'),args=['--mode','new','--target',target,'--name','Packaged proof','--goal','Review the setup without executing a team','--profile','engineer'];
  const plan=JSON.parse(run(['init','plan',...args,'--json']).stdout);assert.equal(existsSync(target),false);assert.equal(plan.executionAuthorized,false);
  assert.notEqual(run(['init','apply',...args,'--approve','invalid'],false).status,0);assert.equal(existsSync(target),false);

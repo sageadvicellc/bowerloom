@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -79,8 +80,32 @@ The plan records declarations. It grants no runtime permission.
 Recipe commands share their controller with MCP. The operator CLI owns exact approval.
 `;
 
+const INIT_HELP = [
+  'Bowerloom setup: review a personal-agent profile and first team specification', '', 'Usage:',
+  ...HELP.split('\n').filter(line => line.startsWith('  bowerloom init ')), '',
+  'Plan prints a plain-English review. Add --json for exact file contents and hashes.',
+  'New mode requires an absent target; existing mode adds only .bowerloom to an existing project.',
+  'Apply requires unchanged inputs and the exact plan revision. It starts no workers or backend services.',
+  'Status inspects the saved specification. Demo-plan offers an optional handoff without execution.', '',
+].join('\n');
+
+function installedVersion(): string {
+  // Both the compiled checkout and standalone archive use dist/apps/cli/src/main.js.
+  // Read that distribution's metadata, not a caller's current directory or another global install.
+  try {
+    const value: unknown = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'));
+    const version = value !== null && typeof value === 'object' && 'version' in value ? value.version : undefined;
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error();
+    return version;
+  } catch {
+    throw new DefinitionError('VERSION_METADATA', 'The installed package version could not be read. Inspect this installation before using it.');
+  }
+}
+
 async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
+  if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(INIT_HELP); return; }
   if (args[0] === 'mcp') {
     const { runMcpPlanCommand } = await import('./mcp-plan.js');
     process.stdout.write(`${canonicalJson(await runMcpPlanCommand(args))}\n`);
@@ -185,7 +210,7 @@ async function main(args: string[]): Promise<void> {
   const [command, file, flag, root] = args;
   if (!['validate', 'plan'].includes(command ?? '') || !file || file.startsWith('-')
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
-    throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or trellis plan <crew.yaml>, with optional --root <directory>.');
+    throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   }
   const plan = await compileCrew(file, root ? { root } : {});
   const result = command === 'plan' ? plan : {
