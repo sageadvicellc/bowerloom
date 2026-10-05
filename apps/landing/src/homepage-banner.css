@@ -3,8 +3,6 @@
 .homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms ease; }
 .homepage-banner[data-artwork="ready"] > img { opacity: 1; }
 .homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 70%, var(--ui-bg) 100%); }
-.homepage-banner-brand { position: absolute; z-index: 2; bottom: 16px; left: 50%; transform: translateX(-50%); width: clamp(150px, 22vw, 250px); pointer-events: none; }
-.homepage-banner-brand img { width: 100%; height: auto; }
 .normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }
 .normal-site .normal-hero::before { display: none; }
 .normal-site .normal-hero .hero-copy { max-width: 1040px; margin: auto; padding: 24px 5% 16px; text-align: center; }
@@ -43,7 +41,6 @@
 }
 @media (max-width: 640px) {
   .normal-site .normal-hero .hero-copy { padding: 24px 24px 8px; }
-  .homepage-banner-brand { bottom: 10px; }
   .normal-site .companion-panel-wrap { --robot-width: 140px; --robot-top: -98px; width: calc(100% - 32px); margin-top: 122px; margin-bottom: 32px; }
   /* Keep only the original hands/forearms above the rim; the panel hides the chest. */
   .companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }
@@ -60,9 +57,6 @@
 }
 @media (prefers-reduced-motion: reduce) { .homepage-banner > img { transition: none; } }
 
-.homepage-banner-brand .brand-dark { display: none; }
-[data-theme='dark'] .homepage-banner-brand .brand-light { display: none; }
-[data-theme='dark'] .homepage-banner-brand .brand-dark { display: block; }
 
 /* Slate pose: the edge meets the bent forearm at 47% of its unchanged image height. */
 .normal-site .companion-s4-slate { --robot-width: 200px; --robot-top: -112.18px; margin-top: 144px; }

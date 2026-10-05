@@ -22,10 +22,6 @@ function BannerImage({ source, fallback, alt }: { source: Artwork; fallback: Art
   }, [selected, attempt, fallback, source, state === 'unavailable']);
   return <div className="homepage-banner" data-artwork={state} data-artwork-source={attempt === 0 ? 'primary' : 'fallback'}>
     {state !== 'unavailable' && <img key={selected.src} ref={image} src={selected.src} alt={alt} loading="eager" decoding="async" fetchPriority="high" width={selected.width} height={selected.height} />}
-    <span className="homepage-banner-brand" aria-hidden="true">
-      <img className="brand-light" src="/brand/rose-conservatory/bowerloom-wordmark-plain-ink.svg" alt="" width="2044" height="374" />
-      <img className="brand-dark" src="/brand/rose-conservatory/bowerloom-wordmark-plain-cream.svg" alt="" width="2044" height="374" />
-    </span>
     {state === 'unavailable' && <span className="sr-only">Workshop artwork is unavailable. All page content remains available below.</span>}
   </div>;
 }
