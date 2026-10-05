@@ -1,6 +1,6 @@
 export type SplashState = 'loading' | 'playing' | 'paused' | 'blocked' | 'ended' | 'error';
-export const SPLASH_SESSION_KEY = 'bowerloom-cinematic-intro-v1';
-export const SPLASH_FIXTURE_SESSION_KEY = SPLASH_SESSION_KEY + '-fixture';
+export const SPLASH_SESSION_KEY = 'bowerloom-selected-splash-05';
+export const SPLASH_FIXTURE_SESSION_KEY = 'bowerloom-cinematic-intro-v1-fixture';
 export function shouldShowSplash(hash: string, storage: Pick<Storage, 'getItem'> | null, key = SPLASH_SESSION_KEY) {
   if (hash.length > 1) return false;
   try { return storage?.getItem(key) !== 'seen'; } catch { return true; }

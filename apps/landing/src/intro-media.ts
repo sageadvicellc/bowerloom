@@ -6,8 +6,8 @@ export type IntroMedia = {
   revealAt: number;
   audio: 'embedded' | 'silent';
 };
-/** Historical 23-second delivery remains preserved. Revised 10–15-second media awaits Brand delivery. */
-export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
+/** Historical 23-second delivery remains preserved and is never selected for the active preview. */
+export const historicalIntroDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
   status: 'awaiting-media',
   desktop: {
     kind: 'production', src: '/intro/cinematic-wide.mp4', poster: '/intro/wide-poster.webp',
@@ -19,6 +19,36 @@ export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: Intro
     sha256: 'c58a64b98f00ab9897e4c662017ee0e819b48ecc67e23f74596e07f4ff257d80', bytes: 10916915,
     width: 1080, height: 1920, duration: 23, logoAt: 20, revealAt: 22.2, audio: 'embedded',
   },
+};
+/** Founder-selected existing films for the preview. Timings belong to each variant; selection is not software evidence. */
+export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
+  "status": "ready",
+  "desktop": {
+    "kind": "production",
+    "src": "/intro/selected-05/desktop.mp4",
+    "poster": "/intro/selected-05/desktop-poster.jpg",
+    "sha256": "6a057fd2f9006a604c4a40587abf2b5c98a7fd68d23df96533f3fc9c79a1db1c",
+    "bytes": 10475215,
+    "width": 1920,
+    "height": 1080,
+    "duration": 10.041667,
+    "logoAt": 8,
+    "revealAt": 9,
+    "audio": "silent"
+  },
+  "portrait": {
+    "kind": "production",
+    "src": "/intro/selected-05/portrait.mp4",
+    "poster": "/intro/selected-05/portrait-poster.jpg",
+    "sha256": "ae3cfa7360ddb8b9cf640ec7b02f35c6c6c03b637cae7521121e86f9777db320",
+    "bytes": 8455394,
+    "width": 1080,
+    "height": 1920,
+    "duration": 10.041667,
+    "logoAt": 8,
+    "revealAt": 9,
+    "audio": "silent"
+  }
 };
 /** Technical patterns and test tone, admitted only by ?intro=fixture. Never final media. */
 export const introFixtures: Record<'desktop' | 'portrait', IntroMedia> = {
@@ -53,7 +83,6 @@ export function selectIntroMedia(fixture: boolean, portrait: boolean, delivery =
   if (fixture) return introFixtures[portrait ? 'portrait' : 'desktop'];
   if (delivery.status !== 'ready') return null;
   if (!validProductionMedia(delivery.desktop, false) || !validProductionMedia(delivery.portrait, true)) return null;
-  if (delivery.desktop.duration !== delivery.portrait.duration || delivery.desktop.logoAt !== delivery.portrait.logoAt || delivery.desktop.revealAt !== delivery.portrait.revealAt) return null;
   return portrait ? delivery.portrait : delivery.desktop;
 }
 
@@ -63,5 +92,5 @@ export function validProductionMedia(media: IntroMedia | null, portrait: boolean
     && media.width === (portrait ? 1080 : 1920) && media.height === (portrait ? 1920 : 1080)
     && Number.isFinite(media.duration) && media.duration >= 10 && media.duration <= 15
     && Number.isFinite(media.logoAt) && media.logoAt >= 0 && media.logoAt + .8 <= media.revealAt
-    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && media.audio === 'embedded');
+    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && (media.audio === 'embedded' || media.audio === 'silent'));
 }

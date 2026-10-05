@@ -1,34 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createIntroController,introFrame} from '../src/intro-controller.ts';
-import {introDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
+import {introDelivery,historicalIntroDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
 const media={kind:'production',src:'/intro/desktop.mp4',poster:'/intro/desktop.jpg',sha256:'a'.repeat(64),bytes:100,width:1920,height:1080,duration:23,logoAt:20,revealAt:22.2,audio:'embedded'};
 function fixture(selectedMedia=media) {
   let now=0,id=0;const rafs=new Map(),timers=new Map();
   const clock={now:()=>now,request:fn=>{rafs.set(++id,fn);return id;},cancel:id=>rafs.delete(id),after:(fn,ms)=>{timers.set(++id,{at:now+ms,fn});return id;},clear:id=>timers.delete(id)};
   class Video extends EventTarget {currentTime=0;duration=23;videoWidth=1920;videoHeight=1080;readyState=2;paused=true;ended=false;muted=true;volume=0;plays=0;pauses=0;async play(){this.plays++;this.paused=false;}pause(){this.pauses++;this.paused=true;}}
   class Visibility extends EventTarget{hidden=false;}
-  const video=new Video(),visibility=new Visibility(),frames=[],statuses=[],exits=[],entries=[];video.duration=selectedMedia.duration;
+  const video=new Video(),visibility=new Visibility(),frames=[],statuses=[],exits=[],entries=[];video.duration=selectedMedia.duration;video.videoWidth=selectedMedia.width;video.videoHeight=selectedMedia.height;
   const callbacks={frame:f=>frames.push(f),status:s=>statuses.push(s),entry:e=>entries.push(e),exit:r=>exits.push(r)};
   const controller=createIntroController(video,visibility,selectedMedia,clock,callbacks);
   return {video,visibility,frames,statuses,exits,entries,controller,clock,callbacks,advance(ms,time=video.currentTime){now+=ms;video.currentTime=time;const next=[...rafs.values()];rafs.clear();next.forEach(fn=>fn());for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}},pending:()=>rafs.size+timers.size};
 }
-test('revised production stays gated and requires matching 10–15-second native timelines',()=>{
-  assert.equal(selectIntroMedia(false,false),null);assert.equal(selectIntroMedia(false,true),null);
-  const desktop={...media,duration:12,logoAt:9,revealAt:11.2};
-  const portrait={...desktop,width:1080,height:1920};
+test('selected preview admits silent native media with independent desktop and portrait timelines',()=>{
+  assert.equal(selectIntroMedia(false,false),introDelivery.desktop);assert.equal(selectIntroMedia(false,true),introDelivery.portrait);
+  assert.equal(selectIntroMedia(false,false,historicalIntroDelivery),null);
+  const desktop={...media,duration:10.041667,logoAt:8,revealAt:9,audio:'silent'};
+  const portrait={...desktop,width:1080,height:1920,duration:12,logoAt:9.5,revealAt:10.5};
   const delivery={status:'ready',desktop,portrait};
   assert.equal(selectIntroMedia(false,false,delivery),desktop);assert.equal(selectIntroMedia(false,true,delivery),portrait);
-  for(const invalid of [{...delivery,status:'awaiting-media'},{...delivery,desktop:null},{...delivery,portrait:null},
-    {...delivery,portrait:{...portrait,duration:13}},{...delivery,portrait:{...portrait,logoAt:8}},
-    {...delivery,portrait:{...portrait,revealAt:11}},{...delivery,desktop:{...desktop,sha256:'corrupt'}}]){
+  for(const invalid of [{...delivery,status:'awaiting-media'},{...delivery,desktop:null},{...delivery,portrait:null},{...delivery,desktop:{...desktop,sha256:'corrupt'}}]){
     assert.equal(selectIntroMedia(false,false,invalid),null);assert.equal(selectIntroMedia(false,true,invalid),null);
   }
   assert.equal(validProductionMedia(desktop,false),true);assert.equal(validProductionMedia(desktop,true),false);
   assert.equal(validProductionMedia(media,false),false);
-  for(const patch of [{duration:9.9},{duration:15.1},{duration:NaN},{logoAt:Infinity},{logoAt:-1},{logoAt:11},{revealAt:12},{revealAt:NaN},{audio:'silent'},{bytes:17*1024*1024},{sha256:'none'},{src:'/historical.mp4'}])assert.equal(validProductionMedia({...desktop,...patch},false),false);
+  for(const patch of [{duration:9.9},{duration:15.1},{duration:NaN},{logoAt:Infinity},{logoAt:-1},{logoAt:11},{revealAt:12},{revealAt:NaN},{audio:'unknown'},{bytes:17*1024*1024},{sha256:'none'},{src:'/historical.mp4'}])assert.equal(validProductionMedia({...desktop,...patch},false),false);
 });
-
 test('historical media clock holds the final logo without a reveal or auto entry',()=>{
   assert.deepEqual(introFrame(19.9,media),{time:19.9,phase:'film',logo:0});
   assert.ok(Math.abs(introFrame(20.4,media).logo-.5)<.00001);
@@ -192,11 +190,40 @@ test('preserved historical assets match all seven exact Brand delivery files',as
   assert.equal(manifestBytes.length,2157);assert.equal(createHash('sha256').update(manifestBytes).digest('hex'),'35ea045a4d19a66037c671bb2c43d27f0dee954f06451aa9c6efed80f068df3a');
   const manifest=JSON.parse(manifestBytes);assert.equal(manifest.status,'founder review candidate');assert.equal(manifest.audio_listening_review,'pending');
   assert.equal(manifest.duration_seconds,23);assert.equal(manifest.frames,552);assert.equal(manifest.audio_embedded,true);assert.equal(manifest.logo_baked,false);
-  assert.deepEqual((await readdir(directory)).sort(),[...manifest.files.map(x=>x.path),'manifest.json'].sort());
+  assert.deepEqual((await readdir(directory,{withFileTypes:true})).filter(x=>x.isFile()).map(x=>x.name).sort(),[...manifest.files.map(x=>x.path),'manifest.json'].sort());
   for(const asset of manifest.files){const bytes=await readFile(new URL(asset.path,directory));assert.equal(bytes.length,asset.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),asset.sha256);}
-  for(const asset of [introDelivery.desktop,introDelivery.portrait]){
+  for(const asset of [historicalIntroDelivery.desktop,historicalIntroDelivery.portrait]){
     const declared=manifest.files.find(row=>'/intro/'+row.path===asset.src);assert.equal(asset.kind,'production');assert.equal(asset.sha256,declared.sha256);assert.equal(asset.bytes,declared.bytes);
     const stream=declared.streams.find(row=>row.type==='video');assert.equal(stream.width,asset.width);assert.equal(stream.height,asset.height);
     assert.ok(manifest.files.some(row=>'/intro/'+row.path===asset.poster));
   }
+});
+
+test('selected films remain silent, byte pinned, and hold until explicit entry in either orientation',async()=>{
+  const {readFile}=await import('node:fs/promises'),{createHash}=await import('node:crypto');
+  for(const selected of [introDelivery.desktop,introDelivery.portrait]){
+    assert.equal(selected.kind,'production');assert.equal(selected.audio,'silent');assert.equal(selected.duration,10.041667);
+    const bytes=await readFile(new URL('../public'+selected.src,import.meta.url));
+    assert.equal(bytes.length,selected.bytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),selected.sha256);
+    assert.ok((await readFile(new URL('../public'+selected.poster,import.meta.url))).length>0);
+    const f=fixture(selected);await f.controller.play();assert.equal(f.video.muted,true);
+    f.advance(100,selected.logoAt+.8);assert.ok(f.frames.at(-1).logo>.9999);
+    f.video.currentTime=selected.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));f.advance(30000);
+    assert.equal(f.statuses.at(-1),'complete');assert.deepEqual(f.exits,[]);
+    f.controller.enter();f.advance(350);f.advance(450);assert.deepEqual(f.exits,['enter']);
+  }
+});
+test('old production and engineering sessions cannot suppress the selected preview',async()=>{
+  const {rememberSplash,shouldShowSplash,SPLASH_SESSION_KEY,SPLASH_FIXTURE_SESSION_KEY}=await import('../src/splash-playback.ts');
+  const map=new Map([['bowerloom-cinematic-intro-v1','seen'],[SPLASH_FIXTURE_SESSION_KEY,'seen']]);
+  const storage={getItem:key=>map.get(key),setItem:(key,value)=>map.set(key,value)};
+  assert.equal(shouldShowSplash('',storage),true);rememberSplash(storage);assert.equal(map.get(SPLASH_SESSION_KEY),'seen');assert.equal(shouldShowSplash('',storage),false);
+});
+test('full-frame selected artwork and silent controls are kept in video and fallback states',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
+  const component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8');
+  assert.match(css,/intro-picture > video[^}]*object-fit: contain/);assert.match(css,/intro-still[^}]*object-fit: contain/);
+  assert.doesNotMatch(css,/object-fit: cover|object-position: center bottom/);
+  assert.match(component,/media.audio === 'embedded' && !settled/);
 });
