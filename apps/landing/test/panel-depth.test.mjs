@@ -65,5 +65,8 @@ test('mobile S4 foreground contains both grips but excludes the central chest st
   assert.match(source,/clipPathUnits="objectBoundingBox"/);assert.match(source,/useId\(\)/);
   const mobile=css.slice(css.indexOf('@media (max-width: 640px)'));
   assert.match(mobile,/companion-s4 \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
-  const borderSourceY=98/(140*960/640)*960;assert.ok(borderSourceY>440&&borderSourceY<460);
+  // One image-space rim coordinate holds for desktop and phone; no independent layer offsets.
+  assert.match(css,/--pink-rim-source-y: 420; --pink-source-width: 640/);
+  for(const width of [140,180]){const offset=width*420/640;assert.equal(offset/(width*960/640)*960,420);assert.ok(offset-(width*960/640)*.37>0);}
+  assert.match(css,/\.companion-s4 \.companion-robot-front \{ clip-path: var\(--companion-grip\)/);
 });

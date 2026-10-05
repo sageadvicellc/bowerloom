@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIntroController,introFrame} from '../src/intro-controller.ts';
+import {createIntroController,introFrame,introEntryAvailable} from '../src/intro-controller.ts';
 import {introDelivery,historicalIntroDelivery,selectIntroMedia,validProductionMedia} from '../src/intro-media.ts';
 const media={kind:'production',src:'/intro/desktop.mp4',poster:'/intro/desktop.jpg',sha256:'a'.repeat(64),bytes:100,width:1920,height:1080,duration:23,logoAt:20,revealAt:22.2,audio:'embedded'};
 function fixture(selectedMedia=media) {
@@ -142,9 +142,10 @@ test('a stale play promise or disposal cannot silence a newer owner',async()=>{
   f.video.play=async()=>{f.video.paused=false;};const replacement=createIntroController(f.video,f.visibility,media,f.clock,f.callbacks);await replacement.play();const pauses=f.video.pauses;
   resolve();await pending;f.controller.dispose();assert.equal(f.video.pauses,pauses);replacement.dispose();
 });
-test('near-end fallback holds final logo when decoder omits ended',async()=>{
+test('near-end frame does not reveal Enter before ended; a stalled decoder reaches accessible timeout',async()=>{
   const f=fixture();await f.controller.play();f.advance(100,22.96);assert.notEqual(f.statuses.at(-1),'complete');f.advance(250,22.96);
-  assert.equal(f.statuses.at(-1),'complete');assert.deepEqual(f.exits,[]);assert.equal(f.frames.at(-1).logo,1);f.controller.dispose();
+  assert.equal(f.statuses.at(-1),'playing');assert.equal(introEntryAvailable(f.statuses.at(-1)),false);
+  f.advance(7750,22.96);assert.equal(f.statuses.at(-1),'timeout');assert.equal(introEntryAvailable(f.statuses.at(-1)),true);assert.deepEqual(f.exits,[]);f.controller.dispose();
 });
 test('browser sound pause offers Play; explicit pause and stale pause events stay distinct',async()=>{
   const f=fixture();await f.controller.play();f.controller.setSound(true);f.video.paused=true;f.video.dispatchEvent(new Event('pause'));
@@ -152,13 +153,13 @@ test('browser sound pause offers Play; explicit pause and stale pause events sta
   f.controller.pause();f.video.dispatchEvent(new Event('pause'));assert.equal(f.statuses.at(-1),'paused');await f.controller.play();
   f.video.dispatchEvent(new Event('pause'));assert.equal(f.statuses.at(-1),'playing');f.controller.dispose();
 });
-test('React entry wiring retains a native modal, persistent Enter, still fallback and no upward slide',async()=>{
+test('React entry wiring retains a native modal, delayed Enter, still fallback and no upward slide',async()=>{
   const {readFile}=await import('node:fs/promises');
   const component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8');
   const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
   const css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
   assert.match(component,/element.showModal\(\)/);assert.match(component,/onCancel=.*enter\('skip'\)/);
-  assert.match(component,/autoFocus disabled=\{entering\} aria-label="Enter Bowerloom"[^>]*onClick=\{\(\) => enter\(\)\}/);
+  assert.match(component,/disabled=\{entering \|\| !entryAvailable\} tabIndex=\{entryAvailable \? 0 : -1\} aria-hidden=\{!entryAvailable\}/);
   assert.match(component,/if \(reducedRef.current\) active.hold\('reduced-motion'\)/);
   assert.match(component,/fallback && <img className="intro-still"/);assert.match(component,/active.dispose\(\)/);
   assert.doesNotMatch(component,/translateY|finish\(|enter.current\('reduced-motion'\)/);
@@ -248,18 +249,52 @@ test('invalid logo timing cannot admit production media',()=>{
  assert.equal(validProductionMedia({...m,audio:'embedded'},false),false);
 });
 
-test('glass splash controls use named icons, text Skip and an Enter below the logo',async()=>{
+test('glass splash controls use text Enter after playback with Skip throughout',async()=>{
   const {readFile}=await import('node:fs/promises');
   const component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8');
   const css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
   const center=component.slice(component.indexOf('<div className="intro-center">'),component.indexOf('{media.kind ===',component.indexOf('<div className="intro-center">')));
   assert.ok(center.indexOf('className="intro-logo"')<center.indexOf('aria-label="Enter Bowerloom"'));
-  assert.match(center,/<svg[^>]*aria-hidden="true"/);assert.doesNotMatch(center,/>Enter<\/button>/);
+  assert.doesNotMatch(center,/<svg/);assert.match(center,/>Enter<\/button>/);
   assert.match(component,/aria-label="Play"/);assert.match(component,/aria-label="Pause"/);
   assert.match(component,/onClick=\{\(\) => enter\('skip'\)\}>Skip/);
   assert.match(css,/intro-glass[^}]*min-width: 44px; min-height: 44px/);
-  assert.match(css,/intro-enter[^}]*width: 56px; height: 56px/);
+  assert.match(css,/intro-enter[^}]*min-width: 104px; min-height: 48px/);
   assert.match(css,/intro-center[^}]*flex-direction: column[^}]*gap: 24px/);
   assert.match(css,/backdrop-filter: blur\(16px\)/);
   assert.match(css,/data-entry="uncover"\] \.intro-center/);
+});
+
+test('main entry is not available at the logo cue; actual ended and failures expose explicit entry',async()=>{
+ for(const status of ['loading','playing','paused','entering'])assert.equal(introEntryAvailable(status),false);
+ for(const status of ['complete','blocked','failure','timeout','reduced-motion'])assert.equal(introEntryAvailable(status),true);
+ const f=fixture(introDelivery.desktop);await f.controller.play();f.advance(100,introDelivery.desktop.revealAt);
+ assert.equal(introEntryAvailable(f.statuses.at(-1)),false);f.video.currentTime=introDelivery.desktop.duration;f.video.ended=true;f.video.dispatchEvent(new Event('ended'));
+ assert.equal(introEntryAvailable(f.statuses.at(-1)),true);assert.deepEqual(f.exits,[]);f.controller.dispose();
+});
+test('wordmark is unfiltered, raster-size bounded, and fit margins reuse existing art without cropping foreground',async()=>{
+ const {readFile}=await import('node:fs/promises'),component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8'),css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
+ assert.doesNotMatch(component,/blur\(|scale\(/);assert.match(css,/width: min\(60%, 680px\)/);
+ assert.match(component,/backgroundImage: completed \? undefined : `url\("\$\{media.poster\}"\)`/);assert.match(css,/intro-picture::before[^}]*background-image: inherit[^}]*filter: blur\(24px\)/);
+ assert.match(css,/intro-picture > video[^}]*object-fit: contain/);assert.match(css,/intro-still[^}]*object-fit: contain/);
+ assert.match(component,/ref=\{skipButton\} autoFocus/);assert.match(component,/enterButton.current\?\.focus\(\{ preventScroll: true \}\)/);
+ assert.match(css,/intro-enter\[data-immediate="true"\][^}]*transition: none/);
+});
+
+test('dialog opening explicitly focuses Skip and terminal entry can reclaim hidden video focus',async()=>{
+ const {readFile}=await import('node:fs/promises'),component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8');
+ assert.match(component,/element.showModal\(\);[\s\S]*?skipButton.current\?\.focus\(\{ preventScroll: true \}\);/);
+ assert.match(component,/if \(entryAvailable && \[dialog.current, skipButton.current, video.current, document.body\]\.some\(element => element === document.activeElement\)\) enterButton.current\?\.focus/);
+ assert.doesNotMatch(component,/entryAvailable && !|querySelector\([^)]*button/);
+});
+
+test('only actual completion replaces poster margins with sampled sky and retains it during entry',async()=>{
+ const {readFile}=await import('node:fs/promises'),component=await readFile(new URL('../src/CinematicIntro.tsx',import.meta.url),'utf8'),css=await readFile(new URL('../src/intro.css',import.meta.url),'utf8');
+ assert.match(component,/if \(next === 'complete'\) setCompleted\(true\)/);
+ assert.equal((component.match(/setCompleted\(true\)/g)||[]).length,1);
+ assert.match(component,/setCompleted\(false\);\s*element.showModal/);
+ assert.match(component,/data-held-sky=\{completed\} style=\{\{ backgroundImage: completed \? undefined :/);
+ assert.match(css,/intro-picture\[data-held-sky="true"\][^{]*\{ background-image: linear-gradient\(to bottom, #8bb1d9 10%, #afcae5 90%\)/);
+ assert.match(css,/intro-picture\[data-held-sky="true"\]::before \{ display: none/);
+ assert.match(css,/intro-picture > video[^}]*object-fit: contain/);
 });

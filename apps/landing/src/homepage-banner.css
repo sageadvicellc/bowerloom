@@ -81,3 +81,8 @@
 @media (max-width: 640px) {
   .normal-site .companion-s4-slate { --robot-width: 160px; --robot-top: -89.74px; margin-top: 122px; }
 }
+
+/* Pink S4 only: image y=420 meets the actual panel rim at every responsive size.
+   The back layer is occluded by the panel; only the registered hands cross in front. */
+.normal-site .companion-s4 { --pink-rim-source-y: 420; --pink-source-width: 640; --robot-top: calc(var(--robot-width) * var(--pink-rim-source-y) / var(--pink-source-width) * -1); }
+.companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }

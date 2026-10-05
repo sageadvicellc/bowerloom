@@ -2,7 +2,10 @@
   position: fixed; inset: 0; margin: 0; padding: 0; border: 0; width: 100%; max-width: none; height: 100dvh; max-height: none;
   overflow: hidden; background: transparent; color: #F6EEE8;
 }
-.intro-picture { position: absolute; inset: 0; background: #27262B; }
+/* Full source frames stay intact; an existing poster supplies color in mismatched viewport margins. */
+.intro-picture { position: absolute; inset: 0; background-color: #777A68; background-size: cover; background-position: center; isolation: isolate; }
+.intro-picture::before { content: ''; position: absolute; z-index: -1; inset: -32px; background-image: inherit; background-size: cover; background-position: center; filter: blur(24px); }
+.intro-picture > video { position: relative; }
 .cinematic-intro::backdrop { background: transparent; }
 .intro-picture > video { display: block; width: 100%; height: 100%; object-fit: contain; }
 .intro-native-portrait video { object-position: center; }
@@ -24,11 +27,13 @@
 .intro-controls .intro-glass:not(.intro-skip) { width: 46px; height: 46px; padding: 10px; }
 .intro-glass svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.6; fill: none; }
 .intro-sky-shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, #27262B14 0%, #27262B08 48%, transparent 85%); }
-.intro-center { position: absolute; z-index: 2; top: 43%; left: 20%; width: 60%; display: flex; flex-direction: column; align-items: center; gap: 24px; pointer-events: none; }
+.intro-center { position: absolute; z-index: 2; top: 43%; left: 0; right: 0; margin-inline: auto; width: min(60%, 680px); display: flex; flex-direction: column; align-items: center; gap: 24px; pointer-events: none; }
 .intro-logo { display: block; width: 100%; height: auto; pointer-events: none; }
-.cinematic-intro .intro-enter { width: 56px; height: 56px; padding: 14px; border-radius: 50%; pointer-events: auto; }
+.cinematic-intro .intro-enter { min-width: 104px; min-height: 48px; padding: 12px 28px; border-radius: 28px; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 450ms ease; }
+.cinematic-intro .intro-enter[data-available="true"] { opacity: 1; visibility: visible; pointer-events: auto; }
+.cinematic-intro .intro-enter[data-immediate="true"] { transition: none; }
 @media (max-height: 480px) and (orientation: landscape) {
-  .intro-center { top: 34%; left: 28%; width: 44%; gap: 18px; }
+  .intro-center { top: 34%; width: min(44%, 680px); gap: 18px; }
 }
 .intro-fixture-label {
   position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); left: 18px; right: 18px;
@@ -36,6 +41,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .intro-picture { will-change: auto; }
+  .cinematic-intro .intro-enter { transition: none; }
 }
 
 .intro-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
@@ -49,3 +55,7 @@
 .cinematic-intro .intro-glass:disabled { cursor: default; }
 
 /* The final decoded frame and logo remain stable until manual Enter. */
+
+/* Sky colors sampled from the approved film's held phone frame. This is a margin surface, not new scene artwork. */
+.intro-picture[data-held-sky="true"] { background-image: linear-gradient(to bottom, #8bb1d9 10%, #afcae5 90%); }
+.intro-picture[data-held-sky="true"]::before { display: none; }

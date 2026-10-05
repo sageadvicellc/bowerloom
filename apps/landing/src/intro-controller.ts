@@ -15,6 +15,10 @@ export function introFrame(time: number, media: Pick<IntroMedia, 'duration' | 'l
   const bounded = Math.max(0, Math.min(media.duration, Number.isFinite(time) ? time : 0));
   return { time: bounded, phase: bounded >= media.revealAt ? 'hold' : bounded >= media.logoAt ? 'logo' : 'film', logo: ease((bounded - media.logoAt) / (media.ending?.logoSeconds ?? .8)) };
 }
+/** Main Enter is available only after actual completion or an accessible fallback. Skip is independent. */
+export function introEntryAvailable(status: IntroStatus): boolean {
+  return ['complete', 'failure', 'timeout', 'reduced-motion', 'blocked'].includes(status);
+}
 export function createIntroController(video: Media, visibility: Visibility, media: IntroMedia, clock: IntroClock, callbacks: {
   frame: (frame: IntroFrame) => void; status: (status: IntroStatus) => void; entry: (frame: IntroEntryFrame) => void; exit: (reason: IntroExit) => void;
 }) {
@@ -47,8 +51,8 @@ export function createIntroController(video: Media, visibility: Visibility, medi
     if (!validate()) { hold('failure'); return; }
     if (video.currentTime > lastTime + .001) { lastTime = video.currentTime; deadline = clock.now() + 8000; }
     callbacks.frame(introFrame(video.currentTime, media));
-    // Missing ended can settle on a near-final decoded frame; it never enters the site.
-    if (video.ended || (video.currentTime >= media.duration - .06 && clock.now() - (deadline - 8000) >= 250)) { hold('complete'); return; }
+    // A logo cue or near-final frame is not proof that playback has ended.
+    if (video.ended) { hold('complete'); return; }
     raf = clock.request(tick);
   };
   const watchdog = () => {
