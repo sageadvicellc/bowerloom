@@ -190,3 +190,21 @@ test('late renewal after completed discovery cannot reuse the approved authority
  await assert.rejects(f.observed.context.renewAuthority(),code('MCP_AUTHORITY_CANCELLED'));
  assert.equal(f.store.state.status,'COMPLETED');assert.equal(f.observed.opens,1);
 });
+
+test('historical closure persistence beyond five seconds stays uncertain and late completion cannot resume effects',{timeout:10000},async()=>{
+ const f=containerAuthorityFixture(),c=f.controller();await c.approve(selected,{revision:f.proposal.revision,expiresAtMs:8000},'founder');await c.dispatch(selected,'owner');
+ const before=JSON.stringify(f.store.state);let release,reached,lateRefusal,lateSuccess=0,persistenceAttempts=0;
+ const pendingStore=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>reached=resolve);
+ // The persistence store is trusted here; this stub isolates the real controller's
+ // five-second boundary. Signed closure and COMMIT handling use the PostgreSQL tests.
+ f.store.recordGuardianClosed=async(expected,head,envelope,seal,witness,checkActive)=>{
+  persistenceAttempts++;assert.equal(JSON.stringify(expected),before);checkActive();reached();await pendingStore;
+  try{checkActive();lateSuccess++;return {revision:'sha256:'+'a'.repeat(64)};}catch(error){lateRefusal=error.code;throw error;}
+ };
+ const started=Date.now(),persist=f.observed.context.guardianCheckpoints.closed(null,'synthetic-envelope','synthetic-seal',{});
+ const rejected=assert.rejects(persist,error=>error.message==='CLOSURE_TIMEOUT');await entered;await rejected;
+ assert.ok(Date.now()-started>=4900);assert.equal(persistenceAttempts,1);assert.equal(JSON.stringify(f.store.state),before);
+ release();await new Promise(resolve=>setImmediate(resolve));assert.equal(lateRefusal,'MCP_AUTHORITY_CANCELLED');assert.equal(lateSuccess,0);
+ assert.equal(JSON.stringify(f.store.state),before);assert.equal(f.observed.opens,1);assert.equal(f.observed.closes,1);
+ const cached=await c.dispatch(selected,'owner');assert.equal(cached.status,'COMPLETED');assert.equal(f.observed.opens,1);assert.equal(persistenceAttempts,1);
+});

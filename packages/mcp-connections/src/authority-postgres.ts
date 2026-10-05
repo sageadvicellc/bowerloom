@@ -12,6 +12,8 @@ import type { McpContainerRecoveryCollection } from './container-recovery-collec
 import { createGuardianBinding, validateGuardianBinding } from './container-guardian-provenance.js';
 import type { GuardianBinding, GuardianDescriptor, GuardianEvidence } from './container-guardian-provenance.js';
 
+import { advanceGuardianCheckpoint, validateGuardianCheckpointRecords } from './container-guardian-checkpoint.js';
+import type { GuardianCheckpoint, GuardianClosure, GuardianCloseWitness, GuardianCheckpointEvidence } from './container-guardian-checkpoint.js';
 const VERSION = 1;
 const SAFE_TRANSACTION_CODES = new Set(['MCP_AUTHORITY_SCHEMA_VERSION', 'MCP_AUTHORITY_SCOPE_EXISTS',
   'MCP_AUTHORITY_SCOPE_MISSING', 'MCP_AUTHORITY_STATE_CORRUPT', 'MCP_AUTHORITY_ASYNC_MUTATOR']);
@@ -240,7 +242,7 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
     return this.#transaction(async client => {
       const current = await this.#read(client, s, 'UPDATE');
       if (canonicalJson(current) !== canonicalJson(captured)) fail('MCP_GUARDIAN_BINDING_AUTHORITY_CHANGED'); check(current);
-      await this.#guardianVersion(client); check();
+      await this.#guardianVersion(client); await this.#checkpointRecords(client, captured, await this.#guardianBinding(client, captured)); check();
       const json = canonicalJson(binding);
       await client.query(`INSERT INTO ${this.#schema}.guardian_bindings VALUES($1,$2,$3,1,$4::jsonb,$5)
         ON CONFLICT(workspace_id,run_id,task_id) DO NOTHING`, [s.workspaceId, s.runId, s.taskId, json, digest(json)]); check();
@@ -255,6 +257,70 @@ export class PostgresDiscoveryAuthorityStore implements DiscoveryAuthorityStore 
       const authority = await this.#read(client, s, 'SHARE');
       return { authority, binding: await this.#guardianBinding(client, authority) };
     });
+  }
+
+  /** Explicit migration only. Reads never create checkpoint tables. */
+  async initializeGuardianCheckpoints(): Promise<void> {
+    await this.#transaction(async client => {
+      await this.#version(client); await this.#guardianVersion(client);
+      await client.query(`CREATE TABLE ${this.#schema}.guardian_checkpoint_metadata(singleton boolean PRIMARY KEY CHECK(singleton),version integer NOT NULL)`);
+      await client.query(`INSERT INTO ${this.#schema}.guardian_checkpoint_metadata VALUES(true,1)`);
+      await client.query(`CREATE TABLE ${this.#schema}.guardian_checkpoints(
+        workspace_id text NOT NULL,run_id text NOT NULL,task_id text NOT NULL,
+        version integer NOT NULL,evidence jsonb NOT NULL,checksum text NOT NULL,
+        PRIMARY KEY(workspace_id,run_id,task_id),
+        FOREIGN KEY(workspace_id,run_id,task_id) REFERENCES ${this.#schema}.discoveries(workspace_id,run_id,task_id))`);
+    });
+  }
+  async #checkpointRecords(client: Pick<PoolClient, 'query'>, authority: DiscoveryAuthorityState, binding: GuardianBinding | null) {
+    const metadata = (await client.query(`SELECT singleton,version FROM ${this.#schema}.guardian_checkpoint_metadata FOR SHARE`)).rows;
+    if (metadata.length !== 1 || metadata[0].singleton !== true || metadata[0].version !== 1) fail('MCP_GUARDIAN_CHECKPOINT_SCHEMA');
+    const s = authority.scope;
+    const rows = (await client.query(`SELECT version,evidence,checksum FROM ${this.#schema}.guardian_checkpoints
+      WHERE workspace_id=$1 AND run_id=$2 AND task_id=$3 FOR SHARE`, [s.workspaceId,s.runId,s.taskId])).rows;
+    if (!rows.length) return {checkpoints:[],closure:null};
+    if (rows.length !== 1 || rows[0].version !== 1 || digest(canonicalJson(data(rows[0].evidence))) !== rows[0].checksum) fail('MCP_GUARDIAN_CHECKPOINT_CORRUPT');
+    const value = data(rows[0].evidence) as {checkpoints:GuardianCheckpoint[];closure:GuardianClosure|null};
+    if (Object.keys(value).sort().join() !== 'checkpoints,closure') fail('MCP_GUARDIAN_CHECKPOINT_CORRUPT');
+    return validateGuardianCheckpointRecords(binding,value.checkpoints,value.closure);
+  }
+  async readGuardianCheckpointEvidence(value: Scope): Promise<GuardianCheckpointEvidence> {
+    const s = scope(value);
+    return this.#transaction(async client => {
+      const authority = await this.#read(client,s,'SHARE'), binding = await this.#guardianBinding(client,authority);
+      return {authority,binding,...await this.#checkpointRecords(client,authority,binding)};
+    });
+  }
+  async #recordCheckpoint(expected: DiscoveryAuthorityState, head: string|null, envelope: string,
+    check: (state: DiscoveryAuthorityState) => void, terminal?: {seal:string;witness:GuardianCloseWitness}) {
+    const captured = validateDiscoveryAuthorityState(expected), s = scope(captured.scope), original = canonicalJson(captured);
+    if (terminal) terminal = data(terminal) as {seal:string;witness:GuardianCloseWitness};
+    if (typeof check !== 'function') fail('MCP_GUARDIAN_CHECKPOINT_INVALID');
+    const checked = (state = captured) => {
+      const before = canonicalJson(state), returned:unknown = check(state);
+      if (isPromise(returned)) {void returned.catch(()=>{});fail('MCP_GUARDIAN_CHECKPOINT_INVALID');}
+      if (before !== canonicalJson(state) || (!terminal && state.status !== 'IN_FLIGHT')) fail('MCP_GUARDIAN_CHECKPOINT_INVALID');
+    };
+    checked();
+    return this.#transaction(async client => {
+      const current = await this.#read(client,s,'UPDATE');
+      if (canonicalJson(current) !== original) fail('MCP_GUARDIAN_CHECKPOINT_AUTHORITY_CHANGED'); checked(current);
+      const binding = await this.#guardianBinding(client,current); if (!binding) fail('MCP_GUARDIAN_CHECKPOINT_INVALID');
+      const before = await this.#checkpointRecords(client,current,binding); checked(current);
+      const after = advanceGuardianCheckpoint(binding,before,head,envelope,terminal), json = canonicalJson(after);
+      await client.query(`INSERT INTO ${this.#schema}.guardian_checkpoints VALUES($1,$2,$3,1,$4::jsonb,$5)
+        ON CONFLICT(workspace_id,run_id,task_id) DO UPDATE SET evidence=EXCLUDED.evidence,checksum=EXCLUDED.checksum`,
+        [s.workspaceId,s.runId,s.taskId,json,digest(json)]); checked(current);
+      return after;
+    },()=>checked());
+  }
+  /** Trusted host callback: live authorization runs under the same authority lock. */
+  async recordGuardianCheckpoint(expected:DiscoveryAuthorityState,head:string|null,envelope:string,assertLive:(state:DiscoveryAuthorityState)=>void):Promise<GuardianCheckpoint> {
+    return (await this.#recordCheckpoint(expected,head,envelope,assertLive)).checkpoints.find(record => record.envelope === envelope)!;
+  }
+  /** Historical audit only. Caller is trusted host code, not a cryptographically attested observer. */
+  async recordGuardianClosed(expected:DiscoveryAuthorityState,head:string|null,envelope:string,seal:string,witness:GuardianCloseWitness,checkActive:()=>void):Promise<GuardianClosure> {
+    return (await this.#recordCheckpoint(expected,head,envelope,checkActive,{seal,witness})).closure!;
   }
 
 }

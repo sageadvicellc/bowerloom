@@ -74,6 +74,7 @@ test('boot command is fixed and failed/ambiguous output cannot establish boot id
 function database(authority){
  let row=null,pending,metadata=true,version=1,hook=null,ack=null;const queries=[];
  const client=Object.assign(new EventEmitter(),{async query(sql,p){queries.push(sql);await hook?.(sql,p);if(sql.startsWith('BEGIN')){pending=clone(row);return{rows:[]};}if(sql==='ROLLBACK'){pending=null;return{rows:[]};}if(sql==='COMMIT'){row=clone(pending);await ack?.();return{rows:[]};}if(sql.startsWith('SET '))return{rows:[]};
+  if(sql.includes('guardian_checkpoint_metadata'))return {rows:[{singleton:true,version:1}]};if(sql.includes('guardian_checkpoints'))return {rows:[]};
   if(sql.includes('guardian_metadata')){if(sql.startsWith('CREATE')){assert.equal(metadata,false);metadata=true;return{rows:[]};}if(sql.startsWith('INSERT'))return{rows:[]};if(!metadata)throw Error('MISSING_SCHEMA');return{rows:[{singleton:true,version}]};}
   if(sql.startsWith('CREATE TABLE')&&sql.includes('guardian_bindings'))return{rows:[]};
   if(sql.includes('.metadata'))return{rows:[{singleton:true,version:1}]};

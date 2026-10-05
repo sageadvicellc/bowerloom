@@ -3,7 +3,7 @@ import {lstatSync,realpathSync,readFileSync,readdirSync,appendFileSync,existsSyn
 import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire,registerHooks} from 'node:module';
-export const CONTAINER_RUNTIME_FILES=Object.freeze(['container.js','container-supervisor.js','container-guardian.js','container-policy.js','container-guardian-provenance.js','container-journal-snapshot.js','darwin-boot-session.js'].map(name=>'dist/packages/mcp-connections/src/'+name));
+export const CONTAINER_RUNTIME_FILES=Object.freeze(['container.js','container-supervisor.js','container-guardian.js','container-policy.js','container-guardian-provenance.js','container-guardian-checkpoint.js','container-journal-snapshot.js','darwin-boot-session.js'].map(name=>'dist/packages/mcp-connections/src/'+name));
 const fail=()=>{throw Error('INSTALLED_CONTAINER_PROOF_REFUSED');};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const inside=(root,path)=>path===root||path.startsWith(root+sep);

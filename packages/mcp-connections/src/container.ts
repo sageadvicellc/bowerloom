@@ -1,3 +1,4 @@
+import type { GuardianCheckpointCallbacks } from './container-guardian-checkpoint.js';
 import { lstat, realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { strictJson } from '../../codex-adapter/src/safe.js';
@@ -33,9 +34,10 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
   const requestTimeoutMs = duration(options.requestTimeoutMs?.value, 5000), sessionTimeoutMs = duration(options.sessionTimeoutMs?.value, 10000), cleanupTimeoutMs = duration(options.cleanupTimeoutMs?.value, 9000, 15000);
   return async supplied => {
     if (process.platform !== 'darwin' || process.permission !== undefined) fail('MCP_CONTAINER_PLATFORM');
+    let guardianCheckpoints: GuardianCheckpointCallbacks;
     let selected: ContainerEffect, signal: AbortSignal, notify: (value: unknown) => void, operationKey: string, deadlineMs: number, renewAuthority: () => Promise<void>, bindGuardian: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>;
     try {
-      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs', 'renewAuthority', 'bindGuardian']);
+      const context = fields(supplied, ['binding', 'effect', 'scope', 'operationKey', 'signal', 'onNotification', 'deadlineMs', 'renewAuthority', 'bindGuardian', 'guardianCheckpoints']);
       const effect = record(data(context.effect!.value), ['kind', 'launch', 'launchRevision']);
       if (effect.kind !== 'container-stdio') fail('MCP_CONTAINER_INPUT');
       selected = effect as unknown as ContainerEffect;
@@ -46,6 +48,9 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
       const authorizedDeadline = context.deadlineMs!.value;
       if (!Number.isSafeInteger(authorizedDeadline) || authorizedDeadline <= Date.now() || authorizedDeadline > Date.now() + 30000) fail('MCP_CONTAINER_DEADLINE');
       deadlineMs = Math.min(authorizedDeadline, Date.now() + sessionTimeoutMs);
+      const callbacks = fields(context.guardianCheckpoints!.value, ['checkpoint', 'closed']);
+      if (typeof callbacks.checkpoint!.value !== 'function' || typeof callbacks.closed!.value !== 'function') fail('MCP_CONTAINER_INPUT');
+      guardianCheckpoints = Object.freeze({ checkpoint: callbacks.checkpoint!.value, closed: callbacks.closed!.value });
       signal = context.signal!.value; notify = context.onNotification!.value; renewAuthority = context.renewAuthority!.value; bindGuardian = context.bindGuardian!.value;
       if (!(signal instanceof AbortSignal) || typeof notify !== 'function' || typeof renewAuthority !== 'function' || typeof bindGuardian !== 'function') fail('MCP_CONTAINER_INPUT');
     } catch { return fail('MCP_CONTAINER_INPUT'); }
@@ -116,7 +121,7 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
         buffer = Buffer.concat([buffer, chunk]);
         for (;;) { const newline = buffer.indexOf(10); if (newline < 0) break; const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1); incoming(line); if (closed) return; }
         if (buffer.length > MAX_DOCUMENT_BYTES) stop('MCP_CONTAINER_OUTPUT_BOUND');
-      }, renewAuthority, bindGuardian);
+      }, renewAuthority, bindGuardian, guardianCheckpoints);
       void opening.then(owned => {
         guardian = owned;
         void owned.done.then(() => { if (!closing) stop('MCP_CONTAINER_EXIT'); }, () => stop('MCP_CONTAINER_PROCESS'));

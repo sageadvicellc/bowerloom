@@ -8,9 +8,10 @@ import { userInfo } from 'node:os';
 import { randomBytes, randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
-import { data, MCP_PROTOCOL_VERSION } from './model.js';
+import { data, sha256, MCP_PROTOCOL_VERSION } from './model.js';
 import { planMcpContainerDiscoveryLaunch } from './container-policy.js';
 import { readDarwinBootSession } from './darwin-boot-session.js';
+import { guardianTerminalPayload, terminalDeclaration } from './container-guardian-checkpoint.js';
 import { guardianSignaturePayload } from './container-guardian-provenance.js';
 import type { ContainerGuardianJob } from './container-supervisor.js';
 
@@ -32,13 +33,16 @@ function armLease(): void {
   }, Math.max(1, leaseExpiry - performance.now()));
 }
 function requestLease(): void {
-  if (stopping || challenge) return;
+  if (sealed || stopping || challenge) return;
   const now = performance.now();
   if (now >= leaseExpiry || Date.now() >= job!.deadlineMs) { stop('AUTHORITY_LEASE_EXPIRED'); return; }
   challenge = { token: randomBytes(32).toString('hex'), sequence: ++challengeSequence, expires: Math.min(now + LEASE_MS, absoluteMonotonicMs) };
   send({ type: 'lease-challenge', nonce: startNonce, operationKey: job!.operationKey, sequence: challenge.sequence, challenge: challenge.token });
 }
 let job: ContainerGuardianJob | undefined, plan: ReturnType<typeof planMcpContainerDiscoveryLaunch> | undefined, journal: Journal | undefined, directory: string | undefined;
+let sealed = false, stopGeneration = 0;
+let stageWrites: Promise<void> = Promise.resolve();
+let pendingCheckpoint: {sequence:number;hash:string;resolve:()=>void;reject:()=>void}|undefined;
 let started = false, stopping = false, ended = false, broken = false, creationAttempted = false, reason: string | null = null;
 let creation: Promise<void> | undefined, cleanup: Promise<void> | undefined, attach: ChildProcessWithoutNullStreams | undefined, attachReaped = true;
 let resolveAttach!: () => void; const attachClosed = new Promise<void>(resolve => { resolveAttach = resolve; });
@@ -66,17 +70,32 @@ async function savedJournal(): Promise<void> {
   } finally { await file.close(); }
 }
 async function saveSnapshot(body: Journal): Promise<void> {
-  requireValue(signingKey && bindingRevision && directory);
+  requireValue(!sealed && signingKey && bindingRevision && directory);
   const payload = { format: 'bowerloom/mcp-container-journal/v1beta2', bindingRevision, sequence: ++snapshotSequence, body };
   const envelope = { ...payload, signature: sign(null, guardianSignaturePayload(payload), signingKey!).toString('base64') };
   requireValue(Buffer.byteLength(canonicalJson(envelope)) <= 12288);
   await synced(join(directory!, 'journal.json'), envelope); signedSnapshot = envelope;
 }
-async function stage(value: string, change: Partial<Journal> = {}): Promise<void> {
-  requireValue(journal && directory); await savedJournal();
-  const next = { ...journal!, ...change, stage: value, lease: { ...leaseObservation } }; await saveSnapshot(next); journal = next;
+async function stage(value: string, change: Partial<Journal> = {}, normal = false): Promise<void> {
+  const generation = stopGeneration;
+  const write = stageWrites.then(async()=>{
+    requireValue(!sealed && journal && directory && (!normal || !stopping && generation === stopGeneration)); await savedJournal();
+    requireValue(!sealed && (!normal || !stopping && generation === stopGeneration));
+    const next = { ...journal!, ...change, stage: value, lease: { ...leaseObservation } }; await saveSnapshot(next); journal = next;
+  });
+  stageWrites=write.catch(()=>undefined); await write;
 }
+async function checkpoint(): Promise<void> {
+  live(); requireValue(!pendingCheckpoint && signedSnapshot);
+  const envelope=canonicalJson(signedSnapshot), value=signedSnapshot as {sequence:number};
+  const promise=new Promise<void>((resolve,reject)=>{pendingCheckpoint={sequence:value.sequence,hash:'sha256:'+sha256(envelope),resolve,reject:()=>reject(Error('CHECKPOINT_CANCELLED'))};});
+  void promise.catch(()=>undefined);
+  send({type:'checkpoint',nonce:startNonce,envelope});
+  await promise; live();
+}
+
 function docker(args: string[], timeoutMs = 2000): Promise<{ code: number | null; out: string }> {
+  requireValue(!sealed);
   return new Promise((resolveResult, reject) => {
     const child = spawn('/usr/local/bin/docker', ['--context', 'desktop-linux', ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = Buffer.alloc(0), bytes = 0, failed = false;
@@ -111,7 +130,7 @@ async function inspectOwned(): Promise<Record<string, any>> {
   requireValue((value.Mounts ?? []).every((mount: Record<string, unknown>) => mount.Type === 'tmpfs' && mount.Destination === '/scratch'));
   requireValue(typeof value.State.Running === 'boolean'); return value;
 }
-function live(): void { requireValue(!stopping && bindingRevision && job && leaseObservation.sequence > 0 && performance.now() < leaseExpiry && Date.now() < job.deadlineMs && process.connected); }
+function live(): void { requireValue(!sealed && !stopping && bindingRevision && job && leaseObservation.sequence > 0 && performance.now() < leaseExpiry && Date.now() < job.deadlineMs && process.connected); }
 async function create(): Promise<void> {
   live(); await privateDirectory(job!.stateRoot); live();
   directory = join(job!.stateRoot, job!.operationKey.slice(7)); await mkdir(directory, { mode: 0o700 }); await privateDirectory(directory);
@@ -119,11 +138,12 @@ async function create(): Promise<void> {
   journal = { format: 'bowerloom/mcp-container-journal/v1beta1', operationKey: job!.operationKey, launchOperationKey: plan!.spec.operationKey, launchRevision: plan!.revision, name: 'bowerloom-mcp-' + plan!.spec.operationKey.slice(7), cid: null, stage: 'PREPARED', deadlineMs: job!.deadlineMs, guardianPid: process.pid, attachPid: null, reason: null, lease: { ...leaseObservation } };
   await saveSnapshot(journal); live();
   requireValue(!await present(journal.name, true)); live();
-  await stage('CREATING'); live(); creationAttempted = true;
+  await stage('CREATING',{},true); await checkpoint(); live(); creationAttempted = true;
   const created = await docker(plan!.argv, 5000);
   requireValue(created.code === 0 && /^[a-f0-9]{64}\s*$/.test(created.out));
   await stage('CREATED', { cid: created.out.trim() });
   if (stopping) return;
+  await checkpoint(); live();
   await inspectOwned(); live();
   attachReaped = false;
   attach = spawn('/usr/local/bin/docker', ['--context', 'desktop-linux', 'container', 'start', '--attach', '--interactive', journal.cid!], { env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -135,17 +155,21 @@ async function create(): Promise<void> {
   attach.stdout.on('data', (chunk: Buffer) => { stdoutBytes += chunk.length; if (stdoutBytes > 512 * 1024) { stop('OUTPUT_BOUND'); return; } if (stopping) return; if (!sentStarted) earlyChunks.push(chunk); else send({ type: 'chunk', data: chunk.toString('base64') }); });
   await stage('STARTED', { attachPid: attach.pid ?? null });
   if (stopping) return;
+  await checkpoint(); live();
   sentStarted = true; send({ type: 'started', nonce: startNonce, guardianPid: process.pid });
   for (const chunk of earlyChunks) send({ type: 'chunk', data: chunk.toString('base64') }); earlyChunks.length = 0;
 }
 let startNonce: string | undefined;
 function stop(code: string): void {
-  reason ??= code; stopping = true; leaseObservation.stopRequestedAtMs ??= Date.now(); clearTimeout(timer); clearTimeout(leaseTimer); clearTimeout(renewalTimer);
+  if (sealed) return;
+  reason ??= code; if (!stopping) stopGeneration++; stopping = true;
+  pendingCheckpoint?.reject(); pendingCheckpoint=undefined; leaseObservation.stopRequestedAtMs ??= Date.now(); clearTimeout(timer); clearTimeout(leaseTimer); clearTimeout(renewalTimer);
   if (cleanup) return;
   cleanup = (async () => {
     let absent = false;
     try {
       await creation?.catch(() => undefined);
+      await stageWrites;
       if (journal?.cid) {
         const found = await inspectOwned();
         if (found.State.Running) { const stopped = await docker(['container', 'stop', '--time', '1', journal.cid], 3000); requireValue(stopped.code === 0); }
@@ -162,7 +186,17 @@ function stop(code: string): void {
       if (attach && !attachReaped) attach.kill('SIGKILL');
       if (journal) { try { await stage('UNCERTAIN', { reason }); } catch { /* Never rewrite a corrupt or replaced journal. */ } }
     }
-    if (ended) return; ended = true;
+    if (ended) return;
+    await stageWrites;
+    let terminal: {type:string;nonce:string|undefined;envelope:string;seal:string}|undefined;
+    if (journal && reason !== 'CLEANUP_UNCERTAIN' && signingKey && bindingRevision && attachReaped) {
+      const envelope=canonicalJson(signedSnapshot), body=terminalDeclaration(bindingRevision,envelope);
+      const seal=canonicalJson({...body,signature:sign(null,guardianTerminalPayload(body),signingKey).toString('base64')});
+      terminal={type:'terminal',nonce:startNonce,envelope,seal};
+    }
+    // No continuation can sign, write, renew, forward, or touch Docker after this point.
+    sealed=true; signingKey=undefined; challenge=undefined; ended = true;
+    if (terminal) send(terminal);
     const result = { type: 'done', containerAbsent: absent, noContainerCreated: !creationAttempted, attachReaped, stage: reason === 'CLEANUP_UNCERTAIN' ? 'UNCERTAIN' : journal?.stage ?? 'CANCELLED', reason };
     if (!broken && process.connected) { try { process.send?.(result, () => { if (process.connected) process.disconnect(); process.exit(0); }); } catch { process.exit(0); } } else process.exit(0);
   })();
@@ -173,6 +207,11 @@ process.on('uncaughtException', () => stop('GUARDIAN_ERROR')); process.on('unhan
 process.on('message', supplied => {
   try {
     const message = data(supplied) as Record<string, unknown>;
+    if (sealed) return;
+    if (message.type === 'checkpoint-ack') {
+      requireValue(!stopping && pendingCheckpoint && message.nonce === startNonce && Object.keys(message).length === 4 && message.sequence === pendingCheckpoint!.sequence && message.envelopeSha256 === pendingCheckpoint!.hash);
+      live(); const pending=pendingCheckpoint!;pendingCheckpoint=undefined;pending.resolve();return;
+    }
     if (message.type === 'cancel' && message.nonce === startNonce && Object.keys(message).length === 2) { stop('CANCELLED'); return; }
     if (message.type === 'guardian-bound') {
       requireValue(started && helloSent && !bindingRevision && !stopping && job && message.nonce === startNonce && Object.keys(message).length === 3

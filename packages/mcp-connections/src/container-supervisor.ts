@@ -2,6 +2,8 @@ import { fork } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { readDarwinBootSession } from './darwin-boot-session.js';
+import { createGuardianCheckpoint, verifyGuardianTerminal } from './container-guardian-checkpoint.js';
+import type { GuardianCheckpointCallbacks, GuardianCloseWitness } from './container-guardian-checkpoint.js';
 import { validateGuardianDescriptor } from './container-guardian-provenance.js';
 import type { GuardianDescriptor, GuardianBinding } from './container-guardian-provenance.js';
 import { data, fail, McpConnectionError } from './model.js';
@@ -9,14 +11,17 @@ import type { McpContainerPlanInput } from './container-policy.js';
 export interface ContainerGuardianJob { stateRoot: string; operationKey: string; launch: McpContainerPlanInput; launchRevision: string; deadlineMs: number }
 export interface ContainerGuardianDone { containerAbsent: boolean; noContainerCreated: boolean; attachReaped: boolean; stage: string; reason: string | null }
 export interface OwnedContainerGuardian { guardianPid: number; done: Promise<ContainerGuardianDone>; write(data: string): void; terminate(): Promise<void> }
-export async function startContainerGuardian(value: ContainerGuardianJob, signal: AbortSignal, onChunk: (data: Buffer) => void, renewAuthority: () => Promise<void>, bindGuardian: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>): Promise<OwnedContainerGuardian> {
+export async function startContainerGuardian(value: ContainerGuardianJob, signal: AbortSignal, onChunk: (data: Buffer) => void, renewAuthority: () => Promise<void>, bindGuardian: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>, checkpoints: GuardianCheckpointCallbacks): Promise<OwnedContainerGuardian> {
   const job = data(value) as unknown as ContainerGuardianJob;
-  if (typeof bindGuardian !== 'function' || typeof renewAuthority !== 'function' || signal.aborted || process.permission !== undefined || !Number.isSafeInteger(job.deadlineMs) || job.deadlineMs <= Date.now() || job.deadlineMs > Date.now() + 30000) fail('MCP_CONTAINER_GUARDIAN_INPUT');
+  if (!checkpoints || typeof checkpoints.checkpoint !== 'function' || typeof checkpoints.closed !== 'function' || typeof bindGuardian !== 'function' || typeof renewAuthority !== 'function' || signal.aborted || process.permission !== undefined || !Number.isSafeInteger(job.deadlineMs) || job.deadlineMs <= Date.now() || job.deadlineMs > Date.now() + 30000) fail('MCP_CONTAINER_GUARDIAN_INPUT');
   const bootSessionId = await readDarwinBootSession();
   if (signal.aborted || Date.now() >= job.deadlineMs) fail('MCP_CONTAINER_GUARDIAN_INPUT');
   const nonce = randomBytes(32).toString('hex');
   const processOwned = fork(new URL('./container-guardian.js', import.meta.url), [], { execArgv: [], env: { NODE_V8_COVERAGE: undefined }, detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-  let helloReceived = false, bound = false;
+  let helloReceived = false, bound = false, binding: GuardianBinding | undefined;
+  let acknowledgedStage: string|undefined;
+  let head: string|null = null, pendingCheckpoint = false, checkpointCount = 0;
+  let terminal: {envelope:string;seal:string;head:string|null}|undefined;
   let started = false, ended = false, cancelSent = false, broken = false, receipt: ContainerGuardianDone | undefined, leaseSequence = 0, renewing = false;
   let resolveStart!: () => void, rejectStart!: (error: McpConnectionError) => void, resolveDone!: (value: ContainerGuardianDone) => void, rejectDone!: (error: McpConnectionError) => void;
   const start = new Promise<void>((resolve, reject) => { resolveStart = resolve; rejectStart = reject; });
@@ -41,26 +46,47 @@ export async function startContainerGuardian(value: ContainerGuardianJob, signal
         void Promise.resolve().then(() => {
           if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
           return bindGuardian(descriptor);
-        }).then(async binding => {
+        }).then(async registered => {
+          binding = data(registered) as GuardianBinding;
           if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
           if (binding.operationKey !== job.operationKey || binding.launchRevision !== job.launchRevision || canonicalJson(binding.descriptor) !== canonicalJson(descriptor)
             || !/^sha256:[a-f0-9]{64}$/.test(binding.revision) || await readDarwinBootSession() !== bootSessionId) throw error();
           if (ended || broken || cancelSent || signal.aborted || Date.now() >= job.deadlineMs) throw error();
-          bound = true; send({ type: 'guardian-bound', nonce, bindingRevision: binding.revision });
+          binding = data(registered) as GuardianBinding; bound = true; send({ type: 'guardian-bound', nonce, bindingRevision: binding.revision });
         }).catch(() => cancel());
+      } else if (message.type === 'checkpoint') {
+        if (!binding || terminal || pendingCheckpoint || ended || broken || cancelSent || message.nonce !== nonce || Object.keys(message).length !== 3 || typeof message.envelope !== 'string' || ++checkpointCount > 32) throw error();
+        const candidate = createGuardianCheckpoint(binding,head,message.envelope);
+        const stage = JSON.parse(message.envelope).body.stage;
+        if (stage !== (!acknowledgedStage ? 'CREATING' : acknowledgedStage === 'CREATING' ? 'CREATED' : acknowledgedStage === 'CREATED' ? 'STARTED' : null)) throw error();
+        pendingCheckpoint = true; const expectedHead=head;
+        void Promise.resolve().then(()=>{
+          if (ended || broken || cancelSent || terminal || signal.aborted || Date.now() >= job.deadlineMs) throw error();
+          return checkpoints.checkpoint(expectedHead,message.envelope as string);
+        }).then(record=>{
+          pendingCheckpoint=false;
+          if (ended || broken || cancelSent || terminal || signal.aborted || Date.now() >= job.deadlineMs) return;
+          if (canonicalJson(data(record))!==canonicalJson(candidate)) throw error();
+          head=record.revision; acknowledgedStage=stage;
+          send({type:'checkpoint-ack',nonce,sequence:record.sequence,envelopeSha256:record.envelopeSha256});
+        }).catch(()=>{pendingCheckpoint=false;cancel();});
+      } else if (message.type === 'terminal') {
+        if (!binding || terminal || ended || broken || message.nonce !== nonce || Object.keys(message).length !== 4 || typeof message.envelope !== 'string' || typeof message.seal !== 'string') throw error();
+        verifyGuardianTerminal(message.envelope,message.seal,binding);
+        terminal={envelope:message.envelope,seal:message.seal,head};
       } else if (message.type === 'lease-challenge') {
-        if (!bound) throw error();
+        if (!bound || terminal) throw error();
         if (ended || broken || cancelSent || renewing || message.nonce !== nonce || message.operationKey !== job.operationKey || Object.keys(message).length !== 5
           || message.sequence !== leaseSequence + 1 || typeof message.challenge !== 'string' || !/^[a-f0-9]{64}$/.test(message.challenge)) throw error();
         leaseSequence++; renewing = true;
         void Promise.resolve().then(() => renewAuthority()).then(() => {
           renewing = false;
-          if (!ended && !broken && !cancelSent && !signal.aborted) send({ type: 'lease-renewal', nonce, operationKey: job.operationKey, sequence: message.sequence, challenge: message.challenge });
+          if (!ended && !broken && !cancelSent && !terminal && !signal.aborted) send({ type: 'lease-renewal', nonce, operationKey: job.operationKey, sequence: message.sequence, challenge: message.challenge });
         }, () => { renewing = false; cancel(); });
       } else if (message.type === 'started') {
-        if (!bound || started || message.nonce !== nonce || message.guardianPid !== processOwned.pid || Object.keys(message).length !== 3) throw error(); started = true; resolveStart();
+        if (!bound || terminal || acknowledgedStage !== 'STARTED' || started || message.nonce !== nonce || message.guardianPid !== processOwned.pid || Object.keys(message).length !== 3) throw error(); started = true; resolveStart();
       } else if (message.type === 'chunk') {
-        if (!started || Object.keys(message).length !== 2 || typeof message.data !== 'string' || message.data.length > 90000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(message.data)) throw error();
+        if (terminal || ended || !started || Object.keys(message).length !== 2 || typeof message.data !== 'string' || message.data.length > 90000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(message.data)) throw error();
         const bytes = Buffer.from(message.data, 'base64'); if (bytes.toString('base64') !== message.data) throw error();
         try { onChunk(bytes); } catch { cancel(); }
       } else if (message.type === 'done') {
@@ -70,14 +96,20 @@ export async function startContainerGuardian(value: ContainerGuardianJob, signal
       } else throw error();
     } catch { failedChannel(); }
   });
-  processOwned.once('close', () => {
+  processOwned.once('close', (code, signalName) => {
     ended = true; clearTimeout(watchdog); clearTimeout(hardTimer); signal.removeEventListener('abort', cancel);
     if (!started) rejectStart(error());
-    if (receipt?.attachReaped && (receipt.containerAbsent || receipt.noContainerCreated) && receipt.stage !== 'UNCERTAIN') resolveDone(receipt); else rejectDone(error());
+    if (receipt?.attachReaped && (receipt.containerAbsent || receipt.noContainerCreated) && receipt.stage !== 'UNCERTAIN' && code === 0 && signalName === null && terminal && binding && !broken) {
+      const body=JSON.parse(terminal.envelope).body;
+      if (body.stage!==receipt.stage || (body.stage==='REAPED' && !receipt.containerAbsent) || (body.stage==='CANCELLED' && !receipt.noContainerCreated)) {rejectDone(error());return;}
+      const witness:GuardianCloseWitness={format:'bowerloom/mcp-guardian-owned-close/v1beta1',bindingRevision:binding.revision,guardianSessionId:binding.descriptor.guardianSessionId,guardianPid:processOwned.pid!,exitCode:0,signal:null,observedAtMs:Date.now()};
+      const selected=terminal, doneReceipt=receipt;let boundTimer:ReturnType<typeof setTimeout>|undefined;
+      void Promise.race([Promise.resolve().then(()=>checkpoints.closed(selected.head,selected.envelope,selected.seal,witness)),new Promise<never>((_,reject)=>{boundTimer=setTimeout(()=>reject(error()),5000);})]).then(()=>resolveDone(doneReceipt),()=>rejectDone(error())).finally(()=>clearTimeout(boundTimer));
+    } else rejectDone(error());
   });
   if (signal.aborted) cancel(); else send({ type: 'start', nonce, job });
   await start;
   return { guardianPid: processOwned.pid!, done,
-    write(message) { if (ended || broken || cancelSent || Buffer.byteLength(message) > 2048) fail('MCP_CONTAINER_GUARDIAN_CLOSED'); send({ type: 'write', nonce, data: message }); },
+    write(message) { if (ended || broken || cancelSent || terminal || Buffer.byteLength(message) > 2048) fail('MCP_CONTAINER_GUARDIAN_CLOSED'); send({ type: 'write', nonce, data: message }); },
     async terminate() { cancel(); await done; } };
 }

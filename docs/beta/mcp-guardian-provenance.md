@@ -37,3 +37,11 @@ Legacy v1 journals and an initialized binding store without a record yield legac
 Trusted components include the original supervisor/guardian code and Node runtime, their private OS IPC channel, kernel boot query, local account, authenticated PostgreSQL pool and database owner. A malicious same-user process or root can inspect memory, replace trusted code or act through its credentials. This does not isolate the system from those actors. A digest beside an editable file is never used as provenance; a public key independently registered by the original launch is used to verify signatures, under these host and database trust assumptions.
 
 Worker tests fork the real guardian and verify its generated signature, while substituting the Docker boundary. Other adversarial tests use explicitly synthetic signing fixtures for file/boot/store cases. Root separately proves real PostgreSQL binding, a real signed guardian journal and fresh-process inspection using the existing cached synthetic container, then repeats installed-package validation. Actual reboot and reliable PID-start identification remain unproved. The next recovery steps require durable latest-stage anchoring and separately reviewed effect authority; this slice implements neither.
+
+## Versioned checkpoint extension
+
+The v1 inspector above remains unchanged. It never upgrades an earlier receipt into fresh evidence.
+
+The internal v2 checkpoint inspector adds rollback detection and original lifecycle closure. See [guardian checkpoints](mcp-guardian-checkpoints.md) for its exact classifications.
+
+Uncertain operations retain their hold. The [operator procedure](mcp-recovery-operator.md) explains private read-only receipt collection without cleanup or retry authority.

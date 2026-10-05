@@ -1,3 +1,4 @@
+import type { GuardianCheckpointStore, GuardianCheckpointCallbacks } from './container-guardian-checkpoint.js';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { systemClock } from '../../broker/src/index.js';
 import type { Scope, IdentityProvider, Principal, Clock } from '../../broker/src/types.js';
@@ -29,7 +30,7 @@ export interface DiscoveryAuthorityStore {
   /** Serialize per scope, validate transitions, and durably commit before resolving. Never rerun a callback automatically. */
   transaction<T>(scope: Scope, mutate: (state: DiscoveryAuthorityState) => T): Promise<T>;
 }
-export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number; renewAuthority?: () => Promise<void>; bindGuardian?: (descriptor: GuardianDescriptor) => Promise<GuardianBinding> }
+export interface DiscoveryAuthorityContext extends McpDiscoveryContext { effect: DiscoveryEffect; operationKey: string; scope: Scope; deadlineMs?: number; renewAuthority?: () => Promise<void>; bindGuardian?: (descriptor: GuardianDescriptor) => Promise<GuardianBinding>; guardianCheckpoints?: GuardianCheckpointCallbacks }
 export type DiscoveryAuthorityOpen = (context: Readonly<DiscoveryAuthorityContext>) => Promise<McpDiscoveryTransport>;
 const AUTHORITY_CODES = new Set(['MCP_AUTHORITY_FIELDS', 'MCP_AUTHORITY_IDENTIFIER', 'MCP_AUTHORITY_TIME', 'MCP_AUTHORITY_DIGEST',
   'MCP_AUTHORITY_TEXT', 'MCP_AUTHORITY_PATH', 'MCP_AUTHORITY_EFFECT', 'MCP_AUTHORITY_EFFECT_BINDING', 'MCP_AUTHORITY_EFFECT_BOUND',
@@ -263,12 +264,33 @@ export class DiscoveryAuthorityController {
               opening = Promise.resolve(this.#open(Object.freeze({ ...context, effect: frozen(data(state.proposal.effect) as DiscoveryEffect), operationKey: state.operationKey, scope: frozen(scope(state.scope)),
                 ...(state.proposal.effect.kind === 'container-stdio' ? { deadlineMs: state.intent!.deadlineMs, bindGuardian: async (descriptor: GuardianDescriptor) => {
                   const store = this.#store as DiscoveryAuthorityStore & Partial<GuardianBindingStore>;
-                  if (typeof store.bindContainerGuardian !== 'function') fail('MCP_AUTHORITY_STORE_UNCERTAIN');
+                  if (typeof store.bindContainerGuardian !== 'function' || typeof (store as Partial<GuardianCheckpointStore>).recordGuardianCheckpoint !== 'function' || typeof (store as Partial<GuardianCheckpointStore>).recordGuardianClosed !== 'function') fail('MCP_AUTHORITY_STORE_UNCERTAIN');
                   return store.bindContainerGuardian(intent, descriptor, current => {
                     this.#live(current, p);
                     if (current.status !== 'IN_FLIGHT' || !same(current.intent, intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
                   });
-                }, renewAuthority: async () => {
+                }, guardianCheckpoints: {
+                  checkpoint: async (head: string|null, envelope: string) => {
+                    const store = this.#store as DiscoveryAuthorityStore & GuardianCheckpointStore;
+                    return store.recordGuardianCheckpoint(intent,head,envelope,current=>{
+                      this.#live(current,p);
+                      if (current.status !== 'IN_FLIGHT' || !same(current.intent,intent.intent) || controller.signal.aborted || context.signal.aborted) fail('MCP_AUTHORITY_CANCELLED');
+                    });
+                  },
+                  closed: async (head, envelope, seal, witness) => {
+                    const store = this.#store as DiscoveryAuthorityStore & GuardianCheckpointStore;
+                    let active = true, timeout:ReturnType<typeof setTimeout>|undefined;
+                    const check=()=>{if(!active)fail('MCP_AUTHORITY_CANCELLED');};
+                    try {
+                      const persist=async()=>{
+                        const current=await this.#transaction(s,state=>state);check();
+                        if(!same(current.intent,intent.intent)||!same(current.proposal,intent.proposal))fail('MCP_AUTHORITY_CANCELLED');
+                        return store.recordGuardianClosed(current,head,envelope,seal,witness,check);
+                      };
+                      return await Promise.race([persist(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>{active=false;reject(Error('CLOSURE_TIMEOUT'));},5000);})]);
+                    } finally {active=false;clearTimeout(timeout);}
+                  }
+                } satisfies GuardianCheckpointCallbacks, renewAuthority: async () => {
                   // No cached authority: acknowledge only a fresh, committed durable check.
                   await this.#transaction(s, current => {
                     this.#live(current, p);
