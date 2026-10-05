@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { canonicalJson, digest } from '../../../dist/packages/contracts/src/index.js';
@@ -185,7 +186,7 @@ function memoryPool(initial, onCommit) {
   let stored = stateCopy(initial);
   return { snapshot: () => stateCopy(stored), async connect() {
     let staged;
-    return { release() {}, async query(sql, values) {
+    return Object.assign(new EventEmitter(), { release() {}, async query(sql, values) {
       if (sql.startsWith('BEGIN')) staged = stateCopy(stored);
       else if (sql.startsWith('SET LOCAL')) { /* Synthetic transaction settings. */ }
       else if (sql.includes('.metadata FOR SHARE')) return { rows: [{ singleton: true, version: 1 }] };
@@ -197,7 +198,7 @@ function memoryPool(initial, onCommit) {
       else if (sql === 'ROLLBACK') staged = undefined;
       else throw new Error(`Unexpected synthetic query: ${sql}`);
       return { rows: [] };
-    } };
+    } });
   } };
 }
 for (const offset of [-1000, 1000]) test(`post-commit launch check respects ${offset}ms jitter expiry without losing its hold`, async () => {

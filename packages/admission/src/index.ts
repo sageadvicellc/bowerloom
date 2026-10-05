@@ -11,7 +11,7 @@ export const ADMISSION_VERSION = 1;
 const own = <T>(values: Record<string, T>, key: string): T | undefined => Object.hasOwn(values, key) ? values[key] : undefined;
 const view = (reservation: Reservation): ReservationView => { const { permitHash: _redacted, ...result } = structuredClone(reservation); return result; };
 const observationSnapshot = (value: unknown): unknown => { try { return observationCopy(value); } catch { return undefined; } };
-async function query(client: PoolClient, sql: string, values?: unknown[]) {
+async function query(client: Pick<PoolClient, 'query'>, sql: string, values?: unknown[]) {
   try { return await client.query(sql, values); }
   catch { throw new AdmissionError('DATABASE_ERROR', 'The admission database operation failed. No retry was attempted.'); }
 }
@@ -28,21 +28,53 @@ export class PostgresAdmission {
   #now(): number {
     const now = this.#clock(); if (!validTime(now)) throw new AdmissionError('CLOCK_UNAVAILABLE', 'A valid controller clock is required.'); return now;
   }
-  async #transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+  async #transaction<T>(operation: (client: Pick<PoolClient, 'query'>) => Promise<T>): Promise<T> {
     let client: PoolClient;
     try { client = await this.#pool.connect(); } catch { throw new AdmissionError('STORE_UNAVAILABLE', 'The admission database is unavailable.'); }
-    let committing = false; let discard = false;
+    let committing = false, discard = false, fault = false, released = false, returning = false;
+    const databaseError = () => new AdmissionError('DATABASE_ERROR', 'The admission database operation failed. No retry was attempted.');
+    const commitUnknown = () => new AdmissionError('COMMIT_UNKNOWN', 'Admission commit acknowledgement failed. Lookup and trusted reconciliation are required; do not launch or retry automatically.');
+    let rejectFault!: (error: AdmissionError) => void;
+    const failure = new Promise<never>((_, reject) => { rejectFault = reject; });
+    void failure.catch(() => {});
+    // A checked-out pg client no longer has the pool's idle error listener.
+    // Latch only the fault, never the driver's private message or connection details.
+    const onError = () => { if (fault) return; fault = true; discard = true; rejectFault(databaseError()); };
+    const check = () => { if (fault) throw databaseError(); };
+    if (typeof client.on !== 'function' || typeof client.removeListener !== 'function') {
+      try { client.release(true); } catch { /* No usable event boundary; do not issue queries. */ }
+      throw new AdmissionError('STORE_UNAVAILABLE', 'The admission database is unavailable.');
+    }
+    client.on('error', onError);
+    const guarded = { query: async (...args: unknown[]) => {
+      check();
+      const result = await Promise.race([Promise.resolve(Reflect.apply(client.query, client, args)), failure]);
+      check(); return result;
+    } } as unknown as Pick<PoolClient, 'query'>;
     try {
-      await query(client, 'BEGIN ISOLATION LEVEL READ COMMITTED');
-      await query(client, "SET LOCAL lock_timeout='5s'"); await query(client, "SET LOCAL statement_timeout='10s'");
-      await query(client, "SET LOCAL idle_in_transaction_session_timeout='10s'"); await query(client, "SET LOCAL synchronous_commit='on'");
-      const result = await operation(client); committing = true; await query(client, 'COMMIT'); return result;
+      await query(guarded, 'BEGIN ISOLATION LEVEL READ COMMITTED');
+      await query(guarded, "SET LOCAL lock_timeout='5s'"); await query(guarded, "SET LOCAL statement_timeout='10s'");
+      await query(guarded, "SET LOCAL idle_in_transaction_session_timeout='10s'"); await query(guarded, "SET LOCAL synchronous_commit='on'");
+      const result = await Promise.race([operation(guarded), failure]);
+      check(); committing = true; await query(guarded, 'COMMIT'); check();
+      returning = true; return result;
     } catch (error) {
-      if (committing) { discard = true; throw new AdmissionError('COMMIT_UNKNOWN', 'Admission commit acknowledgement failed. Lookup and trusted reconciliation are required; do not launch or retry automatically.'); }
-      try { await client.query('ROLLBACK'); }
+      if (committing) { discard = true; throw commitUnknown(); }
+      if (fault) { discard = true; throw databaseError(); }
+      // Roll back only a healthy connection; a latched fault forbids more commands.
+      try { await Promise.race([client.query('ROLLBACK'), failure]); }
       catch { discard = true; throw new AdmissionError('ROLLBACK_FAILED', 'Admission rollback acknowledgement failed; the connection was discarded.'); }
-      throw error;
-    } finally { client.release(discard); }
+      if (fault) { discard = true; throw databaseError(); }
+      if (error instanceof AdmissionError) throw error;
+      throw databaseError();
+    } finally {
+      // Retain our consuming listener until the pool synchronously regains ownership.
+      // If release throws, keep it attached to the otherwise unowned client.
+      try { client.release(discard || fault); released = true; }
+      catch { throw committing ? commitUnknown() : databaseError(); }
+      finally { if (released) client.removeListener('error', onError); }
+      if (fault && returning) throw committing ? commitUnknown() : databaseError();
+    }
   }
   async createSchema(registrations: { accountId: string; aliases: string[]; policy: AdmissionPolicy }[]): Promise<void> {
     if (!Array.isArray(registrations) || registrations.length < 1 || registrations.length > 16) throw new AdmissionError('INVALID_ACCOUNTS', 'Register between one and sixteen canonical accounts.');
