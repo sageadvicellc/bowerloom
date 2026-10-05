@@ -339,6 +339,22 @@ export class PostgresAdmission {
       this.#resolve(current, proof, this.#now()); return view(current);
     });
   }
+  /** Controlled accounting only; does not reopen a claim or authorize another launch. */
+  async completeControlled(accountAlias: string, jobId: string, input: ReconciliationProof, control: AdmissionControl): Promise<ReservationView> {
+    const attempt=this.#controlled(control);
+    try {
+      const proof=proofCopy(input); identifier(jobId);
+      if(accountAlias!==attempt.control.binding.accountAlias)throw new AdmissionError('CONTROL_IDENTITY','Controlled accounting identity changed.');
+      return await this.#account(accountAlias,state=>{
+        const current=own(state.reservations,jobId);
+        if(!current || !['RUNNING','COMPLETED'].includes(current.status) || current.launcherId!==attempt.control.binding.launcherId
+          || current.requestDigest!==attempt.control.binding.requestDigest || proof.kind!=='completed' || proof.processRef!==current.processRef)
+          throw new AdmissionError('CONTROL_CLAIM','Controlled completion must match its exact running claim.');
+        this.#boundRequest(current.request,attempt);
+        this.#resolve(current,proof,this.#now());return view(current);
+      },attempt);
+    } finally {attempt.close();}
+  }
   reconcile(input: ReservationRequest, inputProof: ReconciliationProof): Promise<ReservationView> {
     const request = requestCopy(input); const proof = proofCopy(inputProof);
     return this.#account(request.accountAlias, state => {

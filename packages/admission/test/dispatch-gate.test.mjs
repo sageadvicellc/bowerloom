@@ -235,3 +235,29 @@ test('controlled rejections use fixed codes and stored sanitized messages at eve
   }
  }
 });
+
+
+test('controlled completion binds request launcher and process; exact acknowledged completion is idempotent',async()=>{
+ const e=setup(),r=await e.reserve();await e.launch(r.launchPermit,start(e));
+ const proof={kind:'completed',proofRef:'proof',observedAtMs:e.now(),processRef:'process',fencedLauncherId:null};
+ for(const patch of [{processRef:'other'},{kind:'not-started'}])await assert.rejects(e.store.completeControlled('alias','job',{...proof,...patch},e.control));
+ await assert.rejects(e.store.completeControlled('alias','job',proof,{...e.control,binding:{...e.control.binding,requestDigest:'sha256:'+'0'.repeat(64)}}));
+ assert.equal(held(e).status,'RUNNING');
+ const completed=await e.store.completeControlled('alias','job',proof,e.control);assert.equal(completed.status,'COMPLETED');assert.equal(completed.retained.primary.percent,10);
+ assert.deepEqual(await e.store.completeControlled('alias','job',proof,e.control),completed);
+ await assert.rejects(e.store.completeControlled('alias','job',{...proof,proofRef:'different'},e.control));
+});
+test('controlled completion lost COMMIT acknowledgment remains unknown without reopening or releasing holds',async()=>{
+ const e=setup(),r=await e.reserve();await e.launch(r.launchPermit,start(e));
+ const proof={kind:'completed',proofRef:'proof',observedAtMs:e.now(),processRef:'process',fencedLauncherId:null};
+ e.pool.hook=async(sql,v,c,execute)=>{if(sql==='COMMIT'){execute(sql,v);throw Error('PRIVATE_COMMIT');}};
+ await assert.rejects(e.store.completeControlled('alias','job',proof,e.control),{code:'COMMIT_UNKNOWN'});
+ const row=e.pool.snapshot().reservations.job;assert.equal(row.status,'COMPLETED');assert.equal(row.permitHash,null);assert.equal(row.retained.primary.percent,10);
+});
+test('cancelled completion refuses a late query and a stalled completion acquisition times out',async()=>{
+ const e=setup(),r=await e.reserve();await e.launch(r.launchPermit,start(e));
+ const proof={kind:'completed',proofRef:'proof',observedAtMs:e.now(),processRef:'process',fencedLauncherId:null},entered=deferred(),late=deferred();
+ e.pool.hook=async sql=>{if(sql==='SELECT current_database() AS name'){entered.resolve();return late.promise;}};
+ const pending=e.store.completeControlled('alias','job',proof,e.control);await entered.promise;e.abort.abort();await assert.rejects(pending);const queries=e.pool.queries.length;late.resolve({rows:[{name:'synthetic'}]});await tick();assert.equal(e.pool.queries.length,queries);assert.equal(held(e).status,'RUNNING');
+ const t=setup(),s=await t.reserve();await t.launch(s.launchPermit,start(t));t.pool.connectHook=()=>new Promise(()=>{});await assert.rejects(t.store.completeControlled('alias','job',proof,t.control),{code:'CONTROL_TIMEOUT'});assert.equal(held(t).status,'RUNNING');
+});
