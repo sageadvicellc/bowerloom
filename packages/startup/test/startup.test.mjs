@@ -213,7 +213,7 @@ test('historical v1alpha1 receipt inspects without rewrite, default injection or
   const { input } = fixture(t);
   const historic = JSON.parse(fs.readFileSync(new URL('./fixtures/scaffold-v1alpha1.json', import.meta.url), 'utf8'));
   const currentPlan = await planStartup(input);
-  const body = { format: currentPlan.format, templateVersion: historic.templateVersion, input: { mode: input.mode, targetDir: input.targetDir, brief: historic.brief }, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const body = { format: 'bowerloom/startup-plan/v1alpha1', templateVersion: historic.templateVersion, input: { mode: input.mode, targetDir: input.targetDir, brief: historic.brief }, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
   const plan = { ...body, revision: digest(canonicalJson(body)) };
   const root = join(input.targetDir, '.bowerloom'); fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   for (const file of historic.files) { const path = join(root, file.path); fs.mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path, file.text, { mode: 0o600 }); }
@@ -247,7 +247,7 @@ for (const historic of historicalFixture.cases) test(`historical ${historical} $
   const { input } = fixture(t);
   input.brief = historic.brief;
   const currentPlan = await planStartup(input);
-  const body = { format: currentPlan.format, templateVersion: historicalFixture.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const body = { format: 'bowerloom/startup-plan/v1alpha1', templateVersion: historicalFixture.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
   const plan = { ...body, revision: digest(canonicalJson(body)) };
   assert.notEqual(plan.revision, currentPlan.revision);
   await assert.rejects(applyStartup(input, plan.revision), code('STALE_APPROVAL'));

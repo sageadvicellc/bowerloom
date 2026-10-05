@@ -20,7 +20,7 @@ async function fixture(t,profile='engineer',historical) {
  if(!historical)receipt=await applyStartup(input,plan.revision);
  else {
   const h=JSON.parse(fs.readFileSync(new URL(`./fixtures/scaffold-${historical}.json`,import.meta.url),'utf8')),data=h.cases?.[0]??h;
-  const body={format:plan.format,templateVersion:h.templateVersion,input:{...plan.input,brief:data.brief},binding:plan.binding,files:data.files,compiled:data.compiled,specReady:true,runtimeReady:false,executionAuthorized:false,reviewRequired:true};
+  const body={format:'bowerloom/startup-plan/v1alpha1',templateVersion:h.templateVersion,input:{...plan.input,brief:data.brief},binding:plan.binding,files:data.files,compiled:data.compiled,specReady:true,runtimeReady:false,executionAuthorized:false,reviewRequired:true};
   const root=join(targetDir,'.bowerloom');fs.mkdirSync(root,{recursive:true,mode:0o700});
   for(const file of data.files){fs.mkdirSync(dirname(join(root,file.path)),{recursive:true,mode:0o700});fs.writeFileSync(join(root,file.path),file.text,{mode:0o600});}
   receipt={format:'bowerloom/startup-receipt/v1alpha1',plan:{...body,revision:digest(canonicalJson(body)).slice(7)},installedTargetIdentity:identity(targetDir),installedBowerloomIdentity:identity(root),specReady:true,runtimeReady:false,executionAuthorized:false,reviewRequired:true};

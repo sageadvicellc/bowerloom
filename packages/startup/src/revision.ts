@@ -9,11 +9,12 @@ import type { StartupBrief, StartupPlan, StartupReceipt, StartupInspection, Dire
 
 export interface RevisionInput { targetDir: string; brief: StartupBrief }
 export interface StartupRevisionPlan {
-  format: 'bowerloom/startup-revision-plan/v1beta1'; targetDir: string; fromRevision: string; toRevision: string;
+  format: 'bowerloom/startup-revision-plan/v1beta1' | 'bowerloom/startup-revision-plan/v1beta2';
+  operationBinding?: { parent: DirectoryIdentity; target: DirectoryIdentity; sourceBowerloom: DirectoryIdentity }; targetDir: string; fromRevision: string; toRevision: string;
   beforeReceiptSha256: string; before: StartupReceipt; after: StartupPlan; revision: string; executionAuthorized: false; runtimeReady: false;
 }
 export interface StartupRevisionRecovery {
-  format: 'bowerloom/startup-revision-recovery/v1beta1'; state: 'committed' | 'rolled-back'; revision: string;
+  format: 'bowerloom/startup-revision-recovery/v1beta1' | 'bowerloom/startup-revision-recovery/v1beta2'; state: 'committed' | 'rolled-back'; revision: string;
   installedRevision: string | null; inspection: StartupInspection;
 }
 const MARKER = '.bowerloom-revision.json', RECEIPT = 'installation-receipt.json';
@@ -54,18 +55,31 @@ async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
   try { return await work(); }
   finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }
+const v2 = (plan: StartupRevisionPlan): boolean => plan.format === 'bowerloom/startup-revision-plan/v1beta2';
+const sourceIdentity = (plan: StartupRevisionPlan): DirectoryIdentity => v2(plan) ? plan.operationBinding!.sourceBowerloom : plan.before.installedBowerloomIdentity;
+const recoveryFormat = (plan: StartupRevisionPlan) => v2(plan) ? 'bowerloom/startup-revision-recovery/v1beta2' as const : 'bowerloom/startup-revision-recovery/v1beta1' as const;
+const resultBody = (plan: StartupRevisionPlan, state: 'committed' | 'rolled-back') => ({ ...(v2(plan) ? { format: 'bowerloom/startup-revision-result/v1beta2' } : {}), revision: plan.revision, state });
 function targetIdentity(plan: StartupRevisionPlan): void {
   io.ancestors(plan.targetDir);
-  if (!io.same(io.identity(plan.targetDir), plan.before.installedTargetIdentity)
-    || !io.same(io.identity(dirname(plan.targetDir)), plan.after.binding.parent)) fail('REVISION_BINDING_CHANGED');
+  const target = v2(plan) ? plan.operationBinding!.target : plan.before.installedTargetIdentity;
+  const parent = v2(plan) ? plan.operationBinding!.parent : plan.after.binding.parent;
+  if (!io.same(io.identity(plan.targetDir), target) || !io.same(io.identity(dirname(plan.targetDir)), parent)) fail('REVISION_BINDING_CHANGED');
 }
-function nextPlan(target: string, brief: StartupBrief): StartupPlan {
+function moveOwned(plan: StartupRevisionPlan, from: string, to: string, expected: DirectoryIdentity): void {
+  if (v2(plan)) {
+    targetIdentity(plan);
+    if (!io.same(directory(from), expected)) fail('REVISION_BINDING_CHANGED');
+  }
+  move(from, to);
+}
+function nextPlan(target: string, brief: StartupBrief, before: StartupReceipt, beforeHash: string, recordedBinding?: StartupPlan['binding']): StartupPlan {
   const input = io.normalize({ mode: 'existing', targetDir: target, brief });
-  const binding = { parent: io.identity(dirname(target)), target: io.identity(target) };
-  io.ownedDirectory(binding.parent); io.ownedDirectory(binding.target);
-  const body = { format: STARTUP_FORMAT, templateVersion: TEMPLATE_VERSION, input, binding, ...scaffold(input.brief),
-    specReady: true as const, runtimeReady: false as const, executionAuthorized: false as const, reviewRequired: true as const };
-  return { ...body, revision: io.hash(canonicalJson(body)) };
+  const binding = recordedBinding ?? { parent: io.identity(dirname(target)), target: io.identity(target) };
+  io.ownedDirectory(binding.parent); io.ownedDirectory(binding.target!);
+  // Legacy history never selects the current host's first-install default.
+  if (before.format === 'bowerloom/startup-receipt/v1alpha1') return io.legacyPlan(input, binding);
+  return io.v2Plan(input, binding, { predecessorReceiptSha256: beforeHash, predecessorPolicy: before.plan.installationIdentityPolicy,
+    predecessorPlanRevision: before.plan.revision, retainedTargetBaseline: before.installedTargetIdentity });
 }
 function markerAbsent(target: string): void {
   if (io.names(target).some(name => name.normalize('NFC').toLowerCase() === MARKER)) fail('REVISION_PENDING');
@@ -74,17 +88,18 @@ export async function planStartupRevision(input: RevisionInput): Promise<Startup
   record(input, ['targetDir', 'brief']); const target = io.canonicalTarget(input.targetDir); io.ancestors(target); markerAbsent(target);
   const status = await inspectStartup(target); if (!status.specReady) fail('REVISION_DRIFT');
   const bytes = io.readManaged(join(rootPath(target), RECEIPT), 1024 * 1024), before = io.receiptValue(bytes);
-  const after = nextPlan(target, input.brief);
-  const body = { format: 'bowerloom/startup-revision-plan/v1beta1' as const, targetDir: target, fromRevision: before.plan.revision,
+  const after = nextPlan(target, input.brief, before, io.hash(bytes));
+  const body = { format: before.format === 'bowerloom/startup-receipt/v1beta2' ? 'bowerloom/startup-revision-plan/v1beta2' as const : 'bowerloom/startup-revision-plan/v1beta1' as const,
+    ...(before.format === 'bowerloom/startup-receipt/v1beta2' ? { operationBinding: { parent: after.binding.parent, target: after.binding.target!, sourceBowerloom: directory(rootPath(target)) } } : {}), targetDir: target, fromRevision: before.plan.revision,
     toRevision: after.revision, executionAuthorized: false as const, runtimeReady: false as const, beforeReceiptSha256: io.hash(bytes), before, after };
   const plan = { ...body, revision: io.hash(canonicalJson(body)) };
-  targetIdentity(plan); await tree(rootPath(target), before, plan.beforeReceiptSha256);
+  targetIdentity(plan); await tree(rootPath(target), before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
   if (present(historyPath(target, plan.revision))) fail('REVISION_HISTORY_EXISTS');
-  markerAbsent(target); return plan;
+  markerAbsent(target); if (v2(plan)) targetIdentity(plan); return plan;
 }
 /** Verify exact managed inventory, including directories, and reject additions rather than moving them. */
-async function tree(path: string, receipt: StartupReceipt, receiptDigest: string, partial = false): Promise<void> {
-  if (!io.same(directory(path), receipt.installedBowerloomIdentity)) fail('REVISION_BINDING_CHANGED');
+async function tree(path: string, receipt: StartupReceipt, receiptDigest: string, partial = false, exactIdentity: DirectoryIdentity = receipt.installedBowerloomIdentity): Promise<void> {
+  if (!io.same(directory(path), exactIdentity) || !io.matchesInstalled(receipt, 'installedBowerloomIdentity', exactIdentity)) fail('REVISION_BINDING_CHANGED');
   const expected = new Map(receipt.plan.files.map(file => [file.path, { text: file.text, digest: file.sha256 }]));
   expected.set(RECEIPT, { text: '', digest: receiptDigest });
   let count = 0;
@@ -104,29 +119,40 @@ async function tree(path: string, receipt: StartupReceipt, receiptDigest: string
     for (const [name, item] of expected) if (io.hash(io.readManaged(join(path, name), 1024 * 1024)) !== item.digest) fail('REVISION_DRIFT');
     if (!io.same(await compileCrew(join(path, TEAM_PATH)), receipt.plan.compiled)) fail('COMPILED_PLAN_CHANGED');
   }
+  if (receipt.format === 'bowerloom/startup-receipt/v1beta2' && !io.same(directory(path), exactIdentity)) fail('REVISION_BINDING_CHANGED');
 }
 function journal(target: string, revision: string, archived = false): StartupRevisionPlan {
   if (!sha(revision)) fail('EXACT_APPROVAL_REQUIRED');
   const path = archived ? join(historyPath(target, revision), 'journal.json') : join(target, MARKER);
   const raw = JSON.parse(io.readManaged(path, LIMIT).toString('utf8')) as unknown;
-  record(raw, ['format', 'plan']); if (raw.format !== 'bowerloom/startup-revision-journal/v1beta1') fail('REVISION_JOURNAL_INVALID');
-  record(raw.plan, ['format', 'targetDir', 'fromRevision', 'toRevision', 'beforeReceiptSha256', 'before', 'after', 'revision', 'executionAuthorized', 'runtimeReady']);
+  record(raw, ['format', 'plan']);
+  const modern = raw.format === 'bowerloom/startup-revision-journal/v1beta2';
+  if (!modern && raw.format !== 'bowerloom/startup-revision-journal/v1beta1') fail('REVISION_JOURNAL_INVALID');
+  record(raw.plan, ['format', 'targetDir', 'fromRevision', 'toRevision', 'beforeReceiptSha256', 'before', 'after', 'revision', 'executionAuthorized', 'runtimeReady', ...(modern ? ['operationBinding'] : [])]);
   const plan = raw.plan as unknown as StartupRevisionPlan, { revision: recorded, ...body } = plan;
-  if (plan.executionAuthorized !== false || plan.runtimeReady !== false || plan.format !== 'bowerloom/startup-revision-plan/v1beta1' || plan.targetDir !== target || recorded !== revision
+  if (plan.executionAuthorized !== false || plan.runtimeReady !== false || plan.format !== (modern ? 'bowerloom/startup-revision-plan/v1beta2' : 'bowerloom/startup-revision-plan/v1beta1') || plan.targetDir !== target || recorded !== revision
     || io.hash(canonicalJson(body)) !== revision || !sha(plan.beforeReceiptSha256)) fail('REVISION_JOURNAL_INVALID');
-  const before = io.receiptValue(Buffer.from(io.json(plan.before)));
-  if (before.plan.input.targetDir !== target || before.plan.revision !== plan.fromRevision || plan.toRevision !== plan.after.revision
-    || !io.same(nextPlan(target, plan.after.input.brief), plan.after)) fail('REVISION_JOURNAL_INVALID');
+  const before = io.receiptValue(Buffer.from(io.json(plan.before))), after = io.validatedPlan(plan.after);
+  if (modern !== (before.format === 'bowerloom/startup-receipt/v1beta2') || modern !== (after.format === 'bowerloom/startup-plan/v1beta2')) fail('REVISION_JOURNAL_INVALID');
+  if (modern) {
+    record(plan.operationBinding, ['parent', 'target', 'sourceBowerloom']);
+    const binding = plan.operationBinding!;
+    if (![binding.parent, binding.target, binding.sourceBowerloom].every(io.validIdentity)
+      || !io.same(after.binding, { parent: binding.parent, target: binding.target })
+      || !io.matchesInstalled(before, 'installedTargetIdentity', binding.target)
+      || !io.matchesInstalled(before, 'installedBowerloomIdentity', binding.sourceBowerloom)) fail('REVISION_JOURNAL_INVALID');
+  }
+  if (before.plan.input.targetDir !== target || before.plan.revision !== plan.fromRevision || plan.toRevision !== after.revision
+    || !io.same(nextPlan(target, after.input.brief, before, plan.beforeReceiptSha256, modern ? after.binding : undefined), after)) fail('REVISION_JOURNAL_INVALID');
   targetIdentity(plan); return plan;
 }
 function newReceipt(plan: StartupRevisionPlan, id: DirectoryIdentity): StartupReceipt {
-  return { format: 'bowerloom/startup-receipt/v1alpha1', plan: plan.after, installedTargetIdentity: plan.before.installedTargetIdentity,
-    installedBowerloomIdentity: id, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  return io.makeReceipt(plan.after, plan.before.installedTargetIdentity, id);
 }
 function stamp(path: string, plan: StartupRevisionPlan): DirectoryIdentity | null {
   const file = join(path, 'stage.json'); if (!present(file)) return null;
   const value = JSON.parse(io.readManaged(file, 4096).toString('utf8')) as unknown;
-  record(value, ['revision', 'identity']); if (value.revision !== plan.revision || !io.validIdentity(value.identity)) fail('REVISION_STAGE_INVALID');
+  record(value, [...(v2(plan) ? ['format'] : []), 'revision', 'identity']); if ((v2(plan) && value.format !== 'bowerloom/startup-revision-stage/v1beta2') || value.revision !== plan.revision || !io.validIdentity(value.identity)) fail('REVISION_STAGE_INVALID');
   return value.identity as unknown as DirectoryIdentity;
 }
 function exactMarker(path: string, plan: StartupRevisionPlan): boolean {
@@ -151,10 +177,11 @@ async function stage(plan: StartupRevisionPlan, history: string): Promise<Startu
     // Before a stamp exists, only an empty newly created stage is recoverable.
     if (present(next)) { directory(next); if (readdirSync(next).length) fail('REVISION_STAGE_INVALID'); }
     else { mkdirSync(next, { mode: 0o700 }); syncDirectory(history); }
-    id = directory(next); write(join(history, 'stage.json'), io.json({ revision: plan.revision, identity: id }));
+    id = directory(next); write(join(history, 'stage.json'), io.json({ ...(v2(plan) ? { format: 'bowerloom/startup-revision-stage/v1beta2' } : {}), revision: plan.revision, identity: id }));
   }
   const receipt = newReceipt(plan, id), receiptText = io.json(receipt);
   await tree(next, receipt, io.hash(receiptText), true);
+  if (v2(plan)) { targetIdentity(plan); if (!io.same(directory(next), id) || !io.same(directory(rootPath(plan.targetDir)), sourceIdentity(plan))) fail('REVISION_BINDING_CHANGED'); }
   for (const file of [...plan.after.files, { path: RECEIPT, text: receiptText }]) {
     const destination = join(next, file.path);
     let directoryPath = next;
@@ -166,6 +193,7 @@ async function stage(plan: StartupRevisionPlan, history: string): Promise<Startu
     if (!present(destination)) write(destination, file.text);
   }
   await tree(next, receipt, io.hash(receiptText));
+  if (v2(plan)) { targetIdentity(plan); if (!io.same(directory(next), id) || !io.same(directory(rootPath(plan.targetDir)), sourceIdentity(plan))) fail('REVISION_BINDING_CHANGED'); }
   if (!exactMarker(join(history, 'prepared'), plan)) write(join(history, 'prepared'), plan.revision + '\n');
   return receipt;
 }
@@ -176,13 +204,13 @@ async function recoverLocked(target: string, revision: string, action: 'resume' 
   if (archived) {
     inventory(history);
     const result = JSON.parse(io.readManaged(join(history, 'result.json'), 1024).toString('utf8')) as unknown;
-    record(result, ['revision', 'state']);
-    if (result.revision !== revision || !['committed', 'rolled-back'].includes(String(result.state))) fail('REVISION_JOURNAL_INVALID');
+    record(result, [...(v2(plan) ? ['format'] : []), 'revision', 'state']);
+    if ((v2(plan) && result.format !== 'bowerloom/startup-revision-result/v1beta2') || result.revision !== revision || !['committed', 'rolled-back'].includes(String(result.state))) fail('REVISION_JOURNAL_INVALID');
     const id = stamp(history, plan), prepared = exactMarker(join(history, 'prepared'), plan), rollback = exactMarker(join(history, 'rollback'), plan);
     const next = join(history, 'next'), previous = join(history, 'previous');
     if (result.state === 'committed') {
       if (!id || !prepared || rollback || present(next)) fail('REVISION_STAGE_INVALID');
-      await tree(previous, plan.before, plan.beforeReceiptSha256);
+      await tree(previous, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
     } else {
       if (!rollback || present(previous)) fail('REVISION_STAGE_INVALID');
       if (present(next)) {
@@ -191,24 +219,24 @@ async function recoverLocked(target: string, revision: string, action: 'resume' 
       } else if (id) fail('REVISION_STAGE_INVALID');
     }
     const inspection = await inspectStartup(target);
-    return { format: 'bowerloom/startup-revision-recovery/v1beta1', state: result.state as 'committed' | 'rolled-back', revision, installedRevision: inspection.revision, inspection };
+    return { format: recoveryFormat(plan), state: result.state as 'committed' | 'rolled-back', revision, installedRevision: inspection.revision, inspection };
   }
   targetIdentity(plan);
-  if (!present(history)) { await tree(root, plan.before, plan.beforeReceiptSha256); mkdirSync(history, { mode: 0o700 }); syncDirectory(target); }
+  if (!present(history)) { await tree(root, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan)); if (v2(plan)) targetIdentity(plan); mkdirSync(history, { mode: 0o700 }); syncDirectory(target); }
   inventory(history);
   if (present(join(history, 'result.json'))) {
-    const finalText = io.json({ revision, state: action === 'resume' ? 'committed' : 'rolled-back' });
+    const finalText = io.json(resultBody(plan, action === 'resume' ? 'committed' : 'rolled-back'));
     if (io.readManaged(join(history, 'result.json'), 1024).toString('utf8') !== finalText) fail('REVISION_FINALIZATION_ACTION');
   }
   if (present(join(history, 'journal.json'))) fail('REVISION_JOURNAL_INVALID');
   const previous = join(history, 'previous'), next = join(history, 'next');
   let id = stamp(history, plan), receipt = id ? newReceipt(plan, id) : null;
-  const oldAtRoot = present(root) && io.same(directory(root), plan.before.installedBowerloomIdentity);
+  const oldAtRoot = present(root) && io.same(directory(root), sourceIdentity(plan));
   const newAtRoot = present(root) && id !== null && io.same(directory(root), id);
   if (present(root) && !oldAtRoot && !newAtRoot) fail('REVISION_BINDING_CHANGED');
-  if (oldAtRoot) await tree(root, plan.before, plan.beforeReceiptSha256);
+  if (oldAtRoot) await tree(root, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
   if (newAtRoot) await tree(root, receipt!, io.hash(io.json(receipt)));
-  if (present(previous)) await tree(previous, plan.before, plan.beforeReceiptSha256);
+  if (present(previous)) await tree(previous, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
   if ((oldAtRoot && present(previous)) || (!oldAtRoot && !present(previous))) fail('REVISION_STAGE_INVALID');
   const prepared = exactMarker(join(history, 'prepared'), plan);
   if (present(next)) {
@@ -218,32 +246,34 @@ async function recoverLocked(target: string, revision: string, action: 'resume' 
   if ((!oldAtRoot && !prepared) || (newAtRoot && present(next))) fail('REVISION_STAGE_INVALID');
   const rollback = exactMarker(join(history, 'rollback'), plan);
   if (rollback && action !== 'rollback') fail('REVISION_ROLLBACK_STARTED');
+  if (v2(plan)) targetIdentity(plan);
   if (action === 'rollback') {
     if (!rollback) write(join(history, 'rollback'), revision + '\n');
-    if (newAtRoot) { targetIdentity(plan); await tree(root, receipt!, io.hash(io.json(receipt))); move(root, next); }
-    if (!oldAtRoot) { targetIdentity(plan); await tree(previous, plan.before, plan.beforeReceiptSha256); move(previous, root); }
-    await tree(root, plan.before, plan.beforeReceiptSha256);
+    if (newAtRoot) { targetIdentity(plan); await tree(root, receipt!, io.hash(io.json(receipt))); moveOwned(plan, root, next, id!); }
+    if (!oldAtRoot) { targetIdentity(plan); await tree(previous, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan)); moveOwned(plan, previous, root, sourceIdentity(plan)); }
+    await tree(root, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
   } else {
     if (oldAtRoot) {
       receipt = await stage(plan, history); id = receipt.installedBowerloomIdentity;
       // Staging/compilation awaits do not authorize mutation of a changed old installation.
-      targetIdentity(plan); await tree(root, plan.before, plan.beforeReceiptSha256);
-      move(root, previous);
+      targetIdentity(plan); await tree(root, plan.before, plan.beforeReceiptSha256, false, sourceIdentity(plan));
+      moveOwned(plan, root, previous, sourceIdentity(plan));
     }
     if (!newAtRoot) {
       if (!receipt) fail('REVISION_STAGE_INVALID');
-      targetIdentity(plan); await tree(next, receipt!, io.hash(io.json(receipt))); move(next, root);
+      targetIdentity(plan); await tree(next, receipt!, io.hash(io.json(receipt))); moveOwned(plan, next, root, id!);
     }
     await tree(root, receipt!, io.hash(io.json(receipt)));
   }
-  const state = action === 'resume' ? 'committed' : 'rolled-back', resultText = io.json({ revision, state });
+  if (v2(plan)) targetIdentity(plan);
+  const state = action === 'resume' ? 'committed' : 'rolled-back', resultText = io.json(resultBody(plan, state));
   if (present(join(history, 'result.json'))) {
     if (io.readManaged(join(history, 'result.json'), 1024).toString('utf8') !== resultText) fail('REVISION_JOURNAL_INVALID');
   } else write(join(history, 'result.json'), resultText);
   targetIdentity(plan); move(join(target, MARKER), join(history, 'journal.json'));
   const inspection = await inspectStartup(target);
   if (!inspection.specReady) fail('REVISION_FINAL_INSPECTION');
-  return { format: 'bowerloom/startup-revision-recovery/v1beta1', state, revision, installedRevision: inspection.revision, inspection };
+  return { format: recoveryFormat(plan), state, revision, installedRevision: inspection.revision, inspection };
 }
 export async function applyStartupRevision(input: RevisionInput, expectedOldRevision: string, exactRevision: string): Promise<StartupReceipt> {
   if (!sha(expectedOldRevision) || !sha(exactRevision)) fail('EXACT_APPROVAL_REQUIRED');
@@ -251,7 +281,8 @@ export async function applyStartupRevision(input: RevisionInput, expectedOldRevi
   return withLock(target, async () => {
     const plan = await planStartupRevision(input);
     if (plan.fromRevision !== expectedOldRevision || plan.revision !== exactRevision) fail('STALE_APPROVAL');
-    write(join(target, MARKER), io.json({ format: 'bowerloom/startup-revision-journal/v1beta1', plan }));
+    if (v2(plan)) targetIdentity(plan);
+    write(join(target, MARKER), io.json({ format: v2(plan) ? 'bowerloom/startup-revision-journal/v1beta2' : 'bowerloom/startup-revision-journal/v1beta1', plan }));
     await recoverLocked(target, exactRevision, 'resume');
     return io.receiptValue(io.readManaged(join(rootPath(target), RECEIPT), 1024 * 1024));
   });
@@ -268,6 +299,7 @@ export function renderStartupRevisionReview(plan: StartupRevisionPlan): string {
     'Approval replaces only the exact managed setup files and retains the original installation as a private backup.',
     'Unrelated project files stay unchanged. No model, backend, worker or execution permission is included.',
     'Old connections and runtime registrations do not authorize the new specification; review their exact bindings separately.',
+    ...(v2(plan) ? ['The reviewed installation identity policy persists across this revision; the original target baseline is retained. Active revision and recovery identity pins remain exact.'] : []),
     'Interrupted updates remain pending. This approval also permits deterministic recovery or rollback to the recorded original.',
     `Exact revision approval: ${plan.revision}`, 'Review first; apply with --from the old revision and --approve this exact revision.' ].join('\n');
 }
