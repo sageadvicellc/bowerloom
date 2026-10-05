@@ -183,7 +183,7 @@ for (const profile of ['engineer', 'founder', 'research']) test(`${profile} prof
   const { input } = fixture(t);
   input.brief.profile = profile;
   const plan = await planStartup(input);
-  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta3');
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta4');
   assert.equal(plan.input.brief.profile, profile);
   const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
   assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
@@ -281,12 +281,12 @@ test('installed handoff exposes the actual project, goal and decision without ex
   const root = join(input.targetDir, '.bowerloom');
   const start = fs.readFileSync(join(root, 'START-HERE.md'), 'utf8');
   const review = fs.readFileSync(join(root, 'startup-review.md'), 'utf8');
-  const visible = review.split('<details>')[0];
-  for (const document of [start, visible]) {
+  const visible = review.replace(/<details>[\s\S]*?<\/details>/g, '');
+  for (const document of [start.replace(/<details>[\s\S]*?<\/details>/g, ''), visible]) {
     assert.ok(document.includes(input.brief.projectName)); assert.ok(document.includes(input.brief.goal));
     assert.match(document, /do not need to read YAML or JSON/i);
-    assert.match(document, /proposals only/);
-    assert.match(document, /Revise apply requires both the exact old installation revision/);
+    assert.match(document, /Discussion alone does not approve a change/);
+    assert.doesNotMatch(document, /Revise apply requires both the exact old installation revision/);
     assert.match(document, /revision-pending/);
     assert.match(document, /optional-controls\.md/);
     assert.doesNotMatch(document, /Then read brief\.json|Read the goal in brief\.json/);
@@ -328,4 +328,42 @@ test('visible project and goal treat markup as data while the raw brief remains 
   assert.equal(JSON.parse(plan.files.find(file => file.path === 'brief.json').text).goal, input.brief.goal);
   await applyStartup(input, plan.revision);
   assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+test('frozen beta3 source matches its previously shipped templates except version-local import paths', () => {
+  const source=fs.readFileSync(new URL('../src/scaffold-v1beta3.ts',import.meta.url),'utf8').replace("from './handoff-v1beta3.js'", "from './handoff.js'");
+  const handoff=fs.readFileSync(new URL('../src/handoff-v1beta3.ts',import.meta.url),'utf8').replace("from './scaffold-v1beta3.js'", "from './scaffold.js'");
+  assert.equal(digest(source),'9dcf64d0ac4e0dd211b19e82fac223967fd0007542729bd1fda1337a118fa719');
+  assert.equal(digest(handoff),'6aea606ea3c379eb10924603fb84c39bf86b2fe0e1be48c30d1bb455d4517ba2');
+});
+
+for(const profile of ['engineer','founder','research'])test(`beta4 ${profile} first-read copy accounts for receipt and retains all revision rules in details`,async t=>{
+  const {input}=fixture(t);input.brief.profile=profile;const plan=await planStartup(input);
+  const find=path=>plan.files.find(file=>file.path===path).text;
+  const frozen=await import('../../../dist/packages/startup/src/handoff-v1beta3.js');
+  assert.equal(plan.files.length,20);assert.match(renderStartupReview(plan),/Creates 20 setup files and a private installation receipt/);
+  assert.match(renderStartupReview(plan),/Keep the receipt out of shared definitions/);
+  assert.match(find('startup-review.md'),/creates 20 setup files and a private installation receipt/);
+  assert.match(find('startup-review.md'),/installation-receipt\.json.*private machine-specific evidence/);
+  for(const path of ['START-HERE.md','startup-review.md']) {
+    const text=find(path),visible=text.replace(/<details>[\s\S]*?<\/details>/g,'');
+    assert.match(visible,/Discussion alone does not approve a change/);
+    assert.match(visible,/revision-pending.*keep work stopped/);
+    assert.doesNotMatch(visible,/Revise apply requires both|private backup|explicit resume or rollback/);
+    assert.ok(text.includes(frozen.refinementGuidance),'Every original revision/recovery rule remains verbatim in optional details');
+    assert.match(text,/<summary>Revision approval, backup, and recovery rules<\/summary>/);
+  }
+  const guide=find('optional-controls.md');assert.match(guide,/installed `bowerloom` command/);assert.doesNotMatch(guide,/node dist\/|built Bowerloom checkout/);
+  for(const command of ['init status','link plan','link apply','link read','link revoke','destruct first-team','destruct all'])assert.ok(guide.includes('bowerloom '+command));
+  const agreement=find('working-agreement.md');assert.equal(agreement,find('teams/first-team/assets/working-agreement.md'));
+  assert.doesNotMatch(agreement,/a engineering|a experiment|deterministic/);
+  if(profile==='engineer')assert.match(agreement,/an engineering lead/);
+  if(profile==='research')assert.match(agreement,/an experiment lead/);
+  assert.match(agreement,/when you review proposed work/);assert.match(agreement,/runtime, the software that runs the team/);
+  assert.doesNotMatch(find('skills/personal-assistant/SKILL.md'),/deterministic scaffold/);
+  const receipt=await applyStartup(input,plan.revision);
+  assert.equal(receipt.executionAuthorized,false);assert.equal((await inspectStartup(input.targetDir)).specReady,true);
+  const root=join(input.targetDir,'.bowerloom');
+  const inventory=[];const walk=base=>{for(const entry of fs.readdirSync(join(root,base),{withFileTypes:true})){const path=base?base+'/'+entry.name:entry.name;if(entry.isDirectory())walk(path);else inventory.push(path);}};walk('');
+  assert.deepEqual(inventory.sort(),[...plan.files.map(file=>file.path),'installation-receipt.json'].sort());
 });

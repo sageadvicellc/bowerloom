@@ -10,6 +10,7 @@ import { scaffold as legacyScaffold, TEMPLATE_VERSION as LEGACY_TEMPLATE_VERSION
 import { scaffold as alpha2Scaffold, TEMPLATE_VERSION as ALPHA2_TEMPLATE_VERSION } from './scaffold-v1alpha2.js';
 import { scaffold as beta1Scaffold, TEMPLATE_VERSION as BETA1_TEMPLATE_VERSION } from './scaffold-v1beta1.js';
 import { scaffold as beta2Scaffold, TEMPLATE_VERSION as BETA2_TEMPLATE_VERSION } from './scaffold-v1beta2.js';
+import { scaffold as beta3Scaffold, TEMPLATE_VERSION as BETA3_TEMPLATE_VERSION } from './scaffold-v1beta3.js';
 import { startupProfiles } from './profiles.js';
 import type { StartupProfile } from './profiles.js';
 export { startupProfiles } from './profiles.js';
@@ -177,9 +178,9 @@ function receiptValue(raw: Buffer): StartupReceipt {
   const p = value.plan;
   record(p, ['format', 'templateVersion', 'input', 'binding', 'files', 'compiled', 'specReady', 'runtimeReady', 'executionAuthorized', 'reviewRequired', 'revision']);
   record(p.binding, ['parent', 'target']);
-  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION && p.templateVersion !== ALPHA2_TEMPLATE_VERSION && p.templateVersion !== BETA1_TEMPLATE_VERSION && p.templateVersion !== BETA2_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
+  if (p.templateVersion !== TEMPLATE_VERSION && p.templateVersion !== LEGACY_TEMPLATE_VERSION && p.templateVersion !== ALPHA2_TEMPLATE_VERSION && p.templateVersion !== BETA1_TEMPLATE_VERSION && p.templateVersion !== BETA2_TEMPLATE_VERSION && p.templateVersion !== BETA3_TEMPLATE_VERSION) fail('INVALID_RECEIPT');
   const legacy = p.templateVersion === LEGACY_TEMPLATE_VERSION;
-  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : p.templateVersion === ALPHA2_TEMPLATE_VERSION ? alpha2Scaffold(normalized.brief) : p.templateVersion === BETA1_TEMPLATE_VERSION ? beta1Scaffold(normalized.brief) : p.templateVersion === BETA2_TEMPLATE_VERSION ? beta2Scaffold(normalized.brief) : scaffold(normalized.brief);
+  const normalized = normalize(p.input, legacy), generated = legacy ? legacyScaffold(normalized.brief) : p.templateVersion === ALPHA2_TEMPLATE_VERSION ? alpha2Scaffold(normalized.brief) : p.templateVersion === BETA1_TEMPLATE_VERSION ? beta1Scaffold(normalized.brief) : p.templateVersion === BETA2_TEMPLATE_VERSION ? beta2Scaffold(normalized.brief) : p.templateVersion === BETA3_TEMPLATE_VERSION ? beta3Scaffold(normalized.brief) : scaffold(normalized.brief);
   if (!validIdentity(p.binding.parent) || (p.binding.target !== null && !validIdentity(p.binding.target)) || (normalized.mode === 'new') !== (p.binding.target === null)) fail('INVALID_RECEIPT');
   const expected = { format: STARTUP_FORMAT, templateVersion: p.templateVersion, input: normalized, binding: p.binding, ...generated,
     specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
@@ -246,7 +247,8 @@ export function renderStartupReview(plan: StartupPlan): string {
     'Limits: at most 2 active workers; 25% capacity reserve; no paid fallback.',
     'Installation approval: create only the reviewed .bowerloom files. No workers, backend, network, or project execution.',
     'Proposed task permissions are not granted by this approval. All future task writes require separate exact approval.',
-    '', `Creates ${plan.files.length} files, including startup-review.md with roles, access, limits, and expandable technical contents.`,
+    '', `Creates ${plan.files.length} setup files and a private installation receipt in .bowerloom. Keep the receipt out of shared definitions.`,
+    'Read startup-review.md for roles, access, limits, and expandable technical contents. Review setup text for private information before sharing.',
     'For every file, content hash, and compiler detail, rerun this plan with --json before approval.',
     `Exact approval revision: ${plan.revision}`,
     'Review first. Apply with unchanged inputs and --approve followed by this exact revision.',

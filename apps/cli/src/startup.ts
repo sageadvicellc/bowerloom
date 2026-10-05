@@ -76,7 +76,12 @@ export async function runStartupCommand(args: string[]): Promise<unknown> {
   try { return await dispatchStartup(args); }
   catch (error) {
     if (error instanceof StartupError) {
-      throw new DefinitionError(error.code, 'Startup stopped. Read the error code, project brief, and target directory. Create a new plan after a change.');
+      const message = error.code === 'EXACT_APPROVAL_REQUIRED'
+        ? 'Approval must match the exact reviewed plan. Review the plan and use its revision with --approve.'
+        : error.code === 'STALE_APPROVAL'
+          ? 'The inputs changed after review. Create a new plan and approve its exact revision before setup.'
+          : 'Startup stopped. Read the error code, project brief, and target directory. Create a new plan after a change.';
+      throw new DefinitionError(error.code, message);
     }
     if (error instanceof DefinitionError) throw error;
     throw new DefinitionError('STARTUP_IO', 'Startup failed to read or write the selected files. Inspect the paths and permissions before another attempt.');
