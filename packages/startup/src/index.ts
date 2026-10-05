@@ -12,6 +12,8 @@ import { scaffold as beta1Scaffold, TEMPLATE_VERSION as BETA1_TEMPLATE_VERSION }
 import { scaffold as beta2Scaffold, TEMPLATE_VERSION as BETA2_TEMPLATE_VERSION } from './scaffold-v1beta2.js';
 import { scaffold as beta3Scaffold, TEMPLATE_VERSION as BETA3_TEMPLATE_VERSION } from './scaffold-v1beta3.js';
 import { startupProfiles } from './profiles.js';
+import { classifyStartupIdentityDiagnostic } from './identity-diagnostic.js';
+import type { StartupIdentityDiagnostic } from './identity-diagnostic.js';
 import type { StartupProfile } from './profiles.js';
 export { startupProfiles } from './profiles.js';
 export type { StartupProfile } from './profiles.js';
@@ -37,6 +39,7 @@ export interface StartupInspection {
   format: 'bowerloom/startup-inspection/v1alpha1'; status: 'ready-for-review' | 'drifted' | 'revision-pending'; targetDir: string; revision: string | null;
   specReady: boolean; runtimeReady: false; executionAuthorized: false; reviewRequired: true;
   drift: Drift[]; compiledCandidate: string | null; contextImported: false; hostedAgentCreated: false;
+  identityDiagnostic?: Readonly<StartupIdentityDiagnostic>;
 }
 export class StartupError extends Error { constructor(public readonly code: string) { super(code); this.name = 'StartupError'; } }
 function fail(code: string): never { throw new StartupError(code); }
@@ -193,11 +196,12 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
   if (names(target).some(name => fold(name) === '.bowerloom-revision.json')) { result.status = 'revision-pending'; result.drift.push({ path: '.bowerloom-revision.json', kind: 'revision-pending' }); return result; }
   const directory = join(target, '.bowerloom'), aliases = names(target).filter(name => fold(name) === '.bowerloom');
   if (aliases.length !== 1 || aliases[0] !== '.bowerloom') { result.drift.push({ path: '.bowerloom', kind: aliases.length ? 'unsafe' : 'missing' }); return result; }
-  let receipt: StartupReceipt;
-  try { ownedDirectory(identity(directory)); receipt = receiptValue(readManaged(join(directory, RECEIPT), 1024 * 1024)); }
+  let receipt: StartupReceipt, receiptBytes: Buffer;
+  try { ownedDirectory(identity(directory)); receiptBytes = readManaged(join(directory, RECEIPT), 1024 * 1024); receipt = receiptValue(receiptBytes); }
   catch { result.drift.push({ path: `.bowerloom/${RECEIPT}`, kind: 'invalid-receipt' }); return result; }
   result.revision = receipt.plan.revision;
-  if (receipt.plan.input.targetDir !== target || !same(receipt.installedTargetIdentity, identity(target)) || !same(receipt.installedBowerloomIdentity, identity(directory))) result.drift.push({ path: '.bowerloom', kind: 'installation-binding-changed' });
+  const observedTarget = identity(target), observedBowerloom = identity(directory);
+  if (receipt.plan.input.targetDir !== target || !same(receipt.installedTargetIdentity, observedTarget) || !same(receipt.installedBowerloomIdentity, observedBowerloom)) result.drift.push({ path: '.bowerloom', kind: 'installation-binding-changed' });
   for (const file of receipt.plan.files) {
     try { const bytes = readManaged(join(directory, file.path), 512 * 1024); if (bytes.length !== file.bytes || hash(bytes) !== file.sha256) result.drift.push({ path: `.bowerloom/${file.path}`, kind: 'changed' }); }
     catch (error) { result.drift.push({ path: `.bowerloom/${file.path}`, kind: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unsafe' }); }
@@ -225,6 +229,22 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
   if (!result.drift.length) {
     try { if (!same(identity(directory), receipt.installedBowerloomIdentity) || !same(receiptValue(readManaged(join(directory, RECEIPT), 1024 * 1024)), receipt)) result.drift.push({ path: '.bowerloom', kind: 'installation-binding-changed' }); }
     catch { result.drift.push({ path: '.bowerloom', kind: 'unsafe' }); }
+  }
+  // Explanatory evidence only: exact identity refusal above remains mandatory.
+  if (receipt.plan.input.targetDir === target && result.drift.length === 1 && result.drift[0]!.kind === 'installation-binding-changed') {
+    const detail = classifyStartupIdentityDiagnostic(receipt.installedTargetIdentity, observedTarget, receipt.installedBowerloomIdentity, observedBowerloom);
+    if (detail) {
+      try {
+        ancestors(target); ancestors(directory);
+        const closingTarget = identity(target), closingBowerloom = identity(directory);
+        ownedDirectory(closingTarget); ownedDirectory(closingBowerloom);
+        const closingReceipt = readManaged(join(directory, RECEIPT), 1024 * 1024);
+        if (same(closingTarget, observedTarget) && same(closingBowerloom, observedBowerloom)
+          && closingReceipt.equals(receiptBytes) && same(receiptValue(closingReceipt), receipt)
+          && same(identity(target), closingTarget) && same(identity(directory), closingBowerloom)
+          && !names(target).some(name => fold(name) === '.bowerloom-revision.json')) result.identityDiagnostic = detail;
+      } catch { /* Unsafe or changing observations receive no diagnostic label. */ }
+    }
   }
   result.specReady = result.drift.length === 0; result.status = result.specReady ? 'ready-for-review' : 'drifted';
   return result;
