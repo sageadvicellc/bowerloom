@@ -1,4 +1,4 @@
-import { setupRequirements } from './release';
+import { setupRequirements, docsPath } from './release';
 import { useRef, useState } from 'react';
 import { buildTutorialPrompt, profiles, initialSelection, reviewModes } from './tutorial';
 import './tutorial.css';
@@ -26,8 +26,9 @@ export default function TutorialBuilder() {
   }
   return <section className="tutorial-builder" id="build" aria-labelledby="tutorial-heading">
     <div className="tutorial-intro">
-      <h2 id="tutorial-heading">Set up a team around your goal.</h2>
-      <p>Choose a starting profile and describe your goal. Your existing personal agent will help you review a portable team setup before installing it.</p>
+      <h2 id="tutorial-heading">Bring your workflow into the project.</h2>
+      <p>Describe a workflow that you perform manually or with one agent. Name its inputs, decisions, outputs, and the points that need your review. Choose a starting profile and take the prompt to your existing personal agent. The beta prepares a fixed team specification for comparison with your workflow, then installs only the exact files you approve.</p>
+      <p><a href={`${docsPath}guides/integrate-workflow/`}>Integrate your existing workflow</a></p>
     </div>
     <BetaGuide />
     <form onSubmit={event => {
@@ -76,7 +77,7 @@ export default function TutorialBuilder() {
     <p className="tutorial-copy-status" role="status">{copyStatus}</p>
     {prompt && <div className="tutorial-result">
       <h3>Your agent takes it from here.</h3>
-      <p>Paste this short brief into your agent. It will prepare a readable plan for a new workspace or an existing project, then wait for your approval.</p>
+      <p>Paste this short brief into your agent. It will compare the selected profile with your existing workflow, prepare a readable file plan, and wait for your approval.</p>
       <label htmlFor="tutorial-prompt">Your setup prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>

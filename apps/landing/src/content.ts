@@ -1,4 +1,4 @@
-import { release, readerRelease } from './release.ts';
+import { release } from './release.ts';
 export const repository = release.urls.repository;
 const branch = `${repository}/blob/main`;
 export const destinations = {
@@ -10,9 +10,9 @@ export const destinations = {
   ideas: `${repository}/discussions/categories/ideas`,
 };
 export const hero = {
-  "Eyebrow": "Portable tools and teams",
-  "H1": "Grow your capabilities with Bowerloom",
-  "Body": "Bowerloom is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
+  "Eyebrow": "Governance for agent workflows",
+  "H1": "Bring governance to your agent workflows.",
+  "Body": "Turn the work you already do into defined roles, handoffs, and review points. Bowerloom binds setup files to an exact approved plan and records their installed state, while your team definitions stay in files that follow you. Start with an existing project and your personal agent, then review the team specification before approving its installation.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "Explore the Labs workflow",
   "Illustration caption": "A maker and a robot helper at the workshop."
@@ -27,9 +27,10 @@ export const stages = [
 
 export const questions = [
   {
-    question: "What should I try first?",
-    answer: "Describe a useful goal in the tutorial maker. Your personal agent helps define a team, a working agreement, and review milestones. It confirms the available execution path before you approve work. The page itself prepares a prompt; it does not start a team."
+    question: "How do I bring my workflow into Bowerloom?",
+    answer: "Describe the process you already perform, including its inputs, outputs, handoffs, and human decisions. Your personal agent helps compare that workflow with a fixed team profile and its specification. Review the proposed files, permissions, and working agreement before approving installation in your existing project. Setup does not import project contents or run the team."
   },
+  { question: "What does the beta govern?", answer: "The installer binds a file write to an exact approved plan. Status identifies drift, and revision uses recorded transactions with supported recovery choices. Team definitions declare roles, proposed access, handoffs, and review expectations. Those declarations do not enforce every future tool action or grant runtime permissions." },
   {
     question: "Do I need to connect GitHub for the tutorial?",
     answer: "No. The page prepares a prompt locally. After CLI installation and your exact approval, your agent creates setup files. Setup does not connect GitHub. Connected workflows need separate permissions and exact action approval."
@@ -52,7 +53,7 @@ export const questions = [
   },
   {
     question: "Can I take my team to another agent app?",
-    answer: readerRelease.capabilities.harnesses
+    answer: "Roles, skills, handoffs, and review expectations stay in files that follow you. You can version those definitions with your project and inspect them in another agent application. Credentials and installation receipts stay private. Moving definitions does not transfer permissions or prove that another application can execute them."
   },
   {
     question: "What does it cost to try?",

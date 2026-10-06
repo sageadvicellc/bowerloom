@@ -35,9 +35,18 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 }
 
 const offers = [
-  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job. Read the beta guide for supported tasks and limits." },
-  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies plans, exact approvals, and local records around the supported actions." },
-  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. " + readerRelease.capabilities.harnesses },
+  {
+    "title": "Agree on the work before it changes.",
+    "body": "Define each role, its inputs, its outputs, and the handoff to the next role. The beta requires an exact plan revision before writing setup files, detects drift, and records revision recovery. Team files declare proposed permissions and review points. They do not grant runtime authority or start workers."
+  },
+  {
+    "title": "Build around your existing workflow.",
+    "body": "Start with a manual process or the work you already share with one agent. Your personal agent helps separate decisions, drafting, and review into a team graph. Choose a fixed Engineer, Founder, or Research profile, then compare its specification with your process. Existing-project setup adds .bowerloom without importing project contents or live agent configuration."
+  },
+  {
+    "title": "Keep the definitions with the project.",
+    "body": "Roles, skills, handoffs, and review expectations stay in files that follow you. You can version those definitions with your project and inspect them in another agent application. Credentials and installation receipts stay private. Moving definitions does not transfer permissions or prove that another application can execute them."
+  }
 ];
 
 function CoreOffers() {
@@ -52,7 +61,7 @@ function CoreOffers() {
       <div className="offer-controls" role="group" aria-label="Explore Bowerloom">
         <div className="offer-tabs" style={{ '--active-offer': active } as React.CSSProperties}>
           <span className="offer-indicator" aria-hidden="true" />
-          {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
+          {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["Governance", "Your workflow", "Portability"][index]}</button>)}
         </div>
         <div className="offer-arrows">
           <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" /></svg></button>
@@ -183,7 +192,7 @@ export default function App() {
           </HomepageBanner>
           <div className="hero-copy">
             <p className="eyebrow">{hero.Eyebrow}</p>
-            <h1 id="hero-title">Grow your capabilities with <em>Bowerloom</em></h1>
+            <h1 id="hero-title">{hero.H1}</h1>
             <p className="hero-description">{hero.Body}</p>
             <a className="button primary" href="#build">Build with your agent</a>
             <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
@@ -195,7 +204,7 @@ export default function App() {
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your capabilities with <em>Bowerloom</em>
+              {hero.H1}
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -344,6 +353,7 @@ export default function App() {
         <p>An open-source framework for agent teams.</p>
         <div>
           <a href={docsPath}>Documentation</a>
+          <a href={`${docsPath}roadmap/`}>Roadmap</a>
           <a href={`${docsPath}feedback/`}>Bug reports and feedback</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
           <ExternalLink href={destinations.readme}>README</ExternalLink>

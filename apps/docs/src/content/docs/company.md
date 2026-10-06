@@ -23,9 +23,7 @@ Local setup does not establish unattended autonomy. Review the actual owner, sco
 
 ### Shared company work
 
-Local definitions do not enroll employees or provide company identity controls.
-
-Shared access, semantic retrieval, offboarding, and deletion are outside this beta's documented setup path. These docs provide no shared-company installation procedure.
+Local definitions do not enroll employees or provide company identity controls. Shared access, semantic retrieval, offboarding, and deletion are outside this beta's documented setup path. These docs provide no shared-company installation procedure.
 
 ### Real business data
 

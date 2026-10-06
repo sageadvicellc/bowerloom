@@ -1,30 +1,26 @@
 ---
 title: "Learn Bowerloom"
-description: "Prepare the Engineer example, then read its setup with your agent."
+description: "Map your existing workflow, integrate its specification, and review the resulting files."
 section: "Learn"
 order: 2
 ---
 
-This short learning path ends with an inspected setup. It does not run a team or connect a backend.
+Use this path to integrate a team specification with a project you already use. Begin with the process you perform manually or with one agent, then describe its inputs, outputs, decisions, and handoffs. Your personal agent helps compare that process with the fixed Engineer, Founder, or Research profile. You review the proposed files before their installation. The walkthrough ends with an inspected specification and grants no execution authority.
 
 ## Before you begin
 
-Read [Install Bowerloom](/docs/start/) for the exact version and requirements.
+Read [Install Bowerloom](/docs/start/) for the version and requirements. Use your existing personal agent for the walkthrough. If the project already contains `.bowerloom/`, use [revision](/docs/revision/) instead of fresh installation. Questions belong in [Q&A through the feedback guide](/docs/feedback/#ask-a-question).
 
-Use your existing agent for the walkthrough. The docs do not create a hosted agent.
+<a id="follow-the-example"></a>
 
-If you need help, use [Q&A through the feedback guide](/docs/feedback/#ask-a-question).
+## Follow the integration
 
-## Follow the example
+1. [Map your existing workflow](/docs/guides/integrate-workflow/) into roles and handoffs.
+2. [Integrate your first team](/docs/learn/first-team/) through an exact existing-project plan.
+3. [Read and review your setup](/docs/learn/review-your-setup/) against the agreed workflow.
 
-1. [Prepare your first team](/docs/learn/first-team/) in an unused workspace.
-2. Review the proposed files and approve the exact plan.
-3. [Read and review your setup](/docs/learn/review-your-setup/) before any later work.
+<a id="use-your-own-project"></a>
 
-The example uses the fixed Engineer profile. [Teams, agreements, and files](/docs/concepts/teams-and-files/) explains its roles.
+## Use a separate workspace
 
-## Use your own project
-
-If your project already exists, use [the existing-project guide](/docs/guides/existing-project/). If it contains `.bowerloom/`, use [revision](/docs/revision/).
-
-A goal change follows a new plan and exact approval. The reviewed setup remains separate from permission to execute it.
+For an optional unused workspace, use [Prepare a separate workspace](/docs/guides/new-workspace/). It stores the same fixed profile in a new target. It does not replace or import your existing project. [Teams, agreements, and files](/docs/concepts/teams-and-files/) explains the proposed specification.

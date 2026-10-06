@@ -1,16 +1,16 @@
 ---
-title: "Prepare your first team"
-description: "Review the fixed Engineer setup before approving its files."
+title: "Integrate your first team"
+description: "Plan a team specification for your existing project, then approve its exact files."
 section: "Learn"
 order: 3
 ---
 
-This example prepares a synthetic team setup named “Clean install trial.” The result is ready for your file review.
+Integrate a team specification with the project you already use. First [map your existing workflow](/docs/guides/integrate-workflow/) and compare it with a fixed profile. Existing mode adds `.bowerloom/` without reading project-file contents or importing live agent configuration. Review the exact file plan before installation, then compare the resulting roles and handoffs with your process.
 
 ## Ask your agent
 
 ```text
-Prepare a Bowerloom Engineer setup for this project. Make sure that its absolute path is correct and unused. Use the name "Clean install trial" and goal "Review a synthetic team setup." Show me the plan and files, then wait for my exact approval. Do not start workers or a backend.
+Help me integrate a Bowerloom team specification with this existing project. Use the workflow description we reviewed and compare it with the fixed Engineer profile. Show the complete file plan and working agreement before changing anything. If .bowerloom already exists, use revision instead of fresh installation. Wait for my exact approval. Do not import project contents or live agent configuration, start workers, or execute the project.
 ```
 
 ## Agent procedure
@@ -19,58 +19,48 @@ Prepare a Bowerloom Engineer setup for this project. Make sure that its absolute
 
 Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
-Use an absolute path that you own. Its parent directory must exist, with accessible, safe ancestors.
+Select an existing absolute project directory that you own. Its ancestors must meet the setup path requirements.
 
-The new target must not exist. If it exists, use [the existing-project guide](/docs/guides/existing-project/) only for that intended project.
+The project must contain no `.bowerloom/` installation or pending revision. Inspect the intended target before planning.
 
 ### Plan the files
 
-Replace `/absolute/projects/clean-install-trial` with the selected absolute target. Keep the other example inputs unchanged.
+Replace `/absolute/projects/existing-project` with that exact project path.
 
 ```sh
-bowerloom init plan --mode new --target /absolute/projects/clean-install-trial --name "Clean install trial" --goal "Review a synthetic team setup" --profile engineer --json
+bowerloom init plan --mode existing --target /absolute/projects/existing-project --name "First team" --goal "Plan an accessible project website and its meaningful checks." --profile engineer --json
 ```
 
-Read `input`, `files`, `binding`, `installationIdentityPolicy`, and `revision` in the returned plan.
+Read the complete inputs, binding, file inventory, identity policy, and revision. Review the fixed roles, agreement, and milestones.
 
-Review every proposed file, hash, role, access declaration, agreement, and milestone. The plan contains the full 20-file inventory.
-
-The plan reports `specReady: true`, `runtimeReady: false`, `executionAuthorized: false`, and `reviewRequired: true`. These fields describe a valid plan, not an installation.
+The plan's `specReady` field does not mean that files exist or execution is authorized.
 
 ### Wait for exact approval
 
-Show the complete plan to the human. Wait for approval of that exact plan.
+Wait for the human to approve the exact plan. Replace `EXACT_REVIEWED_PLAN_REVISION` with its complete 64-character `revision`.
 
-Replace `EXACT_REVIEWED_PLAN_REVISION` with the plan's complete 64-character `revision`. The placeholder is not an approval or example hash.
-
-Keep the mode, target, name, goal, and profile identical to the reviewed inputs.
+Keep every input identical to that approved plan.
 
 ```sh
-bowerloom init apply --mode new --target /absolute/projects/clean-install-trial --name "Clean install trial" --goal "Review a synthetic team setup" --profile engineer --approve EXACT_REVIEWED_PLAN_REVISION
+bowerloom init apply --mode existing --target /absolute/projects/existing-project --name "First team" --goal "Plan an accessible project website and its meaningful checks." --profile engineer --approve EXACT_REVIEWED_PLAN_REVISION
 ```
 
 ### Read the result
 
 ```sh
-bowerloom init status --target /absolute/projects/clean-install-trial
+bowerloom init status --target /absolute/projects/existing-project
 ```
 
-The apply receipt includes `plan.revision`. A successful setup reports `ready-for-review` with no drift.
+A successful setup reports `ready-for-review` with no drift. Runtime readiness and execution authority remain false.
 
-Status keeps `runtimeReady: false` and `executionAuthorized: false`. Context import and hosted-agent creation also remain false.
-
-Approval writes 20 setup files plus a private receipt. It starts no workers or backend services.
+Approval adds 20 setup files and one private receipt. Unrelated project files remain unchanged.
 
 ### If the command refuses
 
-If `STALE_APPROVAL` appears, prepare another plan for the actual inputs. Obtain exact approval again before applying.
+If `.bowerloom/` exists, inspect it and follow [revision](/docs/revision/). Do not overwrite the installation through fresh setup.
 
-If `TARGET_EXISTS` appears, inspect the intended target. Do not delete it to force new mode.
+If inputs or binding change, prepare another plan and obtain exact approval. Do not guess a replacement revision.
 
-If `BOWERLOOM_EXISTS` appears, use [revision](/docs/revision/) for the installed setup. If a revision is pending, preserve its records.
-
-If an I/O result is uncertain, inspect status and preserved files. Do not repeat the write blindly.
+If a revision is pending, preserve its transaction records. Use [revision recovery](/docs/guides/recover-revision/).
 
 Continue with [Read and review your setup](/docs/learn/review-your-setup/).
-
-For additional portable skills, read [Add a portable skill for Codex](/docs/guides/add-skills/). Its current installer requires a separate new workspace.

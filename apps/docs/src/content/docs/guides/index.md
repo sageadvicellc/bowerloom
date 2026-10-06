@@ -5,19 +5,21 @@ section: "Guides"
 order: 6
 ---
 
-Each guide names its prerequisites, proposed effect, approval, and next review. Start with the task that matches your actual state.
+Start with your current project and the workflow you want to organize. [Map its steps into roles and handoffs](/docs/guides/integrate-workflow/), then choose the operation that matches the project's state. Each guide names its prerequisites, proposed effect, exact approval, and next review. Definitions stay in files that follow you, while private credentials and local authority stay separate.
 
 ## Setup and changes
 
 | Task | Guide |
 | --- | --- |
-| Add files to an existing project | [Existing project](/docs/guides/existing-project/) |
+| Map a manual or one-to-one agent workflow | [Map your existing workflow](/docs/guides/integrate-workflow/) |
+| Add a specification to an existing project | [Existing project](/docs/guides/existing-project/) |
+| Use an optional separate workspace | [Prepare a separate workspace](/docs/guides/new-workspace/) |
 | Store and project a portable skill for Codex | [Add a portable skill](/docs/guides/add-skills/) |
 | Change an installed goal or profile | [Revise an installed setup](/docs/revision/) |
 | Resolve an interrupted revision | [Recover a revision](/docs/guides/recover-revision/) |
 | Request a registered-work stop | [Stop registered work](/docs/stop/) |
 
-For an unused workspace, follow [the first-team tutorial](/docs/learn/first-team/). Review [files and private records](/docs/configuration/) before sharing definitions.
+For your current project, follow [Integrate your first team](/docs/learn/first-team/). Review [files and private records](/docs/configuration/) before sharing definitions.
 
 ## Capability boundaries
 

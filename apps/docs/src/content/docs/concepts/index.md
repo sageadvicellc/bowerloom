@@ -5,7 +5,7 @@ section: "Concepts"
 order: 17
 ---
 
-These pages explain the choices behind a task. Use them when a plan or result needs context.
+Use these concepts to understand the specification for your existing workflow. They explain the roles, files, and approvals that you compare before integrating Bowerloom with the project. A plan describes proposed effects, and exact approval permits only the bound operation. Keep file readiness, runtime readiness, and execution authority separate.
 
 | Question | Explanation |
 | --- | --- |
@@ -17,4 +17,4 @@ A plan describes proposed effects. Exact approval permits the bound operation. T
 
 File readiness, runtime readiness, and execution authority are separate. [Status reference](/docs/reference/errors/) defines their fields.
 
-For a concrete example, follow [Prepare your first team](/docs/learn/first-team/). For exact file names, read [Files and configuration](/docs/configuration/).
+For a concrete example, follow [Integrate your first team](/docs/learn/first-team/). For exact file names, read [Files and configuration](/docs/configuration/).

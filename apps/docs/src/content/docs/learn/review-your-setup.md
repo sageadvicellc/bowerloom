@@ -5,7 +5,7 @@ section: "Learn"
 order: 4
 ---
 
-The installed setup is a proposal for work. Read it with your existing agent before approving any later effect.
+The installed specification connects the proposed roles and handoffs with your project. Read it with your existing personal agent and compare it with the workflow you described. Inspect the working agreement, role prompts, team definition, and handoff map for mismatches. Record any gap before approving later project work. File readiness grants no worker, backend, or connected-action authority.
 
 ## Ask your agent
 
@@ -39,7 +39,9 @@ Use your agent's existing file reader for `.bowerloom/START-HERE.md`. Then read 
 
 Both paths are relative to your selected project. Bowerloom does not add a separate CLI file-reader command here.
 
-Read the personal-agent profile, team roles, working agreement, and milestones. Compare their declarations with your actual goal.
+Read the personal-agent profile, team roles, working agreement, and milestones. Compare their declarations with your actual workflow.
+
+Read `team.yaml` and `maps/relay.json` under `.bowerloom/teams/first-team/`. Compare their task dependencies with the agreed handoffs.
 
 ### Make the next decision
 

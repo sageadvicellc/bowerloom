@@ -31,9 +31,7 @@ Running a team needs separate runtime permissions and controls. The setup comman
 
 ## Read status fields
 
-Specification readiness means that the inspected files meet their required rules. Runtime readiness and permission to execute remain separate.
-
-`ready-for-review` means that the setup needs your review. It does not mean that a team runs.
+Specification readiness means that the inspected files meet their required rules. Runtime readiness and permission to execute remain separate. `ready-for-review` means that the setup needs your review. It does not mean that a team runs.
 
 ## Setup and revision
 

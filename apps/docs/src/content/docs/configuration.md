@@ -5,7 +5,7 @@ section: "Reference"
 order: 23
 ---
 
-The reviewed first setup proposes 20 files under `.bowerloom/`. Approved application adds a private `installation-receipt.json` as the twenty-first file.
+Bowerloom integrates a team specification with your project through 20 proposed files under `.bowerloom/`. The roles, prompts, agreement, and maps describe the workflow for review. Exact approved application adds a private `installation-receipt.json` as the twenty-first file. You can version the definitions with your project, while local receipts and credentials stay private. The specification does not import project contents or start workers.
 
 ## Portable setup
 
@@ -68,7 +68,7 @@ The CLI validates accepted fields and text. The goal remains data in a fixed tem
 
 `team.yaml` declares roles, skills, assets, and proposed access. The maps declare communication and logging structure.
 
-These files do not prove that a model, socket, backend, or retrieval system runs. [Teams and files](/docs/concepts/teams-and-files/) explains the distinction.
+The fixed graph connects scope to draft and both outputs to review. Its declarations do not start a model, socket, backend, or retrieval system. [Teams and files](/docs/concepts/teams-and-files/) explains the specification, and [Map your existing workflow](/docs/guides/integrate-workflow/) connects it to your process.
 
 ## Portable skill bundles
 

@@ -5,7 +5,7 @@ section: "Reference"
 order: 21
 ---
 
-This reference describes `0.7.0-beta.0`. Use the documentation that matches your installed version.
+This reference describes `0.7.0-beta.0` for the operations that integrate or revise a project specification. Use the documentation that matches your installed version. For the complete workflow and its prerequisites, start with [Map your existing workflow](/docs/guides/integrate-workflow/). The forms below describe syntax rather than a grant of execution permission.
 
 | Find | Page |
 | --- | --- |

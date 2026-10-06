@@ -17,7 +17,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ## 0.7.0-beta.0
 
-Prepare a first team with a fixed Engineer, Founder, or Research profile. Use a new workspace or an existing project.
+Integrate a team specification with an existing project through a fixed Engineer, Founder, or Research profile. A separate unused workspace is optional.
 
 Review the full plan before approval. Exact approval installs 20 setup files and one private receipt.
 
@@ -45,4 +45,4 @@ The `v0.7-workbench` Labs label does not identify the framework package. [Workbe
 
 ## Feedback
 
-Report problems through [Bug reports and feedback](/docs/feedback/). Use Q&A for questions, General for feedback, and Ideas for features.
+Report problems through [Bug reports and feedback](/docs/feedback/). Use Q&A for questions, General for feedback, and Ideas for features. [Roadmap](/docs/roadmap/) separates estimated future stages from these shipped changes.

@@ -5,7 +5,7 @@ section: "Concepts"
 order: 19
 ---
 
-A plan describes proposed effects. Approval permits one bound operation. A result records the actual outcome.
+Governance begins with the exact effect you approve. A plan names the proposed files, inputs, target, and operation revision, while approval permits that bound operation. The result records its actual outcome and any uncertainty. A team specification also declares roles, proposed access, handoffs, and review expectations. Those declarations do not grant permission for every later model or tool action.
 
 ## Three different decisions
 
@@ -45,4 +45,4 @@ If an external outcome is uncertain, retain the original evidence. Reconcile tha
 
 ## Support boundary
 
-[Current support](/docs/status/) describes supported tasks and limits. [Prepare your first team](/docs/learn/first-team/) shows the plan and approval sequence.
+[Current support](/docs/status/) describes supported tasks and limits. [Integrate your first team](/docs/learn/first-team/) shows the plan and approval sequence.

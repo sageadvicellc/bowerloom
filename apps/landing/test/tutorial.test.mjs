@@ -8,9 +8,9 @@ test('all profiles and review cadences produce the selected bounded setup brief'
   for (const profile of profiles) for (const mode of reviewModes) {
     const prompt = buildTutorialPrompt({ profileId: profile.id, goal: profile.goal, reviewModeId: mode.id, includeDemo: false });
     assert.deepEqual(brief(prompt), { profile: profile.id, goal: profile.goal, reviewMode: mode.value });
-    assert.ok(prompt.split(/\s+/).length < 330, 'Prompt should stay concise');
-    assert.ok(prompt.includes('Setup is the complete goal'));
-    assert.ok(prompt.includes('do not execute the project or start workers'));
+    assert.ok(prompt.split(/\s+/).length < 500, 'Expanded governance instructions should remain bounded');
+    assert.ok(prompt.includes('Planning and file installation are the complete scope'));
+    assert.ok(prompt.includes('Do not execute the project or start workers'));
     assert.ok(prompt.includes('Wait for my explicit approval'));
     assert.ok(prompt.includes('Apply unchanged inputs with --approve and that exact revision'));
     assert.ok(prompt.includes('then run init status'));
@@ -53,7 +53,7 @@ test('reader setup uses the exact release command without changing operational p
   assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
   assert.doesNotMatch(prompt,/unpublished|unreleased|After publication|candidate|availabilityNote/i);
   assert.ok(prompt.includes('Wait for my explicit approval'));
-  assert.ok(prompt.includes('do not execute the project or start workers'));
+  assert.ok(prompt.includes('Do not execute the project or start workers'));
   assert.equal(readerRelease.label,'Open beta');
   assert.equal(installAvailable,release.npm.published&&release.state==='published');
   assert.equal(Object.hasOwn(readerRelease,'published'),false);
@@ -61,4 +61,21 @@ test('reader setup uses the exact release command without changing operational p
   const next={...release,version:'0.7.0-beta.99',npm:{...release.npm,installCommand:'npm install --global bowerloom@0.7.0-beta.99'}};
   const view=releasePresentation(next);assert.equal(view.version,next.version);assert.ok(view.setupCommands.startsWith(next.npm.installCommand));
   assert.equal(JSON.stringify(release),before);assert.equal(next.npm.published,release.npm.published);
+});
+
+
+test('existing-workflow planning retains a fixed-profile comparison and revision-first boundary',()=>{
+  for(const profile of profiles){
+    const prompt=buildTutorialPrompt({...initialSelection,profileId:profile.id,goal:profile.goal});
+    assert.equal(brief(prompt).profile,profile.id);
+    assert(prompt.includes('existing absolute project path'));
+    assert(prompt.includes('If .bowerloom already exists, use the revision guide instead of fresh installation.'));
+    assert(prompt.includes('Offer new-workspace setup only when I request a separate workspace.'));
+    assert(prompt.includes('bowerloom init plan --mode existing'));
+    assert(prompt.includes('Compare this workflow with the selected fixed profile.'));
+    assert(prompt.includes('Do not claim that init imports my project or generates an arbitrary graph.'));
+    assert(prompt.includes('scope, draft, then review, with the scope also available to the reviewer'));
+    assert(prompt.includes('Report gaps before any separately approved project work.'));
+    assert.deepEqual(Object.keys(brief(prompt)).sort(),['goal','profile','reviewMode']);
+  }
 });

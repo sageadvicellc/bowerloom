@@ -5,14 +5,14 @@ section: "Start here"
 order: 1
 ---
 
-Normal setup uses the installed `bowerloom` command. It does not require a repository checkout.
+Install the `bowerloom` CLI to add a reviewed team specification to your existing project. Start with the workflow you perform manually or with one agent, then [map its roles and handoffs](/docs/guides/integrate-workflow/). Normal setup uses the installed command and needs no repository checkout. Installation gives you the CLI, while each later project-file write still needs its own exact plan approval.
 
 <a id="ask-your-personal-agent"></a>
 
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.0. Review the requirements and installation command with me. After installation, read the version and help, then help me choose my first setup task.
+Read the Bowerloom installation guide for 0.7.0-beta.0. Review the requirements and installation command with me. After installation, read the version and help, then help me integrate our reviewed workflow specification with my existing project.
 ```
 
 ## Agent procedure
@@ -65,7 +65,7 @@ Do not use an unknown archive or different package name to bypass an installatio
 
 ## Choose the first task
 
-[Prepare a new workspace](/docs/learn/first-team/) or [use an existing project](/docs/guides/existing-project/).
+Use [Integrate your first team](/docs/learn/first-team/) for your current project. If `.bowerloom/` already exists, use [revision](/docs/revision/). A [separate new workspace](/docs/guides/new-workspace/) is optional.
 
 Source development follows [Contribute from source](/docs/contributors/). [Installation troubleshooting](/docs/troubleshooting/#installation) covers failed or mismatched installations.
 

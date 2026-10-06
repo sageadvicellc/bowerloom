@@ -5,12 +5,12 @@ section: "Guides"
 order: 7
 ---
 
-Existing mode adds `.bowerloom/` to your chosen project. It does not read project-file contents or import live agent configuration.
+Existing mode integrates Bowerloom definitions with your current project through a new `.bowerloom/` directory. Start by [mapping your workflow](/docs/guides/integrate-workflow/) and reviewing the proposed roles, handoffs, and access. The installer does not read project-file contents or import live agent configuration. If `.bowerloom/` already exists, use [revision](/docs/revision/) instead of fresh setup.
 
 ## Ask your agent
 
 ```text
-Help me add a Bowerloom setup to this existing project. Show the file plan before changing anything. Do not import my agent configuration.
+Help me integrate a Bowerloom team specification with this existing project from our reviewed workflow description. Show the full file plan and working agreement before changing anything. If .bowerloom already exists, use revision. Wait for my exact approval. Do not import project contents or live agent configuration, start workers, or execute the project.
 ```
 
 ## Agent procedure
@@ -63,4 +63,4 @@ If inputs or binding change, prepare another plan and obtain exact approval. Do 
 
 If a revision is pending, preserve its transaction records. Use [revision recovery](/docs/guides/recover-revision/).
 
-Continue with [Read and review your setup](/docs/learn/review-your-setup/).
+Continue with [Read and review your setup](/docs/learn/review-your-setup/). Compare its team specification and handoff map with your current workflow.
