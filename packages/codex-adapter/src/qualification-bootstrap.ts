@@ -11,6 +11,7 @@ import { startupCopy, startupLaunchRevision, type StartupRuntime } from './start
 import { MODEL_ROUTE, POLICY_VERSION } from './policy.js';
 import { AdapterError, check, id, sha, time } from './safe.js';
 import type { AccountBinding, Installation, ModelProcess, ObservationReader, CleanupStatus, CleanupReceipt } from './types.js';
+import type { HistoricalAccountingBinding, HistoricalAccountingExpected } from './historical-accounting.js';
 
 export interface QualificationHostBinding { installationId:string; databaseName:string; admissionSchema:string; accountId:string; accountAlias:string; launcherId:string }
 export interface QualificationFence { binding:QualificationHostBinding; signal:AbortSignal; assert():void; guard():Promise<void> }
@@ -101,28 +102,63 @@ export class QualificationBootstrap {
       const prompt=proposalPrompt(v.taskInput),proposalPlan=planCodexProposalLaunch({version:o.installation.version,nativeSha256:o.installation.nativeSha256}),accountRevision=codexBoundaryAccountRevision(o.binding,o.accountAlias);
       const lookup=async()=>data(await scope.wait(()=>o.lookupGrant(v.grantId),1000));
       const grant=await lookup();
-      exact(grant,['format','grantId','revision','status','operationId','hostBinding','accountBindingDigest','artifactRevision','nativeVersion','nativeSha256','nativePath','runtime','proposalPlanRevision','launchPlanRevision','policyVersion','modelRoute','taskDigest','promptDigest','allowancePercent','issuedAtMs','expiresAtMs','reviewRevision','fixtureRevision']);
+      const accountingMode=grant?.format==='bowerloom/codex-qualification-grant/v2';
+      exact(grant,['format','grantId','revision','status','operationId','hostBinding','accountBindingDigest','artifactRevision','nativeVersion','nativeSha256','nativePath','runtime','proposalPlanRevision','launchPlanRevision','policyVersion','modelRoute','taskDigest','promptDigest','allowancePercent','issuedAtMs','expiresAtMs','reviewRevision','fixtureRevision',...(accountingMode?['historicalAccounting','historicalAccountingRevision']:[])]);
       const {revision,...body}=grant;
-      check(grant.format==='bowerloom/codex-qualification-grant/v1'&&grant.status==='active'&&grant.grantId===v.grantId&&grant.operationId===v.operationId&&revision===v.grantRevision&&sha(canonicalJson(body))===revision,'BOOTSTRAP_GRANT');
+      check((accountingMode||grant.format==='bowerloom/codex-qualification-grant/v1')&&grant.status==='active'&&grant.grantId===v.grantId&&grant.operationId===v.operationId&&revision===v.grantRevision&&sha(canonicalJson(body))===revision,'BOOTSTRAP_GRANT');
       check(same(grant.hostBinding,h)&&o.binding.canonicalAccountId===h.accountId&&o.accountAlias===h.accountAlias&&grant.accountBindingDigest===accountRevision,'BOOTSTRAP_IDENTITY');
       check(grant.nativeVersion===o.installation.version&&grant.nativeSha256===o.installation.nativeSha256&&grant.nativePath===o.installation.nativePath&&same(grant.runtime,o.runtime),'BOOTSTRAP_IDENTITY');
       check(grant.artifactRevision===codexArtifactRevision(o.artifact)&&grant.proposalPlanRevision===proposalPlan.revision&&grant.launchPlanRevision===startupLaunchRevision(proposalPlan.revision,o.runtime),'BOOTSTRAP_IDENTITY');
       check(grant.policyVersion===POLICY_VERSION&&grant.modelRoute===MODEL_ROUTE&&grant.taskDigest===sha(v.taskInput)&&grant.promptDigest===sha(prompt)&&hex(grant.reviewRevision)&&hex(grant.fixtureRevision),'BOOTSTRAP_TASK');
-      check(time(grant.issuedAtMs)&&time(grant.expiresAtMs)&&grant.issuedAtMs<=Date.now()&&grant.expiresAtMs>grant.issuedAtMs&&grant.expiresAtMs-grant.issuedAtMs<=300000,'BOOTSTRAP_EXPIRY');scope.expiry(grant.expiresAtMs);
-      const refresh=async()=>{check(same(await lookup(),grant),'BOOTSTRAP_REVOKED');await scope.wait(()=>o.fence.guard(),1000);scope.check();check(await scope.wait(()=>measureCodexInstalledArtifact(o.artifact,scope.signal),2000)===grant.artifactRevision,'BOOTSTRAP_ARTIFACT');scope.check();};
+      check(time(grant.issuedAtMs)&&time(grant.expiresAtMs)&&grant.issuedAtMs<=Date.now()&&grant.expiresAtMs>grant.issuedAtMs&&grant.expiresAtMs-grant.issuedAtMs<=300000,'BOOTSTRAP_EXPIRY');
+      let effectiveExpiry=grant.expiresAtMs;
+      const helperPath='dist/packages/codex-adapter/src/historical-accounting.js';
+      if(accountingMode){
+        // Narrow before measurement/import or observer work; full nested validation follows measured import.
+        const b=grant.historicalAccounting;
+        check(b&&time(b.issuedAtMs)&&time(b.expiresAtMs)&&b.issuedAtMs<=Date.now()&&b.expiresAtMs>b.issuedAtMs&&b.expiresAtMs-b.issuedAtMs<=300000,'BOOTSTRAP_EXPIRY');
+        effectiveExpiry=Math.min(effectiveExpiry,b.expiresAtMs);
+        check(o.artifact.files.some(f=>f.path===helperPath&&hex(f.sha256))
+          &&fileURLToPath(new URL('./historical-accounting.js',import.meta.url))===join(o.artifact.root,helperPath),'BOOTSTRAP_ARTIFACT');
+      }
+      scope.expiry(effectiveExpiry);
+      const expected:HistoricalAccountingExpected=Object.freeze({hostBinding:h,accountBindingDigest:accountRevision,reviewRevision:grant.reviewRevision,historicalAccountingRevision:grant.historicalAccountingRevision});
+      let helper:Pick<typeof import('./historical-accounting.js'),'captureHistoricalAccounting'|'projectHistoricalAccounting'>|null=null;
+      let accounting:Readonly<HistoricalAccountingBinding>|null=null;
+      const accountingCurrent=()=>{
+        scope.check();if(accountingMode){check(helper&&accounting,'BOOTSTRAP_ACCOUNTING');helper.captureHistoricalAccounting(accounting,expected,Date.now());scope.check();}
+      };
+      const project=(value:unknown):unknown=>{
+        scope.check();if(!accountingMode)return value;
+        check(helper&&accounting,'BOOTSTRAP_ACCOUNTING');const projected=helper.projectHistoricalAccounting(value,accounting,expected,Date.now());scope.check();return projected;
+      };
+      const refresh=async()=>{
+        check(same(await lookup(),grant),'BOOTSTRAP_REVOKED');await scope.wait(()=>o.fence.guard(),1000);scope.check();
+        await scope.wait(async()=>{
+          check(await measureCodexInstalledArtifact(o.artifact,scope.signal)===grant.artifactRevision,'BOOTSTRAP_ARTIFACT');scope.check();
+          if(accountingMode&&!helper){
+            // Fixed measured path, v2 only: v1 retains no dependency on this optional private module.
+            const loaded=await import('./historical-accounting.js');scope.check();
+            check(typeof loaded.captureHistoricalAccounting==='function'&&typeof loaded.projectHistoricalAccounting==='function','BOOTSTRAP_ARTIFACT');
+            const captured=loaded.captureHistoricalAccounting(grant.historicalAccounting,expected,Date.now());scope.check();
+            helper=Object.freeze({captureHistoricalAccounting:loaded.captureHistoricalAccounting,projectHistoricalAccounting:loaded.projectHistoricalAccounting});accounting=captured;
+          }
+        },2000);
+        accountingCurrent();
+      };
       await refresh();
       const request:ReservationRequest={accountAlias:h.accountAlias,jobId,candidateRevision:'sha256:'+revision,modelRoute:MODEL_ROUTE,role:'worker',attempt:'initial',allowancePercent:{...grant.allowancePercent},paidFallback:false};
-      const control:AdmissionControl={binding:{...h,requestDigest:digest(canonicalJson(request)),authorizationRevision:revision,expiresAtMs:grant.expiresAtMs},signal:scope.signal,assert:()=>scope.check()};
+      const control:AdmissionControl={binding:{...h,requestDigest:digest(canonicalJson(request)),authorizationRevision:revision,expiresAtMs:effectiveExpiry},signal:scope.signal,assert:()=>scope.check()};
       const observation=()=>scope.wait(()=>this.#track(activity,Promise.resolve().then(()=>{scope.check();return o.observer.read(h.accountAlias,scope.signal);}),o.observer.quiescence,o.observer),2000);
-      durableAttempted=true;const reserved=await o.admission.reserveControlled(request,await observation(),control);scope.check();
+      durableAttempted=true;const reserved=await o.admission.reserveControlled(request,project(await observation()),control);scope.check();
       if(reserved.kind!=='accepted')return result('refused',reserved.kind==='existing'?'BOOTSTRAP_REPLAY':'BOOTSTRAP_CAPACITY');
       await refresh();
-      const launched=await o.admission.launchOnceControlled(h.accountAlias,jobId,reserved.launchPermit,await observation(),async(pinned,admissionGate:AdmissionDispatchGate)=>{
+      const launched=await o.admission.launchOnceControlled(h.accountAlias,jobId,reserved.launchPermit,project(await observation()),async(pinned,admissionGate:AdmissionDispatchGate)=>{
         check(same(pinned,request),'BOOTSTRAP_REQUEST');scope.check();
         const gate:AdapterBoundaryGate={
-          check:async(s,fresh)=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');await refresh();await admissionGate.check(fresh??await observation());scope.check();},
-          assertCurrent:s=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');scope.check();},
-          consume:(preparation,s)=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');scope.check();check(preparation.launcherId===h.launcherId&&preparation.accountBindingDigest===accountRevision&&preparation.promptDigest===grant.promptDigest&&preparation.modelRoute===MODEL_ROUTE&&preparation.launchPlanRevision===proposalPlan.revision,'BOOTSTRAP_BINDING');
+          check:async(s,fresh)=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');await refresh();await admissionGate.check(project(fresh??await observation()));scope.check();},
+          assertCurrent:s=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');accountingCurrent();},
+          consume:(preparation,s)=>{check(s===scope.signal,'BOOTSTRAP_SIGNAL');accountingCurrent();check(preparation.launcherId===h.launcherId&&preparation.accountBindingDigest===accountRevision&&preparation.promptDigest===grant.promptDigest&&preparation.modelRoute===MODEL_ROUTE&&preparation.launchPlanRevision===proposalPlan.revision,'BOOTSTRAP_BINDING');
             return startupCopy({format:'bowerloom/codex-startup/v1',clock:'darwin-node24.11.0-libuv1.51.0-hrtime-v1',admission:admissionGate.consume(),runtime:o.runtime,accountBindingDigest:accountRevision,promptDigest:grant.promptDigest,modelRoute:MODEL_ROUTE,proposalPlanRevision:proposalPlan.revision,launchPlanRevision:grant.launchPlanRevision});},
         };
         const core=new CodexAdapterCore({installation:o.installation,binding:o.binding,accountAlias:o.accountAlias},gate);

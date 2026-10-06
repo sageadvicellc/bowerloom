@@ -5,6 +5,7 @@ import { registerHooks } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { resolve,join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash } from 'node:crypto';
 import { canonicalJson,digest } from '../../../dist/packages/contracts/src/index.js';
@@ -194,4 +195,154 @@ test('explicit synthetic policy replacement preserves eight held points and fail
  // The current reader only reports the new route. No test invents a production
  // bridge, drops the historical applicability check, or releases the eight points.
  for(const [id,r] of Object.entries(before.reservations))assert.deepEqual(pool.snapshot().reservations[id],r);
+});
+
+// Stage B: actual private composition/admission, with the existing explicitly synthetic core.
+const OLD_ACCOUNTING_ROUTE='codex:gpt-5.5:low';
+const accountingHelperPath='dist/packages/codex-adapter/src/historical-accounting.js';
+const applicability=()=>({requiredWindows:['primary'],optionalWindows:['secondary']});
+function rehashGrant(e){const {revision,...body}=e.grant;e.grant.revision=hash(canonicalJson(body));e.input.grantRevision=e.grant.revision;}
+function rehashAccounting(e){const {revision,...body}=e.grant.historicalAccounting;e.grant.historicalAccounting={...body,revision:hash(canonicalJson(body))};e.grant.historicalAccountingRevision=e.grant.historicalAccounting.revision;rehashGrant(e);}
+async function setupAccounting({historical=true}={}){
+ const e=await setup();e.options.binding.optionalWindows=['secondary'];e.grant.accountBindingDigest=codexBoundaryAccountRevision(e.options.binding,'alias');
+ e.options.artifact.files.push({path:accountingHelperPath,sha256:hash(await readFile(accountingHelperPath))});e.grant.artifactRevision=codexArtifactRevision(e.options.artifact);
+ const epoch=Date.now(),resetAtMs=epoch+300000,events=[],controls=[];
+ const sample=(route=MODEL_ROUTE)=>{const now=Date.now();return{observationId:'v2-sample-'+now,accountId:'account',observedAtMs:now,authentication:'subscription',ordinaryUsageAllowed:true,windows:{primary:{usedPercent:10,durationMs:600000,resetAtMs,accountedThroughMs:null},secondary:null},routes:{[route]:applicability()}};};
+ const basePolicy=e.pool.snapshot().policy,oldPolicy={...basePolicy,thresholdPercent:95,headroomPercent:8,admittedRoutes:[OLD_ACCOUNTING_ROUTE]};
+ await e.options.admission.replacePolicy('alias',basePolicy,oldPolicy);
+ if(historical)for(let i=0;i<4;i++){
+  await delay(2);const jobId='accounting-old-'+i,request={accountAlias:'alias',jobId,candidateRevision:digest('synthetic-history'),modelRoute:OLD_ACCOUNTING_ROUTE,role:'worker',attempt:'initial',allowancePercent:{primary:2},paidFallback:false};
+  const observed=sample(OLD_ACCOUNTING_ROUTE),reserved=await e.options.admission.reserve(request,observed);assert.equal(reserved.kind,'accepted');
+  assert.equal((await e.options.admission.launchOnce('alias',jobId,reserved.launchPermit,observed,async()=>({processRef:'history-'+i}))).kind,'started');
+  await e.options.admission.complete('alias',jobId,{kind:'completed',proofRef:'history-complete-'+i,observedAtMs:Date.now(),processRef:'history-'+i,fencedLauncherId:null});
+ }
+ await e.options.admission.replacePolicy('alias',oldPolicy,{...oldPolicy,admittedRoutes:[MODEL_ROUTE]});await delay(2);
+ const before=e.pool.snapshot(),now=Date.now();
+ const binding={format:'bowerloom/codex-historical-accounting/v1',status:'active',reviewRevision:e.grant.reviewRevision,issuedAtMs:now-1000,expiresAtMs:now+60000,hostBinding:structuredClone(e.grant.hostBinding),accountBindingDigest:e.grant.accountBindingDigest,currentPolicyVersion:POLICY_VERSION,currentModelRoute:MODEL_ROUTE,historicalModelRoute:OLD_ACCOUNTING_ROUTE,requiredWindows:['primary'],optionalWindows:['secondary'],historicalEvidence:{ledgerObservationSha256:hash(canonicalJson(before)),ledgerChecksum:digest(canonicalJson(before)),reservationsDigest:hash(canonicalJson(Object.keys(before.reservations).sort().map(id=>before.reservations[id]))),reservationCount:4,retainedPrimaryPercent:8},oldLaunchAuthorized:false,coverageReleaseAttested:false};
+ e.grant.format='bowerloom/codex-qualification-grant/v2';e.grant.historicalAccounting={...binding,revision:hash(canonicalJson(binding))};e.grant.historicalAccountingRevision=e.grant.historicalAccounting.revision;rehashGrant(e);
+ let readCount=0,registryCount=0,coreStarts=0,consumed;
+ e.options.observer={async read(alias,signal){readCount++;events.push({kind:'reader',readCount,signalAborted:signal.aborted});return sample();},async quiescence(){return{cleanup:'verified'};}};
+ e.options.lookupGrant=async()=>{registryCount++;events.push({kind:'registry',registryCount});return e.grant;};
+ const reserve=e.options.admission.reserveControlled.bind(e.options.admission),launch=e.options.admission.launchOnceControlled.bind(e.options.admission);
+ e.options.admission.reserveControlled=async(request,observation,control)=>{events.push({kind:'reserve',observation:structuredClone(observation)});controls.push(control);return reserve(request,observation,control);};
+ e.options.admission.launchOnceControlled=async(alias,id,permit,observation,callback,control)=>{events.push({kind:'claim',observation:structuredClone(observation)});controls.push(control);return launch(alias,id,permit,observation,(request,gate)=>callback(request,{check:async fresh=>{events.push({kind:'gate',observation:structuredClone(fresh)});return gate.check(fresh);},consume:()=>gate.consume()}),control);};
+ const plan=planCodexProposalLaunch({version:e.options.installation.version,nativeSha256:e.options.installation.nativeSha256});
+ const prepare=input=>({launcherId:input.launcherId,accountBindingDigest:e.grant.accountBindingDigest,promptDigest:hash(proposalPrompt(input.taskInput)),modelRoute:MODEL_ROUTE,launchPlanRevision:plan.revision});
+ globalThis[symbol].start=async(opts,gate,input,signal)=>{
+  coreStarts++;await gate.check(signal);await gate.check(signal,sample());gate.assertCurrent(signal);consumed=gate.consume(prepare(input),signal);return e.handle;
+ };
+ const original=e.stats;
+ return Object.assign(e,{sample,before,events,controls,prepare,stats:()=>({...original(),readCount,registryCount,coreStarts,consumed})});
+}
+function assertHistory(e){for(const [id,reservation] of Object.entries(e.before.reservations))assert.deepEqual(e.pool.snapshot().reservations[id],reservation);assert.equal(Object.keys(e.before.reservations).length,4);assert.equal(Object.keys(e.before.reservations).reduce((n,id)=>n+e.pool.snapshot().reservations[id].retained.primary.percent,0),8);}
+function currentRow(e){return Object.values(e.pool.snapshot().reservations).find(r=>r.request.modelRoute===MODEL_ROUTE);}
+
+test('v1 keeps its exact schema and never imports or requires the accounting helper',async()=>{
+ const e=await setup();assert.equal(e.options.artifact.files.some(f=>f.path===accountingHelperPath),false);let imports=0;
+ const h=registerHooks({resolve(spec,context,next){if(spec==='./historical-accounting.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js')){imports++;throw Error('v1 must not import helper');}return next(spec,context);}});
+ try{assert.equal((await e.runner().run(e.input,e.abort.signal)).status,'proposal');assert.equal(imports,0);}finally{h.deregister();}
+ for(const field of ['historicalAccounting','historicalAccountingRevision']){const f=await setup();f.grant[field]=field==='historicalAccounting'?{}:'a'.repeat(64);rehashGrant(f);assert.equal((await f.runner().run(f.input,f.abort.signal)).status,'refused');assert.equal(f.stats().reads,0);}
+});
+test('v2 projects outer reserve/claim and internal fresh/fallback samples; retains eight and denies replay',async()=>{
+ const e=await setupAccounting(),runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(r.status,'proposal',JSON.stringify({r,events:e.events,errors:e.stats().errors}));assertHistory(e);
+ const paths=e.events.filter(x=>['reserve','claim','gate'].includes(x.kind));assert.deepEqual(paths.map(x=>x.kind),['reserve','claim','gate','gate']);
+ for(const {observation:o} of paths){assert.deepEqual(o.routes,{[MODEL_ROUTE]:applicability(),[OLD_ACCOUNTING_ROUTE]:applicability()});assert.equal(o.windows.primary.accountedThroughMs,null);assert.equal(o.windows.secondary,null);assert.equal(o.accountId,'account');}
+ assert.equal(e.stats().readCount,3);assert.equal(e.stats().coreStarts,1);assert.ok(e.stats().registryCount>=5);assert.equal(r.cleanup,'verified');
+ const replay=await runner.run(e.input,e.abort.signal);assert.equal(replay.status,'refused');assert.equal(e.stats().coreStarts,1);assertHistory(e);
+});
+test('valid v1 still holds on historical charges instead of silently projecting them',async()=>{
+ const e=await setupAccounting();e.grant.format='bowerloom/codex-qualification-grant/v1';delete e.grant.historicalAccounting;delete e.grant.historicalAccountingRevision;rehashGrant(e);
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(e.stats().coreStarts,0);assert.equal(currentRow(e),undefined);assertHistory(e);
+});
+test('v2 strict nested authority mismatches refuse before observers, including self-consistent revision mutations',async()=>{
+ const mutations=[e=>delete e.grant.historicalAccounting,e=>delete e.grant.historicalAccountingRevision,e=>e.grant.format='bowerloom/codex-qualification-grant/v3',e=>e.grant.extra=true,
+ e=>e.grant.historicalAccountingRevision='f'.repeat(64),e=>{e.grant.historicalAccounting.hostBinding.launcherId='other';rehashAccounting(e);},e=>{e.grant.historicalAccounting.accountBindingDigest='f'.repeat(64);rehashAccounting(e);},
+ e=>{e.grant.historicalAccounting.reviewRevision='f'.repeat(64);rehashAccounting(e);},e=>{e.grant.historicalAccounting.currentModelRoute=OLD_ACCOUNTING_ROUTE;rehashAccounting(e);},e=>{e.grant.historicalAccounting.extra=true;rehashAccounting(e);}];
+ for(const mutate of mutations){const e=await setupAccounting();mutate(e);rehashGrant(e);const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);assert.equal(e.stats().coreStarts,0);assert.equal(currentRow(e),undefined);assertHistory(e);}
+});
+test('v2 refuses missing or wrong measured helper entry before any reader/admission action',async()=>{
+ for(const kind of ['missing','hash']){const e=await setupAccounting();if(kind==='missing')e.options.artifact.files=e.options.artifact.files.filter(f=>f.path!==accountingHelperPath);else e.options.artifact.files.find(f=>f.path===accountingHelperPath).sha256='f'.repeat(64);
+ e.grant.artifactRevision=codexArtifactRevision(e.options.artifact);rehashGrant(e);const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);assert.equal(e.events.some(x=>x.kind==='reserve'),false);assertHistory(e);}
+});
+test('v2 grant and binding expiry minimum narrows control and consumed original authorization',async()=>{
+ for(const earlier of ['grant','binding']){const e=await setupAccounting(),expiry=Date.now()+10000;if(earlier==='grant')e.grant.expiresAtMs=expiry;else e.grant.historicalAccounting.expiresAtMs=expiry;rehashAccounting(e);
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'proposal');assert.ok(e.controls.length>=2);for(const c of e.controls)assert.equal(c.binding.expiresAtMs,expiry);
+ const envelope=e.stats().consumed.admission;assert.equal(envelope.binding.expiresAtMs,expiry);assert.ok(envelope.notAfterWallMs<=expiry);assertHistory(e);}
+});
+
+for(const boundary of ['reserve','claim','fallback','fresh'])for(const bad of ['coverage','secondary','missing-secondary','conflict'])test('v2 '+boundary+' refuses '+bad+' before downstream admission and preserves history',async()=>{
+ const e=await setupAccounting();const poison=o=>{if(bad==='coverage')o.windows.primary.accountedThroughMs=Date.now()-1;else if(bad==='secondary')o.windows.secondary={...o.windows.primary};else if(bad==='missing-secondary')delete o.windows.secondary;else o.routes[OLD_ACCOUNTING_ROUTE]={requiredWindows:['primary'],optionalWindows:[]};return o;};
+ const original=e.options.observer.read;let reads=0;e.options.observer.read=async(...args)=>{const o=await original(...args);reads++;return reads===({reserve:1,claim:2,fallback:3}[boundary])?poison(o):o;};
+ if(boundary==='fresh')globalThis[symbol].start=async(opts,gate,input,signal)=>{await gate.check(signal,poison(e.sample()));throw Error('unreachable synthetic start');};
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'held');assertHistory(e);
+ const calls=e.events.filter(x=>['reserve','claim','gate'].includes(x.kind)).map(x=>x.kind);
+ assert.deepEqual(calls,boundary==='reserve'?[]:boundary==='claim'?['reserve']:['reserve','claim']);
+ assert.equal(currentRow(e)?.status,boundary==='reserve'?undefined:boundary==='claim'?'RESERVED':'LAUNCHING');assert.equal(e.stats().consumed,undefined);
+});
+test('v2 immutable full grant refresh refuses nested registry drift after reservation',async()=>{
+ const e=await setupAccounting(),original=e.options.lookupGrant;let reads=0;e.options.lookupGrant=async()=>{const g=await original();reads++;if(reads===3){g.historicalAccounting.historicalEvidence.reservationsDigest='f'.repeat(64);rehashAccounting(e);}return g;};
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(currentRow(e).status,'RESERVED');assert.equal(e.stats().coreStarts,0);assertHistory(e);
+});
+test('v2 registry revocation during internal fresh gate holds LAUNCHING and never consumes',async()=>{
+ const e=await setupAccounting(),base=globalThis[symbol].start;globalThis[symbol].start=async(...args)=>{e.grant.status='revoked';rehashGrant(e);return base(...args);};
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(currentRow(e).status,'LAUNCHING');assert.equal(e.stats().consumed,undefined);assertHistory(e);
+});
+test('v2 observed overlapping reset is refused by unchanged admission without rewriting high-water or history',async()=>{
+ const e=await setupAccounting();e.options.observer.read=async()=>{const o=e.sample();o.windows.primary.resetAtMs+=100000;return o;};
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(currentRow(e),undefined);assert.deepEqual(e.pool.snapshot().highWater,e.before.highWater);assertHistory(e);
+});
+test('v2 binding expiry during pending observer cancels and observes late settlement with no reservation',async()=>{
+ const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ let signal;e.options.observer={read:async(alias,s)=>{signal=s;entered.resolve();return pending.promise;},async quiescence(){return{cleanup:'verified'};}};
+ const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'held');assert.equal(signal.aborted,true);assert.equal(currentRow(e),undefined);assertHistory(e);
+ pending.resolve(e.sample());assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'verified'});assert.equal(e.events.some(x=>x.kind==='reserve'),false);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
+});
+test('v2 binding expiry during pending registry refresh retains reservation after late rejection',async()=>{
+ const e=await setupAccounting(),pending=deferred(),entered=deferred(),base=e.options.lookupGrant;let count=0;e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ e.options.lookupGrant=async()=>{const g=await base();if(++count===3){entered.resolve();return pending.promise;}return g;};
+ const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'held');assert.equal(currentRow(e).status,'RESERVED');assert.equal(e.stats().coreStarts,0);
+ pending.reject(Error('PRIVATE_LATE_REGISTRY'));await tick();assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
+});
+test('v2 fixed helper import shares existing artifact deadline and cannot resume after late completion',async()=>{
+ const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ globalThis[symbol].importBarrier=pending.promise;globalThis[symbol].importEntered=()=>entered.resolve();
+ const source=`globalThis[${JSON.stringify(symbol)}].importEntered();await globalThis[${JSON.stringify(symbol)}].importBarrier;export {captureHistoricalAccounting,projectHistoricalAccounting} from ${JSON.stringify(pathToFileURL(resolve(accountingHelperPath)).href)};`;
+ const url='data:text/javascript,'+encodeURIComponent(source),hook=registerHooks({resolve(spec,context,next){if(spec==='./historical-accounting.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))return{url,shortCircuit:true};return next(spec,context);}});
+ try{const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);pending.resolve();await tick();await tick();assert.equal(currentRow(e),undefined);assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');}
+ finally{pending.resolve();hook.deregister();delete globalThis[symbol].importBarrier;delete globalThis[symbol].importEntered;}
+});
+test('v2 refused fixed helper import cannot fall back to unmeasured or v1 accounting',async()=>{
+ const e=await setupAccounting(),hook=registerHooks({resolve(spec,context,next){if(spec==='./historical-accounting.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))throw Error('PRIVATE_IMPORT');return next(spec,context);}});
+ try{const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);assert.equal(currentRow(e),undefined);assertHistory(e);}finally{hook.deregister();}
+});
+test('v2 synchronous expiry or clock regression before consume closes permanently with no authorization',async t=>{
+ for(const mode of ['expired','backwards']){const e=await setupAccounting();let consumes=0;globalThis[symbol].start=async(opts,gate,input,signal)=>{
+  await gate.check(signal,e.sample());const now=Date.now();const mocked=t.mock.method(Date,'now',()=>mode==='expired'?e.grant.historicalAccounting.expiresAtMs:now-10000);
+  try{const auth=gate.consume(e.prepare(input),signal);consumes++;return e.handle;}finally{mocked.mock.restore();}
+ };
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(consumes,0);assert.equal(currentRow(e).status,'LAUNCHING');assertHistory(e);}
+});
+test('v2 cancellation after consume retains and cleans late handle; no RUNNING accounting or retry follows',async()=>{
+ const e=await setupAccounting(),start=deferred(),entered=deferred(),base=globalThis[symbol].start;globalThis[symbol].start=async(...args)=>{const handle=await base(...args);entered.resolve();await start.promise;return handle;};
+ const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;e.abort.abort();const r=await running;assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(currentRow(e).status,'LAUNCHING');start.resolve();
+ assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'verified'});assert.equal(e.stats().terminates,1);assert.equal(currentRow(e).status,'LAUNCHING');assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
+});
+test('v2 internal fresh conflict with existing observation identity stays held without releasing history',async()=>{
+ const e=await setupAccounting();globalThis[symbol].start=async(opts,gate,input,signal)=>{
+  const before=e.pool.snapshot().observation,conflict=structuredClone(before);delete conflict.routes[OLD_ACCOUNTING_ROUTE];conflict.windows.primary.usedPercent++;
+  await gate.check(signal,conflict);throw Error('unreachable');
+ };
+ const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(currentRow(e).status,'LAUNCHING');assert.equal(e.stats().consumed,undefined);assertHistory(e);
+});
+test('v2 helper import cannot obtain another timeout beyond the existing two-second artifact budget',async()=>{
+ const e=await setupAccounting(),pending=deferred(),entered=deferred();globalThis[symbol].artifactDeadlineBarrier=pending.promise;globalThis[symbol].artifactDeadlineEntered=()=>entered.resolve();
+ const source=`globalThis[${JSON.stringify(symbol)}].artifactDeadlineEntered();await globalThis[${JSON.stringify(symbol)}].artifactDeadlineBarrier;export {captureHistoricalAccounting,projectHistoricalAccounting} from ${JSON.stringify(pathToFileURL(resolve(accountingHelperPath)).href)};`;
+ const url='data:text/javascript,'+encodeURIComponent(source),hook=registerHooks({resolve(spec,context,next){if(spec==='./historical-accounting.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))return{url,shortCircuit:true};return next(spec,context);}});
+ try{const runner=e.runner(),start=performance.now(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;
+  assert.equal(r.status,'refused');assert.ok(performance.now()-start>=1900);assert.ok(performance.now()-start<4000);assert.equal(e.stats().readCount,0);assert.ok(Date.now()<e.grant.historicalAccounting.expiresAtMs);
+  pending.reject(Error('PRIVATE_LATE_IMPORT'));await tick();assert.equal(currentRow(e),undefined);assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
+ }finally{pending.resolve();hook.deregister();delete globalThis[symbol].artifactDeadlineBarrier;delete globalThis[symbol].artifactDeadlineEntered;}
+});
+test('v2 cannot substitute an artifact root different from the executing bootstrap',async()=>{
+ const e=await setupAccounting();e.options.artifact.root=resolve('synthetic-other-root');assert.throws(()=>e.runner(),/BOOTSTRAP_ARTIFACT/);assert.equal(e.stats().readCount,0);assertHistory(e);
 });
