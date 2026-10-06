@@ -1,7 +1,7 @@
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { installBundle, planInstallation, PortableError, validateBundle, type InstallationInput } from '../../../packages/portable/src/index.js';
 
-const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom portable validate <directory>, or plan|install <directory> --select <part,part> --harness codex --target <new-absolute-directory>. Install also requires --approve <revision>.'); };
+const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom portable validate <directory>, or plan|install <directory> --select <part,part> --harness codex|claude --target <new-absolute-directory>. Install also requires --approve <revision>.'); };
 
 /** Parse a bounded local install request. Approval never permits crew execution. */
 export function runPortableCommand(args: string[]): unknown {

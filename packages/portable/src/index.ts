@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
+import { projectionFor, type Harness, type AdapterVersion } from './harness-projection.js';
 
 export const SCHEMA_VERSION = 'bowerloom/v1alpha1' as const;
 export const ADAPTER_VERSION = 'codex/local-skills/v1alpha1' as const;
@@ -23,11 +24,11 @@ export interface BundleValidation { schemaVersion: typeof SCHEMA_VERSION; manife
 export interface InstallationInput { bundleDir: string; selected: string[]; harness: string; targetDir: string }
 export interface Projection extends FileDigest { partId: string; targetPath: string }
 export interface InstallationPlan {
-  schemaVersion: typeof SCHEMA_VERSION; adapterVersion: typeof ADAPTER_VERSION; harness: 'codex'; targetDir: string;
+  schemaVersion: typeof SCHEMA_VERSION; adapterVersion: AdapterVersion; harness: Harness; targetDir: string;
   selected: string[]; dependencies: string[]; parts: string[]; bundleRevision: string; manifestSha256: string;
   files: Projection[]; generatedFiles: string[]; controlScope: 'installer-only'; executionAuthorized: false; revision: string;
 }
-export interface InstallationReceipt { schemaVersion: typeof SCHEMA_VERSION; adapterVersion: typeof ADAPTER_VERSION; plan: InstallationPlan; installedFiles: FileDigest[]; executionAuthorized: false }
+export interface InstallationReceipt { schemaVersion: typeof SCHEMA_VERSION; adapterVersion: AdapterVersion; plan: InstallationPlan; installedFiles: FileDigest[]; executionAuthorized: false }
 const ID = /^[a-z][a-z0-9-]{0,47}$/;
 const allowedControls = new Set(['installer-local-files-only', 'installer-explicit-review']);
 function exact(value: unknown, keys: string[], optional: string[] = []): asserts value is Record<string, unknown> {
@@ -136,7 +137,7 @@ function targetPath(input: InstallationInput): string {
   if (foldedTarget === foldedHome || target === sep || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(basename(target))
     || ['/usr', '/etc', '/bin', '/sbin', '/opt', '/System', '/Library', '/Applications'].some(path => foldedTarget === path.toLowerCase() || foldedTarget.startsWith(path.toLowerCase() + sep))
     || foldedTarget === foldedSource || foldedTarget.startsWith(foldedSource + sep) || foldedSource.startsWith(foldedTarget + sep)
-    || target.split(sep).some(segment => ['.agents', '.codex', '.config', '.git', 'node_modules'].includes(segment.toLowerCase()))) fail('UNSAFE_TARGET');
+    || target.split(sep).some(segment => ['.agents', '.codex', '.claude', '.config', '.git', 'node_modules'].includes(segment.toLowerCase()))) fail('UNSAFE_TARGET');
   noSymlinkAncestors(target, true);
   if (existsSync(target)) fail('TARGET_EXISTS');
   const parent = lstatSync(dirname(target));
@@ -144,7 +145,8 @@ function targetPath(input: InstallationInput): string {
   return target;
 }
 function makePlan(input: InstallationInput, validation: BundleValidation): InstallationPlan {
-  if (input.harness !== 'codex') fail('UNSUPPORTED_HARNESS');
+  const adapter = projectionFor(input.harness);
+  if (!adapter) fail('UNSUPPORTED_HARNESS');
   const selected = strings(input.selected, LIMITS.parts).sort(); if (!selected.length) fail('SELECTION_REQUIRED');
   const targetDir = targetPath(input), byId = new Map(validation.manifest.parts.map(part => [part.id, part])), closure = new Set<string>();
   const include = (id: string) => { const part = byId.get(id); if (!part) fail('UNKNOWN_PART'); if (closure.has(id)) return; closure.add(id); part!.dependsOn.forEach(include); };
@@ -154,9 +156,9 @@ function makePlan(input: InstallationInput, validation: BundleValidation): Insta
     const part = byId.get(id)!;
     const prefix = `${part.kind === 'skill' ? 'skills' : 'teams'}/${id}/`;
     return part.files.map(path => ({ ...validation.files.find(file => file.path === path)!, partId: id,
-      targetPath: `${part.kind === 'skill' ? `.agents/skills/bowerloom-${id}` : `.bowerloom/teams/${id}`}/${path.slice(prefix.length)}` }));
+      targetPath: `${part.kind === 'skill' ? `${adapter!.skillRoot}/bowerloom-${id}` : `.bowerloom/teams/${id}`}/${path.slice(prefix.length)}` }));
   });
-  const body = { schemaVersion: SCHEMA_VERSION, adapterVersion: ADAPTER_VERSION, harness: 'codex' as const, targetDir, selected,
+  const body = { schemaVersion: SCHEMA_VERSION, adapterVersion: adapter!.version, harness: adapter!.harness, targetDir, selected,
     dependencies: parts.filter(id => !selected.includes(id)), parts, bundleRevision: validation.bundleRevision, manifestSha256: validation.manifestSha256,
     files, generatedFiles: ['START-HERE.md', '.bowerloom/installation-receipt.json'], controlScope: 'installer-only' as const, executionAuthorized: false as const };
   return { ...body, revision: hash(canonical(body)) };
@@ -179,9 +181,10 @@ export function installBundle(input: InstallationInput, approvalRevision: string
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
       writeFileSync(destination, source.texts.get(file.path)!, { flag: 'wx', mode: 0o600 });
     }
-    const start = `# Bowerloom local installation\n\nThis workspace contains selected portable parts for Codex.\n\nPlan revision: ${plan.revision}\nBundle revision: ${plan.bundleRevision}\nSchema: ${SCHEMA_VERSION}\nAdapter: ${ADAPTER_VERSION}\n\nSelected: ${plan.selected.join(', ')}\nDependencies: ${plan.dependencies.join(', ') || 'none'}\n\nSkill projections are under .agents/skills/. Codex can discover these instructions when you open this workspace. Review SKILL.md before invoking a skill.\n\nTeam definitions under .bowerloom/teams/ are data. This installer does not execute teams, start workers, grant permissions, or approve actions. Installation approval authorizes only these new files. Declared installer controls do not enforce future Codex skill behavior. Review instructions before use and retain the personal agent permission controls.\n\nOrigin hashes and projections are in .bowerloom/installation-receipt.json. No global or home configuration changed.\n`;
+    const codexStart = `# Bowerloom local installation\n\nThis workspace contains selected portable parts for Codex.\n\nPlan revision: ${plan.revision}\nBundle revision: ${plan.bundleRevision}\nSchema: ${SCHEMA_VERSION}\nAdapter: ${ADAPTER_VERSION}\n\nSelected: ${plan.selected.join(', ')}\nDependencies: ${plan.dependencies.join(', ') || 'none'}\n\nSkill projections are under .agents/skills/. Codex can discover these instructions when you open this workspace. Review SKILL.md before invoking a skill.\n\nTeam definitions under .bowerloom/teams/ are data. This installer does not execute teams, start workers, grant permissions, or approve actions. Installation approval authorizes only these new files. Declared installer controls do not enforce future Codex skill behavior. Review instructions before use and retain the personal agent permission controls.\n\nOrigin hashes and projections are in .bowerloom/installation-receipt.json. No global or home configuration changed.\n`;
+    const start = plan.harness === 'codex' ? codexStart : projectionFor('claude')!.guidance(plan);
     writeFileSync(join(stage, 'START-HERE.md'), start, { flag: 'wx', mode: 0o600 });
-    const receipt: InstallationReceipt = { schemaVersion: SCHEMA_VERSION, adapterVersion: ADAPTER_VERSION, plan,
+    const receipt: InstallationReceipt = { schemaVersion: SCHEMA_VERSION, adapterVersion: plan.adapterVersion, plan,
       installedFiles: [...plan.files.map(file => ({ path: file.targetPath, sha256: file.sha256, bytes: file.bytes })), { path: 'START-HERE.md', sha256: hash(start), bytes: Buffer.byteLength(start) }], executionAuthorized: false };
     mkdirSync(join(stage, '.bowerloom'), { recursive: true, mode: 0o700 });
     writeFileSync(join(stage, '.bowerloom/installation-receipt.json'), JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx', mode: 0o600 });

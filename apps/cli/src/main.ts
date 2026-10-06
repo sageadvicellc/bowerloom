@@ -38,7 +38,7 @@ const HELP = `Usage:
   bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
   bowerloom backend status --root <private-installation-directory>
   bowerloom portable validate <bundle-directory>
-  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex --target <new-absolute-directory> [--approve <revision>]
+  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex|claude --target <new-absolute-directory> [--approve <revision>]
   bowerloom recipe inspect|setup --installation <private.json>
   bowerloom recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
   bowerloom validate <crew.yaml> [--root <directory>]
