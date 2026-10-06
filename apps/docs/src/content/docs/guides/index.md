@@ -12,6 +12,7 @@ Each guide names its prerequisites, proposed effect, approval, and next review. 
 | Task | Guide |
 | --- | --- |
 | Add files to an existing project | [Existing project](/docs/guides/existing-project/) |
+| Store and project a portable skill for Codex | [Add a portable skill](/docs/guides/add-skills/) |
 | Change an installed goal or profile | [Revise an installed setup](/docs/revision/) |
 | Resolve an interrupted revision | [Recover a revision](/docs/guides/recover-revision/) |
 | Request a registered-work stop | [Stop registered work](/docs/stop/) |

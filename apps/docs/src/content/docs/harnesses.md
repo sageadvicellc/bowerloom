@@ -43,6 +43,12 @@ Missing qualification requires a refusal. Do not substitute an older or less res
 
 If the selected inputs are live or their scope is unclear, stop before changing them.
 
+## Portable skills for Codex
+
+[Add a portable skill](/docs/guides/add-skills/) describes the separate installer for a new Codex workspace. It projects reviewed skill files into `.agents/skills/`.
+
+The synthetic configuration commands above do not project skill files. Portable skill installation for Claude Code and existing targets remains unsupported.
+
 ## Support boundary
 
 [Current support](/docs/status/#harnesses) records the runtime limit. [Security boundaries](/docs/security/) explains host tool rights.

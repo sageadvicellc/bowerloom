@@ -70,6 +70,12 @@ The CLI validates accepted fields and text. The goal remains data in a fixed tem
 
 These files do not prove that a model, socket, backend, or retrieval system runs. [Teams and files](/docs/concepts/teams-and-files/) explains the distinction.
 
+## Portable skill bundles
+
+[Add a portable skill for Codex](/docs/guides/add-skills/) explains the separate bundle manifest and project-local projection.
+
+That installer uses a new workspace. It does not add files to this managed first-team inventory or install skills into Claude Code.
+
 ## Private local records
 
 `installation-receipt.json` binds the reviewed plan to local installation state. Revision retains separate private history, staging, and transaction records.

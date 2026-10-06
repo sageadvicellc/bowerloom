@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {mountDocsTheme,themeControlLabel,THEME_STORAGE_KEY} from '../src/lib/theme-control.mjs';
 import {attachDrawerFocus} from '../src/lib/drawer-focus.mjs';
 import assert from 'node:assert/strict';
 import {documentationSources} from '../src/lib/build-paths.mjs';
@@ -110,4 +111,39 @@ test('mobile drawer closes with Escape, traps Tab, defers to search, and restore
   doc.search=true;assert(!key('Escape').defaultPrevented);assert.equal(closed,0);
   doc.search=false;assert(key('Escape').defaultPrevented);assert.equal(closed,1);
   cleanup();assert.equal(listeners.size,0);assert.equal(doc.activeElement,trigger);assert.equal(attrs.size,0);
+});
+
+
+function themeFixture(saved='system',dark=false,denied=false){
+  const events=new Map(),mediaEvents=new Map(),values=new Map([[THEME_STORAGE_KEY,saved]]),attributes=new Map();
+  const media={matches:dark,addEventListener:(name,fn)=>mediaEvents.set(name,fn),removeEventListener:name=>mediaEvents.delete(name)};
+  const host={matchMedia:()=>media,localStorage:{getItem:key=>{if(denied)throw Error('storage blocked');return values.get(key)??null;},setItem:(key,value)=>{if(denied)throw Error('storage blocked');values.set(key,value);}},addEventListener:(name,fn)=>events.set(name,fn),removeEventListener:name=>events.delete(name)};
+  const root={dataset:{},style:{},classList:{toggle:(name,on)=>attributes.set(name,on)}};
+  const page={documentElement:root,querySelector:selector=>({setAttribute:(key,value)=>attributes.set(selector+key,value)})};
+  const preferences=[];const control=mountDocsTheme(host,page,p=>preferences.push(p));
+  return {events,mediaEvents,values,attributes,media,root,preferences,control};
+}
+test('docs uses the landing preference cycle, labels, saved key, and docs-specific application',()=>{
+  const f=themeFixture('light',true);
+  assert.equal(f.root.dataset.theme,'light');assert.equal(f.preferences.at(-1),'light');
+  for(const [expected,color] of [['dark','dark'],['system','dark'],['light','light']]){
+    f.control.next();assert.equal(f.preferences.at(-1),expected);assert.equal(f.values.get(THEME_STORAGE_KEY),expected);assert.equal(f.root.dataset.theme,color);assert.equal(f.root.style.colorScheme,color);assert.equal(f.attributes.get('dark'),color==='dark');
+  }
+  assert.equal(themeControlLabel('light'),'Theme: Light (day). Switch to Dark (night).');
+  assert.equal(themeControlLabel('dark'),'Theme: Dark (night). Switch to System (day and night).');
+  assert.equal(themeControlLabel('system'),'Theme: System (day and night). Switch to Light (day).');
+  assert.equal(f.attributes.get('link[rel="icon"]href'),'/docs/brand/s4-g3-icon.svg');
+  assert.equal(f.attributes.get('meta[name="theme-color"]content'),'#F6EEE8');f.control.dispose();
+});
+test('docs follows system changes only in system mode and synchronizes cross-tab changes and clear',()=>{
+  const f=themeFixture('system',false);f.media.matches=true;f.mediaEvents.get('change')();assert.equal(f.root.dataset.theme,'dark');
+  f.control.next();assert.equal(f.root.dataset.theme,'light');f.mediaEvents.get('change')();assert.equal(f.root.dataset.theme,'light');
+  f.values.set(THEME_STORAGE_KEY,'dark');f.events.get('storage')({key:'unrelated'});assert.equal(f.preferences.at(-1),'light');
+  f.events.get('storage')({key:THEME_STORAGE_KEY});assert.equal(f.preferences.at(-1),'dark');
+  f.values.clear();f.events.get('storage')({key:null});assert.equal(f.preferences.at(-1),'system');assert.equal(f.root.dataset.theme,'dark');
+  const queued=f.mediaEvents.get('change'),before=f.preferences.length;f.control.dispose();assert.equal(f.events.size,0);assert.equal(f.mediaEvents.size,0);queued();f.control.next();assert.equal(f.preferences.length,before);
+});
+test('blocked storage still permits system resolution and all page-local theme choices',()=>{
+  const f=themeFixture('light',true,true);assert.equal(f.preferences.at(-1),'system');assert.equal(f.root.dataset.theme,'dark');
+  f.control.next();assert.equal(f.root.dataset.theme,'light');f.control.next();assert.equal(f.root.dataset.theme,'dark');f.control.next();assert.equal(f.preferences.at(-1),'system');f.control.dispose();
 });

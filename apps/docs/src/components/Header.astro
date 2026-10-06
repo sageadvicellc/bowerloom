@@ -1,3 +1,6 @@
+---
+import ThemeControl from './ThemeControl';
+---
 <header class="docs-header">
   <span class="docs-brand" aria-hidden="true">
     <img class="brand-light bot" src="/docs/brand/s4-g3-icon.svg" alt="" width="32" height="32" />
@@ -9,18 +12,5 @@
     <a href="/">Main site</a>
     <a href="/docs/">Docs home</a>
   </nav>
-  <label class="docs-theme">Theme
-    <select id="docs-theme" aria-label="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
-  </label>
+  <div class="docs-theme"><ThemeControl client:load/></div>
 </header>
-<script>
-  const select=document.querySelector<HTMLSelectElement>('#docs-theme');
-  const media=window.matchMedia('(prefers-color-scheme: dark)');
-  let preference='system';
-  try {const saved=localStorage.getItem('bowerloom.theme');if(saved==='light'||saved==='dark')preference=saved;}catch{}
-  function apply(){const dark=preference==='dark'||(preference==='system'&&media.matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.classList.toggle('dark',dark);document.documentElement.style.colorScheme=dark?'dark':'light';if(select)select.value=preference;}
-  select?.addEventListener('change',()=>{preference=select.value;try{localStorage.setItem('bowerloom.theme',preference);}catch{}apply();});
-  media.addEventListener('change',apply);
-  window.addEventListener('storage',event=>{if(event.key==='bowerloom.theme'){preference=event.newValue==='dark'||event.newValue==='light'?event.newValue:'system';apply();}});
-  apply();
-</script>
