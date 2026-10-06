@@ -105,8 +105,8 @@ export default function App() {
     try { rememberSplash(window.sessionStorage, sessionKey); } catch { /* Entry never depends on storage. */ }
     setSplashOpen(false);
     requestAnimationFrame(() => {
-      if (replaying.current) replayRef.current?.focus();
-      else document.getElementById('hero-title')?.focus();
+      if (replaying.current) replayRef.current?.focus({ preventScroll: true });
+      else document.getElementById('main')?.focus({ preventScroll: true });
     });
   };
   const replaySplash = () => {
@@ -174,16 +174,19 @@ export default function App() {
           <span /> {release.statusLabel}
         </span>
       </header>
-      <main id="main">
+      <main id="main" tabIndex={-1}>
         {cinematic ? <section className="hero normal-hero" aria-labelledby="hero-title">
-          <HomepageBanner />
+          <HomepageBanner>
+            {introMedia && <button ref={replayRef} type="button" className="banner-replay" onClick={replaySplash} aria-label="Replay workshop animation" title="Replay animation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M19.1 8a8 8 0 1 0 .4 7M20 12l-.9-4" /></svg>
+            </button>}
+          </HomepageBanner>
           <div className="hero-copy">
             <p className="eyebrow">{hero.Eyebrow}</p>
-            <h1 id="hero-title" tabIndex={-1}>Grow your capabilities with <em>Bowerloom</em></h1>
+            <h1 id="hero-title">Grow your capabilities with <em>Bowerloom</em></h1>
             <p className="hero-description">{hero.Body}</p>
             <a className="button primary" href="#build">Build with your agent</a>
             <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
-            <button ref={replayRef} type="button" className="splash-replay" disabled={!introMedia} onClick={replaySplash}>{introMedia ? "Replay workshop animation" : "Intro preview in preparation"}</button>
           </div>
         </section> : (
         <section className="hero" aria-labelledby="hero-title">
@@ -191,7 +194,7 @@ export default function App() {
             <p className="eyebrow">
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
-            <h1 id="hero-title" tabIndex={-1}>
+            <h1 id="hero-title">
               Grow your capabilities with <em>Bowerloom</em>
             </h1>
             <p className="hero-description">

@@ -80,3 +80,16 @@
    The back layer is occluded by the panel; only the registered hands cross in front. */
 .normal-site .companion-s4 { --pink-rim-source-y: 420; --pink-source-width: 640; --robot-top: calc(var(--robot-width) * var(--pink-rim-source-y) / var(--pink-source-width) * -1); }
 .companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }
+
+/* Main is the entry destination for assistive technology, not an interactive control. */
+.normal-site > main:focus { outline: none; }
+.banner-replay {
+  position: absolute; z-index: 2; top: clamp(12px, 2vw, 24px); right: clamp(12px, 2vw, 24px);
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+  border: 1px solid #fff9; border-radius: 50%; color: #27262b; background: #fff9;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 2px 12px #27262b20, inset 0 1px 0 #fffc; cursor: pointer;
+}
+.banner-replay:hover { background: #fffc; }
+.banner-replay:focus-visible { outline: 3px solid #27262b; outline-offset: 3px; }
+.banner-replay svg { width: 22px; height: 22px; }

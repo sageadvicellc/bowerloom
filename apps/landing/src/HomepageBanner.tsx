@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { watchBannerImage } from './banner-loading';
 import './homepage-banner.css';
 
@@ -7,7 +7,7 @@ const circuit: Artwork = { src: "/banner/lab-circuit-hero.png", width: 1672, hei
 const nativeFrame: Artwork = { src: "/banner/lab-hero-source-1920.png", width: 1920, height: 1080 };
 
 /** Public preview artwork only; diagnostic routes must never supply the homepage. */
-function BannerImage({ source, fallback, alt }: { source: Artwork; fallback: Artwork; alt: string }) {
+function BannerImage({ source, fallback, alt, children }: { source: Artwork; fallback: Artwork; alt: string; children?: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const image = useRef<HTMLImageElement>(null);
@@ -23,10 +23,11 @@ function BannerImage({ source, fallback, alt }: { source: Artwork; fallback: Art
   return <div className="homepage-banner" data-artwork={state} data-artwork-source={attempt === 0 ? 'primary' : 'fallback'}>
     {state !== 'unavailable' && <img key={selected.src} ref={image} src={selected.src} alt={alt} loading="eager" decoding="async" fetchPriority="high" width={selected.width} height={selected.height} />}
     {state === 'unavailable' && <span className="sr-only">Workshop artwork is unavailable. All page content remains available below.</span>}
+    {children}
   </div>;
 }
 
-export default function HomepageBanner() {
+export default function HomepageBanner({ children }: { children?: ReactNode }) {
   return <BannerImage source={circuit} fallback={nativeFrame}
-    alt="Hanna and robot helpers in a sunlit forest workshop, surrounded by connected labs." />;
+    alt="Hanna and robot helpers in a sunlit forest workshop, surrounded by connected labs.">{children}</BannerImage>;
 }

@@ -15,8 +15,7 @@
 .splash-frame :is(video, img) { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }
 .splash-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
 .splash-controls p, .splash-boundary { font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-.splash-play, .splash-replay { min-height: 44px; padding: 10px 16px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); font: 14px/1.5 var(--ui-font); cursor: pointer; }
-.splash-replay { margin-top: 14px; }
+.splash-play { min-height: 44px; padding: 10px 16px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); font: 14px/1.5 var(--ui-font); cursor: pointer; }
 .normal-hero-art { display: grid; place-items: center; min-width: 0; }
 .normal-hero-art img { width: 100%; height: auto; display: block; }
 .normal-site .hero { align-items: center; }
