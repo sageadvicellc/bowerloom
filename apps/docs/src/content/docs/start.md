@@ -1,8 +1,23 @@
 ---
 title: "Install Bowerloom"
-description: "Check release availability, install the CLI, then review your first team."
+description: "Read availability and system requirements before installing the CLI."
+section: "Start here"
+order: 1
 ---
-Normal setup uses the installed `bowerloom` command. You do not need a repository checkout.
+
+Normal setup uses the installed `bowerloom` command. It does not require a repository checkout.
+
+<a id="ask-your-personal-agent"></a>
+
+## Ask your agent
+
+```text
+Read the current Bowerloom docs and help me install the exact supported version. If it is unpublished, prepare my brief and stop.
+```
+
+## Agent procedure
+
+### Prerequisites and availability
 
 <!-- release:install:start -->
 **Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
@@ -24,9 +39,15 @@ Clean public installation and additional systems remain under review. No operati
 Cached, isolated package checks do not establish clean public or global installation. Publication and broader delivery remain gated.
 <!-- release:install:end -->
 
-## Check the installed command
+Read the publication state and qualified installation path before running the planned command above. Today, public installation remains unavailable.
 
-After this version is published and its installation path is qualified:
+Node `>=24.11.0 <25` and npm `11` are the CLI requirements. Docker belongs to the separate backend path.
+
+<a id="check-the-installed-command"></a>
+
+### Read the installed identity
+
+After publication and installation qualification, read the installed version and help:
 
 ```sh
 bowerloom --version
@@ -34,18 +55,20 @@ bowerloom --help
 bowerloom init --help
 ```
 
-Use `--version` for package identity and `--help` for syntax. A command appearing in help does not establish runtime readiness.
+The reviewed candidate reports `Bowerloom 0.7.0-beta.0`. A matching version alone does not prove that the installed artifact matches review.
 
-## Ask your personal agent
+Help describes syntax. A command in help does not establish runtime readiness.
 
-```text
-Help me choose a new workspace or an existing project.
-Use my goal to prepare a personal-agent profile and first team.
-Explain roles, access, working agreement, and milestones.
-Show the full file plan before installation.
-Wait for my approval of the exact plan revision.
-After installation, inspect init status and read .bowerloom/START-HERE.md.
-Stop for my review. Do not start workers or import application settings.
-```
+### If installation cannot proceed
 
-Continue with [Plan and install](/docs/setup/). Source development belongs in the [contributor guide](/docs/contributors/).
+If the package is unpublished or your system lacks qualification, stop before installation. Prepare your project name, goal, and workspace choice instead.
+
+If the installed version differs, read the documentation for that version. Do not apply these examples to an unknown artifact.
+
+Do not use a private candidate archive as a public installation alternative.
+
+## Choose the first task
+
+[Prepare a new workspace](/docs/learn/first-team/) or [use an existing project](/docs/guides/existing-project/).
+
+Source development follows [Contribute from source](/docs/contributors/). [Installation troubleshooting](/docs/troubleshooting/#installation) covers unavailable or mismatched versions.

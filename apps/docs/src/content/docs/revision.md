@@ -1,7 +1,11 @@
 ---
-title: "Revise and recover"
-description: "Change an installed setup through another exact plan."
+title: "Revise an installed setup"
+description: "Review a goal or profile change before replacing managed files."
+section: "Guides"
+order: 8
 ---
+
+Revision changes an installed setup through another exact plan. It retains private history and preserves unrelated project files.
 
 <!-- release:status:start -->
 **Open beta · unreleased** · `0.7.0-beta.0`
@@ -15,48 +19,70 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
-## Prepare a revised goal
+## Ask your agent
 
-Plan the replacement setup with the installed executable:
-
-```sh
-bowerloom revise plan --target /absolute/projects/first-team --name "First team" --goal "Revise the project plan for accessibility review." --profile engineer
+```text
+Help me revise my installed Bowerloom setup. Read its current state and show the replacement plan. Wait for my exact approval.
 ```
 
-Read the old goal, new goal, and replacement scope. Copy the installed revision and the new plan revision. Keep all inputs identical when applying.
+## Agent procedure
+
+### Prerequisites
+
+For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
+
+The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+
+Use the original target and a readable installation receipt. Resolve any pending revision before starting another change.
+
+### Prepare a revised goal
+
+Read the current status first:
 
 ```sh
-bowerloom revise apply --target /absolute/projects/first-team --name "First team" --goal "Revise the project plan for accessibility review." --profile engineer --from OLD_INSTALLATION_REVISION --approve EXACT_REVISION_PLAN
+bowerloom init status --target /absolute/projects/clean-install-trial
 ```
 
-Bowerloom replaces its managed setup files and preserves the previous installation in a private history directory. Unrelated project files stay unchanged.
-
-## If the revision stops partway
-
-Inspect status first:
+Replace the example target with the installed project's absolute path. Plan the selected change:
 
 ```sh
-bowerloom init status --target /absolute/projects/first-team
+bowerloom revise plan --target /absolute/projects/clean-install-trial --name "Clean install trial" --goal "Revise the project plan for accessibility review" --profile engineer --json
 ```
 
-`revision-pending` is not ready. Preserve the marker, stage, and backup. Use the original exact revision approval, then choose one action:
+Read the old goal, new goal, proposed files, replacement scope, old installation revision, and new plan revision.
+
+The candidate accepts these inline fields. Its help also documents the alternative `--brief` form. Do not mix the two forms.
+
+### Approve the exact replacement
+
+Wait for human approval of the new plan. Replace `OLD_INSTALLATION_REVISION` with the installed revision recorded in that plan.
+
+Replace `EXACT_REVISION_PLAN` with the new plan's complete revision. Keep all brief inputs identical.
 
 ```sh
-bowerloom revise recover --target /absolute/projects/first-team --approve EXACT_REVISION_PLAN --action resume
+bowerloom revise apply --target /absolute/projects/clean-install-trial --name "Clean install trial" --goal "Revise the project plan for accessibility review" --profile engineer --from OLD_INSTALLATION_REVISION --approve EXACT_REVISION_PLAN
 ```
 
-Or restore the recorded original during the interrupted transaction:
+### Inspect the result
 
 ```sh
-bowerloom revise recover --target /absolute/projects/first-team --approve EXACT_REVISION_PLAN --action rollback
+bowerloom init status --target /absolute/projects/clean-install-trial
 ```
 
-Do not delete journals, edit identity fields, or adopt a replacement directory. Unexpected state requires inspection rather than a blind retry.
+Report the actual resulting installation revision and readiness fields. The resulting revision is distinct from the approved change plan.
+
+The operation replaces managed setup files and preserves the recorded previous installation in private history. It starts no workers.
+
+### If the revision stops partway
+
+If status is `revision-pending`, preserve the marker, stage, and backup. Follow [Recover an interrupted revision](/docs/guides/recover-revision/).
+
+If identity, old revision, or inputs differ, stop and inspect. Do not edit a receipt to clear the refusal.
 
 ## Review dependent access again
 
-An old connection or runtime enrollment does not authorize a revised specification. Revisit those exact bindings before later execution. Recovery starts no workers and grants no cleanup authority.
+An old connection or runtime enrollment does not authorize a revised specification. Review those exact bindings before later execution.
 
 ## Support boundary
 
-[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.
+[Current support](/docs/status/) records availability. [Plans and approval](/docs/permissions/) explains changed inputs.

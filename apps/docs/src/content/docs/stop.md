@@ -1,7 +1,13 @@
 ---
 title: "Stop registered work"
-description: "Understand what a stop result covers and what remains uncertain."
+description: "Request a scoped stop and read the registered owner\u2019s actual response."
+section: "Guides"
+order: 10
 ---
+
+`destruct` requests a stop of registered work. It preserves teams, project files, outputs, and history.
+
+It does not stop Docker, a local backend, or unrelated personal-agent sessions.
 
 <!-- release:status:start -->
 **Open beta · unreleased** · `0.7.0-beta.0`
@@ -15,35 +21,58 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
-`destruct` means stop registered work. It does not delete teams, project files, outputs, or saved history. It does not stop Docker or the local Supabase backend.
+## Ask your agent
 
-## Scope comes from enrollment
-
-Setup approval does not enroll a runtime owner. Control enrollment is separate, revision-bound approval. A registered team with no execution reports `NOT_RUNNING`.
-
-With a previously registered local owner, these commands request a stop:
-
-Use the installed version and registry selected in your reviewed setup.
-
-```sh
-bowerloom destruct first-team --root /absolute/projects/first-team
-bowerloom destruct all
+```text
+Help me stop this registered Bowerloom work. Identify its owner and selected registry first. Report uncertainty without deleting records or project files.
 ```
 
-`all` means the selected registry for the current user, not every machine or agent. An isolated registry requires the same `--registry /absolute/private/registry` used at enrollment.
+## Agent procedure
 
-## Interpret the result
+### Scope comes from enrollment
+
+For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
+
+The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+
+Use a separately reviewed runtime enrollment and its original owner. Setup approval alone does not enroll an owner.
+
+Select the same registry that the enrollment uses. An isolated registry requires its explicit absolute path.
+
+### Request the selected stop
+
+For one registered team, replace the root and registry with their reviewed paths:
+
+```sh
+bowerloom destruct first-team --root /absolute/projects/clean-install-trial --registry /absolute/private/registry
+```
+
+For all registered work in that same selected registry, use:
+
+```sh
+bowerloom destruct all --registry /absolute/private/registry
+```
+
+Choose the intended scope before invoking either command. `all` covers that local registry, not every user, machine, or agent.
+
+The reference also accepts `--timeout-ms`. Use only the timeout allowed by the reviewed owner scope.
+
+### Interpret the result
 
 | Result | Meaning |
 | --- | --- |
 | `STOPPED` | The registered owner acknowledged the stop after cleanup. |
-| `NOT_RUNNING` | No execution started, or earlier executions already finished. |
-| `STOP_UNCONFIRMED` or held uncertainty | Cleanup is not confirmed. Preserve the records and inspect the original owner. |
+| `NOT_RUNNING` | No execution started, or previous executions already finished. |
+| `STOP_UNCONFIRMED` | Cleanup is unconfirmed. Preserve the original owner's records. |
 
-A timeout is not proof that work stopped. Repeated requests observe unresolved owners; they do not justify replacing the owner or erasing its history.
+A registered setup with no execution reports `NOT_RUNNING`. A timeout does not prove that work stopped.
 
-A link between projects grants no stop authority. An unregistered personal-agent session is outside this control.
+### If the owner remains uncertain
+
+Inspect the original owner and retained records. Repeated requests do not authorize replacing the owner or deleting its history.
+
+A project link grants no stop authority. Keep unresolved stop uncertainty visible.
 
 ## Support boundary
 
-[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.
+[Current support](/docs/status/) records qualification. [Stop troubleshooting](/docs/troubleshooting/#stop) covers unresolved outcomes.

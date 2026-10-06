@@ -1,23 +1,50 @@
 ---
-title: "Workbench and evidence"
-description: "Use repeatable scenarios without inventing improvement claims."
+title: "Workbench"
+description: "Read the comparison method without treating a plan as a completed experiment."
+section: "Guides: Connections and shared work"
+order: 16
 ---
-Workbench holds reference control teams and repeatable test scenarios. They are not required teams inside the Bowerloom library.
 
-Keep authoring separate from execution. A portable team generated from a brief has not run merely because its files validate.
+Workbench holds reference teams and repeatable scenarios. They are not required teams inside every Bowerloom setup.
 
-## Record a comparison
+## Ask your agent
 
-Keep the scenario, input, source revision, model and harness identity, approval scope, outputs, measured checks, and limitations. Report failed and interrupted attempts as well as completed ones.
+```text
+Explain how the current Bowerloom Workbench records a supported comparison. Separate a planned example from a completed run and an improvement claim.
+```
 
-A single run cannot establish an A/B improvement. Use repeated supported comparisons before claiming a winner or time saving.
+## Agent procedure
+
+### Prerequisites
+
+Any real comparison needs a frozen supported scenario and a separately accepted execution path. The historical source-license hold remains in force.
+
+If licensing or execution evidence is absent, retain the hold. A new documentation page does not clear it.
+
+### Read a planned handoff
+
+The candidate exposes `init demo-plan` for an installed setup and its exact revision. [CLI reference](/docs/cli/#init) lists its syntax.
+
+This handoff describes a synthetic Workbench plan. It does not execute the installed team or grant action approval.
+
+### Record a comparison
+
+Record the scenario, input, source revision, model, harness, approval scope, outputs, measures, and limits. Retain failed and interrupted attempts.
+
+Use repeated supported comparisons before claiming an improvement. One example cannot establish an A/B winner or time saving.
+
+Report planned tests as plans. Report completed measurements only when their results exist.
 
 ## Vines records what happened
 
-Vines is the logging system. A later Sagespec self-improvement layer is separate downstream work; it is not a capability established by these beta pages.
+Vines is the logging system. Logs do not establish self-improvement. The later Sagespec improvement layer remains separate work.
 
-The `v0.7-workbench` label describes a Labs team/version. End users do not install that version as the public framework release.
+## Labs and release names
+
+`v0.7-workbench` describes a Labs team or version. It is not the public framework release that end users install.
+
+A manual Labs comparison needs its own scenario and accepted harness evidence. Scheduled triggers remain deferred.
 
 ## Support boundary
 
-[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.
+[Current support](/docs/status/) records the beta limit. [Contribute from source](/docs/contributors/) explains review of proposed changes.

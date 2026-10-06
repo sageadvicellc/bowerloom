@@ -1,0 +1,7 @@
+---
+import {getDocuments,pageTree} from '../lib/content.mjs';
+import Layout from '../components/Layout.astro';
+import DocsShell from '../components/DocsShell';
+const docs=await getDocuments();const page=docs.find(d=>d.slug==='404');if(!page)throw new Error('404 document missing');
+---
+<Layout title={page.title} description={page.description} url="/docs/404.html" markdownUrl={page.markdownUrl}><DocsShell page={page} tree={pageTree(docs,page.url)} client:load/></Layout>

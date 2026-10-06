@@ -1,23 +1,48 @@
 ---
 title: "Codex and Claude Code"
-description: "Understand fixture conversion and the open native execution boundary."
+description: "Read the supported synthetic scope before changing an agent application."
+section: "Guides: Connections and shared work"
+order: 12
 ---
-A harness is the agent application that runs a model and exposes its tools. Bowerloom keeps portable team definitions separate from harness-specific settings.
 
-## Selected synthetic configuration
+A harness is an application that runs a model and exposes tools. Bowerloom separates portable definitions from harness-specific configuration.
 
-The CLI exposes fixture import, planning, approved projection, removal, and recovery for `codex` and `claude`. These operate on explicitly selected synthetic files.
+## Ask your agent
 
-Do not point fixture commands at your live `.codex/` or Claude Code settings. The `--synthetic` flag records your assertion; it cannot prove the selected data is synthetic.
+```text
+Explain what the current Bowerloom beta supports for my agent application. Separate synthetic projection from live execution. Do not change my configuration.
+```
 
-The supported subset preserves explicit provider model names. It does not translate one provider's permissions or model names into another's authority.
+## Agent procedure
 
-## Native execution remains gated
+### Selected synthetic configuration
 
-Internal Codex boundary and admission work binds qualifications, artifact identity, expiry, and exact launch scope. A missing qualification must refuse; it is not permission to fall back to a less restricted mode.
+For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
 
-This documentation supplies no native bootstrap or model-run command. Complete live tasks under both harnesses, native tool bypass tests, and broader security qualification remain open.
+The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+
+The candidate exposes selected fixture import, planning, approved projection, removal, and recovery for `codex` and `claude`.
+
+These commands require separately reviewed synthetic files. Do not point them at live `.codex/` or Claude Code configuration.
+
+The `--synthetic` flag records the caller's assertion. It cannot prove that the selected data is synthetic.
+
+### Read the exact reference
+
+[CLI reference](/docs/cli/#harness) lists all seven command forms. Import and planning read the selected fixture.
+
+Approved projection and removal change only that selected synthetic configuration. Recovery requires its recorded operation approval.
+
+The supported subset preserves explicit provider model names. It does not convert one provider's permissions into another's authority.
+
+### Native execution remains gated
+
+No harness command here grants model execution authority. Complete live work under both harnesses and broader security qualification remain unaccepted.
+
+Missing qualification requires a refusal. Do not substitute an older or less restricted path.
+
+If the selected inputs are live or their scope is unclear, stop before changing them.
 
 ## Support boundary
 
-[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.
+[Current support](/docs/status/#harnesses) records the runtime limit. [Security boundaries](/docs/security/) explains host tool rights.

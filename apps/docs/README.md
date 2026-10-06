@@ -1,46 +1,57 @@
 # Bowerloom documentation preview
 
-This isolated Astro Starlight application builds static pages for `/docs` in the existing landing project.
-It does not deploy, publish a beta, or modify a runtime package.
+This Astro application uses Fumadocs to build static pages for `/docs` in the existing landing project.
+The documentation build does not deploy the site or publish the beta.
 
 ## Local commands
 
-From the repository root, install using the separate lockfile:
+Use Node 24.11 from the repository root.
+Install the dependencies from the separate documentation lockfile.
 
 ```sh
 npm --prefix apps/docs --workspaces=false ci --ignore-scripts --no-audit --no-fund
+npm --prefix apps/docs --workspaces=false test
 npm --prefix apps/docs --workspaces=false run build
+npm --prefix apps/docs --workspaces=false run check:release
+npm --prefix apps/docs --workspaces=false run check:exports
 npm --prefix apps/docs --workspaces=false run check:links
 npm --prefix apps/docs --workspaces=false run preview -- --port 4321
 ```
 
-Open `http://127.0.0.1:4321/docs/`. Search uses the generated Pagefind index and needs a production build; use preview for its review.
+Open `http://127.0.0.1:4321/docs/` after the preview server starts.
+Search uses the static `search.json` from the same document snapshot as the pages and Markdown exports.
+Restart the development process after Markdown edits because each process retains its first content snapshot.
 
-The root workspace list names the CLI, landing, and MCP apps explicitly. It excludes this standalone docs application.
-Keep `--workspaces=false`: the docs dependencies and lockfile belong here, not in the root package.
-Exact direct versions: Astro7.3.5, Starlight0.42.5, markdown-remark7.3.1. Transitive versions are pinned by package-lock.json.
-Install scripts and telemetry are disabled by these commands. No server adapter or external search service is used.
+The root workspace excludes this standalone application.
+Keep `--workspaces=false` so that its dependencies and lockfile remain separate from the CLI.
+The application pins Astro 7.3.5 and Fumadocs core/UI 16.16.2. The package manifest and lockfile record all dependency versions.
+The installation command disables package scripts. The build and preview scripts disable Astro telemetry.
+The application uses no server adapter or external search service.
 
 ## Landing integration
 
-After both applications build, copy the contents of `apps/docs/dist/` into the landing deployment's `docs/` directory.
-Keep that directory before any landing SPA fallback. Preserve `/docs/` trailing slash routing and its `_astro`, `pagefind`, and `fonts` children.
-The base and all internal links use `/docs`; do not mount the content at the root.
-Root owns shared build configuration and Vercel integration. Do not deploy this directory by itself as the homepage.
+After both applications build, copy `apps/docs/dist/` into the landing deployment's `docs/` directory.
+Preserve `/docs/` routes, `_astro` assets, fonts, Markdown files, `search.json`, `llms.txt`, and `llms-full.txt`.
+Serve Markdown as `text/markdown` and the `llms` indexes as plain text.
+Return HTTP 404 for missing documentation routes. Do not route missing documentation to the landing application.
+The shared deployment owner manages Vercel integration. Do not deploy this directory as the homepage.
 
 ## Content and assets
 
-Markdown lives in `src/content/docs`. Sidebar order is explicit in astro.config.mjs.
-Keep tested source/artifact identities and fixture limitations beside capability claims. Do not upgrade support claims from a source-only test.
-Newsreader and Manrope fonts, their OFL files, and approved plain wordmark/robot assets are copied unchanged from the landing.
-The stylesheet matches the landing Rose Conservatory and After Hours tokens. Code keeps the landing monospace stack.
-The header keeps Main site (`/`) and Docs home (`/docs/`) visible on desktop and mobile.
-Release-sensitive sections and the root README/version badge are generated from `release/beta.json` by `tools/sync-release.mjs`.
-Build synchronizes those sections; `npm run check:release` refuses drift. Normal onboarding uses the planned npm channel, unavailable until publication.
-Contributor source instructions remain separate. Historical audit files stay outside current onboarding.
-The site includes a preview noindex directive. Authentication must come from the hosting project's protected preview; noindex is not access control.
+Markdown lives in `src/content/docs`. Page frontmatter defines navigation sections, order, and compatibility pages.
+The content loader resolves release sections from `release/beta.json` in memory without rewriting Markdown or the root README.
+HTML, search, copied procedures, and Markdown exports use the same resolved snapshot.
+`check:release` assesses release expansion. `check:exports` compares the built exports with that snapshot.
 
-## Acceptance still required
+Keep tested source and artifact identities beside capability claims. Source tests do not establish installed runtime support.
+The approved Newsreader and Manrope fonts retain their OFL notices. Plain wordmarks and robot assets come from the landing site.
+The stylesheet uses the Rose Conservatory and After Hours colors.
+The header exposes Main site, Docs home, and the theme selector on desktop and mobile.
 
-Content and engineering review, actual packaged-command replay, deployed mobile/keyboard/search checks, and complete documentation-site acceptance remain separate.
-This first shell does not claim live native-harness qualification, company-service readiness, or full beta release acceptance.
+The planned npm channel remains unavailable until publication. Contributor source instructions remain separate from normal onboarding.
+The site includes a noindex directive. Hosting authentication protects the preview because noindex does not control access.
+
+## Acceptance boundaries
+
+Content review, independent technical review, deployed behavior, and packaged-command evidence remain separate acceptance gates.
+Documentation tests do not establish native harness qualification, company-service readiness, security acceptance, or beta release approval.

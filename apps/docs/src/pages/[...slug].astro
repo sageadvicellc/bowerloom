@@ -1,0 +1,10 @@
+---
+import {getDocuments,pageTree} from '../lib/content.mjs';
+import Layout from '../components/Layout.astro';
+import DocsShell from '../components/DocsShell';
+export async function getStaticPaths(){const docs=await getDocuments();return docs.filter(d=>d.slug!=='404').map(page=>({params:{slug:page.slug||undefined},props:{page,tree:pageTree(docs,page.url)}}));}
+const {page,tree}=Astro.props;
+---
+<Layout title={page.title} description={page.description} url={page.url} markdownUrl={page.markdownUrl}>
+  <DocsShell tree={tree} page={page} client:load/>
+</Layout>
