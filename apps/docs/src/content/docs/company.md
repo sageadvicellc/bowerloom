@@ -1,16 +1,16 @@
 ---
 title: "Personal and company use"
-description: "Distinguish personal definitions from pending shared-service controls."
+description: "Understand the boundary between local definitions and shared company services."
 section: "Guides: Connections and shared work"
 order: 15
 ---
 
-A personal setup prepares definitions for your existing agent. Shared company operations need additional accepted controls.
+A personal setup prepares definitions for your existing agent. Shared company services are outside this local setup path.
 
 ## Ask your agent
 
 ```text
-Explain current Bowerloom personal and company support. Show which shared-access requirements remain pending. Do not import real business data.
+Explain current Bowerloom personal and company support. Explain which shared services are outside the documented setup path. Do not import real business data.
 ```
 
 ## Agent procedure
@@ -23,17 +23,15 @@ Local setup does not establish unattended autonomy. Review the actual owner, sco
 
 ### Shared company work
 
-The planned first trial uses synthetic accounts, emails, and project data. These identities are not employees with real access.
+Local definitions do not enroll employees or provide company identity controls.
 
-Shared access, semantic retrieval, offboarding, deletion, and accepted work under both harnesses remain release requirements.
-
-A successful local installation does not satisfy those requirements. No public shared-company installation procedure is established here.
+Shared access, semantic retrieval, offboarding, and deletion are outside this beta's documented setup path. These docs provide no shared-company installation procedure.
 
 ### Real business data
 
 Real business data requires an approved retention and deletion policy. The current documentation grants no business-data import or employee enrollment.
 
-If a request needs unaccepted shared controls or real-data policy, stop before those effects.
+If a request needs shared access or real-data controls, establish those controls before importing data.
 
 ## Support boundary
 

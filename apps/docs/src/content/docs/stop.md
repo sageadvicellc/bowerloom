@@ -10,15 +10,9 @@ order: 10
 It does not stop Docker, a local backend, or unrelated personal-agent sessions.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Ask your agent
@@ -31,9 +25,7 @@ Help me stop this registered Bowerloom work. Identify its owner and selected reg
 
 ### Scope comes from enrollment
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Use a separately reviewed runtime enrollment and its original owner. Setup approval alone does not enroll an owner.
 
@@ -75,4 +67,4 @@ A project link grants no stop authority. Keep unresolved stop uncertainty visibl
 
 ## Support boundary
 
-[Current support](/docs/status/) records qualification. [Stop troubleshooting](/docs/troubleshooting/#stop) covers unresolved outcomes.
+[Current support](/docs/status/) describes supported tasks and limits. [Stop troubleshooting](/docs/troubleshooting/#stop) covers unresolved outcomes.

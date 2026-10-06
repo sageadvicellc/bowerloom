@@ -21,13 +21,13 @@ Use the actual output and matching documentation. Keep raw receipts, private pat
 
 ### Read the command identity
 
-If a qualified installed command is available, read:
+For an installed CLI, read:
 
 ```sh
 bowerloom --version
 ```
 
-Version alone does not prove archive identity. If installation is unavailable, do not install a private archive to diagnose public support.
+Use the documentation that matches this version. Keep the original error before attempting a different installation.
 
 ### Inspect an installed setup
 
@@ -43,9 +43,9 @@ If the outcome remains uncertain, preserve the original evidence. A help request
 
 ## Installation
 
-If the package is unpublished or your system lacks qualification, stop before installation. [Install Bowerloom](/docs/start/) gives the current requirements.
+Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying.
 
-If the version differs, use matching documentation. Command presence or a matching version does not qualify native execution.
+If the version differs, use matching documentation. A setup command does not grant model execution permission.
 
 ## Existing setup
 
@@ -87,4 +87,6 @@ Preserve partial backend state. Do not prune unrelated Docker data or delete vol
 
 Provide the exact version, command family, safe code, expected action, and sanitized result. Exclude credentials, private paths, raw receipts, and customer data.
 
-Keep the original failure available privately for scoped review. [Security boundaries](/docs/security/) explains untrusted reports and tool rights.
+Keep the original failure available privately for scoped review. Use [Bug reports and feedback](/docs/feedback/) to choose the right channel.
+
+[Security boundaries](/docs/security/) explains untrusted reports and tool rights.

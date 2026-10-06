@@ -9,9 +9,11 @@ This short learning path ends with an inspected setup. It does not run a team or
 
 ## Before you begin
 
-Read [Install Bowerloom](/docs/start/) for the exact version and requirements. The package is currently unpublished.
+Read [Install Bowerloom](/docs/start/) for the exact version and requirements.
 
 Use your existing agent for the walkthrough. The docs do not create a hosted agent.
+
+If you need help, use [Q&A through the feedback guide](/docs/feedback/#ask-a-question).
 
 ## Follow the example
 

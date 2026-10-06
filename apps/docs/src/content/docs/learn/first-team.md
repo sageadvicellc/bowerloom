@@ -17,9 +17,7 @@ Prepare a Bowerloom Engineer setup for this project. Make sure that its absolute
 
 ### Prerequisites
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Use an absolute path that you own. Its parent directory must exist, with accessible, safe ancestors.
 
@@ -57,7 +55,7 @@ bowerloom init apply --mode new --target /absolute/projects/clean-install-trial 
 bowerloom init status --target /absolute/projects/clean-install-trial
 ```
 
-The apply receipt includes `plan.revision`. The recorded successful status is `ready-for-review` with no drift.
+The apply receipt includes `plan.revision`. A successful setup reports `ready-for-review` with no drift.
 
 Status keeps `runtimeReady: false` and `executionAuthorized: false`. Context import and hosted-agent creation also remain false.
 

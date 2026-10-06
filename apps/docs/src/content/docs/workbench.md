@@ -17,13 +17,13 @@ Explain how the current Bowerloom Workbench records a supported comparison. Sepa
 
 ### Prerequisites
 
-Any real comparison needs a frozen supported scenario and a separately accepted execution path. The historical source-license hold remains in force.
+Use a versioned scenario with fixed inputs and measures. Review its license and execution permissions before any real comparison.
 
-If licensing or execution evidence is absent, retain the hold. A new documentation page does not clear it.
+If a source license or execution permission is absent, stop before the affected work.
 
 ### Read a planned handoff
 
-The candidate exposes `init demo-plan` for an installed setup and its exact revision. [CLI reference](/docs/cli/#init) lists its syntax.
+The CLI exposes `init demo-plan` for an installed setup and its exact revision. [CLI reference](/docs/cli/#init) lists its syntax.
 
 This handoff describes a synthetic Workbench plan. It does not execute the installed team or grant action approval.
 
@@ -37,13 +37,13 @@ Report planned tests as plans. Report completed measurements only when their res
 
 ## Vines records what happened
 
-Vines is the logging system. Logs do not establish self-improvement. The later Sagespec improvement layer remains separate work.
+Vines is the logging system. Logs do not establish self-improvement. Logs alone do not improve a model or team.
 
 ## Labs and release names
 
 `v0.7-workbench` describes a Labs team or version. It is not the public framework release that end users install.
 
-A manual Labs comparison needs its own scenario and accepted harness evidence. Scheduled triggers remain deferred.
+A manual Labs comparison needs its own scenario and accepted harness evidence. The setup commands do not schedule triggers.
 
 ## Support boundary
 

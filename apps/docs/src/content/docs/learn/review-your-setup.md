@@ -17,7 +17,7 @@ Read my Bowerloom setup guides with me. Explain the roles, agreement, milestones
 
 ### Prerequisites
 
-Use the matching installed version and the target from your successful approved setup. [Install Bowerloom](/docs/start/) records current availability.
+Use the matching installed version and the target from your successful approved setup. [Install Bowerloom](/docs/start/) gives the version and requirements.
 
 ### Inspect status
 

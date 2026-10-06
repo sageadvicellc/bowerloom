@@ -1,6 +1,7 @@
 import {readFile, readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createMarkdownProcessor, parseFrontmatter} from '@astrojs/markdown-remark';
+import {releasePresentation} from '../../../landing/src/release.ts';
 import {readRelease, expandRelease, releaseReference} from './release.mjs';
 import {missingLegacyAliases} from './html-ids.mjs';
 import {sourcePaths} from './build-paths.mjs';
@@ -88,7 +89,7 @@ async function readDocuments() {
     const group = meta.section ?? knownGroups.find(([,slugs])=>slugs.includes(slug||'index'))?.[0] ?? (slug.includes('/')?slug.split('/')[0].replaceAll('-',' '):'More guides');
     documents.push({file,slug,url,title:meta.title,description:meta.description??'',group,order:Number.isFinite(meta.order)?meta.order:100,
       markdown,body:resolved,html:rendered.code,headings:rendered.metadata.headings,aliases,copy:pairedCopy(markdown),
-      contentHash:digest(markdown),markdownUrl:slug==='404'?null:'/docs/'+(slug||'index')+'.md',release:{version:release.version,statusLabel:release.statusLabel,reference:releaseReference(release)},hidden:slug==='404'||meta.compatibility===true});
+      contentHash:digest(markdown),markdownUrl:slug==='404'?null:'/docs/'+(slug||'index')+'.md',release:{version:release.version,statusLabel:releasePresentation(release).label,reference:releaseReference(release)},hidden:slug==='404'||meta.compatibility===true});
   }
   const urls=new Set();for(const doc of documents){if(urls.has(doc.url))throw new Error('Duplicate document route.');urls.add(doc.url);}
   for(const old of legacy.sourceRows)if(old.file!=='src/content/docs/404.md'&&!urls.has(old.route))throw new Error(`Missing retained route: ${old.route}`);

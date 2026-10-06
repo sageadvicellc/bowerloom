@@ -21,7 +21,7 @@ Container controls and synthetic tests narrow specific boundaries. They do not e
 
 For example, a catalog description can contain a hostile instruction. The agent must treat it as data, not a new tool permission.
 
-Prompts and model refusals do not replace controls outside the model. Public unattended teams need independent installed security acceptance before activation.
+Prompts and model refusals do not replace controls outside the model. Setup grants no authority to operate unattended teams.
 
 ## Credentials and private bindings
 
@@ -29,17 +29,19 @@ Keep credentials out of portable definitions. Use private bindings where the sup
 
 No parser here guarantees that arbitrary prose contains no secret. Inspect selected files before sharing them.
 
-## Installed security acceptance
+<a id="installed-security-acceptance"></a>
 
-The security review concerns the exact installed prompts, pinned skills, model and harness versions, tool scopes, runtime isolation, and release workflow.
+## Review each execution environment
 
-Source scans and synthetic startup results alone do not accept that installation. Changed protected boundaries require renewed affected review.
+Review the prompts, skills, model and harness versions, tool scopes, and isolation for each later action.
+
+A source scan or valid setup does not grant execution permission. If protected controls change, review the affected action again.
 
 ## Getting useful help
 
 Share the package version, command family, safe error code, expected action, and sanitized description. Keep tokens and customer data private.
 
-Keep private paths and raw receipts out of public reports. [Troubleshooting](/docs/troubleshooting/#help) explains useful support context.
+Keep private paths and raw receipts out of public reports. [Bug reports and feedback](/docs/feedback/) explains useful support context.
 
 ## Support boundary
 

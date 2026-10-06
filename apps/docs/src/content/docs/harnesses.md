@@ -17,11 +17,9 @@ Explain what the current Bowerloom beta supports for my agent application. Separ
 
 ### Selected synthetic configuration
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
-
-The candidate exposes selected fixture import, planning, approved projection, removal, and recovery for `codex` and `claude`.
+The CLI supports selected fixture import, planning, approved projection, removal, and recovery for `codex` and `claude`.
 
 These commands require separately reviewed synthetic files. Do not point them at live `.codex/` or Claude Code configuration.
 
@@ -35,11 +33,13 @@ Approved projection and removal change only that selected synthetic configuratio
 
 The supported subset preserves explicit provider model names. It does not convert one provider's permissions into another's authority.
 
-### Native execution remains gated
+<a id="native-execution-remains-gated"></a>
 
-No harness command here grants model execution authority. Complete live work under both harnesses and broader security qualification remain unaccepted.
+### Model execution is separate
 
-Missing qualification requires a refusal. Do not substitute an older or less restricted path.
+These harness commands do not start models or grant execution authority. They do not provide a live team runner.
+
+Keep your agent application's existing access controls. Do not substitute an older or less restricted path.
 
 If the selected inputs are live or their scope is unclear, stop before changing them.
 

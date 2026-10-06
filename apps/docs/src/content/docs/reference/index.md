@@ -5,7 +5,7 @@ section: "Reference"
 order: 21
 ---
 
-This reference describes the reviewed `0.7.0-beta.0` candidate. Match its version and artifact before using executable advice.
+This reference describes `0.7.0-beta.0`. Use the documentation that matches your installed version.
 
 | Find | Page |
 | --- | --- |
@@ -13,6 +13,6 @@ This reference describes the reviewed `0.7.0-beta.0` candidate. Match its versio
 | A setup file or brief field | [Files and configuration](/docs/configuration/) |
 | A status field or refusal | [Status and error reference](/docs/reference/errors/) |
 
-Command presence does not establish qualified runtime support. [Current support](/docs/status/) records availability and acceptance limits.
+A command in help does not grant runtime permission. [Current support](/docs/status/) describes supported tasks and limits.
 
 For a complete sequence with prerequisites, use [Learn](/docs/learn/) or [Guides](/docs/guides/). Reference forms do not bypass those requirements.

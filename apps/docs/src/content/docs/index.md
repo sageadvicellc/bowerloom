@@ -10,15 +10,9 @@ Bowerloom is an open-source framework for agent teams in readable files. Start w
 Review the roles, skills, working agreement, and milestones before approving the exact file plan. Your first result is a setup to inspect.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Choose your next step
@@ -59,4 +53,4 @@ Use [the agent index](/docs/llms.txt) to find one relevant page. Each page also 
 
 A documentation prompt grants no new tool access or execution permission. [Plans and exact approval](/docs/permissions/) explains the next decision.
 
-[Install Bowerloom](/docs/start/) · [Current support](/docs/status/) · [Main site](/)
+[Install Bowerloom](/docs/start/) · [Current support](/docs/status/) · [Bug reports and feedback](/docs/feedback/) · [Main site](/)

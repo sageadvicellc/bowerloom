@@ -17,9 +17,7 @@ Help me understand this interrupted Bowerloom revision. Preserve the transaction
 
 ### Prerequisites
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Use the exact original project and retained transaction records. Obtain the original recorded revision-plan approval.
 

@@ -30,9 +30,7 @@ Help me prepare the reviewed Bowerloom report-seed skill for Codex. Show its sou
 
 ### Prerequisites
 
-Read [Install Bowerloom](/docs/start/) for the exact version, publication state, and qualified installation path.
-
-While the package is unpublished, stop before CLI commands. These forms describe the reviewed candidate, not an alternative public installation.
+Read [Install Bowerloom](/docs/start/) for the matching version and installation requirements.
 
 Use a supplied, separately reviewed copy of `examples/portable/report-seed`. The installed CLI does not retrieve that source for you.
 
@@ -155,7 +153,7 @@ Keep the receipt and absolute paths private. Installed team parts, when selected
 
 The project-local path is intended for Codex skill discovery. Successful file installation does not prove that Codex discovered or ran the skill.
 
-Stop before invoking the skill. Review its requested effects and the applicable harness qualification separately.
+Before invoking the skill, review its requested effects and your agent application's permissions. Installation grants no permission to run it.
 
 ### If installation refuses
 
@@ -185,12 +183,12 @@ To review changed skill files, prepare another source plan for a new target. The
 
 ## Version and source
 
-These forms match `0.7.0-beta.0` candidate source `8a13787e6d5e0ff2e748dbd6d59fe265f74169b9`. The portable implementation and example files match that reviewed source.
+These commands describe `0.7.0-beta.0` and its `report-seed` example. Use the matching example files with that version.
 
-The example supplies file-projection evidence. Its recorded trial includes no live skill discovery or model sessions.
+The example installs files. It does not demonstrate live skill discovery or execution.
 
 ## Continue
 
 [Codex and Claude Code](/docs/harnesses/) explains synthetic configuration limits. [Files and configuration](/docs/configuration/) describes first-team files.
 
-[Current support](/docs/status/) records qualified scope. A projected file does not establish cross-harness runtime support.
+[Current support](/docs/status/) describes supported tasks. A projected file does not establish cross-harness runtime support.

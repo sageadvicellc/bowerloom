@@ -17,9 +17,7 @@ Help me add a Bowerloom setup to this existing project. Show the file plan befor
 
 ### Prerequisites
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Select an existing absolute project directory that you own. Its ancestors must meet the setup path requirements.
 
@@ -53,7 +51,7 @@ bowerloom init apply --mode existing --target /absolute/projects/existing-projec
 bowerloom init status --target /absolute/projects/existing-project
 ```
 
-The recorded success is `ready-for-review` with no drift. Runtime readiness and execution authority remain false.
+A successful setup reports `ready-for-review` with no drift. Runtime readiness and execution authority remain false.
 
 Approval adds 20 setup files and one private receipt. Unrelated project files remain unchanged.
 

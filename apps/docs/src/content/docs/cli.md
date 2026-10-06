@@ -1,22 +1,16 @@
 ---
 title: "CLI reference"
-description: "Find the reviewed candidate\u2019s command forms and their required scope."
+description: "Find the beta command forms and their required scope."
 section: "Reference"
 order: 22
 ---
 
-Use the documentation for the exact installed artifact. This reference describes candidate source `8a13787e6d5e0ff2e748dbd6d59fe265f74169b9`.
+Use the documentation for the installed version. This reference describes `0.7.0-beta.0`.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Discovery
@@ -29,17 +23,15 @@ bowerloom --help
 bowerloom init --help
 ```
 
-The candidate identifies itself as `Bowerloom 0.7.0-beta.0`. Version alone does not prove archive identity or runtime qualification.
+The version output identifies `Bowerloom 0.7.0-beta.0`. Command syntax does not grant execution permission.
 
 ## Read reference forms
 
-The forms below reproduce candidate help. They are reference syntax, not ready-to-run commands.
+The forms below describe CLI help. They are reference syntax, not ready-to-run commands.
 
 Angle brackets name required values. A vertical bar separates alternatives. Square brackets mark optional syntax.
 
 Use absolute paths where the form requests them. Establish every private input and capability prerequisite before invoking a command.
-
-The package is unpublished. Public readers must stop before installation and CLI operations.
 
 <a id="init"></a>
 
@@ -156,7 +148,7 @@ bowerloom portable plan|install <bundle-directory> --select <part,part> --harnes
 
 These forms require a separately reviewed bundle and selected parts. Approved installation copies selected files into a new target. It starts no workers.
 
-The candidate exposes codex selection here. It does not establish general harness conversion. An existing target or stale approval requires inspection.
+The portable installer accepts only `codex`. It does not establish general harness conversion. An existing target or stale approval requires inspection.
 
 <a id="recipe"></a>
 
@@ -216,7 +208,7 @@ Up stops for exact approval. Approve writes and tests the stored proposal. Tier 
 
 Malformed, duplicate, extra, or conflicting arguments refuse. Do not infer success without reading the actual result.
 
-The candidate has no generic `init recover`, public MCP connect command, or general native bootstrap command.
+The CLI has no generic `init recover`, public MCP connect command, or general native bootstrap command.
 
 ## Compatibility aliases
 
@@ -224,4 +216,4 @@ The candidate has no generic `init recover`, public MCP connect command, or gene
 
 ## Support boundary
 
-[Current support](/docs/status/) records qualification. [Status and error reference](/docs/reference/errors/) explains core refusals.
+[Current support](/docs/status/) describes supported tasks and limits. [Status and error reference](/docs/reference/errors/) explains core refusals.

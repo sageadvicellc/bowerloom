@@ -1,4 +1,4 @@
-import { release, docsPath } from './release';
+import { readerRelease, docsPath } from './release';
 import { useEffect, useRef, useState } from 'react';
 import { repository } from './content';
 
@@ -48,7 +48,7 @@ export default function SiteNavigation() {
       <div className="mobile-drawer-content">
         <div className="mobile-drawer-heading"><h2 id="mobile-navigation-title">Explore Bowerloom</h2><button type="button" aria-label="Close navigation" onClick={close} autoFocus><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div>
         <nav aria-label="Mobile navigation"><NavigationLinks onNavigate={close} /></nav>
-        <p className="drawer-version">{release.statusLabel}</p>
+        <p className="drawer-version">{readerRelease.label}</p>
       </div>
     </dialog>
   </>;

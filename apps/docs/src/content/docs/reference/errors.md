@@ -5,7 +5,7 @@ section: "Reference"
 order: 24
 ---
 
-Use the actual result from the matching installed candidate. A status is an observed state. An error identifies a refused operation.
+Use the actual result from the matching installed version. A status is an observed state. An error identifies a refused operation.
 
 ## Status fields
 
@@ -18,11 +18,11 @@ Use the actual result from the matching installed candidate. A status is an obse
 | `executionAuthorized` | False in the setup results documented here |
 | `reviewRequired` | True in the setup results documented here |
 | `drift` | Recorded differences or inspection failures |
-| `compiledCandidate` | The compiled candidate identity when inspection can establish it |
+| `compiledCandidate` | The compiled definition identity when inspection can establish it |
 | `contextImported` | False in the setup results documented here |
 | `hostedAgentCreated` | False in the setup results documented here |
 
-`ready-for-review` requires human review. It does not mean that a team ran or that native execution is qualified.
+`ready-for-review` requires human review. It does not mean that a team runs or has execution permission.
 
 `revision-pending` requires retained transaction state and [explicit recovery](/docs/guides/recover-revision/). `drifted` requires inspection of actual differences.
 
@@ -40,7 +40,7 @@ Use the actual result from the matching installed candidate. A status is an obse
 | `TARGET_EXISTS` | New mode finds an existing target. | Inspect it. Choose existing mode only for the intended project. |
 | `UNSAFE_DIRECTORY` | A path fails required directory conditions. | Inspect the path and ancestors. Do not force the write. |
 
-The candidate's wrong setup approval returns `STALE_APPROVAL` with exit 1 and no project changes. Do not infer every I/O failure is unchanged.
+A wrong setup approval returns `STALE_APPROVAL` with exit 1 and no project changes. Do not infer every I/O failure is unchanged.
 
 ## Stop results
 
@@ -56,4 +56,4 @@ A timeout does not establish cleanup. [Stop registered work](/docs/stop/) explai
 
 Connection, harness, backend, recipe, and runtime commands have separate boundaries. Read the exact subsystem output and its reference prerequisites.
 
-Missing qualification is not permission to use an older or less restricted path. Use [Troubleshooting](/docs/troubleshooting/) for the next supported inspection.
+A refused operation does not authorize an older or less restricted path. Use [Troubleshooting](/docs/troubleshooting/) for the next supported inspection.

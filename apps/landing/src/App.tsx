@@ -1,4 +1,4 @@
-import { release, docsPath } from './release';
+import { readerRelease, docsPath } from './release';
 import {
   Component,
   lazy,
@@ -35,9 +35,9 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 }
 
 const offers = [
-  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the beta evidence for what is ready today." },
-  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies explicit controls and records around the tested actions; your agent remains your interface." },
-  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. " + release.capabilities.harnesses },
+  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job. Read the beta guide for supported tasks and limits." },
+  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies plans, exact approvals, and local records around the supported actions." },
+  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. " + readerRelease.capabilities.harnesses },
 ];
 
 function CoreOffers() {
@@ -171,7 +171,7 @@ export default function App() {
         <SiteNavigation />
         <ThemeControl />
         <span className="release-label">
-          <span /> {release.statusLabel}
+          <span /> {readerRelease.label}
         </span>
       </header>
       <main id="main" tabIndex={-1}>
@@ -344,14 +344,15 @@ export default function App() {
         <p>An open-source framework for agent teams.</p>
         <div>
           <a href={docsPath}>Documentation</a>
+          <a href={`${docsPath}feedback/`}>Bug reports and feedback</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
           <ExternalLink href={destinations.readme}>README</ExternalLink>
-          <a href="#beta-evidence">Beta evidence</a>
+          <a href="#beta-evidence">Beta guide</a>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
         <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
-        <p className="footer-release">{release.statusLabel}. {release.capabilities.limits[1]}</p>
+        <p className="footer-release">{readerRelease.label} · {readerRelease.version}. Setup prepares files for review.</p>
       </footer></FooterCompanion>
     </div>
   );

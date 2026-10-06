@@ -1,50 +1,48 @@
 ---
 title: "Release notes"
-description: "Read candidate changes without treating documentation as publication."
+description: "Read the beta changes, compatibility notes, and routes for feedback."
 section: "Help"
 order: 27
 ---
 
-Release notes describe changes at their recorded version. [Current support](/docs/status/) owns the full availability and qualification table.
+Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
-## 0.7.0-beta.0, unreleased
+<a id="070-beta0-unreleased"></a>
 
-The candidate prepares a first team from a brief with a fixed Engineer, Founder, or Research profile. It supports new and existing projects.
+## 0.7.0-beta.0
 
-Exact approval installs the reviewed 20 files and one private receipt. Revision reviews changed managed files and retains transaction history.
+Prepare a first team with a fixed Engineer, Founder, or Research profile. Use a new workspace or an existing project.
 
-Status exposes specification readiness, runtime readiness, execution authority, review requirements, and drift. Successful setup remains ready for human review.
+Review the full plan before approval. Exact approval installs 20 setup files and one private receipt.
 
-These are candidate behaviors, not a publication announcement. The package remains unavailable through the public installation path.
+Plan changes to an installed goal or profile before replacing managed files. Interrupted revisions support recorded resume and rollback actions.
+
+Status reports specification readiness, runtime readiness, execution authority, review requirements, and drift. Setup remains ready for human review without starting workers.
+
+Project selected portable skill files into a new Codex workspace. MCP planning reads selected synthetic inputs without connecting a server.
 
 ## Compatibility
 
 Older installations keep their original format and identity rules. The current Darwin identity policy does not silently rewrite their receipts.
 
-Recorded upgrade and removal trials cover bounded isolated cases. They do not establish every public or global upgrade path.
+Use the matching installed version for setup changes. Inspect pending transactions and private receipts before any recovery.
 
-Use the exact installed version, artifact, and accepted path for any change. Do not infer qualification from a similar version name.
+The `trellis` and `trellis-mcp` names remain compatibility aliases. They grant no different permissions.
 
 ## Historical records
 
-Earlier source releases and test records remain in the repository. Their source, evidence, and limits remain attached to the original revision.
+Earlier source releases and test records remain in the repository. Their results apply to their original version and task.
 
-The `v0.7-workbench` Labs label does not identify the public framework package. [Workbench](/docs/workbench/) explains comparison evidence.
+The `v0.7-workbench` Labs label does not identify the framework package. [Workbench](/docs/workbench/) explains comparison records.
 
-## Publication and support
+<a id="publication-and-support"></a>
 
-A package name does not establish ownership or availability. Publication requires the accepted candidate and founder approval.
+## Feedback
 
-Public unattended support also requires its independently accepted installed security configuration. [Current support](/docs/status/) records that separate boundary.
+Report problems through [Bug reports and feedback](/docs/feedback/). Use Q&A for questions, General for feedback, and Ideas for features.

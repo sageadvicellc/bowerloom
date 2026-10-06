@@ -45,4 +45,4 @@ If an external outcome is uncertain, retain the original evidence. Reconcile tha
 
 ## Support boundary
 
-[Current support](/docs/status/) records availability. [Prepare your first team](/docs/learn/first-team/) shows the plan and approval sequence.
+[Current support](/docs/status/) describes supported tasks and limits. [Prepare your first team](/docs/learn/first-team/) shows the plan and approval sequence.

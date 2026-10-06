@@ -28,15 +28,9 @@ Setup creates files. It does not start workers or grant permission to execute th
 ## Release status
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 <picture>
@@ -58,23 +52,17 @@ The setup uses fixed templates. It does not inspect your project or establish th
 ### Install Bowerloom
 
 <!-- release:install:start -->
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
-
-The npm publishing identity is authenticated. This does not grant publication approval. Package ownership is not yet verified. A selected package name does not reserve it.
-
-The planned npm command for `0.7.0-beta.0` is shown for review. Do not run it before this exact version is published.
+Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
 npm install --global bowerloom@0.7.0-beta.0
+bowerloom --version
+bowerloom --help
 ```
 
-Requirements: Node `>=24.11.0 <25` and `npm` 11. Docker Desktop and a separate approved Supabase/PostgreSQL setup for backend operations. Backend setup is separate from installing the CLI.
+First-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
 
-Tested scope: macOS arm64, Node `24.11.0` — Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
-
-Clean public installation and additional systems remain under review. No operating system is recorded as release-qualified yet.
-
-Cached, isolated package checks do not establish clean public or global installation. Publication and broader delivery remain gated.
+These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 <!-- release:install:end -->
 
 ### Plan the setup
@@ -93,7 +81,7 @@ Stop for my review.
 Do not start workers or import Claude or Codex settings.
 ```
 
-After the documented version is published and installed, plan a new workspace:
+After CLI installation, plan a new workspace:
 
 ```sh
 bowerloom init plan --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
@@ -151,7 +139,7 @@ Read the [configuration reference](https://bowerloom.ai/docs/configuration/) for
 
 Team and skill definitions live outside any one agent application. You can read and version those files.
 
-File portability does not establish execution in another application. Current harness commands process selected synthetic files, which contain fictional test data. Live Codex and Claude Code support remains unproven.
+File portability does not establish execution in another application. Current harness commands process selected synthetic files, which contain fictional test data. These fixture commands do not run models or change live configuration.
 
 The [harness guide](https://bowerloom.ai/docs/harnesses/) separates import, proposed changes, exact write approvals, removal, and recovery. None of those fixture commands authorizes model execution.
 
@@ -220,7 +208,7 @@ This setup separates portable definitions from its private installation receipt.
 
 The logging map declares future channels. Setup does not open connections or create a logging service. A compiled definition is not a running team.
 
-Portable routines under `.bowerloom/routines/` are planned beta work. They are absent from this generated setup. Scheduling and event triggers remain deferred.
+The generated setup contains no `.bowerloom/routines/` directory. These setup commands do not schedule work or start event triggers.
 
 Private connection bindings, credentials, and runtime state need separate locations and approvals. This diagram does not place them inside the portable definition folders.
 
@@ -230,15 +218,15 @@ Private connection bindings, credentials, and runtime state need separate locati
 | --- | --- |
 | Teams | Roles, skills, and permission definitions. Startup produces a specification, without running the team. |
 | Relay | Communication definitions and approved local links. A link grants no execution or write authority. |
-| Roots | Source-linked knowledge and controlled access. Beta retrieval and company access still need their acceptance evidence. |
+| Roots | Source-linked knowledge and controlled access. Shared company retrieval and access are outside the documented setup path. |
 | Vines | Logs that record work. Startup declares logging maps without a running logging service. |
-| Workbench | Repeatable scenarios and comparison records. A live beta comparison remains required. |
+| Workbench | Repeatable scenarios and comparison records. Setup does not execute a comparison. |
 
-Module names describe responsibilities. They do not imply equal readiness. Read [current support](https://bowerloom.ai/docs/status/) for the tested scope and remaining gates.
+Module names describe responsibilities. They do not imply equal readiness. Read [current support](https://bowerloom.ai/docs/status/) for supported tasks and limits.
 
 MCP, a standard connection between agents and tools, also has separate boundaries. The `mcp plan` command reads selected synthetic declarations and recorded catalogs. It does not contact a server or authorize tool calls.
 
-Internal discovery tests remain distinct from a production connector and live team execution. Read the [MCP guide](https://bowerloom.ai/docs/mcp/) for its boundaries.
+MCP planning supplies no public server connection or tool-call command. Read the [MCP guide](https://bowerloom.ai/docs/mcp/) for its boundaries.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/labs-workflow-dark.png">
@@ -281,6 +269,18 @@ See the [stop guide](https://bowerloom.ai/docs/stop/) for registration, stop res
   <img src="docs/assets/readme-beta/exports/contributing-light.png" alt="">
 </picture>
 
+## Bugs, questions, and feedback
+
+Report reproducible bugs in [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues). Search open and closed issues before creating a report.
+
+Include the version, OS, harness, expected result, actual result, reproduction steps, and sanitized logs. Add new evidence to an existing report when applicable.
+
+Ask questions in [Q&A](https://github.com/sageadvicellc/bowerloom/discussions/categories/q-a). Share feedback in [General](https://github.com/sageadvicellc/bowerloom/discussions/categories/general).
+
+Discuss feature proposals in [Ideas](https://github.com/sageadvicellc/bowerloom/discussions/categories/ideas). Describe the task, problem, proposed result, and current workaround.
+
+Read [Bug reports and feedback](https://bowerloom.ai/docs/feedback/) for report examples and privacy guidance. Keep private paths, credentials, and raw receipts private.
+
 ## Contributing
 
 
@@ -290,39 +290,34 @@ Bring a small, reproducible change that the team can review.
 
 - Describe the problem and the result that you expect.
 - Include a focused example or meaningful test with your change.
-- Follow the [working order](docs/transition/working-order.md) for review and branch coordination.
+- Follow the [contributor guide](https://bowerloom.ai/docs/contributors/) for source changes and review.
 
 Keep credentials, customer data, and private references out of public issues and pull requests.
 
-Reviewed beta changes integrate through `feature/bowerloom-beta`. Hanna decides the final `main` merge and public beta release.
+Use [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues) to agree on the scope before a large change.
 
 ## Current capabilities
 
 <!-- release:support:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
-
 | Capability | Current boundary |
 | --- | --- |
-| Setup | Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files. |
-| Revision | Review an installed setup change before applying its exact revision. |
+| Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
+| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |
+| Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
-| Harnesses | Codex and Claude Code execution require separate qualification. File portability does not establish runtime support. |
-| Connections | MCP connections and local backends require separate reviewed bindings and permissions. |
-| Company access | Shared company access, offboarding and deletion remain release requirements. |
+| Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
+| Connections | MCP planning reads selected synthetic files. Local backend installation requires a separate plan and exact approval. |
+| Company | Shared company access, retrieval, offboarding, and deletion are outside this beta's documented setup path. |
 
-Recorded checks: macOS arm64, Node `24.11.0`. Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
+These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 
-Clean public installation and additional systems remain under review. No release-qualified system is listed.
+Running a team needs separate runtime permissions and controls. The setup commands do not grant them. Shared company access and unattended services are outside this setup walkthrough.
 <!-- release:support:end -->
 
-Read the [contributor guide](https://bowerloom.ai/docs/contributors/) for source development. Historical audit records remain in the repository; they are not current onboarding instructions.
+Read the [contributor guide](https://bowerloom.ai/docs/contributors/) for source development.
 
-Made by Sage Advice. [Package license declaration](package.json) · [Source and migration boundaries](docs/transition/monorepo-cutover.md).
+Made by Sage Advice. [License](LICENSE) · [Source](https://github.com/sageadvicellc/bowerloom).

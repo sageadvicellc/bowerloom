@@ -1,75 +1,80 @@
 ---
-title: "Beta availability and support"
-description: "Read exact availability, recorded trials, and the remaining acceptance boundaries."
+title: "Beta support and limits"
+description: "Find supported tasks, system requirements, and community help for the beta."
 section: "Help"
 order: 26
 ---
 
-This page records the current beta's support boundary. A successful trial applies only to its recorded artifact and scope.
+Bowerloom `0.7.0-beta.0` prepares readable local definitions for your existing personal agent. Use this page to choose a supported task.
 
 <!-- release:support:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
-
 | Capability | Current boundary |
 | --- | --- |
-| Setup | Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files. |
-| Revision | Review an installed setup change before applying its exact revision. |
+| Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
+| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |
+| Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
-| Harnesses | Codex and Claude Code execution require separate qualification. File portability does not establish runtime support. |
-| Connections | MCP connections and local backends require separate reviewed bindings and permissions. |
-| Company access | Shared company access, offboarding and deletion remain release requirements. |
+| Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
+| Connections | MCP planning reads selected synthetic files. Local backend installation requires a separate plan and exact approval. |
+| Company | Shared company access, retrieval, offboarding, and deletion are outside this beta's documented setup path. |
 
-Recorded checks: macOS arm64, Node `24.11.0`. Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
+These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 
-Clean public installation and additional systems remain under review. No release-qualified system is listed.
+Running a team needs separate runtime permissions and controls. The setup commands do not grant them. Shared company access and unattended services are outside this setup walkthrough.
 <!-- release:support:end -->
 
-## Read results at their actual scope
+<a id="read-results-at-their-actual-scope"></a>
 
-Specification readiness means that the inspected files meet their required checks. Runtime readiness and permission to execute remain separate.
+## Read status fields
 
-Synthetic checks use controlled inputs and test identities. They do not qualify arbitrary applications, connected services, or native tool containment.
+Specification readiness means that the inspected files meet their required rules. Runtime readiness and permission to execute remain separate.
+
+`ready-for-review` means that the setup needs your review. It does not mean that a team runs.
 
 ## Setup and revision
 
-Setup prepares fixed Engineer, Founder, or Research definitions. Exact approval writes the reviewed files. Revision reviews a replacement before applying it.
+Setup prepares fixed Engineer, Founder, or Research definitions. Exact approval writes 20 setup files and one private receipt.
 
-These paths do not import live agent configuration, create a hosted agent, start workers, or authorize a backend.
+Revision plans a replacement before applying it. These paths do not import live agent configuration, create hosted agents, or start workers.
 
 ## Harnesses
 
-Selected synthetic configuration work covers Codex and Claude Code. File portability does not establish native runtime acceptance.
+Synthetic configuration commands process selected Codex and Claude Code fixtures. They do not change live configuration or run models.
 
-Complete live tasks under both harnesses and broader security qualification remain unaccepted. Read [the harness boundary](/docs/harnesses/).
+Portable skill installation supports a new Codex workspace. It does not support Claude Code or an existing target.
+
+A projected file does not prove that an agent discovers or runs it. Read [Codex and Claude Code](/docs/harnesses/).
 
 ## Connections
 
-The public MCP interface plans three selected synthetic inputs. It supplies no server connection or tool-call command.
+The MCP command plans from three selected synthetic inputs. It does not connect a server, resolve secrets, or invoke tools.
 
-The local backend is a separate macOS Docker profile with its own storage, platform, and approval requirements. Read [MCP](/docs/mcp/) and [backend](/docs/backend/).
+The local backend uses a separate macOS Docker profile. Read [MCP](/docs/mcp/) and [Local backend](/docs/backend/) for their prerequisites.
 
 ## Company
 
-Shared access, retrieval, offboarding, and deletion remain release requirements. Real business data requires an approved retention and deletion policy.
+Shared company access, retrieval, offboarding, and deletion are outside this beta's documented setup path.
 
-The first company trial uses synthetic accounts and data. Local file setup does not accept shared-company service.
+A local setup does not enroll employees or establish a shared service. Real business data needs an approved retention and deletion policy.
 
 ## Security
 
-Public unattended activation requires independent acceptance of the exact installed security configuration. Source scans and synthetic startup evidence alone do not satisfy it.
+Setup approval grants no unattended execution or connected-tool authority. Review each later action and its required controls separately.
 
-Relevant prompt, skill, model, tool, permission, or workflow changes reopen affected review. Read [security boundaries](/docs/security/).
+Keep credentials, customer data, raw receipts, and private paths out of shared files. Read [Trust and security boundaries](/docs/security/).
+
+## Help and feedback
+
+Use [GitHub Issues](https://github.com/sageadvicellc/bowerloom/issues) for reproducible bugs.
+
+Ask questions in [Q&A](https://github.com/sageadvicellc/bowerloom/discussions/categories/q-a). Share feedback in [General](https://github.com/sageadvicellc/bowerloom/discussions/categories/general).
+
+Discuss feature proposals in [Ideas](https://github.com/sageadvicellc/bowerloom/discussions/categories/ideas). [Bug reports and feedback](/docs/feedback/) explains what to include.
 
 ## Release identity
 
-Publication, package ownership, accepted installation, and runtime qualification are separate facts. Older receipts do not transfer acceptance to a changed artifact.
-
-[Install Bowerloom](/docs/start/) gives the current entry. [Release notes](/docs/releases/) records user-visible candidate changes.
+Use the documentation for your installed version. [Install Bowerloom](/docs/start/) gives the entry path, and [Release notes](/docs/releases/) describes its changes.

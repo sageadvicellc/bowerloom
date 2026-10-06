@@ -8,15 +8,9 @@ order: 8
 Revision changes an installed setup through another exact plan. It retains private history and preserves unrelated project files.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Ask your agent
@@ -29,9 +23,7 @@ Help me revise my installed Bowerloom setup. Read its current state and show the
 
 ### Prerequisites
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Use the original target and a readable installation receipt. Resolve any pending revision before starting another change.
 
@@ -51,7 +43,7 @@ bowerloom revise plan --target /absolute/projects/clean-install-trial --name "Cl
 
 Read the old goal, new goal, proposed files, replacement scope, old installation revision, and new plan revision.
 
-The candidate accepts these inline fields. Its help also documents the alternative `--brief` form. Do not mix the two forms.
+The CLI accepts these inline fields. Its help also documents the alternative `--brief` form. Do not mix the two forms.
 
 ### Approve the exact replacement
 
@@ -85,4 +77,4 @@ An old connection or runtime enrollment does not authorize a revised specificati
 
 ## Support boundary
 
-[Current support](/docs/status/) records availability. [Plans and approval](/docs/permissions/) explains changed inputs.
+[Current support](/docs/status/) describes supported tasks and limits. [Plans and approval](/docs/permissions/) explains changed inputs.

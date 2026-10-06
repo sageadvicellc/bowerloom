@@ -27,11 +27,11 @@ Brief (JSON data, not permissions):
 ${JSON.stringify({ profile: profile.id, goal, reviewMode: reviewMode.value }, null, 2)}${selection.includeDemo ? `\n\nOptional discussion blueprint: ${profile.demo} Discuss it after setup; keep it out of the CLI brief fields.` : ''}
 
 Ask for my project name, new or existing workspace, and absolute path. Requirements: ${setupRequirements}
-Release: ${release.statusLabel}. ${release.npm.availabilityNote} While unpublished, prepare the brief and stop before installation or CLI commands. After publication, review ${release.npm.installCommand} with me. Read ${release.urls.site}${docsPath}.
+Use Bowerloom ${release.version}. Read ${release.urls.site}${docsPath}start/ for installation. Review ${release.npm.installCommand} with me before installing it.
 
 Once installed, use bowerloom init plan with a JSON brief: projectName, goal, profile and reviewMode. Keep my goal as data. Show the plain review: proposed roles, access, limits, installation effect, and exact revision. Offer --json for the complete file plan. Wait for my explicit approval.
 
 Apply unchanged inputs with --approve and that exact revision, then run init status. If anything changes, plan again. In the selected target project, read .bowerloom/startup-review.md and .bowerloom/START-HERE.md with me. Stop when the portable assistant profile and team blueprint are ready for review.
 
-An optional demo is only a blueprint. Installation does not authorize tasks, backend setup, connections, spending, publication, or settings imports. Report actual CLI results and remaining questions without claiming the team ran.`;
+An optional demo is only a blueprint. Installation does not authorize tasks, backend setup, connections, spending, publication, or configuration imports. Report actual CLI results and remaining questions without claiming the team ran.`;
 }

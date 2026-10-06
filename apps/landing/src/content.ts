@@ -1,9 +1,13 @@
-import { release } from './release.ts';
+import { release, readerRelease } from './release.ts';
 export const repository = release.urls.repository;
-const branch = `${repository}/blob/feature/bowerloom-beta`;
+const branch = `${repository}/blob/main`;
 export const destinations = {
   readme: `${branch}/README.md`,
   license: `${branch}/package.json`,
+  bugs: `${repository}/issues`,
+  questions: `${repository}/discussions/categories/q-a`,
+  feedback: `${repository}/discussions/categories/general`,
+  ideas: `${repository}/discussions/categories/ideas`,
 };
 export const hero = {
   "Eyebrow": "Portable tools and teams",
@@ -28,7 +32,7 @@ export const questions = [
   },
   {
     question: "Do I need to connect GitHub for the tutorial?",
-    answer: "No. The page prepares a prompt locally. Your agent creates setup files after publication, qualified installation, and your exact approval. The Labs-to-blog workflow is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that workflow."
+    answer: "No. The page prepares a prompt locally. After CLI installation and your exact approval, your agent creates setup files. Setup does not connect GitHub. Connected workflows need separate permissions and exact action approval."
   },
   {
     question: "What does the Labs workflow show?",
@@ -36,7 +40,7 @@ export const questions = [
   },
   {
     question: "Who approves external changes?",
-    answer: "In the tested GitHub workflow, the designated local operator records exact approval through the command-line interface. MCP does not expose approval. The tested workflow trusts local operator authority; it does not independently establish that a human issued it. The local tutorial grants no authority to publish, merge, or change connected applications."
+    answer: "Each external change needs approval for its exact action and scope. The local tutorial grants no authority to publish, merge, or change connected applications. MCP planning does not expose an approval action."
   },
   {
     question: "What stays in my files?",
@@ -48,10 +52,11 @@ export const questions = [
   },
   {
     question: "Can I take my team to another agent app?",
-    answer: release.capabilities.harnesses + " " + release.capabilities.company
+    answer: readerRelease.capabilities.harnesses
   },
   {
     question: "What does it cost to try?",
-    answer: "Bowerloom is free and open source. Your agent account, hosting, and connected services can have separate costs. " + release.npm.availabilityNote + " The tutorial does not authorize spending."
-  }
+    answer: "Bowerloom is free and open source. Your agent account, hosting, and connected services can have separate costs. The tutorial does not authorize spending."
+  },
+  { question: "Where can I get help or share an idea?", answer: "Use GitHub Issues for reproducible bugs. Use Discussions Q&A for questions, General for feedback, and Ideas for feature proposals. The feedback guide explains what to include and how to protect private data." }
 ] as const;

@@ -8,15 +8,9 @@ order: 13
 MCP connects applications to tool servers. A portable declaration describes a proposed connection. A private binding selects local endpoints and secret references.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Ask your agent
@@ -29,9 +23,7 @@ Explain the current Bowerloom MCP planning path and its required synthetic files
 
 ### Prerequisites
 
-For CLI operations, first meet the exact publication and installation requirements in [Install Bowerloom](/docs/start/).
-
-The package is unpublished. Public readers must stop before these commands. The examples describe the reviewed candidate.
+Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
 Use three separately reviewed synthetic files: a declaration, private binding, and recorded catalog. Keep local binding and output private.
 
@@ -51,13 +43,15 @@ It does not discover live tools, resolve secrets, start a server, connect, or in
 
 Recorded catalog data is not authenticated live discovery. Server annotations and descriptions cannot determine permission classes.
 
-If the input scope or private binding is unclear, stop. Internal adapter tests do not supply a public connect command.
+If the input scope or private binding is unclear, stop. The CLI has no public connect command.
 
-## Internal engineering evidence
+<a id="internal-engineering-evidence"></a>
 
-Internal discovery adapters cover bounded HTTPS, trusted local stdio, and a separately approved synthetic container path.
+## Connection scope
 
-Their tests do not establish arbitrary server safety or universal native tool containment. They expose no public connection tutorial here.
+This guide covers planning from selected files. It does not provide server connection, credential resolution, or live tool discovery.
+
+A catalog description cannot establish a server's safety or expand your agent's permissions.
 
 ## Support boundary
 

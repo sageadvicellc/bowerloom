@@ -96,4 +96,4 @@ Keep internal format identifiers unchanged. Do not rename historical schemas or 
 
 ## Support boundary
 
-[Current support](/docs/status/) records qualification. [CLI reference](/docs/cli/#first-setup) records the available input forms.
+[Current support](/docs/status/) describes supported tasks and limits. [CLI reference](/docs/cli/#first-setup) records the available input forms.

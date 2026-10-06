@@ -23,7 +23,7 @@ Choose the reviewed commit or task branch before installing dependencies or buil
 
 ### Prepare the source checkout
 
-The example clones the repository. It does not pin a qualified release or establish public CLI support.
+The example clones the repository. Select the source revision for your contribution before installing dependencies.
 
 ```sh
 git clone https://github.com/sageadvicellc/bowerloom.git
@@ -42,9 +42,9 @@ npm run build
 node dist/apps/cli/src/main.js --help
 ```
 
-Dependency installation writes local package files. The build creates development output. Neither operation qualifies the public release.
+Dependency installation writes local package files. The build creates development output for the selected source revision.
 
-If declared tools or the selected revision differ, resolve those prerequisites first. A source checkout is not an alternative public installation.
+If declared tools or the selected revision differ, resolve those prerequisites first. Normal users install the CLI through the installation guide.
 
 ### Prepare review evidence
 
@@ -56,8 +56,8 @@ Keep credentials, customer data, private campaign paths, and raw receipts out of
 
 ## Independent review
 
-The author cannot provide the independent acceptance review. Changed work needs review of its current revision.
+Submit the current revision for independent review. Include evidence for the changed behavior.
 
-The integration lead combines accepted task changes under the repository's workflow. Main merge and publication remain founder decisions.
+Follow the repository's contribution instructions for the selected revision. Discuss the scope in an issue before a large change.
 
-[Reference](/docs/reference/) · [Release notes](/docs/releases/)
+[Bug reports and feedback](/docs/feedback/) · [Reference](/docs/reference/) · [Release notes](/docs/releases/)

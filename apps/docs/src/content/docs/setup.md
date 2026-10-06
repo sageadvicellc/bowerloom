@@ -7,15 +7,9 @@ compatibility: true
 The setup walkthrough now separates a new workspace, an existing project, and review of the installed files.
 
 <!-- release:status:start -->
-**Open beta · unreleased** · `0.7.0-beta.0`
-
-**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+Open beta · 0.7.0-beta.0
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
-
-- Full runtime acceptance remains incomplete.
-- The initial beta needs founder acceptance and publication approval.
-- Unattended support requires an independently accepted installed security configuration.
 <!-- release:status:end -->
 
 ## Choose a workspace and profile
@@ -38,4 +32,4 @@ Read [Files and configuration](/docs/configuration/) before sharing. Keep privat
 
 ## Support boundary
 
-[Current support](/docs/status/) records the exact availability and qualification limits.
+[Current support](/docs/status/) describes supported tasks and limits.

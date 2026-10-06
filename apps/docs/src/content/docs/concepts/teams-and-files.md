@@ -31,7 +31,7 @@ The setup includes team YAML, role prompts, skills, maps, and supporting assets.
 
 Crew describes team definitions. Relay describes communication structure. Roots concerns knowledge access. Vines records activity.
 
-Module names do not imply that setup starts those services. A map declaration does not establish a live socket or accepted retrieval.
+Module names do not imply that setup starts those services. A map declaration does not open a socket or retrieve company data.
 
 ## Portable and private
 

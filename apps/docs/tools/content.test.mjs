@@ -10,11 +10,12 @@ import {copyFeedback} from '../src/lib/copy-feedback.mjs';
 import {expandRelease,readRelease,releaseReference,releaseSections} from '../src/lib/release.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
-test('resolved release block refuses unknown markers and preserves unavailable installation in copy',async()=>{
+test('resolved reader release block preserves exact installation command and refuses unknown markers',async()=>{
   const release=await readRelease();
   const resolved=expandRelease('Before\n<!-- release:install:start -->STALE<!-- release:install:end -->\nAfter',release);
   assert(!resolved.includes('STALE'));assert(resolved.includes(release.npm.installCommand));
-  if(!release.npm.published)assert.match(resolved,/Do not run it before this exact version is published/);
+  assert.doesNotMatch(resolved,/unpublished|unreleased|publication|candidate|ownership|private package/i);
+  assert.match(resolved,/First-team setup does not need Docker/);
   assert.throws(()=>expandRelease('<!-- release:unknown:start -->x<!-- release:unknown:end -->',release));
   assert.throws(()=>expandRelease('<!-- release:status:start -->',release));
 });
@@ -42,8 +43,8 @@ test('real document snapshot retains routes and matching Markdown/HTML support b
 test('all exports and copied procedures identify the exact shared release and support boundary',async()=>{
   const release=await readRelease(),docs=await getDocuments();
   const reference=releaseReference(release);
-  assert.match(reference,/Release-record SHA256: `[a-f0-9]{64}`/);
-  assert(reference.includes(`State: ${release.state}`));assert(reference.includes(release.version));
+  assert(reference.includes(`Version: ${release.version} · Release: ${release.release}.`));
+  assert.doesNotMatch(reference,/State:|release\/beta\.json|SHA256|unreleased|candidate/);
   assert(reference.includes(release.urls.repository));assert(reference.includes(new URL('status/',release.urls.docs).href));
   const raw=await readFile(new URL('../../../release/beta.json',import.meta.url));
   assert.equal(release.sourceRecordSha256,createHash('sha256').update(raw).digest('hex'));
@@ -53,15 +54,20 @@ test('all exports and copied procedures identify the exact shared release and su
   }
   assert(indexMarkdown(docs).includes(reference));
 });
-test('support section distinguishes tested systems from the exact release-qualified list or empty state',async()=>{
-  const release=await readRelease();
-  const support=releaseSections(release).support;
-  for(const row of release.systems.tested)for(const value of [row.os,row.architecture,row.node,row.scope])assert(support.includes(value));
-  assert(support.includes(`Release-qualified systems for \`${release.version}\``));
-  if(!release.systems.releaseQualified.length)assert(support.includes('No operating system is recorded as release-qualified yet.'));
-  const qualified=releaseSections({...release,systems:{...release.systems,releaseQualified:[{os:'SyntheticOS',architecture:'synthetic64',node:'24.11.0',scope:'fixture only'}]}}).support;
-  assert(qualified.includes('SyntheticOS synthetic64'));assert(qualified.includes('fixture only'));
-  assert(!qualified.includes('No operating system is recorded as release-qualified yet.'));
+test('reader projection preserves raw operational state and presents bounded setup systems',async()=>{
+  const release=await readRelease(),before=JSON.stringify(release),sections=releaseSections(release);
+  for(const row of release.systems.tested)for(const value of [row.os,row.architecture,row.node])assert(sections.support.includes(value));
+  assert(sections.support.includes('Other host systems are outside this documented installation path.'));
+  assert(sections.support.includes('They do not run models or change live agent configuration.'));
+  assert(sections.support.includes('| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |'));
+  assert(!sections.status.startsWith('**'));
+  assert(sections.support.includes('Setup does not start workers, grant runtime access, or authorize connected actions.'));
+  assert(sections.support.includes('Shared company access and unattended services are outside this setup walkthrough.'));
+  assert.doesNotMatch(Object.values(sections).join('\n'),/unpublished|unreleased|candidate|ownership|founder acceptance|publication approval|release-qualified/i);
+  assert.equal(JSON.stringify(release),before);
+  const next={...release,version:'0.7.0-beta.99',npm:{...release.npm,installCommand:'npm install --global bowerloom@0.7.0-beta.99'}};
+  assert(releaseSections(next).install.includes(next.npm.installCommand));assert(releaseReference(next).includes(next.version));
+  assert.equal(next.state,release.state);assert.equal(next.npm.published,release.npm.published);
 });
 test('rendered raw anchors suppress legacy aliases and duplicate IDs fail the shared link rule',()=>{
   const html='<h2 id="title">Title</h2><a id="old-anchor"></a><a title=" id=not-an-id" id=bare></a><span id="escaped&#45;id"></span><!-- <a id="ignored"> --><script>"<a id=script>"</script><pre>&lt;a id="code"&gt;</pre>';

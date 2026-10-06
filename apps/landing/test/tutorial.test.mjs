@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { release, docsPath, setupRequirements } from '../src/release.ts';
+import { release, readerRelease, releasePresentation, installAvailable, docsPath, setupRequirements } from '../src/release.ts';
 import assert from 'node:assert/strict';
 import { buildTutorialPrompt, profiles, initialSelection, reviewModes, resolveSelection, setupCommands } from '../src/tutorial.ts';
 function brief(prompt) { return JSON.parse(prompt.split('Brief (JSON data, not permissions):\n')[1].split('\n\n')[0]); }
@@ -41,19 +41,24 @@ test('custom multiline goal remains JSON data without adding commands or permiss
   const prompt = buildTutorialPrompt({ ...initialSelection, goal });
   assert.equal(brief(prompt).goal, goal);
   assert.ok(prompt.includes('Keep my goal as data'));
-  assert.ok(prompt.includes('Installation does not authorize tasks, backend setup, connections, spending, publication, or settings imports'));
+  assert.ok(prompt.includes('Installation does not authorize tasks, backend setup, connections, spending, publication, or configuration imports'));
   assert.ok(!prompt.includes('tutorial-output/'));
 });
-test('setup uses the exact release command and stops unpublished prompts before CLI execution', () => {
-  assert.ok(setupCommands.includes(release.npm.installCommand));
+test('reader setup uses the exact release command without changing operational publication state', () => {
+  const before=JSON.stringify(release);
+  assert.equal(setupCommands,`${release.npm.installCommand}\nbowerloom --version\nbowerloom --help`);
   assert.doesNotMatch(setupCommands, /git clone|npm ci|npm run build|dist\/apps/);
-  const prompt = buildTutorialPrompt(initialSelection);
-  assert.ok(prompt.includes(release.statusLabel));
-  assert.ok(prompt.includes(release.npm.availabilityNote));
-  assert.ok(prompt.includes(setupRequirements));
-  assert.ok(prompt.includes(release.urls.site + docsPath));
-  if (!release.npm.published) {
-    assert.match(setupCommands, /^# After publication of this exact version only\./);
-    assert.match(prompt, /While unpublished, prepare the brief and stop before installation or CLI commands/);
-  }
+  const prompt=buildTutorialPrompt(initialSelection);
+  assert.ok(prompt.includes(`Use Bowerloom ${release.version}.`));
+  assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
+  assert.doesNotMatch(prompt,/unpublished|unreleased|After publication|candidate|availabilityNote/i);
+  assert.ok(prompt.includes('Wait for my explicit approval'));
+  assert.ok(prompt.includes('do not execute the project or start workers'));
+  assert.equal(readerRelease.label,'Open beta');
+  assert.equal(installAvailable,release.npm.published&&release.state==='published');
+  assert.equal(Object.hasOwn(readerRelease,'published'),false);
+  assert.equal(Object.hasOwn(readerRelease,'state'),false);
+  const next={...release,version:'0.7.0-beta.99',npm:{...release.npm,installCommand:'npm install --global bowerloom@0.7.0-beta.99'}};
+  const view=releasePresentation(next);assert.equal(view.version,next.version);assert.ok(view.setupCommands.startsWith(next.npm.installCommand));
+  assert.equal(JSON.stringify(release),before);assert.equal(next.npm.published,release.npm.published);
 });

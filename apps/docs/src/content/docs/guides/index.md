@@ -29,6 +29,6 @@ For an unused workspace, follow [the first-team tutorial](/docs/learn/first-team
 | Shared organization work | [Personal and company use](/docs/company/) |
 | Supported comparisons | [Workbench](/docs/workbench/) |
 
-These pages explain bounded support. Their presence does not establish a runnable integration or accepted native execution.
+These pages describe supported tasks and their limits. Setup does not run a team or connect a tool server.
 
-[Current support](/docs/status/) records availability. [Troubleshooting](/docs/troubleshooting/) helps identify an actual refusal.
+[Current support](/docs/status/) describes supported tasks and limits. [Troubleshooting](/docs/troubleshooting/) helps identify an actual refusal. [Bug reports and feedback](/docs/feedback/) explains where to get help.
