@@ -25,7 +25,7 @@ test('runtime closure is deterministic, pins bins/assets/licenses and omits repo
  assert.match(a.files.get(supabaseLicense).toString('utf8'),/Apache License/);
  for(const entry of a.record.files)assert.equal(sha256(a.files.get(entry.path)),entry.sha256);
  const lock=JSON.parse(a.files.get('npm-shrinkwrap.json'));assert.ok(Object.keys(lock.packages).length>100);assert.ok(!Object.keys(lock.packages).some(p=>p.includes('vite')||p.includes('typescript')));
- assert.equal(collect({repoDir:repo,name:'@example/custom-cli'}).manifest.name,'@example/custom-cli');
+ assert.throws(()=>collect({repoDir:repo,name:'@example/custom-cli'}),/Release record/);
  assert.throws(()=>collect({repoDir:repo,name:'../escape'}),/identity/);
 });
 test('AST traversal captures dynamic imports and fork URL, rejecting dynamic module selectors',()=>{
@@ -110,4 +110,24 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  for(const [file,bytes] of fixtureBefore)assert.deepEqual(readFileSync(file),bytes);
  const mcpResult=spawnSync(mcp,[],{cwd:install,env,encoding:'utf8',timeout:30000});assert.equal(mcpResult.status,2);assert.match(mcpResult.stderr,/--installation/);
  console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
+});
+
+test('release candidate uses the shared record and explicit public beta metadata without publication',t=>{
+ const candidate=collect({repoDir:repo,releaseCandidate:true});
+ assert.equal(candidate.manifest.private,false);
+ assert.deepEqual(candidate.manifest.publishConfig,{access:'public',tag:'beta',registry:'https://registry.npmjs.org'});
+ assert.equal(candidate.record.publicationState,'unreleased');
+ assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(join(repo,'release/beta.json'))));
+ assert.match(candidate.files.get('README.md').toString(),/After publication:/);
+ assert.doesNotMatch(candidate.files.get('README.md').toString(),/alpha|Private, unpublished/);
+ const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ r.version='9.9.9';writeFileSync(path,JSON.stringify(r));
+ assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+test('packaging refuses a same-version renamed root package',t=>{
+ const root=fixture(t),path=join(root,'package.json'),pkg=JSON.parse(readFileSync(path));
+ pkg.name='other';writeFileSync(path,JSON.stringify(pkg));
+ assert.throws(()=>collect({repoDir:root}),/Release record/);
+ assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
 });

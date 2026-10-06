@@ -1,5 +1,6 @@
-export const repository = "https://github.com/sageadvicellc/bowerloom";
-const branch = `${repository}/blob/feature/trellis-v1`;
+import { release } from './release.ts';
+export const repository = release.urls.repository;
+const branch = `${repository}/blob/feature/bowerloom-beta`;
 export const destinations = {
   readme: `${branch}/README.md`,
   license: `${branch}/package.json`,
@@ -31,11 +32,11 @@ export const questions = [
   },
   {
     question: "What does the Labs workflow show?",
-    answer: "The Labs workflow describes the development team behind this alpha and landing page: Knowledge officer, Brand review, Tech lead, and a scalable project team. It explains how their work connects. It is not proof that Bowerloom independently ran the whole team. The Alpha Guide separates that story from recorded runtime tests."
+    answer: "The Labs workflow describes the development team behind this framework and landing page: Knowledge officer, Brand review, Tech lead, and a scalable project team. It explains how their work connects. It is not proof that Bowerloom independently ran the whole team. The Beta Guide separates that story from recorded runtime tests."
   },
   {
     question: "Who approves external changes?",
-    answer: "In the tested GitHub workflow, the designated local operator records exact approval through the command-line interface. MCP does not expose approval. The alpha trusts local operator authority; it does not independently establish that a human issued it. The local tutorial grants no authority to publish, merge, or change connected applications."
+    answer: "In the tested GitHub workflow, the designated local operator records exact approval through the command-line interface. MCP does not expose approval. The tested workflow trusts local operator authority; it does not independently establish that a human issued it. The local tutorial grants no authority to publish, merge, or change connected applications."
   },
   {
     question: "What stays in my files?",
@@ -43,14 +44,14 @@ export const questions = [
   },
   {
     question: "How do the modules fit together?",
-    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools. The Alpha Guide records the current limits and upstream dependencies."
+    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools. The Beta Guide records the current limits and upstream dependencies."
   },
   {
     question: "Can I take my team to another agent app?",
-    answer: "Definitions live outside an individual agent app. Codex is the tested alpha path. Cross-harness execution, including Claude Code, and shared company installations are beta plans. Portable files do not yet mean every harness can execute the team."
+    answer: release.capabilities.harnesses + " " + release.capabilities.company
   },
   {
     question: "What does it cost to try?",
-    answer: "Bowerloom is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and the source is available on GitHub. The tutorial lists the setup requirements and tells your agent not to spend money."
+    answer: "Bowerloom is free and open source. Your agent account, hosting, and connected services can have separate costs. " + release.npm.availabilityNote + " The tutorial does not authorize spending."
   }
 ] as const;

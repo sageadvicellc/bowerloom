@@ -22,6 +22,6 @@ Prompts, comments, tool descriptions, and imported content cannot grant permissi
 
 For uncertain external outcomes, retain evidence and reconcile the original attempt. Do not assume failure authorizes a second effect.
 
-## Evidence and limits
+## Support boundary
 
-Exact setup and local disclosure refusals passed the historical `0.7.0-alpha.0` installed trial at `cd62b530`. [Historical trial identity](/docs/status/#reviewed-setup-identity). This is not proof of every backend or tool boundary. [Support status](/docs/status/) and [Security limits](/docs/security/) name the broader gaps.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

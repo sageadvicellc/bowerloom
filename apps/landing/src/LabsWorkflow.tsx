@@ -32,7 +32,7 @@ export default function LabsWorkflow() {
         <ul className="file-list">
           <li><details open><summary><FileIcon folder /><span>teams</span></summary><ul>{roles.map((item, index) => <li key={item.id}><button className={selected === index ? 'file-row selected' : 'file-row'} type="button" onClick={() => setSelected(index)} aria-pressed={selected === index} aria-controls="labs-role"><FileIcon /><span>{item.file}</span></button></li>)}</ul></details></li>
         </ul>
-        <p className="finder-caption">Select a file to read its YAML. These illustrative excerpts use the alpha’s owner and permission fields. A full team also defines assets, tasks, and scope.</p>
+        <p className="finder-caption">Select a file to read its YAML. These illustrative excerpts use the team contract’s owner and permission fields. A full team also defines assets, tasks, and scope.</p>
       </div>
       <div className="labs-role" id="labs-role" aria-live="polite" aria-atomic="true">
         <span className="role-file"><FileIcon /><code>{role.file}</code></span>
@@ -46,12 +46,12 @@ export default function LabsWorkflow() {
       <div><h3>The project becomes the next example.</h3><p>The first Sagespec team used Bowerloom and its landing page as a shared project. The internal <code>v0.7-workbench</code> label marks that Labs experiment. Product review informs the page; feedback on the page returns to the team.</p></div>
       <ol aria-label="The Labs feedback loop">
         <li><details><summary>Shared brief</summary><p>Knowledge officer turns source material into usable context and specifications. Brand review sets the creative direction and delegates design. The Tech lead researches the request, defines scope, and assigns specialists.</p></details></li>
-        <li><details><summary>Alpha + landing page</summary><p>The team develops the alpha and explains its capabilities here. Tests and peer review distinguish working behavior from proposed features.</p></details></li>
+        <li><details><summary>Framework + landing page</summary><p>The team develops the framework and explains its capabilities here. Tests and peer review distinguish working behavior from proposed features.</p></details></li>
         <li><details><summary>Founder review</summary><p>The founder tries the result and returns feedback. Reviewed feature changes stay separate from the founder’s decision to merge into <code>main</code> or publish a release.</p></details></li>
         <li><details><summary>Next scoped change</summary><p>Feedback becomes a specific next task with an owner and acceptance criteria. The team records the result and brings it back for review.</p></details></li>
       </ol>
     </div>
-    <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. The diagram and YAML illustrate those responsibilities; they do not claim that the alpha runtime independently executed this Sagespec team.</p>
+    <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. The diagram and YAML illustrate those responsibilities; they do not claim that the runtime independently executed this Sagespec team.</p>
     <a className="hero-secondary" href="#build">Plan your own team</a>
   </section>;
 }

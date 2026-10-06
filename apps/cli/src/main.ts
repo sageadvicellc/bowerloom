@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { readInstalledRelease } from './release.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -7,9 +8,7 @@ import type { TestExecutor } from '../../../packages/controlled-tests/src/index.
 import { compileCrew } from '../../../packages/crew/src/index.js';
 import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
-const HELP = `Bowerloom v0.7-alpha: local controlled workflows
-
-Usage:
+const HELP = `Usage:
   bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
   bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
   bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
@@ -75,7 +74,7 @@ The source root defaults to the directory that contains crew.yaml.
 Validate and plan read source files and print JSON. They start no workers.
 Status and review read the prepared session without a model or browser.
 Up stops for exact approval. Approve writes and tests the stored proposal.
-Tier flags do not promise measured throughput. Alpha runs tasks sequentially.
+Tier flags do not promise measured throughput. The task runner executes tasks sequentially.
 The plan records declarations. It grants no runtime permission.
 Recipe commands share their controller with MCP. The operator CLI owns exact approval.
 `;
@@ -89,23 +88,17 @@ const INIT_HELP = [
   'Status inspects the saved specification. Demo-plan offers an optional handoff without execution.', '',
 ].join('\n');
 
-function installedVersion(): string {
-  // Both the compiled checkout and standalone archive use dist/apps/cli/src/main.js.
-  // Read that distribution's metadata, not a caller's current directory or another global install.
-  try {
-    const value: unknown = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'));
-    const version = value !== null && typeof value === 'object' && 'version' in value ? value.version : undefined;
-    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error();
-    return version;
-  } catch {
-    throw new DefinitionError('VERSION_METADATA', 'The installed package version could not be read. Inspect this installation before using it.');
-  }
+function installedVersion(): string { return readInstalledRelease().version; }
+
+function releaseHeading(): string {
+  const record = readInstalledRelease();
+  return `Bowerloom ${record.version}: open beta (${record.state})\n${record.execution}\n`;
 }
 
 async function main(args: string[]): Promise<void> {
-  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HELP}`); return; }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
-  if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(INIT_HELP); return; }
+  if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
   if (args[0] === 'mcp') {
     const { runMcpPlanCommand } = await import('./mcp-plan.js');
     process.stdout.write(`${canonicalJson(await runMcpPlanCommand(args))}\n`);

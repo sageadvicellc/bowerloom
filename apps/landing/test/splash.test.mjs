@@ -15,7 +15,7 @@ function setup() {
 test('fresh visits show splash, deep links and seen sessions bypass it, denied storage never blocks entry',()=>{
   assert.equal(shouldShowSplash('',null),true);
   assert.equal(shouldShowSplash('#build',null),false);
-  assert.equal(shouldShowSplash('#alpha-guide',null),false);
+  assert.equal(shouldShowSplash('#beta-guide',null),false);
   const stored=new Map();const storage={getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v)};
   rememberSplash(storage);assert.equal(stored.get(SPLASH_SESSION_KEY),'seen');assert.equal(shouldShowSplash('',storage),false);
   assert.doesNotThrow(()=>rememberSplash({setItem(){throw Error('Denied');}}));

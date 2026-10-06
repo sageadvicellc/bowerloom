@@ -143,7 +143,7 @@ nav a span {
   margin-left: 6px;
   color: #788b7b;
 }
-.alpha-label {
+.release-label {
   margin-left: 25px;
   display: flex;
   align-items: center;
@@ -155,7 +155,7 @@ nav a span {
   font: 10px var(--ui-font);
   letter-spacing: 0.5px;
 }
-.alpha-label > span,
+.release-label > span,
 .status-dot {
   width: 5px;
   height: 5px;
@@ -545,24 +545,24 @@ h2 {
   line-height: 1.85;
   color: #a3b09f;
 }
-.alpha-boundary {
+.release-boundary {
   display: flex;
   align-items: start;
   gap: 12px;
   margin-top: 35px;
   max-width: 430px;
 }
-.alpha-boundary > .status-dot {
+.release-boundary > .status-dot {
   margin-top: 5px;
   background: #efbb72;
   box-shadow: 0 0 9px #efbb7233;
 }
-.alpha-boundary strong {
+.release-boundary strong {
   font: 11px var(--ui-font);
   font-weight: 400;
   color: var(--warm);
 }
-.alpha-boundary p {
+.release-boundary p {
   font-size: 12px;
   line-height: 1.8;
   color: #91a08a;
@@ -756,7 +756,7 @@ h2 {
   nav > a:first-child {
     display: none;
   }
-  .alpha-label {
+  .release-label {
     display: none;
   }
   .hero {
@@ -905,7 +905,7 @@ h2 {
   .build-intro > p:not(.eyebrow) {
     font-size: 14px;
   }
-  .alpha-boundary {
+  .release-boundary {
     margin-top: 26px;
   }
   .prompt-panel {

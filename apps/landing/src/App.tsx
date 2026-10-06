@@ -1,3 +1,4 @@
+import { release, docsPath } from './release';
 import {
   Component,
   lazy,
@@ -34,9 +35,9 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 }
 
 const offers = [
-  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
+  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the beta evidence for what is ready today." },
   { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies explicit controls and records around the tested actions; your agent remains your interface." },
-  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
+  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. " + release.capabilities.harnesses },
 ];
 
 function CoreOffers() {
@@ -169,8 +170,8 @@ export default function App() {
         </a>
         <SiteNavigation />
         <ThemeControl />
-        <span className="alpha-label">
-          <span /> v0.7 alpha
+        <span className="release-label">
+          <span /> {release.statusLabel}
         </span>
       </header>
       <main id="main">
@@ -274,7 +275,7 @@ export default function App() {
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
           <div className="resource-links">
-            <a href="#alpha-guide">Read the alpha boundaries</a>
+            <a href="#beta-guide">Read the beta boundaries</a>
             <a href="#release-plan">Explore the release plan</a>
             <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
@@ -339,14 +340,15 @@ export default function App() {
         </a>
         <p>An open-source framework for agent teams.</p>
         <div>
+          <a href={docsPath}>Documentation</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
           <ExternalLink href={destinations.readme}>README</ExternalLink>
-          <a href="#alpha-evidence">Alpha evidence</a>
+          <a href="#beta-evidence">Beta evidence</a>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
         <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
-        <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
+        <p className="footer-release">{release.statusLabel}. {release.capabilities.limits[1]}</p>
       </footer></FooterCompanion>
     </div>
   );

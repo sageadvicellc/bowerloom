@@ -1,0 +1,55 @@
+{
+  "schema": "bowerloom/release/v1",
+  "product": "Bowerloom",
+  "release": "v0.7-beta",
+  "version": "0.7.0-beta.0",
+  "state": "unreleased",
+  "audience": "open-beta",
+  "launch": "soft",
+  "statusLabel": "Open beta \u00b7 unreleased",
+  "npm": {
+    "packageName": "bowerloom",
+    "registry": "https://registry.npmjs.org",
+    "distTag": "beta",
+    "installCommand": "npm install --global bowerloom@0.7.0-beta.0",
+    "published": false,
+    "ownershipVerified": false,
+    "publishingIdentityVerified": false,
+    "availabilityNote": "The npm package is not published. Run the installation command only after this exact version is published."
+  },
+  "urls": {
+    "site": "https://bowerloom.ai",
+    "docs": "https://bowerloom.ai/docs/",
+    "repository": "https://github.com/sageadvicellc/bowerloom"
+  },
+  "requirements": {
+    "node": ">=24.11.0 <25",
+    "npm": "11",
+    "backend": "Docker Desktop and a separate approved Supabase/PostgreSQL setup for backend operations"
+  },
+  "systems": {
+    "tested": [
+      {
+        "os": "macOS",
+        "architecture": "arm64",
+        "node": "24.11.0",
+        "scope": "Isolated package installation, setup, revision, upgrade and removal with cached dependencies"
+      }
+    ],
+    "releaseQualified": [],
+    "note": "Clean public installation and additional systems remain under review."
+  },
+  "capabilities": {
+    "setup": "Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files.",
+    "revision": "Review an installed setup change before applying its exact revision.",
+    "execution": "Setup does not start workers, grant runtime access, or authorize connected actions.",
+    "harnesses": "Codex and Claude Code execution require separate qualification. File portability does not establish runtime support.",
+    "connections": "MCP connections and local backends require separate reviewed bindings and permissions.",
+    "company": "Shared company access, offboarding and deletion remain release requirements.",
+    "limits": [
+      "Full runtime acceptance remains incomplete.",
+      "The initial beta needs founder acceptance and publication approval.",
+      "Unattended support requires an independently accepted installed security configuration."
+    ]
+  }
+}

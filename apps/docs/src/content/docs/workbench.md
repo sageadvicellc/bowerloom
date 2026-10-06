@@ -18,6 +18,6 @@ Vines is the logging system. A later Sagespec self-improvement layer is separate
 
 The `v0.7-workbench` label describes a Labs team/version. End users do not install that version as the public framework release.
 
-## Evidence and limits
+## Support boundary
 
-Source reference: [beta engineering plan](https://github.com/sageadvicellc/bowerloom/blob/37f1efab545921d08378956eef854c3b17bd4f16/docs/beta/engineering-plan.md), snapshot `37f1efa`. No new benchmark, winning model, or completed live authored team is claimed by this documentation build.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

@@ -3,9 +3,17 @@ title: Local backend boundaries
 description: A separate Supabase installation with its own plan and approval.
 ---
 
-:::note[Private beta command scope]
-Use the [isolated installed executable](/docs/start/). This command reference is not exercised by the private beta candidate trial. Historical evidence stays separate; it does not establish beta acceptance for this operation.
-:::
+<!-- release:status:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
+
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+
+Setup does not start workers, grant runtime access, or authorize connected actions.
+
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
+<!-- release:status:end -->
 
 First-team setup writes files. It does not install Docker or start a database. Local backend installation is a separate operation.
 
@@ -37,6 +45,6 @@ A failed or partial installation retains state for inspection. There is no autom
 
 Cloud configuration and other Docker platforms remain unsupported by this adapter. A new team does not require backend installation just to inspect its specification.
 
-## Historical evidence and limits
+## Support boundary
 
-Source reference: [local-backend documentation](https://github.com/sageadvicellc/bowerloom/blob/cd62b530644dae0fca1cef9e11e287b24356c250/packages/local-backend/README.md). The independent installed CLI UX trial did not qualify backend installation. This page supplies boundaries, not a new backend acceptance result.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

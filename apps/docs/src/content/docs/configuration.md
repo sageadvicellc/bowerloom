@@ -35,6 +35,6 @@ Use `revise` to change an installed goal or template. Direct edits can produce d
 
 Legacy installations retain their original identity rules. New Darwin identity handling does not silently upgrade older receipts or authorize replacement folders. Never edit recorded identity fields to clear a refusal.
 
-## Evidence and limits
+## Support boundary
 
-Historical alpha source: [`packages/startup`](https://github.com/sageadvicellc/bowerloom/tree/cd62b530644dae0fca1cef9e11e287b24356c250/packages/startup), reviewed `0.7.0-alpha.0` trial at `cd62b530`. [Historical trial identity](/docs/status/#reviewed-setup-identity). Optional and planned future runtime folders are not presented as startup-generated files.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

@@ -94,7 +94,7 @@ test('expanded content does not offset later section boundaries after reverse sc
 
 test('fresh URL fragments scroll to mounted builder and nested guide exactly once', async () => {
   const { scheduleInitialAnchor } = await import('../src/fullpage-anchor.ts');
-  for (const id of ['build', 'alpha-guide', 'local-backend']) {
+  for (const id of ['build', 'beta-guide', 'local-backend']) {
     let callback, calls=0;
     const dispose=scheduleInitialAnchor('#'+id, target=> {
       assert.equal(target,id);

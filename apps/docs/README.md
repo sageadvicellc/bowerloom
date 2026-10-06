@@ -35,8 +35,9 @@ Keep tested source/artifact identities and fixture limitations beside capability
 Newsreader and Manrope fonts, their OFL files, and approved plain wordmark/robot assets are copied unchanged from the landing.
 The stylesheet matches the landing Rose Conservatory and After Hours tokens. Code keeps the landing monospace stack.
 The header keeps Main site (`/`) and Docs home (`/docs/`) visible on desktop and mobile.
-The private beta candidate has bounded offline installed evidence; broader delivery remains open on issue #61.
-Historical alpha source instructions live only in contributor guidance.
+Release-sensitive sections and the root README/version badge are generated from `release/beta.json` by `tools/sync-release.mjs`.
+Build synchronizes those sections; `npm run check:release` refuses drift. Normal onboarding uses the planned npm channel, unavailable until publication.
+Contributor source instructions remain separate. Historical audit files stay outside current onboarding.
 The site includes a preview noindex directive. Authentication must come from the hosting project's protected preview; noindex is not access control.
 
 ## Acceptance still required

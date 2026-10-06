@@ -18,6 +18,6 @@ Internal Codex boundary and admission work binds qualifications, artifact identi
 
 This documentation supplies no native bootstrap or model-run command. Complete live tasks under both harnesses, native tool bypass tests, and broader security qualification remain open.
 
-## Evidence and limits
+## Support boundary
 
-Source reference: [`packages/harness-portability`](https://github.com/sageadvicellc/bowerloom/tree/37f1efab545921d08378956eef854c3b17bd4f16/packages/harness-portability), development snapshot `37f1efa`. Fixture projections are not native compatibility evidence. The independent `cd62b530` CLI UX trial did not accept native adapters.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

@@ -1,31 +1,35 @@
 ---
 title: "Build with your agent"
-description: "A small, reviewable start for an agent team."
+description: "Grow your capabilities with reviewable agent teams."
 ---
 Bowerloom is an open-source framework for building agent teams in files you can read.
 
-Your personal agent helps you describe a goal and review the proposed team. Bowerloom prepares the files and checks an exact approval before installing them.
+Start with your personal agent and a goal. Review the proposed roles, skills, working agreement, and milestone checks. Approve the exact setup plan before it writes files.
 
-:::note[Documentation preview]
-These pages describe the private `0.7.0-beta.0` CLI candidate and ongoing work toward `v0.7-beta`. Its bounded offline installation, Engineer-profile setup, and successful revision trial passed. It is not publicly available or fully accepted. Broader delivery remains open under issue #61; historical alpha evidence stays separate.
-:::
+<!-- release:status:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
+
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+
+Setup does not start workers, grant runtime access, or authorize connected actions.
+
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
+<!-- release:status:end -->
 
 ## Choose your next step
 
-- **First visit:** [Install the supplied private candidate](/docs/start/).
-- **Preview the setup sequence:** [Plan, review, and install](/docs/setup/).
-- **Changing an installed goal:** [Revise or recover](/docs/revision/).
-- **Need to stop registered work:** [Understand stop results](/docs/stop/).
-- **Checking a capability:** [Read the support status](/docs/status/).
+- [Install Bowerloom](/docs/start/) — check publication and system requirements first.
+- [Plan your first team](/docs/setup/) — prepare a new workspace or an existing project.
+- [Revise or recover](/docs/revision/) — keep changes tied to exact approval.
+- [Stop registered work](/docs/stop/) — understand the owner's scope and uncertain results.
+- [Check current support](/docs/status/) — separate specification readiness from runtime qualification.
 
 ## What setup gives you
 
-A personal-agent profile, a first team specification, a working agreement, and milestone notes. The plan contains 20 setup files. Application also writes one private installation receipt.
+Setup proposes 20 files: a personal-agent profile, team specification, working agreement, milestone notes, and supporting definitions. Approved installation also writes one private receipt.
 
-Setup uses fixed templates. It does not assess whether your goal is feasible, start workers, import application settings, or grant permission to execute the team.
+The setup uses fixed templates. It does not assess whether a goal is feasible, start workers, import application settings, or grant execution authority.
 
-## Grow with review
-
-Keep portable definitions separate from private installation records. Review a specific plan before each authorized change. A successful setup is specification readiness, not evidence of a running team.
-
-[Return to the Bowerloom site](/) · [Browse the source](https://github.com/sageadvicellc/bowerloom)
+[Main site](/) · [Source repository](https://github.com/sageadvicellc/bowerloom)

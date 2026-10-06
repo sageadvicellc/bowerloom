@@ -1,25 +1,36 @@
 ---
-title: "Release notes"
-description: "Separate source releases, private artifacts, and future milestones."
+title: "Beta release status"
+description: "Current availability, supported scope, and publication gates."
 ---
-## v0.7-beta — private candidate, unreleased
+<!-- release:support:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
 
-The new private candidate `0.7.0-beta.0` comes from source `6b6a317c2c09aa95637b81ebb6d0e4ef12d09d3e`. It does not relabel earlier alpha archives.
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
 
-An independent review accepted its bounded offline, isolated installation and two Engineer-profile setup/revision trials. [Exact artifact and results](/docs/status/#private-beta-candidate).
+Setup does not start workers, grant runtime access, or authorize connected actions.
 
-The normal user interface is the installed `bowerloom` executable. The [private installation procedure](/docs/start/) requires the supplied archive and pre-cached dependencies on the tested Darwin arm64/Node `24.11.0` environment. This site provides no archive download or public npm installation command.
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
 
-Global install, upgrades, removal, broader supported systems, complete runtime acceptance, and general delivery remain open under [CLI issue #61](https://github.com/sageadvicellc/bowerloom/issues/61). Earlier stop and recovery trials remain historical alpha evidence.
+| Capability | Current boundary |
+| --- | --- |
+| Setup | Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files. |
+| Revision | Review an installed setup change before applying its exact revision. |
+| Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
+| Harnesses | Codex and Claude Code execution require separate qualification. File portability does not establish runtime support. |
+| Connections | MCP connections and local backends require separate reviewed bindings and permissions. |
+| Company access | Shared company access, offboarding and deletion remain release requirements. |
 
-## v0.7-alpha — historical evidence
+Recorded checks: macOS arm64, Node `24.11.0`. Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
 
-The published [source prerelease `v0.7.0-alpha.0`](https://github.com/sageadvicellc/bowerloom/releases/tag/v0.7.0-alpha.0) provides source archives. It does not contain a published npm package or compiled CLI installer.
+Clean public installation and additional systems remain under review. No release-qualified system is listed.
+<!-- release:support:end -->
 
-Previously reviewed private artifacts report `0.7.0-alpha.0`. Exact source, archive and distribution hashes distinguish their reviewed behavior. A filename or version alone is not sufficient identity.
+## Publication and support
 
-## Later milestones
+An npm package name does not establish ownership or availability. Publication needs the accepted candidate, independently reviewed security configuration, and founder approval.
 
-`v1-beta` and `v1-rc` remain later release milestones. They are not available through these instructions.
+The repository retains earlier release and test records for audit. Those records do not transfer acceptance to a new package or platform.
 
-Main merge, initial release publication, and production promotion remain founder decisions. Documentation publication does not itself grant runtime or support authority.
+Follow [installation](/docs/start/) for the current channel and [support status](/docs/status/) for tested boundaries.

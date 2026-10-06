@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { validateReleaseIdentity } from '../apps/cli/src/release.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
@@ -33,6 +34,8 @@ test('root and exact init help aliases succeed without creating a target or chan
   for(const args of [['--help'],['-h'],['init','--help'],['init','-h']]) {
     const r=run(f.root,args);assert.equal(r.status,0,r.stderr);assert.equal(r.stderr,'');assert.match(r.stdout,/bowerloom init plan/);
     assert.match(r.stdout,/engineer\|founder\|research/);
+    assert.ok(r.stdout.startsWith(`Bowerloom ${version}: open beta (unreleased)`));
+    assert.doesNotMatch(r.stdout,/alpha/i);
   }
   assert.deepEqual(readdirSync(f.root).sort(),before);assert.equal(existsSync(f.target),false);
   assert.equal(readFileSync(join(f.root,'preserve.txt'),'utf8'),'Synthetic existing file.\n');
@@ -49,4 +52,19 @@ test('discovery flags with extra arguments and malformed startup remain usage re
   const unknown=run(f.root,['unknown']);assert.equal(unknown.status,2);assert.match(JSON.parse(unknown.stderr).error.message,/bowerloom plan/);assert.doesNotMatch(unknown.stderr,/trellis plan/);
   assert.deepEqual(readdirSync(f.root).sort(),before);assert.equal(existsSync(f.target),false);
   assert.equal(readFileSync(join(f.root,'preserve.txt'),'utf8'),'Synthetic existing file.\n');
+});
+
+test('release identity refuses same-version wrong names and inconsistent publication state',()=>{
+ const release=JSON.parse(readFileSync(new URL('../../release/beta.json',import.meta.url),'utf8'));
+ const pkg={name:'bowerloom',version};
+ assert.equal(validateReleaseIdentity(release,pkg).version,version);
+ for(const [record,metadata] of [
+  [{...release,npm:{...release.npm,packageName:'other'}},pkg],
+  [release,{...pkg,name:'other'}],
+  [{...release,npm:{...release.npm,packageName:'other'}},{...pkg,name:'other'}],
+  [{...release,npm:{...release.npm,published:true}},pkg],
+  [{...release,npm:{...release.npm,installCommand:'npm install unrelated'}},pkg],
+  [{...release,version:'9.9.9'},pkg],
+  [{...release,capabilities:{}},pkg],
+ ]) assert.throws(()=>validateReleaseIdentity(record,metadata),/installed release record/);
 });

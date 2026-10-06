@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
 export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','runtime','runtime-bridge','startup','workbench','workspace-effects']);
-export const ASSETS = Object.freeze(['packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
+export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
@@ -66,9 +66,18 @@ export function lockedDependencies(lock, dependencies, manifest) {
   }
   return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':{name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,bin:manifest.bin,engines:manifest.engines},...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
 }
-export function collect({repoDir, name='bowerloom'}) {
+export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
+  if(typeof releaseCandidate !== 'boolean') fail('releaseCandidate must be boolean');
   if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name) || name.length > 214) fail('Invalid npm package identity');
   const repo = realpathSync(repoDir), rootPackage = JSON.parse(regular(repo,'package.json'));
+  const release = JSON.parse(regular(repo,'release/beta.json'));
+  if(release.schema !== 'bowerloom/release/v1' || release.version !== rootPackage.version || rootPackage.name !== name
+    || release.npm?.packageName !== name || !['unreleased','published'].includes(release.state)
+    || release.npm.published !== (release.state === 'published')
+    || release.npm.registry !== 'https://registry.npmjs.org'
+    || release.npm.distTag !== 'beta'
+    || release.npm.installCommand !== `npm install --global ${name}@${rootPackage.version}`) fail('Release record does not match package identity');
+  if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
   const versions = {}, manifests = [];
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {
     // Connections currently belongs to the root MIT package and has no workspace manifest.
@@ -100,13 +109,17 @@ export function collect({repoDir, name='bowerloom'}) {
     }
   }
   for (const path of [...ASSETS,'LICENSE','docs/beta/license-boundary.md']) files.set(path,regular(repo,path));
-  const manifest={name,version:rootPackage.version,private:true,description:'Private Bowerloom CLI distribution proof; not a published beta release',type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
+  const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'Bowerloom open beta release candidate; unreleased':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
   files.set('package.json',Buffer.from(json(manifest)));
   files.set('npm-shrinkwrap.json',Buffer.from(json(lockedDependencies(JSON.parse(regular(repo,'package-lock.json')),manifest.dependencies,manifest))));
   files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Private packaging proof\n\nThe current monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for historical source excluded from that grant. This artifact is private; publication remains separately authorized.\n\nPlaywright-derived seccomp policy notice: packages/linux-browser/PLAYWRIGHT-LICENSE.txt. Supabase upstream notice: packages/local-backend/THIRD_PARTY_NOTICES.md. External npm dependencies are installed separately under their own package licenses. No prior module repository source or its history is imported by this staging tool.\n'));
   files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; external pinned npm dependencies must be available from cache or a separately authorized registry connection. No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
+  if(releaseCandidate) {
+    files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom beta candidate\n\nThis candidate is unreleased. Publication requires founder acceptance and an authorized npm identity. The monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. External dependencies retain their own licenses.\n'));
+    files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta, ${release.state}. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\nAfter publication:\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
+  }
   const inventory=[...files].sort(([a],[b])=>a.localeCompare(b)).map(([path,bytes])=>({path,bytes:bytes.length,sha256:sha256(bytes),executable:ENTRY.includes(path)}));
-  const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:true,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};
+  const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:manifest.private,releaseRecordSha256:sha256(regular(repo,'release/beta.json')),publicationState:release.state,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};
   files.set('DISTRIBUTION.json',Buffer.from(json(record)));
   return {files,record,manifest};
 }
@@ -137,9 +150,11 @@ export function pack(options) {
   return {file:join(output,info.filename),sha256:sha256(readFileSync(join(output,info.filename))),bytes:info.size,unpackedBytes:info.unpackedSize,files:actual.length,record};
 }
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
-  const args=process.argv.slice(2), values={};
+  const raw=process.argv.slice(2), releaseCandidate=raw.includes('--release-candidate');
+  if(raw.filter(x=>x==='--release-candidate').length>1) fail('Duplicate release candidate flag');
+  const args=raw.filter(x=>x!=='--release-candidate'), values={};
   for(let i=0;i<args.length;i+=2) { if(!['--repo','--stage','--output','--name'].includes(args[i])||!args[i+1]||values[args[i]]) fail('Use --repo ABS --stage NEW_ABS --output NEW_ABS [--name IDENTITY]'); values[args[i]]=args[i+1]; }
   if(!values['--repo']||!values['--stage']||!values['--output']) fail('Missing required paths');
-  const result=pack({repoDir:values['--repo'],stageDir:values['--stage'],outputDir:values['--output'],...(values['--name']?{name:values['--name']}:{})});
+  const result=pack({repoDir:values['--repo'],stageDir:values['--stage'],outputDir:values['--output'],releaseCandidate,...(values['--name']?{name:values['--name']}:{})});
   console.log(json({...result,record:undefined}));
 }

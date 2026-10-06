@@ -1,7 +1,8 @@
+import { release, setupRequirements } from './release';
 import { useRef, useState } from 'react';
 import { buildTutorialPrompt, profiles, initialSelection, reviewModes } from './tutorial';
 import './tutorial.css';
-import AlphaGuide from './AlphaGuide';
+import BetaGuide from './BetaGuide';
 import ProductText from './ProductText';
 
 export default function TutorialBuilder() {
@@ -28,7 +29,8 @@ export default function TutorialBuilder() {
       <h2 id="tutorial-heading">Set up a team around your goal.</h2>
       <p>Choose a starting profile and describe your goal. Your existing personal agent will help you review a portable team setup before installing it.</p>
     </div>
-    <AlphaGuide />
+    <p className="tutorial-hint">{release.npm.availabilityNote} You can prepare your brief now.</p>
+    <BetaGuide />
     <form onSubmit={event => {
       event.preventDefault();
       try { setPrompt(buildTutorialPrompt(selection)); setError(''); setCopyStatus('Your setup prompt is ready below.'); }
@@ -79,7 +81,7 @@ export default function TutorialBuilder() {
       <label htmlFor="tutorial-prompt">Your setup prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable assistant profile and team blueprint after your approval. That reviewable setup is the finish line for this exercise.</p><p>Nothing runs automatically. Your new blueprint can guide later work after you agree on an execution path and its permissions.</p><p><ProductText>Optional checkout setup requires git, node 24.11 within version 24, and npm 11. The Alpha Guide above explains setup and backend dependencies.</ProductText></p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable assistant profile and team blueprint after your approval. That reviewable setup is the finish line for this exercise.</p><p>Nothing runs automatically. Your new blueprint can guide later work after you agree on an execution path and its permissions.</p><p><ProductText>{`Requirements: ${setupRequirements} ${release.npm.availabilityNote} The Beta Guide above explains setup and backend boundaries.`}</ProductText></p></details>
     </div>}
   </section>;
 }

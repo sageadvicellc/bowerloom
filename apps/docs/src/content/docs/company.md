@@ -16,6 +16,6 @@ Beta acceptance includes company-server access controls, personal autonomy, sema
 
 Real business data needs an approved retention and deletion policy. Do not infer shared-service readiness from a successful local installation.
 
-## Evidence and limits
+## Support boundary
 
-These are required beta boundaries recorded in the [engineering plan](https://github.com/sageadvicellc/bowerloom/blob/37f1efab545921d08378956eef854c3b17bd4f16/docs/beta/engineering-plan.md), snapshot `37f1efa`. This page offers no company-server provisioning procedure or accepted real-user trial.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

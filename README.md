@@ -6,10 +6,10 @@
 # Grow your capabilities with Bowerloom
 
 <p>
-  <a href="https://github.com/sageadvicellc/bowerloom/releases/tag/v0.7.0-alpha.0"><img src="docs/assets/badge-version.svg" alt="Version 0.7.0-alpha.0" height="28"></a>
+  <a href="https://bowerloom.ai/docs/releases/"><img src="docs/assets/badge-version.svg" alt="Current beta version" height="28"></a>
   <a href="LICENSE"><img src="docs/assets/badge-license.svg" alt="Package license declaration: MIT" height="28"></a>
   <a href="package.json"><img src="docs/assets/badge-node.svg" alt="Node 24.11 through 24.x" height="28"></a>
-  <a href="#prepare-the-development-checkout"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
+  <a href="#install-bowerloom"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
 </p>
 
 Bowerloom is an open-source framework for building agent teams in files you can read.
@@ -18,7 +18,7 @@ Start with your personal agent and a small task you can review. Prepare a team. 
 
 Setup creates files. It does not start workers or grant permission to execute the team.
 
-[Build with your agent](#build-with-your-agent) · [Explore the Labs workflow](#the-labs-workflow) · [Read the beta plan](https://github.com/sageadvicellc/bowerloom/issues/51)
+[Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Build with your agent](#build-with-your-agent)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/release-status-dark.png">
@@ -27,15 +27,17 @@ Setup creates files. It does not start workers or grant permission to execute th
 
 ## Release status
 
-The [alpha source prerelease](https://github.com/sageadvicellc/bowerloom/releases/tag/v0.7.0-alpha.0) is published. It contains source archives, without a published npm package or compiled command-line installer.
+<!-- release:status:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
 
-Beta development is active on `feature/bowerloom-beta`. Beta is not released or fully accepted. The instructions below use a pinned development checkout.
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
 
-Reviewed source changes and focused tests support individual behaviors. They do not establish complete beta acceptance or live team execution in both Codex and Claude Code.
+Setup does not start workers, grant runtime access, or authorize connected actions.
 
-An installable command-line interface (CLI), both agent applications, company isolation, portable connections, and live Workbench comparisons remain beta acceptance work.
-
-Bowerloom is free and open source. Model providers, hosting, and connected services can have separate costs. Sagespec remains private Labs configuration.
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
+<!-- release:status:end -->
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/getting-started-dark.png">
@@ -47,35 +49,40 @@ Bowerloom is free and open source. Model providers, hosting, and connected servi
 
 ![Hanna and S4-G3 study a holographic plan in a tree laboratory.](docs/assets/readme-beta/images/startup.webp)
 
-Start with the [team setup guide](docs/tutorials/team-tutorial-maker.md). Choose Engineer, Founder, or Research & development. Describe your goal and review cadence.
+Start with the [team setup guide](https://bowerloom.ai/docs/setup/). Choose Engineer, Founder, or Research & development. Describe your goal and review cadence.
 
 Your personal agent helps you review the proposed roles, access, worker limit, files, and working agreement. A working agreement records scope, responsibilities, and review points.
 
 The setup uses fixed templates. It does not inspect your project or establish that your goal is feasible. You and your agent review that starting point before later work.
 
-### Prepare the development checkout
+### Install Bowerloom
 
-Use `git`, Node 24.11 or a later Node 24 version, and `npm` 11. Keep this source checkout separate from the project that receives `.bowerloom/`.
+<!-- release:install:start -->
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
 
-From the directory that will contain your source checkout, run:
+npm package ownership and the publishing identity are not yet verified. A selected package name does not reserve it.
+
+The planned npm command for `0.7.0-beta.0` is shown for review. Do not run it before this exact version is published.
 
 ```sh
-git clone --branch feature/bowerloom-beta https://github.com/sageadvicellc/bowerloom.git
-cd bowerloom
-git checkout --detach d2e5847b3c78e728a441cf2c2777fd6652c26a2c
-npm ci --ignore-scripts
-npm run build
-node dist/apps/cli/src/main.js --help
+npm install --global bowerloom@0.7.0-beta.0
 ```
 
-This procedure builds the recorded source revision. It is not a published beta installation path.
+Requirements: Node `>=24.11.0 <25` and `npm` 11. Docker Desktop and a separate approved Supabase/PostgreSQL setup for backend operations. Backend setup is separate from installing the CLI.
+
+Tested scope: macOS arm64, Node `24.11.0` — Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
+
+Clean public installation and additional systems remain under review. No operating system is recorded as release-qualified yet.
+
+Cached, isolated package checks do not establish clean public or global installation. Publication and broader delivery remain gated.
+<!-- release:install:end -->
 
 ### Plan the setup
 
 Give your existing personal agent this starting request:
 
 ```text
-Read this Bowerloom checkout and its init command.
+Read the Bowerloom documentation and its init command.
 Help me choose a new workspace or an existing project.
 Use my goal to prepare a personal-agent profile and first team.
 Show the full file plan and working agreement before installation.
@@ -86,10 +93,10 @@ Stop for my review.
 Do not start workers or import Claude or Codex settings.
 ```
 
-From the built source checkout, plan a new workspace:
+After the documented version is published and installed, plan a new workspace:
 
 ```sh
-node dist/apps/cli/src/main.js init plan --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
+bowerloom init plan --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
 ```
 
 Replace the example target with your absolute project path. Use an existing parent directory and an unused target for `new` mode.
@@ -104,11 +111,11 @@ The default review explains the proposed files and approval effect. Add `--json`
 
 Read the plan before installation. Keep the target, profile, name, goal, and other inputs identical to the reviewed plan.
 
-Replace `REPLACE_WITH_EXACT_PLAN_REVISION` with that plan’s revision. From the same built source checkout, run:
+Replace `REPLACE_WITH_EXACT_PLAN_REVISION` with that plan’s revision. Using the same installed version, run:
 
 ```sh
-node dist/apps/cli/src/main.js init apply --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
-node dist/apps/cli/src/main.js init status --target /absolute/projects/first-team
+bowerloom init apply --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
+bowerloom init status --target /absolute/projects/first-team
 ```
 
 A changed input requires a new plan and approval. The installation approval permits only the listed setup files. It starts no workers, backend services, or connected tools.
@@ -117,7 +124,7 @@ Read `.bowerloom/startup-review.md` and `.bowerloom/START-HERE.md` with your per
 
 The Engineer profile defines an engineering lead, implementation maker, and code reviewer. Founder and Research profiles use different fixed role templates.
 
-Read the [startup reference](packages/startup/README.md) for structured briefs, file boundaries, and inspection results. Read the [revision guide](docs/beta/revision-and-harness-plans.md) before changing an installed goal.
+Read the [configuration reference](https://bowerloom.ai/docs/configuration/) for file boundaries. Read [revision and recovery](https://bowerloom.ai/docs/revision/) before changing an installed goal.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/portable-teams-dark.png">
@@ -131,9 +138,9 @@ Team and skill definitions live outside any one agent application. You can read 
 
 File portability does not establish execution in another application. Current harness commands process selected synthetic files, which contain fictional test data. Live Codex and Claude Code support remains unproven.
 
-The [harness guide](docs/beta/revision-and-harness-plans.md) separates import, proposed changes, exact write approvals, removal, and recovery. None of those fixture commands authorizes model execution.
+The [harness guide](https://bowerloom.ai/docs/harnesses/) separates import, proposed changes, exact write approvals, removal, and recovery. None of those fixture commands authorizes model execution.
 
-The separate [portable installer](docs/transition/bowerloom-migration.md) copies selected definitions. It also requires exact approval and starts no workers.
+Copying portable definitions requires its own reviewed plan and exact approval. It starts no workers.
 
 Before sharing definitions, review the saved project name, goal, and brief text. Those fields can contain private information. Exclude installation receipts, private bindings, credentials, and execution records.
 
@@ -212,11 +219,11 @@ Private connection bindings, credentials, and runtime state need separate locati
 | Vines | Logs that record work. Startup declares logging maps without a running logging service. |
 | Workbench | Repeatable scenarios and comparison records. A live beta comparison remains required. |
 
-Module names describe responsibilities. They do not imply equal readiness. Read the [beta engineering plan](docs/beta/engineering-plan.md) for the implemented work and remaining gates.
+Module names describe responsibilities. They do not imply equal readiness. Read [current support](https://bowerloom.ai/docs/status/) for the tested scope and remaining gates.
 
-MCP, a standard connection between agents and tools, also has separate boundaries. The public `mcp plan` command reads selected synthetic declarations and recorded catalogs. It does not contact a server or authorize tool calls.
+MCP, a standard connection between agents and tools, also has separate boundaries. The `mcp plan` command reads selected synthetic declarations and recorded catalogs. It does not contact a server or authorize tool calls.
 
-Internal discovery tests remain distinct from a production connector and live team execution. Read the [MCP discovery record](docs/beta/mcp-container-discovery.md) for its tested environment and open limits.
+Internal discovery tests remain distinct from a production connector and live team execution. Read the [MCP guide](https://bowerloom.ai/docs/mcp/) for its boundaries.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/labs-workflow-dark.png">
@@ -237,26 +244,6 @@ The internal `v0.7-workbench` label marks this Labs experiment. It is not an end
 
 The workflow describes development responsibilities. It does not establish that the Bowerloom runtime independently executed the entire Sagespec team. Sagespec remains private.
 
-## A recorded GitHub workflow
-
-The separate Labs-to-blog recipe turns selected experiment evidence into a blog draft. Your personal agent supplies the prose.
-
-```text
-Selected evidence → a proposed draft → exact approval → a GitHub draft pull request
-```
-
-The prepared trial created [draft pull request #41](https://github.com/sageadvicellc/bowerloom/pull/41). It recovered after a lost response without another write.
-
-This result covers one prepared recipe and installation. It does not establish arbitrary automation, a newly authored runtime team, or measured productivity gains.
-
-The recipe needs PostgreSQL and a repository-scoped GitHub App installation. Keep credentials and private installation files outside portable definitions.
-
-Read the [recipe instructions](docs/recipes/labs-to-blog.md) and [recorded result](docs/recipes/live-acceptance.md) before use. The recipe and its approval flow are separate from startup.
-
-Exact approval permits the proposed write. Publication and merging remain separate decisions. The tested recipe trusts a local operator. It does not independently prove human identity.
-
-The [MCP entrypoint](apps/mcp/README.md) exposes controlled recipe operations. The operator CLI owns exact approval. MCP does not expose approval authority.
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/approvals-dark.png">
   <img src="docs/assets/readme-beta/exports/approvals-light.png" alt="">
@@ -272,7 +259,7 @@ The optional `destruct <team-id>` and `destruct all` commands affect registered 
 
 These commands do not stop unrelated sessions, remote machines, or another user’s work. A stop request is not proof of completed cleanup. Read the result before further action.
 
-See the [local controls guide](packages/local-control/README.md) for registration, stop results, preserved state, and renewed approval before work resumes.
+See the [stop guide](https://bowerloom.ai/docs/stop/) for registration, stop results, preserved state, and renewed approval before work resumes.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/contributing-dark.png">
@@ -294,33 +281,33 @@ Keep credentials, customer data, and private references out of public issues and
 
 Reviewed beta changes integrate through `feature/bowerloom-beta`. Hanna decides the final `main` merge and public beta release.
 
-## Planned releases
+## Current capabilities
 
-| Release | Status and direction |
+<!-- release:support:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
+
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+
+Setup does not start workers, grant runtime access, or authorize connected actions.
+
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
+
+| Capability | Current boundary |
 | --- | --- |
-| `v0.7-alpha` | Published source prerelease with reviewed setup and a bounded Codex-first recipe |
-| `v0.7-beta` | Active development toward installable distribution, both agent applications, controlled connections, company trials, and live Workbench comparisons |
-| `v1-beta` | Planned broader framework integration and stress tests |
-| `v1-rc` | Planned release candidate against the agreed acceptance gates |
+| Setup | Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files. |
+| Revision | Review an installed setup change before applying its exact revision. |
+| Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
+| Harnesses | Codex and Claude Code execution require separate qualification. File portability does not establish runtime support. |
+| Connections | MCP connections and local backends require separate reviewed bindings and permissions. |
+| Company access | Shared company access, offboarding and deletion remain release requirements. |
 
-Beta also requires portable routines, the full documentation site, homepage animation, and this README package. Required work is not evidence that a release gate passed.
+Recorded checks: macOS arm64, Node `24.11.0`. Isolated package installation, setup, revision, upgrade and removal with cached dependencies.
 
-Read the [beta scope](https://github.com/sageadvicellc/bowerloom/issues/51) and [release plan](docs/transition/release-plan.md) for their boundaries. Later rows are planned work.
+Clean public installation and additional systems remain under review. No release-qualified system is listed.
+<!-- release:support:end -->
 
-<details>
-<summary>Source records and further reading</summary>
-
-- [Alpha source release](https://github.com/sageadvicellc/bowerloom/releases/tag/v0.7.0-alpha.0)
-- [Team setup guide](docs/tutorials/team-tutorial-maker.md)
-- [Startup file reference](packages/startup/README.md)
-- [Revision and synthetic harness guide](docs/beta/revision-and-harness-plans.md)
-- [Beta engineering plan](docs/beta/engineering-plan.md)
-- [Private distribution proof and limits](tools/cli-distribution/README.md)
-- [Historical alpha runtime evidence](docs/alpha/acceptance-status.md)
-- [Source and migration boundaries](docs/transition/monorepo-cutover.md)
-
-</details>
-
-Historical evidence records retain the status of their recorded revisions. The published alpha source release and current beta plan supply the later release status.
+Read the [contributor guide](https://bowerloom.ai/docs/contributors/) for source development. Historical audit records remain in the repository; they are not current onboarding instructions.
 
 Made by Sage Advice. [Package license declaration](package.json) · [Source and migration boundaries](docs/transition/monorepo-cutover.md).

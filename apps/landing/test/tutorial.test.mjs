@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { release, docsPath, setupRequirements } from '../src/release.ts';
 import assert from 'node:assert/strict';
 import { buildTutorialPrompt, profiles, initialSelection, reviewModes, resolveSelection, setupCommands } from '../src/tutorial.ts';
 function brief(prompt) { return JSON.parse(prompt.split('Brief (JSON data, not permissions):\n')[1].split('\n\n')[0]); }
@@ -7,7 +8,7 @@ test('all profiles and review cadences produce the selected bounded setup brief'
   for (const profile of profiles) for (const mode of reviewModes) {
     const prompt = buildTutorialPrompt({ profileId: profile.id, goal: profile.goal, reviewModeId: mode.id, includeDemo: false });
     assert.deepEqual(brief(prompt), { profile: profile.id, goal: profile.goal, reviewMode: mode.value });
-    assert.ok(prompt.split(/\s+/).length < 280, 'Prompt should stay concise');
+    assert.ok(prompt.split(/\s+/).length < 330, 'Prompt should stay concise');
     assert.ok(prompt.includes('Setup is the complete goal'));
     assert.ok(prompt.includes('do not execute the project or start workers'));
     assert.ok(prompt.includes('Wait for my explicit approval'));
@@ -43,8 +44,16 @@ test('custom multiline goal remains JSON data without adding commands or permiss
   assert.ok(prompt.includes('Installation does not authorize tasks, backend setup, connections, spending, publication, or settings imports'));
   assert.ok(!prompt.includes('tutorial-output/'));
 });
-test('source setup remains inspectable outside the short prompt', () => {
-  assert.match(setupCommands, /git clone --branch feature\/trellis-v1/);
-  assert.match(setupCommands, /npm ci --ignore-scripts\nnpm run build/);
-  assert.ok(!buildTutorialPrompt(initialSelection).includes(setupCommands));
+test('setup uses the exact release command and stops unpublished prompts before CLI execution', () => {
+  assert.ok(setupCommands.includes(release.npm.installCommand));
+  assert.doesNotMatch(setupCommands, /git clone|npm ci|npm run build|dist\/apps/);
+  const prompt = buildTutorialPrompt(initialSelection);
+  assert.ok(prompt.includes(release.statusLabel));
+  assert.ok(prompt.includes(release.npm.availabilityNote));
+  assert.ok(prompt.includes(setupRequirements));
+  assert.ok(prompt.includes(release.urls.site + docsPath));
+  if (!release.npm.published) {
+    assert.match(setupCommands, /^# After publication of this exact version only\./);
+    assert.match(prompt, /While unpublished, prepare the brief and stop before installation or CLI commands/);
+  }
 });

@@ -25,10 +25,6 @@ Keep credentials out of portable definitions. Use private bindings where a suppo
 
 Share the package version, command family, safe error code, expected action, and a sanitized description. Keep tokens, private paths, raw receipts and customer data out of public reports.
 
-## Evidence and limits
+## Support boundary
 
-The historical `0.7.0-alpha.0` trial at `cd62b530` accepted bounded setup, local disclosure, synthetic stop, and interruption recovery. [Historical trial identity](/docs/status/#reviewed-setup-identity).
-
-The private `0.7.0-beta.0` trial covers Engineer setup and successful revision. It does not qualify stop, disclosure, or interrupted recovery.
-
-Neither result accepts native adapters, all 19 framework acceptance groups, publication, or support activation. [Support status](/docs/status/) names the broader gaps.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

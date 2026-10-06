@@ -1,0 +1,32 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+const root=resolve(import.meta.dirname,'../../..');
+const record=JSON.parse(await readFile(resolve(root,'release/beta.json'),'utf8'));
+assert.equal(record.schema,'bowerloom/release/v1');
+assert.match(record.version,/^\d+\.\d+\.\d+-beta\.\d+$/);
+assert.equal(record.npm.installCommand,`npm install --global ${record.npm.packageName}@${record.version}`);
+for(const value of [record.statusLabel,record.npm.availabilityNote,record.systems.note])assert.equal(typeof value,'string');
+const check=process.argv.includes('--check');
+const version='`'+record.version+'`';
+const availability=record.npm.published?'The release record marks this version published. Check the supported scope before installation.':'**Unavailable until publication.** '+record.npm.availabilityNote;
+const identity=record.npm.ownershipVerified&&record.npm.publishingIdentityVerified?'The release record verifies npm ownership and publishing identity.':'npm package ownership and the publishing identity are not yet verified. A selected package name does not reserve it.';
+const limits=record.capabilities.limits.map(x=>'- '+x).join('\n');
+const status=`**${record.statusLabel}** · ${version}\n\n${availability}\n\n${record.capabilities.execution}\n\n${limits}`;
+const install=`${availability}\n\n${identity}\n\nThe planned npm command for ${version} is shown for review. ${record.npm.published?'Check the current qualification before running it.':'Do not run it before this exact version is published.'}\n\n\`\`\`sh\n${record.npm.installCommand}\n\`\`\`\n\nRequirements: Node \`${record.requirements.node}\` and \`npm\` ${record.requirements.npm}. ${record.requirements.backend}. Backend setup is separate from installing the CLI.\n\n${record.systems.tested.map(x=>`Tested scope: ${x.os} ${x.architecture}, Node \`${x.node}\` — ${x.scope}.`).join('\n\n')}\n\n${record.systems.note} ${record.systems.releaseQualified.length===0?'No operating system is recorded as release-qualified yet.':''}\n\nCached, isolated package checks do not establish clean public or global installation. Publication and broader delivery remain gated.`;
+const support=`${status}\n\n| Capability | Current boundary |\n| --- | --- |\n${[['Setup',record.capabilities.setup],['Revision',record.capabilities.revision],['Execution',record.capabilities.execution],['Harnesses',record.capabilities.harnesses],['Connections',record.capabilities.connections],['Company access',record.capabilities.company]].map(([k,v])=>`| ${k} | ${v} |`).join('\n')}\n\n${record.systems.tested.map(x=>`Recorded checks: ${x.os} ${x.architecture}, Node \`${x.node}\`. ${x.scope}.`).join('\n\n')}\n\n${record.systems.note} ${record.systems.releaseQualified.length===0?'No release-qualified system is listed.':''}`;
+const sections={status,install,support};
+const files=['README.md',...['index','start','setup','revision','stop','cli','backend','mcp','releases','status'].map(x=>`apps/docs/src/content/docs/${x}.md`)];
+let count=0;
+for(const name of files){
+ const path=resolve(root,name),before=await readFile(path,'utf8');let replacements=0;
+ const after=before.replace(/<!-- release:(status|install|support):start -->[\s\S]*?<!-- release:\1:end -->/g,(_,kind)=>{replacements++;return `<!-- release:${kind}:start -->\n${sections[kind]}\n<!-- release:${kind}:end -->`;});
+ assert(replacements>0,`Missing generated release block: ${name}`);
+ if(check)assert.equal(before,after,`Release content drift: ${name}`);else if(before!==after)await writeFile(path,after);
+ count+=replacements;
+}
+const escaped=record.version.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+const badge=`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="28" viewBox="0 0 180 28" role="img" aria-label="Version ${escaped}"><rect width="180" height="28" rx="6" fill="#80515B"/><path d="M6 0H69V28H6Q0 28 0 22V6Q0 0 6 0" fill="#373A32"/><text x="34.5" y="19" font-family="monospace" font-size="12" fill="#FFF9F4" text-anchor="middle">version</text><text x="124.5" y="19" font-family="monospace" font-size="12" fill="#FFF9F4" text-anchor="middle">${escaped}</text></svg>\n`;
+const badgePath=resolve(root,'docs/assets/badge-version.svg');
+if(check)assert.equal(await readFile(badgePath,'utf8'),badge,'Version badge drift');else await writeFile(badgePath,badge);
+console.log(JSON.stringify({release:record.release,version:record.version,state:record.state,mode:check?'checked':'synchronized',files:files.length,sections:count,badge:true}));

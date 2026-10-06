@@ -1,6 +1,6 @@
-# Private CLI distribution proof
+# CLI distribution proof
 
-This tool stages and packs the current Bowerloom CLI and MCP entrypoint as an installable npm tarball. It does not publish, authenticate to a registry, install software, rebuild the repository, or run a model. The default package identity is `bowerloom`, chosen by Hanna; `--name` can override it. Every generated manifest remains `private: true`. Naming availability is a separate registry check, not a reservation.
+This tool stages and packs the current Bowerloom CLI and MCP entrypoint as an installable npm tarball. It does not publish, authenticate to a registry, install software, rebuild the repository, or run a model. The package identity and version must match `release/beta.json`. Default proof archives remain private. Add `--release-candidate` to prepare an unpublished artifact with public npm metadata and the beta tag. This command never publishes. Package ownership, clean installation, security review and founder release approval remain separate gates. Naming observations do not reserve a package.
 
 ## Preparation and use
 
@@ -36,7 +36,7 @@ No repository checkout, `.git`, test suites, examples, `.env`, source maps, Type
 
 ## Acceptance and limits
 
-The artifact proof verifies installed-bin help, standalone startup plan/apply/status, exact approval rejection, no runtime authorization, and the MCP entrypoint's missing-installation guard. Installation of the tarball itself requires no source checkout. The proof does not demonstrate a running MCP session, database operations, recipe execution, Docker/browser prerequisites, global installation, Windows/Linux portability, an online registry installation, or beta release readiness. The existing executable still reports its alpha version; this proof does not relabel it as a beta release.
+The artifact proof verifies installed-bin help, standalone startup plan/apply/status, exact approval rejection, no runtime authorization, and the MCP entrypoint's missing-installation guard. Installation of the tarball itself requires no source checkout. The proof does not demonstrate a running MCP session, database operations, recipe execution, Docker/browser prerequisites, global installation, Windows/Linux portability, an online registry installation, or beta release readiness. The executable reads its identity from the matching package and release record. A beta version does not establish release acceptance.
 
 Repeated packing of the same input snapshot is byte-deterministic under the recorded Node/npm toolchain. Cross-npm-version reproducibility is not claimed. Dependency integrity comes from the shrinkwrap, not a vendored dependency copy. Future dynamic resource patterns need explicit review and asset entries. The packer operates on a trusted same-user filesystem; concurrent hostile replacement by that same user is outside its guarantee. It never overwrites destinations, and removes only its newly created staging directory if a write fails. After npm errors, staged files/output are retained for diagnosis; no broad cleanup runs.
 

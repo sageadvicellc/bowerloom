@@ -3,9 +3,17 @@ title: "Stop registered work"
 description: "Understand what a stop result covers and what remains uncertain."
 ---
 
-:::note[Private beta command scope]
-Use the [isolated installed executable](/docs/start/). This command reference is not exercised by the private beta candidate trial. Historical evidence stays separate; it does not establish beta acceptance for this operation.
-:::
+<!-- release:status:start -->
+**Open beta · unreleased** · `0.7.0-beta.0`
+
+**Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
+
+Setup does not start workers, grant runtime access, or authorize connected actions.
+
+- Full runtime acceptance remains incomplete.
+- The initial beta needs founder acceptance and publication approval.
+- Unattended support requires an independently accepted installed security configuration.
+<!-- release:status:end -->
 
 `destruct` means stop registered work. It does not delete teams, project files, outputs, or saved history. It does not stop Docker or the local Supabase backend.
 
@@ -15,7 +23,7 @@ Setup approval does not enroll a runtime owner. Control enrollment is separate, 
 
 With a previously registered local owner, these commands request a stop:
 
-Use only the installed artifact and registry selected in your reviewed installation packet.
+Use the installed version and registry selected in your reviewed setup.
 
 ```sh
 bowerloom destruct first-team --root /absolute/projects/first-team
@@ -36,8 +44,6 @@ A timeout is not proof that work stopped. Repeated requests observe unresolved o
 
 A link between projects grants no stop authority. An unregistered personal-agent session is outside this control.
 
-## Historical evidence and limits
+## Support boundary
 
-The independent installed trial exercised five synthetic timer owners, team selection, registry isolation, delayed acknowledgement, and explicit uncertainty. All test timers ended. This proves the tested control protocol, not cleanup of an arbitrary native model or external service.
-
-Source `cd62b530`, package `0.7.0-alpha.0`; [exact identity](/docs/status/#reviewed-setup-identity). Production runtime enrollment remains a separate prerequisite.
+[Current support](/docs/status/) records the tested systems and release limits. This page does not establish full runtime acceptance.

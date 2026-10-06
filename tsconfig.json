@@ -13,7 +13,16 @@
     "verbatimModuleSyntax": true,
     "declaration": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts", "tests/**/*.ts", "packages/codex-adapter/test/**/*.ts", "packages/roots/test/**/*.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "tests/**/*.ts",
+    "packages/codex-adapter/test/**/*.ts",
+    "packages/roots/test/**/*.ts"
+  ]
 }
