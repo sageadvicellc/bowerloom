@@ -101,7 +101,13 @@ bowerloom init plan --mode new --target /absolute/projects/first-team --profile 
 
 Replace the example target with your absolute project path. Use an existing parent directory and an unused target for `new` mode.
 
-For an existing project, use `--mode existing` and its absolute directory. That mode adds only `.bowerloom/`. It leaves project files and agent application settings unread and unchanged.
+For an existing project, plan with `--mode existing` and its absolute directory:
+
+```sh
+bowerloom init plan --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
+```
+
+That mode adds only `.bowerloom/`. It leaves project files and agent application settings unread and unchanged.
 
 A previous `.bowerloom/` directory blocks a new installation. Use the separate revision flow to change an installed setup.
 
@@ -111,11 +117,20 @@ The default review explains the proposed files and approval effect. Add `--json`
 
 Read the plan before installation. Keep the target, profile, name, goal, and other inputs identical to the reviewed plan.
 
-Replace `REPLACE_WITH_EXACT_PLAN_REVISION` with that plan’s revision. Using the same installed version, run:
+Replace `REPLACE_WITH_EXACT_PLAN_REVISION` with the revision from your selected plan. Keep the same installed version.
+
+For the new-workspace plan, use:
 
 ```sh
 bowerloom init apply --mode new --target /absolute/projects/first-team --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
 bowerloom init status --target /absolute/projects/first-team
+```
+
+For the existing-project plan, use its own exact approval revision and target:
+
+```sh
+bowerloom init apply --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
+bowerloom init status --target /absolute/projects/existing-project
 ```
 
 A changed input requires a new plan and approval. The installation approval permits only the listed setup files. It starts no workers, backend services, or connected tools.

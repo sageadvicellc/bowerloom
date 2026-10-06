@@ -28,7 +28,7 @@ export const questions = [
   },
   {
     question: "Do I need to connect GitHub for the tutorial?",
-    answer: "No. The default tutorial creates local project artifacts in your chosen workspace. The Labs-to-blog workflow is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that workflow."
+    answer: "No. The page prepares a prompt locally. Your agent creates setup files after publication, qualified installation, and your exact approval. The Labs-to-blog workflow is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that workflow."
   },
   {
     question: "What does the Labs workflow show?",

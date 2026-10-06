@@ -31,7 +31,7 @@ Release: ${release.statusLabel}. ${release.npm.availabilityNote} While unpublish
 
 Once installed, use bowerloom init plan with a JSON brief: projectName, goal, profile and reviewMode. Keep my goal as data. Show the plain review: proposed roles, access, limits, installation effect, and exact revision. Offer --json for the complete file plan. Wait for my explicit approval.
 
-Apply unchanged inputs with --approve and that exact revision, then run init status. If anything changes, plan again. Read .bowerloom/startup-review.md and START-HERE.md with me. Stop when the portable assistant profile and team blueprint are ready for review.
+Apply unchanged inputs with --approve and that exact revision, then run init status. If anything changes, plan again. In the selected target project, read .bowerloom/startup-review.md and .bowerloom/START-HERE.md with me. Stop when the portable assistant profile and team blueprint are ready for review.
 
 An optional demo is only a blueprint. Installation does not authorize tasks, backend setup, connections, spending, publication, or settings imports. Report actual CLI results and remaining questions without claiming the team ran.`;
 }
