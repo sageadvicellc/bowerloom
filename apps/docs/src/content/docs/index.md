@@ -7,13 +7,13 @@ Bowerloom is an open-source framework for building agent teams in files you can 
 Your personal agent helps you describe a goal and review the proposed team. Bowerloom prepares the files and checks an exact approval before installing them.
 
 :::note[Documentation preview]
-These pages cover the private `0.7.0-alpha.0` artifact and selected work toward `v0.7-beta`. Beta is not released or fully accepted. There is no published npm installer in this documented path.
+These pages describe the private `0.7.0-beta.0` CLI candidate and ongoing work toward `v0.7-beta`. Its bounded offline installation, Engineer-profile setup, and successful revision trial passed. It is not publicly available or fully accepted. Broader delivery remains open under issue #61; historical alpha evidence stays separate.
 :::
 
 ## Choose your next step
 
-- **First visit:** [Start with a reviewed checkout](/docs/start/).
-- **Ready to prepare a team:** [Plan, review, and install](/docs/setup/).
+- **First visit:** [Install the supplied private candidate](/docs/start/).
+- **Preview the setup sequence:** [Plan, review, and install](/docs/setup/).
 - **Changing an installed goal:** [Revise or recover](/docs/revision/).
 - **Need to stop registered work:** [Understand stop results](/docs/stop/).
 - **Checking a capability:** [Read the support status](/docs/status/).

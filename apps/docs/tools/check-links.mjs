@@ -18,10 +18,11 @@ for(const file of html){
   }
  }
  if(/\/Users\/|file:\/\/|BEGIN PRIVATE KEY/.test(text))failures.push(`${pagePath}: private path or material`);
+ if(!/class="home-links"[^>]*>[\s\S]*?href="\/"[\s\S]*?Main site[\s\S]*?href="\/docs\/"[\s\S]*?Docs home/.test(text))failures.push(`${pagePath}: persistent home navigation missing`);
  if(!text.includes('noindex'))failures.push(`${pagePath}: preview indexing gate missing`);
 }
 const search=files.filter(f=>f.includes('/pagefind/'));if(search.length===0)failures.push('Pagefind index absent');
-const font=join(dist,'fonts/lora.ttf');await stat(font);
+for(const asset of ['fonts/newsreader/roman.ttf','fonts/newsreader/italic.ttf','fonts/manrope/font.ttf','brand/s4-g3-icon.svg','brand/s4-g3-icon-dark.svg','brand/bowerloom-wordmark-plain-ink.svg','brand/bowerloom-wordmark-plain-cream.svg'])await stat(join(dist,asset));
 const bytes=(await Promise.all(files.map(async f=>(await stat(f)).size))).reduce((a,b)=>a+b,0);
 console.log(JSON.stringify({htmlPages:html.length,localLinksAndAssetsChecked:checked,searchFiles:search.length,totalBuiltBytes:bytes,failures},null,2));
 process.exitCode=failures.length?1:0;

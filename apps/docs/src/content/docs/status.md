@@ -2,11 +2,26 @@
 title: "Support status"
 description: "A precise view of reviewed behavior and open beta gates."
 ---
+## Private beta candidate
+
+- Package: private, unpublished `0.7.0-beta.0`.
+- Source: [`6b6a317c2c09aa95637b81ebb6d0e4ef12d09d3e`](https://github.com/sageadvicellc/bowerloom/tree/6b6a317c2c09aa95637b81ebb6d0e4ef12d09d3e).
+- Archive SHA-256: `f7d32c4334f3373f76316664de2de9c0618e3fb686d474e431845e3a2e328fc9`.
+- Installed distribution SHA-256: `2af0ad779a650b1effb84bba1ac380a2107657e95cd87aa8dc8b8bdbb18f0df5`.
+- Tested environment: Darwin arm64, Node `24.11.0`, cached dependencies, offline isolated prefix.
+- Result: 18 commands with expected exits, including two wrong-approval refusals; 121 installed inventory files matched.
+
+New and existing Engineer-profile synthetic projects passed setup, status, and successful revision. Existing notes stayed unchanged. Both reported specification readiness, no runtime readiness, and no execution authority.
+
+This trial does not cover other profiles, interrupted recovery, stop, global installation, upgrade/removal, native models, backend operation, or other platforms. The archive is not distributed by this site. [Private installation procedure](/docs/start/).
+
+Broader CLI delivery remains open under [issue #61](https://github.com/sageadvicellc/bowerloom/issues/61). A versioned candidate is not public beta availability or complete acceptance.
+
 ## Read the labels
 
 **Reviewed local behavior** means the specified source and artifact passed bounded checks. **Synthetic proof** uses controlled test data or owners. **Unproven** remains an acceptance requirement, even if source code exists.
 
-| Area | Current documentation claim |
+| Area | Historical or bounded evidence; not beta acceptance |
 | --- | --- |
 | Setup, exact approval, inspection | Reviewed private installed trial across all three profiles and both modes. |
 | Revision and interruption recovery | Reviewed synthetic installed scenarios; original files preserved. |
@@ -18,6 +33,8 @@ description: "A precise view of reviewed behavior and open beta gates."
 | Workbench comparisons | Repeatable scenarios and evidence; no unsupported improvement claim. |
 
 ## Reviewed setup identity
+
+This is historical alpha evidence. It is not the current beta installation packet.
 
 - Package: private `0.7.0-alpha.0`.
 - Source: [`cd62b530644dae0fca1cef9e11e287b24356c250`](https://github.com/sageadvicellc/bowerloom/tree/cd62b530644dae0fca1cef9e11e287b24356c250).

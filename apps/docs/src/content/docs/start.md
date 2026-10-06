@@ -1,35 +1,53 @@
 ---
-title: "Start here"
-description: "Prepare a pinned source checkout or use a separately supplied private artifact."
+title: "Install the private beta candidate"
+description: "Use the supplied candidate archive in an isolated local directory."
 ---
-## Choose the delivery you actually have
+The reviewed private candidate is `0.7.0-beta.0`. Its normal interface is the installed `bowerloom` executable; no source checkout is required.
 
-| Delivery | What it establishes |
-| --- | --- |
-| Published alpha source prerelease | Source archives for `v0.7.0-alpha.0`; not a compiled npm installer. |
-| Reviewed private artifact | A specifically supplied and verified archive for a bounded local trial. |
-| Beta development branch | Ongoing engineering; not a released or fully accepted beta. |
+:::caution[Private trial, not a public installer]
+This site does not distribute the archive. Use these instructions only if you have received the exact candidate and its review packet. Public npm delivery, global installation, upgrades, removal, and complete beta acceptance remain open under [CLI issue #61](https://github.com/sageadvicellc/bowerloom/issues/61).
+:::
 
-Do not run `npm install -g bowerloom` based on these pages. No public npm delivery is documented here.
+## Check the trial prerequisites
 
-## Prepare a development checkout
+The installed proof used macOS on Apple silicon (Darwin arm64), Node `24.11.0`, and `npm` with all required dependencies already cached. It ran outside the source checkout in a fresh isolated directory. Other platforms and clean machines without that cache are not qualified by this trial.
 
-Use `git`, Node 24.11 or a later Node 24 version, and `npm` 11. Keep the source checkout separate from the project receiving `.bowerloom/`.
+Use a new private installation directory, separate from the project receiving `.bowerloom/`. Keep your existing installations intact. If the offline install reports a cache miss, stop; these instructions do not authorize a network fallback.
+
+Verify the supplied `bowerloom-0.7.0-beta.0.tgz` archive before installation:
 
 ```sh
-git clone --branch feature/bowerloom-beta https://github.com/sageadvicellc/bowerloom.git
-cd bowerloom
-git checkout --detach cd62b530644dae0fca1cef9e11e287b24356c250
-npm ci --ignore-scripts
-npm run build
-node dist/apps/cli/src/main.js --help
-node dist/apps/cli/src/main.js --version
-node dist/apps/cli/src/main.js init --help
+shasum -a 256 /absolute/private/bowerloom-0.7.0-beta.0.tgz
 ```
 
-The version output is `Bowerloom 0.7.0-alpha.0`. The pin deliberately names the reviewed setup candidate, not whichever commit the branch reaches later.
+Expected SHA-256: `f7d32c4334f3373f76316664de2de9c0618e3fb686d474e431845e3a2e328fc9`.
 
-If you have the private artifact, use the executable and installation procedure supplied with its review packet. Verify its hash before use. These pages do not offer that archive for download.
+## Install into an isolated directory
+
+Replace the absolute paths below with the supplied archive and a new private installation directory. The review used empty npm configuration and disabled lifecycle scripts, audit, funding prompts, and network access. Use a private, nonexistent `empty-npmrc` path for the global configuration override.
+
+```sh
+npm_config_userconfig=/dev/null npm_config_globalconfig=/absolute/private/empty-npmrc npm install --prefix /absolute/private/bowerloom-trial --offline --ignore-scripts --no-audit --no-fund --no-save /absolute/private/bowerloom-0.7.0-beta.0.tgz
+/absolute/private/bowerloom-trial/node_modules/.bin/bowerloom --version
+/absolute/private/bowerloom-trial/node_modules/.bin/bowerloom --help
+/absolute/private/bowerloom-trial/node_modules/.bin/bowerloom init --help
+```
+
+The version must report `Bowerloom 0.7.0-beta.0`. An alpha version is a different artifact. The installation procedure is private and cache-dependent; it is not a general-purpose beta installer.
+
+For the remaining examples, use that full executable path wherever you see `bowerloom`. Alternatively, add only this installation's executable directory to the current shell session:
+
+```sh
+export PATH="/absolute/private/bowerloom-trial/node_modules/.bin:$PATH"
+```
+
+This changes command lookup for this shell; it does not install globally.
+
+## What this candidate proved
+
+The reviewed run recorded 18 commands, including the offline install, help/version checks, and two Engineer-profile trials. Both new and existing projects completed setup and successful revision. Wrong approvals refused; existing notes stayed unchanged. All 121 installed inventory files matched the distribution record.
+
+The trial did not exercise other profiles, interrupted recovery, registered stop, native agents, backend installation, or full framework execution. [Exact candidate identity and limits](/docs/status/#private-beta-candidate).
 
 ## Ask your personal agent
 
@@ -42,10 +60,6 @@ After installation, read .bowerloom/START-HERE.md in the target project and stop
 Do not start workers or import Claude or Codex settings.
 ```
 
-Then follow [Plan and install](/docs/setup/).
+[Plan your first team](/docs/setup/) or [check support and evidence](/docs/status/).
 
-## Evidence and limits
-
-The independent installed trial exercised 117 CLI invocations with package `0.7.0-alpha.0`, Node `24.11.0`, and Darwin arm64. Six new/existing × Engineer/Founder/Research setups passed. This does not establish other platforms or complete framework acceptance.
-
-[Read the exact evidence identity and boundaries](/docs/status/#reviewed-setup-identity).
+Contributor source work belongs in the separate [contributor guide](/docs/contributors/).

@@ -2,7 +2,14 @@
 title: "CLI reference"
 description: "Find the supported command family and its authority boundary."
 ---
-Start with `node dist/apps/cli/src/main.js --help` in the [pinned checkout](/docs/start/). An installed private artifact exposes the same `bowerloom` command surface under its supplied setup instructions.
+
+:::note[Private beta command scope]
+Use the [isolated installed executable](/docs/start/). The private `0.7.0-beta.0` trial covers Engineer-profile setup in new and existing projects and successful revision. Recovery, other profiles, and runtime execution remain outside that trial.
+:::
+
+Use `bowerloom --help` to read command syntax. Use `bowerloom --version` to read the package version.
+
+This candidate reports `Bowerloom 0.7.0-beta.0` through `--version`. Its general help retains the legacy `v0.7-alpha` heading. The retained heading remains CLI work under [issue #61](https://github.com/sageadvicellc/bowerloom/issues/61). Command presence does not establish runtime readiness.
 
 | Command family | Purpose | Boundary |
 | --- | --- | --- |
@@ -24,6 +31,10 @@ Use absolute paths where requested. `init plan --json` and `revise plan --json` 
 
 Malformed or extra arguments refuse. Never replace an approval revision with a guessed value or infer success from an exit without checking its output.
 
-## Evidence and limits
+## Candidate and historical evidence
+
+The private `0.7.0-beta.0` candidate exercised help, version, init help, setup, status, and successful revision. [Candidate identity](/docs/status/#private-beta-candidate). Other command families retain their separate evidence limits.
+
+The following source and broader command trial belong to the earlier alpha artifact:
 
 Syntax is bound to [`apps/cli/src/main.ts`](https://github.com/sageadvicellc/bowerloom/blob/cd62b530644dae0fca1cef9e11e287b24356c250/apps/cli/src/main.ts). The bounded installed trial tested discovery/setup/revision/local links/stop, not every help entry. [Exact trial identity](/docs/status/#reviewed-setup-identity).

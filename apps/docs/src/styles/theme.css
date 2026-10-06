@@ -1,8 +1,71 @@
-@font-face { font-family: Lora; src: url('/docs/fonts/lora.ttf') format('truetype'); font-display: swap; font-weight: 400 700; }
-:root { --sl-font: Lora, Georgia, serif; --sl-font-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace; --sl-color-accent-low: #293b30; --sl-color-accent: #b9c6a0; --sl-color-accent-high: #e2ebd5; --sl-color-white: #fff8ed; --sl-color-gray-1: #eee8df; --sl-color-gray-2: #c5c8bc; --sl-color-gray-3: #a2aa99; --sl-color-gray-4: #5c685b; --sl-color-gray-5: #374138; --sl-color-gray-6: #252d28; --sl-color-black: #1b231e; --sl-text-code: .875rem; --sl-text-sm: 1rem; --sl-text-xs: .875rem; --sl-content-width: 48rem; }
-:root[data-theme='light'] { --sl-color-accent-low: #e8eddf; --sl-color-accent: #4a644d; --sl-color-accent-high: #29452f; --sl-color-white: #343a32; --sl-color-gray-1: #4b5348; --sl-color-gray-2: #586353; --sl-color-gray-3: #71816a; --sl-color-gray-4: #a7b3a0; --sl-color-gray-5: #dce2d4; --sl-color-gray-6: #f2f2e9; --sl-color-gray-7: #faf6ee; --sl-color-black: #fffaf2; }
-header, nav, .sidebar-content, .pagination-links, button { font-family: var(--sl-font-mono); }
+/* Exact approved landing palette and font families; docs retain Starlight layout. */
+@font-face { font-family: Newsreader; src: url('/docs/fonts/newsreader/roman.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: Newsreader; src: url('/docs/fonts/newsreader/italic.ttf') format('truetype'); font-weight: 200 800; font-style: italic; font-display: swap; }
+@font-face { font-family: Manrope; src: url('/docs/fonts/manrope/font.ttf') format('truetype'); font-weight: 200 800; font-style: normal; font-display: swap; }
+:root, :root[data-theme='light'] {
+  --brand-ground: #27262B; --brand-surface: #343238; --brand-ink: #F6EEE8;
+  --brand-muted: #D0BEC6; --brand-rose: #E8B3BF; --brand-foliage: #C5D4AC;
+  --brand-clay: #E0A17D; --brand-water: #A0C5CD; --brand-line: #665B63;
+  --brand-action: #E8B3BF; --brand-action-ink: #27262B;
+  --sl-font: Manrope, 'Segoe UI', sans-serif;
+  --sl-font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --sl-color-white: var(--brand-ink); --sl-color-black: var(--brand-ground);
+  --sl-color-gray-1: var(--brand-ink); --sl-color-gray-2: var(--brand-muted);
+  --sl-color-gray-3: var(--brand-muted); --sl-color-gray-4: var(--brand-line);
+  --sl-color-gray-5: var(--brand-line); --sl-color-gray-6: var(--brand-surface);
+  --sl-color-gray-7: var(--brand-ground);
+  --sl-color-accent-low: var(--brand-surface); --sl-color-accent: var(--brand-action); --sl-color-accent-high: var(--brand-action);
+  --sl-color-bg: var(--brand-ground); --sl-color-bg-nav: var(--brand-surface); --sl-color-bg-sidebar: var(--brand-surface);
+  --sl-color-hairline: var(--brand-line); --sl-color-hairline-light: var(--brand-line);
+  --sl-color-text: var(--brand-ink); --sl-color-text-accent: var(--brand-action);
+  --sl-text-code: .875rem; --sl-text-sm: 1rem; --sl-text-xs: .875rem;
+  --sl-content-width: 48rem; --sl-nav-height: 5rem;
+}
+:root[data-theme='light'] {
+  --brand-ground: #F6EEE8; --brand-surface: #FFF9F4; --brand-ink: #373A32;
+  --brand-muted: #655D61; --brand-rose: #DFA4AB; --brand-foliage: #B9C6A0;
+  --brand-clay: #B36D4B; --brand-water: #668B95; --brand-line: #D5C9C8;
+  --brand-action: #80515B; --brand-action-ink: #FFF9F4;
+}
+:root body { font-family: var(--sl-font); font-size: 17px; line-height: 1.65; }
+:root :is(h1,h2,h3,h4,h5,h6) { font-family: Newsreader, Georgia, serif; font-optical-sizing: auto; letter-spacing: -.035em; text-wrap: balance; }
+:root :is(button,select,input,textarea,nav) { font-family: var(--sl-font); }
+:root :is(code,pre,kbd,samp) { font-family: var(--sl-font-mono); font-size: max(14px,.9em); line-height: 1.7; font-variant-numeric: tabular-nums; }
+:root pre code { font: inherit; }
 .sl-markdown-content { line-height: 1.75; }
-.sl-markdown-content :is(h1,h2,h3,h4) { letter-spacing: -.025em; }
 .sl-markdown-content a { text-underline-offset: .2em; }
-:focus-visible { outline: 3px solid var(--sl-color-accent); outline-offset: 4px; }
+:focus-visible { outline: 3px solid var(--brand-action); outline-offset: 4px; }
+.docs-header { display: flex; align-items: center; height: 100%; gap: 16px; }
+.docs-brand { display: flex; align-items: center; gap: 8px; flex: none; }
+.docs-brand img { display: block; object-fit: contain; }
+.docs-brand .brand-light { display: none; }
+[data-theme='light'] .docs-brand .brand-light { display: block; }
+[data-theme='light'] .docs-brand .brand-dark { display: none; }
+.home-links { display: flex; gap: 16px; flex: none; }
+.home-links a { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; font-weight: 650; white-space: nowrap; color: var(--brand-action); text-underline-offset: 4px; }
+.docs-search { margin-inline-start: auto; min-width: 0; }
+.docs-theme { flex: none; }
+@media (max-width: 49.99rem) {
+  .docs-header { gap: 10px; }
+  .docs-brand .wordmark, .docs-theme { display: none !important; }
+  .docs-brand .bot { width: 28px; height: 28px; }
+  .home-links { gap: 12px; }
+}
+@media (max-width: 22rem) { .docs-brand { display: none; } }
+/* Keep notice semantics and icons, using the approved palette in both themes. */
+.starlight-aside {
+  --sl-color-asides-text-accent: var(--brand-ink);
+  --sl-color-asides-border: var(--brand-action);
+  color: var(--brand-ink);
+}
+.starlight-aside:is(.starlight-aside--note,.starlight-aside--tip) {
+  --sl-color-asides-text-accent: var(--brand-ink);
+  --sl-color-asides-border: var(--brand-action);
+  background-color: color-mix(in srgb, var(--brand-rose) 12%, var(--brand-surface));
+}
+.starlight-aside:is(.starlight-aside--caution,.starlight-aside--danger) {
+  --sl-color-asides-text-accent: var(--brand-ink);
+  --sl-color-asides-border: var(--brand-clay);
+  background-color: color-mix(in srgb, var(--brand-clay) 10%, var(--brand-surface));
+}
+.starlight-aside .starlight-aside__content a { color: var(--brand-action); }

@@ -24,4 +24,4 @@ For uncertain external outcomes, retain evidence and reconcile the original atte
 
 ## Evidence and limits
 
-Exact setup and local disclosure refusals passed the `cd62b530` installed trial. This is not proof of every backend or tool boundary. [Support status](/docs/status/) and [Security limits](/docs/security/) name the broader gaps.
+Exact setup and local disclosure refusals passed the historical `0.7.0-alpha.0` installed trial at `cd62b530`. [Historical trial identity](/docs/status/#reviewed-setup-identity). This is not proof of every backend or tool boundary. [Support status](/docs/status/) and [Security limits](/docs/security/) name the broader gaps.

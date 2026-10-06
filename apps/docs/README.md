@@ -32,7 +32,11 @@ Root owns shared build configuration and Vercel integration. Do not deploy this 
 
 Markdown lives in `src/content/docs`. Sidebar order is explicit in astro.config.mjs.
 Keep tested source/artifact identities and fixture limitations beside capability claims. Do not upgrade support claims from a source-only test.
-The font is copied unchanged from the existing landing Lora asset. Its OFL license is in `public/fonts/Lora-OFL.txt`.
+Newsreader and Manrope fonts, their OFL files, and approved plain wordmark/robot assets are copied unchanged from the landing.
+The stylesheet matches the landing Rose Conservatory and After Hours tokens. Code keeps the landing monospace stack.
+The header keeps Main site (`/`) and Docs home (`/docs/`) visible on desktop and mobile.
+The private beta candidate has bounded offline installed evidence; broader delivery remains open on issue #61.
+Historical alpha source instructions live only in contributor guidance.
 The site includes a preview noindex directive. Authentication must come from the hosting project's protected preview; noindex is not access control.
 
 ## Acceptance still required

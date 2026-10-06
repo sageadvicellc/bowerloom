@@ -27,4 +27,8 @@ Share the package version, command family, safe error code, expected action, and
 
 ## Evidence and limits
 
-The installed CLI trial accepted its bounded setup, disclosure, synthetic-stop and recovery paths. It did not accept native adapters, all19 framework acceptance groups, publication, or support activation. [Support status](/docs/status/) names the exact trial.
+The historical `0.7.0-alpha.0` trial at `cd62b530` accepted bounded setup, local disclosure, synthetic stop, and interruption recovery. [Historical trial identity](/docs/status/#reviewed-setup-identity).
+
+The private `0.7.0-beta.0` trial covers Engineer setup and successful revision. It does not qualify stop, disclosure, or interrupted recovery.
+
+Neither result accepts native adapters, all 19 framework acceptance groups, publication, or support activation. [Support status](/docs/status/) names the broader gaps.

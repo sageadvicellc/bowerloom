@@ -2,6 +2,11 @@
 title: "Stop registered work"
 description: "Understand what a stop result covers and what remains uncertain."
 ---
+
+:::note[Private beta command scope]
+Use the [isolated installed executable](/docs/start/). This command reference is not exercised by the private beta candidate trial. Historical evidence stays separate; it does not establish beta acceptance for this operation.
+:::
+
 `destruct` means stop registered work. It does not delete teams, project files, outputs, or saved history. It does not stop Docker or the local Supabase backend.
 
 ## Scope comes from enrollment
@@ -10,12 +15,11 @@ Setup approval does not enroll a runtime owner. Control enrollment is separate, 
 
 With a previously registered local owner, these commands request a stop:
 
-Run them from the pinned checkout prepared in [Start here](/docs/start/).
-For a private artifact, use the executable procedure supplied with its review packet.
+Use only the installed artifact and registry selected in your reviewed installation packet.
 
 ```sh
-node dist/apps/cli/src/main.js destruct first-team --root /absolute/projects/first-team
-node dist/apps/cli/src/main.js destruct all
+bowerloom destruct first-team --root /absolute/projects/first-team
+bowerloom destruct all
 ```
 
 `all` means the selected registry for the current user, not every machine or agent. An isolated registry requires the same `--registry /absolute/private/registry` used at enrollment.
@@ -32,7 +36,7 @@ A timeout is not proof that work stopped. Repeated requests observe unresolved o
 
 A link between projects grants no stop authority. An unregistered personal-agent session is outside this control.
 
-## Evidence and limits
+## Historical evidence and limits
 
 The independent installed trial exercised five synthetic timer owners, team selection, registry isolation, delayed acknowledgement, and explicit uncertainty. All test timers ended. This proves the tested control protocol, not cleanup of an arbitrary native model or external service.
 
