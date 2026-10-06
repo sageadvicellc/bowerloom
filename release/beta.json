@@ -14,8 +14,10 @@
     "installCommand": "npm install --global bowerloom@0.7.0-beta.0",
     "published": false,
     "ownershipVerified": false,
-    "publishingIdentityVerified": false,
-    "availabilityNote": "The npm package is not published. Run the installation command only after this exact version is published."
+    "publishingIdentityVerified": true,
+    "availabilityNote": "The npm package is not published. Run the installation command only after this exact version is published.",
+    "authenticatedIdentity": "hannasage",
+    "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate."
   },
   "urls": {
     "site": "https://bowerloom.ai",

@@ -7,7 +7,7 @@ Normal setup uses the installed `bowerloom` command. You do not need a repositor
 <!-- release:install:start -->
 **Unavailable until publication.** The npm package is not published. Run the installation command only after this exact version is published.
 
-npm package ownership and the publishing identity are not yet verified. A selected package name does not reserve it.
+The npm publishing identity is authenticated. This does not grant publication approval. Package ownership is not yet verified. A selected package name does not reserve it.
 
 The planned npm command for `0.7.0-beta.0` is shown for review. Do not run it before this exact version is published.
 
