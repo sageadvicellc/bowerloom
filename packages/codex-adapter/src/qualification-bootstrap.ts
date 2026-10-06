@@ -1,7 +1,7 @@
 // Private trusted-host composition. Not exported by index or selected by a public CLI.
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { isPromise } from 'node:util/types';
+import { isPromise,isProxy } from 'node:util/types';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
 import type { PostgresAdmission } from '../../admission/src/index.js';
 import type { AdmissionControl, AdmissionDispatchGate, ReservationRequest, ReconciliationProof } from '../../admission/src/types.js';
@@ -29,7 +29,7 @@ const hex=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 function data(v:unknown,depth=0,count={nodes:0}):any {
   check(depth<=10&&++count.nodes<=20000,'BOOTSTRAP_INPUT');
   if(v===null||typeof v==='boolean'||typeof v==='number'||typeof v==='string'){check(typeof v!=='string'||Buffer.byteLength(v)<=65536,'BOOTSTRAP_INPUT');return v;}
-  check(v&&typeof v==='object','BOOTSTRAP_INPUT');const d=Object.getOwnPropertyDescriptors(v);
+  check(v&&typeof v==='object'&&!isProxy(v),'BOOTSTRAP_INPUT');const d=Object.getOwnPropertyDescriptors(v);
   if(Array.isArray(v)){check(Object.getPrototypeOf(v)===Array.prototype&&v.length<=1024&&Reflect.ownKeys(v).length===v.length+1,'BOOTSTRAP_INPUT');return Object.freeze(Array.from({length:v.length},(_,i)=>{const e=d[String(i)];check(e&&Object.hasOwn(e,'value')&&e.enumerable,'BOOTSTRAP_INPUT');return data(e.value,depth+1,count);}));}
   check([Object.prototype,null].includes(Object.getPrototypeOf(v))&&Object.keys(d).length<=40&&Reflect.ownKeys(v).length===Object.keys(d).length,'BOOTSTRAP_INPUT');
   const out:Record<string,unknown>=Object.create(null);for(const k of Object.keys(d).sort()){check(Object.hasOwn(d[k]!,'value')&&d[k]!.enumerable,'BOOTSTRAP_INPUT');out[k]=data(d[k]!.value,depth+1,count);}return Object.freeze(out);

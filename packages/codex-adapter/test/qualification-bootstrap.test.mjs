@@ -346,3 +346,21 @@ test('v2 helper import cannot obtain another timeout beyond the existing two-sec
 test('v2 cannot substitute an artifact root different from the executing bootstrap',async()=>{
  const e=await setupAccounting();e.options.artifact.root=resolve('synthetic-other-root');assert.throws(()=>e.runner(),/BOOTSTRAP_ARTIFACT/);assert.equal(e.stats().readCount,0);assertHistory(e);
 });
+test('registry reflective traps and all nested accounting traps refuse before downstream activity',async()=>{
+ for(const location of ['registry-v1','registry-v2','nested-binding','nested-host','nested-windows']){
+  const e=location==='registry-v1'?await setup():await setupAccounting();let traps=0;
+  // Promise assimilation reads top-level then before data() can run. Only the trusted lookup performs that resolution.
+  const hostile=value=>new Proxy(value,{...(!location.startsWith('registry')?{get(){traps++;throw Error('PRIVATE_PROXY');}}:{}),getPrototypeOf(){traps++;throw Error('PRIVATE_PROXY');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_PROXY');},ownKeys(){traps++;throw Error('PRIVATE_PROXY');}});
+  if(location.startsWith('registry'))e.options.lookupGrant=async()=>hostile(e.grant);
+  else if(location==='nested-binding')e.grant.historicalAccounting=hostile(e.grant.historicalAccounting);
+  else if(location==='nested-host')e.grant.historicalAccounting.hostBinding=hostile(e.grant.historicalAccounting.hostBinding);
+  else e.grant.historicalAccounting.requiredWindows=hostile(e.grant.historicalAccounting.requiredWindows);
+  const before=e.pool.snapshot(),queries=e.pool.queries.length,result=await e.runner().run(e.input,e.abort.signal);
+  assert.equal(result.status,'refused');assert.equal(traps,0);assert.equal(e.stats().reads,0);assert.equal(e.stats().readCount??0,0);assert.equal(e.stats().starts,0);assert.equal(e.stats().coreStarts??0,0);assert.equal(e.pool.queries.length,queries);assert.deepEqual(e.pool.snapshot(),before);
+ }
+});
+test('task input proxy refuses before any reflective trap, registry, observer or admission',async()=>{
+ const e=await setupAccounting();let traps=0;const input=new Proxy(e.input,{get(){traps++;throw Error('PRIVATE_TASK');},getPrototypeOf(){traps++;throw Error('PRIVATE_TASK');},getOwnPropertyDescriptor(){traps++;throw Error('PRIVATE_TASK');},ownKeys(){traps++;throw Error('PRIVATE_TASK');}});
+ const before=e.pool.snapshot(),queries=e.pool.queries.length;
+ await assert.rejects(e.runner().run(input,e.abort.signal),{code:'BOOTSTRAP_INPUT'});assert.equal(traps,0);assert.equal(e.stats().registryCount,0);assert.equal(e.stats().readCount,0);assert.equal(e.stats().coreStarts,0);assert.equal(e.pool.queries.length,queries);assert.deepEqual(e.pool.snapshot(),before);
+});
