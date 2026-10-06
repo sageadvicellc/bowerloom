@@ -17,7 +17,7 @@ const hash=x=>createHash('sha256').update(x).digest('hex'),tick=()=>new Promise(
 const deferred=()=>{let resolve,reject;const promise=new Promise((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};};
 const symbol='bowerloom.bootstrap.synthetic-core';
 globalThis[symbol]={proposalPrompt};
-const fixture='data:text/javascript,'+encodeURIComponent(`export const proposalPrompt=globalThis['${symbol}'].proposalPrompt;export class CodexAdapterCore{constructor(options,gate){this.options=options;this.gate=gate;}start(input,signal){return globalThis['${symbol}'].start(this.options,this.gate,input,signal);}}`);
+const fixture='data:text/javascript,'+encodeURIComponent(`export const proposalPrompt=globalThis['${symbol}'].proposalPrompt;export class CodexAdapterCore{constructor(options,gate){this.options=options;this.gate=gate;globalThis['${symbol}'].owners?.push(new WeakRef(this));}start(input,signal){return globalThis['${symbol}'].start(this.options,this.gate,input,signal);}quiescence(){return globalThis['${symbol}'].quiescence?.()??Promise.resolve({cleanup:'verified'});}}`);
 const hook=registerHooks({resolve(specifier,context,next){if(specifier==='./adapter-core.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))return{url:fixture,shortCircuit:true};return next(specifier,context);}});
 const {QualificationBootstrap}=await import('../../../dist/packages/codex-adapter/src/qualification-bootstrap.js');hook.deregister();
 const paths=['qualification-bootstrap','index','adapter-core','boundary','startup-deadline','installation','policy','protocol','reader','observation','safe','supervisor','guardian'].map(n=>`dist/packages/codex-adapter/src/${n}.js`).concat(['dist/packages/broker/src/index.js','dist/packages/contracts/src/index.js','dist/packages/mcp-connections/src/darwin-boot-session.js','dist/packages/mcp-connections/src/model.js']);
@@ -29,6 +29,7 @@ function memoryPool(){
 }
 function observation(){const now=Date.now();return{observationId:'sample-'+now,accountId:'account',observedAtMs:now,authentication:'subscription',ordinaryUsageAllowed:true,windows:{primary:{usedPercent:10,durationMs:600000,resetAtMs:now+300000,accountedThroughMs:null}},routes:{[MODEL_ROUTE]:{requiredWindows:['primary'],optionalWindows:[]}}};}
 async function setup(){
+ delete globalThis[symbol].quiescence;delete globalThis[symbol].owners;
  const pool=memoryPool(),abort=new AbortController(),binding={canonicalAccountId:'account',aliases:['alias'],providerAccountSha256:'a'.repeat(64),requiredWindows:['primary'],optionalWindows:[]};
  const hostBinding={installationId:'installation',databaseName:'synthetic',admissionSchema:'trellis_bootstrap',accountId:'account',accountAlias:'alias',launcherId:'launcher'};
  const installation={nativePath:'/synthetic/no-native-launch',nativeSha256:SUPPORTED_NATIVE_SHA256,version:'0.157.0',workRoot:'/synthetic/no-workspace'};
@@ -118,4 +119,40 @@ test('pending cleanup reports uncertainty within its bound and retains eventual 
 test('private bootstrap must be included in the measured installed closure',async()=>{
  const e=await setup();e.options.artifact.files=e.options.artifact.files.filter(f=>!f.path.endsWith('/qualification-bootstrap.js'));
  assert.throws(()=>e.runner(),/BOOTSTRAP_ARTIFACT/);assert.equal(e.stats().starts,0);
+});
+
+test('bootstrap passes its signal to host reader and retains late no-handle read cleanup',async()=>{
+ const e=await setup(),entered=deferred(),read=deferred(),cleanup=deferred();let signal;
+ e.options.observer={read:async(alias,s)=>{signal=s;entered.resolve();return read.promise;},quiescence:()=>cleanup.promise};
+ const runner=e.runner(),pending=runner.run(e.input,e.abort.signal);await entered.promise;e.abort.abort();const r=await pending;
+ assert.equal(signal.aborted,true);assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(runner.lifecycle(r.jobId),'pending');let settled=false;const quiet=runner.quiescence(r.jobId).then(v=>{settled=true;return v;});
+ read.reject(Error('late private read'));await tick();assert.equal(settled,false);cleanup.resolve({cleanup:'verified'});assert.deepEqual(await quiet,{cleanup:'verified'});assert.equal(e.stats().starts,0);
+});
+test('bootstrap retains an expired complete core start attempt before a handle, then awaits internal cleanup',async()=>{
+ const e=await setup(),entered=deferred(),start=deferred(),cleanup=deferred();const {revision,...body}=e.grant;body.expiresAtMs=Date.now()+400;const grant={...body,revision:hash(canonicalJson(body))};e.options.lookupGrant=async()=>grant;e.input.grantRevision=grant.revision;
+ globalThis[symbol].start=async()=>{entered.resolve();return start.promise;};globalThis[symbol].quiescence=()=>cleanup.promise;
+ const runner=e.runner(),pending=runner.run(e.input,e.abort.signal);await entered.promise;const r=await pending;assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(runner.lifecycle(r.jobId),'pending');
+ let settled=false;const quiet=runner.quiescence(r.jobId).then(v=>{settled=true;return v;});start.reject(Error('late pre-handle rejection'));await tick();assert.equal(settled,false);cleanup.resolve({cleanup:'unverified'});assert.deepEqual(await quiet,{cleanup:'unverified'});assert.equal(runner.lifecycle(r.jobId),'unverified');assert.equal(runner.inspect(r.jobId),null);
+ const second=await runner.run({...e.input,operationId:'another-operation'},new AbortController().signal);assert.equal(second.status,'refused');assert.equal(e.stats().terminates,0);
+});
+test('host reader timeout retains quiescence and cannot create a new operation while uncertain',async()=>{
+ const e=await setup(),read=deferred(),cleanup=deferred();let signal;e.options.observer={read:async(alias,s)=>{signal=s;return read.promise;},quiescence:()=>cleanup.promise};const runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(signal.aborted,true);assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');const other=await runner.run({...e.input,operationId:'other'},new AbortController().signal);assert.equal(other.status,'refused');read.resolve(observation());cleanup.reject(Error('cleanup refused'));assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'unverified'});assert.equal(e.stats().starts,0);
+});
+
+test('core-start reporting timer closes before a handle without abandoning the start promise',async t=>{
+ const e=await setup(),late=deferred(),cleanup=deferred();globalThis[symbol].start=async()=>late.promise;globalThis[symbol].quiescence=()=>cleanup.promise;
+ const original=globalThis.setTimeout;t.mock.method(globalThis,'setTimeout',(fn,ms,...args)=>original(fn,ms===40000?10:ms,...args));
+ const runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(runner.lifecycle(r.jobId),'pending');
+ const quiet=runner.quiescence(r.jobId);late.reject(Error('late start rejection'));cleanup.resolve({cleanup:'verified'});assert.deepEqual(await quiet,{cleanup:'verified'});assert.equal(runner.inspect(r.jobId),null);assert.equal(e.stats().terminates,0);
+});
+
+test('unverified no-handle core remains an explicitly retained cleanup owner after receipt settlement',async()=>{
+ const e=await setup(),owners=[];globalThis[symbol].owners=owners;globalThis[symbol].start=async()=>{throw Error('no handle');};globalThis[symbol].quiescence=async()=>({cleanup:'unverified'});
+ const runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(r.status,'held');assert.equal(runner.inspect(r.jobId),null);assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'unverified'});await tick();
+ assert.equal(runner.retainedCleanupOwners(r.jobId),1);assert.equal(owners.length,1);if(typeof globalThis.gc==='function'){for(let i=0;i<4;i++){globalThis.gc();await tick();}}assert.ok(owners[0].deref());assert.equal(runner.lifecycle(r.jobId),'unverified');
+ // A settled no-handle receipt does not clear the retained owner or reopen this bootstrap.
+ assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'unverified'});assert.equal(runner.retainedCleanupOwners(r.jobId),1);assert.equal((await runner.run({...e.input,operationId:'fresh-id'},new AbortController().signal)).status,'refused');
+});
+test('verified core receipt releases its explicit owner only after complete quiescence',async()=>{
+ const e=await setup(),runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(r.status,'proposal');assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'verified'});assert.equal(runner.retainedCleanupOwners(r.jobId),0);
 });

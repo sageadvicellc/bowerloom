@@ -10,7 +10,7 @@ import { codexArtifactRevision, codexBoundaryAccountRevision, measureCodexInstal
 import { startupCopy, startupLaunchRevision, type StartupRuntime } from './startup-deadline.js';
 import { MODEL_ROUTE, POLICY_VERSION } from './policy.js';
 import { AdapterError, check, id, sha, time } from './safe.js';
-import type { AccountBinding, Installation, ModelProcess, ObservationReader } from './types.js';
+import type { AccountBinding, Installation, ModelProcess, ObservationReader, CleanupStatus, CleanupReceipt } from './types.js';
 
 export interface QualificationHostBinding { installationId:string; databaseName:string; admissionSchema:string; accountId:string; accountAlias:string; launcherId:string }
 export interface QualificationFence { binding:QualificationHostBinding; signal:AbortSignal; assert():void; guard():Promise<void> }
@@ -52,10 +52,11 @@ class Scope {
     }catch{this.close();throw refused();}finally{clearTimeout(timer);this.signal.removeEventListener('abort',aborted);}
   }
 }
+interface Activity {running:boolean;owners:Set<object>;pending:Set<Promise<void>>;uncertain:boolean;finished:Promise<void>;finish():void}
 interface Owned {handle:ModelProcess;terminate:()=>Promise<void>;identity:ModelProcess['identity']|null;result:Promise<{ok:true;proposal:string}|{ok:false}>;cleanup:'pending'|'verified'|'unverified';cleaning?:Promise<void>}
 /** One host object may hold several historical operations, but no operation can be dispatched twice. */
 export class QualificationBootstrap {
-  readonly #options:QualificationBootstrapOptions;readonly #used=new Set<string>();readonly #owned=new Map<string,Owned>();
+  readonly #options:QualificationBootstrapOptions;readonly #used=new Set<string>();readonly #owned=new Map<string,Owned>();readonly #activities=new Map<string,Activity>();#quarantined=false;
   constructor(options:QualificationBootstrapOptions){
     // Functions and service objects are trusted installed-host capabilities, captured rather than task-selected.
     const o=Object.getOwnPropertyDescriptors(options);check(Reflect.ownKeys(options).length===9&&Object.keys(o).sort().join()==='accountAlias,admission,artifact,binding,fence,installation,lookupGrant,observer,runtime' .split(',').sort().join(),'BOOTSTRAP_OPTIONS');
@@ -66,15 +67,25 @@ export class QualificationBootstrap {
     check(Array.isArray(artifact.files)&&artifact.files.some((f:any)=>f.path===ownPath)&&fileURLToPath(import.meta.url)===join(artifact.root,ownPath),'BOOTSTRAP_ARTIFACT');
     this.#options=Object.freeze({...options,installation:data(options.installation),binding:data(options.binding),runtime:data(options.runtime),artifact,
       fence:Object.freeze({binding,signal:fence.signal,assert:fence.assert.bind(fence),guard:fence.guard.bind(fence)}),
-      observer:Object.freeze({read:options.observer.read.bind(options.observer)}),admission:Object.freeze({reserveControlled:options.admission.reserveControlled.bind(options.admission),launchOnceControlled:options.admission.launchOnceControlled.bind(options.admission),completeControlled:options.admission.completeControlled.bind(options.admission)}),lookupGrant:options.lookupGrant});
+      observer:Object.freeze({read:options.observer.read.bind(options.observer),...(options.observer.quiescence?{quiescence:options.observer.quiescence.bind(options.observer)}:{})}),admission:Object.freeze({reserveControlled:options.admission.reserveControlled.bind(options.admission),launchOnceControlled:options.admission.launchOnceControlled.bind(options.admission),completeControlled:options.admission.completeControlled.bind(options.admission)}),lookupGrant:options.lookupGrant});
   }
   inspect(jobId:string):Readonly<{cleanup:Owned['cleanup'];processRef:string|null}>|null {const o=this.#owned.get(jobId);return o?Object.freeze({cleanup:o.cleanup,processRef:o.identity?.processRef??null}):null;}
+  lifecycle(jobId:string):CleanupStatus|null {if(this.#activities.get(jobId)?.running)return 'pending';return this.#cleanupState(jobId);}
+  #cleanupState(jobId:string):CleanupStatus|null {const a=this.#activities.get(jobId);if(!a)return null;const owned=this.#owned.get(jobId);return a.pending.size||owned?.cleanup==='pending'?'pending':a.uncertain||owned?.cleanup==='unverified'?'unverified':'verified';}
+  retainedCleanupOwners(jobId:string):number{return this.#activities.get(jobId)?.owners.size??0;}
+  async quiescence(jobId:string):Promise<CleanupReceipt>{const a=this.#activities.get(jobId);check(a,'BOOTSTRAP_OPERATION');await a.finished;while(a.pending.size)await Promise.all([...a.pending]);const owned=this.#owned.get(jobId);if(owned)await this.#cleanup(owned);const cleanup=this.lifecycle(jobId);return Object.freeze({cleanup:cleanup==='verified'?'verified':'unverified'});}
+  #track<T>(a:Activity,promise:Promise<T>,receipt?:()=>Promise<CleanupReceipt>,owner?:object):Promise<T>{
+    // Pending promises alone do not root the owner once an uncertain receipt settles.
+    const retained=owner??receipt;if(retained)a.owners.add(retained);
+    const settled=promise.then(()=>false,()=>true).then(async rejected=>{if(receipt){try{if((await receipt()).cleanup!=='verified')a.uncertain=true;else if(retained)a.owners.delete(retained);}catch{a.uncertain=true;}}else if(rejected)a.uncertain=true;else if(retained)a.owners.delete(retained);if(a.uncertain)this.#quarantined=true;});
+    a.pending.add(settled);void settled.then(()=>a.pending.delete(settled));return promise;
+  }
   #retain(jobId:string,handle:ModelProcess):Owned {
     const owned:Owned={handle,terminate:handle.terminate.bind(handle),identity:null,result:Promise.resolve(handle.result).then(proposal=>({ok:true as const,proposal}),()=>({ok:false as const})),cleanup:'pending'};
     this.#owned.set(jobId,owned);return owned;
   }
   #cleanup(owned:Owned):Promise<void> {
-    if(!owned.cleaning)owned.cleaning=Promise.resolve().then(()=>owned.terminate()).then(()=>{owned.cleanup='verified';},()=>{owned.cleanup='unverified';});
+    if(!owned.cleaning)owned.cleaning=Promise.resolve().then(()=>owned.terminate()).then(()=>{owned.cleanup='verified';},()=>{owned.cleanup='unverified';this.#quarantined=true;});
     return owned.cleaning;
   }
   async #cleanupBounded(owned:Owned):Promise<void>{let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([this.#cleanup(owned),new Promise<void>(resolve=>{timer=setTimeout(resolve,4000);})]);}finally{clearTimeout(timer);}}
@@ -82,8 +93,9 @@ export class QualificationBootstrap {
     const v=data(input);exact(v,['grantId','grantRevision','operationId','taskInput']);id(v.grantId);id(v.operationId);check(hex(v.grantRevision)&&typeof v.taskInput==='string','BOOTSTRAP_INPUT');
     const o=this.#options,h=o.fence.binding,jobId='qualification-'+sha(canonicalJson({installationId:h.installationId,accountId:h.accountId,operationId:v.operationId}));
     let startAttempted=false,cleanupWaited=false;
-    const result=(status:QualificationResult['status'],reason:string|null,proposal:string|null=null):Readonly<QualificationResult>=>{const owned=this.#owned.get(jobId);return Object.freeze({status,jobId,processRef:owned?.identity?.processRef??null,proposal,cleanup:owned?.cleanup??(startAttempted?'pending':'not-started'),reason,ordinaryQualified:false,effectsAuthorized:false});};
-    if(this.#used.has(jobId)||this.#used.size>=64)return result('refused','BOOTSTRAP_REPLAY');this.#used.add(jobId);
+    const result=(status:QualificationResult['status'],reason:string|null,proposal:string|null=null):Readonly<QualificationResult>=>{const owned=this.#owned.get(jobId);return Object.freeze({status,jobId,processRef:owned?.identity?.processRef??null,proposal,cleanup:this.#cleanupState(jobId)==='pending'?'pending':this.#cleanupState(jobId)==='unverified'?'unverified':owned?.cleanup??(startAttempted?'verified':'not-started'),reason,ordinaryQualified:false,effectsAuthorized:false});};
+    if(this.#quarantined||this.#used.has(jobId)||this.#used.size>=64)return result('refused','BOOTSTRAP_REPLAY');this.#used.add(jobId);
+    let finish!:()=>void;const activity:Activity={running:true,owners:new Set(),pending:new Set(),uncertain:false,finished:new Promise<void>(r=>{finish=r;}),finish:()=>finish()};this.#activities.set(jobId,activity);
     const scope=new Scope(signal,o.fence);let durableAttempted=false;
     try{
       const prompt=proposalPrompt(v.taskInput),proposalPlan=planCodexProposalLaunch({version:o.installation.version,nativeSha256:o.installation.nativeSha256}),accountRevision=codexBoundaryAccountRevision(o.binding,o.accountAlias);
@@ -101,7 +113,7 @@ export class QualificationBootstrap {
       await refresh();
       const request:ReservationRequest={accountAlias:h.accountAlias,jobId,candidateRevision:'sha256:'+revision,modelRoute:MODEL_ROUTE,role:'worker',attempt:'initial',allowancePercent:{...grant.allowancePercent},paidFallback:false};
       const control:AdmissionControl={binding:{...h,requestDigest:digest(canonicalJson(request)),authorizationRevision:revision,expiresAtMs:grant.expiresAtMs},signal:scope.signal,assert:()=>scope.check()};
-      const observation=()=>scope.wait(()=>o.observer.read(h.accountAlias),2000);
+      const observation=()=>scope.wait(()=>this.#track(activity,Promise.resolve().then(()=>{scope.check();return o.observer.read(h.accountAlias,scope.signal);}),o.observer.quiescence,o.observer),2000);
       durableAttempted=true;const reserved=await o.admission.reserveControlled(request,await observation(),control);scope.check();
       if(reserved.kind!=='accepted')return result('refused',reserved.kind==='existing'?'BOOTSTRAP_REPLAY':'BOOTSTRAP_CAPACITY');
       await refresh();
@@ -114,7 +126,8 @@ export class QualificationBootstrap {
             return startupCopy({format:'bowerloom/codex-startup/v1',clock:'darwin-node24.11.0-libuv1.51.0-hrtime-v1',admission:admissionGate.consume(),runtime:o.runtime,accountBindingDigest:accountRevision,promptDigest:grant.promptDigest,modelRoute:MODEL_ROUTE,proposalPlanRevision:proposalPlan.revision,launchPlanRevision:grant.launchPlanRevision});},
         };
         const core=new CodexAdapterCore({installation:o.installation,binding:o.binding,accountAlias:o.accountAlias},gate);
-        startAttempted=true;const pending=core.start({launcherId:h.launcherId,taskInput:v.taskInput,modelRoute:MODEL_ROUTE},scope.signal).then(handle=>{
+        startAttempted=true;const starting=core.start({launcherId:h.launcherId,taskInput:v.taskInput,modelRoute:MODEL_ROUTE},scope.signal);
+        const pending=this.#track(activity,starting,()=>core.quiescence(),core).then(handle=>{
           const owned=this.#retain(jobId,handle);
           try{scope.check();}catch{void this.#cleanup(owned);throw refused();}
           return owned;
@@ -135,8 +148,8 @@ export class QualificationBootstrap {
       await o.admission.completeControlled(h.accountAlias,jobId,proof,control);scope.check();
       return output.ok?result('proposal',null,output.proposal):result('rejected','BOOTSTRAP_PROPOSAL_REJECTED');
     }catch{
-      scope.close();const owned=this.#owned.get(jobId);if(owned&&!cleanupWaited)await this.#cleanupBounded(owned);
+      scope.close();if(activity.pending.size)this.#quarantined=true;const owned=this.#owned.get(jobId);if(owned&&!cleanupWaited)await this.#cleanupBounded(owned);
       return result(durableAttempted?'held':'refused',durableAttempted?'BOOTSTRAP_OUTCOME_HELD':'BOOTSTRAP_REFUSED');
-    }finally{scope.close();}
+    }finally{scope.close();activity.running=false;activity.finish();}
   }
 }

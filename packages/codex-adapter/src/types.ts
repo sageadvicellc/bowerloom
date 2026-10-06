@@ -14,7 +14,9 @@ export interface AccountBinding {
 export interface ProcessIdentity { processRef: string; ownershipDigest: string; pid: number; groupId: number; launcherId: string }
 export interface ModelProcess { identity: ProcessIdentity; result: Promise<string>; terminate(): Promise<void> }
 export interface ModelAdapter { start(input: { launcherId: string; taskInput: string; modelRoute: string }, signal: AbortSignal): Promise<ModelProcess> }
-export interface ObservationReader { read(accountAlias: string): Promise<AccountObservation> }
+export type CleanupStatus = 'pending' | 'verified' | 'unverified';
+export interface CleanupReceipt { cleanup: Exclude<CleanupStatus, 'pending'> }
+export interface ObservationReader { read(accountAlias: string, signal?: AbortSignal): Promise<AccountObservation>; cleanupStatus?(): CleanupStatus; quiescence?(): Promise<CleanupReceipt> }
 export interface AdapterEvidence {
   processRef: string; status: 'completed' | 'rejected'; reason: string | null;
   observedEventCounts: Record<string, number>; observedUsage: Record<string, number> | null;
