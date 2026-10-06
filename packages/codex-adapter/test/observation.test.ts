@@ -114,7 +114,37 @@ test('explicit Pro Max subscription requires matching authenticated account and 
   f.usage.rateLimitsByLimitId.codex.planType='pro';assert.throws(()=>observe(f),{code:'USAGE_RESTRICTED_OR_UNKNOWN'});
 });
 test('only exact supported native version and hash pairs pass',async()=>{
-  const {requireNativePin}=await import('../src/installation.js');const {SUPPORTED_NATIVE_BINARIES}=await import('../src/policy.js');
-  for(const [version,hash]of Object.entries(SUPPORTED_NATIVE_BINARIES))requireNativePin(version,hash);
-  for(const [version,hash]of [['0.159.2',SUPPORTED_NATIVE_BINARIES['0.157.0']!],['0.157.0',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['0.159.3',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['constructor','x'],['0.159.2','changed']])assert.throws(()=>requireNativePin(version!,hash!),{code:'UNSUPPORTED_BINARY'});
+  const {requireNativePin}=await import('../src/installation.js');
+  const {SUPPORTED_NATIVE_BINARIES,CODEX_VERSION,SUPPORTED_NATIVE_SHA256}=await import('../src/policy.js');
+  const expected={
+    '0.157.0':'ad0be20d04e2ba6146ecdb51d7f8b7b0fe15420a15dc9b0057518d858f1f3714',
+    '0.159.2':'50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5',
+    '0.160.0':'6b582e8813ce7e8ed4c52814ee5cf230dba647bf2292df747a4003f2657ef201',
+  };
+  assert.deepEqual(SUPPORTED_NATIVE_BINARIES,expected);
+  assert.equal(CODEX_VERSION,'0.157.0');assert.equal(SUPPORTED_NATIVE_SHA256,expected['0.157.0']);
+  for(const [version,hash] of Object.entries(expected)){
+    requireNativePin(version,hash);
+    // All six cross-version pairings must refuse, even though each hash is supported elsewhere.
+    for(const [otherVersion,otherHash] of Object.entries(expected))if(otherVersion!==version)
+      assert.throws(()=>requireNativePin(version,otherHash),{code:'UNSUPPORTED_BINARY'});
+    const wrapperHash='50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8';
+    for(const wrong of [wrapperHash,(hash[0]==='0'?'1':'0')+hash.slice(1),'changed'])
+      assert.throws(()=>requireNativePin(version,wrong),{code:'UNSUPPORTED_BINARY'});
+  }
+  for(const version of ['0.159.3','0.160.1','constructor'])
+    assert.throws(()=>requireNativePin(version,expected['0.160.0']),{code:'UNSUPPORTED_BINARY'});
+});
+test('valid candidate declaration cannot admit different on-disk native bytes',{
+  skip:process.platform!=='darwin'||process.arch!=='arm64'
+},async()=>{
+  const {mkdtemp,realpath,writeFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+  const {installationChecks}=await import('../src/installation.js');
+  const root=await mkdtemp(join(await realpath(tmpdir()),'bowerloom-pin-drift-'));
+  try{
+    const nativePath=join(root,'native-fixture');await writeFile(nativePath,'synthetic altered bytes; never executed',{mode:0o600});
+    const install:import('../src/types.js').Installation={nativePath,nativeSha256:'6b582e8813ce7e8ed4c52814ee5cf230dba647bf2292df747a4003f2657ef201',version:'0.160.0',workRoot:root};
+    await assert.rejects(installationChecks(install),{code:'BINARY_CHANGED'});
+  }finally{await rm(root,{recursive:true,force:true});}
 });

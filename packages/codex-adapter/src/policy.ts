@@ -8,6 +8,7 @@ export const SUPPORTED_NATIVE_SHA256 = 'ad0be20d04e2ba6146ecdb51d7f8b7b0fe15420a
 export const SUPPORTED_NATIVE_BINARIES:Readonly<Record<string,string>>=Object.freeze({
   '0.157.0':SUPPORTED_NATIVE_SHA256,
   '0.159.2':'50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5',
+  '0.160.0':'6b582e8813ce7e8ed4c52814ee5cf230dba647bf2292df747a4003f2657ef201',
 });
 export const LIMITS = Object.freeze({ seconds: 60, stdoutBytes: 65536, stderrBytes: 32768, events: 64,
   inputBytes: 32768, observerBytes: 2 * 1024 * 1024, observationAgeMs: 30000, reserveBytes: 12 * 2 ** 30 });
