@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, realpath, statfs, mkdtemp, mkdir, readdir, unlink, rmdir, writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { check, sha } from './safe.js';
-import { CONTROLS, LIMITS, SUPPORTED_NATIVE_BINARIES } from './policy.js';
+import { CONTROLS, LIMITS, MODEL, EFFORT, SUPPORTED_NATIVE_BINARIES } from './policy.js';
 import type { Installation } from './types.js';
 export function childEnvironment(): Record<string,string> {
   const env: Record<string,string>={};
@@ -47,6 +47,6 @@ export function execArgs(cwd:string,schema:string):string[] {
   const profile='trellis_proposal_only';
   return [...CONTROLS,'-c','approval_policy="never"','-c',`default_permissions="${profile}"`,
     '-c',`permissions.${profile}={filesystem={":root"="deny",":minimal"="read"},network={enabled=false}}`,
-    '-c','model_reasoning_effort="low"','exec','--strict-config','--ignore-user-config','--ignore-rules','--ephemeral',
-    '--skip-git-repo-check','--json','--output-schema',schema,'-C',cwd,'-m','gpt-5.5','-'];
+    '-c',`model_reasoning_effort="${EFFORT}"`,'exec','--strict-config','--ignore-user-config','--ignore-rules','--ephemeral',
+    '--skip-git-repo-check','--json','--output-schema',schema,'-C',cwd,'-m',MODEL,'-'];
 }

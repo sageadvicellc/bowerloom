@@ -132,3 +132,8 @@ test('supervisor sends final post-fork parent sample and binds that exact transf
   await owned.terminate();
  }finally{t.mock.restoreAll();syncBuiltinESMExports();}
 });
+
+test('historical and alternative Sol routes cannot reuse a controlled startup authorization',()=>{
+ for(const modelRoute of ['codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'])
+  assert.throws(()=>startupCopy({...authorization(),modelRoute}),/STARTUP_CONTRACT/);
+});

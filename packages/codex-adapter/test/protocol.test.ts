@@ -21,13 +21,16 @@ test('unsafe proposal path, extra content, nonfinite usage, unfinished items and
 test('public controls preserve homes and remove injected environment',()=>{
   const before={home:process.env.HOME,codexHome:process.env.CODEX_HOME};const env=childEnvironment();
   assert.equal(env.HOME,before.home);assert.equal(env.CODEX_HOME,before.codexHome);assert.equal(env.CODEX_EXEC_SERVER_URL,'none');assert.equal(env.OPENAI_API_KEY,undefined);assert.equal(env.NODE_OPTIONS,undefined);
-  const args=execArgs('/synthetic-owned','/synthetic-schema');for(const a of ['--ignore-user-config','--ignore-rules','--strict-config','--ephemeral','model_reasoning_effort="low"','gpt-5.5'])assert.ok(args.includes(a));
+  const args=execArgs('/synthetic-owned','/synthetic-schema');for(const a of ['--ignore-user-config','--ignore-rules','--strict-config','--ephemeral','model_reasoning_effort="low"','gpt-6-sol'])assert.ok(args.includes(a));
+  assert.equal(args.filter(a=>a==='-m').length,1);assert.equal(args[args.indexOf('-m')+1],'gpt-6-sol');
+  assert.deepEqual(args.filter(a=>a.startsWith('model_reasoning_effort=')),['model_reasoning_effort="low"']);
+  assert.ok(!args.includes('gpt-5.5')&&!args.includes('gpt-5.6-sol')&&!args.includes('gpt-6.1-sol'));
 });
 test('invalid routes, cancelled signals, aliases and unpinned installation reject without any launch',async()=>{
   const installation={nativePath:'/synthetic-nonexistent',nativeSha256:'invalid',version:'0.157.0' as const,workRoot:'/synthetic-nonexistent'};
   const binding={canonicalAccountId:'canonical',aliases:['synthetic'],providerAccountSha256:accountBindingDigest('synthetic'),requiredWindows:['primary' as const],optionalWindows:['secondary' as const]};
   const a=new CodexAdapter({installation,binding,accountAlias:'synthetic'});const task={launcherId:'launcher',taskInput:'synthetic',modelRoute:MODEL_ROUTE};
-  await assert.rejects(a.start({...task,modelRoute:'paid'},new AbortController().signal));const cancelled=new AbortController();cancelled.abort();await assert.rejects(a.start(task,cancelled.signal));
+  for(const modelRoute of ['paid','codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'])await assert.rejects(a.start({...task,modelRoute},new AbortController().signal),/UNSUPPORTED_ROUTE/);const cancelled=new AbortController();cancelled.abort();await assert.rejects(a.start(task,cancelled.signal));
   await assert.rejects(a.start(task,new AbortController().signal),/UNSUPPORTED_BINARY/);
   await assert.rejects(new CodexObservationReader(installation,binding).read('worker-controlled-other-alias'),/UNKNOWN_ACCOUNT_ALIAS/);
 });

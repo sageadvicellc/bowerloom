@@ -177,3 +177,10 @@ test('private constructor captures gate methods; public constructors do not acce
  const {options}=await setup();const beta=new CodexBetaAdapter({installation,binding,accountAlias:'synthetic',boundary:{...options,lookupQualification:async()=>null},gate} as any);
  await assert.rejects(beta.start({launcherId:'synthetic',taskInput:'task',modelRoute:MODEL_ROUTE},signal()),{message:'BOUNDARY_SCHEMA'});assert.equal(checks,1);
 });
+
+test('new explicit worker policy revises the launch plan without changing native defaults',()=>{
+ const plan=planCodexProposalLaunch({version:'0.157.0',nativeSha256:SUPPORTED_NATIVE_SHA256});
+ assert.equal(plan.policyVersion,'codex-subscription-proposal/v0.7-beta.1');assert.equal(plan.modelRoute,'codex:gpt-6-sol:low');
+ assert.equal(plan.argvTemplate[plan.argvTemplate.indexOf('-m')+1],'gpt-6-sol');
+ assert.notEqual(plan.revision,'44a3f4311e71195a1f420493030a5f1cc23b584f4948ebe37c75498b30c41ab2');
+});

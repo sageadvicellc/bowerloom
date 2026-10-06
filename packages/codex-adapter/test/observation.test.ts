@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,verifyModel,verifyProvenance } from '../src/observation.js';
-import { CONTROLS,MODEL_ROUTE } from '../src/policy.js';
+import { CONTROLS,MODEL_ROUTE,MODEL,EFFORT } from '../src/policy.js';
 import { strictJson } from '../src/safe.js';
 import type { AccountBinding } from '../src/types.js';
 const now=1900000000000;
@@ -44,9 +44,19 @@ test('configuration provenance refuses non-user injection and unexpected feature
   const d=config();d.config.features.plugins=true;assert.throws(()=>verifyProvenance(d,{requirements:null}));
   for(const r of [{modelProvider:'other'},{additionalDeveloperInstructions:'SECRET'},{featureRequirements:{plugins:true}},{allowedLoginMethods:['apiKey']}])assert.throws(()=>verifyProvenance(config(),{requirements:r}));
 });
-test('model route has no fallback and low effort is explicit',()=>{
-  const m={model:'gpt-5.5',hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null};verifyModel({nextCursor:null,data:[m]});
-  for(const value of [{nextCursor:'more',data:[m]},{data:[{...m,model:'other'}]},{data:[{...m,supportedReasoningEfforts:[]}]},{data:[m,m]},{data:[{...m,availabilityNux:{}} ,{...m}]}])assert.throws(()=>verifyModel(value));
+test('selected Sol route is exact and does not follow catalog default or other eligible revisions',()=>{
+  assert.equal(MODEL,'gpt-6-sol');assert.equal(MODEL_ROUTE,'codex:gpt-6-sol:low');assert.equal(EFFORT,'low');
+  const chosen={model:MODEL,hidden:false,supportedReasoningEfforts:[{reasoningEffort:EFFORT}],availabilityNux:null};
+  const other={...chosen,model:'gpt-5.6-sol'},blockedDefault={...chosen,model:'gpt-6.1-sol',isDefault:true,availabilityNux:{}};
+  verifyModel({nextCursor:null,data:[blockedDefault,other,chosen]});
+  for(const model of ['gpt-5.5','gpt-5.6-sol','gpt-6.1-sol','gpt-6-astra'])
+    assert.throws(()=>verifyModel({nextCursor:null,data:[{...chosen,model}]}),{code:'MODEL_UNAVAILABLE'});
+  for(const value of [
+    {nextCursor:'more',data:[chosen]}, {nextCursor:null,data:[]}, {nextCursor:null,data:[chosen,chosen]},
+    {nextCursor:null,data:[{...chosen,hidden:true}]}, {nextCursor:null,data:[{...chosen,supportedReasoningEfforts:[{reasoningEffort:'medium'}]}]},
+    ...['notice',{},false,undefined].map(availabilityNux=>({nextCursor:null,data:[{...chosen,availabilityNux}]})), {nextCursor:null,data:Array(101).fill(other)},
+    {nextCursor:null,data:[null]}, {nextCursor:null,data:'invalid'},
+  ])assert.throws(()=>verifyModel(value));
 });
 test('strict parser rejects duplicate, nonfinite, trailing and deeply nested data',()=>{
   assert.equal((strictJson('{"a":[1,true,null,"ok"]}') as any).a[0],1);
@@ -58,7 +68,7 @@ test('no-thread authenticated workflow only uses the seven reviewed RPC method t
   const rpc=async(method:string,params:unknown)=>{methods.push(method);
     switch(method){case 'initialize':return {};case 'config/read':return config();case 'configRequirements/read':return {requirements:null};case 'environment/status':return {status:'unknown'};
       case 'account/read':assert.deepEqual(params,{refreshToken:false});return f.account;
-      case 'model/list':return {data:[{model:'gpt-5.5',hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null}],nextCursor:null};
+      case 'model/list':return {data:[{model:MODEL,hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null}],nextCursor:null};
       case 'account/rateLimits/read':return f.usage;default:assert.fail('Unexpected RPC');}
   };
   const out=await readAuthenticatedObservation(rpc,()=>notifications++,binding,'/synthetic-owned',now-10,()=>now);

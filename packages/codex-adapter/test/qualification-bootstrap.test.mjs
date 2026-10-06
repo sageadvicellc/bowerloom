@@ -21,9 +21,9 @@ const fixture='data:text/javascript,'+encodeURIComponent(`export const proposalP
 const hook=registerHooks({resolve(specifier,context,next){if(specifier==='./adapter-core.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))return{url:fixture,shortCircuit:true};return next(specifier,context);}});
 const {QualificationBootstrap}=await import('../../../dist/packages/codex-adapter/src/qualification-bootstrap.js');hook.deregister();
 const paths=['qualification-bootstrap','index','adapter-core','boundary','startup-deadline','installation','policy','protocol','reader','observation','safe','supervisor','guardian'].map(n=>`dist/packages/codex-adapter/src/${n}.js`).concat(['dist/packages/broker/src/index.js','dist/packages/contracts/src/index.js','dist/packages/mcp-connections/src/darwin-boot-session.js','dist/packages/mcp-connections/src/model.js']);
-function memoryPool(){
+function memoryPool(seed){
  const policy={thresholdPercent:75,maxWorkers:2,maxObservationAgeMs:5000,headroomPercent:5,admittedRoutes:[MODEL_ROUTE],completedResetPolicy:'hold'};
- let stored=createAccount('account',['alias'],policy),tail=Promise.resolve();
+ let stored=seed??createAccount('account',['alias'],policy),tail=Promise.resolve();
  const pool={queries:[],hook:null,snapshot:()=>structuredClone(stored),async connect(){const before=tail,lock=deferred();tail=lock.promise;await before;let staged,released=false;const c=new EventEmitter();c.release=()=>{assert.equal(released,false);released=true;lock.resolve();};c.query=async(sql,v)=>{
   pool.queries.push(sql);const execute=()=>{if(sql.startsWith('BEGIN'))staged=structuredClone(stored);else if(sql.startsWith('SET LOCAL')){}else if(sql==='SELECT current_database() AS name')return{rows:[{name:'synthetic'}]};else if(sql.includes('.metadata FOR SHARE'))return{rows:[{singleton:true,version:1}]};else if(sql.includes('WHERE account_id=(SELECT'))return{rows:[{account_id:staged.accountId,version:1,state:structuredClone(staged),checksum:digest(canonicalJson(staged))}]};else if(sql.startsWith('UPDATE'))staged=JSON.parse(v[1]);else if(sql==='COMMIT')stored=structuredClone(staged);else if(sql==='ROLLBACK')staged=undefined;else throw Error('fixture SQL');return{rows:[]};};if(pool.hook){const r=await pool.hook(sql,v,execute);if(r!==undefined)return r;}return execute();};return c;}};return pool;
 }
@@ -64,7 +64,7 @@ test('concurrent and different grant IDs for same operation cannot get another j
 test('lost reserve/claim/RUNNING/complete acknowledgments stay held, clean received handles and never redispatch',async()=>{
  for(const stage of ['RESERVED','LAUNCHING','RUNNING','COMPLETED']){
   const e=await setup();let fired=false;e.pool.hook=async(sql,v,execute)=>{if(sql==='COMMIT'){const out=execute();const row=Object.values(e.pool.snapshot().reservations)[0];if(!fired&&row?.status===stage){fired=true;throw Error('PRIVATE_ACK');}return out;}};
-  const runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(fired,true);assert.equal(r.status,'held');assert.ok(!JSON.stringify(r).includes('PRIVATE'));assert.equal(e.stats().starts,['RESERVED','LAUNCHING'].includes(stage)?0:1);
+  const runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(fired,true,JSON.stringify({stage,result:r,stats:e.stats(),state:e.pool.snapshot()}));assert.equal(r.status,'held');assert.ok(!JSON.stringify(r).includes('PRIVATE'));assert.equal(e.stats().starts,['RESERVED','LAUNCHING'].includes(stage)?0:1);
   if(e.stats().starts)assert.equal(r.cleanup,'verified');const replay=await e.runner().run(e.input,e.abort.signal);assert.equal(replay.status,'refused');assert.equal(e.stats().starts,['RESERVED','LAUNCHING'].includes(stage)?0:1);
  }
 });
@@ -155,4 +155,43 @@ test('unverified no-handle core remains an explicitly retained cleanup owner aft
 });
 test('verified core receipt releases its explicit owner only after complete quiescence',async()=>{
  const e=await setup(),runner=e.runner(),r=await runner.run(e.input,e.abort.signal);assert.equal(r.status,'proposal');assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'verified'});assert.equal(runner.retainedCleanupOwners(r.jobId),0);
+});
+
+test('self-consistent historical policy, route and launch bindings refuse without new admission',async()=>{
+ const historicalProposal='44a3f4311e71195a1f420493030a5f1cc23b584f4948ebe37c75498b30c41ab2';
+ const patches=[{policyVersion:'codex-subscription-proposal/v0.7-alpha.3'},
+ ...['codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'].map(modelRoute=>({modelRoute}))];
+ for(const patch of [...patches,{proposalPlanRevision:historicalProposal}]){
+  const e=await setup();Object.assign(e.grant,patch);
+  if(patch.proposalPlanRevision)e.grant.launchPlanRevision=startupLaunchRevision(historicalProposal,e.options.runtime);
+  const {revision,...body}=e.grant;e.grant.revision=hash(canonicalJson(body));e.input.grantRevision=e.grant.revision;
+  const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(e.stats().reads,0);assert.equal(e.stats().starts,0);assert.deepEqual(e.pool.snapshot().reservations,{});
+ }
+});
+test('explicit synthetic policy replacement preserves eight held points and fails closed without historical applicability',async()=>{
+ const oldRoute='codex:gpt-5.5:low',now=Date.now();let clock=now;
+ const policy={thresholdPercent:95,maxWorkers:2,maxObservationAgeMs:30000,headroomPercent:8,admittedRoutes:[oldRoute],completedResetPolicy:'hold'};
+ const pool=memoryPool(createAccount('account',['alias'],policy));
+ const admission=new PostgresAdmission(pool,{schema:'trellis_bootstrap',launcherId:'launcher',now:()=>clock});
+ const observationFor=route=>({observationId:'route-proof-'+clock,accountId:'account',observedAtMs:clock,authentication:'subscription',ordinaryUsageAllowed:true,windows:{primary:{usedPercent:10,durationMs:600000,resetAtMs:now+300000,accountedThroughMs:null}},routes:{[route]:{requiredWindows:['primary'],optionalWindows:[]}}});
+ const request=(jobId,modelRoute)=>({accountAlias:'alias',jobId,candidateRevision:'sha256:'+'a'.repeat(64),modelRoute,role:'worker',attempt:'initial',allowancePercent:{primary:2},paidFallback:false});
+ for(let i=0;i<4;i++){
+  const jobId='historical-'+i,reserved=await admission.reserve(request(jobId,oldRoute),observationFor(oldRoute));assert.equal(reserved.kind,'accepted');
+  const launched=await admission.launchOnce('alias',jobId,reserved.launchPermit,observationFor(oldRoute),async()=>({processRef:'synthetic-'+i}));assert.equal(launched.kind,'started');
+  await admission.complete('alias',jobId,{kind:'completed',proofRef:'proof-'+i,observedAtMs:clock,processRef:'synthetic-'+i,fencedLauncherId:null});
+ }
+ const before=pool.snapshot();assert.equal(Object.values(before.reservations).reduce((n,r)=>n+r.retained.primary.percent,0),8);
+ const replacement={...policy,admittedRoutes:[MODEL_ROUTE]};assert.deepEqual(await admission.replacePolicy('alias',policy,replacement),replacement);
+ const after=pool.snapshot();assert.deepEqual({...after,policy:before.policy},before);
+ assert.equal(Object.values(after.reservations).reduce((n,r)=>n+r.retained.primary.percent,0),8);
+ for(const r of Object.values(after.reservations)){assert.equal(r.status,'COMPLETED');assert.equal(r.request.modelRoute,oldRoute);}
+ // A stale expected policy may not overwrite a distinct concurrent/current policy.
+ await assert.rejects(admission.replacePolicy('alias',policy,{...replacement,headroomPercent:9}),{code:'POLICY_CONFLICT'});
+ assert.deepEqual(pool.snapshot(),after);
+ const oldDenied=await admission.reserve(request('old-new-request',oldRoute),observationFor(oldRoute));assert.equal(oldDenied.kind,'denied');assert.equal(pool.snapshot().reservations['old-new-request'],undefined);
+ clock++;const current=await admission.reserve(request('new-route-request',MODEL_ROUTE),observationFor(MODEL_ROUTE));
+ assert.deepEqual(current,{kind:'denied',reason:'UNRESOLVED_RESERVATION_WINDOWS'});assert.equal(pool.snapshot().reservations['new-route-request'],undefined);
+ // The current reader only reports the new route. No test invents a production
+ // bridge, drops the historical applicability check, or releases the eight points.
+ for(const [id,r] of Object.entries(before.reservations))assert.deepEqual(pool.snapshot().reservations[id],r);
 });

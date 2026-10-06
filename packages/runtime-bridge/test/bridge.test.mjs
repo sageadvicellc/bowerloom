@@ -97,6 +97,6 @@ test('policy is copied and unsupported routes or invalid budgets fail at constru
   const s=await setup('policy-copy');s.p.accountAlias='mutated';s.p.allowancePercent.primary=50;s.p.approverSubjects.push('agent:worker');
   await s.driver.advance(s.id);assert.equal(s.runtime.starts[0].reservation.accountAlias,'synthetic');
   assert.equal(s.runtime.starts[0].reservation.allowancePercent.primary,2);assert.deepEqual(s.runtime.starts[0].task.approverSubjects,['founder:reviewer']);
-  for(const patch of [{modelRoute:'paid-api'},{allowancePercent:{primary:0}},{leaseExpiresAtMs:1},{approverSubjects:[]}])
+  for(const patch of [{modelRoute:'paid-api'},...['codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'].map(modelRoute=>({modelRoute})),{allowancePercent:{primary:0}},{leaseExpiresAtMs:1},{approverSubjects:[]}])
     assert.throws(()=>new RuntimeTaskBridge(s.value,{...policy(),...patch},s.store,s.runtime),{code:'INVALID_POLICY'});
 });
