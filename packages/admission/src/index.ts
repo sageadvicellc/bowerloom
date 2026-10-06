@@ -1,3 +1,6 @@
+import { captureContinuityAuthority, continuityAliasesDigest, continuityApprovalCopy, continuityCapability, continuityData, continuityDeadline, continuityEnvelopes, continuityFailure, continuityInspection, continuityPlanCopy, freezeContinuity, validateContinuityMutation } from './window-continuity.js';
+import type { ContinuityAuthority, WindowContinuityPlan } from './types.js';
+export { planWindowContinuity } from './window-continuity.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
@@ -24,9 +27,11 @@ export class PostgresAdmission {
   readonly #launcherId: string;
   readonly #controlIdentity: Readonly<AdmissionControlIdentity> | undefined;
   readonly #monotonic: () => bigint;
-  constructor(pool: Pick<Pool, 'connect'>, options: { schema: string; launcherId: string; now?: () => number; monotonicNow?: () => bigint; controlIdentity?: AdmissionControlIdentity }) {
+  readonly #continuityAuthority: Readonly<ContinuityAuthority> | undefined;
+  constructor(pool: Pick<Pool, 'connect'>, options: { schema: string; launcherId: string; now?: () => number; monotonicNow?: () => bigint; controlIdentity?: AdmissionControlIdentity; continuityAuthority?: ContinuityAuthority }) {
     if (typeof options.schema !== 'string' || !/^trellis_[a-z][a-z0-9_]{0,46}$/.test(options.schema)) throw new AdmissionError('INVALID_SCHEMA', 'Use a bounded explicit trellis_ schema.');
     this.#launcherId = identifier(options.launcherId);
+    if(options.continuityAuthority)this.#continuityAuthority=captureContinuityAuthority(options.continuityAuthority);
     this.#monotonic = options.monotonicNow ?? (() => process.hrtime.bigint());
     if (options.controlIdentity) {
       const d = Object.getOwnPropertyDescriptors(options.controlIdentity);
@@ -140,18 +145,70 @@ export class PostgresAdmission {
         WHERE account_id=(SELECT account_id FROM ${this.#schema}.aliases WHERE alias=$1) FOR UPDATE`, [alias])).rows;
       if (rows.length !== 1) throw new AdmissionError('UNKNOWN_ACCOUNT', 'The controller has not registered this account alias.');
       const row = rows[0];
-      if (row.version !== ADMISSION_VERSION) throw new AdmissionError('UNSUPPORTED_VERSION', 'The account state version is unsupported.');
+      if (![1,2].includes(row.version)) throw new AdmissionError('UNSUPPORTED_VERSION', 'The account state version is unsupported.');
       const state = stateCopy(row.state);
-      if (state.accountId !== row.account_id || !state.aliases.includes(alias) || digest(canonicalJson(state)) !== row.checksum) throw new AdmissionError('CORRUPT_ACCOUNT', 'The account binding or checksum is invalid.');
+      if (state.version !== row.version || state.accountId !== row.account_id || !state.aliases.includes(alias) || digest(canonicalJson(state)) !== row.checksum) throw new AdmissionError('CORRUPT_ACCOUNT', 'The account binding or checksum is invalid.');
       if (attempt && (state.accountId !== attempt.control.binding.accountId || alias !== attempt.control.binding.accountAlias)) throw new AdmissionError('CONTROL_IDENTITY', 'The controlled account identity changed.');
+      if(state.version===2 && state.continuity.phase==='HELD')throw continuityFailure('CONTINUITY_HELD');
+      const before=structuredClone(state);
       attempt?.check();
       const result = structuredClone(operation(state));
+      validateContinuityMutation(before,state);
       const json = canonicalJson(stateCopy(state));
       if (Buffer.byteLength(json) > 8 * 1024 * 1024) throw new AdmissionError('ACCOUNT_LIMIT', 'The bounded account history is full.');
-      await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1`, [state.accountId, json, digest(json)]);
+      if(state.version===2){
+        const result=await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1 AND version=2 AND checksum=$4`, [state.accountId,json,digest(json),row.checksum]);
+        if(result.rowCount!==1)throw continuityFailure('CONTINUITY_CONFLICT');
+      }else{await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1`, [state.accountId,json,digest(json)]);} 
       return result;
     }, attempt);
   }
+
+  /** Inspect without the ordinary account rewrite path. No resume capability is returned. */
+  inspectWindowContinuity(accountAlias:string){
+    const alias=identifier(accountAlias);
+    return this.#transaction(async client=>continuityInspection((await this.#continuityRow(client,alias)).state));
+  }
+  async #continuityRow(client:Pick<PoolClient,'query'>,alias:string){
+    const database=(await query(client,'SELECT current_database() AS name')).rows;
+    if(!this.#controlIdentity || database.length!==1 || database[0].name!==this.#controlIdentity.databaseName)throw continuityFailure('CONTINUITY_IDENTITY');
+    const metadata=(await query(client,`SELECT singleton, version FROM ${this.#schema}.metadata FOR SHARE`)).rows;
+    if(metadata.length!==1 || metadata[0].singleton!==true || metadata[0].version!==1)throw continuityFailure('UNSUPPORTED_VERSION');
+    await query(client,`LOCK TABLE ${this.#schema}.aliases IN SHARE MODE`);
+    const rows=(await query(client,`SELECT account_id, version, state, checksum FROM ${this.#schema}.accounts WHERE account_id=(SELECT account_id FROM ${this.#schema}.aliases WHERE alias=$1) FOR UPDATE`,[alias])).rows;
+    if(rows.length!==1)throw continuityFailure('UNKNOWN_ACCOUNT');const row=rows[0],state=stateCopy(row.state);
+    if(row.version!==state.version || row.account_id!==state.accountId || !state.aliases.includes(alias) || row.checksum!==digest(canonicalJson(state)))throw continuityFailure('CORRUPT_ACCOUNT');
+    const aliases=(await query(client,`SELECT alias FROM ${this.#schema}.aliases WHERE account_id=$1 ORDER BY alias`,[state.accountId])).rows.map((v:any)=>v.alias);
+    if(canonicalJson(aliases)!==canonicalJson([...state.aliases].sort()))throw continuityFailure('CONTINUITY_IDENTITY');
+    return {state,checksum:row.checksum,aliasesDigest:continuityAliasesDigest(state.accountId,aliases)};
+  }
+  /** Exact approved one-use accounting transition. Never launches work or resumes a HELD attempt. */
+  async applyWindowContinuity(input:WindowContinuityPlan,approvalIdInput:string,signal:AbortSignal){
+    const plan=continuityPlanCopy(input),approvalId=identifier(approvalIdInput),authority=this.#continuityAuthority;
+    const scope=plan.scope;
+    if(!authority || !this.#controlIdentity || scope.installationId!==this.#controlIdentity.installationId || scope.databaseName!==this.#controlIdentity.databaseName
+      || scope.admissionSchema!==this.#schema.slice(1,-1) || scope.launcherId!==this.#launcherId)throw continuityFailure('CONTINUITY_IDENTITY');
+    const approval=freezeContinuity(continuityApprovalCopy(await continuityCapability(signal,()=>authority.resolveApproval(approvalId,plan.revision,signal)),plan));
+    if(approval.approvalId!==approvalId)throw continuityFailure('CONTINUITY_AUTHORITY');
+    const observed=continuityData(await continuityCapability(signal,()=>authority.readObservation(plan.evidence.receiptId,signal)));
+    if(canonicalJson(observed)!==canonicalJson({observation:plan.observation,evidence:plan.evidence}))throw continuityFailure('CONTINUITY_OBSERVATION');
+    const {held,applied}=continuityEnvelopes(plan,approval);
+    const attempt=this.#controlled({binding:{...scope,requestDigest:plan.revision,authorizationRevision:approval.approvalRevision.slice(7),expiresAtMs:continuityDeadline(plan,approval,this.#now())},signal,assert:()=>authority.assertCurrent(approval)});
+    const write=async(expected:AccountState,next:AccountState)=>this.#transaction(async client=>{
+      const row=await this.#continuityRow(client,scope.accountAlias);attempt.check();
+      if(row.state.accountId!==scope.accountId || row.aliasesDigest!==plan.aliasesDigest || row.checksum!==digest(canonicalJson(expected)) || canonicalJson(row.state)!==canonicalJson(expected))throw continuityFailure('CONTINUITY_CONFLICT');
+      continuityDeadline(plan,approval,this.#now());attempt.check();
+      const json=canonicalJson(stateCopy(next));if(Buffer.byteLength(json)>8*1024*1024)throw continuityFailure('ACCOUNT_LIMIT');
+      const result=await query(client,`UPDATE ${this.#schema}.accounts SET version=2, state=$2::jsonb, checksum=$3 WHERE account_id=$1 AND version=$4 AND checksum=$5`,[scope.accountId,json,digest(json),expected.version,row.checksum]);
+      if(result.rowCount!==1)throw continuityFailure('CONTINUITY_CONFLICT');
+    },attempt);
+    try{
+      await write(plan.originState,held); // Only acknowledged durable claim permits this invocation to continue.
+      attempt.check();await write(held,applied);attempt.check();
+      return continuityInspection(applied);
+    }finally{attempt.close();}
+  }
+
   #observe(state: AccountState, value: unknown, now: number): { accepted: boolean; reason: string } {
     const observation = acceptObservation(state, value, now); Object.assign(state, observation.state);
     return { accepted: observation.accepted, reason: observation.reason };
@@ -171,6 +228,7 @@ export class PostgresAdmission {
       if (canonicalJson(state.policy) !== canonicalJson(previous)) {
         throw new AdmissionError('POLICY_CONFLICT', 'The account policy changed. Read its current policy before another replacement.');
       }
+      if(state.version===2)throw continuityFailure('CONTINUITY_POLICY');
       state.policy = next;
       return structuredClone(state.policy);
     });

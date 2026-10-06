@@ -1,6 +1,8 @@
 import { Ajv } from 'ajv';
+import { isProxy } from 'node:util/types';
+import { continuityStateCopy } from './window-continuity.js';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
-import type { AccountState, AccountObservation, AdmissionPolicy, ReservationRequest, ReconciliationProof } from './types.js';
+import type { AccountState, LegacyAccountState, AccountObservation, AdmissionPolicy, ReservationRequest, ReconciliationProof } from './types.js';
 
 export class AdmissionError extends Error {
   constructor(public readonly code: string, message: string) { super(message); this.name = 'AdmissionError'; }
@@ -37,10 +39,11 @@ const policyCheck = ajv.compile<AdmissionPolicy>(policySchema);
 const observationCheck = ajv.compile<AccountObservation>(observationSchema);
 const requestCheck = ajv.compile<ReservationRequest>(requestSchema);
 const proofCheck = ajv.compile<ReconciliationProof>(proofSchema);
-const stateCheck = ajv.compile<AccountState>(stateSchema);
+const stateCheck = ajv.compile<LegacyAccountState>(stateSchema);
 const idCheck = ajv.compile<string>(idSchema);
 export const validTime = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 function plain(value: unknown, depth = 0): void {
+  if (isProxy(value)) throw new Error('proxy');
   if (depth > 12) throw new Error('depth');
   if (value === null || typeof value === 'boolean') return;
   if (typeof value === 'string') { if (value.includes('\0') || Buffer.byteLength(value) > 512) throw new Error('string'); return; }
@@ -68,7 +71,7 @@ export function identifier(value: unknown): string {
   if (!idCheck(value)) throw new AdmissionError('INVALID_ID', 'A bounded identifier is required.');
   return value;
 }
-export function stateCopy(value: unknown): AccountState {
+export function legacyStateCopy(value: unknown): LegacyAccountState {
   const state = copy(value, stateCheck, 'CORRUPT_ACCOUNT');
   const corrupt = (): never => { throw new AdmissionError('CORRUPT_ACCOUNT', 'The persisted admission state is inconsistent.'); };
   if (state.observation && state.observation.accountId !== state.accountId) corrupt();
@@ -103,4 +106,10 @@ export function stateCopy(value: unknown): AccountState {
     }
   }
   return state;
+}
+
+export function stateCopy(value: unknown): AccountState {
+  if (isProxy(value)) throw new AdmissionError('CORRUPT_ACCOUNT', 'The persisted admission state is invalid.');
+  const descriptor = value && typeof value === 'object' ? Object.getOwnPropertyDescriptor(value, 'version') : undefined;
+  return descriptor?.value === 2 ? continuityStateCopy(value) : legacyStateCopy(value);
 }
