@@ -9,6 +9,7 @@ import { compileCrew } from '../../../packages/crew/src/index.js';
 import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
 const HELP = `Usage:
+  bowerloom routine plan --root <absolute-.bowerloom-directory> --experiment-id <logical-id> --experiment-digest <sha256:hex>
   bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
   bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
   bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
@@ -47,6 +48,8 @@ const HELP = `Usage:
   bowerloom status|review|cancel --installation <private.json>
   bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
+Routine plan reads a standalone portable authoring tree and prints local review JSON.
+It does not install/import files, validate an installation receipt, or grant execution authority.
 MCP plan reads three selected test files and prints a private review plan.
 The recorded catalog is untrusted input. This command does not discover tools, connect a server, resolve secrets, or grant authority.
 Keep its output private. It includes installed paths and connection details.
@@ -99,6 +102,11 @@ async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HELP}`); return; }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
+  if (args[0] === 'routine') {
+    const { runRoutineCommand } = await import('./routine.js');
+    process.stdout.write(`${canonicalJson(await runRoutineCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'mcp') {
     const { runMcpPlanCommand } = await import('./mcp-plan.js');
     process.stdout.write(`${canonicalJson(await runMcpPlanCommand(args))}\n`);

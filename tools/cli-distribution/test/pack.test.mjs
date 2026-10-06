@@ -1,4 +1,6 @@
 import test from 'node:test';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,existsSync,chmodSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -130,4 +132,46 @@ test('packaging refuses a same-version renamed root package',t=>{
  pkg.name='other';writeFileSync(path,JSON.stringify(pkg));
  assert.throws(()=>collect({repoDir:root}),/Release record/);
  assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+
+test('routine packaging collection includes only reachable loader closure and exact source pins',()=>{
+ const result=collect({repoDir:repo});
+ for(const path of ['dist/apps/cli/src/routine.js','dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']){
+  assert.ok(result.files.has(path),path);
+  assert.equal(result.record.files.find(item=>item.path===path).sha256,sha256(readFileSync(join(repo,path))));
+  const source=path.replace(/^dist\//,'').replace(/\.js$/,'.ts');
+  assert.equal(result.record.sourceFiles.find(item=>item.path===source).sha256,sha256(readFileSync(join(repo,source))));
+ }
+ assert.equal(result.manifest.dependencies.yaml,'2.9.1');
+ const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/yaml'].version,'2.9.1');
+ assert.deepEqual(Object.keys(result.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(result.manifest.scripts,undefined);assert.equal(result.manifest.exports,undefined);
+ for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|work|\.bowerloom)(?:\/|$)|labs-to-blog\.yaml$/.test(path),path);
+ assert.deepEqual([...result.files.keys()].filter(path=>path.startsWith('dist/packages/routines/')).sort(),['dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']);
+});
+
+test('routine packaging optional manifests are exact exceptions and present manifests still validate',()=>{
+ const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
+ let selected='',mode='missing';const valid={name:'synthetic-internal',license:'MIT',dependencies:{yaml:'2.9.1'}};
+ fs.lstatSync=function(path,...args){if(path===selected){if(mode==='missing'){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}if(mode==='symlink'){const s=original.lstatSync(join(repo,'package.json'),...args);s.isSymbolicLink=()=>true;return s;}return original.lstatSync(join(repo,'package.json'),...args);}return original.lstatSync(path,...args);};
+ fs.readFileSync=function(path,...args){if(path===selected){const manifest=mode==='bad-license'?{...valid,license:'UNREVIEWED'}:mode==='unpinned'?{...valid,dependencies:{yaml:'^2.9.1'}}:mode==='conflict'?{...valid,dependencies:{yaml:'2.8.3'}}:valid;const bytes=Buffer.from(JSON.stringify(manifest));return args[0]==='utf8'?bytes.toString('utf8'):bytes;}return original.readFileSync(path,...args);};
+ syncBuiltinESMExports();
+ try{
+  for(const relative of ['packages/routines/package.json','packages/connections/package.json']){
+   selected=join(repo,relative);mode='missing';assert.equal(collect({repoDir:repo}).record.sourceManifests.some(m=>m.path===relative),false);
+   mode='valid';const included=collect({repoDir:repo}).record.sourceManifests.find(m=>m.path===relative);assert.equal(included.sha256,sha256(Buffer.from(JSON.stringify(valid))));
+   mode='bad-license';assert.throws(()=>collect({repoDir:repo}),/Unreviewed first-party license/);
+   mode='unpinned';assert.throws(()=>collect({repoDir:repo}),/exactly pinned/);
+   mode='conflict';assert.throws(()=>collect({repoDir:repo}),/Conflicting dependency/);
+   mode='symlink';assert.throws(()=>collect({repoDir:repo}),/symlink/);
+  }
+  selected=join(repo,'packages/crew/package.json');mode='missing';assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');
+ }finally{Object.assign(fs,original);syncBuiltinESMExports();}
+});
+
+test('routine packaging missing compiled/source loader cannot become a partial accepted closure',()=>{
+ const original=fs.lstatSync;let selected='';
+ fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
+ try{for(const path of ['dist/apps/cli/src/routine.js','dist/packages/routines/src/files.js','dist/packages/routines/src/index.js','packages/routines/src/files.ts']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');}}
+ finally{fs.lstatSync=original;syncBuiltinESMExports();}
 });
