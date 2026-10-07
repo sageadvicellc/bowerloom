@@ -252,7 +252,7 @@ export async function acquireNpmSkill(planValue: unknown, options: { approvalRev
           response = incoming; responses.add(incoming);
           const guard = () => { check(); npmCheck(performance.now() < requestDeadline, 'NPM_TIMEOUT'); };
           try {
-            // A repeated guarded header refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
+            // A repeated guarded header, or more than 128 header pairs, refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
             guard(); const headers = guardedResponseHeaders(incoming.rawHeaders); npmCheck(headers !== null, 'NPM_RESPONSE');
             const length = headers.get('content-length'); npmCheck(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'NPM_RESPONSE');
             // A declared length over the limit is a bound refusal, the same code as an oversized body.

@@ -10,12 +10,20 @@ export const GUARDED_RESPONSE_HEADERS: readonly string[] = Object.freeze(['conte
 const GUARDED = new Set(GUARDED_RESPONSE_HEADERS);
 
 /**
+ * The most raw header pairs a response may carry.
+ * Node's parser keeps about 1000 pairs and drops the rest without an error, so a guarded repeat placed after them is never seen.
+ * A list this short is far below that cap, so a list that passes was not truncated. The registry sends about 10 pairs.
+ */
+export const MAX_RESPONSE_HEADER_PAIRS = 128;
+
+/**
  * Reads the guarded headers from Node's raw name/value list, keyed by lower-case name.
- * It returns null when a guarded name repeats or the list is malformed. The caller refuses with its own code.
+ * It returns null when a guarded name repeats, the list holds more than MAX_RESPONSE_HEADER_PAIRS pairs, or the list is malformed.
+ * The caller refuses with its own code.
  * Values are returned to the caller only. Nothing here logs or reports a header value.
  */
 export function guardedResponseHeaders(raw: unknown): Map<string, string> | null {
-  if (!Array.isArray(raw) || raw.length % 2 !== 0) return null;
+  if (!Array.isArray(raw) || raw.length % 2 !== 0 || raw.length > MAX_RESPONSE_HEADER_PAIRS * 2) return null;
   const headers = new Map<string, string>();
   for (let i = 0; i < raw.length; i += 2) {
     const name: unknown = raw[i], value: unknown = raw[i + 1];

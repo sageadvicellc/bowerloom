@@ -337,3 +337,12 @@ test('D11: a repeated guarded header still refuses with GIT_RESPONSE before any 
   t.mock.restoreAll();
  }
 });
+// Header flood (security review of 48257d5, finding 1): Node drops raw headers past about 2000 entries without an error.
+const padHeaders=count=>Array.from({length:count},(_,i)=>['x-pad-'+i,'a']).flat();
+test('header flood: a list Node truncated after 1000 padding headers refuses with GIT_RESPONSE, and 128 pairs pass',async t=>{
+ // Node kept the first Content-Length and the padding, and dropped the repeat that followed.
+ const f=fixture(t),n=network(t,f,()=>({headers:['Content-Length',String(f.metadata.length),...padHeaders(1000)]}));
+ await assert.rejects(run(f),code('GIT_RESPONSE'));assert.equal(n.calls.length,1);assert.ok(n.responses[0].destroyed);t.mock.restoreAll();
+ const g=fixture(t);let m;m=network(t,g,count=>({headers:['Content-Length',String(g.serve(m.calls[count-1].url).length),...padHeaders(127)]}));
+ assert.equal((await run(g)).format,'bowerloom/acquired-skill-cache/v1beta1');assert.ok(m.calls.length>2);
+});
