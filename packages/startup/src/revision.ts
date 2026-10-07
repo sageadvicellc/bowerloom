@@ -1,8 +1,8 @@
 import { constants, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { createServer } from 'node:net';
 import { canonicalJson } from '../../contracts/src/index.js';
-import { lockPort } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal } from '../../project-context/src/index.js';
+import type { LockSlot } from '../../project-context/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
 import { inspectStartup, StartupError, STARTUP_FORMAT, startupInternals as io } from './index.js';
@@ -47,12 +47,17 @@ function move(from: string, to: string): void {
 /** A kernel-owned local port, keyed on the target folder's device and inode (`lockSlot`), excludes cooperating writers and releases on process death.
  * A collision refuses work. No protocol, PID adoption, remote interface or daemon is provided. */
 async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
-  let port: number; try { port = lockPort(target); } catch { throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
-  const server = createServer(socket => socket.destroy());
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', () => reject(new StartupError('REVISION_LOCK_UNAVAILABLE')));
-    server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve);
+  let slot: LockSlot; try { slot = lockSlot(target); } catch { throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
+  const server = lockServer(slot);
+  const code = await new Promise<string | undefined>(resolve => {
+    server.once('error', error => resolve((error as NodeJS.ErrnoException).code ?? 'UNKNOWN'));
+    server.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve(undefined));
   });
+  // This project's own lock (its banner) stays REVISION_LOCK_UNAVAILABLE; anything else on the slot is a collision.
+  if (code !== undefined) {
+    if (code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
+    throw new StartupError('REVISION_LOCK_UNAVAILABLE');
+  }
   try { return await work(); }
   finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }

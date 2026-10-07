@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,6 +13,7 @@ import { applyObservedManagedSkill, planObservedManagedSkillRecovery, recoverObs
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
 import { observeSkillCacheRoot, openNpmCacheOperation, inspectSkillCache } from '../../../dist/packages/skill-sources/src/cache.js';
 import { planObservedManagedSkill, inspectObservedManagedSkill } from '../../../dist/packages/managed-skills/src/observed.js';
+import { lockPort, withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 const hash = b => createHash('sha256').update(b).digest('hex');
 function archive(files) {
   const blocks = [];
@@ -127,6 +128,16 @@ for (const first of ['startup', 'manager']) for (const method of ['apply', 'reco
   assert.equal((await inspectStartup(f.projectDir)).specReady, true);
 });
 
+test('a lock slot held by another program refuses LOCK_SLOT_COLLISION naming the port, with no write', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), port = lockPort(f.projectDir), before = inventory(f.projectDir);
+  const blocker = net.createServer(socket => socket.destroy()); await new Promise((resolve, reject) => { blocker.once('error', reject); blocker.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
+  try { await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION' && e.message.includes(String(port))); }
+  finally { await new Promise(resolve => blocker.close(resolve)); }
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  // This project's own lock holder is LOCKED, as before.
+  await withProjectLock(f.projectDir, new AbortController().signal, async () => { await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_LOCKED'); });
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+});
 test('concurrent real apply calls create one operation and one committed receipt', async t => {
   const f = await fixture(t), p = await planObservedManagedSkill(f.input);
   const results = await Promise.allSettled([applyObservedManagedSkill(f.input, p.revision, null), applyObservedManagedSkill(f.input, p.revision, null)]);

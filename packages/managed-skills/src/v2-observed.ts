@@ -9,7 +9,7 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { freezeSkillData, revisionOf, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
-import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, check, fail, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { readLocalSkill, readLocalPrompt, itemName } from './local-source.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
@@ -35,7 +35,7 @@ export const ownSurface = (s: { id: SurfaceId }): boolean => ITEM_SURFACES.inclu
 export const MANAGED_ITEM_CODES: readonly string[] = Object.freeze([...MANAGED_SKILL_CODES.filter(c => c !== 'MANAGED_SKILL_REFUSED'), 'MANAGED_SKILL_PATH_OCCUPIED', 'MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_HISTORY_FULL', 'MANAGED_SKILL_LOCK_NOT_HELD', 'MANAGED_SKILL_REFUSED']);
 /** v1 `boundary` over the v2 code list. */
 export function boundaryV2(error: unknown, fallback = 'MANAGED_SKILL_REFUSED'): never {
-  return fail(error instanceof ManagedSkillError && error.code !== 'MANAGED_SKILL_REFUSED' && MANAGED_ITEM_CODES.includes(error.code) ? error.code : fallback);
+  return passThrough(error, MANAGED_ITEM_CODES, fallback);
 }
 export const itemId = (item: ItemRef): string => item.kind === 'prompt' ? 'prompt-' + item.id : item.id;
 export function itemRef(value: unknown): ItemRef {

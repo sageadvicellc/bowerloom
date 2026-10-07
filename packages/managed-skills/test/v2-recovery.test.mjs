@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { planManagedItem, inspectManagedProject } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
-import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
+import { withProjectLock, lockPort } from '../../../dist/packages/project-context/src/index.js';
 import { revisionOf } from '../../../dist/packages/skill-sources/src/validation.js';
 import { project, cacheSkill, localSkill, request, local, cached, inventory, code } from './v2-fixture.mjs';
 
@@ -244,4 +244,47 @@ test('a lock probe that fails with anything but EADDRINUSE refuses, and never pr
     await assert.rejects(applyManagedItem(token, req, plan.revision), e => e.code === 'MANAGED_SKILL_LOCK_NOT_HELD' && !e.message.includes('PRIVATE'), errno); restore(t);
     assert.deepEqual(fs.readdirSync(req.stateDir), [], errno); assert.deepEqual(inventory(f.projectDir), before, errno);
   } });
+});
+
+test('held lock: a real token whose probe binds the slot is LOCK_NOT_HELD, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  await hold(f.projectDir, async held => {
+    // The probe binds: nobody would hold the lock. The mock calls back without binding, so the real holder stays.
+    t.mock.method(net.Server.prototype, 'listen', function (_options, callback) { process.nextTick(callback); return this; });
+    await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); restore(t);
+  });
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+});
+
+test('held lock: a slot that answers with another project banner is LOCK_SLOT_COLLISION, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  const foreign = net.createServer(socket => { socket.on('error', () => {}); socket.end('bowerloom-project-lock/v1 ' + '0'.repeat(64) + '\n'); });
+  await new Promise(resolve => foreign.listen({ host: '127.0.0.1', port: 0 }, resolve)); t.after(() => new Promise(resolve => foreign.close(resolve)));
+  await hold(f.projectDir, async held => {
+    // The slot is really taken (by this hold); the banner read is sent to the foreign server instead.
+    const connect = net.connect; t.mock.method(net, 'connect', options => connect({ ...options, port: foreign.address().port }));
+    await assert.rejects(applyManagedItem(held, req, plan.revision), e => e.code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION' && e.message.includes(String(lockPort(f.projectDir)))); restore(t);
+  });
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+});
+
+test('held lock: assertHeld that throws is LOCK_NOT_HELD, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  let stale; await hold(f.projectDir, async held => { stale = held; });
+  // A released token whose signal reads as live: only assertHeld can catch it, and the slot is re-held so the probe passes.
+  await hold(f.projectDir, async () => {
+    t.mock.getter(AbortSignal.prototype, 'aborted', () => false);
+    let error; try { await applyManagedItem(stale, req, plan.revision); } catch (e) { error = e; } restore(t);
+    assert.equal(error?.code, 'MANAGED_SKILL_LOCK_NOT_HELD');
+  });
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+});
+
+test('a self-locking apply on a slot held by another program is LOCK_SLOT_COLLISION, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  const port = lockPort(f.projectDir), blocker = net.createServer(socket => socket.destroy());
+  await new Promise((resolve, reject) => { blocker.once('error', reject); blocker.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
+  try { await assert.rejects(applyManagedItem(null, req, plan.revision), e => e.code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION' && e.message.includes(String(port))); }
+  finally { await new Promise(resolve => blocker.close(resolve)); }
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
 });

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {createServer} from 'node:net';
 import {spawn} from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {lockPort} from '../../../dist/packages/project-context/src/index.js';
+import {lockPort,withProjectLock} from '../../../dist/packages/project-context/src/index.js';
 import {planStartup,applyStartup,inspectStartup,planStartupRevision,applyStartupRevision,recoverStartupRevision,renderStartupRevisionReview} from '../../../dist/packages/startup/src/index.js';
 import {canonicalJson} from '../../../dist/packages/contracts/src/index.js';
 import {planLink,applyLink,readLink} from '../../../dist/packages/connections/src/index.js';
@@ -110,7 +110,9 @@ test('journal approval and directory replacement cannot acquire recovery authori
 test('concurrent revisions and occupied local lock ports refuse a second writer',async t=>{
  const f=await fixture(t),p=await planStartupRevision(f.input);
  const port=lockPort(f.targetDir),server=createServer(socket=>socket.destroy());await new Promise(resolve=>server.listen({host:'127.0.0.1',port,exclusive:true},resolve));
- try{await assert.rejects(applyStartupRevision(f.input,p.fromRevision,p.revision),code('REVISION_LOCK_UNAVAILABLE'));}finally{await new Promise(resolve=>server.close(resolve));}
+ try{await assert.rejects(applyStartupRevision(f.input,p.fromRevision,p.revision),e=>e?.code==='REVISION_LOCK_SLOT_COLLISION'&&e.message.includes(String(port)));}finally{await new Promise(resolve=>server.close(resolve));}
+ // A real holder of this project's lock sends its banner, so the refusal stays REVISION_LOCK_UNAVAILABLE.
+ await withProjectLock(f.targetDir,new AbortController().signal,async()=>{await assert.rejects(applyStartupRevision(f.input,p.fromRevision,p.revision),code('REVISION_LOCK_UNAVAILABLE'));});
  const outcomes=await Promise.allSettled([applyStartupRevision(f.input,p.fromRevision,p.revision),applyStartupRevision(f.input,p.fromRevision,p.revision)]);assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
 });
 test('old connection and registry enrollment cannot authorize the revised goal',async t=>{

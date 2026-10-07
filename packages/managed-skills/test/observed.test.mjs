@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -73,7 +73,7 @@ test('ordinary inspection of an absent manager does not infer startup or native 
 test('the exported managed code list is frozen and boundary output is unchanged from the old local list', () => {
   const six = ['MANAGED_SKILL_ABORTED', 'MANAGED_SKILL_TIMEOUT', 'MANAGED_SKILL_LOCKED', 'MANAGED_SKILL_LOCAL_DRIFT', 'MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_RECOVERY_REQUIRED'];
   assert.ok(Array.isArray(observed.MANAGED_SKILL_CODES) && Object.isFrozen(observed.MANAGED_SKILL_CODES));
-  assert.deepEqual([...observed.MANAGED_SKILL_CODES].sort(), [...six, 'MANAGED_SKILL_REFUSED'].sort());
+  assert.deepEqual([...observed.MANAGED_SKILL_CODES].sort(), [...six, 'MANAGED_SKILL_LOCK_SLOT_COLLISION', 'MANAGED_SKILL_REFUSED'].sort());
   // The reference is the boundary as it was before the refactor: the six codes pass, and everything else takes the fallback.
   const before = (error, fallback = 'MANAGED_SKILL_REFUSED') => error instanceof observed.ManagedSkillError && six.includes(error.code) ? error.code : fallback;
   const codes = [...six, 'MANAGED_SKILL_REFUSED', 'MANAGED_SKILL_OTHER', 'NPM_CACHE_CHANGED', 'SKILL_SCHEMA'];

@@ -49,12 +49,12 @@
  */
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
-import { createServer } from 'node:net';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
-import { isHeldProjectLock, lockPort } from '../../project-context/src/index.js';
+import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal } from '../../project-context/src/index.js';
+import { createServer } from 'node:net';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
 import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemReceipt, IntentV2, RecoveryPlanV2, RecoveryAction, MigratedFrom } from './v2-types.js';
@@ -86,19 +86,24 @@ function json(p: string, value: unknown, guard: () => void): void {
 }
 /** Same key as startup revision apply/recovery and v1 managed apply. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const port = lockPort(project), server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
+  life.check(); const slot = lockSlot(project), port = slot.port, server = lockServer(slot); let acquired = false, pending = true;
   let stop: (() => void) | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
       stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
-      server.once('error', () => settle(new Error('locked')));
+      server.once('error', error => settle(error));
       // If cancellation wins first, late listen completion only closes this listener.
       server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
       if (life.signal.aborted) stop();
     });
     life.check(); const result = await work(); life.check(); return result;
-  } catch (e) { life.check(); if (!acquired) fail('MANAGED_SKILL_LOCKED'); throw e; }
+  } catch (e) {
+    life.check();
+    // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
+    if (!acquired) { if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
+    throw e;
+  }
   finally {
     if (stop) life.signal.removeEventListener('abort', stop);
     // Closing during pending listen cancels Node's listen handle. A late callback
@@ -117,10 +122,12 @@ async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetim
   // and every `assertHeld` call below stay: the brand proves where the token came from, not that the lock is still held.
   life.check(); check(isHeldProjectLock(held) && held.dir === project && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
   try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); }
-  const probe = createServer(socket => socket.destroy());
-  const seen = await new Promise<'bound' | 'taken' | 'failed'>(resolve => { probe.once('error', e => resolve((e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 'taken' : 'failed')); probe.listen({ host: '127.0.0.1', port: lockPort(project), exclusive: true }, () => resolve('bound')); });
+  const slot = lockSlot(project), probe = createServer(socket => socket.destroy());
+  const seen = await new Promise<'bound' | 'taken' | 'failed'>(resolve => { probe.once('error', e => resolve((e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 'taken' : 'failed')); probe.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve('bound')); });
   if (seen === 'bound') await new Promise<void>(resolve => probe.close(() => resolve()));
   check(seen === 'taken', 'MANAGED_SKILL_LOCK_NOT_HELD');
+  // The taken slot must answer with this project's banner: another listener on the port proves nothing about the lock.
+  if (await lockHolder(slot) !== 'this') fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', reportSlotCollision(slot));
   const guard = () => { check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED'); try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); } life.check(); };
   guard(); const result = await work(); guard(); return result;
 }

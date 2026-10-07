@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
-import { createServer } from 'node:net';
-import { lockPort } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
@@ -30,19 +29,24 @@ function json(p: string, value: unknown, guard: () => void): void {
 }
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const port = lockPort(project), server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
+  life.check(); const slot = lockSlot(project), port = slot.port, server = lockServer(slot); let acquired = false, pending = true;
   let stop: (() => void) | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
       stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
-      server.once('error', () => settle(new Error('locked')));
+      server.once('error', error => settle(error));
       // If cancellation wins first, late listen completion only closes this listener.
       server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
       if (life.signal.aborted) stop();
     });
     life.check(); const result = await work(); life.check(); return result;
-  } catch (e) { life.check(); if (!acquired) fail('MANAGED_SKILL_LOCKED'); throw e; }
+  } catch (e) {
+    life.check();
+    // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
+    if (!acquired) { if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
+    throw e;
+  }
   finally {
     if (stop) life.signal.removeEventListener('abort', stop);
     // Closing during pending listen cancels Node's listen handle. A late callback

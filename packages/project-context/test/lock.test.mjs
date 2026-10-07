@@ -1,10 +1,11 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { withProjectLock, isHeldProjectLock, lockPort } from '../../../dist/packages/project-context/src/index.js';
 import { applyObservedManagedSkill } from '../../../dist/packages/managed-skills/src/transaction.js';
 import { applyManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
@@ -64,15 +65,31 @@ test('a case alias of the project folder shares one lock across all four lock us
   });
 });
 
-test('the project lock excludes a holder of the revise-key port, and the port is free again afterwards', async t => {
-  const dir = await freshProject(t), blocker = net.createServer(s => s.destroy());
-  await listen(blocker, formula(dir));
-  let ran = false;
-  await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), code('PROJECT_LOCKED'));
-  assert.equal(ran, false);
-  await close(blocker);
+/** A server on a project's slot that is not its lock: it sends `banner` (or nothing) to each client. */
+async function squatter(port, banner) {
+  const server = net.createServer(socket => { socket.on('error', () => {}); if (banner === null) return; socket.end(banner); });
+  await listen(server, port); return server;
+}
+const readBanner = port => new Promise((resolve, reject) => { const chunks = []; const s = net.connect({ host: '127.0.0.1', port }); s.on('data', c => chunks.push(c)); s.on('end', () => resolve(Buffer.concat(chunks).toString())); s.on('error', reject); });
+
+test('a slot held by anything but this project lock refuses LOCK_SLOT_COLLISION naming the port, and never LOCKED', async t => {
+  const dir = await freshProject(t), port = formula(dir);
+  for (const banner of ['', 'bowerloom-project-lock/v1 ' + '0'.repeat(64) + '\n', 'bowerloom-project-lock/v1 ' + keyOf(dir), 'bowerloom-project-lock/v1 ' + keyOf(dir) + '\nextra', null]) {
+    const blocker = await squatter(port, banner); let ran = false; const started = performance.now();
+    await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.message.includes(String(port)), JSON.stringify(banner));
+    assert.ok(performance.now() - started < 3000, 'the banner read is bounded'); assert.equal(ran, false);
+    await close(blocker);
+  }
   assert.equal(await withProjectLock(dir, new AbortController().signal, async () => 'ok'), 'ok');
-  const after = net.createServer(); await listen(after, formula(dir)); await close(after);
+  const after = net.createServer(); await listen(after, port); await close(after);
+});
+
+test('the lock holder sends this project banner, so a second writer on the same project is LOCKED', async t => {
+  const dir = await freshProject(t);
+  await withProjectLock(dir, new AbortController().signal, async () => {
+    assert.equal(await readBanner(formula(dir)), 'bowerloom-project-lock/v1 ' + keyOf(dir) + '\n');
+    await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => {}), code('PROJECT_LOCKED'));
+  });
 });
 
 test('the lock holds the port while work runs, and a second lock on the same project is refused', async t => {

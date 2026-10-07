@@ -64,6 +64,7 @@ const REFUSALS: Readonly<Record<string, { sentence: string; next: string }>> = {
   PROJECT_UNSAFE: { sentence: 'Bowerloom will not trust a .bowerloom folder that other people or links can change.', next: 'ls -ld .bowerloom' },
   PROJECT_LOCKED: { sentence: 'Two commands must not change one project at the same time, so nothing was changed.', next: 'bowerloom status' },
   PROJECT_LOCK_UNAVAILABLE: { sentence: 'The lock uses a local port, and this computer would not give it out.', next: 'bowerloom status' },
+  PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it. The message names the port.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
   WORKERS_HELD: { sentence: 'The project is prepared. No worker was started.', next: 'bowerloom status' },
 };
 const GENERIC = { sentence: 'Nothing more is known about this refusal beyond its code.', next: 'bowerloom help' };

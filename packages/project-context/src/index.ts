@@ -5,8 +5,9 @@
  * Every refusal here has a fixed code and a fixed message. A message never carries a path, so output stays safe to share.
  */
 import { createHash } from 'node:crypto';
-import { createServer } from 'node:net';
+import net from 'node:net';
 import type { Server } from 'node:net';
+import { channel } from 'node:diagnostics_channel';
 import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -23,6 +24,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   PROJECT_UNSAFE: 'The .bowerloom folder is not safe to use. It must be a real folder that you own, with no write access for others.',
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   PROJECT_LOCK_UNAVAILABLE: 'Bowerloom could not take the project lock. Try again.',
+  PROJECT_LOCK_SLOT_COLLISION: 'Another program holds the local port that Bowerloom uses to lock this project.',
 };
 const refuse = (code: keyof typeof MESSAGES & string): DefinitionError => new DefinitionError(code, MESSAGES[code]!);
 const fold = (value: string): string => value.normalize('NFC').toLowerCase();
@@ -133,6 +135,54 @@ export function lockSlot(project: string): LockSlot {
 /** The local port of a project's lock slot. See `lockSlot`. */
 export const lockPort = (project: string): number => lockSlot(project).port;
 
+/** How long a refused writer waits for the slot holder's banner. Only a writer that could not bind ever waits. */
+export const LOCK_BANNER_TIMEOUT_MS = 1000;
+/**
+ * The listener that holds a slot. It sends the slot's banner (the full project key) to every client, then closes that
+ * connection, so a writer that finds the port taken can tell this project's lock from anything else on the port.
+ */
+export function lockServer(slot: LockSlot): Server {
+  return net.createServer(socket => { socket.on('error', () => {}); socket.end(slot.banner, () => socket.destroy()); });
+}
+/**
+ * Who holds a slot this process could not bind. 'this' only when the holder sends exactly this project's banner and
+ * closes within the timeout; anything else, including silence, a refused connection or extra bytes, is 'other'.
+ * It reads at most one banner length plus one byte and never writes.
+ */
+export function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other'> {
+  return new Promise(resolveHolder => {
+    const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false;
+    const socket = net.connect({ host: '127.0.0.1', port: slot.port });
+    const finish = (verdict: 'this' | 'other') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
+    const settle = () => finish(Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
+    const timer = setTimeout(() => finish('other'), timeoutMs);
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk); size += chunk.length; if (size > want.length) finish('other'); });
+    socket.on('end', settle); socket.on('close', settle); socket.on('error', () => finish('other'));
+  });
+}
+/**
+ * Published, with the port, each time a writer finds its slot held by something other than its own project's lock.
+ * Only tests subscribe: a collision there is a property of the machine, not of the code under test.
+ */
+export const LOCK_SLOT_COLLISION_CHANNEL = 'bowerloom:lock-slot-collision';
+const collisions = channel(LOCK_SLOT_COLLISION_CHANNEL);
+/** Records a slot collision on the diagnostics channel and returns the port, for the caller's own refusal. */
+export function reportSlotCollision(slot: LockSlot): number {
+  if (collisions.hasSubscribers) collisions.publish({ port: slot.port });
+  return slot.port;
+}
+/**
+ * After EADDRINUSE: 'locked' when this project's own lock holds the slot, 'collision' for anything else. A collision
+ * is reported on the diagnostics channel. The lock stays exclusive: neither verdict lets the caller proceed.
+ */
+export async function slotRefusal(slot: LockSlot): Promise<'locked' | 'collision'> {
+  if (await lockHolder(slot) === 'this') return 'locked';
+  reportSlotCollision(slot); return 'collision';
+}
+function slotCollision(port: number): DefinitionError {
+  return new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock this project. Stop that program, then run the command again.`);
+}
+
 // A token is real only when withProjectLock made it. Membership here is the runtime brand: a copy, a spread,
 // a clone, a prototype child or a literal with the same fields is not a member.
 const tokens = new WeakSet<object>();
@@ -150,18 +200,22 @@ function closeServer(server: Server): Promise<void> {
 }
 
 /**
- * Holds the project lock while `work` runs. The token is valid only inside `work`. Only EADDRINUSE means the lock is held
- * by someone else (PROJECT_LOCKED); any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
+ * Holds the project lock while `work` runs. The token is valid only inside `work`. Only EADDRINUSE means the slot is
+ * taken: PROJECT_LOCKED when the holder sends this project's banner, PROJECT_LOCK_SLOT_COLLISION (naming the port) for
+ * anything else. Any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
  * is pending, or before it, releases the port and refuses with PROJECT_LOCKED.
  */
 export async function withProjectLock<T>(root: string, signal: AbortSignal, work: (held: HeldProjectLock) => Promise<T>): Promise<T> {
   if (typeof root !== 'string' || !isAbsolute(root) || root.includes('\0')) throw refuse('USAGE');
-  const port = lockPort(root), server = createServer(socket => socket.destroy());
+  const slot = lockSlot(root), server = lockServer(slot);
   const outcome = await new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
     server.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
-    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => settle({ ok: true }));
+    server.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
   });
-  if (!outcome.ok) throw refuse(outcome.code === 'EADDRINUSE' ? 'PROJECT_LOCKED' : 'PROJECT_LOCK_UNAVAILABLE');
+  if (!outcome.ok) {
+    if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
+    throw await slotRefusal(slot) === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
+  }
   const own = new AbortController(), combined = AbortSignal.any([own.signal, signal]);
   let released = false, failure: unknown, failed = false, result: T | undefined;
   try {

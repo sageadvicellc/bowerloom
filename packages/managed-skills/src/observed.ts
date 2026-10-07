@@ -9,20 +9,26 @@ import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin, Surface, Material, ObservedSkillRequest, PlanCore, ObservedSkillPlan, ObservedSkillReceipt, SkillInspection, UpToDate } from './observed-types.js';
-export class ManagedSkillError extends Error { constructor(readonly code: string) { super(code); this.name = 'ManagedSkillError'; } }
+/** A fixed code. Only MANAGED_SKILL_LOCK_SLOT_COLLISION also carries a value, the local port, which its message names. */
+export class ManagedSkillError extends Error { constructor(readonly code: string, readonly port?: number) { super(port === undefined ? code : `${code} (local port ${port})`); this.name = 'ManagedSkillError'; } }
 export const LIMITS = Object.freeze({ bytes: 32 * 1024 * 1024, file: 65536, record: 8 * 1024 * 1024, names: 1024, history: 64, duration: 30000 });
 export const POLICY = 'bowerloom/observed-managed-skill/v1beta1' as const;
 export const MARKER = '.bowerloom-skills-pending.json';
-export const fail = (code: string): never => { throw new ManagedSkillError(code); };
+export const fail = (code: string, port?: number): never => { throw new ManagedSkillError(code, port); };
 export function check(ok: unknown, code = 'MANAGED_SKILL_REFUSED'): asserts ok { if (!ok) fail(code); }
 export const hash = (b: string | Buffer): string => createHash('sha256').update(b).digest('hex');
 export const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
 export function schema<T>(v: unknown, keys: string[]): T { return closed(v, keys) as T; }
 /** Every fixed code a managed-skills boundary can report. MANAGED_SKILL_REFUSED is the default fallback. */
-export const MANAGED_SKILL_CODES: readonly string[] = Object.freeze(['MANAGED_SKILL_ABORTED', 'MANAGED_SKILL_TIMEOUT', 'MANAGED_SKILL_LOCKED', 'MANAGED_SKILL_LOCAL_DRIFT', 'MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_REFUSED']);
+export const MANAGED_SKILL_CODES: readonly string[] = Object.freeze(['MANAGED_SKILL_ABORTED', 'MANAGED_SKILL_TIMEOUT', 'MANAGED_SKILL_LOCKED', 'MANAGED_SKILL_LOCK_SLOT_COLLISION', 'MANAGED_SKILL_LOCAL_DRIFT', 'MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_REFUSED']);
 export function boundary(error: unknown, fallback = 'MANAGED_SKILL_REFUSED'): never {
   // MANAGED_SKILL_REFUSED is a fallback, not a pass-through code, so the caller's fallback still replaces it.
-  return fail(error instanceof ManagedSkillError && error.code !== 'MANAGED_SKILL_REFUSED' && MANAGED_SKILL_CODES.includes(error.code) ? error.code : fallback);
+  return passThrough(error, MANAGED_SKILL_CODES, fallback);
+}
+/** A listed code other than MANAGED_SKILL_REFUSED passes with its port, if any; everything else takes the fallback. */
+export function passThrough(error: unknown, listed: readonly string[], fallback: string): never {
+  if (error instanceof ManagedSkillError && error.code !== 'MANAGED_SKILL_REFUSED' && listed.includes(error.code)) return fail(error.code, error.code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION' ? error.port : undefined);
+  return fail(fallback);
 }
 export interface Lifetime { signal: AbortSignal; deadlineMs: number; check(): void; close(): void }
 export function lifetime(options: unknown = {}): Lifetime {
