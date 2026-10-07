@@ -1,3 +1,4 @@
+import './support/isolate-home.js';
 // CLI composition tests: real argv/file custody; synthetic downstream modules, no acquisition/effects.
 import test from 'node:test';
 import assert from 'node:assert/strict';
