@@ -1,4 +1,4 @@
-import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -15,6 +15,11 @@ const SECTIONS: readonly Section[] = [
     'bowerloom init plan|apply --mode new|existing --target <directory> --name <name> --goal <goal>',
     'bowerloom ls [teams|skills|prompts]   List what this project holds.',
     'bowerloom status                      Show whether this project is ready.',
+  ] },
+  { title: 'Skills and setup', lines: [
+    'bowerloom skills add npm:<package>@<version>:<path>',
+    'bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>',
+    'bowerloom skills check                Check the pins in .bowerloom/skills.json.',
   ] },
 ];
 const INTRO = "Set up agent teams, skills, and prompts for Claude Code and Codex.";
@@ -44,6 +49,22 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'It reads only and writes nothing, and it starts no workers.',
     'Add --json for one machine-readable object.',
     'bowerloom status --installation <private.json> still reads a prepared session. See bowerloom help advanced.', '',
+  ].join('\n'),
+  skills: [
+    'Usage:',
+    '  bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]',
+    '  bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]',
+    '  bowerloom skills check [--json]', '',
+    'skills add pins one skill in .bowerloom/skills.json, the file you commit so every machine gets the same skills.',
+    'The pin must be exact: an npm version such as 1.2.3, or a full 40-character lower-case Git commit.',
+    'Ranges, tags, branches and short commits are refused before anything is fetched.',
+    '<path> is the skill folder inside the package or repository, for example:',
+    '  bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections',
+    'It reads only registry.npmjs.org or api.github.com, without credentials, and takes MIT or Apache-2.0 skills only.',
+    'It shows the plan first. Agents pass --approve <revision> or --json. It records the pin only: nothing is installed or run.',
+    '--id sets the entry id; the default is the skill name. --team limits the skill to a team; without it, every team gets it.', '',
+    'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
+    'The other skills forms are listed by bowerloom help advanced.', '',
   ].join('\n'),
 };
 
@@ -82,6 +103,19 @@ export function exitCodeFor(error: unknown): ExitCode {
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const CONTROLS_BUT_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const escapeControl = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`;
+// Every UTF-16 unit of a match, so a character outside the basic plane (a tag character) keeps both halves.
+const escapeUnits = (c: string): string => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('');
+// C1 controls and the format characters (bidi controls, zero-width characters), plus the line and paragraph separators.
+const JSON_HIDDEN = /[\u0080-\u009f\p{Cf}\u2028\u2029]/gu;
+/**
+ * The JSON output of a new command (0.7.0 and later): canonical JSON, with every C1 control, format character (bidi
+ * and zero-width included), U+2028 and U+2029 written as a \uXXXX escape, so a terminal shows it as text. The parsed
+ * value is the same. Plumbing commands keep their exact envelope and do not use this.
+ */
+export function newCommandJson(value: unknown): string {
+  return `${canonicalJson(value).replace(JSON_HIDDEN, escapeUnits)}\n`;
+}
+
 /**
  * Text that is safe to print to a terminal: every C0, C1, DEL and bidi control becomes a visible `\uXXXX`, so a file
  * name or a message cannot move the cursor, recolour the screen or reorder a line. `multiline` keeps the newline.
@@ -105,6 +139,22 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PROJECT_LOCKED: { sentence: 'Two commands must not change one project at the same time, so nothing was changed.', next: 'bowerloom status' },
   PROJECT_LOCK_UNAVAILABLE: { sentence: 'The lock uses a local port, and this computer would not give it out.', next: 'bowerloom status' },
   PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+  MANIFEST_NOT_FOUND: { sentence: 'There is nothing to check yet.', next: 'bowerloom skills add npm:<package>@<version>:<path>' },
+  MANIFEST_INVALID: { sentence: 'Bowerloom reads skills.json strictly, so a hand edit can break it.', next: 'git diff .bowerloom/skills.json' },
+  MANIFEST_UNSAFE: { sentence: 'Bowerloom will not trust a skills.json that other people or links can change.', next: 'ls -l .bowerloom/skills.json' },
+  MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
+  MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
+  MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
+  MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 32 skills and 1 MiB at most.', next: 'bowerloom skills check' },
+  SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
+  SKILLS_ADD_EXISTS: { sentence: 'skills.json already pins this.', next: 'bowerloom skills check' },
+  SKILLS_ADD_NOT_FOUND: { sentence: 'Check the package name, version, commit and folder.', next: 'bowerloom help skills' },
+  SKILLS_ADD_SKILL_MISSING: { sentence: 'A skill folder holds a SKILL.md file at its top.', next: 'bowerloom help skills' },
+  SKILLS_ADD_LICENSE_UNKNOWN: { sentence: 'This beta installs a skill only when its MIT or Apache-2.0 license is shipped with it.', next: 'bowerloom help skills' },
+  SKILLS_ADD_UNSAFE_CONTENT: { sentence: 'Skills here are text files only, and nothing in them is run.', next: 'bowerloom help skills' },
+  SKILLS_ADD_NETWORK: { sentence: 'Nothing was changed.', next: 'run the same command again' },
+  SKILLS_ADD_HOST_REFUSED: { sentence: 'Bowerloom asked no other host, and nothing was changed.', next: 'bowerloom help skills' },
+  TEAM_NOT_FOUND: { sentence: 'A skill can be limited only to a team that exists.', next: 'bowerloom ls teams' },
 };
 // Only for an error a new command raised (newCommandRefusal).
 const GATE_REFUSALS: Readonly<Record<GateCode, Words>> = {

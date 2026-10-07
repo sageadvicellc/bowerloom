@@ -23,6 +23,11 @@ Start here
   bowerloom ls [teams|skills|prompts]   List what this project holds.
   bowerloom status                      Show whether this project is ready.
 
+Skills and setup
+  bowerloom skills add npm:<package>@<version>:<path>
+  bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
+  bowerloom skills check                Check the pins in .bowerloom/skills.json.
+
 Every change shows a plan first. Agents pass --approve <revision> or --json.
 No command here starts workers yet.
 
@@ -61,14 +66,14 @@ test('the short help is shorter than the advanced help and lists no plumbing', (
 test('the short help lists only commands that exist at this commit, and each has help of its own', t => {
   const root = folder(t);
   const listed = [...short.matchAll(/^ {2}bowerloom (\w+)/gm)].map(m => m[1]!);
-  assert.deepEqual([...new Set(listed)].sort(), ['help', 'init', 'ls', 'status']);
-  for (const name of ['init', 'ls', 'status']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
+  assert.deepEqual([...new Set(listed)].sort(), ['help', 'init', 'ls', 'skills', 'status']);
+  for (const name of ['init', 'ls', 'status', 'skills']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
   for (const name of ['up', 'apply', 'team', 'skill', 'prompt']) assert.equal(run(root, ['help', name]).status, 2, name);
 });
 
 test('help <command> and <command> --help agree, and an unknown topic is a usage error', t => {
   const root = folder(t);
-  for (const name of ['ls', 'status']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
+  for (const name of ['ls', 'status', 'skills']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
   assert.equal(run(root, ['help', 'init']).stdout, run(root, ['init', '--help']).stdout);
   const unknown = run(root, ['help', 'nonsense']); assert.equal(unknown.status, 2); assert.equal(unknown.stdout, '');
   assert.equal(JSON.parse(unknown.stderr).error.code, 'USAGE');
