@@ -1,0 +1,46 @@
+// Private request-bound trial. Registry qualification is required; these contracts activate nothing.
+import { posix } from 'node:path';
+import { MODEL,NATIVE_VERSION,ROUTES,LIMITS,route,effort,inert,exact,digest,byteDigest,canonical,hex,id,time } from './policy.js';
+import { hostBinding,requireLaunch } from './boundary.js';
+export const LIMITED_POLICY='claude-request-bound-trial/v0.7-beta.1';
+export const LIMITED_WIRE_PROFILE='claude-stream-json-request-bound-candidate/v1';
+export const OWNER_PROPOSAL='91898968717878d4b67c4733e452b33043891ae44db2d03dfa177927af2a5a8f';
+export const LIMITED_ENV=Object.freeze({DISABLE_UPDATES:'1',LANG:'C',ENABLE_CLAUDEAI_MCP_SERVERS:'false'});
+export const LIMITED_SETTINGS=canonical({disableAllHooks:true,disableClaudeAiConnectors:true,switchModelsOnFlag:false,fallbackModel:[],fastMode:false,ultracode:false});
+export const limitedEnvironmentRevision=()=>digest({format:'bowerloom/claude-limited-candidate-environment/v1',environment:LIMITED_ENV,subscriptionQualified:false});
+export const LIMITED_PROFILE_REVISION=digest({profile:LIMITED_WIRE_PROFILE,nativeVersion:NATIVE_VERSION,model:MODEL,sequence:['system:init','assistant:text','result:success'],appliedEffort:'unknown',candidateOnly:true});
+export function limitedArgv(value:unknown):readonly string[]{const r=route(value);return Object.freeze(['--print','--input-format','text','--output-format','stream-json','--verbose','--model',MODEL,'--effort',effort(r),'--safe-mode','--restricted','--setting-sources','','--tools','','--disallowedTools','*','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--disable-slash-commands','--no-chrome','--permission-mode','dontAsk','--max-turns','1','--no-session-persistence','--settings',LIMITED_SETTINGS]);}
+const GRANT_KEYS=['format','grantId','revision','status','operationId','hostBinding','accountBindingRevision','mappingRevision','qualificationId','qualificationRevision','artifactRevision','nativePath','nativeSha256','nativeVersion','runtime','policyVersion','roleAssetRevision','taskDigest','leadPromptDigest','allowances','issuedAtMs','expiresAtMs','reviewRevision','derivation','ownerApprovalId','ownerApprovalRevision','managedInventoryRevision','environmentRevision','wireProfileRevision','runtimeRevision'] as const;
+export function captureLimitedGrant(value:unknown):any{
+ const v=inert(value);exact(v,GRANT_KEYS);const {revision,...body}=v;
+ requireLaunch(hex(revision)&&digest(body)===revision&&v.format==='bowerloom/claude-limited-exchange-grant/v1'&&v.status==='active'&&v.policyVersion===LIMITED_POLICY&&v.derivation==='claude-one-child/v1');
+ for(const k of ['grantId','operationId','qualificationId','ownerApprovalId'])requireLaunch(id(v[k]));
+ for(const k of ['accountBindingRevision','mappingRevision','qualificationRevision','artifactRevision','nativeSha256','roleAssetRevision','taskDigest','leadPromptDigest','reviewRevision','ownerApprovalRevision','managedInventoryRevision','environmentRevision','wireProfileRevision','runtimeRevision'])requireLaunch(hex(v[k]));
+ hostBinding(v.hostBinding);requireLaunch(typeof v.nativePath==='string'&&v.nativePath.startsWith('/')&&posix.normalize(v.nativePath)===v.nativePath&&v.nativeVersion===NATIVE_VERSION);
+ requireLaunch(time(v.issuedAtMs)&&time(v.expiresAtMs)&&v.issuedAtMs<v.expiresAtMs&&v.expiresAtMs-v.issuedAtMs<=LIMITS.operationMs&&v.wireProfileRevision===LIMITED_PROFILE_REVISION&&v.environmentRevision===limitedEnvironmentRevision());
+ exact(v.runtime,['executable','sha256','nodeVersion','uvVersion','platform','arch']);requireLaunch(typeof v.runtime.executable==='string'&&v.runtime.executable.startsWith('/')&&hex(v.runtime.sha256)&&id(v.runtime.nodeVersion)&&id(v.runtime.uvVersion)&&v.runtime.platform==='darwin'&&v.runtime.arch==='arm64'&&v.runtimeRevision===digest(v.runtime));
+ exact(v.allowances,['lead','worker']);for(const p of ['lead','worker']){const a=v.allowances[p];requireLaunch(a&&typeof a==='object'&&!Array.isArray(a)&&Object.keys(a).length>0&&Object.keys(a).length<=8);for(const [k,n]of Object.entries(a))requireLaunch(id(k)&&typeof n==='number'&&Number.isFinite(n)&&n>0&&n<=100);}return v;
+}
+/** Only the trusted host registry supplies this assertion of the human's finite policy approval. */
+export function captureLimitedOwnerApproval(value:unknown,grant:any,now:number):any{
+ const a=inert(value);exact(a,['format','approvalId','revision','status','proposalSha256','policyVersion','operationId','hostBinding','roleAssetRevision','taskDigest','routes','appliedEffort','strictPolicyAccepted','ordinaryQualification','issuedAtMs','expiresAtMs']);const {revision,...body}=a;
+ requireLaunch(hex(revision)&&digest(body)===revision&&revision===grant.ownerApprovalRevision&&a.approvalId===grant.ownerApprovalId&&a.format==='bowerloom/claude-limited-owner-approval/v1'&&a.status==='active'&&a.proposalSha256===OWNER_PROPOSAL&&a.policyVersion===LIMITED_POLICY);
+ requireLaunch(a.operationId===grant.operationId&&canonical(a.hostBinding)===canonical(grant.hostBinding)&&a.roleAssetRevision===grant.roleAssetRevision&&a.taskDigest===grant.taskDigest&&canonical(a.routes)===canonical(ROUTES)&&a.appliedEffort==='unknown'&&a.strictPolicyAccepted===false&&a.ordinaryQualification===false);
+ requireLaunch(time(now)&&time(a.issuedAtMs)&&time(a.expiresAtMs)&&a.issuedAtMs<=now&&now<a.expiresAtMs&&a.expiresAtMs>=grant.expiresAtMs);return a;
+}
+export function captureLimitedQualification(value:unknown,grant:any,now:number):any{
+ const q=inert(value);exact(q,['format','receiptId','revision','status','nativeSha256','nativeVersion','artifactRevision','accountBindingRevision','policyVersion','environmentRevision','wireProfile','wireProfileRevision','routes','controlsReviewRevision','wireFixtureRevision','managedInventoryRevision','ownerApprovalRevision','nativeRetryPolicy','runtimeRevision','issuedAtMs','expiresAtMs']);const {revision,...body}=q;
+ requireLaunch(hex(revision)&&digest(body)===revision&&revision===grant.qualificationRevision&&q.receiptId===grant.qualificationId&&q.status==='active'&&q.format==='bowerloom/claude-limited-launch-qualification/v1');
+ for(const k of ['nativeSha256','nativeVersion','artifactRevision','accountBindingRevision','environmentRevision','wireProfileRevision','managedInventoryRevision','ownerApprovalRevision','runtimeRevision'])requireLaunch(q[k]===grant[k]);
+ requireLaunch(q.policyVersion===LIMITED_POLICY&&canonical(q.routes)===canonical(ROUTES)&&q.wireProfile===LIMITED_WIRE_PROFILE&&q.wireProfileRevision===LIMITED_PROFILE_REVISION&&hex(q.controlsReviewRevision)&&hex(q.wireFixtureRevision)&&q.nativeRetryPolicy==='no-retry-qualified');
+ requireLaunch(time(now)&&time(q.issuedAtMs)&&time(q.expiresAtMs)&&q.issuedAtMs<=now&&now<q.expiresAtMs&&q.expiresAtMs>=grant.expiresAtMs);return q;
+}
+/** Independent limited builder; no mutation/reinterpretation of the strict installation contract. */
+export function prepareLimitedInstallation(measured:unknown,expected:unknown,request:unknown,now:number):any{
+ const m=inert(measured),e=inert(expected),r=inert(request);exact(m,['format','nativePath','nativeSha256','nativeVersion','artifactRevision','inventory','measuredAtMs']);exact(e,['nativePath','nativeSha256','nativeVersion','artifactRevision']);
+ requireLaunch(m.format==='bowerloom/claude-measurement/v1'&&typeof m.nativePath==='string'&&m.nativePath.startsWith('/')&&posix.normalize(m.nativePath)===m.nativePath&&hex(m.nativeSha256)&&m.nativeVersion===NATIVE_VERSION&&hex(m.artifactRevision)&&canonical(e)===canonical({nativePath:m.nativePath,nativeSha256:m.nativeSha256,nativeVersion:m.nativeVersion,artifactRevision:m.artifactRevision}));
+ requireLaunch(Array.isArray(m.inventory)&&m.inventory.length>0&&m.inventory.length<=64);let prior='';for(const row of m.inventory){exact(row,['path','sha256','bytes']);requireLaunch(typeof row.path==='string'&&/^[A-Za-z0-9_./-]{1,240}$/.test(row.path)&&!row.path.startsWith('/')&&!row.path.split('/').some((p:string)=>!p||p==='.'||p==='..')&&row.path>prior&&hex(row.sha256)&&time(row.bytes)&&row.bytes<=2**24);prior=row.path;}requireLaunch(digest(m.inventory)===m.artifactRevision);
+ exact(r,['route','promptSchema','prompt','issuedAtMs','expiresAtMs']);const modelRoute=route(r.route);requireLaunch(r.promptSchema==='bowerloom/claude-finite-request/v1'&&typeof r.prompt==='string'&&r.prompt.length>0&&Buffer.byteLength(r.prompt)<=LIMITS.inputBytes);
+ requireLaunch(time(now)&&time(m.measuredAtMs)&&time(r.issuedAtMs)&&time(r.expiresAtMs)&&r.issuedAtMs<=m.measuredAtMs&&m.measuredAtMs<=now&&now-m.measuredAtMs<=LIMITS.observationAgeMs&&now<r.expiresAtMs&&r.expiresAtMs-r.issuedAtMs<=LIMITS.operationMs);
+ const body={format:'bowerloom/claude-limited-launch-contract/v1',policyVersion:LIMITED_POLICY,modelRoute,installation:m,argv:limitedArgv(modelRoute),environment:LIMITED_ENV,environmentRevision:limitedEnvironmentRevision(),wireProfileRevision:LIMITED_PROFILE_REVISION,settingsBytes:LIMITED_SETTINGS,promptSchema:r.promptSchema,promptSha256:byteDigest(r.prompt),promptBytes:Buffer.byteLength(r.prompt),issuedAtMs:r.issuedAtMs,expiresAtMs:r.expiresAtMs,limits:LIMITS,appliedEffort:'unknown',strictPolicyAccepted:false,ordinaryQualification:false,measurementOriginVerified:false,controlsQualified:false,paidFallback:false,executionAuthorized:false};return inert({...body,revision:digest(body)});
+}

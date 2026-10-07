@@ -80,3 +80,26 @@ test('failed IPC with stale connected state is never retried through recursive c
     }finally{t.mock.restoreAll();syncBuiltinESMExports();}
   }
 });
+
+test('Claude queued write/end after cutoff forwards nothing before delayed timer callback',async()=>{
+ // Isolated JS guardian, mocked child + host measurements; no native/model process or real signal.
+ for(const kind of ['write','end'])for(const clockMode of ['wall','hr','backward']){
+  const startupUrl=new URL('../src/startup-deadline.js',import.meta.url).href,guardianUrl=new URL('../src/guardian.js',import.meta.url).href;
+  const code=`import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';import {registerHooks} from 'node:module';import {createHash} from 'node:crypto';
+  const clock=await import(${JSON.stringify(startupUrl)});let wall=1000,hr=1000000n;Date.now=()=>wall;process.hrtime.bigint=()=>hr;
+  let writes=0,ends=0,spawns=0,kills=0;const timers=[];globalThis.setTimeout=(fn,ms)=>{timers.push({fn,ms});return{unref(){}};};globalThis.clearTimeout=()=>{};process.kill=()=>{kills++;return true;};Object.defineProperty(process,'connected',{value:true,configurable:true});process.send=()=>true;
+  const child=new EventEmitter();child.pid=99999997;child.stdin=Object.assign(new EventEmitter(),{write(){writes++;},end(){ends++;}});child.stdout=Object.assign(new EventEmitter(),{destroy(){}});child.stderr=Object.assign(new EventEmitter(),{destroy(){}});globalThis.__syntheticSpawn=()=>{spawns++;queueMicrotask(()=>child.emit('spawn'));return child;};
+  const host='data:text/javascript,'+encodeURIComponent('export * from '+JSON.stringify(${JSON.stringify(startupUrl)})+';export async function verifyStartupHost(){return "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA";}');
+  const spawn='data:text/javascript,'+encodeURIComponent('export const spawn=(...args)=>globalThis.__syntheticSpawn(...args);');
+  const hook=registerHooks({resolve(s,c,n){if(c.parentURL===${JSON.stringify(guardianUrl)}){if(s==='./startup-deadline.js')return{url:host,shortCircuit:true};if(s==='node:child_process')return{url:spawn,shortCircuit:true};}return n(s,c);}});
+  const h='a'.repeat(64),runtime={executable:process.execPath,sha256:h,nodeVersion:'v24.11.0',uvVersion:'1.51.0',platform:'darwin',arch:'arm64'},route='claude:claude-sonnet-5-5:high';
+  const startup={format:'bowerloom/claude-startup/v1',clock:clock.STARTUP_CLOCK,runtime,accountBindingDigest:h,promptDigest:createHash('sha256').update('synthetic').digest('hex'),modelRoute:route,proposalPlanRevision:h,launchPlanRevision:clock.claudeStartupLaunchRevision(h,runtime,route),admission:{format:'bowerloom/admission-dispatch/v1',binding:{installationId:'install',databaseName:'db',admissionSchema:'trellis_test',launcherId:'launcher',accountId:'account',accountAlias:'alias',requestDigest:'sha256:'+h,authorizationRevision:h,expiresAtMs:11000},reservationId:'reservation',requestDigest:'sha256:'+h,claimedAtMs:1000,parentWallMs:1000,parentHrNs:'1000000',notAfterWallMs:11000,notAfterHrNs:'10001000000'}};
+  const job=clock.startupJobCopy({executable:'/synthetic/no-native',argv:[],cwd:'/synthetic',env:{},seconds:60,stdoutBytes:4096,stderrBytes:1024,nonce:h}),bootSession='AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA';
+  await import(${JSON.stringify(guardianUrl)});hook.deregister();process.emit('message',{type:'start-v2',job,startup,bootSession,bindingDigest:clock.startupMessageDigest(job,startup,bootSession)});await new Promise(r=>setImmediate(r));assert.equal(spawns,1);
+  if(${JSON.stringify(kind)}==='end'){process.emit('message',{type:'write',data:'synthetic'});assert.equal(writes,1);}
+  ${clockMode==='wall'?'wall=7000;':clockMode==='hr'?'hr=6001000000n;':'wall=999;'}process.emit('message',${JSON.stringify(kind==='write'?{type:'write',data:'synthetic'}:{type:'end'})});await new Promise(r=>setImmediate(r));
+  wall=1001;hr=1000001n;process.emit('message',${JSON.stringify(kind==='write'?{type:'write',data:'synthetic'}:{type:'end'})});
+  assert.equal(writes,${kind==='write'?0:1});assert.equal(ends,0);assert.ok(kills>0);assert.ok(timers.length>0);process.stdout.write('queued-cutoff-refused');`;
+  const child=spawn(process.execPath,['--input-type=module','--eval',code],{env:{PATH:'/usr/bin:/bin',NODE_V8_COVERAGE:undefined},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);const timer=setTimeout(()=>child.kill('SIGKILL'),5000);const [exit,signal]=await once(child,'close');clearTimeout(timer);assert.equal(signal,null);assert.equal(exit,0,stderr);assert.equal(stdout,'queued-cutoff-refused');
+ }
+});

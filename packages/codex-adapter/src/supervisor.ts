@@ -88,6 +88,7 @@ export async function startGuardian(job: GuardianJob, signal: AbortSignal, onChu
     catch { fail('STARTUP_EXPIRED'); }
   }
   const own=await identity;
-  return {identity:own,guardianPid:guardian.pid!,done,write(data){check(!settled,'PROCESS_ENDED');send({type:'write',data});},end(){send({type:'end'});},
+  const inputCurrent=()=>{if(startup?.authorization.format==='bowerloom/claude-startup/v1'){try{active();startup.check();}catch{cancel();throw new AdapterError('STARTUP_EXPIRED');}}};
+  return {identity:own,guardianPid:guardian.pid!,done,write(data){check(!settled,'PROCESS_ENDED');inputCurrent();send({type:'write',data});},end(){inputCurrent();send({type:'end'});},
     async terminate(){cancel();const end=await done;check(end.leaderReaped&&end.groupGone,'REAP_UNVERIFIED');} };
 }

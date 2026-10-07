@@ -137,3 +137,19 @@ test('historical and alternative Sol routes cannot reuse a controlled startup au
  for(const modelRoute of ['codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'])
   assert.throws(()=>startupCopy({...authorization(),modelRoute}),/STARTUP_CONTRACT/);
 });
+
+// Claude's separate namespace must never broaden a Codex claim.
+import { ClaudeRunDeadline,claudeStartupLaunchRevision } from '../src/startup-deadline.js';
+function claudeAuthorization(){const a=authorization();a.format='bowerloom/claude-startup/v1';a.modelRoute='claude:claude-sonnet-5-5:high';a.launchPlanRevision=claudeStartupLaunchRevision(a.proposalPlanRevision,a.runtime,a.modelRoute);return a;}
+test('Claude startup binds exact high/medium namespace without changing Codex revision',()=>{
+ const old=authorization(),a=claudeAuthorization();startupCopy(a);assert.notEqual(a.launchPlanRevision,old.launchPlanRevision);
+ assert.throws(()=>startupCopy({...a,format:'bowerloom/codex-startup/v1'}));assert.throws(()=>startupCopy({...old,format:'bowerloom/claude-startup/v1'}));
+ for(const route of ['claude:claude-sonnet-5-5:low','claude:other:high'])assert.throws(()=>claudeStartupLaunchRevision(a.proposalPlanRevision,a.runtime,route));
+ const medium={...a,modelRoute:'claude:claude-sonnet-5-5:medium'};medium.launchPlanRevision=claudeStartupLaunchRevision(a.proposalPlanRevision,a.runtime,medium.modelRoute);startupCopy(medium);assert.notEqual(medium.launchPlanRevision,a.launchPlanRevision);
+});
+test('Claude original cutoffs reserve cleanup and never reset after queue delay',()=>{
+ const a=claudeAuthorization(),d=new ClaudeRunDeadline(a,60,1000000n,1000);assert.equal(d.notAfterWallMs,7000);assert.equal(d.notAfterHrNs,6001000000n);
+ d.checkSample(5001000000n,6000);assert.throws(()=>d.checkSample(6001000000n,6001));assert.throws(()=>d.checkSample(5001000000n,6000));
+ const delayed=new ClaudeRunDeadline(a,60,4001000000n,5000);assert.equal(delayed.notAfterWallMs,7000);assert.equal(delayed.notAfterHrNs,d.notAfterHrNs);
+ for(const [hr,wall] of [[1000000n,999],[999999n,1000],[1000000n,7000]] as const){const x=new ClaudeRunDeadline(a,60,1000000n,1000);assert.throws(()=>x.checkSample(hr,wall));assert.throws(()=>x.checkSample(1000000n,1000));}
+});

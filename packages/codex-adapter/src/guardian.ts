@@ -1,13 +1,14 @@
 // Internal trusted orphan guardian. Only its original control channel can create/cancel its one child.
 // Never adopts a PID or accepts a second launch. No raw output is written to terminal/log files.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { StartupDeadline, startupPacket, verifyStartupHost } from './startup-deadline.js';
+import { StartupDeadline, ClaudeRunDeadline, startupPacket, verifyStartupHost } from './startup-deadline.js';
 import { check, object, sha } from './safe.js';
 interface Job { executable: string; argv: string[]; cwd: string; env: Record<string,string>; seconds: number; stdoutBytes: number; stderrBytes: number; nonce: string }
 let child: ChildProcessWithoutNullStreams | null = null;
 let hardKillSent=false,leaderExited=false;let cleanupBound:NodeJS.Timeout|null=null;
 let started = false, finishing = false, reason: string | null = null, ended = false;
 let timer: NodeJS.Timeout | null = setTimeout(() => stop('NO_START'), 5000), escalation: NodeJS.Timeout | null = null;
+let runDeadline:ClaudeRunDeadline|null=null;
 let totalInput = 0; let startupPromptDigest:string|null=null; let controlledWrite=false;
 const sizes = { stdout: 0, stderr: 0 };
 const send = (value: unknown) => { if (process.connected) process.send?.(value, error => { if (error) stop('CONTROLLER_LOST'); }); };
@@ -18,7 +19,7 @@ function kill(signal: NodeJS.Signals) {
 }
 function stop(code: string | null) {
   if (code && !reason) reason = code;
-  if (finishing) return; finishing = true;
+  if (finishing) return; finishing = true;runDeadline?.close();
   if (timer) clearTimeout(timer);
   if (!child) { finish(null); return; }
   kill('SIGTERM');
@@ -60,9 +61,10 @@ async function message(value:unknown):Promise<void> {
       check(child && !finishing && typeof msg.data === 'string', 'INVALID_WRITE');
       if(startupPromptDigest!==null){check(!controlledWrite&&sha(msg.data)===startupPromptDigest,'STARTUP_PROMPT');controlledWrite=true;}
       totalInput += Buffer.byteLength(msg.data); check(totalInput <= 65536, 'INPUT_BOUND');
+      if(runDeadline)check(process.connected,'CONTROLLER_LOST');runDeadline?.check(); // L1: no await/callback between latched child cutoff and forwarding.
       child.stdin.write(msg.data, e => { if (e) stop('STDIN_FAILED'); }); return;
     }
-    if (msg.type === 'end') { check(child && !finishing && (startupPromptDigest===null||controlledWrite), 'INVALID_END'); child.stdin.end(); return; }
+    if (msg.type === 'end') { check(child && !finishing && (startupPromptDigest===null||controlledWrite), 'INVALID_END'); if(runDeadline)check(process.connected,'CONTROLLER_LOST');runDeadline?.check(); child.stdin.end(); return; }
     check((msg.type === 'start' || msg.type === 'start-v2') && !started && !finishing, 'INVALID_START'); started = true;
     const packet=msg.type==='start-v2' ? startupPacket(msg) : null;
     const startup=packet ? new StartupDeadline(packet.startup) : null;
@@ -85,9 +87,11 @@ async function message(value:unknown):Promise<void> {
       check(boot===packet!.bootSession,'STARTUP_BOOT');
     }
     check(!finishing&&!ended&&process.connected,'CANCELLED');
-    if(timer)clearTimeout(timer); timer=setTimeout(()=>stop('DEADLINE'),j.seconds*1000);
+    if(timer)clearTimeout(timer);
+    if(packet?.startup.format==='bowerloom/claude-startup/v1')runDeadline=new ClaudeRunDeadline(packet.startup,j.seconds);
+    timer=setTimeout(()=>stop('DEADLINE'),runDeadline?runDeadline.remainingMs():j.seconds*1000);
     // No await or caller callback between the last deadline sample and native spawn.
-    startup?.check();
+    startup?.check();runDeadline?.check();
     child=spawn(j.executable,j.argv,{cwd:j.cwd,env,detached:true,stdio:['pipe','pipe','pipe']});
     child.on('error',()=>stop('SPAWN_FAILED'));
     child.stdin.on('error',()=>stop('STDIN_FAILED'));

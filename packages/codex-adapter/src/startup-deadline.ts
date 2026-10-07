@@ -11,7 +11,7 @@ import { MODEL_ROUTE } from './policy.js';
 export const STARTUP_CLOCK = 'darwin-node24.11.0-libuv1.51.0-hrtime-v1' as const;
 export interface StartupRuntime { executable: string; sha256: string; nodeVersion: 'v24.11.0'; uvVersion: '1.51.0'; platform: 'darwin'; arch: 'arm64' }
 export interface StartupAuthorization {
-  format: 'bowerloom/codex-startup/v1'; clock: typeof STARTUP_CLOCK;
+  format: 'bowerloom/codex-startup/v1' | 'bowerloom/claude-startup/v1'; clock: typeof STARTUP_CLOCK;
   admission: Readonly<AdmissionDispatchEnvelope>; runtime: StartupRuntime;
   accountBindingDigest: string; promptDigest: string; modelRoute: string; proposalPlanRevision: string; launchPlanRevision: string;
 }
@@ -45,12 +45,13 @@ export function startupHr(v: unknown): bigint {
 export function startupCopy(input: unknown): Readonly<StartupAuthorization> {
   const v = inert(input);
   exact(v, ['format', 'clock', 'admission', 'runtime', 'accountBindingDigest', 'promptDigest', 'modelRoute', 'proposalPlanRevision', 'launchPlanRevision']);
-  check(v.format === 'bowerloom/codex-startup/v1' && v.clock === STARTUP_CLOCK && v.modelRoute === MODEL_ROUTE, 'STARTUP_CONTRACT');
+  const claude=v.format==='bowerloom/claude-startup/v1';
+  check(v.clock===STARTUP_CLOCK && (claude ? ['claude:claude-sonnet-5-5:high','claude:claude-sonnet-5-5:medium'].includes(v.modelRoute) : v.format==='bowerloom/codex-startup/v1'&&v.modelRoute===MODEL_ROUTE),'STARTUP_CONTRACT');
   for (const name of ['accountBindingDigest', 'promptDigest', 'proposalPlanRevision', 'launchPlanRevision']) check(hex(v[name]), 'STARTUP_BINDING');
   const r = v.runtime; exact(r, ['executable','sha256','nodeVersion','uvVersion','platform','arch']);
   check(typeof r.executable === 'string' && resolve(r.executable) === r.executable && hex(r.sha256)
     && r.nodeVersion === 'v24.11.0' && r.uvVersion === '1.51.0' && r.platform === 'darwin' && r.arch === 'arm64', 'STARTUP_RUNTIME');
-  check(v.launchPlanRevision === startupLaunchRevision(v.proposalPlanRevision,r), 'STARTUP_BINDING');
+  check(v.launchPlanRevision === (claude ? claudeStartupLaunchRevision(v.proposalPlanRevision,r,v.modelRoute) : startupLaunchRevision(v.proposalPlanRevision,r)), 'STARTUP_BINDING');
   const a = v.admission; exact(a, ['format','binding','reservationId','requestDigest','claimedAtMs','notAfterWallMs','notAfterHrNs','parentWallMs','parentHrNs']);
   check(a.format === 'bowerloom/admission-dispatch/v1', 'STARTUP_CONTRACT');
   const b = a.binding; exact(b, ['installationId','databaseName','admissionSchema','launcherId','accountId','accountAlias','requestDigest','authorizationRevision','expiresAtMs']);
@@ -66,6 +67,30 @@ export function startupCopy(input: unknown): Readonly<StartupAuthorization> {
 export function startupLaunchRevision(proposalPlanRevision: string, runtime: StartupRuntime): string {
   check(hex(proposalPlanRevision),'STARTUP_BINDING');
   return sha(JSON.stringify({format:'bowerloom/codex-controlled-plan/v1',proposalPlanRevision,clock:STARTUP_CLOCK,runtime:inert(runtime)}));
+}
+/** Separate closed namespace: original Codex revision bytes above remain unchanged. */
+export function claudeStartupLaunchRevision(plan:string,runtime:StartupRuntime,modelRoute:string):string {
+  check(hex(plan)&&['claude:claude-sonnet-5-5:high','claude:claude-sonnet-5-5:medium'].includes(modelRoute),'STARTUP_BINDING');
+  return sha(JSON.stringify({format:'bowerloom/claude-controlled-plan/v1',proposalPlanRevision:plan,clock:STARTUP_CLOCK,runtime:inert(runtime),modelRoute}));
+}
+/** Claude-only run cutoff: no reset after IPC delay; four seconds are reserved for cleanup. */
+export class ClaudeRunDeadline {
+  #wall:number;#hr:bigint;#closed=false;readonly notAfterWallMs:number;readonly notAfterHrNs:bigint;
+  constructor(input:unknown,seconds:number,hr=process.hrtime.bigint(),wall=Date.now()) {
+    const a=startupCopy(input);check(a.format==='bowerloom/claude-startup/v1'&&Number.isInteger(seconds)&&seconds>0&&seconds<=60,'STARTUP_CONTRACT');
+    const start=new StartupDeadline(a);start.checkSample(hr,wall);
+    this.#wall=wall;this.#hr=hr;
+    this.notAfterWallMs=Math.min(a.admission.notAfterWallMs-4000,wall+seconds*1000);
+    const original=startupHr(a.admission.notAfterHrNs)-4_000_000_000n,relative=hr+BigInt(seconds)*1_000_000_000n;
+    this.notAfterHrNs=original<relative?original:relative;this.checkSample(hr,wall);
+  }
+  close():void{this.#closed=true;}
+  checkSample(hr:bigint,wall:number):void {
+    try {check(!this.#closed&&typeof hr==='bigint'&&hr>=this.#hr&&time(wall)&&wall>=this.#wall&&hr<this.notAfterHrNs&&wall<this.notAfterWallMs,'CLAUDE_RUN_EXPIRED');this.#hr=hr;this.#wall=wall;}
+    catch {this.close();throw new AdapterError('CLAUDE_RUN_EXPIRED');}
+  }
+  check():void{this.checkSample(process.hrtime.bigint(),Date.now());}
+  remainingMs():number{this.check();return Math.min(this.notAfterWallMs-this.#wall,Number((this.notAfterHrNs-this.#hr)/1_000_000n));}
 }
 export function assertStartupPreparation(input: unknown, binding: StartupPreparation): Readonly<StartupAuthorization> {
   const v = startupCopy(input);
