@@ -35,6 +35,11 @@ function fixture(t:any,value:unknown={synthetic:true}){
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const file=join(root,'request.json');fs.writeFileSync(file,JSON.stringify(value),{mode:0o600});
   calls.length=0;action=name=>({synthetic:true,name,executionAuthorized:false});return {root,file};
 }
+/** A record whose projectDir is a clean project folder under the fixture root. */
+function withProject(t:any,value:Record<string,unknown>){
+  const f=fixture(t);const projectDir=join(f.root,'project');fs.mkdirSync(projectDir,{mode:0o700});
+  const write=(v:Record<string,unknown>)=>fs.writeFileSync(f.file,JSON.stringify({...v,projectDir}));write(value);return {...f,projectDir,write};
+}
 const hex='a'.repeat(64);
 const deferred=()=>{let resolve!:(value:unknown)=>void,reject!:(error:unknown)=>void;const promise=new Promise((r,j)=>{resolve=r;reject=j;});return {promise,resolve,reject};};
 const tick=()=>new Promise<void>(r=>setImmediate(r));
@@ -51,9 +56,9 @@ test('exact source routes preserve arguments and separate acquisition approval f
   ] as const){calls.length=0;await runSkillsCommand(['skills',...tail]);assert.deepEqual(calls.map(c=>c.name),[name]);}
 });
 test('manager routes preserve previous approval, harness request and cancellation signal',async t=>{
-  const f=fixture(t,{operation:'install',harness:'claude'});await runSkillsCommand(['skills','plan','--request',f.file]);assert.equal(calls[0]!.name,'planObservedManagedSkill');assert.equal(calls[0]!.args[0].harness,'claude');assert.ok(calls[0]!.args[1].signal instanceof AbortSignal);
+  const f=withProject(t,{operation:'install',harness:'claude'});await runSkillsCommand(['skills','plan','--request',f.file]);assert.equal(calls[0]!.name,'planObservedManagedSkill');assert.equal(calls[0]!.args[0].harness,'claude');assert.ok(calls[0]!.args[1].signal instanceof AbortSignal);
   calls.length=0;await assert.rejects(runSkillsCommand(['skills','update','plan','--request',f.file]),code('USAGE'));assert.equal(calls.length,0);
-  fs.writeFileSync(f.file,JSON.stringify({operation:'update',harness:'codex'}));await runSkillsCommand(['skills','update','plan','--request',f.file]);assert.equal(calls[0]!.args[0].operation,'update');
+  f.write({operation:'update',harness:'codex'});await runSkillsCommand(['skills','update','plan','--request',f.file]);assert.equal(calls[0]!.args[0].operation,'update');
   for(const previous of ['none',hex]){calls.length=0;await runSkillsCommand(['skills','apply','--plan',f.file,'--approve',hex,'--previous',previous]);assert.equal(calls[0]!.name,'applyObservedManagedSkill');assert.equal(calls[0]!.args[1],hex);assert.equal(calls[0]!.args[2],previous==='none'?null:hex);}
   for(const [tail,name] of [
     [['inspect','--request',f.file],'inspectObservedManagedSkill'],
@@ -172,7 +177,7 @@ test('a partial open tells the user to start again with a new SOURCE_OPERATION, 
 
 test('a managed refusal appends only its listed managed code, so stale approval, local edit and drift differ',async t=>{
   const {ManagedSkillError}=await import(new URL('../packages/managed-skills/src/observed.js',import.meta.url).href);
-  const f=fixture(t,{operation:'update',harness:'codex'});
+  const f=withProject(t,{operation:'update',harness:'codex'});
   const message=(code:string)=>`The skills command stopped (${code}). Inspect the exact local cache and operation records before another action; no native execution authority is granted.`;
   for(const [code,argv] of [
     ['MANAGED_SKILL_STALE_APPROVAL',['skills','apply','--plan',f.file,'--approve',hex,'--previous','none']],
@@ -183,4 +188,37 @@ test('a managed refusal appends only its listed managed code, so stale approval,
   for(const error of [new ManagedSkillError('MANAGED_SKILL_PRIVATE_OTHER'),new Error('MANAGED_SKILL_LOCKED'),Object.create(ManagedSkillError.prototype,{code:{get(){throw Error('PRIVATE');}}})]){
     action=()=>{throw error;};await assert.rejects(runSkillsCommand(['skills','update','plan','--request',f.file]),(e:any)=>e.code==='SKILLS_REFUSED'&&e.message===plain);
   }
+});
+test('v1 apply and recovery refuse while a v1beta2 marker or managed folder exists, before dispatch',async t=>{
+  const v1Routes=[['skills','apply','--plan','FILE','--approve',hex,'--previous','none'],['skills','recover','plan','--request','FILE'],['skills','recover','apply','--plan','FILE','--approve',hex]];
+  const f=withProject(t,{operation:'install',harness:'claude'}),argv=(route:string[])=>route.map(x=>x==='FILE'?f.file:x);
+  const refused=(code:string)=>(e:any)=>e.code==='SKILLS_REFUSED'&&e.message.includes(code)&&!e.message.includes('PRIVATE');
+  // A clean project dispatches.
+  for(const route of v1Routes){calls.length=0;await runSkillsCommand(argv(route));assert.equal(calls.length,1);}
+  const bowerloom=join(f.projectDir,'.bowerloom');fs.mkdirSync(bowerloom,{mode:0o700});
+  for(const route of v1Routes){calls.length=0;await runSkillsCommand(argv(route));assert.equal(calls.length,1);}
+  // An unfinished v1beta2 operation: its marker.
+  const marker=join(bowerloom,'managed-pending.json');fs.writeFileSync(marker,'{}\n',{mode:0o600});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_RECOVERY_REQUIRED'),route.join(' '));assert.equal(calls.length,0);}
+  // A marker of any type counts, and a symlink is never followed.
+  fs.unlinkSync(marker);fs.symlinkSync(join(f.root,'absent-target'),marker);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_RECOVERY_REQUIRED'));assert.equal(calls.length,0);}
+  fs.unlinkSync(marker);
+  // The v1beta2 managed folder, with no marker.
+  fs.mkdirSync(join(bowerloom,'managed'),{mode:0o700});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_REFUSED'));assert.equal(calls.length,0);}
+  fs.rmdirSync(join(bowerloom,'managed'));
+  // A .bowerloom that is a symlink, group-writable or not a folder refuses rather than being read through.
+  fs.rmdirSync(bowerloom);const elsewhere=join(f.root,'elsewhere');fs.mkdirSync(elsewhere,{mode:0o700});fs.symlinkSync(elsewhere,bowerloom);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_REFUSED'));assert.equal(calls.length,0);}
+  fs.unlinkSync(bowerloom);fs.mkdirSync(bowerloom,{mode:0o700});fs.chmodSync(bowerloom,0o770);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  fs.rmdirSync(bowerloom);fs.writeFileSync(bowerloom,'not a folder\n',{mode:0o644});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  // A record with no usable projectDir never dispatches.
+  fs.writeFileSync(f.file,JSON.stringify({operation:'install',harness:'claude'}));
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  // Plan and inspect stay read-only routes and are not gated.
+  fs.unlinkSync(bowerloom);fs.mkdirSync(bowerloom,{mode:0o700});fs.writeFileSync(join(bowerloom,'managed-pending.json'),'{}\n',{mode:0o600});f.write({operation:'install',harness:'claude'});
+  calls.length=0;await runSkillsCommand(['skills','plan','--request',f.file]);await runSkillsCommand(['skills','inspect','--request',f.file]);assert.equal(calls.length,2);
 });

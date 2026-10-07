@@ -7,6 +7,7 @@ import { planObservedManagedSkill, inspectObservedManagedSkill } from '../../../
 import { applyObservedManagedSkill, planObservedManagedSkillRecovery, recoverObservedManagedSkill } from '../../../dist/packages/managed-skills/src/transaction.js';
 import { planManagedItem, inspectManagedProject } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
+import { runSkillsCommand } from '../../../dist/apps/cli/src/skills.js';
 import { project, cacheSkill, localSkill, request, local, cached, inventory, exactInventory, code } from './v2-fixture.mjs';
 
 function restore(t) { t.mock.restoreAll(); syncBuiltinESMExports(); }
@@ -108,4 +109,18 @@ test('migrate refuses a v1 namespace that holds anything beyond the v1 receipt, 
   }
   // The clean v1 namespace still plans.
   const clean = await legacy(t); assert.equal((await planManagedItem(clean.migrate)).core.before.at(-1).id, 'legacy');
+});
+
+test('the CLI v1 apply route refuses during an interrupted v2 migrate, so v2 rollback still converges', async t => {
+  const l = await legacy(t); l.migrate = { ...l.migrate, harnesses: ['codex'] };
+  const before = inventory(l.f.projectDir), plan = await planManagedItem(l.migrate), rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { rename(from, to); if (!hit && String(from) === path.join(l.f.projectDir, '.bowerloom-skills')) { hit = true; throw Error('PRIVATE_AFTER_LEGACY'); } }); syncBuiltinESMExports();
+  await assert.rejects(applyManagedItem(null, l.migrate, plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED')); restore(t); assert.equal(hit, true);
+  // With .bowerloom-skills moved out, a v1 install for the other harness plans; the CLI apply route must not run it.
+  const v1b = { ...l.v1, harness: 'claude' }, v1Plan = await planObservedManagedSkill(v1b), file = path.join(l.f.base, 'v1b.json'); fs.writeFileSync(file, JSON.stringify(v1b), { mode: 0o600 });
+  const pending = inventory(l.f.projectDir);
+  await assert.rejects(runSkillsCommand(['skills', 'apply', '--plan', file, '--approve', v1Plan.revision, '--previous', 'none']), e => e.code === 'SKILLS_REFUSED' && e.message.includes('MANAGED_SKILL_RECOVERY_REQUIRED'));
+  assert.deepEqual(inventory(l.f.projectDir), pending);
+  const recovery = await planManagedItemRecovery({ projectDir: l.f.projectDir, stateDir: l.migrate.stateDir, operationKey: plan.operationKey, action: 'rollback' });
+  assert.equal((await recoverManagedItem(recovery, recovery.revision)).state, 'rolled-back'); assert.deepEqual(inventory(l.f.projectDir), before);
 });

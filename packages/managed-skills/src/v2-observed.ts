@@ -262,4 +262,15 @@ export function inspectManagedProject(projectDir: string, itemsRoot: string): Ma
     return freezeSkillData({ format: 'bowerloom/managed-project-inspection/v1beta2', legacy: legacyPresent(projectDir), pending, items, writesAuthorized: false, executionAuthorized: false });
   } catch (e) { return boundaryV2(e); }
 }
+/**
+ * What a v1beta1 write route (apply, recovery) must find absent: an unfinished v1beta2 operation (`pending`) or
+ * v1beta2 managed content (`managed`). Reads only. The project and `.bowerloom` pass the product's folder guards
+ * (no symlink, a folder, owner or root, no group or world write); the two names are checked with lstat, so an
+ * entry of any type counts and a link is never followed.
+ */
+export function managedV2State(projectDir: unknown): 'absent' | 'pending' | 'managed' {
+  path(projectDir); ancestry(projectDir); const bowerloom = join(projectDir, '.bowerloom'); if (!exists(bowerloom)) return 'absent';
+  const pin = directory(bowerloom), pending = exists(join(projectDir, MARKER_V2)), managed = exists(join(projectDir, MANAGED_ROOT));
+  check(same(directory(bowerloom), pin)); return pending ? 'pending' : managed ? 'managed' : 'absent';
+}
 export type { Identity };
