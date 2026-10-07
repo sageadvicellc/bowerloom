@@ -94,7 +94,7 @@ test('a second interruption during rollback remains recoverable without replayin
 });
 test('lost terminal fsync acknowledgement remains pending until fresh exact recovery', async t => {
   const f = await fixture(t), plan = await planObservedManagedSkill(f.input), open = fs.openSync, fsync = fs.fsyncSync; let receiptFd, hit = false;
-  t.mock.method(fs, 'openSync', (file, ...args) => { const fd = open(file, ...args); if (String(file) === path.join(opDir(f, plan), 'receipt.json') && (args[0] & fs.constants.O_CREAT)) receiptFd = fd; return fd; });
+  t.mock.method(fs, 'openSync', (file, ...args) => { const fd = open(file, ...args); if (String(file) === path.join(opDir(f, plan), '.receipt.json.tmp') && (args[0] & fs.constants.O_CREAT)) receiptFd = fd; return fd; });
   t.mock.method(fs, 'fsyncSync', fd => { fsync(fd); if (fd === receiptFd && !hit) { hit = true; throw Error('PRIVATE_ACK_LOSS'); } });
   await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null)); t.mock.restoreAll(); assert.equal(hit, true); assert.equal((await recover(f, plan, 'resume')).state, 'committed');
 });
@@ -134,7 +134,7 @@ test('concurrent real apply calls create one operation and one committed receipt
 });
 test('changed recovery approval, foreign marker and substituted stages refuse without repair', async t => {
   const f = await fixture(t), p = await planObservedManagedSkill(f.input), rename = fs.renameSync; let hit = false;
-  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit) { hit = true; throw Error('before first rename'); } return rename(from, to); });
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('before first rename'); } return rename(from, to); });
   await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll();
   const recovery = await planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'resume' });
   await assert.rejects(recoverObservedManagedSkill(recovery, '0'.repeat(64)));
@@ -258,4 +258,12 @@ test('terminal marker cleanup refuses a replaced approved parent without removin
   assert.ok(swapped); unchangedReplacement(swapped, 'directory'); assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), true);
   await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: plan.operationKey, action: 'resume' }));
   assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), true);
+});
+for (const [kind, id] of [['MOVE_INTENT', 'projection-publish'], ['MOVE_DONE', 'projection-publish'], ['RECEIPT_INTENT', null]]) for (const action of ['resume', 'rollback']) test(`a kill between the open and the write of ${kind}${id ? ' ' + id : ''} leaves no empty record and ${action} converges`, async t => {
+  const f = await fixture(t), before = inventory(f.projectDir), plan = await planObservedManagedSkill(f.input), write = fs.writeFileSync; let hit = false;
+  t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (!hit && typeof data === 'string' && data.startsWith('{"sequence":') && data.includes(`"kind":"${kind}"`) && (!id || data.includes(`"id":"${id}"`))) { hit = true; throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); });
+  await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); t.mock.restoreAll(); assert.equal(hit, true);
+  for (const n of fs.readdirSync(opDir(f, plan))) if (/^record-\d{3}\.json$/.test(n)) assert.ok(fs.statSync(path.join(opDir(f, plan), n)).size > 0, n);
+  const result = await recover(f, plan, action); assert.equal(result.state, action === 'resume' ? 'committed' : 'rolled-back'); assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), false);
+  if (action === 'rollback') assert.deepEqual(inventory(f.projectDir), before);
 });

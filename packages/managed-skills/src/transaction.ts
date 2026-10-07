@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, basename } from 'node:path';
 import { createServer } from 'node:net';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
@@ -16,7 +16,17 @@ function durable(p: string, bytes: string | Buffer, guard: () => void, mode = 0o
   try { guard(); fs.fchmodSync(fd, mode); guard(); fs.writeFileSync(fd, bytes); guard(); fs.fsyncSync(fd); guard(); } finally { fs.closeSync(fd); }
   guard(); sync(dirname(p), guard); guard();
 }
-function json(p: string, value: unknown, guard: () => void): void { durable(p, JSON.stringify(value) + '\n', guard); }
+// A record lands whole: a hidden temporary in the same folder, fsynced, renamed into place, folder fsynced.
+// A leftover temporary never became a record; readState allows it and the next write removes it.
+const temporary = (p: string): string => join(dirname(p), '.' + basename(p) + '.tmp');
+function discard(tmp: string, guard: () => void): void {
+  guard(); if (!exists(tmp)) return; const s = fs.lstatSync(tmp, { bigint: true }); check(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && Number(s.uid) === process.getuid?.());
+  guard(); fs.unlinkSync(tmp); sync(dirname(tmp), guard); guard();
+}
+function json(p: string, value: unknown, guard: () => void): void {
+  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  guard(); absent(p); guard(); fs.renameSync(tmp, p); sync(dirname(p), guard); guard();
+}
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
   life.check(); const server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
@@ -47,7 +57,7 @@ function readState(project: string, state: string, key: string, life: Lifetime):
   const op = join(state, 'op-' + key), opIdentity = directory(op, true), intent = parsed<Intent>(join(op, 'intent.json'), intentKeys);
   check(intent.format === 'bowerloom/managed-skill-intent/v1beta1' && same(intent.operationIdentity, opIdentity)); const plan = validatePlan(intent.plan);
   check(plan.operationKey === key && plan.core.request.projectDir === project && plan.core.request.stateDir === state && intent.approvalRevision === plan.revision); bindings(plan.core, () => life.check());
-  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || /^(?:new|old|returned)-(?:canonical|projection|catalog)$/.test(n)));
+  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || /^(?:new|old|returned)-(?:canonical|projection|catalog)$/.test(n) || /^\.(?:intent|receipt|record-\d{3})\.json\.tmp$/.test(n)));
   const files = all.filter(n => /^record-\d{3}\.json$/.test(n)).sort(); check(files.length <= 256);
   const records = files.map((n, i) => { const r = parsed<JournalRecord>(join(op, n), recordKeys), { revision, ...body } = r; check(n === recordName(i) && r.sequence === i && r.previous === (i ? parsed<JournalRecord>(join(op, recordName(i - 1)), recordKeys).revision : null) && revisionOf(body) === revision); check(['STAGE_INTENT', 'STAGE_READY', 'PARENT_INTENT', 'PARENT_CREATED', 'MOVE_INTENT', 'MOVE_DONE', 'ROLLBACK_START', 'ROLLBACK_INTENT', 'ROLLBACK_DONE', 'PARENT_REMOVE_INTENT', 'PARENT_REMOVED', 'RECEIPT_INTENT', 'RECEIPT_DONE', 'MARKER_REMOVE_INTENT'].includes(r.kind)); return r; });
   const receipt = exists(join(op, 'receipt.json')) ? receiptAt(state, key) : null;

@@ -70,7 +70,7 @@ test('a pending v1 operation still recovers through v1 recovery, then migrates',
   const f = project(t), cache = await cacheSkill(f), v1State = path.join(f.base, 'v1-state'); fs.mkdirSync(v1State, { mode: 0o700 });
   const v1 = { operation: 'install', projectDir: f.projectDir, stateDir: v1State, harness: 'codex', cache: cache.selector, expectedPreviousRevision: null, minFreeBytes: 33554432 };
   const v1Plan = await planObservedManagedSkill(v1), rename = fs.renameSync; let hit = false;
-  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit) { hit = true; throw Error('interrupted'); } return rename(from, to); });
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('interrupted'); } return rename(from, to); });
   await assert.rejects(applyObservedManagedSkill(v1, v1Plan.revision, null)); restore(t);
   const migrate = request(f, { id: 'collections', source: cached(cache.selector), operation: 'migrate', legacy: { stateDir: v1State, operationKey: v1Plan.operationKey } });
   await assert.rejects(planManagedItem(request(f, { id: 'collections', source: cached(cache.selector) })), code('MANAGED_SKILL_LEGACY_PRESENT'));
