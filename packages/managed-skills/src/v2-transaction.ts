@@ -6,6 +6,9 @@
  * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review:
  * - 13 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
  * - 14-18 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
+ * - 19 `json`                                                              -> changed: each record (intent, journal
+ *   record, receipt, marker) goes through `durable` under a hidden `.<name>.tmp` in the same folder, then is renamed
+ *   into place and the folder fsynced; a leftover temporary is removed by `discard` and allowed by `readState`
  * - 21-42 `locked` (exclusive port, cancellation, close confirmation)     -> `locked`, identical; `heldLock` adds the
  *   caller-held path: token check, then a port probe that must find the port taken (else LOCK_NOT_HELD)
  * - 45-55 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, record chain)
@@ -35,7 +38,7 @@
  * - 251-257 `snapshot`, 258-285 recovery plan and recover                  -> identical apart from formats
  */
 import fs from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, basename } from 'node:path';
 import { createServer } from 'node:net';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes } from './observed.js';
@@ -55,7 +58,21 @@ function durable(p: string, bytes: string | Buffer, guard: () => void, mode = 0o
   try { guard(); fs.fchmodSync(fd, mode); guard(); fs.writeFileSync(fd, bytes); guard(); fs.fsyncSync(fd); guard(); } finally { fs.closeSync(fd); }
   guard(); sync(dirname(p), guard); guard();
 }
-function json(p: string, value: unknown, guard: () => void): void { durable(p, JSON.stringify(value) + '\n', guard); }
+/** The hidden temporary name of one record, in the record's own folder. */
+const temporary = (p: string): string => join(dirname(p), '.' + basename(p) + '.tmp');
+/** A temporary left by an interrupted record write never became a record. Only a plain owned file is removed. */
+function discard(tmp: string, guard: () => void): void {
+  guard(); if (!exists(tmp)) return; const s = fs.lstatSync(tmp, { bigint: true }); check(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && Number(s.uid) === process.getuid?.());
+  guard(); fs.unlinkSync(tmp); sync(dirname(tmp), guard); guard();
+}
+/**
+ * A JSON record (intent, journal record, receipt, marker) is never seen part-written: it is written whole under
+ * its temporary name, fsynced, renamed into place, and the folder fsynced. A kill leaves no record or a whole one.
+ */
+function json(p: string, value: unknown, guard: () => void): void {
+  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  guard(); absent(p); guard(); fs.renameSync(tmp, p); sync(dirname(p), guard); guard();
+}
 const lockPort = (project: string): number => 20000 + Number.parseInt(hash(project).slice(0, 8), 16) % 30000;
 /** Same key as startup revision apply/recovery and v1 managed apply. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
@@ -102,7 +119,8 @@ function readState(project: string, state: string, key: string, life: Lifetime):
   const op = join(state, 'op-' + key), opIdentity = directory(op, true), intent = parsed<IntentV2>(join(op, 'intent.json'), intentKeys);
   check(intent.format === 'bowerloom/managed-item-intent/v1beta2' && same(intent.operationIdentity, opIdentity)); const plan = validatePlanV2(intent.plan);
   check(plan.operationKey === key && plan.core.request.projectDir === project && plan.core.request.stateDir === state && intent.approvalRevision === plan.revision); bindingsV2(plan.core, () => life.check());
-  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || STAGE_NAME.test(n)));
+  // A hidden temporary is an interrupted record write: never read, and removed by the next write of that record.
+  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || STAGE_NAME.test(n) || /^\.(?:intent|receipt|record-\d{3})\.json\.tmp$/.test(n)));
   const files = all.filter(n => /^record-\d{3}\.json$/.test(n)).sort(); check(files.length <= 256);
   const records = files.map((n, i) => { const r = parsed<JournalRecord>(join(op, n), recordKeys), { revision, ...body } = r; check(n === recordName(i) && r.sequence === i && r.previous === (i ? parsed<JournalRecord>(join(op, recordName(i - 1)), recordKeys).revision : null) && revisionOf(body) === revision); check(['STAGE_INTENT', 'STAGE_READY', 'PARENT_INTENT', 'PARENT_CREATED', 'MOVE_INTENT', 'MOVE_DONE', 'ROLLBACK_START', 'ROLLBACK_INTENT', 'ROLLBACK_DONE', 'PARENT_REMOVE_INTENT', 'PARENT_REMOVED', 'RECEIPT_INTENT', 'RECEIPT_DONE', 'MARKER_REMOVE_INTENT'].includes(r.kind)); return r; });
   const receipt = exists(join(op, 'receipt.json')) ? receiptAtV2(state, key) : null;

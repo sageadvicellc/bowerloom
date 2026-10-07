@@ -84,18 +84,28 @@ test('a full item history refuses with HISTORY_FULL before any write', async t =
   assert.deepEqual(inventory(f.projectDir), before); assert.equal(fs.readdirSync(req.stateDir).length, 64);
 });
 
-/** Throws at one numbered journal-record or rename boundary, and records every boundary in order. */
+/**
+ * Throws at one numbered journal-record or rename boundary, and records every boundary in order. A record is one
+ * boundary that spans its temporary write and its rename into place: 'before' is a kill after the temporary is
+ * opened and before its bytes land, 'written' a kill with the whole temporary not yet renamed, and 'after' a kill
+ * once the record is in place. The rename of a record temporary is part of its record, not a boundary of its own.
+ */
 function boundaries(t, crash = null) {
-  const events = [], write = fs.writeFileSync, rename = fs.renameSync; let n = 0;
+  const events = [], write = fs.writeFileSync, rename = fs.renameSync; let n = 0, placing = null;
+  const hit = (i, when) => crash && crash.index === i && crash.when === when;
   const step = (event, run) => {
     const i = n++; events.push(event);
-    if (crash && crash.index === i && crash.when === 'before') throw Error('PRIVATE_CRASH_BEFORE');
+    if (hit(i, 'before')) throw Error('PRIVATE_CRASH_BEFORE');
     const result = run();
-    if (crash && crash.index === i && crash.when === 'after') throw Error('PRIVATE_CRASH_AFTER');
+    if (event.type === 'record') { if (hit(i, 'written')) throw Error('PRIVATE_CRASH_WRITTEN'); placing = i; return result; }
+    if (hit(i, 'after')) throw Error('PRIVATE_CRASH_AFTER');
     return result;
   };
   t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => typeof data === 'string' && data.startsWith('{"sequence":') ? step({ type: 'record', ...JSON.parse(data) }, () => write(fd, data, ...rest)) : write(fd, data, ...rest));
-  t.mock.method(fs, 'renameSync', (from, to) => step({ type: 'rename', from: String(from), to: String(to) }, () => rename(from, to)));
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (!String(from).endsWith('.tmp')) return step({ type: 'rename', from: String(from), to: String(to) }, () => rename(from, to));
+    const i = placing; placing = null; const result = rename(from, to); if (i !== null && hit(i, 'after')) throw Error('PRIVATE_CRASH_AFTER'); return result;
+  });
   syncBuiltinESMExports();
   return events;
 }
@@ -120,12 +130,14 @@ for (const update of [false, true]) test(`${update ? 'update' : 'install'}: a cr
   const lastStage = events.findLastIndex(e => e.kind === 'STAGE_READY');
   assert.ok(selected.length >= (update ? 8 : 6)); assert.ok(events.filter(e => e.type === 'rename' && selected.includes(events.indexOf(e))).length >= (update ? 2 : 1));
   const points = [{ index: selected[0] - 1, when: 'after' }];
-  for (const i of selected) { points.push({ index: i, when: 'after' }); if (events[i].type === 'rename') points.push({ index: i, when: 'before' }); }
+  // A 'before' point at a record is a kill after the record file is opened and before its bytes land.
+  for (const i of selected) { points.push({ index: i, when: 'after' }, { index: i, when: 'before' }); if (events[i].type === 'record') points.push({ index: i, when: 'written' }); }
   const tally = { held: 0, resume: 0, rollback: 0 }, labels = [];
   for (const point of points) {
     const event = events[point.index], label = `${point.when} ${event.type === 'rename' ? 'rename ' + path.basename(event.from) + ' -> ' + path.basename(event.to) : event.kind + ' ' + JSON.stringify(event.data).slice(0, 80)}`;
     // A crash before every stage is ready, or between a parent intent and its stamp, is held as in v1.
-    const held = point.index < lastStage || event.kind === 'PARENT_INTENT';
+    // A crash before a record lands leaves the state of the boundary before it.
+    const held = point.when !== 'after' ? point.index <= lastStage || event.kind === 'PARENT_CREATED' : point.index < lastStage || event.kind === 'PARENT_INTENT';
     labels.push((held ? 'held ' : 'converge ') + label);
     for (const action of held ? ['held'] : ['resume', 'rollback']) {
       tally[action]++; const run = await scenario(t, update); boundaries(t, point);
@@ -148,12 +160,12 @@ for (const update of [false, true]) test(`${update ? 'update' : 'install'}: a cr
     }
   }
   t.diagnostic(`boundaries ${points.length}: held ${tally.held}, resumed ${tally.resume}, rolled back ${tally.rollback}`); for (const l of labels) t.diagnostic(l);
-  assert.ok(tally.resume >= (update ? 7 : 6) && tally.resume === tally.rollback);
+  assert.ok(tally.resume >= (update ? 16 : 13) && tally.resume === tally.rollback);
 });
 
 test('a substituted stage and a changed recovery approval are refused without repair', async t => {
   const run = await scenario(t, false), rename = fs.renameSync; let hit = false;
-  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit) { hit = true; throw Error('before first rename'); } return rename(from, to); }); syncBuiltinESMExports();
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('before first rename'); } return rename(from, to); }); syncBuiltinESMExports();
   await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t);
   const recovery = await planManagedItemRecovery(recoveryInput(run.req, run.plan, 'resume'));
   await assert.rejects(recoverManagedItem(recovery, '0'.repeat(64)));
@@ -180,7 +192,7 @@ test('a second interruption during rollback stays recoverable without replaying 
 });
 
 test('a lost terminal fsync acknowledgement stays pending until an exact recovery', async t => {
-  const run = await scenario(t, false), open = fs.openSync, fsync = fs.fsyncSync, receipt = path.join(run.req.stateDir, 'op-' + run.plan.operationKey, 'receipt.json'); let fd, hit = false;
+  const run = await scenario(t, false), open = fs.openSync, fsync = fs.fsyncSync, receipt = path.join(run.req.stateDir, 'op-' + run.plan.operationKey, '.receipt.json.tmp'); let fd, hit = false;
   t.mock.method(fs, 'openSync', (file, ...args) => { const r = open(file, ...args); if (String(file) === receipt && (args[0] & fs.constants.O_CREAT)) fd = r; return r; });
   t.mock.method(fs, 'fsyncSync', d => { fsync(d); if (d === fd && !hit) { hit = true; throw Error('PRIVATE_ACK_LOSS'); } }); syncBuiltinESMExports();
   await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED')); restore(t); assert.equal(hit, true);
@@ -192,4 +204,13 @@ test('an authored edit after the plan makes the approval stale, with no write', 
   const before = inventory(run.f.projectDir);
   await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), code('MANAGED_SKILL_STALE_APPROVAL'));
   assert.deepEqual(inventory(run.f.projectDir), before); assert.deepEqual(fs.readdirSync(run.req.stateDir), []);
+});
+
+test('a kill before the receipt bytes land leaves no part-written receipt, and resume commits', async t => {
+  const run = await scenario(t, false), write = fs.writeFileSync, op = path.join(run.req.stateDir, 'op-' + run.plan.operationKey); let hit = false;
+  t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (!hit && typeof data === 'string' && data.startsWith('{"format":"bowerloom/managed-item-receipt/v1beta2"')) { hit = true; throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); }); syncBuiltinESMExports();
+  await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED')); restore(t); assert.equal(hit, true);
+  assert.equal(fs.existsSync(path.join(op, 'receipt.json')), false); assert.equal(fs.statSync(path.join(op, '.receipt.json.tmp')).size, 0);
+  assert.equal((await recover(run.req, run.plan, 'resume')).state, 'committed');
+  assert.equal(fs.existsSync(path.join(op, '.receipt.json.tmp')), false); assert.equal(fs.existsSync(path.join(run.f.projectDir, MARKER)), false);
 });
