@@ -248,8 +248,18 @@ test('a parent folder that keeps changing still refuses SKILLS_CHANGED after exa
   await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
   assert.equal(opens(),2);
 });
-test('the record file changing between the first read and the check still refuses: only a parent change is read again',async t=>{
+test('the record file changing during the first read refuses at once: only a parent change is read again',async t=>{
   const f=fixture(t,{synthetic:true,id:3});const opens=onOpen(t,f,n=>{if(n===1)fs.writeFileSync(f.file,'{"synthetic":true,"id":4}');});
   await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
   assert.equal(opens(),1);
+});
+test('a new record renamed into place after the first read changes the parent folder too: the repeat still refuses SKILLS_CHANGED, with no dispatch (review M1F 5)',async t=>{
+  const f=fixture(t,{synthetic:true,id:5});
+  // The first read ends when it closes the record. Only then is a new record renamed into place, so the first read
+  // succeeds, the check before dispatch finds the parent folder changed, and its one repeat finds another record.
+  const open=fs.openSync,close=fs.closeSync;let opens=0,recordFd:number|undefined,replaced=false;
+  t.mock.method(fs,'openSync',(path:any,...rest:any[])=>{const fd=(open as any)(path,...rest);if(path===f.file){opens++;recordFd=fd;}return fd;});
+  t.mock.method(fs,'closeSync',(fd:any)=>{(close as any)(fd);if(fd===recordFd&&!replaced){replaced=true;const next=join(f.root,'next.json');fs.writeFileSync(next,'{"synthetic":true,"id":6}',{mode:0o600});fs.renameSync(next,f.file);}});
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(replaced,true);assert.equal(opens,2,'the first read completed, then the check before dispatch read once more and refused');
 });
