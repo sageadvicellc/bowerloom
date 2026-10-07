@@ -31,8 +31,8 @@ export interface ProjectContext {
 
 /**
  * Proof that `withProjectLock` holds the project lock.
- * The lock uses the same port formula as `locked` in managed-skills/src/transaction.ts and `withLock` in
- * startup/src/revision.ts, so all three exclude each other.
+ * The lock uses the one shared slot, `lockSlot` in ./index.ts, keyed on the project folder's device and inode, as do
+ * `locked` in managed-skills and `withLock` in startup/src/revision.ts, so all of them exclude each other.
  * Only `withProjectLock` creates a token. The brand stops a literal from type-checking, and the
  * implementation also checks the token at run time. A token is valid only inside the work callback that received it.
  */

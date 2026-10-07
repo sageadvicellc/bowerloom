@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import type { Server } from 'node:net';
-import { lstatSync, readdirSync, realpathSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
@@ -113,11 +113,25 @@ function build(dir: string, aliases: string[], uid: number, home: string): Proje
   return Object.freeze({ dir, identity, ancestry: Object.freeze(ancestry), bowerloomIdentity, projectId: projectId(dir, identity) });
 }
 
+const LOCK_FORMAT = 'bowerloom-project-lock/v1';
+/** One project's lock slot: its key, its local port, and the banner its holder sends. */
+export interface LockSlot { readonly key: string; readonly port: number; readonly banner: string }
 /**
- * The port formula of `locked` (managed-skills/src/transaction.ts) and `withLock` (startup/src/revision.ts):
- * the same project path gives the same local port, so all three exclude each other.
+ * The one lock slot of a project folder, shared by `withProjectLock`, `locked` (managed-skills/src/transaction.ts and
+ * v2-transaction.ts), the held-lock probe (v2-transaction.ts) and `withLock` (startup/src/revision.ts), so all of them
+ * exclude each other. The key is the folder's device and inode, never the path string: two spellings of one folder,
+ * such as a case alias on case-insensitive APFS or a symlink, name one inode and so one lock. A path that names no
+ * folder has no slot and refuses PROJECT_LOCK_UNAVAILABLE.
  */
-export const lockPort = (project: string): number => 20000 + Number.parseInt(hex(project).slice(0, 8), 16) % 30000;
+export function lockSlot(project: string): LockSlot {
+  if (typeof project !== 'string' || !isAbsolute(project) || project.includes('\0')) throw refuse('USAGE');
+  let stat; try { stat = statSync(project, { bigint: true }); } catch { throw refuse('PROJECT_LOCK_UNAVAILABLE'); }
+  if (!stat.isDirectory()) throw refuse('PROJECT_LOCK_UNAVAILABLE');
+  const key = hex(JSON.stringify([LOCK_FORMAT, stat.dev.toString(), stat.ino.toString()]));
+  return Object.freeze({ key, port: 20000 + Number.parseInt(key.slice(0, 8), 16) % 30000, banner: `${LOCK_FORMAT} ${key}\n` });
+}
+/** The local port of a project's lock slot. See `lockSlot`. */
+export const lockPort = (project: string): number => lockSlot(project).port;
 
 // A token is real only when withProjectLock made it. Membership here is the runtime brand: a copy, a spread,
 // a clone, a prototype child or a literal with the same fields is not a member.
@@ -142,10 +156,10 @@ function closeServer(server: Server): Promise<void> {
  */
 export async function withProjectLock<T>(root: string, signal: AbortSignal, work: (held: HeldProjectLock) => Promise<T>): Promise<T> {
   if (typeof root !== 'string' || !isAbsolute(root) || root.includes('\0')) throw refuse('USAGE');
-  const server = createServer(socket => socket.destroy());
+  const port = lockPort(root), server = createServer(socket => socket.destroy());
   const outcome = await new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
     server.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
-    server.listen({ host: '127.0.0.1', port: lockPort(root), exclusive: true }, () => settle({ ok: true }));
+    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => settle({ ok: true }));
   });
   if (!outcome.ok) throw refuse(outcome.code === 'EADDRINUSE' ? 'PROJECT_LOCKED' : 'PROJECT_LOCK_UNAVAILABLE');
   const own = new AbortController(), combined = AbortSignal.any([own.signal, signal]);

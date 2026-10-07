@@ -44,10 +44,10 @@ function move(from: string, to: string): void {
   io.ancestors(dirname(from)); io.ancestors(dirname(to)); if (present(to)) fail('REVISION_DESTINATION_EXISTS');
   renameSync(from, to); syncDirectory(dirname(from)); if (dirname(from) !== dirname(to)) syncDirectory(dirname(to));
 }
-/** A kernel-owned, path-derived local port excludes cooperating writers and releases on process death.
+/** A kernel-owned local port, keyed on the target folder's device and inode (`lockSlot`), excludes cooperating writers and releases on process death.
  * A collision refuses work. No protocol, PID adoption, remote interface or daemon is provided. */
 async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
-  const port = lockPort(target);
+  let port: number; try { port = lockPort(target); } catch { throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
   const server = createServer(socket => socket.destroy());
   await new Promise<void>((resolve, reject) => {
     server.once('error', () => reject(new StartupError('REVISION_LOCK_UNAVAILABLE')));

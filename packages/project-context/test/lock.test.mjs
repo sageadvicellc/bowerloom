@@ -6,10 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { withProjectLock, isHeldProjectLock, lockPort } from '../../../dist/packages/project-context/src/index.js';
+import { applyObservedManagedSkill } from '../../../dist/packages/managed-skills/src/transaction.js';
+import { applyManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
+import { applyStartupRevision } from '../../../dist/packages/startup/src/index.js';
 
 const code = expected => error => error?.code === expected;
-// The same formula as `locked` (managed-skills/src/transaction.ts) and `withLock` (startup/src/revision.ts).
-const formula = project => 20000 + Number.parseInt(createHash('sha256').update(project).digest('hex').slice(0, 8), 16) % 30000;
+// The key of `lockPort`, written out here so a change to it fails this file: the project folder's device and inode,
+// never the path string, so two spellings of one folder share one lock.
+const keyOf = project => { const s = fs.statSync(project, { bigint: true }); return createHash('sha256').update(JSON.stringify(['bowerloom-project-lock/v1', s.dev.toString(), s.ino.toString()])).digest('hex'); };
+const formula = project => 20000 + Number.parseInt(keyOf(project).slice(0, 8), 16) % 30000;
 const listen = (server, port) => new Promise((resolve, reject) => { server.once('error', reject); server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
 const close = server => new Promise(resolve => server.close(resolve));
 /** A fresh project folder whose lock port is free now, so parallel test files rarely collide on a port. */
@@ -23,10 +28,40 @@ async function freshProject(t) {
   throw new Error('no free lock port found');
 }
 
-test('lockPort uses the v1 formula', async t => {
+test('lockPort keys on the folder device and inode, not the path string', async t => {
   const dir = await freshProject(t);
   assert.equal(lockPort(dir), formula(dir));
   assert.ok(lockPort(dir) >= 20000 && lockPort(dir) < 50000);
+  // A symlink to the folder names the same inode, so it names the same lock.
+  const link = dir + '-link'; fs.symlinkSync(dir, link); t.after(() => fs.rmSync(link, { force: true }));
+  assert.equal(lockPort(link), lockPort(dir));
+  // A path that names no folder has no lock slot.
+  assert.throws(() => lockPort(path.join(dir, 'missing')), code('PROJECT_LOCK_UNAVAILABLE'));
+  fs.writeFileSync(path.join(dir, 'file'), 'x'); assert.throws(() => lockPort(path.join(dir, 'file')), code('PROJECT_LOCK_UNAVAILABLE'));
+});
+
+test('a case alias of the project folder shares one lock across all four lock users', async t => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-alias-'))); t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const real = path.join(base, 'MyProj'), alias = path.join(base, 'myproj'); fs.mkdirSync(real, { mode: 0o700 });
+  if (!fs.existsSync(alias)) { t.skip('this volume is case-sensitive'); return; }
+  // Both spellings pass a realpath round trip, which is why a path-string key failed open here.
+  assert.equal(fs.realpathSync(alias), alias); assert.equal(fs.realpathSync(real), real);
+  assert.equal(lockPort(alias), lockPort(real));
+  const hex = 'a'.repeat(64), state = path.join(base, 'state'), signal = new AbortController().signal;
+  const v1 = { operation: 'install', projectDir: alias, stateDir: state, harness: 'codex', cache: { root: path.join(base, 'cache'), operationId: 'b'.repeat(32), expectedSnapshotRevision: hex, expectedReceiptRevision: hex }, expectedPreviousRevision: null, minFreeBytes: 33554432 };
+  const v2 = { operation: 'install', projectDir: alias, stateDir: path.join(state, 'house-style'), item: { kind: 'skill', id: 'house-style' }, harnesses: ['claude'], source: { kind: 'local', path: 'skills/house-style' }, expectedPreviousRevision: null, minFreeBytes: 33554432, legacy: null };
+  await withProjectLock(real, signal, async held => {
+    await assert.rejects(withProjectLock(alias, signal, async () => {}), code('PROJECT_LOCKED'));
+    await assert.rejects(applyObservedManagedSkill(v1, hex, null), code('MANAGED_SKILL_LOCKED'));
+    await assert.rejects(applyManagedItem(null, v2, hex), code('MANAGED_SKILL_LOCKED'));
+    await assert.rejects(applyStartupRevision({ targetDir: alias, brief: {} }, hex, hex), code('REVISION_LOCK_UNAVAILABLE'));
+    held.assertHeld(real);
+  });
+  // And the other way round: a lock taken through the alias excludes the real spelling.
+  await withProjectLock(alias, signal, async () => {
+    await assert.rejects(withProjectLock(real, signal, async () => {}), code('PROJECT_LOCKED'));
+    await assert.rejects(applyObservedManagedSkill({ ...v1, projectDir: real }, hex, null), code('MANAGED_SKILL_LOCKED'));
+  });
 });
 
 test('the project lock excludes a holder of the revise-key port, and the port is free again afterwards', async t => {

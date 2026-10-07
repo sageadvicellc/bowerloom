@@ -30,8 +30,7 @@ function json(p: string, value: unknown, guard: () => void): void {
 }
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
-  const port = lockPort(project);
+  life.check(); const port = lockPort(project), server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
   let stop: (() => void) | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
