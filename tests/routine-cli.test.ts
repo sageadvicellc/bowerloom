@@ -60,7 +60,7 @@ test('routine CLI produces exact canonical read-only plan from a standalone auth
   assert.equal(cli(['routine','plan',...f.args.slice(6,8),...f.args.slice(2,6)]).stdout,expected);
 });
 test('routine CLI help names the read-only authoring boundary',()=>{
-  const r=cli(['--help']);assert.match(r.stdout,/bowerloom routine plan --root/);assert.match(r.stdout,/standalone portable authoring tree/);assert.match(r.stdout,/does not install\/import files/);
+  const r=cli(['help','advanced']);assert.match(r.stdout,/bowerloom routine plan --root/);assert.match(r.stdout,/standalone portable authoring tree/);assert.match(r.stdout,/does not install\/import files/);
 });
 test('routine CLI exact argument protocol rejects effects and malformed tokens with empty stdout',async()=>{
   const f=fixture(),before=snapshot(f.root);

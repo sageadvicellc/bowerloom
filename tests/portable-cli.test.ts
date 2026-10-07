@@ -46,7 +46,7 @@ test('Bowerloom help and legacy command aliases share the existing CLI',()=>{
   const root=JSON.parse(readFileSync(new URL('../../package.json',import.meta.url),'utf8')) as {bin:Record<string,string>};
   assert.equal(root.bin.bowerloom,root.bin.trellis);
   assert.equal(root.bin['bowerloom-mcp'],root.bin['trellis-mcp']);
-  const result=spawnSync(process.execPath,['dist/apps/cli/src/main.js','--help'],{encoding:'utf8'});
+  const result=spawnSync(process.execPath,['dist/apps/cli/src/main.js','help','advanced'],{encoding:'utf8'});
   assert.equal(result.status,0);
   const release = JSON.parse(readFileSync(new URL('../../release/beta.json', import.meta.url), 'utf8')) as {version: string};
   assert.ok(result.stdout.startsWith(`Bowerloom ${release.version}:`));

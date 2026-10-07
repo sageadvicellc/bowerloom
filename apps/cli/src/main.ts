@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
+import { shortHelp, TOPICS, reportFailure } from './human.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -111,8 +113,22 @@ function releaseHeading(): string {
   return `Bowerloom ${record.version}: open beta (${record.state})\n${record.execution}\n`;
 }
 
+function topic(name: string | undefined): string | null { return name !== undefined && Object.hasOwn(TOPICS, name) ? TOPICS[name]! : null; }
+
 async function main(args: string[]): Promise<void> {
-  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HELP}`); return; }
+  // There is no --yes: approval always names the plan it approves (usage error, exit 2).
+  if (args.some(word => word === '--yes' || word.startsWith('--yes=') || word === '-y')) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
+  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help')) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
+  if (args[0] === 'help') {
+    const text = args.length === 2 ? args[1] === 'advanced' ? HELP : args[1] === 'init' ? INIT_HELP : topic(args[1]) : null;
+    if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands, or bowerloom help advanced for every form.');
+    process.stdout.write(`${releaseHeading()}\n${text}`); return;
+  }
+  if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
+  if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  if (args[0] === 'status' && args.slice(1).every(word => word === '--json') && args.length <= 2) {
+    const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
+  }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
   if (args[0] === 'skills') {
@@ -244,8 +260,8 @@ async function main(args: string[]): Promise<void> {
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-  const code=error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&/^[A-Z_]{1,100}$/.test(error.code)?error.code:'IO_ERROR';
-  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
-  process.stderr.write(`${JSON.stringify({ error: { code: safeError.code, message: safeError.message } })}\n`);
-  process.exitCode = safeError.code === 'USAGE' ? 2 : 1;
+  // A terminal gets plain words. Anything else gets the JSON envelope agents parse.
+  const failure = reportFailure(error, process.stderr.isTTY === true);
+  process.stderr.write(failure.text);
+  process.exitCode = failure.exitCode;
 });

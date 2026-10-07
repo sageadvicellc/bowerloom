@@ -31,7 +31,7 @@ test('version aliases report the actual distribution version independent of work
 });
 test('root and exact init help aliases succeed without creating a target or changing files',t=>{
   const f=fixture(t),before=readdirSync(f.root).sort();
-  for(const args of [['--help'],['-h'],['init','--help'],['init','-h']]) {
+  for(const args of [['help','advanced'],['init','--help'],['init','-h']]) {
     const r=run(f.root,args);assert.equal(r.status,0,r.stderr);assert.equal(r.stderr,'');assert.match(r.stdout,/bowerloom init plan/);
     assert.match(r.stdout,/engineer\|founder\|research/);
     assert.ok(r.stdout.startsWith(`Bowerloom ${version}: open beta (unreleased)`));
