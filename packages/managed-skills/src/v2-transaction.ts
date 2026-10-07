@@ -2,7 +2,8 @@
  * Managed items v1beta2: the journaled transaction. A mechanical generalization of transaction.ts: the three fixed
  * kinds (canonical, projection, catalog) become the plan's ordered surface list. Functions keep the v1 names with a
  * V2 suffix only where a type changed, and keep v1's statement order. transaction.ts stayed byte-identical to
- * cc117ac until the M4 fix round, which gave both files the same record write (`json` below).
+ * cc117ac until the M4 fix round, which gave both files the same record write (`json` below); the lock-hardening
+ * round then gave both the same marker publish, op-folder creation and lock slot.
  *
  * Changes from v1 beyond the generalization, declared for review:
  * - `finish` fsyncs `dirname(marker)` after removing the marker. The v2 marker is `.bowerloom/managed-pending.json`,
@@ -12,40 +13,48 @@
  *   v1 compares the raw acquired cache closure.
  * - `applyManagedItem` takes no separate `expectedPreviousRevision` argument. The request carries it, the plan binds
  *   it, and the approval revision covers the plan, so a second copy could only disagree.
+ * - abandon (v2 only) and `heldLock` (v2 only). v1 alone has `noV2`.
  *
- * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review:
- * - 13 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
- * - 14-18 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
- * - 19 `json`                                                              -> changed: each record (intent, journal
- *   record, receipt, marker) goes through `durable` under a hidden `.<name>.tmp` in the same folder, then is renamed
- *   into place and the folder fsynced; a leftover temporary is removed by `discard` and allowed by `readState`
- * - 21-42 `locked` (exclusive port, cancellation, close confirmation)     -> `locked`, identical; `heldLock` adds the
- *   caller-held path: token check, then a port probe that must find the port taken (else LOCK_NOT_HELD)
- * - 45-55 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, record chain)
- *   -> `readState`: stage names `(new|old|returned)-<surface-id>`; the record kind list is v1's, unchanged
- * - 56-61 `marker` (format, key, stateDir, op identity, intent sha256)     -> `marker`: v2 path and format, plus item
- * - 62-89 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
- * - 90-99 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
+ * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review. Each entry starts at the line of
+ * the first name it lists; tests/guard-map.test.ts holds that true.
+ * - 14 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
+ * - 15-19 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
+ * - 22-29 `discard`, `json`: each record (intent, journal record, receipt) goes through `durable` under a hidden
+ *   `.<name>.tmp` in the same folder, then is renamed into place and the folder fsynced -> identical
+ * - 32-44 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
+ *   a marker twin is settled, a leftover marker temporary goes only when its bytes begin ours -> identical
+ * - 46-71 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, cancellation, close
+ *   confirmation) -> `locked`, identical; `heldLock` adds the caller-held path: token check, a probe that must find
+ *   the slot taken (else LOCK_NOT_HELD), and this project's banner on it (else LOCK_SLOT_COLLISION)
+ * - 77 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
+ * - 80-94 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
+ *   temporary, record chain) -> `readState`: stage names `(new|old|returned)-<surface-id>`; record kinds unchanged
+ * - 95-105 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
+ *   -> v2 path and format, plus item
+ * - 108-133 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
+ * - 134-143 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
  *   life.check)                                                            -> identical
- * - 100-103 `append` (hash chain, 256 records)                             -> identical
- * - 104-107 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
- * - 108-124 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
+ * - 144-147 `append` (hash chain, 256 records)                             -> identical
+ * - 148-151 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
+ * - 152-168 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
  *   -> identical per material; `kind === 'file'` replaces `kind === 'catalog'`
- * - 125-133 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
- * - 134-144 `parents` (prestamp gap never adopted)                         -> identical
- * - 145-153 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
+ * - 169-177 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
+ * - 178-188 `parents` (prestamp gap never adopted)                         -> identical
+ * - 190-197 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
  *   surface has no material and so no publish move
- * - 154-165 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
- * - 166-179 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
- * - 180-190 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
- * - 191-204 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
- * - 205-209 `terminal`                                                     -> harness becomes harnesses, plus item
+ * - 198-209 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
+ * - 210-223 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
+ * - 224-234 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
+ * - 235-248 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
+ * - 249-253 `terminal`                                                     -> harness becomes harnesses, plus item
  *   and migratedFrom
- * - 210-234 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
- * - 235-250 apply (lock, replan equal revision, re-read source equal, bindings, before equal, parents, markers,
- *   absent op, history, capacity, life.check, mkdir op, intent, marker, stage, resume) -> identical order; history
- *   refuses with MANAGED_SKILL_HISTORY_FULL
- * - 251-257 `snapshot`, 258-285 recovery plan and recover                  -> identical apart from formats
+ * - 254-280 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
+ * - 281-304 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
+ *   equal, bindings, before equal, parents, markers, absent op, history, capacity, life.check, op folder built as
+ *   `.op-<key>.tmp` with its intent and renamed, marker, stage, resume) -> identical order; history refuses with
+ *   MANAGED_SKILL_HISTORY_FULL
+ * - 305-311 `snapshot`, 312-342 `recoveryWithLife` and recover (twin settled after the approval re-check)
+ *   -> identical apart from formats
  */
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
