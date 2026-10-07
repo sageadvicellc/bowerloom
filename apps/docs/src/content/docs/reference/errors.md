@@ -7,6 +7,8 @@ order: 24
 
 Use the actual result from the matching installed version. A status is an observed state. An error identifies a refused operation.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Status fields
 
 | Field | Meaning in the reviewed setup |
@@ -41,6 +43,20 @@ Use the actual result from the matching installed version. A status is an observ
 | `UNSAFE_DIRECTORY` | A path fails required directory conditions. | Inspect the path and ancestors. Do not force the write. |
 
 A wrong setup approval returns `STALE_APPROVAL` with exit 1 and no project changes. Do not infer every I/O failure is unchanged.
+
+## Skills refusals
+
+The `bowerloom skills` commands print one line of JSON on standard error and exit 1. [Add a third-party skill](/docs/guides/add-skills/#if-a-command-refuses-or-stops) shows the exact forms.
+
+<!-- BIND: pending installed evidence -->
+| Code | Trigger and meaning | Preserve and next action |
+| --- | --- | --- |
+| `SKILLS_REFUSED (<CODE>)` | The command stopped for a known reason. The code in parentheses names it, such as `NPM_CACHE_DIRECTORY` or `GIT_TREE_BOUND`. | Keep the error. Inspect the cache and installation records. |
+| `SKILLS_UNCERTAIN` | The cache state is not certain. The message names two codes. | Run `skills source inspect`, then `skills source recover plan`, before another action. |
+| `SKILLS_UNCERTAIN` with `_CACHE_OPEN_PARTIAL` | Recovery cannot read the operation folder. | Start again with a new `SOURCE_OPERATION`. |
+| `MANAGED_SKILL_STALE_APPROVAL` | The approved revision no longer matches the plan. | Plan again and obtain new approval. |
+| `MANAGED_SKILL_LOCAL_DRIFT` | Someone edited an installed file. | Keep the edit. Inspect before you plan again. |
+| `MANAGED_SKILL_REFUSED` | The general installation refusal. It also covers cache or receipt drift. | Inspect the cache and installation. Do not overwrite local files. |
 
 ## Stop results
 

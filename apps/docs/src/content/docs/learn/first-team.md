@@ -7,6 +7,8 @@ order: 3
 
 Integrate a team specification with the project you already use. First [map your existing workflow](/docs/guides/integrate-workflow/) and compare it with a fixed profile. Existing mode adds `.bowerloom/` without reading project-file contents or importing live agent configuration. Review the exact file plan before installation, then compare the resulting roles and handoffs with your process.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Ask your agent
 
 ```text

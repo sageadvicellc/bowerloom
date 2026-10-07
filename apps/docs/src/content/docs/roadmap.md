@@ -17,4 +17,6 @@ Bowerloom moves from project integration in the 0.7 beta toward a stable v1. The
 
 Capability additions are planned work, not features supplied by the current setup commands. The roadmap does not promise automatic team execution, shared company services, or unattended support. Stable v1 depends on the release candidate's results. It has no assumed calendar date.
 
+The following are planned for 0.7.x and are not in 0.7.0: `bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts. Private registries and private repositories are later future-version work.
+
 [Release notes](/docs/releases/) describes shipped changes. [Current support](/docs/status/) describes supported tasks. Discuss proposed features in [Ideas](https://github.com/sageadvicellc/bowerloom/discussions/categories/ideas).

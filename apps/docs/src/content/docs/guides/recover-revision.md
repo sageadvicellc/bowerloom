@@ -7,6 +7,8 @@ order: 9
 
 Recovery resolves an interrupted revision. It uses the recorded transaction and its original approval.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Ask your agent
 
 ```text

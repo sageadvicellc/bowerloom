@@ -6,6 +6,8 @@ compatibility: true
 
 Integrate Bowerloom with the project you already use. First [map your manual or one-to-one agent workflow](/docs/guides/integrate-workflow/) into roles, handoffs, and review points. The fixed profiles provide a starting specification for comparison with that process. Setup stores those definitions in `.bowerloom/` through an exact approved file plan. It does not import your project or execute the team.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Choose a workspace and profile
 
 Use [Integrate your first team](/docs/learn/first-team/) or [Existing project](/docs/guides/existing-project/) for your intended project. If `.bowerloom/` already exists, use [revision](/docs/revision/). Engineer, Founder, and Research provide fixed role templates. An optional [separate workspace](/docs/guides/new-workspace/) remains available when you need a new target.

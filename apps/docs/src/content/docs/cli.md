@@ -13,6 +13,10 @@ Open beta · 0.7.0-beta.0
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
+`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are planned for 0.7.x. They are not in 0.7.0. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
+
 ## Discovery
 
 After meeting [installation requirements](/docs/start/), read:
@@ -136,6 +140,38 @@ bowerloom backend status --root <private-installation-directory>
 Doctor inspects prerequisites. Plan describes a separate Supabase installation. Install needs exact approval and starts the named services. Status reads retained state.
 
 The macOS Docker context, ARM64 daemon, Compose v2, storage, and approval requirements remain separate. Read [Local backend](/docs/backend/).
+
+<a id="skills"></a>
+
+## Third-party skills
+
+```text
+bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+bowerloom skills source acquire --plan <absolute-json> --approve <revision>
+bowerloom skills source git plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+bowerloom skills source git acquire --plan <absolute-json> --approve <revision>
+bowerloom skills source inspect --request <absolute-local-cache-selector-json>
+bowerloom skills source recover plan --request <absolute-json>
+bowerloom skills source recover apply --plan <absolute-json> --approve <revision>
+bowerloom skills plan --request <absolute-install-request-json>
+bowerloom skills update plan --request <absolute-update-request-json>
+bowerloom skills apply --plan <absolute-json> --approve <revision> --previous <revision|none>
+bowerloom skills inspect --request <absolute-json>
+bowerloom skills recover plan --request <absolute-json>
+bowerloom skills recover apply --plan <absolute-json> --approve <revision>
+```
+
+These forms read public npm and public GitHub sources only. Each install uses a hand-written request and installs one skill per project. [Add a third-party skill](/docs/guides/add-skills/) explains the sequence and the refusal codes.
+
+<a id="routine"></a>
+
+## Routine planning
+
+```text
+bowerloom routine plan --root <absolute-.bowerloom-directory> --experiment-id <logical-id> --experiment-digest <sha256:hex>
+```
+
+Routine planning describes a routine. It starts no workers.
 
 <a id="portable"></a>
 

@@ -7,6 +7,8 @@ order: 7
 
 Existing mode integrates Bowerloom definitions with your current project through a new `.bowerloom/` directory. Start by [mapping your workflow](/docs/guides/integrate-workflow/) and reviewing the proposed roles, handoffs, and access. The installer does not read project-file contents or import live agent configuration. If `.bowerloom/` already exists, use [revision](/docs/revision/) instead of fresh setup.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Ask your agent
 
 ```text

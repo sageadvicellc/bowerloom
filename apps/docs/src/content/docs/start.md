@@ -7,6 +7,8 @@ order: 1
 
 Install the `bowerloom` CLI to add a reviewed team specification to your existing project. Start with the workflow you perform manually or with one agent, then [map its roles and handoffs](/docs/guides/integrate-workflow/). Normal setup uses the installed command and needs no repository checkout. Installation gives you the CLI, while each later project-file write still needs its own exact plan approval.
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 <a id="ask-your-personal-agent"></a>
 
 ## Ask your agent

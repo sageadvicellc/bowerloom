@@ -13,6 +13,8 @@ Open beta · 0.7.0-beta.0
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+
 ## Ask your agent
 
 ```text
