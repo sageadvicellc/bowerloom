@@ -117,10 +117,15 @@ function asciiField(block: Buffer, from: number, length: number): string {
   npmCheck([...b.subarray(0, end)].every(v => v >= 32 && v <= 126) && (zero < 0 || b.subarray(zero).every(v => v === 0)), 'NPM_TAR_FIELD');
   return b.subarray(0, end).toString('ascii');
 }
+/**
+ * A numeric field at full width: octal digits with leading zeros, then one NUL or one space (length - 1 digits), or a
+ * space then a NUL (length - 2 digits), the POSIX ending that node-tar and real npm tarballs write (decision 7A).
+ */
 function octal(block: Buffer, from: number, length: number): number {
   const text = block.subarray(from, from + length).toString('latin1');
-  npmCheck(new RegExp(`^[0-7]{${length - 1}}[\\x00 ]$`).test(text), 'NPM_TAR_NUMBER');
-  const value = Number.parseInt(text.slice(0, -1), 8); npmCheck(Number.isSafeInteger(value) && value >= 0, 'NPM_TAR_NUMBER'); return value;
+  const match = new RegExp(`^(?:([0-7]{${length - 1}})[\\x00 ]|([0-7]{${length - 2}}) \\x00)$`).exec(text);
+  npmCheck(match !== null, 'NPM_TAR_NUMBER');
+  const value = Number.parseInt(match[1] ?? match[2]!, 8); npmCheck(Number.isSafeInteger(value) && value >= 0, 'NPM_TAR_NUMBER'); return value;
 }
 /** Strict original-field admission precedes Header; decoded normalization cannot change framing. */
 function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; size: number; mode: number } {
@@ -134,7 +139,7 @@ function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; s
   npmCheck(octal(block, 329, 8) === 0 && octal(block, 337, 8) === 0 && mode <= 0o777 && size <= NPM_LIMITS.tarBytes, 'NPM_TAR_NUMBER');
   const type = flag === 48 ? 'File' : 'Directory';
   npmCheck(type === 'File' ? !path.endsWith('/') : path.endsWith('/') && size === 0, 'NPM_TAR_ALIAS');
-  const sumText = block.subarray(148, 156).toString('latin1'); npmCheck(/^[0-7]{6}\x00 $/.test(sumText), 'NPM_TAR_CHECKSUM');
+  const sumText = block.subarray(148, 156).toString('latin1'); npmCheck(/^[0-7]{6}(?:\x00 | \x00)$/.test(sumText), 'NPM_TAR_CHECKSUM');
   let sum = 0; for (let i = 0; i < block.length; i++) sum += i >= 148 && i < 156 ? 32 : block[i]!;
   npmCheck(sum === Number.parseInt(sumText.slice(0, 6), 8), 'NPM_TAR_CHECKSUM');
   try {
