@@ -7,16 +7,18 @@
 // folder is no better, since many test files make folders there.
 //
 // Each test file that makes folders in HOME imports this module first. HOME then points at a new private folder,
-// `<real HOME>/.bowerloom-test-homes/<file key>/home-XXXXXX`, removed when the process exits. The two folders above it
-// are kept between runs, so after the first run nothing but this file's own process writes in any parent of its
-// folders: the real HOME and `.bowerloom-test-homes` change only when a test file runs for the first time.
+// `<real HOME>/.bowerloom-test-homes/<file key>-<process ID>/home-XXXXXX`. The process ID keeps two runs of one
+// checkout apart, so no other process ever writes in that parent. At exit the folder is removed, and so are its parent
+// and this file's kept folder from before the process ID was in the key, when they are empty. The root stays.
+// A killed run leaves its folder; the root is the one place to look. tests/README.md describes it.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 const realHome = fs.realpathSync(os.homedir()), root = path.join(realHome, '.bowerloom-test-homes');
-const key = createHash('sha256').update(process.argv[1] ?? 'unknown').digest('hex').slice(0, 16), parent = path.join(root, key);
+const fileKey = createHash('sha256').update(process.argv[1] ?? 'unknown').digest('hex').slice(0, 16);
+const parent = path.join(root, `${fileKey}-${process.pid}`), legacy = path.join(root, fileKey);
 fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
 for (const p of [root, parent]) {
   const s = fs.lstatSync(p);
@@ -25,6 +27,8 @@ for (const p of [root, parent]) {
 const home = fs.mkdtempSync(path.join(parent, 'home-'));
 fs.chmodSync(home, 0o700);
 process.env.HOME = home;
-process.once('exit', () => fs.rmSync(home, { recursive: true, force: true }));
+/** rmdir only: a folder that is not empty, or not there, stays as it is. */
+const removeIfEmpty = (p: string): void => { try { fs.rmdirSync(p); } catch { /* Not empty or gone. */ } };
+process.once('exit', () => { fs.rmSync(home, { recursive: true, force: true }); removeIfEmpty(parent); removeIfEmpty(legacy); });
 export const testHome = home;
 export const testHomesRoot = root;

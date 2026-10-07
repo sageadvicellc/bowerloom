@@ -8,15 +8,10 @@
 import nodeTest from 'node:test';
 import type { TestContext, TestOptions } from 'node:test';
 import { syncBuiltinESMExports } from 'node:module';
-import { subscribe } from 'node:diagnostics_channel';
-import { LOCK_SLOT_COLLISION_CHANNEL } from '../../packages/project-context/src/index.js';
 
 /** Runs of one test before a collision is reported as a failure. */
 export const ATTEMPTS = 5;
 const PATTERN = /LOCK_SLOT_COLLISION/;
-// Set when this process refused a lock for a slot collision (a test can catch the refusal and fail later on).
-let collided = false;
-subscribe(LOCK_SLOT_COLLISION_CHANNEL, () => { collided = true; });
 
 /** True when an error, or the error an assertion wraps, names a lock slot collision (a child process prints the code). */
 export function namesSlotCollision(value: unknown, depth = 0): boolean {
@@ -29,18 +24,23 @@ export function namesSlotCollision(value: unknown, depth = 0): boolean {
 }
 
 type Body = (t: TestContext) => unknown;
+/**
+ * Runs `run` and runs it again from the start, up to ATTEMPTS runs, only while the error it throws names a lock slot
+ * collision (namesSlotCollision). A collision met during a run that then fails for another reason is not retried, so
+ * a flaky real failure cannot pass on a later run.
+ */
+export async function retrying(t: TestContext, run: Body): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try { await run(t); return; }
+    catch (error) {
+      if (attempt >= ATTEMPTS || !namesSlotCollision(error)) throw error;
+      t.mock.restoreAll(); syncBuiltinESMExports();
+      t.diagnostic(`attempt ${attempt} met a lock slot collision on this machine; running again with fresh folders`);
+    }
+  }
+}
 /** `node:test`'s `test(name, [options], body)`, run again from the start after a lock slot collision. */
 export default function test(name: string, options: TestOptions | Body, body?: Body): Promise<void> {
   const run = (typeof options === 'function' ? options : body)!, opts = typeof options === 'function' ? {} : options;
-  return nodeTest(name, opts, async t => {
-    for (let attempt = 1; ; attempt++) {
-      collided = false;
-      try { await run(t); return; }
-      catch (error) {
-        if (attempt >= ATTEMPTS || !(collided || namesSlotCollision(error))) throw error;
-        t.mock.restoreAll(); syncBuiltinESMExports();
-        t.diagnostic(`attempt ${attempt} met a lock slot collision on this machine; running again with fresh folders`);
-      }
-    }
-  });
+  return nodeTest(name, opts, t => retrying(t, run));
 }
