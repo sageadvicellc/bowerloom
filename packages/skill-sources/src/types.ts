@@ -6,7 +6,8 @@ export interface NpmSkillSource {
 }
 export interface GitSkillSource {
   kind: 'git'; host: 'github.com'; repository: string; commit: string; tree: string;
-  metadataSha256: string; declaredLicense: SkillLicense;
+  /** One pinned tree SHA per source root segment. The last one is the skill tree. */
+  pathTrees: string[]; metadataSha256: string; declaredLicense: SkillLicense;
 }
 export interface SkillTextFile { path: string; sourcePath: string; text: string; sha256: string; mode: 420 }
 export interface SkillSourceInput {

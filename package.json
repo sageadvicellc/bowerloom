@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
-    "jose": "6.2.12"
+    "jose": "6.2.12",
+    "tar": "7.5.20"
   },
   "scripts": {
     "build": "tsc",

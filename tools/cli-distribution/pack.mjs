@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
-export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','startup','workbench','workspace-effects']);
+export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -80,9 +80,9 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
   const versions = {}, manifests = [];
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {
-    // These two internal modules belong to the root MIT package; no standalone workspace is claimed.
+    // These explicit internal modules belong to the root MIT package; no standalone workspace is claimed.
     // If present, either manifest must undergo the normal license/dependency checks below.
-    if (['packages/connections/package.json', 'packages/routines/package.json'].includes(path)) {
+    if (['packages/connections/package.json', 'packages/routines/package.json', 'packages/skill-sources/package.json', 'packages/managed-skills/package.json'].includes(path)) {
       try { lstatSync(join(repo,path)); } catch(error) { if(error?.code === 'ENOENT') continue; throw error; }
     }
     const bytes=regular(repo,path), manifest=JSON.parse(bytes);

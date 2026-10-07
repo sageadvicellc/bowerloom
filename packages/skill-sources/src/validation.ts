@@ -118,7 +118,7 @@ export function validateSkillSource(value: unknown): SkillSourceValidation {
   const data = closed(captureSkillData(value), ['format', 'synthetic', 'source', 'skill', 'files', 'references', 'license']);
   requireSkill(data.format === 'bowerloom/synthetic-skill-source/v1beta1' && data.synthetic === true, 'SKILL_SYNTHETIC_REQUIRED');
   const kind = (data.source as Record<string, unknown> | null)?.kind;
-  const source = closed(data.source, kind === 'npm' ? ['kind', 'registry', 'package', 'version', 'integrity', 'archiveSha256', 'metadataSha256', 'publisher', 'declaredLicense'] : ['kind', 'host', 'repository', 'commit', 'tree', 'metadataSha256', 'declaredLicense']);
+  const source = closed(data.source, kind === 'npm' ? ['kind', 'registry', 'package', 'version', 'integrity', 'archiveSha256', 'metadataSha256', 'publisher', 'declaredLicense'] : ['kind', 'host', 'repository', 'commit', 'tree', 'pathTrees', 'metadataSha256', 'declaredLicense']);
   requireSkill(kind === 'npm' || kind === 'git', 'SKILL_SOURCE'); hashValue(source.metadataSha256);
   if (kind === 'npm') {
     requireSkill(source.registry === 'https://registry.npmjs.org', 'SKILL_SOURCE');
@@ -136,6 +136,8 @@ export function validateSkillSource(value: unknown): SkillSourceValidation {
   const skill = closed(data.skill, ['id', 'name', 'sourceRoot']);
   for (const key of ['id', 'name']) { boundedText(skill[key], 64); requireSkill(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill[key]), 'SKILL_NAME'); }
   relativeSkillPath(skill.sourceRoot);
+  // A Git source pins one tree per source root segment, at most eight.
+  if (kind === 'git') requireSkill(Array.isArray(source.pathTrees) && source.pathTrees.length === skill.sourceRoot.split('/').length && source.pathTrees.length <= 8 && source.pathTrees.every(sha => typeof sha === 'string' && /^[a-f0-9]{40}$/.test(sha)), 'SKILL_SOURCE');
   const license = closed(data.license, ['spdx', 'origin', 'files']);
   requireSkill(['MIT', 'Apache-2.0'].includes(license.spdx as string) && license.spdx === source.declaredLicense && license.origin === 'included', 'SKILL_LICENSE');
   requireSkill(Array.isArray(license.files) && license.files.length > 0 && license.files.length <= 8, 'SKILL_LICENSE');

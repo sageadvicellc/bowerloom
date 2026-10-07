@@ -150,14 +150,14 @@ test('routine packaging collection includes only reachable loader closure and ex
  assert.deepEqual([...result.files.keys()].filter(path=>path.startsWith('dist/packages/routines/')).sort(),['dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']);
 });
 
-test('routine packaging optional manifests are exact exceptions and present manifests still validate',()=>{
+test('internal routine and skills manifests are exact exceptions and present manifests still validate',()=>{
  const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
  let selected='',mode='missing';const valid={name:'synthetic-internal',license:'MIT',dependencies:{yaml:'2.9.1'}};
  fs.lstatSync=function(path,...args){if(path===selected){if(mode==='missing'){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}if(mode==='symlink'){const s=original.lstatSync(join(repo,'package.json'),...args);s.isSymbolicLink=()=>true;return s;}return original.lstatSync(join(repo,'package.json'),...args);}return original.lstatSync(path,...args);};
  fs.readFileSync=function(path,...args){if(path===selected){const manifest=mode==='bad-license'?{...valid,license:'UNREVIEWED'}:mode==='unpinned'?{...valid,dependencies:{yaml:'^2.9.1'}}:mode==='conflict'?{...valid,dependencies:{yaml:'2.8.3'}}:valid;const bytes=Buffer.from(JSON.stringify(manifest));return args[0]==='utf8'?bytes.toString('utf8'):bytes;}return original.readFileSync(path,...args);};
  syncBuiltinESMExports();
  try{
-  for(const relative of ['packages/routines/package.json','packages/connections/package.json']){
+  for(const relative of ['packages/routines/package.json','packages/connections/package.json','packages/skill-sources/package.json','packages/managed-skills/package.json']){
    selected=join(repo,relative);mode='missing';assert.equal(collect({repoDir:repo}).record.sourceManifests.some(m=>m.path===relative),false);
    mode='valid';const included=collect({repoDir:repo}).record.sourceManifests.find(m=>m.path===relative);assert.equal(included.sha256,sha256(Buffer.from(JSON.stringify(valid))));
    mode='bad-license';assert.throws(()=>collect({repoDir:repo}),/Unreviewed first-party license/);
@@ -174,4 +174,16 @@ test('routine packaging missing compiled/source loader cannot become a partial a
  fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
  try{for(const path of ['dist/apps/cli/src/routine.js','dist/packages/routines/src/files.js','dist/packages/routines/src/index.js','packages/routines/src/files.ts']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');}}
  finally{fs.lstatSync=original;syncBuiltinESMExports();}
+});
+
+// Requires the separately reviewed tar dependency and fresh selected compiler closure.
+test('skills CLI reaches exact source/cache/manager closure with locked tar runtime and no proof material',()=>{
+ const result=collect({repoDir:repo});
+ for(const path of ['dist/apps/cli/src/skills.js','dist/packages/skill-sources/src/npm.js','dist/packages/skill-sources/src/cache.js','dist/packages/skill-sources/src/validation.js','dist/packages/managed-skills/src/observed.js','dist/packages/managed-skills/src/transaction.js']){assert.ok(result.files.has(path),path);assert.ok(result.record.sourceFiles.some(row=>row.path===path.replace(/^dist\//,'').replace(/\.js$/,'.ts')),path);}
+ assert.equal(result.manifest.dependencies.tar,'7.5.20');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.20');
+ for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:work|test|tests|fixtures)(?:\/)|\.bowerloom-skills|owner\.lock/.test(path),path);
+});
+test('skills collection refuses missing reachable source or compiled modules',()=>{
+ const original=fs.lstatSync;let selected='';fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
+ try{for(const path of ['dist/apps/cli/src/skills.js','packages/skill-sources/src/cache.ts','dist/packages/managed-skills/src/transaction.js']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),e=>e.code==='ENOENT');}}finally{fs.lstatSync=original;syncBuiltinESMExports();}
 });

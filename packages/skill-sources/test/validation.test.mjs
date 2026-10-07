@@ -8,7 +8,7 @@ const file = (path, text, sourcePath = `skills/example/${path}`) => ({ path, sou
 function fixture(kind = 'npm') {
   return {
     format: 'bowerloom/synthetic-skill-source/v1beta1', synthetic: true,
-    source: kind === 'npm' ? { kind, registry: 'https://registry.npmjs.org', package: '@synthetic/example', version: '1.0.0', integrity: 'sha512-' + Buffer.alloc(64, 1).toString('base64'), archiveSha256: 'a'.repeat(64), metadataSha256: 'b'.repeat(64), publisher: 'synthetic-fixture', declaredLicense: 'MIT' } : { kind, host: 'github.com', repository: 'synthetic/example', commit: 'a'.repeat(40), tree: 'b'.repeat(40), metadataSha256: 'c'.repeat(64), declaredLicense: 'MIT' },
+    source: kind === 'npm' ? { kind, registry: 'https://registry.npmjs.org', package: '@synthetic/example', version: '1.0.0', integrity: 'sha512-' + Buffer.alloc(64, 1).toString('base64'), archiveSha256: 'a'.repeat(64), metadataSha256: 'b'.repeat(64), publisher: 'synthetic-fixture', declaredLicense: 'MIT' } : { kind, host: 'github.com', repository: 'synthetic/example', commit: 'a'.repeat(40), tree: 'b'.repeat(40), pathTrees: ['d'.repeat(40), 'e'.repeat(40)], metadataSha256: 'c'.repeat(64), declaredLicense: 'MIT' },
     skill: { id: 'synthetic-example', name: 'example', sourceRoot: 'skills/example' },
     files: [file('SKILL.md', '---\nname: example\ndescription: Synthetic review fixture.\n---\n# Example\nRead [reference](references/guide.md).\n'), file('references/guide.md', '# Reference\nSynthetic text, never invoked.\n'), file('LICENSE.txt', 'MIT License\nSynthetic license custody fixture; not a real distribution.\n', 'LICENSE')],
     references: [{ from: 'SKILL.md', to: 'references/guide.md' }], license: { spdx: 'MIT', origin: 'included', files: ['LICENSE.txt'] },
@@ -93,4 +93,11 @@ test('SKILL, references and license refuse terminal/control/bidi text while keep
   for (const f of okay.files) { f.text = f.text.replaceAll('\n', '\r\n') + '\tIndented ordinary text.\r\n'; f.sha256 = hash(f.text); }
   const result = validateSkillSource(okay); assert.ok(result.input.files.every(f => f.text.endsWith('\tIndented ordinary text.\r\n')));
   const decoded = fixture(); decoded.files[0] = file('SKILL.md', '---\nname: example\ndescription: "\\u001b[31m"\n---\nText\n'); refused(decoded, 'SKILL_FRONTMATTER');
+});
+
+test('Git sources pin one path tree per source root segment', () => {
+  const before = validateSkillSource(fixture('git')).revision; const changed = fixture('git'); changed.source.pathTrees[1] = 'f'.repeat(40); assert.notEqual(validateSkillSource(changed).revision, before);
+  for (const [mutate, expected] of [[x => { delete x.source.pathTrees; }, 'SKILL_SCHEMA'], [x => { x.source.pathTrees = ['d'.repeat(40)]; }, 'SKILL_SOURCE'], [x => { x.source.pathTrees = ['d'.repeat(40), 'main']; }, 'SKILL_SOURCE'], [x => { x.source.pathTrees = 'd'.repeat(40); }, 'SKILL_SOURCE']]) { const x = fixture('git'); mutate(x); refused(x, expected); }
+  // Nine segments with nine trees passes the length match, and still refuses the depth limit of eight.
+  const deep = fixture('git'); deep.skill.sourceRoot = 'a/b/c/d/e/f/g/h/example'; deep.source.pathTrees = Array.from({ length: 9 }, () => 'd'.repeat(40)); refused(deep, 'SKILL_SOURCE');
 });

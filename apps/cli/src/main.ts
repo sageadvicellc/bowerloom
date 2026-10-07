@@ -9,6 +9,19 @@ import { compileCrew } from '../../../packages/crew/src/index.js';
 import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
 const HELP = `Usage:
+  bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source inspect --request <absolute-local-cache-selector-json>
+  bowerloom skills source recover plan --request <absolute-json>
+  bowerloom skills source recover apply --plan <absolute-json> --approve <revision>
+  bowerloom skills plan --request <absolute-install-request-json>
+  bowerloom skills update plan --request <absolute-update-request-json>
+  bowerloom skills apply --plan <absolute-json> --approve <revision> --previous <revision|none>
+  bowerloom skills inspect --request <absolute-json>
+  bowerloom skills recover plan --request <absolute-json>
+  bowerloom skills recover apply --plan <absolute-json> --approve <revision>
   bowerloom routine plan --root <absolute-.bowerloom-directory> --experiment-id <logical-id> --experiment-digest <sha256:hex>
   bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
   bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
@@ -102,6 +115,11 @@ async function main(args: string[]): Promise<void> {
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HELP}`); return; }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
+  if (args[0] === 'skills') {
+    const { runSkillsCommand } = await import('./skills.js');
+    process.stdout.write(`${canonicalJson(await runSkillsCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'routine') {
     const { runRoutineCommand } = await import('./routine.js');
     process.stdout.write(`${canonicalJson(await runRoutineCommand(args))}\n`);
