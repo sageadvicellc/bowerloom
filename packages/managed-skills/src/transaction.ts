@@ -31,7 +31,8 @@ function json(p: string, value: unknown, guard: () => void): void {
 /** The marker sits in the shared project, so it is published by a link that fails if its name exists, never by a
  * rename over it. Then its temporary is unlinked; a kill between the two leaves the twin state of `markerTwin`. */
 function publish(p: string, value: unknown, guard: () => void): void {
-  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  // A leftover temporary goes only when its bytes begin ours; any other one stays, and the exclusive create refuses.
+  const tmp = temporary(p), text = JSON.stringify(value) + '\n'; guard(); absent(p); discardMarkerTemp(p, text, guard); durable(tmp, text, guard);
   guard(); absent(p); guard(); fs.linkSync(tmp, p); sync(dirname(p), guard); settleTwin(p, guard);
 }
 /** Unlinks the marker's own temporary when the two are one file (`markerTwin`), so the marker has one link again. */
@@ -109,7 +110,8 @@ function readState(project: string, state: string, key: string, life: Lifetime):
 }
 function marker(state: State, allowAbsent = false): FilePin | null {
   const plan = state.intent.plan, file = join(plan.core.request.projectDir, MARKER);
-  if (!exists(file)) { check(allowAbsent && state.receipt !== null); return null; }
+  // Absent only where the caller allows it: after a receipt, or for the rollback of an unpublished operation (`markerOptional`).
+  if (!exists(file)) { check(allowAbsent); return null; }
   const m = parsed<{ format: string; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys, true);
   check(m.format === 'bowerloom/managed-skill-pending/v1beta1' && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return rawMarker(file).pin;
 }
@@ -261,6 +263,24 @@ function removeCreatedParents(state: State, guard: () => void): void {
     guard(); check(same(directory(parent.path, true), parent.identity) && names(parent.path).length === 0); guard(); fs.rmdirSync(parent.path); sync(dirname(parent.path), guard); guard(); append(state, 'PARENT_REMOVED', parent, guard);
   }
 }
+/**
+ * The marker may be absent only after a receipt, or for a rollback whose journal holds nothing but its own records:
+ * the apply was killed after the operation folder landed and before the marker did, so nothing else ran.
+ */
+function markerOptional(state: State, action: 'resume' | 'rollback'): boolean {
+  return state.receipt !== null || (action === 'rollback' && state.records.every(r => r.kind === 'ROLLBACK_START' || r.kind === 'RECEIPT_INTENT'));
+}
+/** An operation whose marker never landed: no receipt, no record but a rollback's own, and the project as planned. */
+function unpublished(state: State): void {
+  check(!state.receipt && state.records.every(r => r.kind === 'ROLLBACK_START' || r.kind === 'RECEIPT_INTENT'), 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  const starts = state.records.filter(r => r.kind === 'ROLLBACK_START'); check(starts.length <= 1 && starts.every(r => same(r.data, { count: 0 })));
+  check(matches(currentSurfaces(state.intent.plan), state.intent.plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
+}
+/** The only recovery of an unpublished operation: a rollback of nothing that writes a rolled-back receipt (v2's abandon). */
+function rollbackUnpublished(state: State, guard: () => void): ObservedSkillReceipt {
+  unpublished(state); if (!state.records.some(r => r.kind === 'ROLLBACK_START')) append(state, 'ROLLBACK_START', { count: 0 }, guard);
+  unpublished(state); return finish(state, 'rolled-back', guard);
+}
 function terminal(state: State, receipt: ObservedSkillReceipt): void {
   const p = state.intent.plan; check(receipt.planRevision === p.revision && receipt.operationKey === p.operationKey && receipt.projectDir === p.core.request.projectDir && receipt.stateDir === p.core.request.stateDir && receipt.harness === p.core.request.harness && receipt.previousRevision === p.core.request.expectedPreviousRevision);
   const observed = currentSurfaces(p); check(matches(observed, receipt.installed), 'MANAGED_SKILL_LOCAL_DRIFT');
@@ -303,7 +323,9 @@ export async function applyObservedManagedSkill(value: unknown, exactRevision: s
       const op = intentPath(plan); bindings(plan.core, () => life.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
       for (const p of plan.core.parents) { if (p.identity) check(same(directory(p.path), p.identity)); else if (exists(dirname(p.path))) absent(p.path); }
       const temp = opTemp(input.stateDir, plan.operationKey);
-      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check();
+      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json')));
+      // A marker temporary is a kill before some marker landed: its operation needs recovery first.
+      check(!exists(temporary(join(input.projectDir, MARKER))), 'MANAGED_SKILL_RECOVERY_REQUIRED'); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check();
       // The operation folder appears whole, with its intent, or not at all: built under its private temporary name,
       // then renamed. The rename keeps the inode and birthtime, so the intent's operationIdentity still matches.
       fs.mkdirSync(temp, { mode: 0o700 }); const opIdentity = directory(temp, true);
@@ -317,17 +339,18 @@ export async function applyObservedManagedSkill(value: unknown, exactRevision: s
     });
   } catch (e) { if (mutated) fail('MANAGED_SKILL_RECOVERY_REQUIRED'); return boundary(e); } finally { life.close(); }
 }
-function snapshot(state: State, life: Lifetime): string {
+function snapshot(state: State, life: Lifetime, action: 'resume' | 'rollback'): string {
   const rows: unknown[] = []; let bytes = 0, count = 0;
   const walk = (p: string) => { life.check(); const s = fs.lstatSync(p, { bigint: true }); check(++count < 2048 && !s.isSymbolicLink());
     if (s.isDirectory()) { const id = directory(p, true); rows.push({ path: p, identity: id, mtimeNs: String(s.mtimeNs), ctimeNs: String(s.ctimeNs) }); for (const n of names(p)) walk(join(p, n)); }
     else { const got = raw(p, LIMITS.record, (Number(s.mode) & 0o7777) === 0o600); bytes += got.bytes.length; check(bytes <= LIMITS.bytes); rows.push(got.pin); }
-  }; walk(state.op); const m = marker(state, state.receipt !== null); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
+  }; walk(state.op); const m = marker(state, markerOptional(state, action)); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
 }
 async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state: State; plan: RecoveryPlan }> {
   const v = schema<{ projectDir: string; stateDir: string; operationKey: string; action: 'resume' | 'rollback' }>(value, ['projectDir', 'stateDir', 'operationKey', 'action']); check(v.action === 'resume' || v.action === 'rollback');
-  const state = readState(v.projectDir, v.stateDir, v.operationKey, life); marker(state, state.receipt !== null); parentGuard(state); life.check();
+  const state = readState(v.projectDir, v.stateDir, v.operationKey, life), pending = marker(state, markerOptional(state, v.action)); parentGuard(state); life.check();
   if (state.receipt) { check(v.action === (state.receipt.state === 'committed' ? 'resume' : 'rollback')); terminal(state, state.receipt); }
+  else if (pending === null) unpublished(state); // Stages and prestamp parent intents are never read: this rollback touches neither.
   else {
     stages(state); // Incomplete/prestamp stages are held, never adopted.
     for (const r of state.records.filter(x => x.kind === 'PARENT_INTENT')) {
@@ -336,7 +359,7 @@ async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state
       check(state.records.filter(x => x.kind === 'PARENT_CREATED' && (x.data as { path: string }).path === v.path).length === 1, 'MANAGED_SKILL_RECOVERY_REQUIRED');
     }
   }
-  const body = { format: 'bowerloom/observed-managed-skill-recovery/v1beta1' as const, ...v, snapshotRevision: snapshot(state, life), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
+  const body = { format: 'bowerloom/observed-managed-skill-recovery/v1beta1' as const, ...v, snapshotRevision: snapshot(state, life, v.action), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
   life.check(); return { state, plan: freezeSkillData({ ...body, revision: revisionOf(body) }) };
 }
 export async function planObservedManagedSkillRecovery(value: unknown, options: unknown = {}): Promise<RecoveryPlan> { const life = lifetime(options); try { return (await recoveryWithLife(value, life)).plan; } catch (e) { return boundary(e); } finally { life.close(); } }
@@ -349,8 +372,9 @@ export async function recoverObservedManagedSkill(value: unknown, exactRevision:
       const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, life); life.check(); check(same(fresh.plan, plan) && exactRevision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacity(state.intent.plan.core.request);
       // The approved snapshot saw the marker twin, if any; settling it changes the marker's ctime, so it comes after.
       settleTwin(join(plan.projectDir, MARKER), () => life.check());
-      const pending = marker(state, state.receipt !== null), guard = stateGuard(state, life, pending);
+      const pending = marker(state, markerOptional(state, plan.action)), guard = stateGuard(state, life, pending);
       if (state.receipt) { terminal(state, state.receipt); guard(); if (!pending) { discardMarkerTemp(join(plan.projectDir, MARKER), pendingText(state), guard); return state.receipt; } return finish(state, state.receipt.state, guard); }
+      if (!pending) return rollbackUnpublished(state, guard);
       return plan.action === 'resume' ? resume(state, life, guard) : rollback(state, life, guard);
     });
   } catch (e) { return boundary(e, 'MANAGED_SKILL_RECOVERY_REQUIRED'); } finally { life.close(); }

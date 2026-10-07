@@ -368,3 +368,42 @@ test('v1 apply and recovery refuse inside their own lock while a v1beta2 operati
   await assert.rejects(recoverObservedManagedSkill(recovery, recovery.revision), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(inventory(f.projectDir), pending);
   fs.rmSync(temp); assert.equal((await recoverObservedManagedSkill(recovery, recovery.revision)).state, 'rolled-back');
 });
+
+// Review F2 (lock hardening): a kill after the operation folder is published and before the marker lands.
+const MARKER_V1 = '.bowerloom-skills-pending.json', MARKER_TEMP_V1 = '..bowerloom-skills-pending.json.tmp';
+async function killedBeforeMarker(t, how) {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), before = inventory(f.projectDir);
+  if (how === 'link') { const link = fs.linkSync; t.mock.method(fs, 'linkSync', (from, to) => { if (String(to).endsWith(MARKER_V1)) throw Error('PRIVATE_KILL'); return link(from, to); }); }
+  else { const write = fs.writeFileSync; t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (typeof data === 'string' && data.includes('"bowerloom/managed-skill-pending/v1beta1"')) throw Error('PRIVATE_KILL'); return write(fd, data, ...rest); }); }
+  syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED' && !e.message.includes('PRIVATE')); t.mock.restoreAll(); syncBuiltinESMExports();
+  return { f, p, before, op: opDir(f, p) };
+}
+for (const how of ['link', 'temp write']) test(`v1: a kill between the operation folder and the marker (${how}) recovers only by a rollback that writes a rolled-back receipt`, async t => {
+  const { f, p, before, op } = await killedBeforeMarker(t, how);
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_V1)), false); assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), true);
+  assert.deepEqual(fs.readdirSync(op).sort(), ['intent.json']);
+  await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'resume' }), e => /^MANAGED_SKILL_/.test(e.code), 'resume needs the marker');
+  const receipt = await recover(f, p, 'rollback');
+  assert.equal(receipt.state, 'rolled-back'); assert.equal(receipt.restoredPrevious, null);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(op, 'receipt.json'), 'utf8')).revision, receipt.revision);
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), false, 'our own marker temporary goes, through discardMarkerTemp');
+  assert.deepEqual(inventory(f.projectDir).filter(r => r.path !== MARKER_TEMP_V1), before);
+  // The rollback is final: the same request plans a new operation, which applies.
+  const again = await planObservedManagedSkill(f.input); assert.notEqual(again.operationKey, p.operationKey);
+  assert.equal((await applyObservedManagedSkill(f.input, again.revision, null)).state, 'committed');
+});
+test('v1: a rollback of an unpublished marker that is itself killed recovers again', async t => {
+  const { f, p, op } = await killedBeforeMarker(t, 'link');
+  const rename = fs.renameSync; t.mock.method(fs, 'renameSync', (from, to) => { if (String(to).endsWith('receipt.json')) throw Error('PRIVATE_KILL'); return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(recover(f, p, 'rollback')); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.ok(fs.readdirSync(op).some(n => /^record-\d{3}\.json$/.test(n)), 'the first rollback left its own records');
+  assert.equal((await recover(f, p, 'rollback')).state, 'rolled-back');
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), false);
+});
+test('v1: a marker temporary that is not ours is never removed: apply refuses before it creates the operation', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), temp = path.join(f.projectDir, MARKER_TEMP_V1);
+  fs.writeFileSync(temp, 'not ours', { mode: 0o600 });
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  assert.equal(fs.readFileSync(temp, 'utf8'), 'not ours'); assert.deepEqual(fs.readdirSync(f.stateDir), []);
+});

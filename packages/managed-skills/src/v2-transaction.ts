@@ -13,7 +13,8 @@
  *   v1 compares the raw acquired cache closure.
  * - `applyManagedItem` takes no separate `expectedPreviousRevision` argument. The request carries it, the plan binds
  *   it, and the approval revision covers the plan, so a second copy could only disagree.
- * - abandon (v2 only) and `heldLock` (v2 only). v1 alone has `noV2`.
+ * - abandon (v2 only; v1 has the same path only as the rollback of an unpublished operation) and `heldLock` (v2
+ *   only). v1 alone has `noV2`.
  *
  * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review. Each entry starts at the line of
  * the first name it lists; tests/guard-map.test.ts holds that true.
@@ -21,41 +22,44 @@
  * - 16-20 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
  * - 23-30 `discard`, `json`: each record (intent, journal record, receipt) goes through `durable` under a hidden
  *   `.<name>.tmp` in the same folder, then is renamed into place and the folder fsynced -> identical
- * - 33-45 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
+ * - 33-46 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
  *   a marker twin is settled, a leftover marker temporary goes only when its bytes begin ours -> identical
- * - 47-86 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, one more bind when the holder let
+ * - 48-87 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, one more bind when the holder let
  *   go before its banner was read, cancellation, the slot key checked again after the bind, close confirmation) -> `locked`, identical; `heldLock` adds the caller-held path:
  *   token check, the token's slot key equal to the folder's now, a probe that must find
  *   the slot taken (else LOCK_NOT_HELD), and this project's banner on it (else LOCK_SLOT_COLLISION, or LOCK_NOT_HELD
  *   when nobody answers)
- * - 92 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
- * - 95-109 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
+ * - 93 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
+ * - 96-110 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
  *   temporary, record chain) -> `readState`: stage names `(new|old|returned)-<surface-id>`; record kinds unchanged
- * - 110-120 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
+ * - 111-122 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
  *   -> v2 path and format, plus item
- * - 123-148 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
- * - 149-158 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
+ * - 125-150 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
+ * - 151-160 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
  *   life.check)                                                            -> identical
- * - 159-162 `append` (hash chain, 256 records)                             -> identical
- * - 163-166 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
- * - 167-183 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
+ * - 161-164 `append` (hash chain, 256 records)                             -> identical
+ * - 165-168 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
+ * - 169-185 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
  *   -> identical per material; `kind === 'file'` replaces `kind === 'catalog'`
- * - 184-192 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
- * - 193-203 `parents` (prestamp gap never adopted)                         -> identical
- * - 205-212 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
+ * - 186-194 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
+ * - 195-205 `parents` (prestamp gap never adopted)                         -> identical
+ * - 207-214 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
  *   surface has no material and so no publish move
- * - 213-224 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
- * - 225-238 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
- * - 239-249 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
- * - 250-263 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
- * - 264-268 `terminal`                                                     -> harness becomes harnesses, plus item
+ * - 215-226 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
+ * - 227-240 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
+ * - 241-251 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
+ * - 252-265 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
+ * - 270-283 `markerOptional`, `unpublished`, `rollbackUnpublished` (a kill after the op folder and before the marker:
+ *   no record but the rollback's own, project as planned, a rolled-back receipt) -> `markerOptional`, `abandonable`,
+ *   `abandon`; v1 reaches it through its rollback action
+ * - 284-288 `terminal`                                                     -> harness becomes harnesses, plus item
  *   and migratedFrom
- * - 269-295 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
- * - 296-319 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
+ * - 289-315 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
+ * - 316-341 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
  *   equal, bindings, before equal, parents, markers, absent op, history, capacity, life.check, op folder built as
  *   `.op-<key>.tmp` with its intent and renamed, marker, stage, resume) -> identical order; history refuses with
  *   MANAGED_SKILL_HISTORY_FULL
- * - 320-326 `snapshot`, 327-357 `recoveryWithLife` and recover (twin settled after the approval re-check)
+ * - 342-348 `snapshot`, 349-381 `recoveryWithLife` and recover (twin settled after the approval re-check)
  *   -> identical apart from formats
  */
 import fs from 'node:fs';
@@ -98,7 +102,8 @@ function json(p: string, value: unknown, guard: () => void): void {
 /** The marker sits in the shared project, so it is published by a link that fails if its name exists, never by a
  * rename over it. Then its temporary is unlinked; a kill between the two leaves the twin state of `markerTwin`. */
 function publish(p: string, value: unknown, guard: () => void): void {
-  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  // A leftover temporary goes only when its bytes begin ours; any other one stays, and the exclusive create refuses.
+  const tmp = temporary(p), text = JSON.stringify(value) + '\n'; guard(); absent(p); discardMarkerTemp(p, text, guard); durable(tmp, text, guard);
   guard(); absent(p); guard(); fs.linkSync(tmp, p); sync(dirname(p), guard); settleTwin(p, guard);
 }
 /** Unlinks the marker's own temporary when the two are one file (`markerTwin`), so the marker has one link again. */
