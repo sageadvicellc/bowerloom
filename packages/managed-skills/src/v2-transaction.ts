@@ -1,7 +1,17 @@
 /**
- * Managed items v1beta2: the journaled transaction. A mechanical generalization of transaction.ts, which stays
- * byte-identical: the three fixed kinds (canonical, projection, catalog) become the plan's ordered surface list.
- * Functions keep the v1 names with a V2 suffix only where a type changed, and keep v1's statement order.
+ * Managed items v1beta2: the journaled transaction. A mechanical generalization of transaction.ts: the three fixed
+ * kinds (canonical, projection, catalog) become the plan's ordered surface list. Functions keep the v1 names with a
+ * V2 suffix only where a type changed, and keep v1's statement order. transaction.ts stayed byte-identical to
+ * cc117ac until the M4 fix round, which gave both files the same record write (`json` below).
+ *
+ * Changes from v1 beyond the generalization, declared for review:
+ * - `finish` fsyncs `dirname(marker)` after removing the marker. The v2 marker is `.bowerloom/managed-pending.json`,
+ *   so that folder is `.bowerloom/`; v1 fsyncs the project folder, which is where its marker lives.
+ * - apply compares normalized closures: `readClosure` returns the content-only `ItemClosure` (a cache closure goes
+ *   through `cacheClosure`, a local one through the local reader), and that is compared with `plan.core.closure`.
+ *   v1 compares the raw acquired cache closure.
+ * - `applyManagedItem` takes no separate `expectedPreviousRevision` argument. The request carries it, the plan binds
+ *   it, and the approval revision covers the plan, so a second copy could only disagree.
  *
  * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review:
  * - 13 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
@@ -100,15 +110,19 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
 /**
  * v2 only. The caller (the sync orchestrator) already holds the project lock and passes its token. The token must
  * name this project and assert held, and the lock port must be taken: if this process can bind it, nobody holds the
- * lock, and the token is refused. The probe listener is closed before any work.
+ * lock, and the token is refused. Only EADDRINUSE counts as taken; any other listen error proves nothing and refuses.
+ * The probe listener is closed before any work.
  */
 async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
+  // TODO(M1): this checks the token by shape only. When M1's `withProjectLock` lands in project-context with its
+  // runtime brand check for the `heldProjectLock` symbol, call that check here first. Keep the port probe and every
+  // `assertHeld` call below either way: the brand proves where the token came from, not that the lock is still held.
   life.check(); check(held !== null && typeof held === 'object' && held.dir === project && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
   try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); }
   const probe = createServer(socket => socket.destroy());
-  const bound = await new Promise<boolean>(resolve => { probe.once('error', () => resolve(false)); probe.listen({ host: '127.0.0.1', port: lockPort(project), exclusive: true }, () => resolve(true)); });
-  if (bound) await new Promise<void>(resolve => probe.close(() => resolve()));
-  check(!bound, 'MANAGED_SKILL_LOCK_NOT_HELD');
+  const seen = await new Promise<'bound' | 'taken' | 'failed'>(resolve => { probe.once('error', e => resolve((e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 'taken' : 'failed')); probe.listen({ host: '127.0.0.1', port: lockPort(project), exclusive: true }, () => resolve('bound')); });
+  if (seen === 'bound') await new Promise<void>(resolve => probe.close(() => resolve()));
+  check(seen === 'taken', 'MANAGED_SKILL_LOCK_NOT_HELD');
   const guard = () => { check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED'); try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); } life.check(); };
   guard(); const result = await work(); guard(); return result;
 }

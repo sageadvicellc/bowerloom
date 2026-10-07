@@ -214,3 +214,13 @@ test('a kill before the receipt bytes land leaves no part-written receipt, and r
   assert.equal((await recover(run.req, run.plan, 'resume')).state, 'committed');
   assert.equal(fs.existsSync(path.join(op, '.receipt.json.tmp')), false); assert.equal(fs.existsSync(path.join(run.f.projectDir, MARKER)), false);
 });
+
+test('a lock probe that fails with anything but EADDRINUSE refuses, and never proceeds as held', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  const token = { dir: f.projectDir, signal: new AbortController().signal, assertHeld(d) { if (d !== f.projectDir) throw Object.assign(new Error('PROJECT_LOCKED'), { code: 'PROJECT_LOCKED' }); } };
+  for (const errno of ['EACCES', 'EADDRNOTAVAIL', 'EMFILE']) {
+    t.mock.method(net.Server.prototype, 'listen', function () { process.nextTick(() => this.emit('error', Object.assign(new Error('PRIVATE_' + errno), { code: errno }))); return this; });
+    await assert.rejects(applyManagedItem(token, req, plan.revision), e => e.code === 'MANAGED_SKILL_LOCK_NOT_HELD' && !e.message.includes('PRIVATE'), errno); restore(t);
+    assert.deepEqual(fs.readdirSync(req.stateDir), [], errno); assert.deepEqual(inventory(f.projectDir), before, errno);
+  }
+});
