@@ -11,6 +11,11 @@ export interface PlanCore {
   request: ObservedSkillRequest; bindings: { path: string; identity: Identity }[];
   closure: AcquiredSkillClosure; before: Surface[]; previous: ObservedSkillReceipt | null; previousReceiptPin: FilePin | null;
   parents: { path: string; identity: Identity | null }[];
+  /**
+   * The operation keys already in the state folder, sorted. Present only when there is at least one, so a first
+   * install keeps the key it always had; a retry after a rollback gets a new key because the rolled-back one is listed.
+   */
+  history?: string[];
 }
 export interface ObservedSkillPlan {
   format: 'bowerloom/observed-managed-skill-plan/v1beta1'; policy: 'bowerloom/observed-managed-skill/v1beta1';

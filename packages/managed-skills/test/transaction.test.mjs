@@ -303,3 +303,18 @@ test('v1: a leftover private operation temporary is ignored by plan and removed 
   fs.mkdirSync(temp, { mode: 0o700 }); fs.writeFileSync(path.join(temp, 'notes.txt'), 'user data', { mode: 0o600 });
   await assert.rejects(applyObservedManagedSkill(g.input, q.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(fs.readdirSync(temp), ['notes.txt']);
 });
+for (const initial of [true, false]) test(`v1: after a rolled-back ${initial ? 'install' : 'update'}, the same request plans a new operation and applies`, async t => {
+  const f = await fixture(t); let previous = null, input = f.input;
+  if (!initial) { previous = await install(f); const next = await fixture(t, '2.0.0'); input = { ...f.input, operation: 'update', cache: next.input.cache, expectedPreviousRevision: previous.receipt.revision }; }
+  const first = await planObservedManagedSkill(input);
+  // A first install on an empty state folder keeps the key it always had: no history field.
+  assert.equal(Object.hasOwn(first.core, 'history'), !initial);
+  const rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(input, first.revision, previous?.receipt.revision ?? null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); t.mock.restoreAll(); syncBuiltinESMExports(); assert.equal(hit, true);
+  assert.equal((await recover(f, first, 'rollback')).state, 'rolled-back');
+  const again = await planObservedManagedSkill(input);
+  assert.notEqual(again.operationKey, first.operationKey); assert.ok(again.core.history.includes(first.operationKey));
+  const receipt = await applyObservedManagedSkill(input, again.revision, previous?.receipt.revision ?? null); assert.equal(receipt.state, 'committed');
+  const inspected = await inspectObservedManagedSkill({ projectDir: f.projectDir, stateDir: f.stateDir }); assert.equal(inspected.status, 'committed'); assert.equal(inspected.operationKey, again.operationKey);
+});

@@ -148,7 +148,13 @@ export function formPlan(core: PlanCore): ObservedSkillPlan {
 }
 export function validatePlan(value: unknown): ObservedSkillPlan {
   const p = schema<ObservedSkillPlan>(value, ['format', 'policy', 'core', 'operationKey', 'material', 'acquisitionObserved', 'filesystemObserved', 'writesAuthorized', 'executionAuthorized', 'revision']);
-  const core = schema<PlanCore>(p.core, ['request', 'bindings', 'closure', 'before', 'previous', 'previousReceiptPin', 'parents']); request(core.request);
+  // Both key sets are valid: `history` is present exactly when the state folder held an operation (see PlanCore).
+  const keys = ['request', 'bindings', 'closure', 'before', 'previous', 'previousReceiptPin', 'parents'];
+  const core = schema<PlanCore>(p.core, typeof p.core === 'object' && p.core !== null && Object.hasOwn(p.core, 'history') ? [...keys, 'history'] : keys); request(core.request);
+  if (core.history !== undefined) {
+    const h = core.history; check(Array.isArray(h) && h.length >= 1 && h.length <= LIMITS.history && h.every((k, i) => typeof k === 'string' && /^[a-f0-9]{64}$/.test(k) && (i === 0 || h[i - 1]! < k)));
+    if (core.previous) check(h.includes(core.previous.operationKey));
+  }
   const ancestors = (root: string) => { const list = [root]; while (list.at(-1) !== '/') list.push(dirname(list.at(-1)!)); return list; };
   const expectedBindings = [...ancestors(core.request.projectDir), ...ancestors(core.request.stateDir)]; check(core.bindings.length === expectedBindings.length && core.bindings.every((b, i) => b.path === expectedBindings[i]));
   const locations = locate(core.request.projectDir, core.closure, core.request.harness);
@@ -161,7 +167,8 @@ export async function planWithLifetime(value: unknown, life: Lifetime): Promise<
   const v = request(value); life.check(); const root = directory(v.projectDir), state = directory(v.stateDir, true); check(root.uid === process.getuid?.() && root.device === state.device);
   const pins = [...ancestry(v.projectDir), ...ancestry(v.stateDir)];
   // A leftover `.op-<key>.tmp` never became an operation: plan reads past it, and apply removes it under the lock.
-  for (const n of names(v.stateDir)) { if (OP_TEMP.test(n)) continue; check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAt(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir); } check(!exists(join(v.projectDir, MARKER)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); capacity(v);
+  const history: string[] = [];
+  for (const n of names(v.stateDir)) { if (OP_TEMP.test(n)) continue; check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAt(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir); history.push(n.slice(3)); } check(!exists(join(v.projectDir, MARKER)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); capacity(v);
   const closure = await readAcquiredSkillCache(v.cache, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check();
   for (const pin of pins) check(same(directory(pin.path), pin.identity));
   const previous = current(v.projectDir, v.stateDir); check((previous?.revision ?? null) === v.expectedPreviousRevision, 'MANAGED_SKILL_STALE_APPROVAL');
@@ -182,7 +189,7 @@ export async function planWithLifetime(value: unknown, life: Lifetime): Promise<
     if (same(catalog.source, closure.receipt.source) && same(catalog.inventory, closure.receipt.inventory)) return freezeSkillData({ format: 'bowerloom/managed-skill-up-to-date/v1beta1', status: 'up-to-date', previousRevision: previous.revision, writesAuthorized: false, executionAuthorized: false });
     check(incoming.kind==='npm'?catalog.source.version!==incoming.version:catalog.source.commit!==incoming.commit);
   }
-  const core: PlanCore = { request: v, bindings: pins, closure, before, previous, previousReceiptPin: previous ? raw(join(v.stateDir, 'op-' + previous.operationKey, 'receipt.json')).pin : null, parents }; bindings(core, () => life.check());
+  const core: PlanCore = { request: v, bindings: pins, closure, before, previous, previousReceiptPin: previous ? raw(join(v.stateDir, 'op-' + previous.operationKey, 'receipt.json')).pin : null, parents, ...(history.length ? { history } : {}) }; bindings(core, () => life.check());
   check(!exists(join(v.projectDir, MARKER)) && !exists(join(v.projectDir, '.bowerloom-revision.json'))); return formPlan(core);
 }
 export async function planObservedManagedSkill(value: unknown, options: unknown = {}): Promise<ObservedSkillPlan | UpToDate> { const life = lifetime(options); try { return await planWithLifetime(value, life); } catch (e) { return boundary(e); } finally { life.close(); } }
