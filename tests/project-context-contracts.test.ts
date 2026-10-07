@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import type { DirectoryIdentity, HeldProjectLock, OwnerVerdict, OwnerVerifier, PlannedChange, ProjectContext } from '../packages/project-context/src/types.js';
 
 // Day 0 contracts (build plan 01, section 4). Most checks here are compile-time: `npm run typecheck` fails if a contract drifts.
@@ -58,11 +58,18 @@ test('a planned change plans, binds a revision, reviews and applies by revision'
   assert.deepEqual(await change.apply(revision), { revision }); assert.deepEqual(applied, [revision]);
 });
 
-test('npm test runs the skill packages and the beta 0.7.0 project test folders, and test:project runs the project layer', () => {
-  const scripts = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { scripts: Record<string, string> }).scripts;
-  const project = ['packages/project-context/test/*.test.mjs', 'packages/project-authoring/test/*.test.mjs', 'packages/skill-manifest/test/*.test.mjs', 'packages/project-sync/test/*.test.mjs'];
+test('npm test runs the skill packages and each beta 0.7.0 project test folder that holds a test, and test:project runs the project layer', () => {
+  const root = new URL('../../', import.meta.url);
+  const scripts = (JSON.parse(readFileSync(new URL('package.json', root), 'utf8')) as { scripts: Record<string, string> }).scripts;
   const words = (script: string | undefined) => (script ?? '').split(/\s+/);
-  for (const glob of ['packages/managed-skills/test/*.test.mjs', 'packages/skill-sources/test/*.test.mjs', ...project, 'dist/tests/*.test.js']) assert.ok(words(scripts.test).includes(glob), glob);
-  for (const name of ['test', 'test:project']) assert.equal(words(scripts[name]).slice(0, 6).join(' '), 'npm run build && node --test', name);
-  for (const glob of [...project, 'dist/tests/project-context-contracts.test.js']) assert.ok(words(scripts['test:project']).includes(glob), glob);
+  // node --test passes a pattern that matches nothing, so a project folder is listed only once it holds a test file.
+  const hasTest = (folder: string) => { try { return readdirSync(new URL(folder, root)).some(name => name.endsWith('.test.mjs')); } catch { return false; } };
+  for (const folder of ['packages/project-context/test/', 'packages/project-authoring/test/', 'packages/skill-manifest/test/', 'packages/project-sync/test/']) {
+    const glob = folder + '*.test.mjs';
+    for (const name of ['test', 'test:project']) assert.equal(words(scripts[name]).includes(glob), hasTest(folder), `${name}: ${glob}`);
+  }
+  for (const glob of ['packages/managed-skills/test/*.test.mjs', 'packages/skill-sources/test/*.test.mjs', 'dist/tests/*.test.js']) assert.ok(words(scripts.test).includes(glob), glob);
+  assert.equal(words(scripts.test).slice(0, 9).join(' '), 'npm run build && node tools/check-test-patterns.mjs && node --test');
+  assert.equal(words(scripts['test:project']).slice(0, 6).join(' '), 'npm run build && node --test');
+  assert.ok(words(scripts['test:project']).includes('dist/tests/project-context-contracts.test.js'));
 });
