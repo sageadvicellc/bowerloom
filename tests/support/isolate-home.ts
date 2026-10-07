@@ -1,8 +1,9 @@
 // Gives one test file its own HOME. Not a test file: npm test runs dist/tests/*.test.js only.
 //
 // The skills CLI pins every parent folder of a record it reads, mtime and ctime included, and refuses with
-// SKILLS_CHANGED if one changes during the read (apps/cli/src/skills.ts `readRecord`). So a test that reads a record
-// fails now and then if another test file, running in parallel, creates or removes a folder in any parent of it.
+// SKILLS_CHANGED if one changes during the read and again during its one repeat (apps/cli/src/skills.ts `readRecord`).
+// So a test that reads a record can fail if another test file, running in parallel, keeps creating or removing folders
+// in a parent of it.
 // Test files used to make their folders directly in the real HOME, which is such a parent; the system temporary
 // folder is no better, since many test files make folders there.
 //

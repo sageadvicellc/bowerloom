@@ -223,3 +223,33 @@ test('v1 apply and recovery refuse while a v1beta2 marker or managed folder exis
   fs.unlinkSync(bowerloom);fs.mkdirSync(bowerloom,{mode:0o700});fs.writeFileSync(join(bowerloom,'managed-pending.json'),'{}\n',{mode:0o600});f.write({operation:'install',harness:'claude'});
   calls.length=0;await runSkillsCommand(['skills','plan','--request',f.file]);await runSkillsCommand(['skills','inspect','--request',f.file]);assert.equal(calls.length,2);
 });
+// Lead call 4 (DECISIONS-01, from the lock-hardening review): on SKILLS_CHANGED from a parent folder, read once more.
+// Each read of the record opens it once, so `opens` counts the reads. A parent folder changes when a file is added to it.
+const touchParent=(f:{root:string},n:number)=>fs.writeFileSync(join(f.root,`sibling-${n}.txt`),'x',{mode:0o600});
+function onOpen(t:any,f:{file:string},each:(n:number)=>void){
+  const open=fs.openSync;let opens=0;
+  t.mock.method(fs,'openSync',(path:any,...rest:any[])=>{const fd=(open as any)(path,...rest);if(path===f.file)each(++opens);return fd;});
+  return ()=>opens;
+}
+test('a parent folder that changes once during the first read is read again once, then the command dispatches',async t=>{
+  const f=fixture(t,{synthetic:true,id:1});const opens=onOpen(t,f,n=>{if(n===1)touchParent(f,n);});
+  await runSkillsCommand(['skills','inspect','--request',f.file]);
+  assert.deepEqual(calls.map(c=>c.name),['inspectObservedManagedSkill']);assert.deepEqual({...calls[0]!.args[0]},{synthetic:true,id:1});
+  assert.equal(opens(),3,'the first read, its one repeat, and the check before dispatch');
+});
+test('a parent folder that changes during the check before dispatch is read again once, and the same value dispatches',async t=>{
+  const f=fixture(t,{synthetic:true,id:2});const opens=onOpen(t,f,n=>{if(n===2)touchParent(f,n);});
+  await runSkillsCommand(['skills','inspect','--request',f.file]);
+  assert.deepEqual(calls.map(c=>c.name),['inspectObservedManagedSkill']);assert.deepEqual({...calls[0]!.args[0]},{synthetic:true,id:2});
+  assert.equal(opens(),3);
+});
+test('a parent folder that keeps changing still refuses SKILLS_CHANGED after exactly one more read, with no dispatch',async t=>{
+  const f=fixture(t);const opens=onOpen(t,f,n=>touchParent(f,n));
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(opens(),2);
+});
+test('the record file changing between the first read and the check still refuses: only a parent change is read again',async t=>{
+  const f=fixture(t,{synthetic:true,id:3});const opens=onOpen(t,f,n=>{if(n===1)fs.writeFileSync(f.file,'{"synthetic":true,"id":4}');});
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(opens(),1);
+});
