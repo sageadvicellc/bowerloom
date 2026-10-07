@@ -15,7 +15,7 @@ This guide uses the `collections` skill from `@tanstack/db-skills@0.0.1`. Its na
 
 Use a public skill. This beta reads only public sources. The npm route reads `registry.npmjs.org`. The Git route reads the public GitHub API without credentials. Private registries and private repositories are not supported. See [Current beta limits](#current-beta-limits).
 
-Expect a hand-written request. Today one skill installs per project, and you write each request file yourself. Bowerloom has no `skills add`, `skills sync`, or `skills.json` command yet. These are planned for 0.7.x and are not in 0.7.0.
+Expect a hand-written request. Today one skill installs per project, and you write each request file yourself. `bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are not available in this beta release.
 
 Keep the project in a folder that iCloud Drive does not sync. This beta does not support projects inside iCloud Drive. That includes `~/Documents` and `~/Desktop` when "Desktop & Documents Folders" sync is on. <!-- BIND: pending installed evidence --> iCloud Drive changes file metadata, such as change time and extended attributes, while Bowerloom checks file integrity. Installs and updates in a synced folder are then refused or need recovery. Move the project to an unsynced folder before you plan an install.
 
@@ -48,7 +48,7 @@ Select the existing project and its harness with the human. Use `codex` or `clau
 
 Create separate private directories for request records, acquisition cache, and installation state. Keep the cache and state outside the project. Keep all three roots separate without nested paths. Place installation state on the same filesystem as the project.
 
-Use absolute paths without symlinks. Own the private directories with mode `0700`. Store request and plan files with mode `0600`. Their ancestors must deny group and other writes.
+Use absolute paths without symlinks. A project or state path may not hold a folder named `.git`, `.ssh`, `.config`, `.codex`, `.claude`, `.agents`, `node_modules`, or `library`, in any letter case. That refuses paths under `~/.config` and `~/Library`. Own the private directories with mode `0700`. Store request and plan files with mode `0600`. Their ancestors must deny group and other writes.
 
 Set these example paths to your approved directories:
 
@@ -63,7 +63,7 @@ MIN_FREE_BYTES=12884901888
 umask 077
 ```
 
-`SOURCE_OPERATION` identifies one acquisition attempt. Use a fresh 32-character lowercase hexadecimal value. <!-- BIND: pending installed evidence --> This example preserves 12 GiB of free space. Set `MIN_FREE_BYTES` to your required reserve before planning.
+`SOURCE_OPERATION` identifies one acquisition attempt. Use a fresh 32-character lowercase hexadecimal value. <!-- BIND: pending installed evidence --> This example preserves 12 GiB of free space. Set `MIN_FREE_BYTES` to your required reserve before planning. <!-- BIND: pending installed evidence --> The cache needs a `minFreeBytes` of at least 12,582,912. The install request needs at least 33,554,432. <!-- BIND: pending installed evidence --> Each `skills` command stops after 35 seconds. Run it again if it stops.
 
 ### Review the pinned source
 
@@ -168,9 +168,28 @@ Only one version of `@tanstack/db-skills` is published, which is `0.0.1`. The un
 
 Do not apply an up-to-date result as a file plan.
 
+<!-- BIND: pending installed evidence -->
+A changed update works today. Publish a new exact version, or review a newer commit. Review its complete selected content first. Prepare a new pinned acquisition request with a fresh operation identifier. Obtain acquisition approval before you download it. Inspect that completed cache before you prepare the update request.
+
+If update planning returns a file plan, compare the previous and proposed source records. Show every file change, license change, and requested effect. Wait for approval of the new plan and its exact previous receipt revision. Set these values to the approved revisions:
+
+<!-- BIND: pending installed evidence -->
+```sh
+UPDATE_REVISION=REPLACE_WITH_APPROVED_UPDATE_PLAN_REVISION
+PREVIOUS_REVISION=REPLACE_WITH_APPROVED_INSTALLED_RECEIPT_REVISION
+```
+
+<!-- BIND: pending installed evidence -->
+```sh
+bowerloom skills apply --plan "$RECORDS/update-result.json" --approve "$UPDATE_REVISION" --previous "$PREVIOUS_REVISION" > "$RECORDS/update-apply-result.json"
+bowerloom skills inspect --request "$RECORDS/installed-inspect-request.json" > "$RECORDS/update-inspection.json"
+```
+
+Read the resulting receipt and files before you report the update. No update searches for a newer release by itself. This guide shows no changed Git update example.
+
 ### Use a pinned Git source
 
-For Git, prepare `git-source-request.json` with the exact GitHub repository, commit, tree, metadata digest, selected inventory, references, and included license. Use full lowercase 40-character commit and tree identifiers. Do not use a branch or tag.
+For Git, prepare `git-source-request.json` with the exact GitHub repository, commit, tree, path trees, metadata digest, selected inventory, references, and included license. Use full lowercase 40-character commit and tree identifiers. Do not use a branch or tag.
 
 Use the Git plan form instead of the npm plan form:
 
@@ -199,7 +218,7 @@ If approval is stale or incorrect, obtain a new plan and exact approval. Do not 
 <!-- BIND: pending installed evidence -->
 If `SKILLS_CHANGED` appears, inspect the request or plan record and its directory state.
 
-Every refusal is one line of JSON on standard error. Standard output is empty and the exit code is 1.
+Every refusal is one line of JSON on standard error. Standard output is empty. A refusal exits 1. A usage error, code `USAGE`, exits 2.
 
 <!-- BIND: pending installed evidence -->
 `SKILLS_REFUSED (<CODE>)` means the command stopped for a known reason. The code in parentheses names the reason, such as `NPM_CACHE_DIRECTORY` or `GIT_TREE_BOUND`. Keep the error, then inspect the cache and installation records before another action.
@@ -207,6 +226,9 @@ Every refusal is one line of JSON on standard error. Standard output is empty an
 ```text
 {"error":{"code":"SKILLS_REFUSED","message":"The skills command stopped (NPM_CACHE_DIRECTORY). Inspect the exact local cache and operation records before another action; no native execution authority is granted."}}
 ```
+
+<!-- BIND: pending installed evidence -->
+`SKILLS_RECORD` means a request or plan record is not valid. `SKILLS_CHANGED` means the record or its folder changed. `SKILLS_OUTPUT` means the command could not write its result. Read the record, fix it, and plan again.
 
 <!-- BIND: pending installed evidence -->
 `SKILLS_UNCERTAIN` means the cache state is not certain. Its message names two codes. Run `bowerloom skills source inspect`, then `bowerloom skills source recover plan`, before another action.
@@ -227,10 +249,13 @@ Installation commands refuse with these codes in the parentheses:
 
 - `MANAGED_SKILL_STALE_APPROVAL` means the approved revision no longer matches the plan. Make a new plan and ask for a new approval.
 - `MANAGED_SKILL_LOCAL_DRIFT` means someone edited an installed file. Keep the edit. Inspect the installation and resolve the change with the human before you plan again. Do not use an update to overwrite it.
+- `MANAGED_SKILL_RECOVERY_REQUIRED` means an earlier installation stopped partway. Run `bowerloom skills recover plan`.
+- `MANAGED_SKILL_LOCKED` means another command holds the installation. Wait, then plan again.
+- `MANAGED_SKILL_TIMEOUT` and `MANAGED_SKILL_ABORTED` mean the command ran past 35 seconds or stopped early. Inspect the installation before you plan again.
 - `MANAGED_SKILL_REFUSED` also covers drift in the cache snapshot or the receipt. It is the general installation refusal, so it does not tell drift apart from other causes. Inspect the cache and the installation before you plan again.
 
 <!-- BIND: pending installed evidence -->
-If interruption leaves an uncertain result, inspect before another write. A `completed-after-interruption` result requires inspection. It does not grant execution authority.
+If interruption leaves an uncertain result, the command refuses with `SKILLS_INTERRUPTED_UNCERTAIN`. Inspect before another write. A `completed-after-interruption` result requires inspection. It does not grant execution authority.
 
 For cache recovery, prepare `source-recovery-request.json` with the cache root, acquisition operation identifier, and reviewed action `finalize` or `hold`.
 
@@ -272,7 +297,10 @@ Bowerloom reads two kinds of source. Use the npm route for a package. Use the Gi
 
 - Do not use symlinks. The npm reader refuses a link entry in the archive. The Git reader accepts only regular files and folders.
 - Use relative links only, and only to files inside the same skill folder.
-- Include a clear license file, such as `LICENSE` or `NOTICE`, and declare the license in your metadata.
+- Use the MIT or the Apache-2.0 license, and no other. <!-- BIND: pending installed evidence --> Include a license file named `LICENSE` or `NOTICE`. Its text must contain "MIT License" or "Apache License". Declare the same license in your metadata.
+- <!-- BIND: pending installed evidence --> Write every other file as `.md`, `.txt`, `.json`, `.yaml`, `.yml`, or `.csv`.
+- <!-- BIND: pending installed evidence --> Start `SKILL.md` with frontmatter. It may use only the keys `name`, `description`, `license`, `compatibility`, and `metadata`. The `name` must equal the skill name.
+- <!-- BIND: pending installed evidence --> For Git, set every file to mode 100644, with no executable files. Select every file in the skill folder. A file you leave out refuses with `GIT_SELECTED_INVENTORY`.
 - Name the skill with lowercase letters, digits, and single hyphens, up to 64 characters.
 - Keep the package working folder out of iCloud Drive. The limit in "Before you start" applies to it too.
 
@@ -342,6 +370,9 @@ The Git reader applies the same selection limits as the npm reader. <!-- BIND: p
 
 Git reads only the selected skill folder. It does not read the rest of the repository, so a large repository works. <!-- BIND: pending installed evidence --> The path to the skill folder may be at most 8 folders deep. <!-- BIND: pending installed evidence --> A skill folder at depth 8 may hold up to 120 files. <!-- BIND: pending installed evidence --> A single folder listing may hold at most 1,024 entries. A longer listing refuses with `GIT_TREE_BOUND`.
 
+<!-- BIND: pending installed evidence -->
+GitHub limits requests that carry no credentials. A skill makes up to 2 plus its folder depth plus its number of files requests. A large skill can reach the GitHub limit. If GitHub refuses, wait before you run the plan again.
+
 ## Request records
 
 Prepare these JSON records with the existing file editor. Replace the example paths and revision markers with the exact reviewed values. Do not add unlisted fields.
@@ -356,7 +387,7 @@ The `skill` field contains `id`, `name`, and `sourceRoot`. Each file contains `p
 For this example, use `skill.id: "collections"` and `skill.name: "tanstack-db-collections"`. Keep file hashes and metadata values from the reviewed source record. The published package version is separate from any version declared inside a skill.
 
 <!-- BIND: pending installed evidence -->
-A Git acquisition record replaces npm package fields with `repository`, `commit`, `tree`, and `metadataSha256`. It retains `declaredLicense`, `skill`, `files`, `references`, and `license`. Use reviewed Git paths and hashes. Do not infer them from npm repository metadata.
+A Git acquisition record replaces npm package fields with `repository`, `commit`, `tree`, `pathTrees`, and `metadataSha256`. `pathTrees` lists one tree identifier for each folder on the path to the skill, from the first folder to the skill folder. Each identifier is 40 lowercase hexadecimal characters. The last one is the skill folder. The path may have at most 8 folders. It retains `declaredLicense`, `skill`, `files`, `references`, and `license`. Use reviewed Git paths and hashes. Do not infer them from npm repository metadata.
 
 The installation request uses this shape:
 
@@ -402,6 +433,7 @@ A report or proposal does not guarantee a fix, a response time, or a release dat
 ## Current beta limits
 
 - Public skills only. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, without credentials. Bowerloom cannot read a private registry or a private repository in this beta.
+- Only the MIT and Apache-2.0 licenses are accepted.
 - One skill installs per project. Each install needs a request file that you write by hand. <!-- BIND: pending installed evidence --> A second skill in the same project is not supported.
 - This beta does not support projects inside iCloud Drive. Keep the project, and keep the cache and state directories, in folders that iCloud Drive does not sync. Bowerloom keeps its strict integrity checks and does not relax them for synced folders. <!-- BIND: pending installed evidence --> A synced folder can make an install or update refuse or need recovery.
 
@@ -409,30 +441,8 @@ A report or proposal does not guarantee a fix, a response time, or a release dat
 
 This section describes work that this guide does not yet prove. Do not treat it as a current beta instruction.
 
-- Private npm registries and private Git repositories are not part of this beta. They may come in a later version.
-- Planned for 0.7.x, and not in 0.7.0: `bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts.
-
-- Only `@tanstack/db-skills@0.0.1` is published. The update example therefore shows an unchanged-source result. The beta guide does not show a changed npm update for this package.
-- A changed update needs a newly published version. When one exists, review its complete selected content first. Prepare a new pinned acquisition request with a fresh operation identifier. Obtain acquisition approval before downloading it. Inspect that completed cache before preparing the update request.
-- If update planning then returns a file plan, compare the previous and proposed source records. Show every file change, license change, and requested effect. Wait for approval of the new plan and its exact previous receipt revision.
-- A Git update uses a newly reviewed commit from the same repository. This guide shows no changed Git update.
-- No update searches for a newer release by itself.
-
-For a changed update, set these values to the approved revisions:
-
-<!-- BIND: pending installed evidence -->
-```sh
-UPDATE_REVISION=REPLACE_WITH_APPROVED_UPDATE_PLAN_REVISION
-PREVIOUS_REVISION=REPLACE_WITH_APPROVED_INSTALLED_RECEIPT_REVISION
-```
-
-<!-- BIND: pending installed evidence -->
-```sh
-bowerloom skills apply --plan "$RECORDS/update-result.json" --approve "$UPDATE_REVISION" --previous "$PREVIOUS_REVISION" > "$RECORDS/update-apply-result.json"
-bowerloom skills inspect --request "$RECORDS/installed-inspect-request.json" > "$RECORDS/update-inspection.json"
-```
-
-Read the resulting receipt and files before you report the update.
+- Private npm registries and private Git repositories are not part of this beta. They are not available in this beta release.
+- Not available in this beta release: `bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts.
 
 ## Continue
 

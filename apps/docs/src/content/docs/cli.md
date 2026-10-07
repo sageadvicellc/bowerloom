@@ -15,7 +15,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
-`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are planned for 0.7.x. They are not in 0.7.0. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
+`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are not available in this beta release. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
 
 ## Discovery
 
