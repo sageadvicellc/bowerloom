@@ -203,6 +203,8 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
   // A leftover `.op-<key>.tmp` never became an operation: plan reads past it, and apply removes it under the lock.
   for (const n of names(v.stateDir)) { if (OP_TEMP.test(n)) continue; check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAtV2(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir && same(prior.item, v.item)); history.push(n.slice(3)); }
   check(!exists(join(v.projectDir, MARKER_V2)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  // v2: a marker temporary (a kill before a marker landed, or a file that is not ours) needs recovery first, as in v1 apply.
+  check(!exists(temporary(join(v.projectDir, MARKER_V2))), 'MANAGED_SKILL_RECOVERY_REQUIRED');
   if (v.operation === 'migrate') check(!exists(join(v.projectDir, V1_MARKER)), 'MANAGED_SKILL_RECOVERY_REQUIRED'); else check(!legacyPresent(v.projectDir), 'MANAGED_SKILL_LEGACY_PRESENT');
   capacityV2(v);
   const { closure, acquired } = await readClosure(v, life); life.check();

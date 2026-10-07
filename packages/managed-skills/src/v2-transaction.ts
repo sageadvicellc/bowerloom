@@ -428,7 +428,9 @@ export async function applyManagedItem(held: HeldProjectLock | null, req: unknow
       const op = intentPath(plan); bindingsV2(plan.core, () => live.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
       for (const p of plan.core.parents) { if (p.identity) check(same(directory(p.path), p.identity)); else if (exists(dirname(p.path))) absent(p.path); }
       const temp = opTemp(input.stateDir, plan.operationKey);
-      check(!exists(join(input.projectDir, MARKER_V2)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history, 'MANAGED_SKILL_HISTORY_FULL'); capacityV2(input); live.check();
+      check(!exists(join(input.projectDir, MARKER_V2)) && !exists(join(input.projectDir, '.bowerloom-revision.json')));
+      // As in v1: a marker temporary is a kill before some marker landed, or a file that is not ours. Its operation needs recovery first.
+      check(!exists(temporary(join(input.projectDir, MARKER_V2))), 'MANAGED_SKILL_RECOVERY_REQUIRED'); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history, 'MANAGED_SKILL_HISTORY_FULL'); capacityV2(input); live.check();
       // The operation folder appears whole, with its intent, or not at all: built under its private temporary name,
       // then renamed. The rename keeps the inode and birthtime, so the intent's operationIdentity still matches.
       fs.mkdirSync(temp, { mode: 0o700 }); const opIdentity = directory(temp, true);

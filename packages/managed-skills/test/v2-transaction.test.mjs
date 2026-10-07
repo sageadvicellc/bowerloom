@@ -309,3 +309,15 @@ test('held lock: a banner read that finds nobody is LOCK_NOT_HELD, not a collisi
   });
   assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
 });
+
+test('v2: a marker temporary that is not ours is never removed: plan and apply refuse before they create anything (review M1F 1)', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req);
+  const temp = path.join(f.projectDir, '.bowerloom', '.managed-pending.json.tmp'); fs.writeFileSync(temp, 'not ours', { mode: 0o600 });
+  const before = inventory(f.projectDir);
+  await assert.rejects(applyManagedItem(null, req, plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED'));
+  await assert.rejects(planManagedItem(req), code('MANAGED_SKILL_RECOVERY_REQUIRED'));
+  await withProjectLock(f.projectDir, new AbortController().signal, async held => { await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED')); });
+  assert.equal(fs.readFileSync(temp, 'utf8'), 'not ours'); assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  // Without the foreign temporary, the same plan applies: the refusal came from the temporary alone.
+  fs.unlinkSync(temp); assert.equal((await applyManagedItem(null, req, plan.revision)).state, 'committed');
+});
