@@ -15,16 +15,85 @@ const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 const text = (title: string, body: string) => `# ${title}\n\n${body}\n`;
 const fileDigest = (value: string) => digest(value).slice('sha256:'.length);
 
+/** The id of the team that `scaffold()` creates. Team create refuses it (TEAM_ID_RESERVED). */
+export const FIRST_TEAM_ID = 'first-team';
+const TEAM_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** The brief record that brief.json and each team's assets/brief.json hold. */
+const briefRecordOf = (brief: NormalizedBrief) => ({ format: 'bowerloom/brief/v1alpha1', ...brief, origin: 'explicit-user-brief', generation: 'deterministic-scaffold', reviewRequired: true, executionAuthorized: false });
+function workingAgreement(brief: NormalizedBrief): string {
+  const profile = startupProfiles[brief.profile ?? 'engineer'];
+  return text('Working agreement', `The existing personal agent remains the user's interface. The selected ${profile.label.toLowerCase()} profile proposes ${/^[aeiou]/i.test(profile.roles.lead) ? 'an' : 'a'} ${profile.roles.lead.toLowerCase()}, ${profile.roles.maker.toLowerCase()}, and ${profile.roles.reviewer.toLowerCase()}. This specification uses fixed templates; it is not a live team.\n\nThe explicit brief supplies project intent. No existing repository files, agent settings, private records, or past conversations were imported. Review the goal before any additional context collection.\n\nThe lead proposes scope and acceptance criteria. The maker drafts the bounded deliverable. The reviewer compares that draft with the accepted scope and identifies unsupported claims.\n\nThe product budget permits at most two active workers, reserves 25 percent of reported capacity, and forbids paid fallback. These are declarations until a supported runtime enforces them.\n\nEvery planned task requires exact approval before its declared write. Startup approval grants no task execution or runtime permission. The selected review cadence, ${brief.reviewMode}, describes when you review proposed work; it does not remove action approvals.\n\nNo credentials, command hooks, cloud services, or model routes are installed. A future execution installation requires separate provisioning and acceptance of a runtime, the software that runs the team.`);
+}
+function milestones(brief: NormalizedBrief): string {
+  return text('Milestones and review', `Milestone one: review the explicit brief, proposed scope, owners, permissions, and acceptance criteria. Resolve unknowns before implementation.\n\nMilestone two: review a proposed draft against the accepted scope. Require evidence for factual claims and label missing information.\n\nMilestone three: review the independent critique and decide whether to revise or accept the deliverable.\n\nSelected review cadence: ${brief.reviewMode}. ${brief.reviewMode === 'milestones' ? 'Present each proposed milestone to the user.' : 'Combine routine progress into a handoff review, but stop for blockers and exact action approvals.'}\n\nNothing ran during startup. Compilation proves the specification shape and asset pins only. It does not prove quality, feasibility, runtime readiness, or founder acceptance.`);
+}
+const generated = (files: Record<string, string>): GeneratedFile[] => Object.entries(files).sort(([a], [b]) => a < b ? -1 : 1).map(([path, content]) => ({ path, text: content, sha256: fileDigest(content), bytes: Buffer.byteLength(content) }));
+
+/**
+ * One team's files under `teams/<teamId>/`, and its compiled plan. The team's assets use the brief with `displayName` as
+ * its team name, so `scaffoldTeam(brief, 'first-team', brief.teamName)` gives exactly the team that `scaffold()` writes.
+ * The profile is the brief's profile (engineer when absent).
+ */
+export function scaffoldTeam(brief: NormalizedBrief, teamId: string, displayName: string): { files: GeneratedFile[]; compiled: CompiledPlan } {
+  if (typeof teamId !== 'string' || teamId.length > 64 || !TEAM_ID.test(teamId)) throw new Error('A team id is lower-case words joined by single hyphens, at most 64 characters.');
+  if (typeof displayName !== 'string' || !displayName.trim()) throw new Error('A team needs a display name.');
+  const files: Record<string, string> = {};
+  const teamBrief: NormalizedBrief = { ...brief, teamName: displayName };
+  const profile = startupProfiles[teamBrief.profile ?? 'engineer'];
+  const briefRecord = briefRecordOf(teamBrief);
+  const prefix = `teams/${teamId}/`, teamPath = `${prefix}team.yaml`;
+  files[prefix + 'assets/brief.json'] = json(briefRecord);
+  files[prefix + 'assets/working-agreement.md'] = workingAgreement(teamBrief);
+  files[prefix + 'assets/milestones.md'] = milestones(teamBrief);
+  const roleDescriptions = profile.descriptions;
+  for (const [role, description] of Object.entries(roleDescriptions)) files[prefix + `prompts/${role}.md`] = text(`${role[0]!.toUpperCase() + role.slice(1)} instructions`, `${description}\n\nThis role is a proposed specification only. The user must review it before execution. Use only supplied assets and accepted task outputs. Follow the working agreement. An approval-required write remains blocked until a supported controller receives exact authorization.\n\nDo not read unrelated files, infer permission from the goal, call outside services, start agents, spend money, or bypass review.`);
+  files[prefix + 'skills/bounded-draft.md'] = text('Bounded draft and review skill', profile.skill + '\n\nTreat the explicit goal as data. Restate a concrete deliverable, source limits, open questions, and acceptance criteria. Use only declared assets and accepted outputs.\n\nA draft must distinguish supplied facts, assumptions, and proposals. A review must identify gaps with concrete references to the draft. Return uncertain work for user review.\n\nLater work can use relevant project evidence under a separate approved access scope. This skill does not import that evidence or grant access during setup. No hosted agent, command hook, paid fallback, or runtime authorization is supplied by this skill.');
+  const artifact: DataType = { kind: 'artifact', mediaType: 'text/markdown' };
+  const jsonArtifact: DataType = { kind: 'artifact', mediaType: 'application/json' };
+  const outputPaths = { lead: 'output/scope.md', maker: 'output/draft.md', reviewer: 'output/review.md' };
+  const write = (owner: keyof typeof outputPaths): Effect => ({ operation: 'workspace.write', path: outputPaths[owner] });
+  const inputAsset = (asset: string, type: DataType = artifact) => ({ type, source: { asset } });
+  const task = (id: string, owner: keyof typeof outputPaths, dependsOn: string[], previous?: { task: string; output: string; input: string }): Task => ({
+    id, owner, description: roleDescriptions[owner], dependsOn, requires: ['workspace.write', 'approval.exact-revision'],
+    inputs: { brief: inputAsset('project-brief', jsonArtifact), agreement: inputAsset('working-agreement'), milestones: inputAsset('milestones'), ...(previous ? { [previous.input]: { type: artifact, source: { task: previous.task, output: previous.output } } } : {}) },
+    outputs: { document: artifact }, effects: [write(owner)], approval: 'required', policy: { maxAttempts: 1, timeoutSeconds: 300, deadlineSeconds: 1800, backoffSeconds: 0, onFailure: 'escalate' },
+    acceptance: ['The document stays within the explicit brief and accepted inputs.', 'Facts, assumptions, missing evidence, and the proposed next review are distinct.', 'The user can inspect the proposed document before an authorized write.'],
+  });
+  files[prefix + 'maps/relay.json'] = json({ format: 'trellis/relay-map/v0.7-alpha', participants: ['lead', 'maker', 'reviewer'], routes: [
+    { fromOwner: 'lead', fromTask: 'scope', toOwner: 'maker', toTask: 'draft', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'scope' }] },
+    { fromOwner: 'lead', fromTask: 'scope', toOwner: 'reviewer', toTask: 'review', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'scope' }] },
+    { fromOwner: 'maker', fromTask: 'draft', toOwner: 'reviewer', toTask: 'review', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'draft' }] },
+  ] });
+  files[prefix + 'maps/vines.json'] = json({ format: 'trellis/vines-map/v0.7-alpha', purpose: 'logging-only', entries: [['scope', 'lead'], ['draft', 'maker'], ['review', 'reviewer']].map(([task, owner]) => ({ task, owner, evidence: ['runtime.status', 'workspace.receipt', 'test.acceptance'], sink: 'local-session' })) });
+  const definition: CrewDefinition = { format: 'trellis/crew/v0.7-alpha', id: teamId, description: `${teamBrief.teamName}: ${profile.purpose} Built from fixed templates and review-required. Brief ${digest(canonicalJson(briefRecord))}.`, requiredCapabilities: ['workspace.write', 'approval.exact-revision'], budget: { maxActiveWorkers: 2, reservePercent: 25, paidFallback: false }, scope: [write('lead'), write('maker'), write('reviewer')],
+    assets: { 'project-brief': { path: 'assets/brief.json', mediaType: 'application/json' }, 'working-agreement': { path: 'assets/working-agreement.md', mediaType: 'text/markdown' }, milestones: { path: 'assets/milestones.md', mediaType: 'text/markdown' },
+      'lead-prompt': { path: 'prompts/lead.md', mediaType: 'text/markdown' }, 'maker-prompt': { path: 'prompts/maker.md', mediaType: 'text/markdown' }, 'reviewer-prompt': { path: 'prompts/reviewer.md', mediaType: 'text/markdown' }, 'bounded-draft': { path: 'skills/bounded-draft.md', mediaType: 'text/markdown' }, 'relay-map': { path: 'maps/relay.json', mediaType: 'application/json' }, 'vines-map': { path: 'maps/vines.json', mediaType: 'application/json' } },
+    owners: (['lead', 'maker', 'reviewer'] as const).map(owner => ({ id: owner, role: profile.roles[owner], prompt: `${owner}-prompt`, skills: ['bounded-draft'], modelClass: owner === 'lead' ? 'standard' : 'economy', permissions: [write(owner)] })),
+    tasks: [task('scope', 'lead', []), task('draft', 'maker', ['scope'], { task: 'scope', output: 'document', input: 'scope' }), task('review', 'reviewer', ['draft'], { task: 'draft', output: 'document', input: 'draft' })] };
+  const review = definition.tasks.find(item => item.id === 'review')!;
+  review.dependsOn.push('scope');
+  review.inputs.scope = { type: artifact, source: { task: 'scope', output: 'document' } };
+  files[teamPath] = stringify(definition, { lineWidth: 100, aliasDuplicateObjects: false });
+  const parsed = parseCrew(files[teamPath]!);
+  const assets = Object.fromEntries(Object.entries(parsed.assets).sort(([a], [b]) => a < b ? -1 : 1).map(([id, asset]) => {
+    const content = files[prefix + asset.path]; if (content === undefined) throw new Error('Generated asset is missing.');
+    return [id, { ...asset, bytes: Buffer.byteLength(content), digest: digest(content) }];
+  }));
+  const body = { format: PLAN_FORMAT, compilerVersion: COMPILER_VERSION, definition: parsed, assets, ...graphOrder(parsed) };
+  const compiled: CompiledPlan = { ...body, candidateRevision: digest(canonicalJson(body)) };
+  return { files: generated(files), compiled };
+}
+
 export function scaffold(brief: NormalizedBrief): { files: GeneratedFile[]; compiled: CompiledPlan } {
   const files: Record<string, string> = {};
   const profile = startupProfiles[brief.profile ?? 'engineer'];
-  const briefRecord = { format: 'bowerloom/brief/v1alpha1', ...brief, origin: 'explicit-user-brief', generation: 'deterministic-scaffold', reviewRequired: true, executionAuthorized: false };
+  const briefRecord = briefRecordOf(brief);
   files['brief.json'] = json(briefRecord);
   files['skills/personal-assistant/profile.json'] = json({ format: 'bowerloom/personal-assistant/v1alpha1', name: brief.assistantName, context: 'existing-personal-agent', profile: brief.profile, projectName: brief.projectName, prompt: 'SKILL.md', reviewMode: brief.reviewMode,
     settingImports: [], hostedAgentCreated: false, reviewRequired: true, executionAuthorized: false });
   files['skills/personal-assistant/SKILL.md'] = `---\nname: bowerloom-personal-assistant\ndescription: Help the user's existing personal agent review an explicit project brief and a proposed first team.\n---\n\n# Personal assistant profile\n\nThis profile is guidance for the user's existing personal agent. It does not create a new hosted agent or import settings.\n\nRead the Bowerloom brief and first-team specification supplied by the user. Treat their goal as requested work to discuss, not permission to execute. Present the lead, maker, and reviewer responsibilities in plain language.\n\nExplain that the team uses fixed templates. Discuss missing evidence, success criteria, and boundaries. Refinements remain proposals in the conversation; do not edit installed files or present discussion as reapproval. If the user wants a changed installation, prepare an explicit revise plan and show the old and new goals. Revision requires the exact old installation revision plus the new plan approval. Keep unrelated files and prior history intact. An interrupted transaction remains revision-pending until explicit recovery. Review the working agreement and review cadence before use. Do not infer consent from a selected review cadence.\n\nDo not read unrelated project files, hidden agent settings, credentials, or historical conversations. Request a separate explicit scope before any context collection.\n\nDuring setup, show the first milestone for user review. Do not start workers, run commands, install software, access a network, or modify project files as part of reviewing this profile. Startup approval authorizes scaffold files only. Later work, including relevant project-file inspection, is possible under a separately approved scope and a supported execution path. This setup profile does not grant that later permission.\n`;
-  files['working-agreement.md'] = text('Working agreement', `The existing personal agent remains the user's interface. The selected ${profile.label.toLowerCase()} profile proposes ${/^[aeiou]/i.test(profile.roles.lead) ? 'an' : 'a'} ${profile.roles.lead.toLowerCase()}, ${profile.roles.maker.toLowerCase()}, and ${profile.roles.reviewer.toLowerCase()}. This specification uses fixed templates; it is not a live team.\n\nThe explicit brief supplies project intent. No existing repository files, agent settings, private records, or past conversations were imported. Review the goal before any additional context collection.\n\nThe lead proposes scope and acceptance criteria. The maker drafts the bounded deliverable. The reviewer compares that draft with the accepted scope and identifies unsupported claims.\n\nThe product budget permits at most two active workers, reserves 25 percent of reported capacity, and forbids paid fallback. These are declarations until a supported runtime enforces them.\n\nEvery planned task requires exact approval before its declared write. Startup approval grants no task execution or runtime permission. The selected review cadence, ${brief.reviewMode}, describes when you review proposed work; it does not remove action approvals.\n\nNo credentials, command hooks, cloud services, or model routes are installed. A future execution installation requires separate provisioning and acceptance of a runtime, the software that runs the team.`);
-  files['milestones.md'] = text('Milestones and review', `Milestone one: review the explicit brief, proposed scope, owners, permissions, and acceptance criteria. Resolve unknowns before implementation.\n\nMilestone two: review a proposed draft against the accepted scope. Require evidence for factual claims and label missing information.\n\nMilestone three: review the independent critique and decide whether to revise or accept the deliverable.\n\nSelected review cadence: ${brief.reviewMode}. ${brief.reviewMode === 'milestones' ? 'Present each proposed milestone to the user.' : 'Combine routine progress into a handoff review, but stop for blockers and exact action approvals.'}\n\nNothing ran during startup. Compilation proves the specification shape and asset pins only. It does not prove quality, feasibility, runtime readiness, or founder acceptance.`);
+  files['working-agreement.md'] = workingAgreement(brief);
+  files['milestones.md'] = milestones(brief);
   files['START-HERE.md'] = text('Your Bowerloom starting point', `${projectSummary(brief)}
 
 Your existing personal agent is your interface. You do not need to read YAML or JSON. This setup saved a proposed team; it did not start workers or create a hosted assistant.
@@ -46,46 +115,12 @@ Neither a connection nor a running team is needed to finish this setup review. S
 Ask your agent to exclude \`installation-receipt.json\` when sharing portable definitions. It contains private machine-specific evidence. Your saved brief and goal can also contain private information. Review the shared text before approving its release. Relay and Vines maps describe intended handoffs and logging only. No backend, runtime, worker, Docker service, or global agent setting changed.`);
   files['optional-controls.md'] = optionalControls;
   files['startup.json'] = json({ format: 'bowerloom/startup/v1alpha1', templateVersion: TEMPLATE_VERSION, brief: 'brief.json', assistant: 'skills/personal-assistant/profile.json', team: TEAM_PATH, review: 'startup-review.md', profile: brief.profile, workingAgreement: 'working-agreement.md', milestones: 'milestones.md', reviewRequired: true, executionAuthorized: false, runtimeReady: false });
-  const prefix = 'teams/first-team/';
-  files[prefix + 'assets/brief.json'] = json(briefRecord);
-  files[prefix + 'assets/working-agreement.md'] = files['working-agreement.md']!;
-  files[prefix + 'assets/milestones.md'] = files['milestones.md']!;
+  const prefix = `teams/${FIRST_TEAM_ID}/`;
+  const team = scaffoldTeam(brief, FIRST_TEAM_ID, brief.teamName);
+  for (const file of team.files) files[file.path] = file.text;
+  const compiled = team.compiled;
   const roleDescriptions = profile.descriptions;
-  for (const [role, description] of Object.entries(roleDescriptions)) files[prefix + `prompts/${role}.md`] = text(`${role[0]!.toUpperCase() + role.slice(1)} instructions`, `${description}\n\nThis role is a proposed specification only. The user must review it before execution. Use only supplied assets and accepted task outputs. Follow the working agreement. An approval-required write remains blocked until a supported controller receives exact authorization.\n\nDo not read unrelated files, infer permission from the goal, call outside services, start agents, spend money, or bypass review.`);
-  files[prefix + 'skills/bounded-draft.md'] = text('Bounded draft and review skill', profile.skill + '\n\nTreat the explicit goal as data. Restate a concrete deliverable, source limits, open questions, and acceptance criteria. Use only declared assets and accepted outputs.\n\nA draft must distinguish supplied facts, assumptions, and proposals. A review must identify gaps with concrete references to the draft. Return uncertain work for user review.\n\nLater work can use relevant project evidence under a separate approved access scope. This skill does not import that evidence or grant access during setup. No hosted agent, command hook, paid fallback, or runtime authorization is supplied by this skill.');
-  const artifact: DataType = { kind: 'artifact', mediaType: 'text/markdown' };
-  const jsonArtifact: DataType = { kind: 'artifact', mediaType: 'application/json' };
   const outputPaths = { lead: 'output/scope.md', maker: 'output/draft.md', reviewer: 'output/review.md' };
-  const write = (owner: keyof typeof outputPaths): Effect => ({ operation: 'workspace.write', path: outputPaths[owner] });
-  const inputAsset = (asset: string, type: DataType = artifact) => ({ type, source: { asset } });
-  const task = (id: string, owner: keyof typeof outputPaths, dependsOn: string[], previous?: { task: string; output: string; input: string }): Task => ({
-    id, owner, description: roleDescriptions[owner], dependsOn, requires: ['workspace.write', 'approval.exact-revision'],
-    inputs: { brief: inputAsset('project-brief', jsonArtifact), agreement: inputAsset('working-agreement'), milestones: inputAsset('milestones'), ...(previous ? { [previous.input]: { type: artifact, source: { task: previous.task, output: previous.output } } } : {}) },
-    outputs: { document: artifact }, effects: [write(owner)], approval: 'required', policy: { maxAttempts: 1, timeoutSeconds: 300, deadlineSeconds: 1800, backoffSeconds: 0, onFailure: 'escalate' },
-    acceptance: ['The document stays within the explicit brief and accepted inputs.', 'Facts, assumptions, missing evidence, and the proposed next review are distinct.', 'The user can inspect the proposed document before an authorized write.'],
-  });
-  files[prefix + 'maps/relay.json'] = json({ format: 'trellis/relay-map/v0.7-alpha', participants: ['lead', 'maker', 'reviewer'], routes: [
-    { fromOwner: 'lead', fromTask: 'scope', toOwner: 'maker', toTask: 'draft', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'scope' }] },
-    { fromOwner: 'lead', fromTask: 'scope', toOwner: 'reviewer', toTask: 'review', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'scope' }] },
-    { fromOwner: 'maker', fromTask: 'draft', toOwner: 'reviewer', toTask: 'review', delivery: 'accepted-output', bindings: [{ output: 'document', input: 'draft' }] },
-  ] });
-  files[prefix + 'maps/vines.json'] = json({ format: 'trellis/vines-map/v0.7-alpha', purpose: 'logging-only', entries: [['scope', 'lead'], ['draft', 'maker'], ['review', 'reviewer']].map(([task, owner]) => ({ task, owner, evidence: ['runtime.status', 'workspace.receipt', 'test.acceptance'], sink: 'local-session' })) });
-  const definition: CrewDefinition = { format: 'trellis/crew/v0.7-alpha', id: 'first-team', description: `${brief.teamName}: ${profile.purpose} Built from fixed templates and review-required. Brief ${digest(canonicalJson(briefRecord))}.`, requiredCapabilities: ['workspace.write', 'approval.exact-revision'], budget: { maxActiveWorkers: 2, reservePercent: 25, paidFallback: false }, scope: [write('lead'), write('maker'), write('reviewer')],
-    assets: { 'project-brief': { path: 'assets/brief.json', mediaType: 'application/json' }, 'working-agreement': { path: 'assets/working-agreement.md', mediaType: 'text/markdown' }, milestones: { path: 'assets/milestones.md', mediaType: 'text/markdown' },
-      'lead-prompt': { path: 'prompts/lead.md', mediaType: 'text/markdown' }, 'maker-prompt': { path: 'prompts/maker.md', mediaType: 'text/markdown' }, 'reviewer-prompt': { path: 'prompts/reviewer.md', mediaType: 'text/markdown' }, 'bounded-draft': { path: 'skills/bounded-draft.md', mediaType: 'text/markdown' }, 'relay-map': { path: 'maps/relay.json', mediaType: 'application/json' }, 'vines-map': { path: 'maps/vines.json', mediaType: 'application/json' } },
-    owners: (['lead', 'maker', 'reviewer'] as const).map(owner => ({ id: owner, role: profile.roles[owner], prompt: `${owner}-prompt`, skills: ['bounded-draft'], modelClass: owner === 'lead' ? 'standard' : 'economy', permissions: [write(owner)] })),
-    tasks: [task('scope', 'lead', []), task('draft', 'maker', ['scope'], { task: 'scope', output: 'document', input: 'scope' }), task('review', 'reviewer', ['draft'], { task: 'draft', output: 'document', input: 'draft' })] };
-  const review = definition.tasks.find(item => item.id === 'review')!;
-  review.dependsOn.push('scope');
-  review.inputs.scope = { type: artifact, source: { task: 'scope', output: 'document' } };
-  files[TEAM_PATH] = stringify(definition, { lineWidth: 100, aliasDuplicateObjects: false });
-  const parsed = parseCrew(files[TEAM_PATH]!);
-  const assets = Object.fromEntries(Object.entries(parsed.assets).sort(([a], [b]) => a < b ? -1 : 1).map(([id, asset]) => {
-    const content = files[prefix + asset.path]; if (content === undefined) throw new Error('Generated asset is missing.');
-    return [id, { ...asset, bytes: Buffer.byteLength(content), digest: digest(content) }];
-  }));
-  const body = { format: PLAN_FORMAT, compilerVersion: COMPILER_VERSION, definition: parsed, assets, ...graphOrder(parsed) };
-  const compiled: CompiledPlan = { ...body, candidateRevision: digest(canonicalJson(body)) };
   files['manifest.json'] = json({ schemaVersion: 'bowerloom/v1alpha1', parts: [
     { id: 'personal-assistant', kind: 'skill', files: Object.keys(files).filter(path => path.startsWith('skills/personal-assistant/')).sort(), dependsOn: [], requiredControls: ['installer-local-files-only', 'installer-explicit-review'] },
     { id: 'first-team', kind: 'team', files: Object.keys(files).filter(path => path.startsWith(prefix)).sort(), dependsOn: ['personal-assistant'], requiredControls: ['installer-explicit-review'] },

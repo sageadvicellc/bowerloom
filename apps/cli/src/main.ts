@@ -132,6 +132,12 @@ async function main(args: string[]): Promise<void> {
   }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
+  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt') {
+    if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    const { runCreateCommand } = await import('./create.js');
+    process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
   if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {
     if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
     const { runManifestCommand } = await import('./manifest.js');

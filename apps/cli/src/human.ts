@@ -21,6 +21,11 @@ const SECTIONS: readonly Section[] = [
     'bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>',
     'bowerloom skills check                Check the pins in .bowerloom/skills.json.',
   ] },
+  { title: 'Create (mostly used by agents)', lines: [
+    'bowerloom team create <name> [--profile engineer|founder|research]',
+    'bowerloom skill create <name> [--team <team>]',
+    'bowerloom prompt create <name> [--team <team>]',
+  ] },
 ];
 const INTRO = "Set up agent teams, skills, and prompts for Claude Code and Codex.";
 const OUTRO = [
@@ -65,6 +70,31 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '--id sets the entry id; the default is the skill name. --team limits the skill to a team; without it, every team gets it.', '',
     'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
     'The other skills forms are listed by bowerloom help advanced.', '',
+  ].join('\n'),
+  team: [
+    'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--approve <revision>] [--json]', '',
+    "Creates a team in .bowerloom/teams/<name>, from the project brief, with a lead, a maker and a reviewer.",
+    'The name is the team id: lower-case words joined by hyphens, such as research-desk. first-team is taken by setup.',
+    'The profile defaults to the one in the project brief.',
+    'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the files it makes.',
+    'It writes inside .bowerloom only. It starts no workers and runs nothing.', '',
+  ].join('\n'),
+  skill: [
+    'Usage:', '  bowerloom skill create <name> [--team <team>]... [--approve <revision>] [--json]', '',
+    'Creates a skill of your own in .bowerloom/skills/<name>/SKILL.md, and lists it in .bowerloom/skills.json as a local skill.',
+    'The name is the skill id, such as house-style. personal-assistant and ids that start with prompt- are reserved.',
+    '--team limits the skill to a team that exists; without it, every team gets it.',
+    'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.',
+    'It writes inside .bowerloom only. It starts no workers and runs nothing.',
+    'To pin a skill from npm or GitHub instead, see bowerloom help skills.', '',
+  ].join('\n'),
+  prompt: [
+    'Usage:', '  bowerloom prompt create <name> [--team <team>]... [--approve <revision>] [--json]', '',
+    'Creates a reusable prompt in .bowerloom/prompts/<name>.md.',
+    'The name is the prompt id, such as weekly-update, at most 57 characters.',
+    '--team limits the prompt to a team that exists; without it, every team gets it.',
+    'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.',
+    'It writes inside .bowerloom only. It starts no workers and runs nothing.', '',
   ].join('\n'),
 };
 
@@ -154,7 +184,21 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SKILLS_ADD_UNSAFE_CONTENT: { sentence: 'Skills here are text files only, and nothing in them is run.', next: 'bowerloom help skills' },
   SKILLS_ADD_NETWORK: { sentence: 'Nothing was changed.', next: 'run the same command again' },
   SKILLS_ADD_HOST_REFUSED: { sentence: 'Bowerloom asked no other host, and nothing was changed.', next: 'bowerloom help skills' },
-  TEAM_NOT_FOUND: { sentence: 'A skill can be limited only to a team that exists.', next: 'bowerloom ls teams' },
+  TEAM_NOT_FOUND: { sentence: 'A skill or prompt can be limited only to a team that exists.', next: 'bowerloom ls teams' },
+  TEAM_EXISTS: { sentence: 'Each team needs its own id.', next: 'bowerloom ls teams' },
+  TEAM_ID_RESERVED: { sentence: 'Setup made first-team, so a new team needs another id.', next: 'bowerloom team create <another-name>' },
+  TEAM_NAME_INVALID: { sentence: 'The id becomes a folder name, so it is kept plain.', next: 'bowerloom help team' },
+  SKILL_EXISTS: { sentence: 'Each skill needs its own id.', next: 'bowerloom ls skills' },
+  SKILL_NAME_RESERVED: { sentence: 'Bowerloom uses these ids itself.', next: 'bowerloom help skill' },
+  SKILL_NAME_INVALID: { sentence: 'The id becomes a folder name, so it is kept plain.', next: 'bowerloom help skill' },
+  PROMPT_EXISTS: { sentence: 'Each prompt needs its own id.', next: 'bowerloom ls prompts' },
+  PROMPT_NAME_INVALID: { sentence: 'The id becomes a file name, so it is kept plain.', next: 'bowerloom help prompt' },
+  PROJECT_BRIEF_INVALID: { sentence: 'A new team is built from the project brief that setup saved.', next: 'bowerloom status' },
+  AUTHORING_PENDING: { sentence: 'Bowerloom finishes an interrupted create only when what it left matches its record exactly.', next: 'cat .bowerloom/authoring/pending.json' },
+  AUTHORING_RECEIPT_INVALID: { sentence: 'Bowerloom reads its record of created items strictly, so a hand edit can break it.', next: 'git diff .bowerloom/authoring/receipt.json' },
+  AUTHORING_UNSAFE_PATH: { sentence: 'Bowerloom will not read or write through links, shared files or files others can change.', next: 'ls -la .bowerloom' },
+  AUTHORING_UNREGISTERED: { sentence: 'Bowerloom keeps track only of what create made.', next: 'bowerloom status' },
+  REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
 };
 // Only for an error a new command raised (newCommandRefusal).
 const GATE_REFUSALS: Readonly<Record<GateCode, Words>> = {
