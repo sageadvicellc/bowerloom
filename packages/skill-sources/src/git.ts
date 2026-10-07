@@ -11,6 +11,7 @@ import type { SkillTextFile, SkillLicense, GitSkillSource } from './types.js';
 import { validateCacheBinding, openGitCacheOperation, gitCacheCode, gitCacheName, secondaryCodes, strictUtf8, GIT_CODES, GIT_PLAN_CODES, GIT_SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
 import type { ExpectedSkillFile } from './npm.js';
+import { guardedResponseHeaders } from './response-headers.js';
 
 export const GIT_ACQUISITION_POLICY = 'bowerloom/github-git-acquisition/v1beta2';
 const GIT_PLAN_FORMAT = 'bowerloom/git-acquisition-plan/v1beta2';
@@ -262,7 +263,8 @@ export async function acquireGitSkill(planValue: unknown, options: { approvalRev
           response = incoming; responses.add(incoming);
           const guard = () => { check(); requireGit(performance.now() < requestDeadline, 'GIT_TIMEOUT'); };
           try {
-            guard(); const headers = new Map<string, string>(); for (let i = 0; i < incoming.rawHeaders.length; i += 2) { const key = incoming.rawHeaders[i]!.toLowerCase(); requireGit(!headers.has(key), 'GIT_RESPONSE'); headers.set(key, incoming.rawHeaders[i + 1]!); }
+            // A repeated guarded header refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
+            guard(); const headers = guardedResponseHeaders(incoming.rawHeaders); requireGit(headers !== null, 'GIT_RESPONSE');
             const length = headers.get('content-length'); requireGit(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'GIT_RESPONSE');
             // A declared length over the limit is a bound refusal, the same code as an oversized body.
             requireGit(length === undefined || Number(length) <= maximum, 'GIT_RESPONSE_BOUND');

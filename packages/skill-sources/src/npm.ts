@@ -12,6 +12,7 @@ import { SkillSourceError, captureSkillData, closed, boundedText, relativeSkillP
 import type { SkillTextFile, SkillLicense } from './types.js';
 import { validateCacheBinding, openNpmCacheOperation, fixedCode, secondaryCodes, strictUtf8, REFUSAL_CODES, SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
+import { guardedResponseHeaders } from './response-headers.js';
 
 export const NPM_ACQUISITION_POLICY = 'bowerloom/npm-acquisition/ustar-v1beta1';
 export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 524288, compressedBytes: 8388608, tarBytes: 33554432, records: 1024, files: 128, directories: 128, fileBytes: 65536, selectedBytes: 2097152, headerBytes: 16384, requests: 2, durationMs: 30000, requestMs: 10000, storageBytes: 12582912 });
@@ -251,7 +252,8 @@ export async function acquireNpmSkill(planValue: unknown, options: { approvalRev
           response = incoming; responses.add(incoming);
           const guard = () => { check(); npmCheck(performance.now() < requestDeadline, 'NPM_TIMEOUT'); };
           try {
-            guard(); const headers = new Map<string, string>(); for (let i = 0; i < incoming.rawHeaders.length; i += 2) { const key = incoming.rawHeaders[i]!.toLowerCase(); npmCheck(!headers.has(key), 'NPM_RESPONSE'); headers.set(key, incoming.rawHeaders[i + 1]!); }
+            // A repeated guarded header refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
+            guard(); const headers = guardedResponseHeaders(incoming.rawHeaders); npmCheck(headers !== null, 'NPM_RESPONSE');
             const length = headers.get('content-length'); npmCheck(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'NPM_RESPONSE');
             // A declared length over the limit is a bound refusal, the same code as an oversized body.
             npmCheck(length === undefined || Number(length) <= maximum, 'NPM_RESPONSE_BOUND');

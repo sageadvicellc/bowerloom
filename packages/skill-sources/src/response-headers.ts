@@ -1,0 +1,29 @@
+/**
+ * Response header names the npm and Git transports guard (decision D11).
+ * The transports read content-length, content-encoding and location.
+ * Content-type, transfer-encoding and content-range change how a body is framed or interpreted.
+ * A repeat of any of these names is ambiguous, so the response refuses.
+ * A repeat of any other name, such as set-cookie, is ignored, because nothing reads it.
+ * This is an allowlist of guarded names. A name added here becomes guarded; no other name is.
+ */
+export const GUARDED_RESPONSE_HEADERS: readonly string[] = Object.freeze(['content-encoding', 'content-length', 'content-range', 'content-type', 'location', 'transfer-encoding']);
+const GUARDED = new Set(GUARDED_RESPONSE_HEADERS);
+
+/**
+ * Reads the guarded headers from Node's raw name/value list, keyed by lower-case name.
+ * It returns null when a guarded name repeats or the list is malformed. The caller refuses with its own code.
+ * Values are returned to the caller only. Nothing here logs or reports a header value.
+ */
+export function guardedResponseHeaders(raw: unknown): Map<string, string> | null {
+  if (!Array.isArray(raw) || raw.length % 2 !== 0) return null;
+  const headers = new Map<string, string>();
+  for (let i = 0; i < raw.length; i += 2) {
+    const name: unknown = raw[i], value: unknown = raw[i + 1];
+    if (typeof name !== 'string' || typeof value !== 'string') return null;
+    const key = name.toLowerCase();
+    if (!GUARDED.has(key)) continue;
+    if (headers.has(key)) return null;
+    headers.set(key, value);
+  }
+  return headers;
+}
