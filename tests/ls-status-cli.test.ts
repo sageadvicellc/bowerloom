@@ -113,8 +113,10 @@ test('status escapes control bytes in a changed file name; --json keeps the exac
   const r = run(p.dir, ['status'], env); assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(r.stdout, /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/);
   assert.ok(r.stdout.includes('.bowerloom/x\\u001b[31mRED\\u202e\\u009b'), r.stdout);
-  const j = JSON.parse(run(p.dir, ['status', '--json'], env).stdout);
+  const raw = run(p.dir, ['status', '--json'], env).stdout, j = JSON.parse(raw);
   assert.ok(j.drift.some((item: { path: string }) => item.path === `.bowerloom/${name}`), JSON.stringify(j.drift));
+  // Lead call 5: the JSON of a new command writes C1 and bidi controls as escapes. The parsed name above is exact.
+  assert.doesNotMatch(raw, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u); assert.ok(raw.includes('RED\\u202e\\u009b'), raw);
 });
 
 test('ls refuses when the .bowerloom folder or the project folder it found is swapped before it lists', t => {

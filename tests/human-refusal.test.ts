@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
-import { exitCodeFor, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
+import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
 
 const INIT_NEXT = 'bowerloom init plan --mode existing --target <directory> --name <name> --goal <goal>';
 const GENERIC_FAILURE = 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.';
@@ -130,4 +130,15 @@ test('reportFailure on a terminal prints plain words, with the right exit code',
   const escaped = reportFailure(new DefinitionError('SCHEMA_INVALID', 'key \x1b[31m'), true);
   assert.equal(escaped.text.includes('\x1b'), false); assert.match(escaped.text, /key \\u001b\[31m/);
   assert.deepEqual(reportFailure(new Error('raw \x1b detail'), true), { text: renderRefusal('IO_ERROR', GENERIC_FAILURE), exitCode: 1 });
+});
+
+test('newCommandJson escapes C1, format characters and the separators, and parses to the same value; the plumbing envelope stays byte-identical (lead call 5)', () => {
+  const value = { name: 'a\u0085b\u202ec\u200dd\u2029e\u{e0001}f\u001bg', plain: 'Café 🌿', n: 1 };
+  const text = newCommandJson(value);
+  assert.ok(text.endsWith('\n')); assert.doesNotMatch(text, /[\p{Cc}\p{Cf}\u2028\u2029](?!$)/u);
+  assert.deepEqual(JSON.parse(text), value);
+  assert.equal(text, '{"n":1,"name":"a\\u0085b\\u202ec\\u200dd\\u2029e\\udb40\\udc01f\\u001bg","plain":"Café 🌿"}\n');
+  // A plumbing refusal on a pipe keeps today's envelope exactly: JSON.stringify of the code and message.
+  const error = new DefinitionError('PLUMBING_CODE', 'kept \u202e as is');
+  assert.equal(reportFailure(error, false).text, `${JSON.stringify({ error: { code: 'PLUMBING_CODE', message: 'kept \u202e as is' } })}\n`);
 });

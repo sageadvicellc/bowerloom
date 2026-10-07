@@ -112,3 +112,14 @@ test('namesYesFlag finds --yes anywhere and -y only in a flag position, never as
     assert.equal(namesYesFlag(args), false, args.join(' '));
   }
 });
+
+test('JSON output writes C1 controls, format characters and the separators as escapes; the parsed value is the same (lead call 5)', async () => {
+  const hidden = 'x\u009b\u202e\u200b\u2028\u{e0041}y';
+  const c: PlannedChange<{ name: string }> = { plan: async () => ({ name: hidden }), revision: () => REV('b'), review: p => p.name, apply: async () => ({ name: hidden }) };
+  const required = await runWithApproval(c, { json: true }, piped);
+  assert.equal(required.exitCode, 3); assert.doesNotMatch(required.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u);
+  assert.ok(required.output.includes('x\\u009b\\u202e\\u200b\\u2028\\udb40\\udc41y'), required.output);
+  assert.equal(JSON.parse(required.output).plan.name, hidden);
+  const applied = await runWithApproval(c, { approve: REV('b'), json: true }, piped);
+  assert.equal(applied.exitCode, 0); assert.doesNotMatch(applied.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u); assert.equal(JSON.parse(applied.output).result.name, hidden);
+});

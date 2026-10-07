@@ -1,9 +1,9 @@
 import { lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
+import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, verifyProjectPins } from '../../../packages/project-context/src/index.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
-import { plainText } from './human.js';
+import { newCommandJson, plainText } from './human.js';
 
 const SECTIONS = ['teams', 'skills', 'prompts'] as const;
 type Section = typeof SECTIONS[number];
@@ -39,7 +39,7 @@ export function listProject(project: ProjectContext): Listing {
 const title = (section: Section): string => section[0]!.toUpperCase() + section.slice(1);
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
   const shown = only ? [only] : [...SECTIONS];
-  if (json) return `${canonicalJson({ format: 'bowerloom/ls/v1beta1', ...Object.fromEntries(shown.map(s => [s, listing[s]])), unlisted: listing.unlisted })}\n`;
+  if (json) return newCommandJson({ format: 'bowerloom/ls/v1beta1', ...Object.fromEntries(shown.map(s => [s, listing[s]])), unlisted: listing.unlisted });
   const blocks = shown.map(s => `${title(s)}\n${listing[s].length ? listing[s].map(n => `  ${plainText(n)}`).join('\n') : '  none yet'}\n`);
   const note = listing.unlisted ? `\nNot listed: ${listing.unlisted} ${listing.unlisted === 1 ? 'entry' : 'entries'} with an unusual name or type. Run bowerloom status.\n` : '';
   return blocks.join('\n') + note;

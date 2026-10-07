@@ -1,7 +1,7 @@
-import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
+import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject } from '../../../packages/project-context/src/index.js';
 import { inspectStartup } from '../../../packages/startup/src/index.js';
-import { plainText } from './human.js';
+import { newCommandJson, plainText } from './human.js';
 
 /** `bowerloom status [--json]` for the project that holds the working folder. Reads only. Returns the text to print; the words escape control characters, the JSON is exact. */
 export async function runProjectStatus(args: readonly string[], cwd: string, home: string): Promise<string> {
@@ -10,7 +10,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   const project = discoverProject(cwd, home), inspection = await inspectStartup(project.dir);
   const status = inspection.status === 'ready-for-review' ? 'ready' : inspection.status;
   if (words[0] === '--json') {
-    return `${canonicalJson({ format: 'bowerloom/project-status/v1beta1', project: project.dir, projectId: project.projectId, status, specReady: inspection.specReady, runtimeReady: false, executionAuthorized: false, revision: inspection.revision, drift: inspection.drift })}\n`;
+    return newCommandJson({ format: 'bowerloom/project-status/v1beta1', project: project.dir, projectId: project.projectId, status, specReady: inspection.specReady, runtimeReady: false, executionAuthorized: false, revision: inspection.revision, drift: inspection.drift });
   }
   return [
     `Project: ${plainText(project.dir)}`,

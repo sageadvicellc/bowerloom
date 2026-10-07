@@ -1,6 +1,6 @@
-import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
+import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
-import { plainText } from './human.js';
+import { newCommandJson, plainText } from './human.js';
 
 export interface ApprovalIo { readonly interactive: boolean; ask(question: string): Promise<string> }
 export interface ApprovalFlags { readonly approve?: string; readonly json: boolean }
@@ -52,7 +52,7 @@ export async function runWithApproval<P>(change: PlannedChange<P>, flags: Approv
   if (!REVISION.test(revision)) throw new DefinitionError('IO_ERROR', 'The plan has no valid revision, so nothing was applied.');
   const applied = async (value: string): Promise<{ output: string; exitCode: 0 }> => {
     const result = await change.apply(value);
-    return { output: flags.json ? `${canonicalJson({ applied: true, revision: value, result })}\n` : `Applied plan ${value}.\n`, exitCode: 0 };
+    return { output: flags.json ? newCommandJson({ applied: true, revision: value, result }) : `Applied plan ${value}.\n`, exitCode: 0 };
   };
   if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(); return applied(revision); }
   if (io.interactive && !flags.json) {
@@ -64,7 +64,7 @@ export async function runWithApproval<P>(change: PlannedChange<P>, flags: Approv
   }
   return {
     output: flags.json
-      ? `${canonicalJson({ approvalRequired: true, code: 'APPROVAL_REQUIRED', plan, revision })}\n`
+      ? newCommandJson({ approvalRequired: true, code: 'APPROVAL_REQUIRED', plan, revision })
       : `${plainText(change.review(plan), true)}\nRevision: ${revision}\nApproval required. Run the same command again with --approve ${revision}\n`,
     exitCode: 3,
   };
