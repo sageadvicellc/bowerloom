@@ -143,6 +143,10 @@ function readState(project: string, state: string, key: string, life: Lifetime):
   const files = all.filter(n => /^record-\d{3}\.json$/.test(n)).sort(); check(files.length <= 256);
   const records = files.map((n, i) => { const r = parsed<JournalRecord>(join(op, n), recordKeys), { revision, ...body } = r; check(n === recordName(i) && r.sequence === i && r.previous === (i ? parsed<JournalRecord>(join(op, recordName(i - 1)), recordKeys).revision : null) && revisionOf(body) === revision); check(['STAGE_INTENT', 'STAGE_READY', 'PARENT_INTENT', 'PARENT_CREATED', 'MOVE_INTENT', 'MOVE_DONE', 'ROLLBACK_START', 'ROLLBACK_INTENT', 'ROLLBACK_DONE', 'PARENT_REMOVE_INTENT', 'PARENT_REMOVED', 'RECEIPT_INTENT', 'RECEIPT_DONE', 'MARKER_REMOVE_INTENT'].includes(r.kind)); return r; });
   const receipt = exists(join(op, 'receipt.json')) ? receiptAtV2(state, key) : null;
+  // At most one temporary, and only the one an interrupted write leaves: the next record's, or the receipt's while
+  // RECEIPT_INTENT is the last record and no receipt landed.
+  const temps = all.filter(n => n.endsWith('.tmp')); check(temps.length <= 1);
+  if (temps.length) check(temps[0] === '.' + recordName(records.length) + '.tmp' || (temps[0] === '.receipt.json.tmp' && receipt === null && records.at(-1)?.kind === 'RECEIPT_INTENT'));
   return { intent, op, records, receipt, opIdentity };
 }
 function marker(state: State, allowAbsent = false): FilePin | null {

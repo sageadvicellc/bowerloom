@@ -318,3 +318,15 @@ for (const initial of [true, false]) test(`v1: after a rolled-back ${initial ? '
   const receipt = await applyObservedManagedSkill(input, again.revision, previous?.receipt.revision ?? null); assert.equal(receipt.state, 'committed');
   const inspected = await inspectObservedManagedSkill({ projectDir: f.projectDir, stateDir: f.stateDir }); assert.equal(inspected.status, 'committed'); assert.equal(inspected.operationKey, again.operationKey);
 });
+test('v1: an operation folder may hold at most one record temporary, with exactly the next name', async t => {
+  const killed = async () => { const f = await fixture(t), p = await planObservedManagedSkill(f.input), rename = fs.renameSync; let hit = false;
+    t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+    await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); return { f, p, op: opDir(f, p) }; };
+  const next = op => '.record-' + String(fs.readdirSync(op).filter(n => /^record-\d{3}\.json$/.test(n)).length).padStart(3, '0') + '.json.tmp';
+  for (const names of [['.record-200.json.tmp'], ['.intent.json.tmp'], ['NEXT', '.receipt.json.tmp']]) {
+    const { f, p, op } = await killed(); for (const n of names) fs.writeFileSync(path.join(op, n === 'NEXT' ? next(op) : n), 'junk', { mode: 0o600 });
+    await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'rollback' }), names.join());
+  }
+  const { f, p, op } = await killed(); fs.writeFileSync(path.join(op, next(op)), '', { mode: 0o600 });
+  assert.equal((await recover(f, p, 'rollback')).state, 'rolled-back'); assert.deepEqual(fs.readdirSync(op).filter(n => n.endsWith('.tmp')), []);
+});

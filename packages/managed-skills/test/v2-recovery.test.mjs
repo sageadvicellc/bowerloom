@@ -175,3 +175,18 @@ test('a leftover operation temporary that holds anything but its intent is never
     assert.deepEqual(fs.readdirSync(temp), [extra], form); assert.deepEqual(inventory(run.f.projectDir), run.before, form);
   }
 });
+
+test('an operation folder may hold at most one record temporary, with exactly the next name', async t => {
+  const killFirstMove = () => { const rename = fs.renameSync; let hit = false; t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports(); };
+  const killed = async () => { const run = await scenario(t, false); killFirstMove(); await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t); return { run, op: path.join(run.req.stateDir, 'op-' + run.plan.operationKey) }; };
+  const records = op => fs.readdirSync(op).filter(n => /^record-\d{3}\.json$/.test(n)).length, next = op => '.record-' + String(records(op)).padStart(3, '0') + '.json.tmp';
+  for (const names of [['.record-200.json.tmp'], ['.intent.json.tmp'], ['.receipt.json.tmp'], ['NEXT', '.record-999.json.tmp']]) {
+    const { run, op } = await killed();
+    for (const n of names) fs.writeFileSync(path.join(op, n === 'NEXT' ? next(op) : n), 'junk', { mode: 0o600 });
+    await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, 'rollback')), names.join());
+  }
+  // The one temporary an interrupted write leaves, the next record's, is allowed, and the next write removes it.
+  const { run, op } = await killed(); fs.writeFileSync(path.join(op, next(op)), '{"sequence', { mode: 0o600 });
+  assert.equal((await recover(run.req, run.plan, 'rollback')).state, 'rolled-back');
+  assert.deepEqual(fs.readdirSync(op).filter(n => n.endsWith('.tmp')), []);
+});
