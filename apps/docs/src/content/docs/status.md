@@ -15,7 +15,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 | Capability | Current boundary |
 | --- | --- |
 | Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
-| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |
+| Portable skills | Project selected skill files into a new Codex or Claude Code workspace. Native discovery by Claude Code has not been observed. The installer does not prove discovery or execution. |
 | Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
 | Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
@@ -49,7 +49,7 @@ Revision plans a replacement before applying it. These paths do not import live 
 
 Synthetic configuration commands process selected Codex and Claude Code fixtures. They do not change live configuration or run models.
 
-Portable skill installation supports a new Codex workspace. It does not support Claude Code or an existing target.
+Portable skill installation supports a new Codex workspace and a new Claude Code workspace. Native discovery by Claude Code has not been observed. It does not support an existing target.
 
 A projected file does not prove that an agent discovers or runs it. Read [Codex and Claude Code](/docs/harnesses/).
 

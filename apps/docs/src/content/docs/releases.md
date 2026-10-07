@@ -25,7 +25,7 @@ Plan changes to an installed goal or profile before replacing managed files. Int
 
 Status reports specification readiness, runtime readiness, execution authority, review requirements, and drift. Setup remains ready for human review without starting workers.
 
-Project selected portable skill files into a new Codex workspace. MCP planning reads selected synthetic inputs without connecting a server.
+Project selected portable skill files into a new Codex or Claude Code workspace. MCP planning reads selected synthetic inputs without connecting a server.
 
 ## Compatibility
 

@@ -45,11 +45,11 @@ Keep your agent application's existing access controls. Do not substitute an old
 
 If the selected inputs are live or their scope is unclear, stop before changing them.
 
-## Portable skills for Codex
+## Portable skills for Codex and Claude Code
 
-[Add a portable skill](/docs/guides/add-skills/) describes the separate installer for a new Codex workspace. It projects reviewed skill files into `.agents/skills/`.
+[Add a portable skill](/docs/guides/add-skills/) describes the separate installer for a new workspace. The `codex` value projects reviewed skill files into `.agents/skills/`. The `claude` value projects them into `.claude/skills/`. Native discovery by Claude Code has not been observed.
 
-The synthetic configuration commands above do not project skill files. Portable skill installation for Claude Code and existing targets remains unsupported.
+The synthetic configuration commands above do not project skill files. Portable skill installation for an existing target remains unsupported.
 
 ## Support boundary
 

@@ -179,12 +179,12 @@ Routine planning describes a routine. It starts no workers.
 
 ```text
 bowerloom portable validate <bundle-directory>
-bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex --target <new-absolute-directory> [--approve <revision>]
+bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex|claude --target <new-absolute-directory> [--approve <revision>]
 ```
 
 These forms require a separately reviewed bundle and selected parts. Approved installation copies selected files into a new target. It starts no workers.
 
-The portable installer accepts only `codex`. It does not establish general harness conversion. An existing target or stale approval requires inspection.
+The portable installer accepts `codex` and `claude`. Any other value fails with `UNSUPPORTED_HARNESS`. The `codex` value projects skills into `.agents/skills/`. The `claude` value projects them into `.claude/skills/bowerloom-<part-id>/`. Claude Code has not been observed to discover these files natively. The installer does not establish general harness conversion. An existing target or stale approval requires inspection.
 
 <a id="recipe"></a>
 

@@ -72,9 +72,9 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 
 ## Portable skill bundles
 
-[Add a portable skill for Codex](/docs/guides/add-skills/) explains the separate bundle manifest and project-local projection.
+[Add a portable skill](/docs/guides/add-skills/) explains the separate bundle manifest and project-local projection.
 
-That installer uses a new workspace. It does not add files to this managed first-team inventory or install skills into Claude Code.
+That installer uses a new workspace. It does not add files to this managed first-team inventory or install skills into an existing project.
 
 ## Private local records
 

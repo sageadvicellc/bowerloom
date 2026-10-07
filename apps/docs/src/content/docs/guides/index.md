@@ -14,7 +14,7 @@ Start with your current project and the workflow you want to organize. [Map its 
 | Map a manual or one-to-one agent workflow | [Map your existing workflow](/docs/guides/integrate-workflow/) |
 | Add a specification to an existing project | [Existing project](/docs/guides/existing-project/) |
 | Use an optional separate workspace | [Prepare a separate workspace](/docs/guides/new-workspace/) |
-| Store and project a portable skill for Codex | [Add a portable skill](/docs/guides/add-skills/) |
+| Store and project a portable skill for Codex or Claude Code | [Add a portable skill](/docs/guides/add-skills/) |
 | Change an installed goal or profile | [Revise an installed setup](/docs/revision/) |
 | Resolve an interrupted revision | [Recover a revision](/docs/guides/recover-revision/) |
 | Request a registered-work stop | [Stop registered work](/docs/stop/) |

@@ -75,4 +75,4 @@ If an I/O result is uncertain, inspect status and preserved files. Do not repeat
 
 Continue with [Read and review your setup](/docs/learn/review-your-setup/).
 
-For additional portable skills, read [Add a portable skill for Codex](/docs/guides/add-skills/). Its current installer requires a separate new workspace.
+For additional portable skills, read [Add a portable skill](/docs/guides/add-skills/). Its current installer requires a separate new workspace.
