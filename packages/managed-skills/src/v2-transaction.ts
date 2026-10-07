@@ -56,7 +56,7 @@ import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
-import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemReceipt, IntentV2, RecoveryPlanV2, MigratedFrom } from './v2-types.js';
+import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemReceipt, IntentV2, RecoveryPlanV2, RecoveryAction, MigratedFrom } from './v2-types.js';
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
 const recordKeys = ['sequence', 'previous', 'kind', 'data', 'revision'];
 const pendingKeys = ['format', 'item', 'operationKey', 'stateDir', 'operationIdentity', 'intentSha256'];
@@ -142,7 +142,7 @@ function readState(project: string, state: string, key: string, life: Lifetime):
 }
 function marker(state: State, allowAbsent = false): FilePin | null {
   const plan = state.intent.plan, file = join(plan.core.request.projectDir, MARKER_V2);
-  if (!exists(file)) { check(allowAbsent && state.receipt !== null); return null; }
+  if (!exists(file)) { check(allowAbsent); return null; }
   const m = parsed<{ format: string; item: unknown; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys);
   check(m.format === PENDING_FORMAT && same(m.item, plan.core.request.item) && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return raw(file).pin;
 }
@@ -322,6 +322,29 @@ function rollback(state: State, life: Lifetime, guard: () => void): ManagedItemR
   for (const move of all.slice(completed)) { life.check(); executeMove(state, move, true, guard); }
   check(matchesV2(currentSurfaces(state.intent.plan), state.intent.plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT'); removeCreatedParents(state, guard); return finish(state, 'rolled-back', guard);
 }
+/** The journal shows no effect on the project: no move or rollback move, and no parent stamped, removed or removing. */
+function untouched(state: State): boolean {
+  return !state.records.some(r => ['MOVE_INTENT', 'MOVE_DONE', 'ROLLBACK_INTENT', 'ROLLBACK_DONE', 'PARENT_CREATED', 'PARENT_REMOVE_INTENT', 'PARENT_REMOVED'].includes(r.kind));
+}
+/**
+ * The marker may be absent only after a receipt, or for an abandon whose journal holds nothing but its own records:
+ * the apply was killed between intent.json and the marker, so nothing else ran.
+ */
+function markerOptional(state: State, action: RecoveryAction): boolean {
+  return state.receipt !== null || (action === 'abandon' && state.records.every(r => r.kind === 'ROLLBACK_START' || r.kind === 'RECEIPT_INTENT'));
+}
+/** v2 only. Abandon applies to an unfinished operation that never touched the project (see `RecoveryAction`). */
+function abandonable(state: State): void {
+  check(!state.receipt && untouched(state), 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  const starts = state.records.filter(r => r.kind === 'ROLLBACK_START'); check(starts.length <= 1 && starts.every(r => same(r.data, { count: 0 })));
+  check(matchesV2(currentSurfaces(state.intent.plan), state.intent.plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
+}
+function abandon(state: State, guard: () => void): ManagedItemReceipt {
+  abandonable(state); if (!state.records.some(r => r.kind === 'ROLLBACK_START')) append(state, 'ROLLBACK_START', { count: 0 }, guard);
+  abandonable(state); const receipt = finish(state, 'rolled-back', guard);
+  // A marker temporary from a kill before the marker landed is ours and never became a marker.
+  discard(temporary(join(receipt.projectDir, MARKER_V2)), guard); return receipt;
+}
 /** v2 lifetime: v1 `lifetime` over the caller signal and, when the caller holds the lock, the lock's own signal. */
 function itemLifetime(options: unknown, held: HeldProjectLock | null): Lifetime {
   if (!held) return lifetime(options);
@@ -347,17 +370,18 @@ export async function applyManagedItem(held: HeldProjectLock | null, req: unknow
     return await (held ? heldLock(held, input.projectDir, live, work) : locked(input.projectDir, live, work));
   } catch (e) { if (mutated) fail('MANAGED_SKILL_RECOVERY_REQUIRED'); return boundaryV2(e); } finally { life?.close(); }
 }
-function snapshot(state: State, life: Lifetime): string {
+function snapshot(state: State, life: Lifetime, action: RecoveryAction): string {
   const rows: unknown[] = []; let bytes = 0, count = 0;
   const walk = (p: string) => { life.check(); const s = fs.lstatSync(p, { bigint: true }); check(++count < 2048 && !s.isSymbolicLink());
     if (s.isDirectory()) { const id = directory(p, true); rows.push({ path: p, identity: id, mtimeNs: String(s.mtimeNs), ctimeNs: String(s.ctimeNs) }); for (const n of names(p)) walk(join(p, n)); }
     else { const got = raw(p, LIMITS.record, (Number(s.mode) & 0o7777) === 0o600); bytes += got.bytes.length; check(bytes <= LIMITS.bytes); rows.push(got.pin); }
-  }; walk(state.op); const m = marker(state, state.receipt !== null); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
+  }; walk(state.op); const m = marker(state, markerOptional(state, action)); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
 }
 async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state: State; plan: RecoveryPlanV2 }> {
-  const v = schema<{ projectDir: string; stateDir: string; operationKey: string; action: 'resume' | 'rollback' }>(value, ['projectDir', 'stateDir', 'operationKey', 'action']); check(v.action === 'resume' || v.action === 'rollback');
-  const state = readState(v.projectDir, v.stateDir, v.operationKey, life); marker(state, state.receipt !== null); parentGuard(state); life.check();
-  if (state.receipt) { check(v.action === (state.receipt.state === 'committed' ? 'resume' : 'rollback')); terminal(state, state.receipt); }
+  const v = schema<{ projectDir: string; stateDir: string; operationKey: string; action: RecoveryAction }>(value, ['projectDir', 'stateDir', 'operationKey', 'action']); check(v.action === 'resume' || v.action === 'rollback' || v.action === 'abandon');
+  const state = readState(v.projectDir, v.stateDir, v.operationKey, life); marker(state, markerOptional(state, v.action)); parentGuard(state); life.check();
+  if (state.receipt) { check(v.action === (state.receipt.state === 'committed' ? 'resume' : 'rollback') || (v.action === 'abandon' && state.receipt.state === 'rolled-back' && untouched(state))); terminal(state, state.receipt); }
+  else if (v.action === 'abandon') abandonable(state); // Stages and prestamp parent intents are never read: abandon touches neither.
   else {
     stages(state); // Incomplete/prestamp stages are held, never adopted.
     for (const r of state.records.filter(x => x.kind === 'PARENT_INTENT')) {
@@ -366,19 +390,30 @@ async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state
       check(state.records.filter(x => x.kind === 'PARENT_CREATED' && (x.data as { path: string }).path === v.path).length === 1, 'MANAGED_SKILL_RECOVERY_REQUIRED');
     }
   }
-  const body = { format: 'bowerloom/managed-item-recovery/v1beta2' as const, ...v, snapshotRevision: snapshot(state, life), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
+  const body = { format: 'bowerloom/managed-item-recovery/v1beta2' as const, ...v, snapshotRevision: snapshot(state, life, v.action), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
   life.check(); return { state, plan: freezeSkillData({ ...body, revision: revisionOf(body) }) };
 }
 export async function planManagedItemRecovery(value: unknown, options: unknown = {}): Promise<RecoveryPlanV2> { const life = lifetime(options); try { return (await recoveryWithLife(value, life)).plan; } catch (e) { return boundaryV2(e); } finally { life.close(); } }
-export async function recoverManagedItem(value: unknown, revision: string, options: unknown = {}): Promise<ManagedItemReceipt> {
-  const life = lifetime(options);
-  try { const plan = schema<RecoveryPlanV2>(value, ['format', 'projectDir', 'stateDir', 'operationKey', 'action', 'snapshotRevision', 'planRevision', 'writesAuthorized', 'executionAuthorized', 'revision']);
+export async function recoverManagedItem(value: unknown, revision: string, options: unknown = {}): Promise<ManagedItemReceipt> { return recoverItem(null, value, revision, options); }
+/**
+ * v2 only. Recovery under a project lock the caller (the sync orchestrator) already holds, with the same held-lock
+ * checks as `applyManagedItem`: a token for this project that asserts held, an unaborted lock signal joined to the
+ * caller's own, and a lock port this process cannot bind.
+ */
+export async function recoverManagedItemHeld(held: HeldProjectLock, value: unknown, revision: string, options: unknown = {}): Promise<ManagedItemReceipt> {
+  try { check(held !== null && typeof held === 'object', 'MANAGED_SKILL_LOCK_NOT_HELD'); } catch (e) { return boundaryV2(e); }
+  return recoverItem(held, value, revision, options);
+}
+async function recoverItem(held: HeldProjectLock | null, value: unknown, revision: string, options: unknown): Promise<ManagedItemReceipt> {
+  let life: Lifetime | null = null;
+  try { life = itemLifetime(options, held); const live = life; const plan = schema<RecoveryPlanV2>(value, ['format', 'projectDir', 'stateDir', 'operationKey', 'action', 'snapshotRevision', 'planRevision', 'writesAuthorized', 'executionAuthorized', 'revision']);
     path(plan.projectDir); path(plan.stateDir); const { revision: own, ...body } = plan; check(typeof revision === 'string' && revision === own && /^[a-f0-9]{64}$/.test(own) && revisionOf(body) === own && plan.format === 'bowerloom/managed-item-recovery/v1beta2' && plan.writesAuthorized === false && plan.executionAuthorized === false, 'MANAGED_SKILL_STALE_APPROVAL');
-    return await locked(plan.projectDir, life, async () => {
-      const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, life); life.check(); check(same(fresh.plan, plan) && revision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacityV2(state.intent.plan.core.request);
-      const pending = marker(state, state.receipt !== null), guard = stateGuard(state, life, pending);
+    const work = async () => {
+      const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, live); live.check(); check(same(fresh.plan, plan) && revision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacityV2(state.intent.plan.core.request);
+      const pending = marker(state, markerOptional(state, plan.action)), guard = stateGuard(state, live, pending);
       if (state.receipt) { terminal(state, state.receipt); guard(); if (!pending) return state.receipt; return finish(state, state.receipt.state, guard); }
-      return plan.action === 'resume' ? resume(state, life, guard) : rollback(state, life, guard);
-    });
-  } catch (e) { return boundaryV2(e, 'MANAGED_SKILL_RECOVERY_REQUIRED'); } finally { life.close(); }
+      return plan.action === 'resume' ? resume(state, live, guard) : plan.action === 'rollback' ? rollback(state, live, guard) : abandon(state, guard);
+    };
+    return await (held ? heldLock(held, plan.projectDir, live, work) : locked(plan.projectDir, live, work));
+  } catch (e) { return boundaryV2(e, 'MANAGED_SKILL_RECOVERY_REQUIRED'); } finally { life?.close(); }
 }

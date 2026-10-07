@@ -58,9 +58,15 @@ export interface ManagedItemReceipt {
 export interface UpToDateV2 { format: 'bowerloom/managed-item-up-to-date/v1beta2'; status: 'up-to-date'; item: ItemRef; previousRevision: string; writesAuthorized: false; executionAuthorized: false }
 export interface IntentV2 { format: 'bowerloom/managed-item-intent/v1beta2'; plan: ManagedItemPlan; operationIdentity: Identity; approvalRevision: string }
 export interface PendingV2 { format: 'bowerloom/managed-item-pending/v1beta2'; item: ItemRef; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }
+/**
+ * `abandon` ends an operation that never touched the project: no move or rollback record, no stamped parent, and
+ * every before-surface still matching its pins. It records ROLLBACK_START with count 0 and a rolled-back receipt,
+ * then removes the marker. It is the only way out of a crash during staging.
+ */
+export type RecoveryAction = 'resume' | 'rollback' | 'abandon';
 export interface RecoveryPlanV2 {
   format: 'bowerloom/managed-item-recovery/v1beta2'; projectDir: string; stateDir: string;
-  operationKey: string; action: 'resume' | 'rollback'; snapshotRevision: string; planRevision: string; revision: string;
+  operationKey: string; action: RecoveryAction; snapshotRevision: string; planRevision: string; revision: string;
   writesAuthorized: false; executionAuthorized: false;
 }
 export interface ManagedItemStatus { item: ItemRef; status: 'committed' | 'drift' | 'unowned' | 'refused'; receiptRevision: string | null; code: string | null }
