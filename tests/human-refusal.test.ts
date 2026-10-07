@@ -58,6 +58,16 @@ test('plainText escapes C0, C1, DEL and bidi controls and keeps everything else'
   assert.equal(plainText('a\r\nb', true), 'a\\u000d\nb');
 });
 
+test('plainText also escapes every other format character and the line and paragraph separators (review M1F 2)', () => {
+  // Zero-width space, joiners, word joiner and invisible operators, the byte order mark, soft hyphen, U+2028, U+2029.
+  assert.equal(plainText('a\u200bb\u200cc\u200dd\u2060e\u2061f\u2064g\ufeffh\u00adi\u2028j\u2029k'), 'a\\u200bb\\u200cc\\u200dd\\u2060e\\u2061f\\u2064g\\ufeffh\\u00adi\\u2028j\\u2029k');
+  // A tag character sits outside the basic plane: both halves are written, so nothing is lost or left half-printed.
+  assert.equal(plainText('x\u{e0041}y'), 'x\\udb40\\udc41y');
+  assert.equal(plainText('one\ntwo\u2028three', true), 'one\ntwo\\u2028three', 'multiline keeps only the newline');
+  assert.equal(plainText('Café 🌿 東京'), 'Café 🌿 東京');
+  assert.doesNotMatch(plainText('\u0000\u001f\u007f\u0085\u009f\u061c\u180e\u200b\u202e\u2066\u206f\ufeff\ufff9\u{1d173}\u{e007f}\u2028\u2029'), /[\p{Cc}\p{Cf}\u2028\u2029]/u);
+});
+
 test('renderRefusal escapes control bytes in the code and the message', () => {
   const out = renderRefusal('SCHEMA_INVALID', 'key \x1b]0;title\x07 \u202egnp.exe \x9b31m');
   assert.equal(out, text('SCHEMA_INVALID', 'key \\u001b]0;title\\u0007 \\u202egnp.exe \\u009b31m', 'Nothing more is known about this refusal beyond its code.', 'bowerloom help'));

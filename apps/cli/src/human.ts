@@ -99,11 +99,11 @@ export function exitCodeFor(error: unknown): ExitCode {
   return marked(error) && Object.hasOwn(GATE_EXIT, error.code) ? GATE_EXIT[error.code as GateCode] : 1;
 }
 
-// C0 controls, DEL, C1 controls, and the bidi controls (ALM, LRM, RLM, LRE..RLO, LRI..PDI).
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
-const CONTROLS_BUT_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
-const escapeControl = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`;
-// Every UTF-16 unit of a match, so a character outside the basic plane (a tag character) keeps both halves.
+// Every control character (C0, DEL, C1), every format character (the bidi controls, zero-width characters, the byte
+// order mark, tag characters), and the line and paragraph separators U+2028 and U+2029 (review M1F 2).
+const CONTROLS = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+// Every UTF-16 unit of a match as `\\uXXXX`, so a character outside the basic plane (a tag character) keeps both halves.
 const escapeUnits = (c: string): string => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('');
 // C1 controls and the format characters (bidi controls, zero-width characters), plus the line and paragraph separators.
 const JSON_HIDDEN = /[\u0080-\u009f\p{Cf}\u2028\u2029]/gu;
@@ -122,7 +122,7 @@ export function newCommandJson(value: unknown): string {
  * For human output only. JSON output is never passed through here.
  */
 export function plainText(value: string, multiline = false): string {
-  return value.replace(multiline ? CONTROLS_BUT_NEWLINE : CONTROLS, escapeControl);
+  return value.replace(multiline ? CONTROLS_BUT_NEWLINE : CONTROLS, escapeUnits);
 }
 
 const INIT_NEXT = 'bowerloom init plan --mode existing --target <directory> --name <name> --goal <goal>';
