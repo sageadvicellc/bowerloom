@@ -181,7 +181,9 @@ const parentsOf = (project: string, locations: { path: string }[]): string[] => 
 /** v1 `validatePlan`. */
 export function validatePlanV2(value: unknown): ManagedItemPlan {
   const p = schema<ManagedItemPlan>(value, ['format', 'policy', 'core', 'operationKey', 'material', 'filesystemObserved', 'writesAuthorized', 'executionAuthorized', 'revision']);
-  const core = schema<PlanCoreV2>(p.core, ['request', 'bindings', 'closure', 'before', 'previous', 'previousReceiptPin', 'parents', 'legacy']); const v = requestV2(core.request);
+  const core = schema<PlanCoreV2>(p.core, ['request', 'bindings', 'closure', 'before', 'previous', 'previousReceiptPin', 'parents', 'legacy', 'history']); const v = requestV2(core.request);
+  check(Array.isArray(core.history) && core.history.length <= LIMITS.history && core.history.every((k, i) => HEX64.test(k) && (i === 0 || core.history[i - 1]! < k)));
+  if (core.previous) check(core.history.includes(core.previous.operationKey));
   const expectedBindings = [...ancestors(v.projectDir), ...ancestors(v.stateDir), ...(v.legacy ? ancestors(v.legacy.stateDir) : [])]; check(core.bindings.length === expectedBindings.length && core.bindings.every((b, i) => b.path === expectedBindings[i]));
   const ignore = core.before.some(s => s.id === 'ignore'), locations = locateV2(v, core.closure, { ignore, legacy: v.operation === 'migrate' });
   check(core.before.length === locations.length && core.before.every((s, i) => s.id === locations[i]!.id && s.kind === locations[i]!.kind && s.path === locations[i]!.path));
@@ -197,7 +199,8 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
   const v = requestV2(value); life.check(); const root = directory(v.projectDir), state = directory(v.stateDir, true); check(root.uid === process.getuid?.() && root.device === state.device);
   directory(join(v.projectDir, '.bowerloom')); // v2: the project already has a safe `.bowerloom/`.
   const pins = [...ancestry(v.projectDir), ...ancestry(v.stateDir), ...(v.legacy ? ancestry(v.legacy.stateDir) : [])];
-  for (const n of names(v.stateDir)) { check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAtV2(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir && same(prior.item, v.item)); }
+  const history: string[] = [];
+  for (const n of names(v.stateDir)) { check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAtV2(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir && same(prior.item, v.item)); history.push(n.slice(3)); }
   check(!exists(join(v.projectDir, MARKER_V2)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED');
   if (v.operation === 'migrate') check(!exists(join(v.projectDir, V1_MARKER)), 'MANAGED_SKILL_RECOVERY_REQUIRED'); else check(!legacyPresent(v.projectDir), 'MANAGED_SKILL_LEGACY_PRESENT');
   capacityV2(v);
@@ -228,7 +231,7 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
     if ((incoming.kind === 'git' && was.commit === incoming.commit) || (incoming.kind === 'npm' && was.version === incoming.version)) check(same(was, incoming) && same(catalog.inventory, closure.inventory));
     if (!ignoreAbsent && raw(catalogPath(v.projectDir, v.item), 262144, false).bytes.toString('utf8') === catalogText(v, closure, locations)) return freezeSkillData({ format: 'bowerloom/managed-item-up-to-date/v1beta2', status: 'up-to-date', item: v.item, previousRevision: previous.revision, writesAuthorized: false, executionAuthorized: false });
   }
-  const core: PlanCoreV2 = { request: v, bindings: pins, closure, before, previous, previousReceiptPin: previous ? raw(join(v.stateDir, 'op-' + previous.operationKey, 'receipt.json')).pin : null, parents, legacy: legacy?.core ?? null }; bindingsV2(core, () => life.check());
+  const core: PlanCoreV2 = { request: v, bindings: pins, closure, before, previous, previousReceiptPin: previous ? raw(join(v.stateDir, 'op-' + previous.operationKey, 'receipt.json')).pin : null, parents, legacy: legacy?.core ?? null, history }; bindingsV2(core, () => life.check());
   check(!exists(join(v.projectDir, MARKER_V2)) && !exists(join(v.projectDir, '.bowerloom-revision.json'))); if (v.operation !== 'migrate') check(!legacyPresent(v.projectDir), 'MANAGED_SKILL_LEGACY_PRESENT');
   return formPlanV2(core);
 }

@@ -132,3 +132,15 @@ test('recovery under a caller-held lock makes the same held-lock checks as apply
     assert.equal(fs.existsSync(path.join(run.f.projectDir, MARKER)), false, action);
   }
 });
+
+test('after a rollback or an abandon, the same request plans a new operation and applies', async t => {
+  for (const action of ['rollback', 'abandon']) for (const update of [false, true]) {
+    const label = `${action} ${update ? 'update' : 'install'}`, run = await scenario(t, update), write = fs.writeFileSync, rename = fs.renameSync; let hit = false;
+    if (action === 'abandon') t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (!hit && typeof data === 'string' && data.includes('"kind":"STAGE_READY"')) { hit = true; throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); });
+    else t.mock.method(fs, 'renameSync', (from, to) => { const r = rename(from, to); if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_AFTER_MOVE'); } return r; });
+    syncBuiltinESMExports(); await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t); assert.equal(hit, true, label);
+    assert.equal((await recover(run.req, run.plan, action)).state, 'rolled-back', label); assert.deepEqual(inventory(run.f.projectDir), run.before, label);
+    const again = await planManagedItem(run.req); assert.notEqual(again.operationKey, run.plan.operationKey, label);
+    const receipt = await applyManagedItem(null, run.req, again.revision); assert.equal(receipt.state, 'committed', label); assert.equal(receipt.previousRevision, run.previous?.revision ?? null, label);
+  }
+});

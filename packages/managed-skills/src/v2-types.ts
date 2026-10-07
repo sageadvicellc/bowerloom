@@ -42,6 +42,12 @@ export interface PlanCoreV2 {
   request: ManagedItemRequest; bindings: { path: string; identity: Identity }[];
   closure: ItemClosure; before: SurfaceV2[]; previous: ManagedItemReceipt | null; previousReceiptPin: FilePin | null;
   parents: { path: string; identity: Identity | null }[]; legacy: LegacyCore | null;
+  /**
+   * The operation keys already in the item's state folder at plan time, sorted; each has a receipt. The operation
+   * key hashes the core, so this makes every attempt's key new: a rolled-back or abandoned operation never blocks
+   * the same request from planning again.
+   */
+  history: string[];
 }
 export interface ManagedItemPlan {
   format: 'bowerloom/managed-item-plan/v1beta2'; policy: 'bowerloom/managed-items/v1beta2';
