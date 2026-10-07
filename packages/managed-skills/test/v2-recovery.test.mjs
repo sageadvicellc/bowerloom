@@ -37,19 +37,22 @@ for (const update of [false, true]) test(`${update ? 'update' : 'install'}: aban
   const reference = await scenario(t, update), seen = writes(t); await applyManagedItem(null, reference.req, reference.plan.revision); restore(t);
   const last = seen.lastIndexOf('STAGE_READY'); assert.equal(seen[0], 'bowerloom/managed-item-intent/v1beta2'); assert.equal(seen[1], 'bowerloom/managed-item-pending/v1beta2');
   assert.ok(seen.slice(0, last + 1).filter(k => k === 'stage-file').length >= (update ? 7 : 8));
-  const tally = { abandoned: 0, unreadable: 0 };
+  const tally = { abandoned: 0, unpublished: 0 };
   for (let index = 0; index <= last; index++) for (const when of ['before', 'written', 'after']) {
     // A staged file has no rename, and its 'written' state equals the next boundary's 'before'.
     if (when !== 'before' && seen[index] === 'stage-file') continue;
     // The update run (each scenario first installs) takes every boundary's 'before' point; install takes all three.
     if (update && when !== 'before') continue;
     const label = `${when} ${index} ${seen[index]}`, run = await scenario(t, update); writes(t, { index, when });
-    await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED' && !e.message.includes('PRIVATE'), label); restore(t);
-    if (index === 0 && when !== 'after') {
-      // No intent.json landed: the operation folder cannot be read, so no recovery runs. Nothing in the project changed.
-      tally.unreadable++; for (const a of ['resume', 'rollback', 'abandon']) await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, a)), label);
-      assert.deepEqual(inventory(run.f.projectDir), run.before, label); continue;
+    if (index === 0) {
+      // The operation folder is published whole with its intent, or not at all: a failure while the intent is written
+      // leaves no operation, removes its private temporary folder, and the same approval applies on a retry.
+      await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), e => e.code === 'MANAGED_SKILL_REFUSED' && !e.message.includes('PRIVATE'), label); restore(t);
+      tally.unpublished++; assert.deepEqual(fs.readdirSync(run.req.stateDir), run.previous ? ['op-' + run.previous.operationKey] : [], label); assert.deepEqual(inventory(run.f.projectDir), run.before, label);
+      for (const a of ['resume', 'rollback', 'abandon']) await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, a)), label);
+      assert.equal((await applyManagedItem(null, run.req, run.plan.revision)).state, 'committed', label); continue;
     }
+    await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED' && !e.message.includes('PRIVATE'), label); restore(t);
     // Staging is incomplete or unconfirmed: resume and rollback stay held, abandon is the way out. Once the last
     // STAGE_READY is in place, staging is complete and all three are open; abandon is still exact.
     if (!(index === last && when === 'after')) for (const a of ['resume', 'rollback']) await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, a)), label);
@@ -61,7 +64,7 @@ for (const update of [false, true]) test(`${update ? 'update' : 'install'}: aban
     if (index % 4 === 0) assert.equal((await recover(run.req, run.plan, 'abandon')).revision, result.revision, label);
     await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, 'resume')), label);
   }
-  t.diagnostic(`abandoned ${tally.abandoned}, unreadable ${tally.unreadable}`); assert.equal(tally.unreadable, update ? 1 : 2); assert.ok(tally.abandoned >= (update ? 16 : 33));
+  t.diagnostic(`abandoned ${tally.abandoned}, unpublished ${tally.unpublished}`); assert.equal(tally.unpublished, update ? 1 : 3); assert.ok(tally.abandoned >= (update ? 16 : 33));
 });
 
 test('abandon refuses once a move or a parent is recorded, or when a before-surface drifted, and writes nothing', async t => {
@@ -79,7 +82,7 @@ test('abandon refuses once a move or a parent is recorded, or when a before-surf
   // The record was written but not renamed into place, so it is a prestamp gap: held, abandon included.
   for (const a of ['resume', 'rollback', 'abandon']) await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, a)));
   run = await scenario(t, false); hit = false;
-  t.mock.method(fs, 'renameSync', (from, to) => { const r = rename(from, to); if (!hit && String(from).endsWith('.tmp') && fs.readFileSync(to, 'utf8').includes('"kind":"PARENT_CREATED"')) { hit = true; throw Error('PRIVATE_AFTER_PARENT'); } return r; }); syncBuiltinESMExports();
+  t.mock.method(fs, 'renameSync', (from, to) => { const r = rename(from, to); if (!hit && String(from).endsWith('.tmp') && fs.lstatSync(to).isFile() && fs.readFileSync(to, 'utf8').includes('"kind":"PARENT_CREATED"')) { hit = true; throw Error('PRIVATE_AFTER_PARENT'); } return r; }); syncBuiltinESMExports();
   await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t); assert.equal(hit, true);
   pending = inventory(run.f.projectDir); await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, 'abandon')), code('MANAGED_SKILL_RECOVERY_REQUIRED'));
   assert.deepEqual(inventory(run.f.projectDir), pending); assert.equal((await recover(run.req, run.plan, 'rollback')).state, 'rolled-back'); assert.deepEqual(inventory(run.f.projectDir), run.before);
@@ -145,5 +148,30 @@ test('after a rollback or an abandon, the same request plans a new operation and
     assert.equal((await recover(run.req, run.plan, action)).state, 'rolled-back', label); assert.deepEqual(inventory(run.f.projectDir), run.before, label);
     const again = await planManagedItem(run.req); assert.notEqual(again.operationKey, run.plan.operationKey, label);
     const receipt = await applyManagedItem(null, run.req, again.revision); assert.equal(receipt.state, 'committed', label); assert.equal(receipt.previousRevision, run.previous?.revision ?? null, label);
+  }
+});
+
+const intentWrite = (t, also = () => {}) => {
+  const write = fs.writeFileSync; t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (typeof data === 'string' && data.includes('"bowerloom/managed-item-intent/v1beta2"')) throw Error('PRIVATE_KILL'); return write(fd, data, ...rest); });
+  also(); syncBuiltinESMExports();
+};
+test('a kill before the operation folder is published leaves only a private temporary, which plan ignores and apply removes', async t => {
+  const run = await scenario(t, false);
+  // The cleanup fails too, as a kill would leave it.
+  intentWrite(t, () => t.mock.method(fs, 'rmdirSync', () => { throw Error('PRIVATE_KILLED'); }));
+  await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), e => e.code === 'MANAGED_SKILL_REFUSED' && !e.message.includes('PRIVATE')); restore(t);
+  const temp = '.op-' + run.plan.operationKey + '.tmp';
+  assert.deepEqual(fs.readdirSync(run.req.stateDir), [temp]); assert.deepEqual(inventory(run.f.projectDir), run.before);
+  // Plan reads past it (it is no operation) and gives the same approval; apply removes it under the lock, then commits.
+  assert.equal((await planManagedItem(run.req)).revision, run.plan.revision);
+  assert.equal((await applyManagedItem(null, run.req, run.plan.revision)).state, 'committed');
+  assert.deepEqual(fs.readdirSync(run.req.stateDir), ['op-' + run.plan.operationKey]);
+});
+test('a leftover operation temporary that holds anything but its intent is never removed', async t => {
+  for (const [extra, form] of [['notes.txt', 'file'], ['sub', 'folder'], ['intent.json', 'link']]) {
+    const run = await scenario(t, false), temp = path.join(run.req.stateDir, '.op-' + 'c'.repeat(64) + '.tmp'); fs.mkdirSync(temp, { mode: 0o700 });
+    if (form === 'file') fs.writeFileSync(path.join(temp, extra), 'user data', { mode: 0o600 }); else if (form === 'folder') fs.mkdirSync(path.join(temp, extra), { mode: 0o700 }); else fs.symlinkSync(path.join(run.f.projectDir, 'AGENTS.md'), path.join(temp, extra));
+    await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED'), form);
+    assert.deepEqual(fs.readdirSync(temp), [extra], form); assert.deepEqual(inventory(run.f.projectDir), run.before, form);
   }
 });

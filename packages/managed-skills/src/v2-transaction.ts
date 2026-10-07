@@ -50,7 +50,7 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
-import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
 import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal } from '../../project-context/src/index.js';
@@ -362,13 +362,21 @@ export async function applyManagedItem(held: HeldProjectLock | null, req: unknow
   let life: Lifetime | null = null, mutated = false;
   try { life = itemLifetime(options, held); const live = life; const input = requestV2(req); check(typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision));
     const work = async () => {
+      sweepOpTemps(input.stateDir, () => live.check());
       const proposed = await planItemWithLifetime(input, live); live.check(); check(proposed.format === 'bowerloom/managed-item-plan/v1beta2' && proposed.revision === revision, 'MANAGED_SKILL_STALE_APPROVAL'); const plan = proposed as ManagedItemPlan;
       const { closure } = await readClosure(input, live); live.check(); check(same(closure, plan.core.closure));
       const op = intentPath(plan); bindingsV2(plan.core, () => live.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
       for (const p of plan.core.parents) { if (p.identity) check(same(directory(p.path), p.identity)); else if (exists(dirname(p.path))) absent(p.path); }
-      check(!exists(join(input.projectDir, MARKER_V2)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); check(names(input.stateDir).length < LIMITS.history, 'MANAGED_SKILL_HISTORY_FULL'); capacityV2(input); live.check(); fs.mkdirSync(op, { mode: 0o700 }); mutated = true; const opIdentity = directory(op, true);
-      const state: State = { op, opIdentity, intent: { format: 'bowerloom/managed-item-intent/v1beta2', plan, operationIdentity: opIdentity, approvalRevision: revision }, records: [], receipt: null };
-      let guard = stateGuard(state, live, null); sync(input.stateDir, guard); json(join(op, 'intent.json'), state.intent, guard); guard();
+      const temp = opTemp(input.stateDir, plan.operationKey);
+      check(!exists(join(input.projectDir, MARKER_V2)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history, 'MANAGED_SKILL_HISTORY_FULL'); capacityV2(input); live.check();
+      // The operation folder appears whole, with its intent, or not at all: built under its private temporary name,
+      // then renamed. The rename keeps the inode and birthtime, so the intent's operationIdentity still matches.
+      fs.mkdirSync(temp, { mode: 0o700 }); const opIdentity = directory(temp, true);
+      const state: State = { op: temp, opIdentity, intent: { format: 'bowerloom/managed-item-intent/v1beta2', plan, operationIdentity: opIdentity, approvalRevision: revision }, records: [], receipt: null };
+      let guard = stateGuard(state, live, null);
+      try { json(join(temp, 'intent.json'), state.intent, guard); guard(); absent(op); fs.renameSync(temp, op); }
+      catch (e) { try { removeOpTemp(temp, () => {}); } catch { /* A leftover temporary is removed by the next apply. */ } throw e; }
+      mutated = true; state.op = op; sync(input.stateDir, guard); guard();
       const markerFile = join(input.projectDir, MARKER_V2); json(markerFile, { format: PENDING_FORMAT, item: input.item, operationKey: plan.operationKey, stateDir: input.stateDir, operationIdentity: opIdentity, intentSha256: hash(raw(join(op, 'intent.json')).bytes) }, guard);
       guard = stateGuard(state, live, marker(state)); stageAll(state, live, guard); return resume(state, live, guard);
     };

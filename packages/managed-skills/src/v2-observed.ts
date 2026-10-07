@@ -9,7 +9,7 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { freezeSkillData, revisionOf, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
-import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { readLocalSkill, readLocalPrompt, itemName } from './local-source.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
@@ -200,7 +200,8 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
   directory(join(v.projectDir, '.bowerloom')); // v2: the project already has a safe `.bowerloom/`.
   const pins = [...ancestry(v.projectDir), ...ancestry(v.stateDir), ...(v.legacy ? ancestry(v.legacy.stateDir) : [])];
   const history: string[] = [];
-  for (const n of names(v.stateDir)) { check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAtV2(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir && same(prior.item, v.item)); history.push(n.slice(3)); }
+  // A leftover `.op-<key>.tmp` never became an operation: plan reads past it, and apply removes it under the lock.
+  for (const n of names(v.stateDir)) { if (OP_TEMP.test(n)) continue; check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAtV2(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir && same(prior.item, v.item)); history.push(n.slice(3)); }
   check(!exists(join(v.projectDir, MARKER_V2)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED');
   if (v.operation === 'migrate') check(!exists(join(v.projectDir, V1_MARKER)), 'MANAGED_SKILL_RECOVERY_REQUIRED'); else check(!legacyPresent(v.projectDir), 'MANAGED_SKILL_LEGACY_PRESENT');
   capacityV2(v);

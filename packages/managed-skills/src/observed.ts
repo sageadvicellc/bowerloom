@@ -55,6 +55,24 @@ export function ancestry(p: string): { path: string; identity: Identity }[] {
 export function exists(p: string): boolean { try { fs.lstatSync(p); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false; throw e; } }
 export function names(p: string): string[] { const out = fs.readdirSync(p); check(out.length <= LIMITS.names && new Set(out.map(x => x.normalize('NFC').toLowerCase())).size === out.length); return out.sort(); }
 export function absent(p: string): void { check(!names(dirname(p)).some(x => x.normalize('NFC').toLowerCase() === p.slice(dirname(p).length + 1).normalize('NFC').toLowerCase())); }
+/** The private name an operation folder has until its intent is in place: `.op-<key>.tmp`, beside `op-<key>`. */
+export const OP_TEMP = /^\.op-[a-f0-9]{64}\.tmp$/;
+export const opTemp = (stateDir: string, key: string): string => join(stateDir, '.op-' + key + '.tmp');
+/**
+ * Removes one operation temporary. It never became an operation, so nothing reads it. Call it only under the project
+ * lock. It must be a private folder of this user that holds only `intent.json` and its temporary, each a plain private
+ * file of this user with one link; anything else refuses MANAGED_SKILL_RECOVERY_REQUIRED and removes nothing.
+ */
+export function removeOpTemp(p: string, live: () => void): void {
+  live(); check(OP_TEMP.test(p.slice(dirname(p).length + 1))); const id = directory(p, true), entries = names(p);
+  check(entries.every(n => n === 'intent.json' || n === '.intent.json.tmp'), 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  for (const n of entries) { const s = fs.lstatSync(join(p, n), { bigint: true }); check(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && Number(s.uid) === process.getuid?.() && (Number(s.mode) & 0o7777) === 0o600, 'MANAGED_SKILL_RECOVERY_REQUIRED'); }
+  for (const n of entries) { live(); check(same(directory(p, true), id)); fs.unlinkSync(join(p, n)); }
+  live(); check(same(directory(p, true), id) && names(p).length === 0); fs.rmdirSync(p);
+  const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } live();
+}
+/** Removes every leftover operation temporary in a state folder. Only under the project lock. */
+export function sweepOpTemps(stateDir: string, live: () => void): void { for (const n of names(stateDir)) if (OP_TEMP.test(n)) removeOpTemp(join(stateDir, n), live); }
 export function raw(p: string, max = LIMITS.record, privateMode = true): { bytes: Buffer; pin: FilePin } {
   const fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try { const before = fs.fstatSync(fd, { bigint: true }); check(before.isFile() && before.nlink === 1n && before.size >= 0n && before.size <= BigInt(max) && Number(before.uid) === process.getuid?.() && (Number(before.mode) & 0o7777) === (privateMode ? 0o600 : 0o644));
@@ -142,7 +160,8 @@ export function validatePlan(value: unknown): ObservedSkillPlan {
 export async function planWithLifetime(value: unknown, life: Lifetime): Promise<ObservedSkillPlan | UpToDate> {
   const v = request(value); life.check(); const root = directory(v.projectDir), state = directory(v.stateDir, true); check(root.uid === process.getuid?.() && root.device === state.device);
   const pins = [...ancestry(v.projectDir), ...ancestry(v.stateDir)];
-  for (const n of names(v.stateDir)) { check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAt(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir); } check(!exists(join(v.projectDir, MARKER)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); capacity(v);
+  // A leftover `.op-<key>.tmp` never became an operation: plan reads past it, and apply removes it under the lock.
+  for (const n of names(v.stateDir)) { if (OP_TEMP.test(n)) continue; check(/^op-[a-f0-9]{64}$/.test(n) && exists(join(v.stateDir, n, 'receipt.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); const prior = receiptAt(v.stateDir, n.slice(3)); check(prior.projectDir === v.projectDir && prior.stateDir === v.stateDir); } check(!exists(join(v.projectDir, MARKER)) && !exists(join(v.projectDir, '.bowerloom-revision.json')), 'MANAGED_SKILL_RECOVERY_REQUIRED'); capacity(v);
   const closure = await readAcquiredSkillCache(v.cache, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check();
   for (const pin of pins) check(same(directory(pin.path), pin.identity));
   const previous = current(v.projectDir, v.stateDir); check((previous?.revision ?? null) === v.expectedPreviousRevision, 'MANAGED_SKILL_STALE_APPROVAL');

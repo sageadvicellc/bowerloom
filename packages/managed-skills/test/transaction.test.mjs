@@ -206,7 +206,8 @@ test('cancellation in the closing operation-space observation permits no followi
   const effects = trackEffects(t, () => hit);
   t.mock.method(fs, 'statfsSync', (dir, ...args) => { const result = statfs(dir, ...args); if (!hit && String(dir) === opDir(f, plan)) { hit = true; controller.abort(); } return result; });
   await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null, { signal: controller.signal }), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
-  t.mock.restoreAll(); assert.equal(hit, true); assert.deepEqual(effects, []); assert.deepEqual(fs.readdirSync(opDir(f, plan)), []);
+  // The first observation of the published operation folder: it holds its intent and nothing else.
+  t.mock.restoreAll(); assert.equal(hit, true); assert.deepEqual(effects, []); assert.deepEqual(fs.readdirSync(opDir(f, plan)), ['intent.json']);
 });
 test('cancellation during final destination-name inspection permits no rename or journal effect', async t => {
   const f = await fixture(t), plan = await planObservedManagedSkill(f.input), controller = new AbortController(), readdir = fs.readdirSync;
@@ -277,4 +278,28 @@ for (const [kind, id] of [['MOVE_INTENT', 'projection-publish'], ['MOVE_DONE', '
   for (const n of fs.readdirSync(opDir(f, plan))) if (/^record-\d{3}\.json$/.test(n)) assert.ok(fs.statSync(path.join(opDir(f, plan), n)).size > 0, n);
   const result = await recover(f, plan, action); assert.equal(result.state, action === 'resume' ? 'committed' : 'rolled-back'); assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), false);
   if (action === 'rollback') assert.deepEqual(inventory(f.projectDir), before);
+});
+
+const intentWriteV1 = (t, also = () => {}) => {
+  const write = fs.writeFileSync; t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (typeof data === 'string' && data.includes('"bowerloom/managed-skill-intent/v1beta1"')) throw Error('PRIVATE_KILL'); return write(fd, data, ...rest); });
+  also(); syncBuiltinESMExports();
+};
+test('v1: a failure before the operation folder is published leaves no operation, and the same approval applies', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), before = inventory(f.projectDir);
+  intentWriteV1(t); await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_REFUSED' && !e.message.includes('PRIVATE')); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+});
+test('v1: a leftover private operation temporary is ignored by plan and removed under the lock', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input);
+  intentWriteV1(t, () => t.mock.method(fs, 'rmdirSync', () => { throw Error('PRIVATE_KILLED'); }));
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.deepEqual(fs.readdirSync(f.stateDir), ['.op-' + p.operationKey + '.tmp']);
+  assert.equal((await planObservedManagedSkill(f.input)).revision, p.revision);
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+  assert.deepEqual(fs.readdirSync(f.stateDir), ['op-' + p.operationKey]);
+  // A temporary with other content is never removed.
+  const g = await fixture(t), q = await planObservedManagedSkill(g.input), temp = path.join(g.stateDir, '.op-' + 'c'.repeat(64) + '.tmp');
+  fs.mkdirSync(temp, { mode: 0o700 }); fs.writeFileSync(path.join(temp, 'notes.txt'), 'user data', { mode: 0o600 });
+  await assert.rejects(applyObservedManagedSkill(g.input, q.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(fs.readdirSync(temp), ['notes.txt']);
 });

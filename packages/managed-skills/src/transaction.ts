@@ -3,7 +3,7 @@ import { join, dirname, relative, basename } from 'node:path';
 import { lockSlot, lockServer, slotRefusal } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
-import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
+import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
 import type { Lifetime } from './observed.js';
 import type { Identity, FilePin, Surface, ObservedSkillPlan, ObservedSkillReceipt, Intent, JournalRecord, RecoveryPlan, SkillInspection } from './observed-types.js';
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
@@ -250,13 +250,21 @@ export async function applyObservedManagedSkill(value: unknown, exactRevision: s
   const life = lifetime(options); let mutated = false;
   try { const input = request(value); check(typeof exactRevision === 'string' && /^[a-f0-9]{64}$/.test(exactRevision) && expectedPreviousRevision === input.expectedPreviousRevision);
     return await locked(input.projectDir, life, async () => {
+      sweepOpTemps(input.stateDir, () => life.check());
       const proposed = await planWithLifetime(input, life); life.check(); check(proposed.format === 'bowerloom/observed-managed-skill-plan/v1beta1' && proposed.revision === exactRevision, 'MANAGED_SKILL_STALE_APPROVAL'); const plan = proposed as ObservedSkillPlan;
       const closure = await readAcquiredSkillCache(input.cache, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); check(same(closure, plan.core.closure));
       const op = intentPath(plan); bindings(plan.core, () => life.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
       for (const p of plan.core.parents) { if (p.identity) check(same(directory(p.path), p.identity)); else if (exists(dirname(p.path))) absent(p.path); }
-      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check(); fs.mkdirSync(op, { mode: 0o700 }); mutated = true; const opIdentity = directory(op, true);
-      const state: State = { op, opIdentity, intent: { format: 'bowerloom/managed-skill-intent/v1beta1', plan, operationIdentity: opIdentity, approvalRevision: exactRevision }, records: [], receipt: null };
-      let guard = stateGuard(state, life, null); sync(input.stateDir, guard); json(join(op, 'intent.json'), state.intent, guard); guard();
+      const temp = opTemp(input.stateDir, plan.operationKey);
+      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check();
+      // The operation folder appears whole, with its intent, or not at all: built under its private temporary name,
+      // then renamed. The rename keeps the inode and birthtime, so the intent's operationIdentity still matches.
+      fs.mkdirSync(temp, { mode: 0o700 }); const opIdentity = directory(temp, true);
+      const state: State = { op: temp, opIdentity, intent: { format: 'bowerloom/managed-skill-intent/v1beta1', plan, operationIdentity: opIdentity, approvalRevision: exactRevision }, records: [], receipt: null };
+      let guard = stateGuard(state, life, null);
+      try { json(join(temp, 'intent.json'), state.intent, guard); guard(); absent(op); fs.renameSync(temp, op); }
+      catch (e) { try { removeOpTemp(temp, () => {}); } catch { /* A leftover temporary is removed by the next apply. */ } throw e; }
+      mutated = true; state.op = op; sync(input.stateDir, guard); guard();
       const markerFile = join(input.projectDir, MARKER); json(markerFile, { format: 'bowerloom/managed-skill-pending/v1beta1', operationKey: plan.operationKey, stateDir: input.stateDir, operationIdentity: opIdentity, intentSha256: hash(raw(join(op, 'intent.json')).bytes) }, guard);
       guard = stateGuard(state, life, marker(state)); stageAll(state, life, guard); return resume(state, life, guard);
     });
