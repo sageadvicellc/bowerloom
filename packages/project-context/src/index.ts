@@ -63,6 +63,14 @@ export function lockSlot(project: string): LockSlot {
   const key = hex(JSON.stringify([LOCK_FORMAT, stat.dev.toString(), stat.ino.toString()]));
   return Object.freeze({ key, port: 20000 + Number.parseInt(key.slice(0, 8), 16) % 30000, banner: `${LOCK_FORMAT} ${key}\n` });
 }
+/**
+ * True while `project` still names the folder `slot` was keyed on. A lock user calls it after it binds, and a held
+ * token on each check: a folder replaced at the same path has another inode, so another slot, and must not pass as
+ * locked by the old one.
+ */
+export function slotStillNames(project: string, slot: LockSlot): boolean {
+  try { return lockSlot(project).key === slot.key; } catch { return false; }
+}
 /** The local port of a project's lock slot. See `lockSlot`. */
 export const lockPort = (project: string): number => lockSlot(project).port;
 
@@ -132,7 +140,8 @@ function closeServer(server: Server): Promise<void> {
 }
 
 /**
- * Holds the project lock while `work` runs. The token is valid only inside `work`. Only EADDRINUSE means the slot is
+ * Holds the project lock while `work` runs. The token is valid only inside `work`, and only while its path still names
+ * the folder it locked (the token's `key`): a folder replaced at that path ends it. Only EADDRINUSE means the slot is
  * taken: PROJECT_LOCKED when the holder sends this project's banner, PROJECT_LOCK_SLOT_COLLISION (naming the port) for
  * anything else. Any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
  * is pending, or before it, releases the port and refuses with PROJECT_LOCKED.
@@ -148,13 +157,15 @@ export async function withProjectLock<T>(root: string, signal: AbortSignal, work
     if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
     throw await slotRefusal(slot) === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
   }
+  // The folder may have been replaced between the key and the bind: then this port locks nothing. Release and refuse.
+  if (!slotStillNames(root, slot)) { await closeServer(server); throw refuse('PROJECT_LOCK_UNAVAILABLE'); }
   const own = new AbortController(), combined = AbortSignal.any([own.signal, signal]);
   let released = false, failure: unknown, failed = false, result: T | undefined;
   try {
     if (signal.aborted) throw refuse('PROJECT_LOCKED');
     const held = Object.freeze({
-      dir: root, signal: combined,
-      assertHeld(dir: string): void { if (released || combined.aborted || dir !== root) throw refuse('PROJECT_LOCKED'); },
+      dir: root, key: slot.key, signal: combined,
+      assertHeld(dir: string): void { if (released || combined.aborted || dir !== root || !slotStillNames(root, slot)) throw refuse('PROJECT_LOCKED'); },
     }) as unknown as HeldProjectLock;
     tokens.add(held);
     result = await work(held);

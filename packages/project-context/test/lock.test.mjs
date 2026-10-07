@@ -169,3 +169,42 @@ test('an abort while the lock is pending releases it', async t => {
 test('withProjectLock refuses a relative project path as usage', async () => {
   await assert.rejects(withProjectLock('relative', new AbortController().signal, async () => {}), code('USAGE'));
 });
+
+// The four lock users, each as "take the lock for dir, then run". The fake requests reach the lock before anything
+// reads them (see the case alias test), so the lock decides what each one refuses with.
+const HEX = 'a'.repeat(64);
+const v1Request = (dir, base) => ({ operation: 'install', projectDir: dir, stateDir: path.join(base, 'state'), harness: 'codex', cache: { root: path.join(base, 'cache'), operationId: 'b'.repeat(32), expectedSnapshotRevision: HEX, expectedReceiptRevision: HEX }, expectedPreviousRevision: null, minFreeBytes: 33554432 });
+const v2Request = (dir, base) => ({ operation: 'install', projectDir: dir, stateDir: path.join(base, 'state', 'house-style'), item: { kind: 'skill', id: 'house-style' }, harnesses: ['claude'], source: { kind: 'local', path: 'skills/house-style' }, expectedPreviousRevision: null, minFreeBytes: 33554432, legacy: null });
+const lockUsers = [
+  { name: 'withProjectLock', refused: 'PROJECT_LOCK_UNAVAILABLE', run: (dir, ran) => withProjectLock(dir, new AbortController().signal, async () => { ran(); return 'ok'; }) },
+  { name: 'v1 locked', refused: 'MANAGED_SKILL_LOCKED', run: dir => applyObservedManagedSkill(v1Request(dir, path.dirname(dir)), HEX, null) },
+  { name: 'v2 locked', refused: 'MANAGED_SKILL_LOCKED', run: dir => applyManagedItem(null, v2Request(dir, path.dirname(dir)), HEX) },
+  { name: 'startup withLock', refused: 'REVISION_LOCK_UNAVAILABLE', run: dir => applyStartupRevision({ targetDir: dir, brief: {} }, HEX, HEX) },
+];
+const replace = (t, dir) => { fs.renameSync(dir, dir + '-old'); t.after(() => fs.rmSync(dir + '-old', { recursive: true, force: true })); fs.mkdirSync(dir, { mode: 0o700 }); };
+
+test('a token holds only the folder it locked: once the folder at its path is replaced, assertHeld refuses (review F1 probe)', async t => {
+  const dir = await freshProject(t), signal = new AbortController().signal;
+  await withProjectLock(dir, signal, async heldA => {
+    assert.equal(heldA.key, keyOf(dir)); heldA.assertHeld(dir);
+    replace(t, dir);
+    assert.throws(() => heldA.assertHeld(dir), code('PROJECT_LOCKED'), 'the path now names another folder, with another slot');
+    // A second writer takes the new folder's slot, as in the probe. A's token must not pass alongside it.
+    await withProjectLock(dir, signal, async heldB => {
+      heldB.assertHeld(dir);
+      assert.throws(() => heldA.assertHeld(dir), code('PROJECT_LOCKED'));
+      await assert.rejects(applyManagedItem(heldA, v2Request(dir, path.dirname(dir)), HEX), code('MANAGED_SKILL_LOCK_NOT_HELD'));
+    });
+  });
+});
+
+test('a folder replaced between the slot key and the bind is refused and its slot released, for all four lock users', async t => {
+  for (const user of lockUsers) {
+    const dir = await freshProject(t), oldPort = formula(dir), original = net.Server.prototype.listen; let swapped = false, ran = false;
+    t.mock.method(net.Server.prototype, 'listen', function (...args) { if (!swapped && args[0]?.port === oldPort) { swapped = true; replace(t, dir); } return original.apply(this, args); });
+    await assert.rejects(user.run(dir, () => { ran = true; }), code(user.refused), user.name);
+    t.mock.restoreAll();
+    assert.equal(swapped, true, user.name); assert.equal(ran, false, user.name);
+    const probe = net.createServer(); await listen(probe, oldPort); await close(probe);
+  }
+});

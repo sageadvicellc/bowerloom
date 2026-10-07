@@ -288,3 +288,15 @@ test('a self-locking apply on a slot held by another program is LOCK_SLOT_COLLIS
   finally { await new Promise(resolve => blocker.close(resolve)); }
   assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
 });
+
+test('held lock: a token whose project folder was replaced at the same path is LOCK_NOT_HELD, with no write (review F1)', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req);
+  const moved = f.projectDir + '-old'; t.after(() => fs.rmSync(moved, { recursive: true, force: true }));
+  await hold(f.projectDir, async heldA => {
+    const before = inventory(f.projectDir);
+    fs.renameSync(f.projectDir, moved); fs.mkdirSync(f.projectDir, { mode: 0o700 });
+    // Another writer holds the new folder's slot, so the port probe and banner both pass: only the key check can refuse.
+    await hold(f.projectDir, async () => { await assert.rejects(applyManagedItem(heldA, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); });
+    assert.deepEqual(fs.readdirSync(f.projectDir), []); assert.deepEqual(inventory(moved), before); assert.deepEqual(fs.readdirSync(req.stateDir), []);
+  });
+});

@@ -23,37 +23,38 @@
  *   `.<name>.tmp` in the same folder, then is renamed into place and the folder fsynced -> identical
  * - 32-44 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
  *   a marker twin is settled, a leftover marker temporary goes only when its bytes begin ours -> identical
- * - 46-71 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, cancellation, close
- *   confirmation) -> `locked`, identical; `heldLock` adds the caller-held path: token check, a probe that must find
+ * - 46-73 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, cancellation, the slot key
+ *   checked again after the bind, close confirmation) -> `locked`, identical; `heldLock` adds the caller-held path:
+ *   token check, the token's slot key equal to the folder's now, a probe that must find
  *   the slot taken (else LOCK_NOT_HELD), and this project's banner on it (else LOCK_SLOT_COLLISION)
- * - 77 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
- * - 80-94 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
+ * - 79 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
+ * - 82-96 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
  *   temporary, record chain) -> `readState`: stage names `(new|old|returned)-<surface-id>`; record kinds unchanged
- * - 95-105 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
+ * - 97-107 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
  *   -> v2 path and format, plus item
- * - 108-133 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
- * - 134-143 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
+ * - 110-135 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
+ * - 136-145 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
  *   life.check)                                                            -> identical
- * - 144-147 `append` (hash chain, 256 records)                             -> identical
- * - 148-151 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
- * - 152-168 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
+ * - 146-149 `append` (hash chain, 256 records)                             -> identical
+ * - 150-153 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
+ * - 154-170 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
  *   -> identical per material; `kind === 'file'` replaces `kind === 'catalog'`
- * - 169-177 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
- * - 178-188 `parents` (prestamp gap never adopted)                         -> identical
- * - 190-197 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
+ * - 171-179 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
+ * - 180-190 `parents` (prestamp gap never adopted)                         -> identical
+ * - 192-199 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
  *   surface has no material and so no publish move
- * - 198-209 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
- * - 210-223 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
- * - 224-234 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
- * - 235-248 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
- * - 249-253 `terminal`                                                     -> harness becomes harnesses, plus item
+ * - 200-211 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
+ * - 212-225 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
+ * - 226-236 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
+ * - 237-250 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
+ * - 251-255 `terminal`                                                     -> harness becomes harnesses, plus item
  *   and migratedFrom
- * - 254-280 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
- * - 281-304 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
+ * - 256-282 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
+ * - 283-306 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
  *   equal, bindings, before equal, parents, markers, absent op, history, capacity, life.check, op folder built as
  *   `.op-<key>.tmp` with its intent and renamed, marker, stage, resume) -> identical order; history refuses with
  *   MANAGED_SKILL_HISTORY_FULL
- * - 305-311 `snapshot`, 312-342 `recoveryWithLife` and recover (twin settled after the approval re-check)
+ * - 307-313 `snapshot`, 314-344 `recoveryWithLife` and recover (twin settled after the approval re-check)
  *   -> identical apart from formats
  */
 import fs from 'node:fs';
@@ -62,9 +63,10 @@ import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
-import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal } from '../../project-context/src/index.js';
+import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import { createServer } from 'node:net';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
+import type { LockSlot } from '../../project-context/src/index.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
 import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemReceipt, IntentV2, RecoveryPlanV2, RecoveryAction, MigratedFrom } from './v2-types.js';
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
@@ -119,7 +121,9 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
       server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
       if (life.signal.aborted) stop();
     });
-    life.check(); const result = await work(); life.check(); return result;
+    // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
+    life.check(); check(slotStillNames(project, slot), 'MANAGED_SKILL_LOCKED');
+    const result = await work(); life.check(); return result;
   } catch (e) {
     life.check();
     // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
@@ -142,9 +146,13 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
 async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
   // The brand proves the token came from `withProjectLock`; a literal with the same fields is refused. The port probe
   // and every `assertHeld` call below stay: the brand proves where the token came from, not that the lock is still held.
-  life.check(); check(isHeldProjectLock(held) && held.dir === project && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
+  life.check(); check(isHeldProjectLock(held) && held.dir === project && typeof held.key === 'string' && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
   try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); }
-  const slot = lockSlot(project), probe = createServer(socket => socket.destroy());
+  // The slot is recomputed from the folder now at `project`. A folder replaced at that path has another key, and its
+  // slot may be held by someone else's lock, so the token's own key must match.
+  const slot = ((): LockSlot => { try { return lockSlot(project); } catch { return fail('MANAGED_SKILL_LOCK_NOT_HELD'); } })();
+  check(slot.key === held.key, 'MANAGED_SKILL_LOCK_NOT_HELD');
+  const probe = createServer(socket => socket.destroy());
   const seen = await new Promise<'bound' | 'taken' | 'failed'>(resolve => { probe.once('error', e => resolve((e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 'taken' : 'failed')); probe.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve('bound')); });
   if (seen === 'bound') await new Promise<void>(resolve => probe.close(() => resolve()));
   check(seen === 'taken', 'MANAGED_SKILL_LOCK_NOT_HELD');

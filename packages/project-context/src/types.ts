@@ -40,9 +40,11 @@ export interface HeldProjectLock {
   readonly [heldProjectLock]: true;
   /** Real absolute path of the project folder that keys the lock. */
   readonly dir: string;
+  /** The key of the lock slot it holds (`lockSlot(dir).key` when the lock was taken). A folder replaced at `dir` has another key. */
+  readonly key: string;
   /** Aborts when the lock is released or the locked run is cancelled. */
   readonly signal: AbortSignal;
-  /** Throws `PROJECT_LOCKED` when the lock is no longer held, or when `dir` is not the locked project. */
+  /** Throws `PROJECT_LOCKED` when the lock is no longer held, when `dir` is not the locked project, or when `dir` now names another folder. */
   assertHeld(dir: string): void;
 }
 

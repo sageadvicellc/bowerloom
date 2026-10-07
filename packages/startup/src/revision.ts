@@ -1,7 +1,7 @@
 import { constants, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
-import { lockSlot, lockServer, slotRefusal } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import type { LockSlot } from '../../project-context/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
@@ -58,6 +58,8 @@ async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
     if (code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
     throw new StartupError('REVISION_LOCK_UNAVAILABLE');
   }
+  // A folder replaced between the key and the bind has another slot: this port locks nothing. Release and refuse.
+  if (!slotStillNames(target, slot)) { await new Promise<void>(resolve => server.close(() => resolve())); throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
   try { return await work(); }
   finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }

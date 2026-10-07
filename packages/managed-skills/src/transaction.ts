@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
-import { lockSlot, lockServer, slotRefusal } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
@@ -55,7 +55,9 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
       server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
       if (life.signal.aborted) stop();
     });
-    life.check(); const result = await work(); life.check(); return result;
+    // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
+    life.check(); check(slotStillNames(project, slot), 'MANAGED_SKILL_LOCKED');
+    const result = await work(); life.check(); return result;
   } catch (e) {
     life.check();
     // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
