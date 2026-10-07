@@ -2,6 +2,7 @@ import { constants, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdi
 import { join, dirname } from 'node:path';
 import { createServer } from 'node:net';
 import { canonicalJson } from '../../contracts/src/index.js';
+import { lockPort } from '../../project-context/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
 import { inspectStartup, StartupError, STARTUP_FORMAT, startupInternals as io } from './index.js';
@@ -46,7 +47,7 @@ function move(from: string, to: string): void {
 /** A kernel-owned, path-derived local port excludes cooperating writers and releases on process death.
  * A collision refuses work. No protocol, PID adoption, remote interface or daemon is provided. */
 async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
-  const port = 20000 + (Number.parseInt(io.hash(target).slice(0, 8), 16) % 30000);
+  const port = lockPort(target);
   const server = createServer(socket => socket.destroy());
   await new Promise<void>((resolve, reject) => {
     server.once('error', () => reject(new StartupError('REVISION_LOCK_UNAVAILABLE')));

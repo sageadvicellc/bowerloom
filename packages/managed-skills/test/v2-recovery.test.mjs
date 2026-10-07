@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { planManagedItem, inspectManagedProject } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem, recoverManagedItemHeld } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
+import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import { project, localSkill, request, local, inventory, code } from './v2-fixture.mjs';
 
 const MARKER = '.bowerloom/managed-pending.json';
@@ -106,29 +107,31 @@ test('an abandon interrupted after its ROLLBACK_START or its receipt finishes on
   }
 });
 
-function lockPort(dir) { return 20000 + Number.parseInt(createHash('sha256').update(dir).digest('hex').slice(0, 8), 16) % 30000; }
-async function holdPort(t, dir) { const server = net.createServer(s => s.destroy()); await new Promise((r, j) => { server.once('error', j); server.listen({ host: '127.0.0.1', port: lockPort(dir), exclusive: true }, r); }); t.after(() => new Promise(r => server.close(r))); return server; }
+const hold = (dir, work, signal = new AbortController().signal) => withProjectLock(dir, signal, work);
 test('recovery under a caller-held lock makes the same held-lock checks as apply', async t => {
-  const token = (dir, ok = true) => ({ dir, signal: new AbortController().signal, assertHeld(d) { if (!ok || d !== dir) throw Object.assign(new Error('PROJECT_LOCKED'), { code: 'PROJECT_LOCKED' }); } });
   for (const action of ['resume', 'rollback', 'abandon']) {
     const run = await scenario(t, false), write = fs.writeFileSync, rename = fs.renameSync; let hit = false;
     if (action === 'abandon') t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (!hit && typeof data === 'string' && data.includes('"kind":"STAGE_READY"')) { hit = true; throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); });
     else t.mock.method(fs, 'renameSync', (from, to) => { const r = rename(from, to); if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_AFTER_MOVE'); } return r; });
     syncBuiltinESMExports(); await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t); assert.equal(hit, true);
     const recovery = await planManagedItemRecovery(recoveryInput(run.req, run.plan, action)), pending = inventory(run.f.projectDir);
-    // Nobody holds the port, so the token cannot be real.
-    await assert.rejects(recoverManagedItemHeld(token(run.f.projectDir), recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-    const server = await holdPort(t, run.f.projectDir);
-    await assert.rejects(recoverManagedItemHeld(token(run.f.projectDir, false), recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-    await assert.rejects(recoverManagedItemHeld(token(run.f.base), recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-    await assert.rejects(recoverManagedItemHeld(null, recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-    const aborted = new AbortController(); aborted.abort();
-    await assert.rejects(recoverManagedItemHeld({ ...token(run.f.projectDir), signal: aborted.signal }, recovery, recovery.revision), code('MANAGED_SKILL_ABORTED'));
-    // The self-locking entry cannot take the lock the caller holds.
-    await assert.rejects(recoverManagedItem(recovery, recovery.revision), code('MANAGED_SKILL_LOCKED'));
-    await assert.rejects(recoverManagedItemHeld(token(run.f.projectDir), recovery, '0'.repeat(64)), code('MANAGED_SKILL_STALE_APPROVAL'));
+    // A token kept past its lock cannot be real: the lock is released and nobody holds the port.
+    let stale; await hold(run.f.projectDir, async held => { stale = held; });
+    await assert.rejects(recoverManagedItemHeld(stale, recovery, recovery.revision), code('MANAGED_SKILL_ABORTED'));
+    // A literal with the right shape is refused while the lock is really held.
+    await hold(run.f.projectDir, async real => {
+      await assert.rejects(recoverManagedItemHeld({ dir: real.dir, signal: real.signal, assertHeld() {} }, recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
+      await assert.rejects(recoverManagedItemHeld({ ...real }, recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
+      await hold(run.f.base, async other => { await assert.rejects(recoverManagedItemHeld(other, recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); });
+      await assert.rejects(recoverManagedItemHeld(null, recovery, recovery.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
+      // The self-locking entry cannot take the lock the caller holds.
+      await assert.rejects(recoverManagedItem(recovery, recovery.revision), code('MANAGED_SKILL_LOCKED'));
+      await assert.rejects(recoverManagedItemHeld(real, recovery, '0'.repeat(64)), code('MANAGED_SKILL_STALE_APPROVAL'));
+    });
+    const aborted = new AbortController();
+    await hold(run.f.projectDir, async held => { aborted.abort(); await assert.rejects(recoverManagedItemHeld(held, recovery, recovery.revision), code('MANAGED_SKILL_ABORTED')); }, aborted.signal);
     assert.deepEqual(inventory(run.f.projectDir), pending, action);
-    const result = await recoverManagedItemHeld(token(run.f.projectDir), recovery, recovery.revision); assert.equal(result.state, action === 'resume' ? 'committed' : 'rolled-back', action); assert.ok(server.listening);
+    const result = await hold(run.f.projectDir, held => recoverManagedItemHeld(held, recovery, recovery.revision)); assert.equal(result.state, action === 'resume' ? 'committed' : 'rolled-back', action);
     assert.equal(fs.existsSync(path.join(run.f.projectDir, MARKER)), false, action);
   }
 });

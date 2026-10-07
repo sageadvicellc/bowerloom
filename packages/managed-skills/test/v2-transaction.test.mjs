@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { planManagedItem, inspectManagedProject } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
+import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import { revisionOf } from '../../../dist/packages/skill-sources/src/validation.js';
 import { project, cacheSkill, localSkill, request, local, cached, inventory, code } from './v2-fixture.mjs';
 
@@ -49,21 +50,42 @@ test('local skill: an authored edit is an update, a harness can be added and nev
   await assert.rejects(planManagedItem({ ...both, harnesses: ['codex'], expectedPreviousRevision: next.revision }));
 });
 
-function lockPort(dir) { return 20000 + Number.parseInt(createHash('sha256').update(dir).digest('hex').slice(0, 8), 16) % 30000; }
-async function holdPort(t, dir) { const server = net.createServer(s => s.destroy()); await new Promise((r, j) => { server.once('error', j); server.listen({ host: '127.0.0.1', port: lockPort(dir), exclusive: true }, r); }); t.after(() => new Promise(r => server.close(r))); return server; }
+const hold = (dir, work, signal = new AbortController().signal) => withProjectLock(dir, signal, work);
 test('a caller-held project lock is required to be real and for this project', async t => {
   const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req);
-  const token = (dir, ok = true) => ({ dir, signal: new AbortController().signal, assertHeld(d) { if (!ok || d !== dir) throw Object.assign(new Error('PROJECT_LOCKED'), { code: 'PROJECT_LOCKED' }); } });
-  // Nobody holds the port, so the token cannot be real.
-  await assert.rejects(applyManagedItem(token(f.projectDir), req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-  const server = await holdPort(t, f.projectDir);
-  await assert.rejects(applyManagedItem(token(f.projectDir, false), req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-  await assert.rejects(applyManagedItem(token(f.base), req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'));
-  await assert.rejects(applyManagedItem(null, req, plan.revision), code('MANAGED_SKILL_LOCKED'));
-  const aborted = new AbortController(); aborted.abort();
-  await assert.rejects(applyManagedItem({ ...token(f.projectDir), signal: aborted.signal }, req, plan.revision), code('MANAGED_SKILL_ABORTED'));
+  // A token kept past its lock cannot be real: the lock is released and nobody holds the port.
+  let stale; await hold(f.projectDir, async held => { stale = held; });
+  await assert.rejects(applyManagedItem(stale, req, plan.revision), code('MANAGED_SKILL_ABORTED'));
+  await hold(f.projectDir, async () => {
+    // A real token for another project is refused.
+    await hold(f.base, async other => { await assert.rejects(applyManagedItem(other, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); });
+    await assert.rejects(applyManagedItem(null, req, plan.revision), code('MANAGED_SKILL_LOCKED'));
+  });
+  const aborted = new AbortController();
+  await hold(f.projectDir, async held => { aborted.abort(); await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_ABORTED')); }, aborted.signal);
   assert.deepEqual(fs.readdirSync(req.stateDir), []);
-  assert.equal((await applyManagedItem(token(f.projectDir), req, plan.revision)).state, 'committed'); assert.ok(server.listening);
+  await hold(f.projectDir, async held => { assert.equal((await applyManagedItem(held, req, plan.revision)).state, 'committed'); });
+});
+
+test('a forged token with the right shape is refused even while the lock is held and the port is taken', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  await hold(f.projectDir, async real => {
+    const forged = [
+      { dir: real.dir, signal: real.signal, assertHeld() {} },
+      { dir: real.dir, signal: real.signal, assertHeld: real.assertHeld },
+      { ...real },
+      Object.create(real),
+      Object.assign(Object.create(null), { dir: real.dir, signal: real.signal, assertHeld: real.assertHeld }),
+      new Proxy(real, {}),
+      structuredClone({ dir: real.dir }),
+    ];
+    for (const [i, token] of forged.entries()) {
+      await assert.rejects(applyManagedItem(token, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD'), 'forged ' + i);
+      assert.deepEqual(fs.readdirSync(req.stateDir), [], 'forged ' + i); assert.deepEqual(inventory(f.projectDir), before, 'forged ' + i);
+    }
+    // The real token, in the same place, is accepted.
+    assert.equal((await applyManagedItem(real, req, plan.revision)).state, 'committed');
+  });
 });
 
 test('concurrent apply calls create one operation and one committed receipt', async t => {
@@ -217,10 +239,9 @@ test('a kill before the receipt bytes land leaves no part-written receipt, and r
 
 test('a lock probe that fails with anything but EADDRINUSE refuses, and never proceeds as held', async t => {
   const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
-  const token = { dir: f.projectDir, signal: new AbortController().signal, assertHeld(d) { if (d !== f.projectDir) throw Object.assign(new Error('PROJECT_LOCKED'), { code: 'PROJECT_LOCKED' }); } };
-  for (const errno of ['EACCES', 'EADDRNOTAVAIL', 'EMFILE']) {
+  await hold(f.projectDir, async token => { for (const errno of ['EACCES', 'EADDRNOTAVAIL', 'EMFILE']) {
     t.mock.method(net.Server.prototype, 'listen', function () { process.nextTick(() => this.emit('error', Object.assign(new Error('PRIVATE_' + errno), { code: errno }))); return this; });
     await assert.rejects(applyManagedItem(token, req, plan.revision), e => e.code === 'MANAGED_SKILL_LOCK_NOT_HELD' && !e.message.includes('PRIVATE'), errno); restore(t);
     assert.deepEqual(fs.readdirSync(req.stateDir), [], errno); assert.deepEqual(inventory(f.projectDir), before, errno);
-  }
+  } });
 });

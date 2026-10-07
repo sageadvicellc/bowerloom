@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
 import { createServer } from 'node:net';
+import { lockPort } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
@@ -30,7 +31,7 @@ function json(p: string, value: unknown, guard: () => void): void {
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
   life.check(); const server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
-  const port = 20000 + Number.parseInt(hash(project).slice(0, 8), 16) % 30000;
+  const port = lockPort(project);
   let stop: (() => void) | undefined;
   try {
     await new Promise<void>((resolve, reject) => {

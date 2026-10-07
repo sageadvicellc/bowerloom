@@ -54,6 +54,7 @@ import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
+import { isHeldProjectLock, lockPort } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
 import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemReceipt, IntentV2, RecoveryPlanV2, RecoveryAction, MigratedFrom } from './v2-types.js';
@@ -83,7 +84,6 @@ function json(p: string, value: unknown, guard: () => void): void {
   const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
   guard(); absent(p); guard(); fs.renameSync(tmp, p); sync(dirname(p), guard); guard();
 }
-const lockPort = (project: string): number => 20000 + Number.parseInt(hash(project).slice(0, 8), 16) % 30000;
 /** Same key as startup revision apply/recovery and v1 managed apply. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
   life.check(); const server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
@@ -114,10 +114,9 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
  * The probe listener is closed before any work.
  */
 async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  // TODO(M1): this checks the token by shape only. When M1's `withProjectLock` lands in project-context with its
-  // runtime brand check for the `heldProjectLock` symbol, call that check here first. Keep the port probe and every
-  // `assertHeld` call below either way: the brand proves where the token came from, not that the lock is still held.
-  life.check(); check(held !== null && typeof held === 'object' && held.dir === project && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
+  // The brand proves the token came from `withProjectLock`; a literal with the same fields is refused. The port probe
+  // and every `assertHeld` call below stay: the brand proves where the token came from, not that the lock is still held.
+  life.check(); check(isHeldProjectLock(held) && held.dir === project && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD'); check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED');
   try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); }
   const probe = createServer(socket => socket.destroy());
   const seen = await new Promise<'bound' | 'taken' | 'failed'>(resolve => { probe.once('error', e => resolve((e as NodeJS.ErrnoException).code === 'EADDRINUSE' ? 'taken' : 'failed')); probe.listen({ host: '127.0.0.1', port: lockPort(project), exclusive: true }, () => resolve('bound')); });
@@ -350,7 +349,7 @@ function itemLifetime(options: unknown, held: HeldProjectLock | null): Lifetime 
   if (!held) return lifetime(options);
   // v1 `lifetime` validates the options first: no proxy, no accessor, only `signal`.
   lifetime(options).close(); const own = Object.getOwnPropertyDescriptor(options as object, 'signal')?.value as AbortSignal | undefined;
-  check(held !== null && typeof held === 'object' && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD');
+  check(isHeldProjectLock(held) && held.signal instanceof AbortSignal, 'MANAGED_SKILL_LOCK_NOT_HELD');
   return lifetime({ signal: AbortSignal.any(own ? [held.signal, own] : [held.signal]) });
 }
 export async function applyManagedItem(held: HeldProjectLock | null, req: unknown, revision: string, options: unknown = {}): Promise<ManagedItemReceipt> {
@@ -401,7 +400,7 @@ export async function recoverManagedItem(value: unknown, revision: string, optio
  * caller's own, and a lock port this process cannot bind.
  */
 export async function recoverManagedItemHeld(held: HeldProjectLock, value: unknown, revision: string, options: unknown = {}): Promise<ManagedItemReceipt> {
-  try { check(held !== null && typeof held === 'object', 'MANAGED_SKILL_LOCK_NOT_HELD'); } catch (e) { return boundaryV2(e); }
+  try { check(isHeldProjectLock(held), 'MANAGED_SKILL_LOCK_NOT_HELD'); } catch (e) { return boundaryV2(e); }
   return recoverItem(held, value, revision, options);
 }
 async function recoverItem(held: HeldProjectLock | null, value: unknown, revision: string, options: unknown): Promise<ManagedItemReceipt> {
