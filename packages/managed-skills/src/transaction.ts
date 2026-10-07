@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
+import type { Server } from 'node:net';
 import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
@@ -44,24 +45,36 @@ function discardMarkerTemp(p: string, expected: string, guard: () => void): void
 }
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const slot = lockSlot(project), port = slot.port, server = lockServer(slot); let acquired = false, pending = true;
-  let stop: (() => void) | undefined;
+  life.check(); const slot = lockSlot(project), port = slot.port; let server = lockServer(slot), acquired = false, pending = true;
+  let stop: (() => void) | undefined, verdict: 'locked' | 'collision' | 'free' | undefined;
+  const acquire = (listener: Server) => new Promise<void>((resolve, reject) => {
+    pending = true;
+    const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
+    stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
+    listener.once('error', error => settle(error));
+    // If cancellation wins first, late listen completion only closes this listener.
+    listener.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { listener.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
+    if (life.signal.aborted) stop();
+  });
   try {
-    await new Promise<void>((resolve, reject) => {
-      const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
-      stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
-      server.once('error', error => settle(error));
-      // If cancellation wins first, late listen completion only closes this listener.
-      server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
-      if (life.signal.aborted) stop();
-    });
+    for (let attempt = 0; ; attempt++) {
+      try { await acquire(server); break; }
+      catch (e) {
+        // Only EADDRINUSE reads the holder's banner. A holder that let go before the read (ECONNREFUSED) gets one more
+        // bind, with a fresh listener; binding alone decides the lock.
+        if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
+        life.check(); verdict = await slotRefusal(slot, attempt === 0);
+        if (verdict !== 'free') throw e;
+        server = lockServer(slot);
+      }
+    }
     // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
     life.check(); check(slotStillNames(project, slot), 'MANAGED_SKILL_LOCKED');
     const result = await work(); life.check(); return result;
   } catch (e) {
     life.check();
-    // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
-    if (!acquired) { if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
+    // This project's own lock is LOCKED, anything else on the slot is a collision.
+    if (!acquired) { if (verdict === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
     throw e;
   }
   finally {

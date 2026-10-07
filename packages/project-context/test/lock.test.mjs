@@ -208,3 +208,29 @@ test('a folder replaced between the slot key and the bind is refused and its slo
     const probe = net.createServer(); await listen(probe, oldPort); await close(probe);
   }
 });
+
+/** A banner connect that finds nobody: the holder let go. `before` runs first, then the socket reports ECONNREFUSED. */
+const refusedConnect = (before) => { const socket = new net.Socket(); before(() => process.nextTick(() => socket.emit('error', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })))); return socket; };
+
+test('a holder that lets go between the refused bind and the banner read is not a collision: the bind is tried once more (review F3)', async t => {
+  for (const user of lockUsers) {
+    const dir = await freshProject(t), port = formula(dir), squatter = net.createServer(); await listen(squatter, port);
+    let connects = 0, ran = false;
+    t.mock.method(net, 'connect', () => { connects++; return refusedConnect(done => squatter.close(done)); });
+    let outcome; try { outcome = await user.run(dir, () => { ran = true; }); } catch (error) { outcome = error; }
+    t.mock.restoreAll();
+    assert.equal(connects, 1, user.name);
+    assert.doesNotMatch(String(outcome?.code ?? ''), /LOCK|COLLISION/, `${user.name}: ${outcome?.code}`);
+    if (user.name === 'withProjectLock') { assert.equal(outcome, 'ok'); assert.equal(ran, true); }
+  }
+});
+
+test('the bind is tried once more only once: a second refused banner read is a collision', async t => {
+  const dir = await freshProject(t), port = formula(dir); let squatter = net.createServer(); await listen(squatter, port);
+  t.after(() => new Promise(resolve => squatter.close(() => resolve())));
+  let connects = 0;
+  t.mock.method(net, 'connect', () => { connects++; const first = connects === 1; return refusedConnect(done => { if (!first) return done(); squatter.close(() => { squatter = net.createServer(); listen(squatter, port).then(done); }); }); });
+  let ran = false;
+  await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
+  t.mock.restoreAll(); assert.equal(connects, 2); assert.equal(ran, false);
+});

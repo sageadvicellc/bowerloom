@@ -300,3 +300,12 @@ test('held lock: a token whose project folder was replaced at the same path is L
     assert.deepEqual(fs.readdirSync(f.projectDir), []); assert.deepEqual(inventory(moved), before); assert.deepEqual(fs.readdirSync(req.stateDir), []);
   });
 });
+
+test('held lock: a banner read that finds nobody is LOCK_NOT_HELD, not a collision, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  await hold(f.projectDir, async held => {
+    t.mock.method(net, 'connect', () => { const socket = new net.Socket(); process.nextTick(() => socket.emit('error', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }))); return socket; });
+    await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); restore(t);
+  });
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+});

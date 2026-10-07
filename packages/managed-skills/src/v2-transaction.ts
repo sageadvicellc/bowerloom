@@ -17,44 +17,45 @@
  *
  * Guard map, v1 transaction.ts line -> v2 (this file), for the independent review. Each entry starts at the line of
  * the first name it lists; tests/guard-map.test.ts holds that true.
- * - 14 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
- * - 15-19 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
- * - 22-29 `discard`, `json`: each record (intent, journal record, receipt) goes through `durable` under a hidden
+ * - 15 `sync` (O_NOFOLLOW open, guard before and after, fsync)            -> `sync`, identical
+ * - 16-20 `durable` (absent, O_CREAT|O_EXCL|O_NOFOLLOW, fchmod, fsync file then parent) -> `durable`, identical
+ * - 23-30 `discard`, `json`: each record (intent, journal record, receipt) goes through `durable` under a hidden
  *   `.<name>.tmp` in the same folder, then is renamed into place and the folder fsynced -> identical
- * - 32-44 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
+ * - 33-45 `publish`, `settleTwin`, `discardMarkerTemp`: the marker is linked into place (fails if its name exists),
  *   a marker twin is settled, a leftover marker temporary goes only when its bytes begin ours -> identical
- * - 46-73 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, cancellation, the slot key
- *   checked again after the bind, close confirmation) -> `locked`, identical; `heldLock` adds the caller-held path:
+ * - 47-86 `locked` (exclusive slot keyed on device and inode, banner check on EADDRINUSE, one more bind when the holder let
+ *   go before its banner was read, cancellation, the slot key checked again after the bind, close confirmation) -> `locked`, identical; `heldLock` adds the caller-held path:
  *   token check, the token's slot key equal to the folder's now, a probe that must find
- *   the slot taken (else LOCK_NOT_HELD), and this project's banner on it (else LOCK_SLOT_COLLISION)
- * - 79 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
- * - 82-96 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
+ *   the slot taken (else LOCK_NOT_HELD), and this project's banner on it (else LOCK_SLOT_COLLISION, or LOCK_NOT_HELD
+ *   when nobody answers)
+ * - 92 `noV2` (v1 only: no unfinished or present v1beta2 state, inside the lock)
+ * - 95-109 `readState` (op identity, intent format, plan revalidation, bindings, name allowlist, at most one expected
  *   temporary, record chain) -> `readState`: stage names `(new|old|returned)-<surface-id>`; record kinds unchanged
- * - 97-107 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
+ * - 110-120 `marker`, `pendingBody`, `pendingText` (format, key, stateDir, op identity, intent sha256; twin accepted)
  *   -> v2 path and format, plus item
- * - 110-135 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
- * - 136-145 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
+ * - 123-148 `parentGuard` (created parents never adopted before their PARENT_CREATED stamp) -> identical
+ * - 149-158 `stateGuard` (life.check, bindings, op identity, retained bytes, free space, marker pin, parents, closing
  *   life.check)                                                            -> identical
- * - 146-149 `append` (hash chain, 256 records)                             -> identical
- * - 150-153 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
- * - 154-170 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
+ * - 159-162 `append` (hash chain, 256 records)                             -> identical
+ * - 163-166 `relocated`, `at`, `exactAt` (ctime dropped via stablePins), `currentSurfaces` -> same, keyed by surface
+ * - 167-183 `stageAll` (absent, mkdir 0700, per-directory identity, durable 0644, re-read hash, materialPins)
  *   -> identical per material; `kind === 'file'` replaces `kind === 'catalog'`
- * - 171-179 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
- * - 180-190 `parents` (prestamp gap never adopted)                         -> identical
- * - 192-199 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
+ * - 184-192 `stages` (exactly one STAGE_INTENT and STAGE_READY per surface) -> loop over surfaces with material
+ * - 193-203 `parents` (prestamp gap never adopted)                         -> identical
+ * - 205-212 `moves` (backup when present, then publish)                    -> identical; the backup-only `legacy`
  *   surface has no material and so no publish move
- * - 200-211 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
- * - 212-225 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
- * - 226-236 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
- * - 237-250 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
- * - 251-255 `terminal`                                                     -> harness becomes harnesses, plus item
+ * - 213-224 `executeMove` (intent, exact source or target, absent, rename, fsync both parents, done) -> identical
+ * - 225-238 `expectedState`, `reversed`, `stateMatches`                    -> identical, keyed by surface id
+ * - 239-249 `prefix` (exactly one matching prefix, intents and dones consistent) -> identical
+ * - 250-263 `reconcileDone`, `removeCreatedParents` (identity and emptiness before rmdir) -> identical
+ * - 264-268 `terminal`                                                     -> harness becomes harnesses, plus item
  *   and migratedFrom
- * - 256-282 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
- * - 283-306 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
+ * - 269-295 `publishReceipt`, `finish`, `resume`, `rollback`               -> identical apart from the receipt body
+ * - 296-319 `applyObservedManagedSkill` (lock, noV2, sweep op temporaries, replan equal revision, re-read source
  *   equal, bindings, before equal, parents, markers, absent op, history, capacity, life.check, op folder built as
  *   `.op-<key>.tmp` with its intent and renamed, marker, stage, resume) -> identical order; history refuses with
  *   MANAGED_SKILL_HISTORY_FULL
- * - 307-313 `snapshot`, 314-344 `recoveryWithLife` and recover (twin settled after the approval re-check)
+ * - 320-326 `snapshot`, 327-357 `recoveryWithLife` and recover (twin settled after the approval re-check)
  *   -> identical apart from formats
  */
 import fs from 'node:fs';
@@ -65,6 +66,7 @@ import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
 import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import { createServer } from 'node:net';
+import type { Server } from 'node:net';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { LockSlot } from '../../project-context/src/index.js';
 import type { Identity, FilePin, JournalRecord } from './observed-types.js';
@@ -110,24 +112,36 @@ function discardMarkerTemp(p: string, expected: string, guard: () => void): void
 }
 /** Same key as startup revision apply/recovery and v1 managed apply. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const slot = lockSlot(project), port = slot.port, server = lockServer(slot); let acquired = false, pending = true;
-  let stop: (() => void) | undefined;
+  life.check(); const slot = lockSlot(project), port = slot.port; let server = lockServer(slot), acquired = false, pending = true;
+  let stop: (() => void) | undefined, verdict: 'locked' | 'collision' | 'free' | undefined;
+  const acquire = (listener: Server) => new Promise<void>((resolve, reject) => {
+    pending = true;
+    const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
+    stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
+    listener.once('error', error => settle(error));
+    // If cancellation wins first, late listen completion only closes this listener.
+    listener.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { listener.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
+    if (life.signal.aborted) stop();
+  });
   try {
-    await new Promise<void>((resolve, reject) => {
-      const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
-      stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
-      server.once('error', error => settle(error));
-      // If cancellation wins first, late listen completion only closes this listener.
-      server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
-      if (life.signal.aborted) stop();
-    });
+    for (let attempt = 0; ; attempt++) {
+      try { await acquire(server); break; }
+      catch (e) {
+        // Only EADDRINUSE reads the holder's banner. A holder that let go before the read (ECONNREFUSED) gets one more
+        // bind, with a fresh listener; binding alone decides the lock.
+        if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
+        life.check(); verdict = await slotRefusal(slot, attempt === 0);
+        if (verdict !== 'free') throw e;
+        server = lockServer(slot);
+      }
+    }
     // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
     life.check(); check(slotStillNames(project, slot), 'MANAGED_SKILL_LOCKED');
     const result = await work(); life.check(); return result;
   } catch (e) {
     life.check();
-    // Only EADDRINUSE reads the holder's banner: this project's own lock is LOCKED, anything else on the slot is a collision.
-    if (!acquired) { if ((e as NodeJS.ErrnoException)?.code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
+    // This project's own lock is LOCKED, anything else on the slot is a collision.
+    if (!acquired) { if (verdict === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
     throw e;
   }
   finally {
@@ -157,7 +171,9 @@ async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetim
   if (seen === 'bound') await new Promise<void>(resolve => probe.close(() => resolve()));
   check(seen === 'taken', 'MANAGED_SKILL_LOCK_NOT_HELD');
   // The taken slot must answer with this project's banner: another listener on the port proves nothing about the lock.
-  if (await lockHolder(slot) !== 'this') fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', reportSlotCollision(slot));
+  // Nobody answering (the holder let go after the probe) means the lock is not held; anything else answering is a collision.
+  const holder = await lockHolder(slot); check(holder !== 'gone', 'MANAGED_SKILL_LOCK_NOT_HELD');
+  if (holder !== 'this') fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', reportSlotCollision(slot));
   const guard = () => { check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED'); try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); } life.check(); };
   guard(); const result = await work(); guard(); return result;
 }

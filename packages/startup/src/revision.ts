@@ -48,14 +48,19 @@ function move(from: string, to: string): void {
  * A collision refuses work. No protocol, PID adoption, remote interface or daemon is provided. */
 async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
   let slot: LockSlot; try { slot = lockSlot(target); } catch { throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
-  const server = lockServer(slot);
-  const code = await new Promise<string | undefined>(resolve => {
-    server.once('error', error => resolve((error as NodeJS.ErrnoException).code ?? 'UNKNOWN'));
-    server.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve(undefined));
+  const bind = (listener: ReturnType<typeof lockServer>) => new Promise<string | undefined>(resolve => {
+    listener.once('error', error => resolve((error as NodeJS.ErrnoException).code ?? 'UNKNOWN'));
+    listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve(undefined));
   });
-  // This project's own lock (its banner) stays REVISION_LOCK_UNAVAILABLE; anything else on the slot is a collision.
-  if (code !== undefined) {
-    if (code === 'EADDRINUSE' && await slotRefusal(slot) === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
+  let server = lockServer(slot);
+  for (let attempt = 0; ; attempt++) {
+    const code = await bind(server);
+    if (code === undefined) break;
+    // This project's own lock (its banner) stays REVISION_LOCK_UNAVAILABLE; anything else on the slot is a collision.
+    // A holder that let go before its banner was read gets one more bind, with a fresh listener.
+    const verdict = code === 'EADDRINUSE' ? await slotRefusal(slot, attempt === 0) : 'locked';
+    if (verdict === 'free') { server = lockServer(slot); continue; }
+    if (verdict === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
     throw new StartupError('REVISION_LOCK_UNAVAILABLE');
   }
   // A folder replaced between the key and the bind has another slot: this port locks nothing. Release and refuse.

@@ -85,18 +85,20 @@ export function lockServer(slot: LockSlot): Server {
 }
 /**
  * Who holds a slot this process could not bind. 'this' only when the holder sends exactly this project's banner and
- * closes within the timeout; anything else, including silence, a refused connection or extra bytes, is 'other'.
+ * closes within the timeout. 'gone' when the connection is refused before any byte: nobody listens any more, so the
+ * holder let go. Anything else, including silence or extra bytes, is 'other'.
  * It reads at most one banner length plus one byte and never writes.
  */
-export function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other'> {
+export function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other' | 'gone'> {
   return new Promise(resolveHolder => {
     const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false;
     const socket = net.connect({ host: '127.0.0.1', port: slot.port });
-    const finish = (verdict: 'this' | 'other') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
+    const finish = (verdict: 'this' | 'other' | 'gone') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
     const settle = () => finish(Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
     const timer = setTimeout(() => finish('other'), timeoutMs);
     socket.on('data', (chunk: Buffer) => { chunks.push(chunk); size += chunk.length; if (size > want.length) finish('other'); });
-    socket.on('end', settle); socket.on('close', settle); socket.on('error', () => finish('other'));
+    socket.on('end', settle); socket.on('close', settle);
+    socket.on('error', (error: NodeJS.ErrnoException) => finish(error.code === 'ECONNREFUSED' && size === 0 ? 'gone' : 'other'));
   });
 }
 /**
@@ -112,10 +114,14 @@ export function reportSlotCollision(slot: LockSlot): number {
 }
 /**
  * After EADDRINUSE: 'locked' when this project's own lock holds the slot, 'collision' for anything else. A collision
- * is reported on the diagnostics channel. The lock stays exclusive: neither verdict lets the caller proceed.
+ * is reported on the diagnostics channel. Neither verdict lets the caller proceed.
+ * With `mayBindAgain`, a holder that let go before the banner read ('gone') gives 'free': the caller binds once more,
+ * and that bind alone decides. Without it, 'gone' is a collision, so a caller binds again at most once.
  */
-export async function slotRefusal(slot: LockSlot): Promise<'locked' | 'collision'> {
-  if (await lockHolder(slot) === 'this') return 'locked';
+export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise<'locked' | 'collision' | 'free'> {
+  const holder = await lockHolder(slot);
+  if (holder === 'this') return 'locked';
+  if (holder === 'gone' && mayBindAgain) return 'free';
   reportSlotCollision(slot); return 'collision';
 }
 /** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
@@ -140,7 +146,8 @@ function closeServer(server: Server): Promise<void> {
 }
 
 /**
- * Holds the project lock while `work` runs. The token is valid only inside `work`, and only while its path still names
+ * Holds the project lock while `work` runs. A holder that let go between the refused bind and its banner read gets one
+ * more bind. The token is valid only inside `work`, and only while its path still names
  * the folder it locked (the token's `key`): a folder replaced at that path ends it. Only EADDRINUSE means the slot is
  * taken: PROJECT_LOCKED when the holder sends this project's banner, PROJECT_LOCK_SLOT_COLLISION (naming the port) for
  * anything else. Any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
@@ -148,14 +155,20 @@ function closeServer(server: Server): Promise<void> {
  */
 export async function withProjectLock<T>(root: string, signal: AbortSignal, work: (held: HeldProjectLock) => Promise<T>): Promise<T> {
   if (typeof root !== 'string' || !isAbsolute(root) || root.includes('\0')) throw refuse('USAGE');
-  const slot = lockSlot(root), server = lockServer(slot);
-  const outcome = await new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
-    server.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
-    server.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
+  const slot = lockSlot(root);
+  const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
+    listener.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
+    listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
   });
-  if (!outcome.ok) {
+  let server = lockServer(slot);
+  for (let attempt = 0; ; attempt++) {
+    const outcome = await bind(server);
+    if (outcome.ok) break;
     if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
-    throw await slotRefusal(slot) === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
+    // A holder that let go before its banner was read gets one more bind, with a fresh listener.
+    const verdict = await slotRefusal(slot, attempt === 0);
+    if (verdict === 'free') { server = lockServer(slot); continue; }
+    throw verdict === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
   }
   // The folder may have been replaced between the key and the bind: then this port locks nothing. Release and refuse.
   if (!slotStillNames(root, slot)) { await closeServer(server); throw refuse('PROJECT_LOCK_UNAVAILABLE'); }
