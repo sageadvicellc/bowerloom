@@ -1,4 +1,5 @@
 // Shared fixtures for the managed v1beta2 tests. Not a test file: npm test runs *.test.mjs only.
+import '../../../dist/tests/support/isolate-home.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
