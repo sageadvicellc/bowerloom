@@ -239,7 +239,7 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
 export async function planManagedItem(req: unknown, options: unknown = {}): Promise<ManagedItemPlan | UpToDateV2> { const life = lifetime(options); try { return await planItemWithLifetime(req, life); } catch (e) { return boundaryV2(e); } finally { life.close(); } }
 const pendingKeys = ['format', 'item', 'operationKey', 'stateDir', 'operationIdentity', 'intentSha256'];
 export function readPending(project: string): PendingV2 {
-  const m = parsed<PendingV2>(join(project, MARKER_V2), pendingKeys); itemRef(m.item); path(m.stateDir);
+  const m = parsed<PendingV2>(join(project, MARKER_V2), pendingKeys, true); itemRef(m.item); path(m.stateDir);
   check(m.format === PENDING_FORMAT && HEX64.test(m.operationKey) && HEX64.test(m.intentSha256)); return m;
 }
 /** Item refs from catalog file names: `<id>.json` for a skill, `prompt-<id>.json` for a prompt. */

@@ -73,16 +73,30 @@ export function removeOpTemp(p: string, live: () => void): void {
 }
 /** Removes every leftover operation temporary in a state folder. Only under the project lock. */
 export function sweepOpTemps(stateDir: string, live: () => void): void { for (const n of names(stateDir)) if (OP_TEMP.test(n)) removeOpTemp(join(stateDir, n), live); }
-export function raw(p: string, max = LIMITS.record, privateMode = true): { bytes: Buffer; pin: FilePin } {
+/** The hidden temporary name of one record, in the record's own folder. */
+export const temporary = (p: string): string => join(dirname(p), '.' + p.slice(dirname(p).length + 1) + '.tmp');
+/**
+ * A marker is published by linking its finished temporary to its name, which fails if the name exists, and then
+ * unlinking the temporary. A kill between the two leaves one file with two links: the marker and its own temporary.
+ * True only for that state: both plain files of this user, the same device and inode, and exactly two links.
+ */
+export function markerTwin(p: string): boolean {
+  const tmp = temporary(p); if (!exists(p) || !exists(tmp)) return false;
+  const a = fs.lstatSync(p, { bigint: true }), b = fs.lstatSync(tmp, { bigint: true });
+  return a.isFile() && b.isFile() && a.dev === b.dev && a.ino === b.ino && a.nlink === 2n && Number(a.uid) === process.getuid?.();
+}
+/** Reads a marker the way `raw` reads any record, also accepting the twin state of `markerTwin`. */
+export function rawMarker(p: string): { bytes: Buffer; pin: FilePin } { return raw(p, LIMITS.record, true, true); }
+export function raw(p: string, max = LIMITS.record, privateMode = true, twin = false): { bytes: Buffer; pin: FilePin } {
   const fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
-  try { const before = fs.fstatSync(fd, { bigint: true }); check(before.isFile() && before.nlink === 1n && before.size >= 0n && before.size <= BigInt(max) && Number(before.uid) === process.getuid?.() && (Number(before.mode) & 0o7777) === (privateMode ? 0o600 : 0o644));
+  try { const before = fs.fstatSync(fd, { bigint: true }); check(before.isFile() && (before.nlink === 1n || (twin && before.nlink === 2n && markerTwin(p))) && before.size >= 0n && before.size <= BigInt(max) && Number(before.uid) === process.getuid?.() && (Number(before.mode) & 0o7777) === (privateMode ? 0o600 : 0o644));
     const bytes = Buffer.alloc(Number(before.size)); let at = 0; while (at < bytes.length) { const n = fs.readSync(fd, bytes, at, bytes.length - at, null); check(n > 0); at += n; }
     check(fs.readSync(fd, Buffer.alloc(1), 0, 1, null) === 0); const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(p, { bigint: true });
     check(!named.isSymbolicLink() && same(identity(before), identity(after)) && same(identity(before), identity(named)) && before.size === after.size && before.size === named.size && before.mtimeNs === after.mtimeNs && before.mtimeNs === named.mtimeNs && before.ctimeNs === after.ctimeNs && before.ctimeNs === named.ctimeNs);
     return { bytes, pin: { path: p, identity: identity(before), bytes: bytes.length, sha256: hash(bytes), mtimeNs: String(before.mtimeNs), ctimeNs: String(before.ctimeNs) } };
   } finally { fs.closeSync(fd); }
 }
-export function parsed<T>(p: string, keys: string[]): T { const b = raw(p).bytes; return schema<T>(strictJson(new TextDecoder('utf-8', { fatal: true }).decode(b), LIMITS.record), keys); }
+export function parsed<T>(p: string, keys: string[], twin = false): T { const b = raw(p, LIMITS.record, true, twin).bytes; return schema<T>(strictJson(new TextDecoder('utf-8', { fatal: true }).decode(b), LIMITS.record), keys); }
 export function tree(p: string, checkLive: () => void = () => {}): FilePin[] {
   const rows: FilePin[] = []; let bytes = 0;
   const visit = (at: string) => { checkLive(); const s = fs.lstatSync(at, { bigint: true }); check(rows.length < 512 && !s.isSymbolicLink());
@@ -196,7 +210,7 @@ export async function planObservedManagedSkill(value: unknown, options: unknown 
 export async function inspectObservedManagedSkill(value: unknown): Promise<SkillInspection> {
   try { const detached = captureSkillData(value) as Record<string, unknown>; const v = schema<{ projectDir: string; stateDir: string; operationKey?: string }>(detached, Object.hasOwn(detached, 'operationKey') ? ['projectDir', 'stateDir', 'operationKey'] : ['projectDir', 'stateDir']); path(v.projectDir); path(v.stateDir); ancestry(v.projectDir); ancestry(v.stateDir); directory(v.stateDir, true);
     if (exists(join(v.projectDir, MARKER))) {
-      const m = parsed<{ format: string; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(join(v.projectDir, MARKER), ['format', 'operationKey', 'stateDir', 'operationIdentity', 'intentSha256']);
+      const m = parsed<{ format: string; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(join(v.projectDir, MARKER), ['format', 'operationKey', 'stateDir', 'operationIdentity', 'intentSha256'], true);
       check(m.format === 'bowerloom/managed-skill-pending/v1beta1' && m.stateDir === v.stateDir && /^[a-f0-9]{64}$/.test(m.operationKey) && (!v.operationKey || v.operationKey === m.operationKey));
       const op = join(v.stateDir, 'op-' + m.operationKey); check(same(directory(op, true), m.operationIdentity) && hash(raw(join(op, 'intent.json')).bytes) === m.intentSha256);
       return { format: 'bowerloom/observed-managed-skill-inspection/v1beta1', status: 'pending', receipt: null, operationKey: m.operationKey, executionAuthorized: false, writesAuthorized: false };

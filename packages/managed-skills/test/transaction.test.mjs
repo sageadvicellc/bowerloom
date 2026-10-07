@@ -330,3 +330,21 @@ test('v1: an operation folder may hold at most one record temporary, with exactl
   const { f, p, op } = await killed(); fs.writeFileSync(path.join(op, next(op)), '', { mode: 0o600 });
   assert.equal((await recover(f, p, 'rollback')).state, 'rolled-back'); assert.deepEqual(fs.readdirSync(op).filter(n => n.endsWith('.tmp')), []);
 });
+test('v1: a marker twin from a kill between link and unlink is settled, and a leftover marker temporary goes only when it is ours', async t => {
+  const killFirstMove = () => { const rename = fs.renameSync; let hit = false; t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports(); };
+  const killed = async () => { const f = await fixture(t), p = await planObservedManagedSkill(f.input); killFirstMove(); await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); return { f, p, marker: path.join(f.projectDir, '.bowerloom-skills-pending.json'), temp: path.join(f.projectDir, '..bowerloom-skills-pending.json.tmp') }; };
+  // The twin: the marker and its temporary are one file with two links.
+  let k = await killed(); fs.linkSync(k.marker, k.temp);
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.existsSync(k.temp), false); assert.equal(fs.existsSync(k.marker), false);
+  // A part-written temporary of this operation's marker is removed with the marker.
+  k = await killed(); fs.writeFileSync(k.temp, fs.readFileSync(k.marker).subarray(0, 30), { mode: 0o600 });
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.existsSync(k.temp), false);
+  // Other bytes under that name stay.
+  k = await killed(); fs.writeFileSync(k.temp, 'not ours', { mode: 0o600 });
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.readFileSync(k.temp, 'utf8'), 'not ours');
+  // A marker published while a file appeared at its name after the check is never replaced.
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), marker = path.join(f.projectDir, '.bowerloom-skills-pending.json'), link = fs.linkSync, rename = fs.renameSync;
+  const plant = to => { if (String(to) === marker && !fs.existsSync(marker)) fs.writeFileSync(marker, 'foreign', { mode: 0o600 }); };
+  t.mock.method(fs, 'linkSync', (from, to) => { plant(to); return link(from, to); }); t.mock.method(fs, 'renameSync', (from, to) => { plant(to); return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); assert.equal(fs.readFileSync(marker, 'utf8'), 'foreign');
+});

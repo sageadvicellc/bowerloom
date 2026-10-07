@@ -28,8 +28,10 @@ function writes(t, kill = null) {
     if (kill && kill.index === i && kill.when === 'before') throw Error('PRIVATE_KILL_BEFORE');
     const result = write(fd, data, ...rest); if (kill && kill.index === i && kill.when === 'written') throw Error('PRIVATE_KILL_WRITTEN'); placing = i; return result;
   });
-  // 'after' a record is a kill once its temporary is renamed into place; a staged file has no rename.
+  // 'after' a record is a kill once its temporary is renamed into place (or, for the marker, linked into place, which
+  // leaves the marker and its temporary as one file); a staged file has no rename.
   t.mock.method(fs, 'renameSync', (from, to) => { const result = rename(from, to); if (String(from).endsWith('.tmp') && kill && kill.when === 'after' && placing === kill.index) throw Error('PRIVATE_KILL_AFTER'); return result; });
+  const link = fs.linkSync; t.mock.method(fs, 'linkSync', (from, to) => { const result = link(from, to); if (String(from).endsWith('.tmp') && kill && kill.when === 'after' && placing === kill.index) throw Error('PRIVATE_KILL_AFTER'); return result; });
   syncBuiltinESMExports(); return seen;
 }
 
@@ -59,6 +61,8 @@ for (const update of [false, true]) test(`${update ? 'update' : 'install'}: aban
     const result = await recover(run.req, run.plan, 'abandon'); tally.abandoned++;
     assert.equal(result.state, 'rolled-back', label); assert.equal(result.restoredPrevious?.revision ?? null, run.previous?.revision ?? null, label);
     assert.deepEqual(inventory(run.f.projectDir), run.before, label); assert.equal(fs.existsSync(path.join(run.f.projectDir, MARKER)), false, label);
+    // A whole or part-written marker temporary is this operation's marker bytes, so abandon removes it.
+    assert.equal(fs.existsSync(path.join(run.f.projectDir, '.bowerloom/.managed-pending.json.tmp')), false, label);
     assert.equal(inspectManagedProject(run.f.projectDir, run.f.itemsRoot).pending, null, label);
     // Terminal: the same receipt again, and no other action. Sampled, since each recovery takes the project lock.
     if (index % 4 === 0) assert.equal((await recover(run.req, run.plan, 'abandon')).revision, result.revision, label);
@@ -189,4 +193,51 @@ test('an operation folder may hold at most one record temporary, with exactly th
   const { run, op } = await killed(); fs.writeFileSync(path.join(op, next(op)), '{"sequence', { mode: 0o600 });
   assert.equal((await recover(run.req, run.plan, 'rollback')).state, 'rolled-back');
   assert.deepEqual(fs.readdirSync(op).filter(n => n.endsWith('.tmp')), []);
+});
+
+const markerTemp = run => path.join(run.f.projectDir, '.bowerloom/.managed-pending.json.tmp');
+test('the marker is published by a link that never replaces a file that appeared after the check', async t => {
+  const run = await scenario(t, false), marker = path.join(run.f.projectDir, MARKER), foreign = '{"foreign":true}\n';
+  const link = fs.linkSync, rename = fs.renameSync, plant = to => { if (String(to) === marker && !fs.existsSync(marker)) fs.writeFileSync(marker, foreign, { mode: 0o600 }); };
+  t.mock.method(fs, 'linkSync', (from, to) => { plant(to); return link(from, to); });
+  t.mock.method(fs, 'renameSync', (from, to) => { plant(to); return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), code('MANAGED_SKILL_RECOVERY_REQUIRED')); restore(t);
+  assert.equal(fs.readFileSync(marker, 'utf8'), foreign);
+});
+test('a kill between the marker link and its temporary unlink is read as pending and settled by recovery', async t => {
+  // Killed right at publish, so nothing is staged and abandon is the way out; or killed later, with the twin made by hand.
+  for (const action of ['abandon', 'rollback']) {
+    const run = await scenario(t, false), marker = path.join(run.f.projectDir, MARKER), temp = markerTemp(run), unlink = fs.unlinkSync, rename = fs.renameSync; let hit = false;
+    if (action === 'abandon') t.mock.method(fs, 'unlinkSync', p => { if (!hit && String(p) === temp) { hit = true; throw Error('PRIVATE_KILL'); } return unlink(p); });
+    else t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); });
+    syncBuiltinESMExports(); await assert.rejects(applyManagedItem(null, run.req, run.plan.revision), action); restore(t); assert.equal(hit, true, action);
+    if (action === 'rollback') fs.linkSync(marker, temp);
+    assert.equal(fs.lstatSync(marker).nlink, 2, action); assert.equal(fs.lstatSync(temp).ino, fs.lstatSync(marker).ino, action);
+    assert.equal(inspectManagedProject(run.f.projectDir, run.f.itemsRoot).pending?.operationKey, run.plan.operationKey, action);
+    const result = await recover(run.req, run.plan, action); assert.equal(result.state, 'rolled-back', action);
+    assert.equal(fs.existsSync(temp), false, action); assert.equal(fs.existsSync(marker), false, action); assert.deepEqual(inventory(run.f.projectDir), run.before, action);
+  }
+  // A second link that is not the marker's own temporary is never accepted.
+  const run = await scenario(t, false), rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t);
+  fs.linkSync(path.join(run.f.projectDir, MARKER), path.join(run.f.projectDir, 'elsewhere.json'));
+  await assert.rejects(planManagedItemRecovery(recoveryInput(run.req, run.plan, 'rollback')));
+});
+test('abandon removes a leftover marker temporary only when its bytes begin this operation marker', async t => {
+  // A kill while the marker temporary is written: half of its bytes land.
+  const killed = async () => {
+    const run = await scenario(t, false), write = fs.writeFileSync; let marker = null;
+    t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (marker === null && typeof data === 'string' && data.includes('"bowerloom/managed-item-pending/v1beta2"')) { marker = data; write(fd, data.slice(0, 40), ...rest); throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); }); syncBuiltinESMExports();
+    await assert.rejects(applyManagedItem(null, run.req, run.plan.revision)); restore(t); assert.equal(fs.readFileSync(markerTemp(run), 'utf8'), marker.slice(0, 40)); return { run, marker };
+  };
+  // The removal after the receipt is killed too: the next abandon returns the same receipt and removes it.
+  let { run } = await killed(); const unlink = fs.unlinkSync; let hit = false;
+  t.mock.method(fs, 'unlinkSync', p => { if (!hit && String(p) === markerTemp(run)) { hit = true; throw Error('PRIVATE_KILL'); } return unlink(p); }); syncBuiltinESMExports();
+  await assert.rejects(recover(run.req, run.plan, 'abandon')); restore(t); assert.equal(hit, true); assert.equal(fs.existsSync(markerTemp(run)), true);
+  assert.equal((await recover(run.req, run.plan, 'abandon')).state, 'rolled-back'); assert.equal(fs.existsSync(markerTemp(run)), false);
+  // Other bytes under the same name are never removed, on the first abandon or a repeated one.
+  ({ run } = await killed()); fs.writeFileSync(markerTemp(run), '{"format":"someone else"}', { mode: 0o600 });
+  const receipt = await recover(run.req, run.plan, 'abandon'); assert.equal(receipt.state, 'rolled-back'); assert.equal(fs.readFileSync(markerTemp(run), 'utf8'), '{"format":"someone else"}');
+  assert.equal((await recover(run.req, run.plan, 'abandon')).revision, receipt.revision); assert.equal(fs.readFileSync(markerTemp(run), 'utf8'), '{"format":"someone else"}');
 });

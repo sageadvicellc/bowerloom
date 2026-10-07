@@ -50,7 +50,7 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
-import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps } from './observed.js';
+import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
 import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal } from '../../project-context/src/index.js';
@@ -69,8 +69,6 @@ function durable(p: string, bytes: string | Buffer, guard: () => void, mode = 0o
   try { guard(); fs.fchmodSync(fd, mode); guard(); fs.writeFileSync(fd, bytes); guard(); fs.fsyncSync(fd); guard(); } finally { fs.closeSync(fd); }
   guard(); sync(dirname(p), guard); guard();
 }
-/** The hidden temporary name of one record, in the record's own folder. */
-const temporary = (p: string): string => join(dirname(p), '.' + basename(p) + '.tmp');
 /** A temporary left by an interrupted record write never became a record. Only a plain owned file is removed. */
 function discard(tmp: string, guard: () => void): void {
   guard(); if (!exists(tmp)) return; const s = fs.lstatSync(tmp, { bigint: true }); check(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && Number(s.uid) === process.getuid?.());
@@ -83,6 +81,21 @@ function discard(tmp: string, guard: () => void): void {
 function json(p: string, value: unknown, guard: () => void): void {
   const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
   guard(); absent(p); guard(); fs.renameSync(tmp, p); sync(dirname(p), guard); guard();
+}
+/** The marker sits in the shared project, so it is published by a link that fails if its name exists, never by a
+ * rename over it. Then its temporary is unlinked; a kill between the two leaves the twin state of `markerTwin`. */
+function publish(p: string, value: unknown, guard: () => void): void {
+  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  guard(); absent(p); guard(); fs.linkSync(tmp, p); sync(dirname(p), guard); settleTwin(p, guard);
+}
+/** Unlinks the marker's own temporary when the two are one file (`markerTwin`), so the marker has one link again. */
+function settleTwin(p: string, guard: () => void): void { guard(); if (!markerTwin(p)) return; fs.unlinkSync(temporary(p)); sync(dirname(p), guard); guard(); }
+/** Removes a leftover marker temporary only when it is a private one-link file whose bytes begin `expected`. */
+function discardMarkerTemp(p: string, expected: string, guard: () => void): void {
+  const tmp = temporary(p), want = Buffer.from(expected); guard(); if (!exists(tmp)) return;
+  const s = fs.lstatSync(tmp, { bigint: true });
+  if (!s.isFile() || s.nlink !== 1n || Number(s.uid) !== process.getuid?.() || (Number(s.mode) & 0o7777) !== 0o600 || s.size > BigInt(want.length)) return;
+  const got = raw(tmp, want.length).bytes; if (got.equals(want.subarray(0, got.length))) discard(tmp, guard);
 }
 /** Same key as startup revision apply/recovery and v1 managed apply. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
@@ -152,9 +165,14 @@ function readState(project: string, state: string, key: string, life: Lifetime):
 function marker(state: State, allowAbsent = false): FilePin | null {
   const plan = state.intent.plan, file = join(plan.core.request.projectDir, MARKER_V2);
   if (!exists(file)) { check(allowAbsent); return null; }
-  const m = parsed<{ format: string; item: unknown; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys);
-  check(m.format === PENDING_FORMAT && same(m.item, plan.core.request.item) && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return raw(file).pin;
+  const m = parsed<{ format: string; item: unknown; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys, true);
+  check(m.format === PENDING_FORMAT && same(m.item, plan.core.request.item) && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return rawMarker(file).pin;
 }
+/** The pending marker of one operation. Apply writes exactly these bytes, and a leftover temporary is compared with them. */
+function pendingBody(plan: ManagedItemPlan, operationIdentity: Identity, intentSha256: string) {
+  return { format: PENDING_FORMAT, item: plan.core.request.item, operationKey: plan.operationKey, stateDir: plan.core.request.stateDir, operationIdentity, intentSha256 };
+}
+const pendingText = (state: State): string => JSON.stringify(pendingBody(state.intent.plan, state.opIdentity, hash(raw(join(state.op, 'intent.json')).bytes))) + '\n';
 /** Only this invocation may remember a just-created parent before its durable stamp.
  * Recovery has no such memory and cannot adopt a present, unstamped directory. */
 function parentGuard(state: State): void {
@@ -351,8 +369,8 @@ function abandonable(state: State): void {
 function abandon(state: State, guard: () => void): ManagedItemReceipt {
   abandonable(state); if (!state.records.some(r => r.kind === 'ROLLBACK_START')) append(state, 'ROLLBACK_START', { count: 0 }, guard);
   abandonable(state); const receipt = finish(state, 'rolled-back', guard);
-  // A marker temporary from a kill before the marker landed is ours and never became a marker.
-  discard(temporary(join(receipt.projectDir, MARKER_V2)), guard); return receipt;
+  // A marker temporary from a kill before the marker landed never became a marker: removed only when its bytes are ours.
+  discardMarkerTemp(join(receipt.projectDir, MARKER_V2), pendingText(state), guard); return receipt;
 }
 /** v2 lifetime: v1 `lifetime` over the caller signal and, when the caller holds the lock, the lock's own signal. */
 function itemLifetime(options: unknown, held: HeldProjectLock | null): Lifetime {
@@ -381,7 +399,7 @@ export async function applyManagedItem(held: HeldProjectLock | null, req: unknow
       try { json(join(temp, 'intent.json'), state.intent, guard); guard(); absent(op); fs.renameSync(temp, op); }
       catch (e) { try { removeOpTemp(temp, () => {}); } catch { /* A leftover temporary is removed by the next apply. */ } throw e; }
       mutated = true; state.op = op; sync(input.stateDir, guard); guard();
-      const markerFile = join(input.projectDir, MARKER_V2); json(markerFile, { format: PENDING_FORMAT, item: input.item, operationKey: plan.operationKey, stateDir: input.stateDir, operationIdentity: opIdentity, intentSha256: hash(raw(join(op, 'intent.json')).bytes) }, guard);
+      const markerFile = join(input.projectDir, MARKER_V2); publish(markerFile, pendingBody(plan, opIdentity, hash(raw(join(op, 'intent.json')).bytes)), guard);
       guard = stateGuard(state, live, marker(state)); stageAll(state, live, guard); return resume(state, live, guard);
     };
     return await (held ? heldLock(held, input.projectDir, live, work) : locked(input.projectDir, live, work));
@@ -427,8 +445,15 @@ async function recoverItem(held: HeldProjectLock | null, value: unknown, revisio
     path(plan.projectDir); path(plan.stateDir); const { revision: own, ...body } = plan; check(typeof revision === 'string' && revision === own && /^[a-f0-9]{64}$/.test(own) && revisionOf(body) === own && plan.format === 'bowerloom/managed-item-recovery/v1beta2' && plan.writesAuthorized === false && plan.executionAuthorized === false, 'MANAGED_SKILL_STALE_APPROVAL');
     const work = async () => {
       const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, live); live.check(); check(same(fresh.plan, plan) && revision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacityV2(state.intent.plan.core.request);
+      // The approved snapshot saw the marker twin, if any; settling it changes the marker's ctime, so it comes after.
+      settleTwin(join(plan.projectDir, MARKER_V2), () => live.check());
       const pending = marker(state, markerOptional(state, plan.action)), guard = stateGuard(state, live, pending);
-      if (state.receipt) { terminal(state, state.receipt); guard(); if (!pending) return state.receipt; return finish(state, state.receipt.state, guard); }
+      if (state.receipt) {
+        terminal(state, state.receipt); guard(); const receipt = pending ? finish(state, state.receipt.state, guard) : state.receipt;
+        // A repeated abandon also removes a marker temporary the first one was stopped before removing.
+        if (plan.action === 'abandon') discardMarkerTemp(join(plan.projectDir, MARKER_V2), pendingText(state), guard);
+        return receipt;
+      }
       return plan.action === 'resume' ? resume(state, live, guard) : plan.action === 'rollback' ? rollback(state, live, guard) : abandon(state, guard);
     };
     return await (held ? heldLock(held, plan.projectDir, live, work) : locked(plan.projectDir, live, work));
