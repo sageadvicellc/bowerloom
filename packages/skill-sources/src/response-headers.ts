@@ -19,6 +19,7 @@ export const MAX_RESPONSE_HEADER_PAIRS = 128;
 /**
  * Reads the guarded headers from Node's raw name/value list, keyed by lower-case name.
  * It returns null when a guarded name repeats, the list holds more than MAX_RESPONSE_HEADER_PAIRS pairs, or the list is malformed.
+ * It also returns null when transfer-encoding is present and its trimmed value is not exactly `chunked` (lead decision, 2026-10-07).
  * The caller refuses with its own code.
  * Values are returned to the caller only. Nothing here logs or reports a header value.
  */
@@ -33,5 +34,7 @@ export function guardedResponseHeaders(raw: unknown): Map<string, string> | null
     if (headers.has(key)) return null;
     headers.set(key, value);
   }
+  const framing = headers.get('transfer-encoding');
+  if (framing !== undefined && framing.trim() !== 'chunked') return null;
   return headers;
 }

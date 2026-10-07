@@ -263,7 +263,7 @@ export async function acquireGitSkill(planValue: unknown, options: { approvalRev
           response = incoming; responses.add(incoming);
           const guard = () => { check(); requireGit(performance.now() < requestDeadline, 'GIT_TIMEOUT'); };
           try {
-            // A repeated guarded header, or more than 128 header pairs, refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
+            // A repeated guarded header, more than 128 header pairs, or a transfer-encoding other than chunked refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
             guard(); const headers = guardedResponseHeaders(incoming.rawHeaders); requireGit(headers !== null, 'GIT_RESPONSE');
             const length = headers.get('content-length'); requireGit(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'GIT_RESPONSE');
             // A declared length over the limit is a bound refusal, the same code as an oversized body.

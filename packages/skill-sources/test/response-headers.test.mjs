@@ -73,3 +73,14 @@ test('a guarded repeat after 1000 padding headers refuses, including when Node d
   assert.ok(dropped.length < 2 * 1104, String(dropped.length)); assert.equal(contentTypes(dropped), 1);
   assert.equal(guardedResponseHeaders(dropped), null);
 });
+
+// Transfer-Encoding (lead decision, 2026-10-07): absent, or exactly `chunked` after trimming. The name matches in any case.
+test('Transfer-Encoding passes only when absent or exactly chunked', () => {
+  assert.equal(guardedResponseHeaders(['Content-Length', '2']).has('transfer-encoding'), false);
+  for (const [name, value] of [['Transfer-Encoding', 'chunked'], ['transfer-encoding', 'chunked'], ['TRANSFER-ENCODING', 'chunked'], ['Transfer-Encoding', ' chunked\t']]) {
+    assert.deepEqual([...guardedResponseHeaders([name, value])], [['transfer-encoding', value]], `${name}: ${value}`);
+  }
+  for (const value of ['gzip, chunked', 'identity', 'Chunked', 'CHUNKED', 'chunked, chunked', 'chunked;q=1', '', 'gzip']) {
+    assert.equal(guardedResponseHeaders(['Transfer-Encoding', value]), null, value);
+  }
+});

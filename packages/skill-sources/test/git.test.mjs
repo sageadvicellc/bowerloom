@@ -346,3 +346,14 @@ test('header flood: a list Node truncated after 1000 padding headers refuses wit
  const g=fixture(t);let m;m=network(t,g,count=>({headers:['Content-Length',String(g.serve(m.calls[count-1].url).length),...padHeaders(127)]}));
  assert.equal((await run(g)).format,'bowerloom/acquired-skill-cache/v1beta1');assert.ok(m.calls.length>2);
 });
+// Transfer-Encoding (lead decision, 2026-10-07): absent, or exactly `chunked` after trimming.
+test('Transfer-Encoding: absent and chunked pass, and every other value refuses with GIT_RESPONSE',async t=>{
+ for(const name of ['Transfer-Encoding','transfer-encoding']){
+  const f=fixture(t),n=network(t,f,()=>({headers:[name,'chunked']}));
+  assert.equal((await run(f)).format,'bowerloom/acquired-skill-cache/v1beta1');assert.ok(n.calls.length>2);t.mock.restoreAll();
+ }
+ for(const value of ['gzip, chunked','identity','Chunked']){
+  const f=fixture(t),n=network(t,f,()=>({headers:['Transfer-Encoding',value]}));
+  await assert.rejects(run(f),code('GIT_RESPONSE'));assert.equal(n.calls.length,1);assert.ok(n.responses[0].destroyed);t.mock.restoreAll();
+ }
+});
