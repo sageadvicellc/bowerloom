@@ -92,3 +92,20 @@ test('migrate refuses a drifted v1 install, a different pin, a different item an
   await assert.rejects(planManagedItem(l.migrate));
   for (const n of fs.readdirSync(l.f.itemsRoot)) assert.deepEqual(fs.readdirSync(path.join(l.f.itemsRoot, n)), []);
 });
+
+test('migrate refuses a v1 namespace that holds anything beyond the v1 receipt, before any write', async t => {
+  const extras = [
+    ['a file at the namespace root', 'MANAGED_SKILL_LEGACY_PRESENT', l => fs.writeFileSync(path.join(l.f.projectDir, '.bowerloom-skills/NOTES.md'), 'my notes\n', { mode: 0o644 })],
+    ['a second skill folder', 'MANAGED_SKILL_LEGACY_PRESENT', l => { fs.mkdirSync(path.join(l.f.projectDir, '.bowerloom-skills/skills/other'), { mode: 0o700 }); fs.writeFileSync(path.join(l.f.projectDir, '.bowerloom-skills/skills/other/SKILL.md'), 'x\n', { mode: 0o644 }); }],
+    ['an empty folder at the namespace root', 'MANAGED_SKILL_LEGACY_PRESENT', l => fs.mkdirSync(path.join(l.f.projectDir, '.bowerloom-skills/extra'), { mode: 0o700 })],
+    // v1 inspection already reads this one as drift of the v1 canonical copy.
+    ['an extra file inside the canonical copy', 'MANAGED_SKILL_LOCAL_DRIFT', l => fs.writeFileSync(path.join(l.f.projectDir, '.bowerloom-skills/skills/collections/extra.md'), 'x\n', { mode: 0o644 })],
+  ];
+  for (const [label, expected, add] of extras) {
+    const l = await legacy(t); add(l); const before = inventory(l.f.projectDir);
+    await assert.rejects(planManagedItem(l.migrate), code(expected), label);
+    assert.deepEqual(inventory(l.f.projectDir), before, label); assert.deepEqual(fs.readdirSync(l.migrate.stateDir), [], label);
+  }
+  // The clean v1 namespace still plans.
+  const clean = await legacy(t); assert.equal((await planManagedItem(clean.migrate)).core.before.at(-1).id, 'legacy');
+});

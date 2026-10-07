@@ -7,7 +7,8 @@
 import { join } from 'node:path';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { inspectObservedManagedSkill } from './observed.js';
-import { MARKER as V1_MARKER, check, directory, exists, raw, same, schema } from './observed.js';
+import { MARKER as V1_MARKER, check, directory, exists, names, raw, same, schema, stablePins } from './observed.js';
+import { wideTree } from './v2-observed.js';
 import type { Lifetime } from './observed.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { FilePin } from './observed-types.js';
@@ -21,7 +22,8 @@ export function legacyPresent(projectDir: string): boolean { return exists(join(
 export interface LegacyRead { core: LegacyCore; projection: { path: string; pins: FilePin[] | null } }
 /**
  * A clean, committed v1 install (no marker, no drift) whose catalog names exactly the pin and file hashes of the
- * cache closure being migrated to, for the same item, on a harness the v2 request keeps.
+ * cache closure being migrated to, for the same item, on a harness the v2 request keeps. The namespace holds only
+ * what the v1 receipt installed there, so the migrate move never carries a user's own file out of the project.
  */
 export async function readLegacy(v: ManagedItemRequest, acquired: Readonly<AcquiredSkillClosure>, life: Lifetime): Promise<LegacyRead> {
   const legacy = v.legacy; check(v.operation === 'migrate' && legacy !== null);
@@ -34,6 +36,15 @@ export async function readLegacy(v: ManagedItemRequest, acquired: Readonly<Acqui
     ['format', 'operationKey', 'policy', 'source', 'skill', 'license', 'references', 'inventory', 'harness', 'executionAuthorized']);
   check(same(catalog.source, acquired.receipt.source) && same(catalog.inventory, acquired.receipt.inventory) && same(catalog.skill, acquired.receipt.skill) && acquired.receipt.skill.id === v.item.id);
   const projection = r.installed.find(s => s.kind === 'projection'); check(projection !== undefined && projection.pins !== null);
+  const namespace = join(v.projectDir, LEGACY_NAMESPACE), skills = join(namespace, 'skills'), id = acquired.receipt.skill.id;
+  const canonical = r.installed.find(s => s.kind === 'canonical'), catalogSurface = r.installed.find(s => s.kind === 'catalog');
+  check(canonical?.pins && catalogSurface?.pins && canonical.path === join(skills, id) && catalogSurface.path === join(namespace, 'catalog.json'));
+  // Exactly the namespace folder, `skills/`, and the receipt's canonical and catalog pins: nothing else is moved.
+  check(same(names(namespace), ['catalog.json', 'skills']) && same(names(skills), [id]), 'MANAGED_SKILL_LEGACY_PRESENT');
+  const sorted = (pins: FilePin[]) => [...pins].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+  const tree = wideTree(namespace, 262144, () => life.check(), 2 * 1024 * 1024 + 262144), folders = tree.filter(p => p.path === namespace || p.path === skills);
+  check(folders.length === 2 && folders.every(p => p.sha256 === null), 'MANAGED_SKILL_LEGACY_PRESENT');
+  check(same(stablePins(sorted(tree.filter(p => p.path !== namespace && p.path !== skills))), stablePins(sorted([...canonical.pins, ...catalogSurface.pins]))), 'MANAGED_SKILL_LEGACY_PRESENT');
   const receiptPin = raw(join(legacy.stateDir, 'op-' + legacy.operationKey, 'receipt.json')).pin; life.check();
   return { core: { stateDir: legacy.stateDir, operationKey: legacy.operationKey, receiptRevision: r.revision, receiptPin, harness: r.harness }, projection: { path: projection.path, pins: projection.pins } };
 }
