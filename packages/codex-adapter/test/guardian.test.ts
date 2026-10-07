@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp,readFile,rm,stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -29,10 +30,12 @@ test('spawn failure and pre-abort launch no adopted process',()=>fixture(async c
   await assert.rejects(startGuardian({...job(cwd,''),executable:join(cwd,'does-not-exist')},new AbortController().signal,()=>{}),/SPAWN_FAILED/);
 }));
 test('controller SIGKILL closes original channel; guardian kills child and exits',()=>fixture(async cwd=>{
-  const parent=spawn(process.execPath,[new URL('./orphan-fixture.js',import.meta.url).pathname,cwd],{stdio:'ignore'});
+  const parent=spawn(process.execPath,[fileURLToPath(new URL('./orphan-fixture.js',import.meta.url)),cwd],{stdio:['ignore','ignore','pipe']});
+  // Keep the fixture's stderr, bounded, so a fixture that crashes at start explains itself when the poll gives up.
+  let stderr='';parent.stderr!.setEncoding('utf8').on('data',(chunk:string)=>{if(stderr.length<8192)stderr+=chunk;});
   let owned:{pid:number;guardianPid:number}|undefined;
   try{for(let i=0;i<100;i++){try{owned=JSON.parse(await readFile(join(cwd,'owned.json'),'utf8'));break;}catch{await delay(25);}}
-    assert.ok(owned);const exited=once(parent,'exit');parent.kill('SIGKILL');await exited;await gone(owned.pid);await gone(owned.guardianPid);
+    assert.ok(owned,`orphan-fixture wrote no owned.json; exit ${parent.exitCode} signal ${parent.signalCode}; stderr:\n${stderr}`);const exited=once(parent,'exit');parent.kill('SIGKILL');await exited;await gone(owned.pid);await gone(owned.guardianPid);
   }finally{if(parent.exitCode===null&&parent.signalCode===null){parent.kill('SIGTERM');await once(parent,'exit');}}
 }));
 test('leader completion kills its owned descendant while unrelated process survives',()=>fixture(async cwd=>{

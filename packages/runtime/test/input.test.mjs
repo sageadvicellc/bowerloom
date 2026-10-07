@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 const processObservations = [];
+// The adapter counts a child's stderr but does not keep it. When a fixture check fails, this runs the
+// fixture once more, directly and under its own time bound, so the failure message carries its stderr.
+function fixtureStderr(name, cwd, input) {
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL(name, import.meta.url))], { cwd, input, env: {}, encoding: 'utf8', timeout: 2000, killSignal: 'SIGKILL' });
+  return `direct rerun exit ${run.status} signal ${run.signal}; stderr:\n${run.stderr.slice(0, 4096)}`;
+}
 import { SyntheticProcessAdapter } from '../../../dist/packages/runtime/src/index.js';
 import { pin } from '../../../dist/packages/runtime/src/ledger.js';
 test('synthetic child policy requires an explicit absolute command and bounded output and time', () => {
@@ -23,9 +30,12 @@ test('synthetic child timeout and output overflow terminate the owned group', as
   const root = await realpath(await mkdtemp(join(tmpdir(),'trellis-runtime-bounds-')));
   try {
     for (const mode of ['hang','oversize']) {
-      const adapter = new SyntheticProcessAdapter({ command: [process.execPath,new URL('./synthetic-child.mjs',import.meta.url).pathname], cwd:root, timeoutMs:250, outputBytes:1024 });
+      const adapter = new SyntheticProcessAdapter({ command: [process.execPath,fileURLToPath(new URL('./synthetic-child.mjs',import.meta.url))], cwd:root, timeoutMs:250, outputBytes:1024 });
+      const started = performance.now();
       const worker = await adapter.start({ launcherId:'bounds-controller',taskInput:JSON.stringify({mode}),modelRoute:'synthetic' },new AbortController().signal);
-      await assert.rejects(worker.result,{code:'PROCESS_STOPPED'}); await worker.terminate();
+      await assert.rejects(worker.result,{code:'PROCESS_STOPPED'}); const elapsed = performance.now() - started; await worker.terminate();
+      // A fixture that crashes at start also ends in PROCESS_STOPPED. Only a real hang lasts until the timeout.
+      if (mode === 'hang' && !(elapsed >= 250)) assert.fail(`hang stopped after ${elapsed.toFixed(1)} ms, before its 250 ms timeout; ${fixtureStderr('./synthetic-child.mjs', root, JSON.stringify({ token: 'diagnostic', taskInput: JSON.stringify({ proposal: 'diagnostic' }), modelRoute: 'synthetic' }))}`);
       assert.throws(()=>process.kill(-worker.identity.groupId,0),{code:'ESRCH'});
     }
   } finally { await rm(root,{recursive:true,force:true}); }
@@ -36,7 +46,7 @@ for (const trigger of ['timeout', 'terminate']) test(`leader exit leaves its des
   const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
   const { setTimeout: delay } = await import('node:timers/promises');
   const root = await realpath(await mkdtemp(join(tmpdir(), 'trellis-runtime-leader-exit-')));
-  const adapter = new SyntheticProcessAdapter({ command: [process.execPath,new URL('./leader-exits.mjs',import.meta.url).pathname], cwd:root,
+  const adapter = new SyntheticProcessAdapter({ command: [process.execPath,fileURLToPath(new URL('./leader-exits.mjs',import.meta.url))], cwd:root,
     timeoutMs:trigger==='timeout'?500:4000, outputBytes:1024 });
   let worker; const started = performance.now(); let lifecycle;
   try {
@@ -49,7 +59,8 @@ for (const trigger of ['timeout', 'terminate']) test(`leader exit leaves its des
       } catch(error) { if(error.code!=='ENOENT') throw error; }
       await delay(2);
     }
-    assert.ok(observed); assert.equal(observed.leader,worker.identity.groupId);
+    if (!observed) assert.fail(`leader-exits.mjs wrote no leader-exit.json; ${fixtureStderr('./leader-exits.mjs', root, JSON.stringify({ token: 'diagnostic' }))}`);
+    assert.equal(observed.leader,worker.identity.groupId);
     assert.throws(()=>process.kill(observed.leader,0),{code:'ESRCH'});
     process.kill(observed.descendant,0); process.kill(-worker.identity.groupId,0);
     if(trigger==='terminate') await worker.terminate();
