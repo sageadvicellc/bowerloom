@@ -5,6 +5,7 @@ import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
 import type { Lifetime } from './observed.js';
+import { managedV2State } from './v2-observed.js';
 import type { Identity, FilePin, Surface, ObservedSkillPlan, ObservedSkillReceipt, Intent, JournalRecord, RecoveryPlan, SkillInspection } from './observed-types.js';
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
 const recordKeys = ['sequence', 'previous', 'kind', 'data', 'revision'];
@@ -68,6 +69,12 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
     await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('close-unconfirmed')), 1000); timer.unref(); const done = (error?: Error) => { clearTimeout(timer); if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') reject(new Error('close-unconfirmed')); else resolve(); }; try { server.close(done); } catch { clearTimeout(timer); reject(new Error('close-unconfirmed')); } });
   }
 }
+/**
+ * v1 apply and recovery know nothing of v1beta2. Checked again inside v1's own lock, so a v1beta2 operation cannot
+ * start between the CLI's early check and the lock: unfinished v1beta2 work refuses RECOVERY_REQUIRED, and v1beta2
+ * content refuses.
+ */
+function noV2(project: string): void { const seen = managedV2State(project); check(seen !== 'pending', 'MANAGED_SKILL_RECOVERY_REQUIRED'); check(seen === 'absent'); }
 interface State { intent: Intent; op: string; records: JournalRecord[]; receipt: ObservedSkillReceipt | null; opIdentity: Identity; createdParents?: Map<string, Identity>; markerRemoved?: boolean }
 function recordName(sequence: number): string { return `record-${String(sequence).padStart(3, '0')}.json`; }
 function readState(project: string, state: string, key: string, life: Lifetime): State {
@@ -275,7 +282,7 @@ export async function applyObservedManagedSkill(value: unknown, exactRevision: s
   const life = lifetime(options); let mutated = false;
   try { const input = request(value); check(typeof exactRevision === 'string' && /^[a-f0-9]{64}$/.test(exactRevision) && expectedPreviousRevision === input.expectedPreviousRevision);
     return await locked(input.projectDir, life, async () => {
-      sweepOpTemps(input.stateDir, () => life.check());
+      noV2(input.projectDir); sweepOpTemps(input.stateDir, () => life.check());
       const proposed = await planWithLifetime(input, life); life.check(); check(proposed.format === 'bowerloom/observed-managed-skill-plan/v1beta1' && proposed.revision === exactRevision, 'MANAGED_SKILL_STALE_APPROVAL'); const plan = proposed as ObservedSkillPlan;
       const closure = await readAcquiredSkillCache(input.cache, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); check(same(closure, plan.core.closure));
       const op = intentPath(plan); bindings(plan.core, () => life.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
@@ -323,6 +330,7 @@ export async function recoverObservedManagedSkill(value: unknown, exactRevision:
   try { const plan = schema<RecoveryPlan>(value, ['format', 'projectDir', 'stateDir', 'operationKey', 'action', 'snapshotRevision', 'planRevision', 'writesAuthorized', 'executionAuthorized', 'revision']);
     path(plan.projectDir); path(plan.stateDir); const { revision, ...body } = plan; check(typeof exactRevision === 'string' && exactRevision === revision && /^[a-f0-9]{64}$/.test(revision) && revisionOf(body) === revision && plan.format === 'bowerloom/observed-managed-skill-recovery/v1beta1' && plan.writesAuthorized === false && plan.executionAuthorized === false, 'MANAGED_SKILL_STALE_APPROVAL');
     return await locked(plan.projectDir, life, async () => {
+      noV2(plan.projectDir);
       const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, life); life.check(); check(same(fresh.plan, plan) && exactRevision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacity(state.intent.plan.core.request);
       // The approved snapshot saw the marker twin, if any; settling it changes the marker's ctime, so it comes after.
       settleTwin(join(plan.projectDir, MARKER), () => life.check());

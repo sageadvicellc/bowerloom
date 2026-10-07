@@ -9,7 +9,7 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { freezeSkillData, revisionOf, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
-import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { readLocalSkill, readLocalPrompt, itemName } from './local-source.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
@@ -267,14 +267,15 @@ export function inspectManagedProject(projectDir: string, itemsRoot: string): Ma
   } catch (e) { return boundaryV2(e); }
 }
 /**
- * What a v1beta1 write route (apply, recovery) must find absent: an unfinished v1beta2 operation (`pending`) or
- * v1beta2 managed content (`managed`). Reads only. The project and `.bowerloom` pass the product's folder guards
+ * What a v1beta1 write route (apply, recovery) must find absent: an unfinished v1beta2 operation (`pending`: its marker
+ * or the marker's temporary) or v1beta2 managed content (`managed`). Reads only. The project and `.bowerloom` pass the product's folder guards
  * (no symlink, a folder, owner or root, no group or world write); the two names are checked with lstat, so an
  * entry of any type counts and a link is never followed.
  */
 export function managedV2State(projectDir: unknown): 'absent' | 'pending' | 'managed' {
   path(projectDir); ancestry(projectDir); const bowerloom = join(projectDir, '.bowerloom'); if (!exists(bowerloom)) return 'absent';
-  const pin = directory(bowerloom), pending = exists(join(projectDir, MARKER_V2)), managed = exists(join(projectDir, MANAGED_ROOT));
+  // A kill while the marker was written leaves only its temporary, and the operation is just as unfinished.
+  const pin = directory(bowerloom), pending = exists(join(projectDir, MARKER_V2)) || exists(temporary(join(projectDir, MARKER_V2))), managed = exists(join(projectDir, MANAGED_ROOT));
   check(same(directory(bowerloom), pin)); return pending ? 'pending' : managed ? 'managed' : 'absent';
 }
 export type { Identity };

@@ -122,6 +122,7 @@ export async function runSkillsCommand(args:string[]):Promise<unknown>{
       const tx=await import('../../../packages/managed-skills/src/transaction.js');record.verify();check();
       // v1 apply and recovery know nothing of v1beta2. While a v1beta2 operation is unfinished, or v1beta2 owns the
       // project, a v1 write could strand it, so these routes refuse before dispatch. Plan and inspect only read.
+      // v1 apply and recovery repeat this check inside their own lock (transaction.ts `noV2`), which closes the race.
       const v2=await import('../../../packages/managed-skills/src/v2-observed.js');check();const seen=v2.managedV2State(record.value.projectDir);check();
       if(seen==='pending')refuse('SKILLS_REFUSED',['MANAGED_SKILL_RECOVERY_REQUIRED']);if(seen!=='absent')refuse('SKILLS_REFUSED',['MANAGED_SKILL_REFUSED']);
       if(command==='apply')return tx.applyObservedManagedSkill(record.value,flags.get('--approve')!,flags.get('--previous')==='none'?null:flags.get('--previous')!,{signal});

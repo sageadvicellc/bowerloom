@@ -348,3 +348,22 @@ test('v1: a marker twin from a kill between link and unlink is settled, and a le
   t.mock.method(fs, 'linkSync', (from, to) => { plant(to); return link(from, to); }); t.mock.method(fs, 'renameSync', (from, to) => { plant(to); return rename(from, to); }); syncBuiltinESMExports();
   await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); assert.equal(fs.readFileSync(marker, 'utf8'), 'foreign');
 });
+test('v1 apply and recovery refuse inside their own lock while a v1beta2 operation is unfinished or v1beta2 owns the project', async t => {
+  const { managedV2State } = await import('../../../dist/packages/managed-skills/src/v2-observed.js');
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), bowerloom = path.join(f.projectDir, '.bowerloom'); fs.mkdirSync(bowerloom, { mode: 0o700 });
+  // A kill while the v1beta2 marker was written leaves only its temporary: that is pending too.
+  const temp = path.join(bowerloom, '.managed-pending.json.tmp'); fs.writeFileSync(temp, '{"format":"bowerloom/managed-item-pen', { mode: 0o600 });
+  assert.equal(managedV2State(f.projectDir), 'pending'); const before = inventory(f.projectDir);
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  fs.rmSync(temp); fs.mkdirSync(path.join(bowerloom, 'managed'), { mode: 0o700 }); assert.equal(managedV2State(f.projectDir), 'managed');
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_REFUSED'); assert.deepEqual(fs.readdirSync(f.stateDir), []);
+  // Recovery of an unfinished v1 operation refuses the same way while v1beta2 state is present.
+  fs.rmSync(path.join(bowerloom, 'managed'), { recursive: true }); const rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports();
+  const recovery = await planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'rollback' });
+  fs.writeFileSync(temp, '', { mode: 0o600 }); const pending = inventory(f.projectDir);
+  await assert.rejects(recoverObservedManagedSkill(recovery, recovery.revision), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(inventory(f.projectDir), pending);
+  fs.rmSync(temp); assert.equal((await recoverObservedManagedSkill(recovery, recovery.revision)).state, 'rolled-back');
+});
