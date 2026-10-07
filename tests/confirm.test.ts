@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalJson } from '../packages/contracts/src/index.js';
-import { parseApprovalFlags, runWithApproval } from '../apps/cli/src/confirm.js';
+import { namesYesFlag, parseApprovalFlags, runWithApproval } from '../apps/cli/src/confirm.js';
 import type { ApprovalIo } from '../apps/cli/src/confirm.js';
 import type { PlannedChange } from '../packages/project-context/src/types.js';
 
@@ -90,4 +90,25 @@ test('parseApprovalFlags refuses --yes, malformed or repeated --approve and --js
   usage(['--yes']); usage(['-y']); usage(['--yes=true']); usage(['--approve']); usage(['--approve', 'abc']); usage(['--approve', 'A'.repeat(64)]);
   usage(['--approve', 'sha256:' + REV('a')]); usage(['--approve', REV('a') + '0']); usage([`--approve=${REV('a')}`]);
   usage(['--approve', REV('a'), '--approve', REV('a')]); usage(['--json', '--json']); usage(['--approve', '--json']);
+});
+
+test('the review text escapes control bytes in the prompt and on a pipe, and keeps its lines; JSON keeps the plan exact', async () => {
+  const c = change(), seen: string[] = [];
+  const hostile: PlannedChange<Plan> = { ...c.value, review: plan => `Create ${plan.files.join(', ')}.\nNote: \x1b[2J\u202eevil\x9b` };
+  await runWithApproval(hostile, { json: false }, terminal(['y'], seen));
+  assert.equal(seen[0]!.includes('\x1b'), false); assert.equal(seen[0]!.includes('\u202e'), false); assert.equal(seen[0]!.includes('\x9b'), false);
+  assert.match(seen[0]!, /^Create teams\/research\/team\.md\.\nNote: \\u001b\[2J\\u202eevil\\u009b\nApply plan /);
+  const piped3 = await runWithApproval(hostile, { json: false }, piped);
+  assert.equal(piped3.output, `Create teams/research/team.md.\nNote: \\u001b[2J\\u202eevil\\u009b\nRevision: ${REV('a')}\nApproval required. Run the same command again with --approve ${REV('a')}\n`);
+  const weird: PlannedChange<{ note: string }> = { plan: async () => ({ note: 'a\x1bb' }), revision: () => REV('a'), review: p => p.note, apply: async () => ({}) };
+  assert.equal((await runWithApproval(weird, { json: true }, piped)).output, canonicalJson({ approvalRequired: true, code: 'APPROVAL_REQUIRED', plan: { note: 'a\x1bb' }, revision: REV('a') }) + '\n');
+});
+
+test('namesYesFlag finds --yes anywhere and -y only in a flag position, never as the value of a flag', () => {
+  for (const args of [['--yes'], ['init', 'plan', '--yes'], ['--yes=1'], ['-y'], ['init', 'apply', '-y'], ['ls', '--json', '-y'], ['init', 'plan', '--goal', 'x', '-y'], ['init', 'plan', '--goal', '--yes'], ['up', '--demo', '-y'], ['harness', 'import', '--synthetic', '-y']]) {
+    assert.equal(namesYesFlag(args), true, args.join(' '));
+  }
+  for (const args of [['init', 'plan', '--goal', '-y'], ['init', 'plan', '--assistant', '-y', '--json'], ['init', 'plan', '--name', 'x', '--goal', '-y'], ['ls'], ['init', 'plan', '--goal', 'yes'], ['init', 'plan', '--goal=-y'], ['-yy'], ['--yesterday']]) {
+    assert.equal(namesYesFlag(args), false, args.join(' '));
+  }
 });

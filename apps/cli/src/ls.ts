@@ -1,8 +1,9 @@
 import { lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject } from '../../../packages/project-context/src/index.js';
+import { discoverProject, verifyProjectPins } from '../../../packages/project-context/src/index.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
+import { plainText } from './human.js';
 
 const SECTIONS = ['teams', 'skills', 'prompts'] as const;
 type Section = typeof SECTIONS[number];
@@ -27,8 +28,11 @@ function entries(project: ProjectContext, folder: string, wants: 'directory' | '
   return { names: names.sort(), unlisted };
 }
 
+/** Lists the pinned project only: the project folder and its .bowerloom must be the ones discovery pinned, before and after the reads. */
 export function listProject(project: ProjectContext): Listing {
+  verifyProjectPins(project);
   const teams = entries(project, 'teams', 'directory'), skills = entries(project, 'skills', 'directory'), prompts = entries(project, 'prompts', 'prompt');
+  verifyProjectPins(project);
   return { teams: teams.names, skills: skills.names, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted };
 }
 
@@ -36,7 +40,7 @@ const title = (section: Section): string => section[0]!.toUpperCase() + section.
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
   const shown = only ? [only] : [...SECTIONS];
   if (json) return `${canonicalJson({ format: 'bowerloom/ls/v1beta1', ...Object.fromEntries(shown.map(s => [s, listing[s]])), unlisted: listing.unlisted })}\n`;
-  const blocks = shown.map(s => `${title(s)}\n${listing[s].length ? listing[s].map(n => `  ${n}`).join('\n') : '  none yet'}\n`);
+  const blocks = shown.map(s => `${title(s)}\n${listing[s].length ? listing[s].map(n => `  ${plainText(n)}`).join('\n') : '  none yet'}\n`);
   const note = listing.unlisted ? `\nNot listed: ${listing.unlisted} ${listing.unlisted === 1 ? 'entry' : 'entries'} with an unusual name or type. Run bowerloom status.\n` : '';
   return blocks.join('\n') + note;
 }

@@ -8,42 +8,18 @@ import { createHash } from 'node:crypto';
 import net from 'node:net';
 import type { Server } from 'node:net';
 import { channel } from 'node:diagnostics_channel';
-import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
-import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory, ProjectContext } from './types.js';
+import { refuse } from './refusal.js';
+import { checkProjectPathWith, discoverProjectWith } from './discovery.js';
+import type { HeldProjectLock, ProjectContext } from './types.js';
 
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
+export { projectId, verifyProjectPins } from './discovery.js';
 
-const MESSAGES: Readonly<Record<string, string>> = {
-  USAGE: 'Use an absolute path.',
-  PROJECT_NOT_FOUND: 'No Bowerloom project holds this folder. Run the command inside a project folder that has a .bowerloom folder.',
-  PROJECT_ROOT_REFUSED: 'Bowerloom does not use the home folder or the root of the disk as a project.',
-  PROJECT_IN_CLOUD_FOLDER: 'This folder syncs to a cloud service. Keep the project in a local folder, such as ~/Projects.',
-  PROJECT_UNSAFE: 'The .bowerloom folder is not safe to use. It must be a real folder that you own, with no write access for others.',
-  PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
-  PROJECT_LOCK_UNAVAILABLE: 'Bowerloom could not take the project lock. Try again.',
-  PROJECT_LOCK_SLOT_COLLISION: 'Another program holds the local port that Bowerloom uses to lock this project.',
-};
-const refuse = (code: keyof typeof MESSAGES & string): DefinitionError => new DefinitionError(code, MESSAGES[code]!);
-const fold = (value: string): string => value.normalize('NFC').toLowerCase();
 const hex = (value: string): string => createHash('sha256').update(value).digest('hex');
-
-function identityOf(path: string): DirectoryIdentity {
-  const stat = lstatSync(path, { bigint: true });
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw refuse('PROJECT_UNSAFE');
-  return { device: stat.dev.toString(), inode: stat.ino.toString(), birthtimeNs: stat.birthtimeNs.toString(), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 };
-}
-function realFolder(path: string): boolean {
-  try { const stat = lstatSync(path); return stat.isDirectory() && !stat.isSymbolicLink(); } catch { return false; }
-}
-function real(path: string): string | null { try { return realpathSync(path); } catch { return null; } }
-
-/** The first 32 hex characters of sha256 over the real path, device and inode. */
-export function projectId(root: string, identity: DirectoryIdentity): string {
-  return hex(JSON.stringify([root, identity.device, identity.inode])).slice(0, 32);
-}
 
 /** The private state folder for all projects: `$XDG_STATE_HOME/bowerloom` when that is absolute, else `~/.local/state/bowerloom`. */
 export function privateStateRoot(env: NodeJS.ProcessEnv, home: string): string {
@@ -54,66 +30,21 @@ export function privateStateRoot(env: NodeJS.ProcessEnv, home: string): string {
 }
 
 /**
- * Refuses `/`, HOME, every path under HOME/Library/Mobile Documents or HOME/Library/CloudStorage, and the paths under
- * ~/Documents or ~/Desktop when iCloud syncs that folder. Sync is on when the matching folder exists as a real
- * (not symlinked) folder inside HOME/Library/Mobile Documents/com~apple~CloudDocs. No attribute is read and no process starts.
+ * Refuses `/`, the home folder (both `home`, which callers take from $HOME, and the home folder from the user
+ * database), every path under a home's Library/Mobile Documents or Library/CloudStorage, and the paths under a home's
+ * Documents or Desktop when iCloud syncs that folder. Sync is on when the folder's marker inside
+ * Library/Mobile Documents/com~apple~CloudDocs is a real folder, or a symlink that resolves to that very folder;
+ * a marker that cannot be read refuses. Folders are compared by device and inode, so aliases and symlinks are caught.
+ * No attribute is read and no process starts.
  */
-export function checkProjectPath(path: string, home: string): void {
-  if (typeof path !== 'string' || typeof home !== 'string' || !isAbsolute(path) || !isAbsolute(home) || path.includes('\0') || home.includes('\0')) throw refuse('USAGE');
-  const target = fold(resolve(path)), base = fold(resolve(home));
-  if (target === sep || target === base) throw refuse('PROJECT_ROOT_REFUSED');
-  if (!target.startsWith(base + sep)) return;
-  const [first, second] = target.slice(base.length + 1).split(sep);
-  if (first === 'library' && (second === 'mobile documents' || second === 'cloudstorage')) throw refuse('PROJECT_IN_CLOUD_FOLDER');
-  if (first === 'documents' || first === 'desktop') {
-    const marker = join(resolve(home), 'Library', 'Mobile Documents', 'com~apple~CloudDocs', first === 'documents' ? 'Documents' : 'Desktop');
-    if (realFolder(marker)) throw refuse('PROJECT_IN_CLOUD_FOLDER');
-  }
-}
-
-export interface DiscoverOptions {
-  /** The owner a `.bowerloom` folder must have. Defaults to the current user. */
-  readonly uid?: number;
-  /** The device of a folder. Defaults to the device from lstat. */
-  readonly deviceOf?: (directory: string) => string;
-}
+export function checkProjectPath(path: string, home: string): void { checkProjectPathWith(path, home); }
 
 /**
  * Finds the project the way git finds `.git`: the nearest parent folder that holds a real, owned, non-symlinked,
- * not group- or world-writable `.bowerloom`, with no case alias. The nearest hit decides; an unsafe one is never skipped.
- * The search stops at HOME and at a device change, and refuses `/` and HOME.
+ * not group- or world-writable `.bowerloom`, with no case alias. The nearest hit decides; an unsafe or unreadable
+ * folder is never skipped. The search stops at a device change, at `/` and at each home folder, and refuses them.
  */
-export function discoverProject(cwd: string, home: string = homedir(), options: DiscoverOptions = {}): ProjectContext {
-  if (typeof cwd !== 'string' || typeof home !== 'string' || !isAbsolute(cwd) || !isAbsolute(home) || cwd.includes('\0') || home.includes('\0')) throw refuse('USAGE');
-  const realHome = real(home) ?? resolve(home), start = real(cwd);
-  if (start === null) throw refuse('PROJECT_NOT_FOUND');
-  checkProjectPath(start, realHome);
-  const uid = options.uid ?? process.getuid?.() ?? -1;
-  const deviceOf = options.deviceOf ?? ((directory: string) => lstatSync(directory, { bigint: true }).dev.toString());
-  const startDevice = deviceOf(start);
-  for (let current = start; ;) {
-    if (deviceOf(current) !== startDevice) throw refuse('PROJECT_NOT_FOUND');
-    let aliases: string[] = [];
-    try { aliases = readdirSync(current).filter(name => fold(name) === '.bowerloom'); } catch { /* An unreadable folder cannot hold a usable project. */ }
-    if (current === sep || current === realHome) throw refuse(aliases.length ? 'PROJECT_ROOT_REFUSED' : 'PROJECT_NOT_FOUND');
-    if (aliases.length) return build(current, aliases, uid, realHome);
-    const parent = dirname(current);
-    if (parent === current) throw refuse('PROJECT_NOT_FOUND');
-    current = parent;
-  }
-}
-
-function build(dir: string, aliases: string[], uid: number, home: string): ProjectContext {
-  checkProjectPath(dir, home);
-  if (aliases.length !== 1 || aliases[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
-  const bowerloom = join(dir, '.bowerloom');
-  let stat; try { stat = lstatSync(bowerloom, { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
-  if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
-  const identity = identityOf(dir), bowerloomIdentity = identityOf(bowerloom);
-  const parts = dirname(dir).split(sep).filter(Boolean), ancestry: PinnedDirectory[] = [{ path: sep, identity: identityOf(sep) }];
-  for (let i = 0; i < parts.length; i++) { const path = sep + parts.slice(0, i + 1).join(sep); ancestry.push({ path, identity: identityOf(path) }); }
-  return Object.freeze({ dir, identity, ancestry: Object.freeze(ancestry), bowerloomIdentity, projectId: projectId(dir, identity) });
-}
+export function discoverProject(cwd: string, home: string = homedir()): ProjectContext { return discoverProjectWith(cwd, home); }
 
 const LOCK_FORMAT = 'bowerloom-project-lock/v1';
 /** One project's lock slot: its key, its local port, and the banner its holder sends. */
@@ -179,8 +110,9 @@ export async function slotRefusal(slot: LockSlot): Promise<'locked' | 'collision
   if (await lockHolder(slot) === 'this') return 'locked';
   reportSlotCollision(slot); return 'collision';
 }
-function slotCollision(port: number): DefinitionError {
-  return new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock this project. Stop that program, then run the command again.`);
+/** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
+function slotCollision(port: number): DefinitionError & { readonly port: number } {
+  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock this project. Stop that program, then run the command again.`), { port });
 }
 
 // A token is real only when withProjectLock made it. Membership here is the runtime brand: a copy, a spread,

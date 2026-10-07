@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
 import { shortHelp, TOPICS, reportFailure } from './human.js';
+import { namesYesFlag } from './confirm.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -116,8 +117,8 @@ function releaseHeading(): string {
 function topic(name: string | undefined): string | null { return name !== undefined && Object.hasOwn(TOPICS, name) ? TOPICS[name]! : null; }
 
 async function main(args: string[]): Promise<void> {
-  // There is no --yes: approval always names the plan it approves (usage error, exit 2).
-  if (args.some(word => word === '--yes' || word.startsWith('--yes=') || word === '-y')) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
+  // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
+  if (namesYesFlag(args)) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help')) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
   if (args[0] === 'help') {
     const text = args.length === 2 ? args[1] === 'advanced' ? HELP : args[1] === 'init' ? INIT_HELP : topic(args[1]) : null;

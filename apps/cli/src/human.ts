@@ -47,40 +47,106 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
 };
 
-/** Exit codes: 0 done, 1 refused, 2 usage, 3 approval required, 4 held by a gate. */
-export function exitCodeFor(code: string): number {
-  return code === 'USAGE' ? 2 : code === 'APPROVAL_REQUIRED' ? 3 : code === 'WORKERS_HELD' ? 4 : 1;
+/** The exit codes: 0 done, 1 refused, 2 usage, 3 approval required, 4 held by a gate. */
+export type ExitCode = 0 | 1 | 2 | 3 | 4;
+type GateCode = 'APPROVAL_REQUIRED' | 'WORKERS_HELD';
+const GATE_EXIT: Readonly<Record<GateCode, 3 | 4>> = { APPROVAL_REQUIRED: 3, WORKERS_HELD: 4 };
+
+// The marker of an error a new command raised. Only newCommandRefusal adds to it, and membership is the object
+// itself: a copy, a spread or a prototype child of a marked error is not marked. Existing plumbing (recipes, broker,
+// controlled tests) raises APPROVAL_REQUIRED of its own; that never reaches exit 3 or the --approve hint.
+const raisedByNewCommand = new WeakSet<object>();
+
+/** The approval or gate refusal of a new command (0.7.0 and later). Only these errors exit 3 or 4. */
+export function newCommandRefusal(code: GateCode, message: string): DefinitionError {
+  if (!Object.hasOwn(GATE_EXIT, code)) throw new TypeError('newCommandRefusal takes APPROVAL_REQUIRED or WORKERS_HELD only.');
+  const error = new DefinitionError(code, message);
+  raisedByNewCommand.add(error); return error;
+}
+const marked = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && raisedByNewCommand.has(error);
+const codeOf = (error: unknown): string | null =>
+  error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z_]{1,100}$/.test(error.code) ? error.code : null;
+
+/**
+ * The exit code for a command's outcome: `null` when it finished, else the error it raised.
+ * USAGE is 2 for every command. 3 and 4 only for an error from newCommandRefusal; any other error, whatever its code, is 1.
+ */
+export function exitCodeFor(error: unknown): ExitCode {
+  if (error === null) return 0;
+  const code = codeOf(error);
+  if (code === 'USAGE') return 2;
+  return marked(error) && Object.hasOwn(GATE_EXIT, error.code) ? GATE_EXIT[error.code as GateCode] : 1;
+}
+
+// C0 controls, DEL, C1 controls, and the bidi controls (ALM, LRM, RLM, LRE..RLO, LRI..PDI).
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const CONTROLS_BUT_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const escapeControl = (c: string): string => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`;
+/**
+ * Text that is safe to print to a terminal: every C0, C1, DEL and bidi control becomes a visible `\uXXXX`, so a file
+ * name or a message cannot move the cursor, recolour the screen or reorder a line. `multiline` keeps the newline.
+ * For human output only. JSON output is never passed through here.
+ */
+export function plainText(value: string, multiline = false): string {
+  return value.replace(multiline ? CONTROLS_BUT_NEWLINE : CONTROLS, escapeControl);
 }
 
 const INIT_NEXT = 'bowerloom init plan --mode existing --target <directory> --name <name> --goal <goal>';
-const REFUSALS: Readonly<Record<string, { sentence: string; next: string }>> = {
+interface Words { readonly sentence: string; readonly next: string }
+const REFUSALS: Readonly<Record<string, Words>> = {
   USAGE: { sentence: 'The command line did not match a Bowerloom command, so nothing was changed.', next: 'bowerloom help' },
-  APPROVAL_REQUIRED: { sentence: 'This change needs your approval before it is applied.', next: 'run the same command again with --approve <revision>' },
   APPROVAL_DECLINED: { sentence: 'You declined, so nothing was changed.', next: 'run the same command again to see the plan' },
   STALE_APPROVAL: { sentence: 'The plan changed after you saw it, so nothing was applied.', next: 'run the same command again, without --approve, to see the new plan' },
   PROJECT_NOT_FOUND: { sentence: 'Bowerloom looked in this folder and in every parent folder up to your home folder.', next: INIT_NEXT },
   PROJECT_ROOT_REFUSED: { sentence: 'A whole disk or home folder is too broad to be a project.', next: 'cd <project-folder>' },
   PROJECT_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a project safe.', next: 'mv <project-folder> ~/Projects/' },
   PROJECT_UNSAFE: { sentence: 'Bowerloom will not trust a .bowerloom folder that other people or links can change.', next: 'ls -ld .bowerloom' },
+  PROJECT_UNREADABLE: { sentence: 'A folder on the way to the project could not be read, so Bowerloom cannot tell which project holds this folder.', next: 'ls -ld <folder>' },
   PROJECT_LOCKED: { sentence: 'Two commands must not change one project at the same time, so nothing was changed.', next: 'bowerloom status' },
   PROJECT_LOCK_UNAVAILABLE: { sentence: 'The lock uses a local port, and this computer would not give it out.', next: 'bowerloom status' },
-  PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it. The message names the port.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+  PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+};
+// Only for an error a new command raised (newCommandRefusal).
+const GATE_REFUSALS: Readonly<Record<GateCode, Words>> = {
+  APPROVAL_REQUIRED: { sentence: 'This change needs your approval before it is applied.', next: 'run the same command again with --approve <revision>' },
   WORKERS_HELD: { sentence: 'The project is prepared. No worker was started.', next: 'bowerloom status' },
 };
-const GENERIC = { sentence: 'Nothing more is known about this refusal beyond its code.', next: 'bowerloom help' };
+// APPROVAL_REQUIRED from existing plumbing. Those commands take no --approve <revision>, so the words never name it.
+const PLUMBING_APPROVAL: Words = { sentence: 'This command needs a current approval for the exact action before it runs.', next: 'bowerloom help advanced' };
+const GENERIC: Words = { sentence: 'Nothing more is known about this refusal beyond its code.', next: 'bowerloom help' };
 
-/** One refusal in plain words. The fixed refusal code stays visible. */
-export function renderRefusal(code: string, message: string): string {
-  const { sentence, next } = REFUSALS[code] ?? GENERIC;
-  return `Refused (${code}): ${message}\n${sentence}\nNext: ${next}\n`;
+/** What a refusal carries besides its code and message. */
+export interface RefusalDetail {
+  /** The local port of a lock slot collision, when the error names one. */
+  readonly port?: number;
+  /** True only for an error from newCommandRefusal. */
+  readonly raisedByNewCommand?: boolean;
+}
+const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
+
+function wordsFor(code: string, detail: RefusalDetail): Words {
+  if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
+  if (code === 'PROJECT_LOCK_SLOT_COLLISION' && validPort(detail.port)) {
+    return { sentence: `The lock uses a local port, and another program is listening on port ${detail.port}.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
+  }
+  return Object.hasOwn(REFUSALS, code) ? REFUSALS[code]! : GENERIC;
+}
+
+/** One refusal in plain words. The fixed refusal code stays visible. Control characters in the code or message are escaped. */
+export function renderRefusal(code: string, message: string, detail: RefusalDetail = {}): string {
+  const { sentence, next } = wordsFor(code, detail);
+  return `Refused (${plainText(code)}): ${plainText(message)}\n${sentence}\nNext: ${next}\n`;
 }
 
 /**
  * What to print on stderr and which exit code to use. A terminal gets plain words. Anything else gets today's
- * JSON envelope, which agents parse.
+ * JSON envelope, byte for byte, which agents parse. Never exit 0.
  */
-export function reportFailure(error: unknown, tty: boolean): { text: string; exitCode: number } {
-  const code = error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z_]{1,100}$/.test(error.code) ? error.code : 'IO_ERROR';
+export function reportFailure(error: unknown, tty: boolean): { text: string; exitCode: Exclude<ExitCode, 0> } {
+  const code = codeOf(error) ?? 'IO_ERROR';
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
-  return { text: tty ? renderRefusal(safe.code, safe.message) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode: exitCodeFor(safe.code) };
+  const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}) };
+  const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
 }

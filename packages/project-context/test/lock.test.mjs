@@ -76,7 +76,7 @@ test('a slot held by anything but this project lock refuses LOCK_SLOT_COLLISION 
   const dir = await freshProject(t), port = formula(dir);
   for (const banner of ['', 'bowerloom-project-lock/v1 ' + '0'.repeat(64) + '\n', 'bowerloom-project-lock/v1 ' + keyOf(dir), 'bowerloom-project-lock/v1 ' + keyOf(dir) + '\nextra', null]) {
     const blocker = await squatter(port, banner); let ran = false; const started = performance.now();
-    await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.message.includes(String(port)), JSON.stringify(banner));
+    await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.message.includes(String(port)) && e.port === port, JSON.stringify(banner));
     assert.ok(performance.now() - started < 3000, 'the banner read is bounded'); assert.equal(ran, false);
     await close(blocker);
   }

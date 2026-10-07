@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,4 +65,13 @@ test('no environment variable skips approval', t => {
     const r = spawnSync(process.execPath, [d.file], { cwd: root, encoding: 'utf8', env: { ...process.env, [name]: '1' } });
     assert.equal(r.status, 3, name); assert.equal(readdirSync(root).includes('target.txt'), false, name);
   }
+});
+
+test('-y as the value of a flag is not --yes: init plan --goal -y still plans, and -y in a flag position is refused', t => {
+  const root = folder(t), dir = join(root, 'studio'); mkdirSync(dir);
+  const init = (...extra: string[]) => spawnSync(process.execPath, [cli, 'init', 'plan', '--mode', 'existing', '--target', dir, '--name', 'Studio handbook', ...extra], { cwd: root, encoding: 'utf8', timeout: 20000, env: { ...process.env, HOME: root } });
+  const asGoal = init('--goal', '-y', '--json'); assert.equal(asGoal.status, 0, asGoal.stderr); assert.equal(JSON.parse(asGoal.stdout).revision.length, 64);
+  const asAssistant = init('--goal', 'Plan a fictional studio kit.', '--assistant', '-y', '--json'); assert.equal(asAssistant.status, 0, asAssistant.stderr);
+  const asFlag = init('--goal', 'Plan a fictional studio kit.', '--json', '-y'); assert.equal(asFlag.status, 2); assert.match(JSON.parse(asFlag.stderr).error.message, /There is no --yes/);
+  assert.deepEqual(readdirSync(dir), [], 'plan writes nothing');
 });

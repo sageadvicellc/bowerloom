@@ -49,7 +49,7 @@
     "test:harness-portability": "npm run build && node --test packages/harness-portability/test/*.test.mjs dist/tests/harness-cli.test.js dist/tests/harness-managed-cli.test.js",
     "test:mcp-planning": "npm run build && node --test packages/mcp-connections/test/*.test.mjs dist/tests/mcp-plan-cli.test.js",
     "test:routines": "npm run build && node --test packages/routines/test/contracts.test.mjs",
-    "test:project": "npm run build && node --test packages/project-context/test/*.test.mjs dist/tests/project-context-contracts.test.js dist/tests/help-human.test.js dist/tests/approval-cli.test.js dist/tests/confirm.test.js dist/tests/ls-status-cli.test.js"
+    "test:project": "npm run build && node --test packages/project-context/test/*.test.mjs dist/tests/project-context-contracts.test.js dist/tests/help-human.test.js dist/tests/approval-cli.test.js dist/tests/confirm.test.js dist/tests/ls-status-cli.test.js dist/tests/human-refusal.test.js"
   },
   "devDependencies": {
     "@types/node": "24.11.0",

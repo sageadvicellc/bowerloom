@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverProject } from '../packages/project-context/src/index.js';
+import { listProject } from '../apps/cli/src/ls.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 function folder(t: test.TestContext) { const root = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-ls-status-'))); t.after(() => rmSync(root, { recursive: true, force: true })); return root; }
@@ -96,5 +98,38 @@ test('an unlisted entry is counted, not listed', t => {
   const p = project(t), env = { HOME: p.home };
   mkdirSync(join(p.dir, '.bowerloom', 'teams', 'Bad Name'));
   const j = JSON.parse(run(p.dir, ['ls', '--json'], env).stdout); assert.deepEqual(j.teams, ['first-team']); assert.equal(j.unlisted, 1);
-  writeFileSync(join(p.dir, '.bowerloom', 'prompts-note.txt'), 'x'); assert.equal(readFileSync(join(p.dir, '.bowerloom', 'prompts-note.txt'), 'utf8'), 'x');
+  mkdirSync(join(p.dir, '.bowerloom', 'prompts'), { recursive: true, mode: 0o700 });
+  writeFileSync(join(p.dir, '.bowerloom', 'prompts', 'note.txt'), 'x'); writeFileSync(join(p.dir, '.bowerloom', 'prompts', 'welcome.md'), '# Welcome\n');
+  symlinkSync(join(p.dir, '.bowerloom', 'teams', 'first-team'), join(p.dir, '.bowerloom', 'skills', 'linked'));
+  const after = JSON.parse(run(p.dir, ['ls', '--json'], env).stdout);
+  assert.deepEqual(after, { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], skills: ['personal-assistant'], prompts: ['welcome'], unlisted: 3 });
+  const words = run(p.dir, ['ls'], env); assert.equal(words.status, 0, words.stderr);
+  assert.equal(words.stdout, 'Teams\n  first-team\n\nSkills\n  personal-assistant\n\nPrompts\n  welcome\n\nNot listed: 3 entries with an unusual name or type. Run bowerloom status.\n');
+});
+
+test('status escapes control bytes in a changed file name; --json keeps the exact name', t => {
+  const p = project(t), env = { HOME: p.home }, name = 'x\x1b[31mRED\u202e\x9b';
+  writeFileSync(join(p.dir, '.bowerloom', name), 'x');
+  const r = run(p.dir, ['status'], env); assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/);
+  assert.ok(r.stdout.includes('.bowerloom/x\\u001b[31mRED\\u202e\\u009b'), r.stdout);
+  const j = JSON.parse(run(p.dir, ['status', '--json'], env).stdout);
+  assert.ok(j.drift.some((item: { path: string }) => item.path === `.bowerloom/${name}`), JSON.stringify(j.drift));
+});
+
+test('ls refuses when the .bowerloom folder or the project folder it found is swapped before it lists', t => {
+  const p = project(t), found = discoverProject(p.dir, p.home);
+  assert.deepEqual(listProject(found).teams, ['first-team']);
+  renameSync(join(p.dir, '.bowerloom'), join(p.dir, '.bowerloom-old')); mkdirSync(join(p.dir, '.bowerloom', 'teams', 'swapped'), { recursive: true, mode: 0o700 });
+  assert.throws(() => listProject(found), (e: { code: string }) => e.code === 'PROJECT_UNSAFE');
+  const again = discoverProject(p.dir, p.home); assert.deepEqual(listProject(again).teams, ['swapped']);
+  renameSync(p.dir, `${p.dir}-old`); mkdirSync(join(p.dir, '.bowerloom', 'teams', 'other'), { recursive: true, mode: 0o700 });
+  assert.throws(() => listProject(again), (e: { code: string }) => e.code === 'PROJECT_UNSAFE');
+});
+
+test('ls and status refuse the account home from the user database even when HOME points elsewhere (read only)', t => {
+  const home = folder(t), account = userInfo().homedir;
+  for (const args of [['ls'], ['status']]) {
+    const r = run(account, args, { HOME: home }); assert.equal(r.status, 1, r.stderr); assert.equal(JSON.parse(r.stderr).error.code, 'PROJECT_ROOT_REFUSED', args.join(' '));
+  }
 });
