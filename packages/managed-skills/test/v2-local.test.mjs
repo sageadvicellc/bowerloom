@@ -77,3 +77,18 @@ test('an authored prompt is read with the same guards', t => {
   for (const name of ['../x', 'Review', 'a/b', '']) assert.throws(() => readLocalPrompt(f.projectDir, name, live));
   fs.writeFileSync(file, 'x'.repeat(65537)); assert.throws(() => readLocalPrompt(f.projectDir, 'review', live), refused);
 });
+
+test('the reader refuses a hidden or empty folder anywhere in the skill, as it refuses a hidden file', t => {
+  for (const [label, add] of [
+    ['an empty hidden folder', root => fs.mkdirSync(path.join(root, '.cache'), { mode: 0o755 })],
+    ['a hidden folder inside a folder', root => fs.mkdirSync(path.join(root, 'references/.git'), { mode: 0o755 })],
+    ['an empty folder', root => fs.mkdirSync(path.join(root, 'empty'), { mode: 0o755 })],
+    ['an empty nested folder', root => fs.mkdirSync(path.join(root, 'references/deeper/deepest'), { recursive: true, mode: 0o755 })],
+  ]) {
+    const f = project(t), root = localSkill(f, 'house-style'); add(root);
+    assert.throws(() => readLocalSkill(f.projectDir, 'skills/house-style', live), refused, label);
+  }
+  // A folder that holds a file is still read.
+  const f = project(t), root = localSkill(f, 'house-style'); fs.mkdirSync(path.join(root, 'more'), { mode: 0o755 }); fs.writeFileSync(path.join(root, 'more/notes.md'), 'x\n', { mode: 0o644 });
+  assert.deepEqual(readLocalSkill(f.projectDir, 'skills/house-style', live).inventory.map(x => x.path), ['SKILL.md', 'more/notes.md', 'references/notes.md']);
+});

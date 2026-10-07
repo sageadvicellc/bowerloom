@@ -51,7 +51,8 @@ export function readLocalSkill(projectDir: string, relPath: string, live: () => 
     const pins: Pin[] = []; live(); const root = join(base(projectDir, 'skills', pins), id), files: ItemFile[] = []; let bytes = 0, entries = 0;
     const visit = (abs: string, rel: string, depth: number): void => {
       live(); check(++entries <= LOCAL.entries && depth <= LOCAL.depth); const s = fs.lstatSync(abs, { bigint: true }); check(!s.isSymbolicLink());
-      if (s.isDirectory()) { pins.push(folder(abs)); for (const n of names(abs)) visit(join(abs, n), rel ? rel + '/' + n : n, depth + 1); return; }
+      // A folder is never skipped silently: a hidden name refuses as a hidden file does, and so does an empty folder.
+      if (s.isDirectory()) { pins.push(folder(abs)); if (rel) relativeSkillPath(rel); const children = names(abs); check(children.length > 0); for (const n of children) visit(join(abs, n), rel ? rel + '/' + n : n, depth + 1); return; }
       relativeSkillPath(rel); const got = authored(abs, LIMITS.file); pins.push(got.pin);
       bytes += Buffer.byteLength(got.text); check(files.length < LOCAL.files && bytes <= LOCAL.bytes);
       files.push({ path: rel, text: got.text, sha256: hash(got.text), mode: 420 });
