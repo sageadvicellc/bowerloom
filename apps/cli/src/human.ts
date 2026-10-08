@@ -137,6 +137,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
   prompt: [
     'Usage:', '  bowerloom prompt create <name> [--team <team>]... [--approve <revision>] [--json]', '',
     'Creates a reusable prompt in .bowerloom/prompts/<name>.md.',
+    'When the file of a prompt you created is gone, the same command puts it back with the text it was created with.',
     'The name is the prompt id, such as weekly-update, at most 57 characters.',
     '--team limits the prompt to a team that exists; without it, every team gets it.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.',
@@ -251,7 +252,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   AUTHORING_UNREGISTERED: { sentence: 'Bowerloom keeps track only of what create made.', next: 'bowerloom status' },
   REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
   AUTHORING_WRITE_INTERRUPTED: { sentence: 'Part of the item may be in place, and the next plan shows how it is finished or cleared.', next: 'run the same command again, without --approve, to see the new plan' },
-  AUTHORING_ITEM_MISSING: { sentence: 'Bowerloom reports a created item that is gone, so it is not lost silently.', next: 'git status .bowerloom' },
+  AUTHORING_ITEM_MISSING: { sentence: 'Bowerloom reports a created item that is gone, so it is not lost silently.', next: 'bowerloom status' },
+  PROMPT_RESTORE_TEAMS: { sentence: 'A restore puts the prompt back as it was created, with the same teams.', next: 'bowerloom prompt create <name>' },
+  PROMPT_RESTORE_UNAVAILABLE: { sentence: 'Create writes only the text it would write today, and the record names other text.', next: 'git restore .bowerloom/prompts' },
   APPLY_NAME_COLLISION: { sentence: 'Bowerloom never overwrites what it did not install, and two items cannot share one place.', next: 'bowerloom apply' },
   PROMPT_INVALID: { sentence: 'Bowerloom reads only plain prompt files you own.', next: 'ls -l .bowerloom/prompts' },
   SKILLS_OFFLINE: { sentence: 'Sync fetches only pins that are not cached yet, and it changed nothing in the project.', next: 'bowerloom skills sync' },

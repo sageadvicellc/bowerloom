@@ -193,3 +193,40 @@ test('an interrupt during prompt phase B reports SKILLS_SYNC_INTERRUPTED and cha
   assert.deepEqual(seen, ['review']); assert.equal(contentTree(f.projectDir), before);
   assert.equal(exists(f, '.claude/commands/review.md'), false);
 });
+
+// Freeze review finding 1: a registered prompt whose file was deleted is held with its restore step. It never refuses
+// the whole plan, so the other skills and prompts still apply.
+test('a registered prompt whose file is gone is held with the restore step; the rest of the plan applies', async t => {
+  const f = syncProject(t), gone = await createPrompt(f, 'runbook-check'); await createPrompt(f, 'review'); localSkill(f, 'house-style'); writeManifest(f, [localEntry('house-style')]);
+  fs.rmSync(gone);
+  const plan = await planProjectApply(input(f)), prompts = byId(plan.prompts);
+  assert.equal(prompts['runbook-check'].action, 'hold');
+  assert.equal(prompts['runbook-check'].hold.code, 'AUTHORING_ITEM_MISSING');
+  assert.match(prompts['runbook-check'].hold.next, /bowerloom prompt create runbook-check/);
+  assert.match(prompts['runbook-check'].hold.next, /\.bowerloom\/prompts\/runbook-check\.md/);
+  assert.equal(prompts.review.action, 'install'); assert.equal(plan.actionable, true);
+  const result = await applyProjectApply(input(f), plan.revision, signal());
+  assert.deepEqual(result.applied.map(x => [x.kind, x.id]), [['skill', 'house-style'], ['prompt', 'review']]);
+  assert.deepEqual(result.held.map(x => [x.kind, x.id, x.code]), [['prompt', 'runbook-check', 'AUTHORING_ITEM_MISSING']]);
+  assert.equal(exists(f, '.claude/commands/runbook-check.md'), false);
+});
+
+test('an installed prompt whose source is deleted is held, and its installed copies stay', async t => {
+  const f = syncProject(t), file = await createPrompt(f, 'review', 'Review the diff.\n'); await applied(f);
+  fs.rmSync(file);
+  const before = contentTree(f.projectDir), plan = await planProjectApply(input(f));
+  assert.deepEqual(plan.prompts.map(p => [p.id, p.action, p.hold?.code]), [['review', 'hold', 'AUTHORING_ITEM_MISSING']]);
+  assert.equal(plan.actionable, false);
+  const result = await applyProjectApply(input(f), plan.revision, signal());
+  assert.deepEqual(result.applied, []); assert.equal(contentTree(f.projectDir), before);
+  assert.equal(read(f, '.claude/commands/review.md'), 'Review the diff.\n');
+});
+
+test('a prompt path that is unsafe still refuses PROMPT_INVALID, even when the prompts folder is a link', async t => {
+  const f = syncProject(t), file = await createPrompt(f, 'review'), folder = path.dirname(file), moved = path.join(f.base, 'elsewhere');
+  fs.renameSync(folder, moved); fs.symlinkSync(moved, folder);
+  await assert.rejects(planProjectApply(input(f)), code('PROMPT_INVALID'));
+  fs.rmSync(path.join(moved, 'review.md'));
+  // A link in place of the folder is never read as "missing": it refuses as before.
+  await assert.rejects(planProjectApply(input(f)), code('PROMPT_INVALID'));
+});

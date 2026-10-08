@@ -60,6 +60,12 @@ export function renderCreateReview(plan: CreatePlan): string {
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);
   if (plan.finish) lines.push(`Finish ${plan.finish.kind} ${plan.finish.id} from an interrupted create. Its ${plan.finish.files.length === 1 ? 'file is' : 'files are'} already in ${where(plan.finish.kind, plan.finish.id)}, with the recorded bytes.`);
+  if (plan.restore) {
+    // Review freeze finding 1: a registered prompt whose file is gone comes back with the text it was created with.
+    const item = plan.restore;
+    lines.push(`Restore prompt ${item.id} in ${where('prompt', item.id)}`, '  Its file is gone. Create writes it again with the text it was created with.',
+      `  Teams: ${item.teams.length ? item.teams.join(', ') : 'every team'}`, `  Files: ${item.files.length}`);
+  }
   if (plan.item) {
     const item = plan.item;
     lines.push(`Create ${item.kind} ${item.id} in ${where(item.kind, item.id)}`);

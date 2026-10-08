@@ -54,8 +54,13 @@ export interface CreatePlan {
   settled: AuthoredItem | null;
   /** A pending item that landed with exactly its recorded bytes: apply registers it. */
   finish: AuthoredItem | null;
-  /** The new item, or null when the request is the pending item this plan finishes. */
+  /** The new item, or null when the request is the pending item this plan finishes or a prompt it restores. */
   item: { kind: ItemKind; id: string; teams: string[]; files: FilePin[] } | null;
+  /**
+   * Freeze review finding 1: a registered prompt whose file is gone, written again with its recorded bytes. The receipt
+   * already lists it and stays as it is. Present only on a restore plan.
+   */
+  restore?: AuthoredItem;
   /** For a new team, the candidate revision its team.yaml must compile to. */
   compiledCandidate: string | null;
   /** The exact new files, relative to `.bowerloom`. */
@@ -193,13 +198,24 @@ async function plan(input: Normalized): Promise<CreatePlan> {
   const registered = finish ? [...receiptItems, finish] : receiptItems;
   const request = { kind: input.kind, id: input.name };
   const isFinish = finish !== null && sameItem(finish, request);
+  const parentFolder = input.kind === 'team' ? 'teams' : input.kind === 'skill' ? 'skills' : 'prompts';
+  const parentRead = lstatOrNull(join(project.bowerloom, parentFolder));
+  if (parentRead !== null) realFolder(join(project.bowerloom, parentFolder));
+  // Freeze review finding 1: `prompt create <id>` for a registered prompt whose file is gone restores it, with the
+  // teams and the exact bytes the receipt records. Anything else about that id refuses, as it did before.
+  const registeredPrompt = input.kind === 'prompt' && !isFinish ? receiptItems.find(i => sameItem(i, request)) ?? null : null;
+  let restore: AuthoredItem | null = null;
+  if (registeredPrompt && lstatOrNull(join(project.bowerloom, itemPath('prompt', input.name))) === null) {
+    if (parentRead !== null) ensure(!folderNames(join(project.bowerloom, 'prompts')).some(n => n.normalize('NFC').toLowerCase() === `${input.name}.md`), 'PROMPT_EXISTS');
+    ensure(input.teams.length === 0 || canonicalJson(input.teams) === canonicalJson(registeredPrompt.teams), 'PROMPT_RESTORE_TEAMS');
+    ensure(samePins(pinsOf([planned(itemPath('prompt', input.name), PROMPT_TEXT(input.name))]), registeredPrompt.files), 'PROMPT_RESTORE_UNAVAILABLE');
+    restore = registeredPrompt;
+  }
 
   let brief: Read | null = null, manifestRead: Read | null = null, manifest: CreatePlan['manifest'] = null, compiledCandidate: string | null = null;
   let files: PlannedFile[] = [];
   const folders: string[] = [];
-  const parent = input.kind === 'team' ? 'teams' : input.kind === 'skill' ? 'skills' : 'prompts';
-  const parentStat = lstatOrNull(join(project.bowerloom, parent));
-  if (parentStat !== null) realFolder(join(project.bowerloom, parent));
+  const parent = parentFolder, parentStat = parentRead;
 
   const steps: ManifestStep[] = [];
   let current: { manifest: Manifest | null; read: Read | null } = { manifest: null, read: null };
@@ -212,7 +228,10 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     }
     if (input.kind === 'skill' && !isFinish) ensure(!current.manifest?.skills.some(s => s.id === input.name), 'SKILL_EXISTS');
   }
-  if (!isFinish) {
+  if (restore) {
+    if (parentStat === null) folders.push(parent);
+    files = [planned(itemPath('prompt', restore.id), PROMPT_TEXT(restore.id))];
+  } else if (!isFinish) {
     const exists = input.kind === 'team' ? 'TEAM_EXISTS' : input.kind === 'skill' ? 'SKILL_EXISTS' : 'PROMPT_EXISTS';
     ensure(!registered.some(i => sameItem(i, request)), exists);
     if (input.kind === 'prompt') { if (parentStat !== null) ensure(!folderNames(join(project.bowerloom, 'prompts')).some(n => n.normalize('NFC').toLowerCase() === `${input.name}.md`), exists); }
@@ -238,8 +257,9 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     input: { kind: input.kind, name: input.name, teams: input.teams, profile: input.profile },
     reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead },
     scratch: state.scratch, discard, settled, finish,
-    item: isFinish ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
+    item: isFinish || restore ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
     compiledCandidate, files, folders, manifest, writesAuthorized: false, executionAuthorized: false,
+    ...(restore ? { restore } : {}),
   };
   return { ...body, revision: sha256(canonicalJson(body)) };
 }
@@ -314,9 +334,11 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     writeReceipt([...items, finish]);
     removePending(p.reads.pending!.sha256);
   }
-  // 3. The new item.
-  if (p.item) {
-    const item: AuthoredItem = { ...p.item, planRevision: p.revision };
+  // 3. The new item, or the registered prompt this plan restores (its receipt entry stays as it is).
+  const placed: AuthoredItem | null = p.item ? { ...p.item, planRevision: p.revision } : p.restore ?? null;
+  if (placed) {
+    const item = placed;
+    if (p.restore) ensure(samePins(pinsOf(p.files), item.files), 'STALE_APPROVAL');
     for (const folder of p.folders) { live(); wrote = true; makeFolder(join(project.bowerloom, folder)); }
     if (p.folders.length) syncFolder(project.bowerloom);
     wrote = true; const pendingSha = writePending(item);
@@ -341,7 +363,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     syncFolder(parentFolder);
     removeScratch(stage); syncFolder(auth);
     if (item.kind === 'skill') writeManifest(item.id);
-    writeReceipt([...items, item]);
+    if (p.item) writeReceipt([...items, item]);
     removePending(pendingSha);
   }
   } catch (error) { if (wrote && (error as { code?: unknown })?.code === 'STALE_APPROVAL') refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }

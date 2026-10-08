@@ -85,11 +85,38 @@ export function promptSurfaces(project: string, id: string, harnesses: Harness[]
 
 const collision = (paths: string[], id: string) => syncError('APPLY_NAME_COLLISION', `Prompt ${id} goes to ${paths.join(' and ')}, and Bowerloom did not install what is there. Move it out of the way or rename the prompt, then run bowerloom apply.`);
 
+/**
+ * True only when a registered prompt's file is simply not there: `.bowerloom/prompts` is absent, or it is a real folder
+ * (never a link) without the file. Anything else that cannot be read stays PROMPT_INVALID.
+ */
+function promptMissing(project: string, id: string): boolean {
+  const gone = (path: string): boolean | null => { try { return lstatSync(path).isSymbolicLink() ? null : false; } catch (e) { return (e as NodeJS.ErrnoException).code === 'ENOENT' ? true : null; } };
+  const folder = join(project, '.bowerloom', 'prompts'), parent = gone(folder);
+  if (parent === true) return true;
+  if (parent === null) return false;
+  try { if (!lstatSync(folder).isDirectory()) return false; } catch { return false; }
+  return gone(join(folder, id + '.md')) === true;
+}
+/** Review freeze finding 1: the hold of a registered prompt whose file is gone. `prompt create <id>` restores it. */
+export const missingPromptHold = (id: string): { code: string; next: string } => ({
+  code: 'AUTHORING_ITEM_MISSING',
+  next: `.bowerloom/prompts/${id}.md is gone. Run bowerloom prompt create ${id} to restore it, then run bowerloom apply.`,
+});
+
 /** Classifies one registered prompt. Reads only. */
 export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[]): PromptItem {
   let files: InventoryRow[], notices: PromptNotice[];
   try { if (id.startsWith('prompt-')) throw new Error('reserved'); const read = readLocalPrompt(project, id, () => {}); files = [...read.inventory]; notices = promptNotices(read.files[0]!.text); }
-  catch { throw syncError('PROMPT_INVALID', `The prompt is .bowerloom/prompts/${id}.md.`); }
+  catch {
+    if (id.startsWith('prompt-') || !promptMissing(project, id)) throw syncError('PROMPT_INVALID', `The prompt is .bowerloom/prompts/${id}.md.`);
+    // Held, never a refusal of the whole plan: the other skills and prompts still apply, and the copies stay.
+    const surfaces = promptSurfaces(project, id, target);
+    return {
+      id, itemId: 'prompt-' + id, teams, state: 'drift', action: 'hold', harnesses: [...target],
+      expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before: beforePins(surfaces, project),
+      previousReceiptRevision: null, history: 0, hold: missingPromptHold(id), notices: [],
+    };
+  }
   const ref: ItemRef = { kind: 'prompt', id }, itemId = 'prompt-' + id, stateDir = join(itemsRoot, itemId);
   let hold: PromptItem['hold'] = null, heldCode: string | null = null, state: PromptState = 'drift', action: SyncItem['action'] = 'hold', previous: ManagedItemReceipt | null = null;
   let harnesses = [...target];

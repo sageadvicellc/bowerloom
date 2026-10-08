@@ -43,25 +43,24 @@ export function authoringVerifier(project: string): OwnerVerifier {
     const items = state.receipt?.value.items ?? [], pending = state.pending?.value.item ?? null;
     if (path === AUTHORING_FOLDER) {
       if (state.pending || state.scratch.length) return refused('AUTHORING_PENDING');
-      // Review M2 finding 3: the walk visits only what exists, so a registered team or skill that was deleted is
-      // reported here. A deleted prompt already shows as `edited` on `prompts`.
-      return items.some(i => i.kind !== 'prompt' && lstatOrNull(join(bowerloom, itemPath(i.kind, i.id))) === null) ? refused('AUTHORING_ITEM_MISSING') : verified;
+      // Review M2 finding 3: the walk visits only what exists, so a registered team, skill or prompt that was deleted is
+      // reported here (freeze review finding 1 added prompts). `prompt create <id>` restores a prompt.
+      return items.some(i => lstatOrNull(join(bowerloom, itemPath(i.kind, i.id))) === null) ? refused('AUTHORING_ITEM_MISSING') : verified;
     }
     const lookup = (kind: ItemKind, id: string): AuthoredItem | 'pending' | null =>
       items.find(i => i.kind === kind && i.id === id) ?? (pending && sameItem(pending, { kind, id }) ? 'pending' : null);
     if (path === 'prompts') {
       let changed = false;
-      const names = folderNames(join(bowerloom, 'prompts')), seen = new Set<string>();
+      const names = folderNames(join(bowerloom, 'prompts'));
       for (const name of names) {
         const id = name.endsWith('.md') ? name.slice(0, -3) : '';
         const item = isPromptId(id) ? lookup('prompt', id) : null;
         if (item === null) return refused('AUTHORING_UNREGISTERED');
         if (item === 'pending') return refused('AUTHORING_PENDING');
-        seen.add(id);
         const bytes = readGuarded(join(bowerloom, 'prompts', name), LIMITS.fileBytes), pin = item.files[0]!;
         if (sha256(bytes) !== pin.sha256 || bytes.length !== pin.bytes) changed = true;
       }
-      if (items.some(i => i.kind === 'prompt' && !seen.has(i.id))) changed = true;
+      // A registered prompt that is gone is AUTHORING_ITEM_MISSING on `authoring`, not an edit here.
       return changed ? edited : verified;
     }
     const target = claimedItem(path)!, item = lookup(target.kind, target.id);
