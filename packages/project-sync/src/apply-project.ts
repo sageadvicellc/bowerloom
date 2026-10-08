@@ -175,7 +175,11 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       for (const item of prompts) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId)], 'bowerloom apply');
         const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item);
-        let child; try { child = await managed.plan(req, { signal }); } catch (e) { throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to prompt ${item.id}; nothing was changed.`); }
+        let child; try { child = await managed.plan(req, { signal }); } catch (e) {
+          // Review M6 finding 6: an interrupt here is an interrupt, as it is for a skill (apply.ts phase B).
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId)], 'bowerloom apply');
+          throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to prompt ${item.id}; nothing was changed.`);
+        }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkPromptChild(dir, item, req, child) });
       }
       // Phase C: every child, in order, with a revision planned right before it in this run.

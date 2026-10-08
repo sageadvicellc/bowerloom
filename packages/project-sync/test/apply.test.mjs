@@ -173,3 +173,23 @@ test('with no skills.json and no prompts there is nothing to apply, and the plan
   await assert.rejects(planProjectApply(input(f, [])), code('USAGE'));
   await assert.rejects(planProjectApply(input(f, ['codex', 'claude'])), code('USAGE'));
 });
+
+// Review M6 finding 6: an interrupt while a prompt's child plan runs (phase B) is an interrupt, as it is for a skill,
+// not MANAGED_SKILL_REFUSED. Nothing is written to the project.
+test('an interrupt during prompt phase B reports SKILLS_SYNC_INTERRUPTED and changes nothing in the project', async t => {
+  const f = syncProject(t); await createPrompt(f, 'review'); await createPrompt(f, 'weekly-update');
+  const controller = new AbortController(), seen = [];
+  const managed = {
+    async plan(req, options) {
+      seen.push(req.item.id);
+      if (req.item.kind === 'prompt') { controller.abort(); throw Object.assign(new Error('The planner stopped.'), { code: 'MANAGED_SKILL_ABORTED' }); }
+      return planManagedItem(req, options);
+    },
+    async apply() { throw new Error('no child applies after an interrupt'); },
+  };
+  const plan = await planProjectApply(input(f)), before = contentTree(f.projectDir);
+  await assert.rejects(applyProjectApply(input(f), plan.revision, controller.signal, { managed }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && /bowerloom apply/.test(e.message) && /prompt-review/.test(e.message));
+  assert.deepEqual(seen, ['review']); assert.equal(contentTree(f.projectDir), before);
+  assert.equal(exists(f, '.claude/commands/review.md'), false);
+});
