@@ -234,6 +234,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   TEAM_NOT_FOUND: { sentence: 'A skill or prompt can be limited only to a team that exists.', next: 'bowerloom ls teams' },
   TEAM_EXISTS: { sentence: 'Each team needs its own id.', next: 'bowerloom ls teams' },
   TEAM_ID_RESERVED: { sentence: 'Setup made first-team, so a new team needs another id.', next: 'bowerloom team create <another-name>' },
+  TEAM_NAME_TAKEN: { sentence: 'bowerloom up --team takes first-team by its id or its display name, so a new team needs another id.', next: 'bowerloom team create <another-name>' },
   TEAM_NAME_INVALID: { sentence: 'The id becomes a folder name, so it is kept plain.', next: 'bowerloom help team' },
   SKILL_EXISTS: { sentence: 'Each skill needs its own id.', next: 'bowerloom ls skills' },
   SKILL_NAME_RESERVED: { sentence: 'Bowerloom uses these ids itself.', next: 'bowerloom help skill' },

@@ -8,6 +8,7 @@ const MESSAGES = {
   USAGE: 'Use bowerloom team create <name>, bowerloom skill create <name> or bowerloom prompt create <name>.',
   TEAM_EXISTS: 'This project already has a team with that id.',
   TEAM_ID_RESERVED: 'The id first-team belongs to the team that setup created. Choose another id.',
+  TEAM_NAME_TAKEN: 'This id is the display name of first-team, the team that setup created, so bowerloom up --team would name that team. Choose another id.',
   TEAM_NAME_INVALID: 'A team id is lower-case letters and digits in words joined by single hyphens, at most 64 characters, such as research-desk.',
   TEAM_NOT_FOUND: 'This project has no team with that id. Run bowerloom ls teams to see the teams.',
   SKILL_EXISTS: 'This project already has a skill with that id, in .bowerloom/skills or in skills.json.',

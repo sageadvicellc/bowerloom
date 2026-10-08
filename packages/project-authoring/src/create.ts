@@ -222,6 +222,9 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     if (parentStat === null) folders.push(parent);
     if (input.kind === 'team') {
       const read = readBrief(project); brief = read.read;
+      // Review M6 finding 3: up --team matches first-team by id or display name, so a team with that name could never
+      // be prepared. Refused here, where the name is chosen.
+      ensure(read.brief.teamName !== input.name, 'TEAM_NAME_TAKEN');
       const team = scaffoldTeam({ ...read.brief, profile: input.profile ?? read.brief.profile ?? 'engineer' }, input.name, input.name);
       files = team.files.map(f => planned(f.path, f.text)); compiledCandidate = team.compiled.candidateRevision;
     } else if (input.kind === 'skill') {
