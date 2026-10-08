@@ -1,16 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,readFile,writeFile,copyFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,copyFile,cp,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {resolve,join,dirname} from 'node:path';
+import {resolve,join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 const repo=resolve(import.meta.dirname,'../../..');
 const pages=['index','start','setup','revision','stop','cli','backend','mcp','releases','status'];
 const files=['release/beta.json','README.md','docs/assets/badge-version.svg','apps/docs/tools/sync-release.mjs',...pages.map(x=>`apps/docs/src/content/docs/${x}.md`)];
-async function fixture(t){const root=await mkdtemp(join(tmpdir(),'bowerloom-docs-release-'));t.after(()=>rm(root,{recursive:true,force:true}));for(const f of files){await mkdir(dirname(join(root,f)),{recursive:true});await copyFile(join(repo,f),join(root,f));}return root;}
-function run(root,check=true){return spawnSync(process.execPath,[join(root,'apps/docs/tools/sync-release.mjs'),...(check?['--check']:[])],{encoding:'utf8',timeout:5000});}
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'bowerloom-docs-release-'));t.after(()=>rm(root,{recursive:true,force:true}));for(const f of ['release','docs/assets','apps/landing/src','apps/docs/src','apps/docs/tools'])await cp(join(repo,f),join(root,f),{recursive:true});await copyFile(join(repo,'README.md'),join(root,'README.md'));await symlink(join(repo,'apps/docs/node_modules'),join(root,'apps/docs/node_modules'));return root;}
+const refuses=(r,code,file)=>{assert.equal(r.status,1,r.stdout+r.stderr);assert(r.stderr.includes(code),r.stderr);assert(r.stderr.includes(file),r.stderr);};
+function run(root,check=true){return spawnSync(process.execPath,[join(root,'apps/docs/tools/sync-release.mjs'),...(check?['--check']:[])],{encoding:'utf8',timeout:30000});}
 test('current generated surfaces match the release record',()=>{const r=run(repo);assert.equal(r.status,0,r.stderr);});
 test('the compatibility command is read-only: it reports zero source writes and leaves every marked surface unchanged',async()=>{const surfaces=files.filter(f=>f!=='apps/docs/tools/sync-release.mjs');const read=()=>Promise.all(surfaces.map(f=>readFile(join(repo,f),'utf8')));const before=await read();for(const check of [true,false]){const r=run(repo,check);assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).sourceWrites,0);}assert.deepEqual(await read(),before);});
-test('manual release block or badge drift is refused',async t=>{for(const f of ['README.md','docs/assets/badge-version.svg']){const root=await fixture(t);const path=join(root,f);await writeFile(path,(await readFile(path,'utf8')).replace('0.7.0-beta.0','0.7.0-beta.98'));assert.notEqual(run(root).status,0,f);}});
-test('missing generated boundary cannot silently omit a release surface',async t=>{const root=await fixture(t);await writeFile(join(root,'apps/docs/src/content/docs/start.md'),'No generated boundary');assert.notEqual(run(root,false).status,0);});
+test('a fixture with current surfaces passes the check',async t=>{const root=await fixture(t);const r=run(root);assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).sourceWrites,0);});
+test('a README or badge version other than the release version is refused',async t=>{for(const f of ['README.md','docs/assets/badge-version.svg']){const root=await fixture(t);const path=join(root,f);await writeFile(path,(await readFile(path,'utf8')).replaceAll('0.7.0-beta.1','0.7.0-beta.98'));const r=run(root);refuses(r,'RELEASE_VERSION_DRIFT',f);assert(r.stderr.includes('0.7.0-beta.98'));assert(r.stderr.includes('RELEASE_VERSION_MISSING'));}});
+test('a README or badge without the release version is refused',async t=>{for(const f of ['README.md','docs/assets/badge-version.svg']){const root=await fixture(t);const path=join(root,f);await writeFile(path,(await readFile(path,'utf8')).replaceAll('0.7.0-beta.1','no version'));refuses(run(root),'RELEASE_VERSION_MISSING',f);}});
+test('a missing or unpaired release marker is refused',async t=>{for(const [f,marker] of [['README.md','<!-- release:support:end -->'],['apps/docs/src/content/docs/status.md','<!-- release:support:start -->'],['apps/docs/src/content/docs/cli.md','<!-- release:status:end -->']]){const root=await fixture(t);const path=join(root,f);await writeFile(path,(await readFile(path,'utf8')).replace(marker,''));const r=run(root);refuses(r,'RELEASE_MARKER_UNPAIRED',f);assert(r.stderr.includes(marker.slice(5,-4).trim()));}});
+test('a page without a title is refused',async t=>{const root=await fixture(t);const path=join(root,'apps/docs/src/content/docs/start.md');await writeFile(path,'No title here');const r=run(root);assert.equal(r.status,1);assert(r.stderr.includes('Missing title: start.md'),r.stderr);});
 test('current onboarding omits alpha narratives and source-only commands outside contributors',async()=>{for(const name of [...pages,'security','configuration','permissions','harnesses','workbench','company']){const s=await readFile(join(repo,'apps/docs/src/content/docs',name+'.md'),'utf8');assert(!/alpha|cd62b530|private candidate|node dist\//i.test(s),name);}assert(!/alpha|node dist\//i.test(await readFile(join(repo,'README.md'),'utf8')));});
