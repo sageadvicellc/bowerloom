@@ -5,7 +5,7 @@
 import { DefinitionError } from '../../contracts/src/index.js';
 
 const MESSAGES = {
-  USAGE: 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id> and --team <team>, or bowerloom skills check.',
+  USAGE: 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team> and --replace, or bowerloom skills check.',
   MANIFEST_NOT_FOUND: 'This project has no .bowerloom/skills.json yet. Add a skill with bowerloom skills add.',
   MANIFEST_INVALID: 'The .bowerloom/skills.json file is not a valid skills manifest. Fix the file, or restore it from version control.',
   MANIFEST_UNSAFE: 'The .bowerloom/skills.json file is not safe to read. It must be a regular file that you own, with one link and no write access for others.',
@@ -14,7 +14,9 @@ const MESSAGES = {
   MANIFEST_DUPLICATE_ID: 'Two skills in the manifest have the same id.',
   MANIFEST_LIMIT: 'The manifest is too large. It holds at most 32 skills and 1 MiB.',
   SKILLS_ADD_SPEC_INVALID: 'The skill source is not in a form Bowerloom accepts. Use npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>.',
-  SKILLS_ADD_EXISTS: 'The manifest already holds a skill with this id or this source. Choose another id with --id, or keep the existing entry.',
+  SKILLS_ADD_EXISTS: 'The manifest already holds a skill with this id or this source. To move that id to another version or commit, add --replace. Otherwise choose another id with --id, or keep the existing entry.',
+  SKILLS_ADD_SOURCE_CHANGED: 'The skill with this id comes from another source. --replace changes only the version or commit of the same npm package or GitHub repository, and never a local skill.',
+  SKILLS_ADD_REPLACE_MISSING: 'The manifest has no skill with this id to replace. Run the command without --replace to add it, or name the existing id with --id.',
   SKILLS_ADD_NOT_FOUND: 'The registry or GitHub has no such package version, commit or path.',
   SKILLS_ADD_SKILL_MISSING: 'The selected folder has no SKILL.md, so it is not a skill.',
   SKILLS_ADD_LICENSE_UNKNOWN: 'Bowerloom could not find an MIT or Apache-2.0 license for this skill, in the skill folder or in a folder above it.',
