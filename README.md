@@ -26,7 +26,7 @@ Bowerloom moves from project integration in the 0.7 beta toward a stable v1. The
 
 | Stage | Intended outcome | Optimistic estimate | Pessimistic estimate |
 | --- | --- | --- | --- |
-| 0.7 beta handoff | Put project integration and documented limits in colleagues' hands. | Soft-launch target: Friday, October 9. | Handoff buffer: Tuesday, October 13. Unresolved release defects move the handoff later. |
+| 0.7 beta handoff | Put project integration and documented limits in colleagues' hands. | Colleague soft launch: Monday, October 12. | Unresolved release defects move the handoff later. |
 | 0.7.x capability additions | Add capabilities from observed use and accepted priorities. | October–November. | Additions extend beyond November if fixes or required controls take longer. |
 | 1.0 beta | Bring the intended v1 capabilities into a defined, tested scope. | Around December. | After December if the 0.7.x work needs more time. |
 | Release candidate | Focus on stability, installation, recovery, security, and documentation. | Toward the end of December. | After the delayed 1.0 beta and its necessary fixes. |
