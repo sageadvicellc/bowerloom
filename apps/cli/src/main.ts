@@ -134,7 +134,8 @@ const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'stat
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
   if (namesYesFlag(args)) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
-  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help')) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
+  // F' code review C: bare bowerloom prints the short help. At cc117ac it was a usage refusal, not a plumbing form.
+  if (args.length === 0 || (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help'))) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
   if (args[0] === 'help') {
     const text = helpText(args.slice(1));
     if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');

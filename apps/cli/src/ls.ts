@@ -66,7 +66,8 @@ export function listProject(project: ProjectContext): Listing {
 const title = (section: Section): string => section[0]!.toUpperCase() + section.slice(1);
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
   const shown = only ? [only] : [...SECTIONS], pinned = listing.pinned ?? [];
-  if (json) return newCommandJson({ format: 'bowerloom/ls/v1beta1', ...Object.fromEntries(shown.map(s => [s, listing[s]])), ...(shown.includes('skills') ? { pinned: pinned.map(p => p.id) } : {}), unlisted: listing.unlisted });
+  // F' code review B: a skills.json that cannot be read is pinned: null, so an agent never reads it as "no pins".
+  if (json) return newCommandJson({ format: 'bowerloom/ls/v1beta1', ...Object.fromEntries(shown.map(s => [s, listing[s]])), ...(shown.includes('skills') ? { pinned: listing.pinned === null ? null : pinned.map(p => p.id) } : {}), unlisted: listing.unlisted });
   const width = Math.max(0, ...pinned.map(p => p.id.length));
   const lines = (s: Section): string[] => s === 'teams'
     ? listing.teams.map(n => n === 'first-team' && listing.firstTeamName && listing.firstTeamName !== n ? `  ${n} (${plainText(listing.firstTeamName)})` : `  ${plainText(n)}`)

@@ -124,6 +124,9 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
     return { step: 'team', team: created, change: wrap('team', created, createChange(project, { kind: 'team', project: project.dir, name: ctx.team }), () => `Next step: team. Create team ${ctx.team} for this project.`) };
   }
   const stateRoot = privateStateRoot(ctx.env, ctx.home), held: HeldItem[] = missingItems(project, team.id);
+  // F' code review A: a created team whose folder is gone stops here, with its restore step. The sync planner would
+  // refuse it TEAM_NOT_FOUND, and team create would refuse TEAM_EXISTS, so no other step can help.
+  if (held.some(i => i.kind === 'team' && i.id === team.id)) return { step: 'held', team, change: null, held };
   if (readManifestState(project.dir).file !== null) {
     const input = () => ({ project, stateRoot, team: team.id, offline: false });
     const plan = await planSync(input());

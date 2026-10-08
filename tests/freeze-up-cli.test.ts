@@ -150,6 +150,25 @@ test('finding 2: a deleted team folder is held; up never reports that team as in
   prepared(run(p, ['up', '--team', 'ops-crew']));
 });
 
+// F' code review A: with skills.json present, a deleted created team is held with its restore step before any sync
+// or apply plan, so it never dead-ends in TEAM_NOT_FOUND.
+test('finding 2: a deleted team folder is held with its restore step when skills.json exists', t => {
+  const p = fresh(t);
+  prepared(upAll(p, 'ops-crew', '--goal', GOAL));
+  prepared(upAll(p, 'docs-crew'));
+  create(p, ['skill', 'create', 'house-style']);
+  assert.ok(existsSync(join(p.dir, '.bowerloom/skills.json')));
+  renameSync(join(p.dir, '.bowerloom/teams/docs-crew'), join(p.outside, 'docs-crew'));
+  const up = run(p, ['up', '--team', 'docs-crew']); heldItems(up, 1);
+  assert.match(up.stdout, /^ {2}Held: team docs-crew \(AUTHORING_ITEM_MISSING\)$/m);
+  assert.match(up.stdout, /^ {4}Next: \.bowerloom\/teams\/docs-crew is gone\. Restore it from version control, for example with git restore \.bowerloom\/teams\/docs-crew\.$/m);
+  const json = run(p, ['up', '--team', 'docs-crew', '--json']); assert.equal(json.status, 4, json.stderr);
+  assert.deepEqual((JSON.parse(json.stdout) as { held: { kind: string; id: string }[] }).held.map(h => [h.kind, h.id]), [['team', 'docs-crew']]);
+  // Restored, the team gets its sync step again.
+  renameSync(join(p.outside, 'docs-crew'), join(p.dir, '.bowerloom/teams/docs-crew'));
+  const back = run(p, ['up', '--team', 'docs-crew']); assert.equal(back.status, 3, back.stderr); assert.match(back.stdout, /^Next step: sync\./m);
+});
+
 test('finding 12: a created team is named once, and --goal and --name on a set-up project are named as unused', t => {
   const p = fresh(t);
   const first = upAll(p, 'research-desk', '--goal', GOAL); prepared(first);

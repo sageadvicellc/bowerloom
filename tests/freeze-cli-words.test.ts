@@ -47,7 +47,8 @@ test('finding 6: an unknown first word, bare up and a bad status flag get their 
   // Plumbing words stay exactly as they were at cc117ac.
   const old = 'Use an explicit installation file and the documented command arguments.';
   for (const args of [['up', '--demo'], ['up', '--pro'], ['up', '--installation', 'x.json'], ['status', '--installation'], ['status', '--registry', 'x'], ['review'], ['cancel'], ['approve']]) assert.equal(usage(run(p, args)), old, args.join(' '));
-  assert.equal(usage(run(p, [])), 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
+  // F' code review C: bare bowerloom prints the short help, as bowerloom help does (exit 0).
+  const bare = run(p, []); assert.equal(bare.status, 0, bare.stderr); assert.equal(bare.stderr, ''); assert.equal(bare.stdout, run(p, ['help']).stdout);
   assert.equal(usage(run(p, ['validate'])), 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   assert.equal(usage(run(p, ['plan', 'a', 'b'])), 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   assert.equal(usage(run(p, ['skills'])), 'Use the exact skills source, plan, apply, inspect, update plan, or recover command shown in help. Explicit records and approvals are required.');
@@ -112,6 +113,13 @@ test('findings 9, 10, 11, 15 and 16: apply names only the chosen harness; check,
   assert.match(skills.stdout, /^ {2}cached-notes +pinned: npm @synthetic\/cached-notes@1\.0\.0$/m); assert.match(skills.stdout, /^ {2}tone-guide$/m);
   const listed = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { skills: string[]; pinned: string[] };
   assert.deepEqual(listed.pinned, ['cached-notes']); assert.ok(listed.skills.includes('tone-guide'));
+  // F' code review B: a skills.json that cannot be read is pinned: null in JSON, never an empty list.
+  const good = readFileSync(join(p.dir, '.bowerloom/skills.json'));
+  writeFileSync(join(p.dir, '.bowerloom/skills.json'), '{ not json');
+  const broken = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { pinned: unknown };
+  assert.ok(Object.hasOwn(broken, 'pinned')); assert.equal(broken.pinned, null);
+  assert.match(run(p, ['ls', 'skills']).stdout, /^Pinned skills are not listed: \.bowerloom\/skills\.json cannot be read\./m);
+  writeFileSync(join(p.dir, '.bowerloom/skills.json'), good);
   writeFileSync(join(p.dir, '.bowerloom/skills.json'), JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'tone-guide', source: { kind: 'local', path: 'skills/tone-guide' } }] }, null, 2) + '\n');
 
   // 16: status names the edited file, and the held item with its next step. 15: the step for a prompt copy changed by
