@@ -12,6 +12,7 @@ import { validateCacheBinding, openGitCacheOperation, gitCacheCode, gitCacheName
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
 import type { ExpectedSkillFile } from './npm.js';
 import { guardedResponseHeaders } from './response-headers.js';
+import { publicIPv4 } from './public-address.js';
 
 export const GIT_ACQUISITION_POLICY = 'bowerloom/github-git-acquisition/v1beta2';
 const GIT_PLAN_FORMAT = 'bowerloom/git-acquisition-plan/v1beta2';
@@ -215,11 +216,6 @@ export async function verifyGitPayload(planValue:unknown,metadataBytes:Buffer,pa
   const source:GitSkillSource={kind:'git',host:'github.com',repository:plan.request.repository,commit:plan.request.commit,tree:plan.request.tree,pathTrees:[...plan.request.pathTrees],metadataSha256:sha256(meta),declaredLicense:plan.request.declaredLicense};
   let contentRevision:string;try{contentRevision=validateSkillSource({format:'bowerloom/synthetic-skill-source/v1beta1',synthetic:true,source,skill:plan.request.skill,files,references:plan.request.references,license:plan.request.license}).revision;}catch(error){if(error instanceof SkillSourceError)return refuse('GIT_CONTENT');throw error;}
   active();return freezeSkillData({source,skill:plan.request.skill,files,references:plan.request.references,license:plan.request.license,contentRevision,inventoryRevision:revisionOf(plan.request.files),recordCount:entries.size});
-}
-function publicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const [a, b, c] = address.split('.').map(Number) as [number, number, number];
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 100 && b >= 64 && b <= 127 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 88 && c === 99) || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113);
 }
 // Plan, options and cache admission. A refusal here is certain, unless it carries GIT_CACHE_OPEN_PARTIAL or
 // GIT_CACHE_RELEASE_UNCERTAIN. Those mean the operation folder or its owner lock was left behind.

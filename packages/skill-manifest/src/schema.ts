@@ -11,6 +11,7 @@ import { planGitAcquisition } from '../../skill-sources/src/git.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
 import { refuse, requireManifest } from './refusal.js';
 import { toNpmRequest, toGitRequest, probeBinding } from './requests.js';
+import { LICENSE_NAME } from './content.js';
 
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
 export const MANIFEST_FILE = 'skills.json' as const;
@@ -95,6 +96,20 @@ function source(value: unknown): NpmSource | GitSource | LocalSource {
   return refuse('MANIFEST_INVALID');
 }
 
+/**
+ * Review M3 finding 2: an npm license file outside the skill folder must sit in the skill folder's parent chain (the
+ * package root included), have a LICENSE name, and keep that name, the rule `skills add` follows (resolve-npm.ts).
+ * So a hand-written entry cannot map another package file in as a license. Git already refuses this (GIT_OUTSIDE_PATH).
+ */
+function npmLicensePlacement(entry: PinnedEntry): void {
+  const root = entry.skill.sourceRoot;
+  for (const name of entry.license.files) {
+    const file = entry.files.find(f => f.path === name);
+    if (!file || file.sourcePath === `${root}/${file.path}`) continue;
+    const slash = file.sourcePath.lastIndexOf('/'), folder = slash < 0 ? '' : file.sourcePath.slice(0, slash), base = file.sourcePath.slice(slash + 1);
+    requireManifest((folder === '' || root === folder || root.startsWith(`${folder}/`)) && LICENSE_NAME.test(base) && file.path === base, 'MANIFEST_INVALID');
+  }
+}
 /** One entry, checked and normalized: arrays sorted, keys closed. A pinned entry must pass the acquisition planner. */
 export function validateEntry(value: unknown): Entry {
   const kind = ((value as { source?: { kind?: unknown } } | null)?.source)?.kind;
@@ -115,6 +130,7 @@ export function validateEntry(value: unknown): Entry {
   const references = (v.references as unknown[]).map(raw => { const r = record(raw, ['from', 'to']); return { from: path(r.from), to: path(r.to) }; })
     .sort((a, b) => compare(`${a.from}\0${a.to}`, `${b.from}\0${b.to}`));
   const entry = { ...head, source: src, skill: { name: skill.name, sourceRoot: path(skill.sourceRoot) }, license: lic, files, references } as PinnedEntry;
+  if (src.kind === 'npm') npmLicensePlacement(entry);
   // The existing planners hold every rule of an acquisition request: package and repository names, integrity, file
   // bounds, license file placement, references. A probe binding lets them run in memory.
   try { if (src.kind === 'npm') planNpmAcquisition(toNpmRequest(entry as NpmEntry), probeBinding()); else planGitAcquisition(toGitRequest(entry as GitEntry), probeBinding()); }

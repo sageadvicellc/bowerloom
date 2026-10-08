@@ -13,6 +13,7 @@ import type { SkillTextFile, SkillLicense } from './types.js';
 import { validateCacheBinding, openNpmCacheOperation, fixedCode, secondaryCodes, strictUtf8, REFUSAL_CODES, SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
 import { guardedResponseHeaders } from './response-headers.js';
+import { publicIPv4 } from './public-address.js';
 
 export const NPM_ACQUISITION_POLICY = 'bowerloom/npm-acquisition/ustar-v1beta1';
 export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 524288, compressedBytes: 8388608, tarBytes: 33554432, records: 1024, files: 128, directories: 128, fileBytes: 65536, selectedBytes: 2097152, headerBytes: 16384, requests: 2, durationMs: 30000, requestMs: 10000, storageBytes: 12582912 });
@@ -209,11 +210,6 @@ export async function verifyNpmPayload(planValue: unknown, metadataBytes: Buffer
     contentRevision = validateSkillSource({ format: 'bowerloom/synthetic-skill-source/v1beta1', synthetic: true, source, skill: plan.request.skill, files, references: plan.request.references, license: plan.request.license }).revision;
   } catch (error) { if (error instanceof SkillSourceError) return npmRefuse('NPM_CONTENT'); throw error; }
   check(); return freezeSkillData({ source, skill: plan.request.skill, files, references: plan.request.references, license: plan.request.license, contentRevision, inventoryRevision: revisionOf(plan.request.files), recordCount });
-}
-function publicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const [a, b, c] = address.split('.').map(Number) as [number, number, number];
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 100 && b >= 64 && b <= 127 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 88 && c === 99) || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113);
 }
 // Plan, options and cache admission. A refusal here is certain, unless it carries NPM_CACHE_OPEN_PARTIAL or
 // NPM_CACHE_RELEASE_UNCERTAIN. Those mean the operation folder or its owner lock was left behind.

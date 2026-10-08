@@ -145,11 +145,14 @@ test('each pinned entry maps onto a request the existing acquisition planners ac
   assert.throws(() => toNpmRequest(m.skills[2]), code('MANIFEST_INVALID')); assert.throws(() => toGitRequest(m.skills[0]), code('MANIFEST_INVALID'));
 });
 
-test('a license outside the skill folder maps faithfully: npm anywhere in the package, Git only beside a walked tree', t => {
+test('a license outside the skill folder maps faithfully: npm only in the skill folder\'s parent chain, Git only beside a walked tree', t => {
   const binding = observeSkillCacheRoot(privateFolder(t), 'b'.repeat(32), 12582912);
   const m = sample();
   assert.equal(m.skills[1].files[0].sourcePath, 'LICENSE');
   assert.doesNotThrow(() => planNpmAcquisition(toNpmRequest(parseManifest(bytes(m)).skills[1]), binding));
+  // npm: a license in a folder that is not above the skill is refused (review M3 finding 2), as for Git.
+  const npmOff = sample(); npmOff.skills[1].files[0].sourcePath = 'docs/LICENSE';
+  assert.throws(() => parseManifest(bytes(npmOff)), code('MANIFEST_INVALID'));
   // Git: a license beside the skill's own path is accepted by the parser; one in an unrelated folder is not.
   const off = sample(); off.skills[2].files[0].sourcePath = 'docs/LICENSE';
   assert.throws(() => parseManifest(bytes(off)), code('MANIFEST_INVALID'));

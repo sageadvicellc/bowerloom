@@ -45,6 +45,19 @@ export function addLocalEntry(m: Manifest | null, id: string, teams: string[]): 
   return validateManifest({ format: base.format, harnesses: [...base.harnesses], skills: [...base.skills, entry] });
 }
 
+// The temporary name applyManifestChange writes through. A kill between its link and its unlink leaves a second link.
+const TEMP_NAME = /^\.skills\.json\.[a-f0-9]{16}\.tmp$/;
+/** True when a leftover `.skills.json.*.tmp` in `.bowerloom` is the second link of skills.json. Reads names only. */
+function leftoverTempLink(folder: string, file: fs.Stats): boolean {
+  try { return fs.readdirSync(folder).some(name => { if (!TEMP_NAME.test(name)) return false; const s = fs.lstatSync(join(folder, name)); return s.isFile() && s.dev === file.dev && s.ino === file.ino; }); }
+  catch { return false; }
+}
+/** MANIFEST_UNSAFE, with the hint that its plain words name the temporary file (review M3 finding 5). The message stays fixed. */
+function leftoverLinkRefusal(): Error {
+  const error = manifestRefusal('MANIFEST_UNSAFE');
+  Object.defineProperty(error, 'hint', { value: 'skills-json-temp-link', enumerable: false });
+  return error;
+}
 interface ManifestState { bowerloom: { device: string; inode: string }; file: { bytes: Buffer; sha256: string } | null }
 const owned = (s: fs.Stats) => s.uid === process.getuid?.() && (s.mode & 0o022) === 0;
 /**
@@ -60,6 +73,7 @@ export function readManifestState(project: string): ManifestState {
   const bowerloom = { device: String(dir.dev), inode: String(dir.ino) };
   let stat: fs.Stats;
   try { stat = fs.lstatSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { bowerloom, file: null }; return refuse('MANIFEST_UNSAFE'); }
+  if (stat.isFile() && !stat.isSymbolicLink() && stat.nlink !== 1 && leftoverTempLink(folder, stat)) throw leftoverLinkRefusal();
   requireManifest(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && owned(stat), 'MANIFEST_UNSAFE');
   requireManifest(stat.size <= MANIFEST_LIMITS.bytes, 'MANIFEST_LIMIT');
   let fd: number; try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); } catch { return refuse('MANIFEST_UNSAFE'); }
@@ -133,7 +147,8 @@ export function applyManifestChange(plan: ManifestChangePlan, revision: string, 
     created = false;
     syncFolder(folder);
   } finally { if (created) { try { fs.unlinkSync(temp); } catch { /* Already gone. */ } } }
+  // The file was written. A mismatch now is not a stale plan: it gets its own code and words (review M3 finding 5).
   const written = readManifestState(plan.project);
-  requireManifest(written.file?.sha256 === again.after.sha256, 'STALE_APPROVAL');
+  requireManifest(written.file?.sha256 === again.after.sha256, 'MANIFEST_WRITE_UNCONFIRMED');
   return { manifest: MANIFEST_PATH, added: again.change.add.id, sha256: again.after.sha256, bytes: again.after.bytes };
 }

@@ -16,31 +16,30 @@
  * - Response: status 200 only, so a 3xx is never followed; the D11 header gate from skill-sources/response-headers.ts
  *   (a repeated guarded header, more than 128 header pairs, or framing other than chunked refuses); no Location; no
  *   content encoding but identity; a declared and an actual length within the caller's bound; a complete body.
- * - Bounds: at most 16 KiB of headers, the caller's bound per body (at most 8 MiB), 16 MiB in all, 140 requests,
- *   10 seconds per request and 30 seconds per transport, and the caller's abort signal.
+ * - Bounds: at most 16 KiB of headers, the caller's bound per body (at most 8 MiB), 8.5 MiB in all, 130 requests,
+ *   10 seconds per request and 30 seconds per transport, and the caller's abort signal. The DNS lookup is bounded
+ *   by the same abort signal, both time limits and close().
  * Every refusal is a fixed code with a fixed message. No header value, body, address or URL is ever reported.
  */
 import https from 'node:https';
 import dns from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { guardedResponseHeaders } from '../../skill-sources/src/response-headers.js';
+import { publicIPv4 } from '../../skill-sources/src/public-address.js';
 import { isManifestRefusal, manifestRefusal, requireManifest } from './refusal.js';
 import type { ManifestRefusalCode } from './refusal.js';
 
 export const PUBLIC_HOSTS: readonly string[] = Object.freeze(['registry.npmjs.org', 'api.github.com']);
-export const PUBLIC_GET_LIMITS = Object.freeze({ requests: 140, durationMs: 30000, requestMs: 10000, headerBytes: 16384, responseBytes: 8388608, totalBytes: 16777216, addresses: 16 });
+// Review M3 finding 3: GIT_LIMITS, except the total. npm reads its metadata (512 KiB) and its archive (8 MiB) in one
+// `skills add`, so the total is 8 MiB plus 512 KiB, the bound of an npm acquisition.
+export const PUBLIC_GET_LIMITS = Object.freeze({ requests: 130, durationMs: 30000, requestMs: 10000, headerBytes: 16384, responseBytes: 8388608, totalBytes: 8912896, addresses: 16 });
 export interface PublicTransport { get(url: string, maxBytes: number, signal: AbortSignal): Promise<Buffer> }
 export interface PublicGetOptions { requests?: number; durationMs?: number; requestMs?: number }
 
 const URL_SHAPE = /^https:\/\/(registry\.npmjs\.org|api\.github\.com)\/[A-Za-z0-9._~@%/-]+(\?recursive=1)?$/;
-/** The public IPv4 test of skill-sources npm.ts and git.ts, the same table line for line. */
-export function publicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const [a, b, c] = address.split('.').map(Number) as [number, number, number];
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 100 && b >= 64 && b <= 127 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 88 && c === 99) || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113);
-}
+/** The one public IPv4 test of skill-sources npm.ts and git.ts (review M3 finding 4). */
+export { publicIPv4 };
 /** The host of an allowed URL, or a refusal. */
 export function allowedHost(url: unknown): string {
   requireManifest(typeof url === 'string' && url.length <= 2048, 'SKILLS_ADD_HOST_REFUSED');
@@ -73,6 +72,24 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
     requireManifest(answers.every(a => a !== null && typeof a === 'object' && a.family === 4 && typeof a.address === 'string' && publicIPv4(a.address)), 'SKILLS_ADD_HOST_REFUSED');
     return answers[0]!.address;
   }
+  /**
+   * Waits for `work` no longer than the caller's abort signal, the per-request limit, the transport limit and close()
+   * allow (review M3 finding 1). The wait is registered in `live`, so close() ends it.
+   */
+  function withinLimits<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      let done = false;
+      const settle = (failure: unknown, value?: T) => {
+        if (done) return; done = true; clearTimeout(timeout); live.delete(stop); signal.removeEventListener('abort', stop);
+        if (failure === undefined) resolve(value as T); else reject(isManifestRefusal(failure) ? failure : manifestRefusal('SKILLS_ADD_NETWORK'));
+      };
+      const stop = () => settle(manifestRefusal('SKILLS_ADD_NETWORK'));
+      const timeout = setTimeout(stop, Math.max(0, Math.min(limit.requestMs, deadline - performance.now()))); timeout.unref();
+      live.add(stop); signal.addEventListener('abort', stop, { once: true });
+      if (closed || signal.aborted) { stop(); return; }
+      work.then(value => settle(undefined, value), error => settle(error ?? manifestRefusal('SKILLS_ADD_NETWORK')));
+    });
+  }
   function headersFor(host: string, url: string): Record<string, string> {
     const common = { 'Accept-Encoding': 'identity', 'User-Agent': 'bowerloom-skills-add/1' };
     if (host === 'api.github.com') return { Accept: 'application/vnd.github+json', ...common, 'X-GitHub-Api-Version': '2026-03-10' };
@@ -86,7 +103,7 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
     usable(signal);
     requireManifest(++count <= limit.requests, 'SKILLS_ADD_UNSAFE_CONTENT');
     if (!addresses.has(host)) { const pending = lookup(host); pending.catch(() => {}); addresses.set(host, pending); }
-    const address = await addresses.get(host)!;
+    const address = await withinLimits(addresses.get(host)!, signal);
     usable(signal);
     return new Promise<Buffer>((resolve, reject) => {
       let done = false, request: ClientRequest | undefined, response: IncomingMessage | undefined, bytes = 0;

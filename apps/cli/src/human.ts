@@ -135,10 +135,11 @@ const CONTROLS = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
 const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\p{Cf}\u2028\u2029]/gu;
 // Every UTF-16 unit of a match as `\\uXXXX`, so a character outside the basic plane (a tag character) keeps both halves.
 const escapeUnits = (c: string): string => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('');
-// C1 controls and the format characters (bidi controls, zero-width characters), plus the line and paragraph separators.
-const JSON_HIDDEN = /[\u0080-\u009f\p{Cf}\u2028\u2029]/gu;
+// DEL (review M3 finding 6), the C1 controls and the format characters (bidi controls, zero-width characters), plus the
+// line and paragraph separators.
+const JSON_HIDDEN = /[\u007f-\u009f\p{Cf}\u2028\u2029]/gu;
 /**
- * The JSON output of a new command (0.7.0 and later): canonical JSON, with every C1 control, format character (bidi
+ * The JSON output of a new command (0.7.0 and later): canonical JSON, with DEL, every C1 control, format character (bidi
  * and zero-width included), U+2028 and U+2029 written as a \uXXXX escape, so a terminal shows it as text. The parsed
  * value is the same. Plumbing commands keep their exact envelope and do not use this.
  */
@@ -172,6 +173,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_NOT_FOUND: { sentence: 'There is nothing to check yet.', next: 'bowerloom skills add npm:<package>@<version>:<path>' },
   MANIFEST_INVALID: { sentence: 'Bowerloom reads skills.json strictly, so a hand edit can break it.', next: 'git diff .bowerloom/skills.json' },
   MANIFEST_UNSAFE: { sentence: 'Bowerloom will not trust a skills.json that other people or links can change.', next: 'ls -l .bowerloom/skills.json' },
+  MANIFEST_WRITE_UNCONFIRMED: { sentence: 'skills.json was written, but it changed again before Bowerloom could read it back. Check it before you run the command again.', next: 'bowerloom skills check' },
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
@@ -215,11 +217,18 @@ export interface RefusalDetail {
   readonly port?: number;
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
+  /** A fixed hint name the error carries, for words that are more exact than its code alone. */
+  readonly hint?: typeof LEFTOVER_TEMP_LINK;
 }
+/** The hint of a MANIFEST_UNSAFE whose second link is a leftover `.skills.json.*.tmp` (skill-manifest/src/add.ts). */
+const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
+  if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
+    return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
+  }
   if (code === 'PROJECT_LOCK_SLOT_COLLISION' && validPort(detail.port)) {
     return { sentence: `The lock uses a local port, and another program is listening on port ${detail.port}.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
@@ -240,7 +249,8 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const code = codeOf(error) ?? 'IO_ERROR';
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}) };
+  const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK ? { hint } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
 }

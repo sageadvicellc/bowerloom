@@ -22,6 +22,7 @@ const MESSAGES = {
   SKILLS_ADD_NETWORK: 'Bowerloom could not read the public source. Check the network connection and try again. Nothing was changed.',
   SKILLS_ADD_HOST_REFUSED: 'Bowerloom reads only registry.npmjs.org and api.github.com, at public addresses.',
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
+  MANIFEST_WRITE_UNCONFIRMED: 'skills.json was written, but reading it back did not give the planned bytes. Another program may have changed it at the same moment. Check it with bowerloom skills check.',
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   TEAM_NOT_FOUND: 'This project has no team with that id. Run bowerloom ls teams to see the teams.',
 } as const;
