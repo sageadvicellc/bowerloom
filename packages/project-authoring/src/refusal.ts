@@ -21,6 +21,8 @@ const MESSAGES = {
   AUTHORING_UNSAFE_PATH: 'A folder or file that create reads or writes is not safe: a link, a file with more than one link, a file you do not own, a file others can write, or a file over the size limit.',
   AUTHORING_UNREGISTERED: 'This folder or file is not one that create made. Remove it, or move it out of .bowerloom.',
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
+  AUTHORING_WRITE_INTERRUPTED: 'The project changed while create was writing, so it stopped. Part of the item may be in place. Run the same command again: its plan finishes or clears what was left.',
+  AUTHORING_ITEM_MISSING: 'A team or skill that create made is gone from .bowerloom, but its record still lists it. Restore it from version control.',
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   REVISION_PENDING: 'A revise of this project is not finished. Finish it with bowerloom revise recover first.',
 } as const;

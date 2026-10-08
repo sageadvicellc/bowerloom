@@ -50,6 +50,8 @@ export interface CreatePlan {
   scratch: string[];
   /** A pending item that never landed: apply removes its record. */
   discard: AuthoredItem | null;
+  /** Review M2 finding 2: an item already registered, exactly as its leftover pending record names it. The record goes. */
+  settled: AuthoredItem | null;
   /** A pending item that landed with exactly its recorded bytes: apply registers it. */
   finish: AuthoredItem | null;
   /** The new item, or null when the request is the pending item this plan finishes. */
@@ -176,13 +178,17 @@ async function plan(input: Normalized): Promise<CreatePlan> {
   ensure(lstatOrNull(join(project.dir, '.bowerloom-revision.json')) === null, 'REVISION_PENDING');
   const state: AuthoringState = readAuthoringState(project.bowerloom);
   const receiptItems = state.receipt?.value.items ?? [];
-  let discard: AuthoredItem | null = null, finish: AuthoredItem | null = null;
+  let discard: AuthoredItem | null = null, finish: AuthoredItem | null = null, settled: AuthoredItem | null = null;
   if (state.pending) {
-    const pending = state.pending.value.item;
-    ensure(!receiptItems.some(i => sameItem(i, pending)), 'AUTHORING_PENDING');
-    const landed = pendingState(project, pending);
-    ensure(landed !== 'mismatch', 'AUTHORING_PENDING');
-    if (landed === 'absent') discard = pending; else finish = pending;
+    const pending = state.pending.value.item, registeredAs = receiptItems.find(i => sameItem(i, pending));
+    // A kill after the receipt and before the pending record's removal: the record goes only when it names the very
+    // item the receipt registered (same pins, teams and plan revision).
+    if (registeredAs) { ensure(canonicalJson(registeredAs) === canonicalJson(pending), 'AUTHORING_PENDING'); settled = pending; }
+    else {
+      const landed = pendingState(project, pending);
+      ensure(landed !== 'mismatch', 'AUTHORING_PENDING');
+      if (landed === 'absent') discard = pending; else finish = pending;
+    }
   }
   const registered = finish ? [...receiptItems, finish] : receiptItems;
   const request = { kind: input.kind, id: input.name };
@@ -228,7 +234,7 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     format: AUTHORING_PLAN_FORMAT, project: project.dir, bowerloom: project.identity,
     input: { kind: input.kind, name: input.name, teams: input.teams, profile: input.profile },
     reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead },
-    scratch: state.scratch, discard, finish,
+    scratch: state.scratch, discard, settled, finish,
     item: isFinish ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
     compiledCandidate, files, folders, manifest, writesAuthorized: false, executionAuthorized: false,
   };
@@ -290,13 +296,16 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     applyManifestChange(change, change.revision, held);
   };
 
+  // Review M2 finding 4: once anything is written, a stale plan is no longer "nothing applied".
+  let wrote = false;
+  try {
   // 1. Bowerloom's own scratch from an interrupted run.
-  if (p.scratch.length) { live(); for (const name of p.scratch) removeScratch(join(auth, name)); syncFolder(auth); }
+  if (p.scratch.length) { live(); wrote = true; for (const name of p.scratch) removeScratch(join(auth, name)); syncFolder(auth); }
   // 2. The pending record: clear it, or finish its item.
-  if (p.discard) removePending(p.reads.pending!.sha256);
+  if (p.discard || p.settled) { wrote = true; removePending(p.reads.pending!.sha256); }
   if (p.finish) {
     const finish = p.finish;
-    live(); ensure(pendingState(project, finish) === 'landed', 'STALE_APPROVAL');
+    live(); ensure(pendingState(project, finish) === 'landed', 'STALE_APPROVAL'); wrote = true;
     if (finish.kind === 'prompt') readGuarded(join(project.bowerloom, itemPath('prompt', finish.id)), LIMITS.fileBytes);
     if (finish.kind === 'skill' && p.manifest?.steps.some(s => s.id === finish.id)) writeManifest(finish.id);
     writeReceipt([...items, finish]);
@@ -305,9 +314,9 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
   // 3. The new item.
   if (p.item) {
     const item: AuthoredItem = { ...p.item, planRevision: p.revision };
-    for (const folder of p.folders) { live(); makeFolder(join(project.bowerloom, folder)); }
+    for (const folder of p.folders) { live(); wrote = true; makeFolder(join(project.bowerloom, folder)); }
     if (p.folders.length) syncFolder(project.bowerloom);
-    const pendingSha = writePending(item);
+    wrote = true; const pendingSha = writePending(item);
     const stage = join(auth, stageName(p.revision));
     live(); makeFolder(stage);
     for (const file of p.files) {
@@ -332,6 +341,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     writeReceipt([...items, item]);
     removePending(pendingSha);
   }
+  } catch (error) { if (wrote && (error as { code?: unknown })?.code === 'STALE_APPROVAL') refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }
   live();
   return receiptOf(items);
 }

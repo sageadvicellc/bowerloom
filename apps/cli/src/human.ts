@@ -214,6 +214,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   AUTHORING_UNSAFE_PATH: { sentence: 'Bowerloom will not read or write through links, shared files or files others can change.', next: 'ls -la .bowerloom' },
   AUTHORING_UNREGISTERED: { sentence: 'Bowerloom keeps track only of what create made.', next: 'bowerloom status' },
   REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
+  AUTHORING_WRITE_INTERRUPTED: { sentence: 'Part of the item may be in place, and the next plan shows how it is finished or cleared.', next: 'run the same command again, without --approve, to see the new plan' },
+  AUTHORING_ITEM_MISSING: { sentence: 'Bowerloom reports a created item that is gone, so it is not lost silently.', next: 'git status .bowerloom' },
   SKILLS_OFFLINE: { sentence: 'Sync fetches only pins that are not cached yet, and it changed nothing in the project.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },

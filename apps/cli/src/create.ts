@@ -57,6 +57,7 @@ export function renderCreateReview(plan: CreatePlan): string {
   const lines: string[] = [];
   const where = (kind: string, id: string) => kind === 'prompt' ? `.bowerloom/prompts/${id}.md` : `.bowerloom/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
   if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in .bowerloom/authoring`);
+  if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);
   if (plan.finish) lines.push(`Finish ${plan.finish.kind} ${plan.finish.id} from an interrupted create. Its ${plan.finish.files.length === 1 ? 'file is' : 'files are'} already in ${where(plan.finish.kind, plan.finish.id)}, with the recorded bytes.`);
   if (plan.item) {

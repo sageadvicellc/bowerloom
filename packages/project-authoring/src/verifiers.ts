@@ -8,9 +8,9 @@ import type { OwnedEntryKind, OwnerVerdict, OwnerVerifier } from '../../project-
 import { readManifestState } from '../../skill-manifest/src/add.js';
 import { parseManifest } from '../../skill-manifest/src/schema.js';
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
-import { LIMITS, folderNames, readGuarded, readTree, realFolder, sha256 } from './files.js';
+import { LIMITS, folderNames, lstatOrNull, readGuarded, readTree, realFolder, sha256 } from './files.js';
 import { isAuthoringRefusal, refuse } from './refusal.js';
-import { AUTHORING_FOLDER, isPromptId, isSkillId, isTeamId, readAuthoringState, sameItem } from './state.js';
+import { AUTHORING_FOLDER, isPromptId, isSkillId, isTeamId, itemPath, readAuthoringState, sameItem } from './state.js';
 import type { AuthoredItem, ItemKind } from './state.js';
 
 const verified: OwnerVerdict = Object.freeze({ result: 'verified' });
@@ -40,8 +40,13 @@ export function authoringVerifier(project: string): OwnerVerifier {
     if (!claims(path, kind) || !(signal instanceof AbortSignal) || signal.aborted) refuse('AUTHORING_UNSAFE_PATH');
     realFolder(bowerloom);
     const state = readAuthoringState(bowerloom);
-    if (path === AUTHORING_FOLDER) return state.pending || state.scratch.length ? refused('AUTHORING_PENDING') : verified;
     const items = state.receipt?.value.items ?? [], pending = state.pending?.value.item ?? null;
+    if (path === AUTHORING_FOLDER) {
+      if (state.pending || state.scratch.length) return refused('AUTHORING_PENDING');
+      // Review M2 finding 3: the walk visits only what exists, so a registered team or skill that was deleted is
+      // reported here. A deleted prompt already shows as `edited` on `prompts`.
+      return items.some(i => i.kind !== 'prompt' && lstatOrNull(join(bowerloom, itemPath(i.kind, i.id))) === null) ? refused('AUTHORING_ITEM_MISSING') : verified;
+    }
     const lookup = (kind: ItemKind, id: string): AuthoredItem | 'pending' | null =>
       items.find(i => i.kind === kind && i.id === id) ?? (pending && sameItem(pending, { kind, id }) ? 'pending' : null);
     if (path === 'prompts') {

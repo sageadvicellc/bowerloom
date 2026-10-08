@@ -126,7 +126,10 @@ export function readAuthoringState(bowerloom: string): AuthoringState {
   ensure(names.every(n => n === RECEIPT || n === PENDING || SCRATCH.test(n)), 'AUTHORING_UNSAFE_PATH');
   const load = <T>(name: string, parse: (b: Buffer) => T): { value: T; read: Read } | null => {
     if (!names.includes(name)) return null;
-    const bytes = readGuarded(join(folder, name), LIMITS.recordBytes);
+    // Review M2 finding 1: a kill between a record's link and its temporary's unlink leaves the record with a second
+    // link, which may only be that record's own temporary (`.tmp-<hex>-receipt|pending`). Plan removes it as scratch.
+    const kind = name === RECEIPT ? 'receipt' : 'pending', twins = names.filter(n => new RegExp(`^\\.tmp-[a-f0-9]{64}-${kind}$`).test(n));
+    const bytes = readGuarded(join(folder, name), LIMITS.recordBytes, twins.length === 1 ? join(folder, twins[0]!) : null);
     return { value: parse(bytes), read: { sha256: sha256(bytes), bytes: bytes.length } };
   };
   return { folder: true, receipt: load(RECEIPT, parseReceipt), pending: load(PENDING, parsePending), scratch: names.filter(n => SCRATCH.test(n)) };
