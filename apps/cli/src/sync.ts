@@ -24,7 +24,7 @@ const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>], with 
 const RECOVER_USAGE = 'Use bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon], with optional --approve <revision> (apply only) and --json.';
 const MIGRATE_USAGE = 'Use bowerloom skills migrate plan|apply --state <earlier-state-folder>, with optional --approve <revision> (apply only) and --json.';
 const HARNESS_NAMES: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
-const harnessWords = (h: readonly string[]) => h.map(x => HARNESS_NAMES[x] ?? x).join(' and ');
+export const harnessWords = (h: readonly string[]) => h.map(x => HARNESS_NAMES[x] ?? x).join(' and ');
 
 /** Takes the named value flags out of the words; the rest goes to the approval wrapper. */
 function takeFlags(words: readonly string[], valued: readonly string[], plain: readonly string[], message: string): { values: Map<string, string>; flags: Set<string>; rest: string[] } {
@@ -38,7 +38,8 @@ function takeFlags(words: readonly string[], valued: readonly string[], plain: r
   return { values, flags, rest };
 }
 
-function itemLine(item: SyncItem, width: number): string[] {
+/** One sync item in plain words, its id padded to `width`. `apply` (M6) reuses it. */
+export function itemLine(item: SyncItem, width: number): string[] {
   const id = item.id.padEnd(width), pin = item.pin ?? '';
   const how = item.cache?.status === 'needs-fetch' ? `, fetched from ${item.kind === 'git' ? 'api.github.com' : 'registry.npmjs.org'}` : item.cache?.status === 'cached' ? ", from this machine's cache" : '';
   if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];

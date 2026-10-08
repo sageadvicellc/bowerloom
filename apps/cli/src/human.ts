@@ -12,7 +12,7 @@ import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/
 interface Section { readonly title: string; readonly lines: readonly string[] }
 const SECTIONS: readonly Section[] = [
   { title: 'Start here', lines: [
-    'bowerloom init plan|apply --mode new|existing --target <directory> --name <name> --goal <goal>',
+    'bowerloom up --team <name>            Prepare this project for a team. Shows each plan first.',
     'bowerloom ls [teams|skills|prompts]   List what this project holds.',
     'bowerloom status                      Show whether this project is ready.',
   ] },
@@ -21,6 +21,7 @@ const SECTIONS: readonly Section[] = [
     'bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>',
     'bowerloom skills check                Check the pins in .bowerloom/skills.json.',
     'bowerloom skills sync [--offline]     Install the pinned skills on this machine.',
+    'bowerloom apply [--harness claude|codex|both]',
   ] },
   { title: 'Create (mostly used by agents)', lines: [
     'bowerloom team create <name> [--profile engineer|founder|research]',
@@ -83,6 +84,32 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'skills migrate moves a skill installed by an earlier Bowerloom (.bowerloom-skills) to .bowerloom/managed.',
     'skills.json must pin the same source first; migrate plan prints the skills add command if it does not.', '',
     'The other skills forms are listed by bowerloom help advanced.', '',
+  ].join('\n'),
+  up: [
+    'Usage:', '  bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--approve <revision>] [--json]', '',
+    'Prepares this project for a team, one step at a time, and starts no workers.',
+    'Each run looks at the project and shows the one next step:',
+    '  init    when no folder above holds .bowerloom: sets up this folder. It needs --goal; the project name is the',
+    '          folder name unless you pass --name, and <name> becomes the display name of first-team.',
+    '  team    when <name> is neither first-team (its id or display name) nor a team you created: team create <name>.',
+    '  sync    when .bowerloom/skills.json has skills of the team to install: skills sync --team <team>.',
+    '  apply   when skills or prompts of the team need copies for Claude Code and Codex: apply.',
+    'At the end it prints "prepared, workers held", points to .bowerloom/START-HERE.md, and exits 4.',
+    'In a terminal it asks before each step. Agents pass --approve <revision>: the step whose revision matches is',
+    'applied, then the next plan is shown with its revision (exit 3). With --json, each line is one JSON object.',
+    'It never edits AGENTS.md or CLAUDE.md, and never runs claude, codex or any other program.',
+    'bowerloom up --demo --pro|--5x|--20x --installation <private.json> still runs the demo session. See bowerloom help advanced.', '',
+  ].join('\n'),
+  apply: [
+    'Usage:', '  bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]', '',
+    'Puts the skills in .bowerloom/skills.json and the prompts in .bowerloom/prompts in place for Claude Code, Codex,',
+    'or both (the default), from what this machine already holds.',
+    'Skills go to .claude/skills and .agents/skills. A prompt becomes the Claude Code command .claude/commands/<name>.md',
+    'and the Codex skill .agents/skills/prompt-<name>. These copies stay on this machine.',
+    'It never fetches: a pin that is not cached yet refuses, and bowerloom skills sync fetches it.',
+    'It adds copies for the harness you choose and never removes one. A copy you changed is held, never overwritten.',
+    'It never edits AGENTS.md or CLAUDE.md: it prints a line you can add there yourself.',
+    'It shows the plan first. Agents pass --approve <revision> or --json. It starts no workers and runs nothing.', '',
   ].join('\n'),
   team: [
     'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--approve <revision>] [--json]', '',
@@ -216,6 +243,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
   AUTHORING_WRITE_INTERRUPTED: { sentence: 'Part of the item may be in place, and the next plan shows how it is finished or cleared.', next: 'run the same command again, without --approve, to see the new plan' },
   AUTHORING_ITEM_MISSING: { sentence: 'Bowerloom reports a created item that is gone, so it is not lost silently.', next: 'git status .bowerloom' },
+  APPLY_NAME_COLLISION: { sentence: 'Bowerloom never overwrites what it did not install, and two items cannot share one place.', next: 'bowerloom apply' },
+  PROMPT_INVALID: { sentence: 'Bowerloom reads only plain prompt files you own.', next: 'ls -l .bowerloom/prompts' },
   SKILLS_OFFLINE: { sentence: 'Sync fetches only pins that are not cached yet, and it changed nothing in the project.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },

@@ -19,7 +19,7 @@ const heading = `Bowerloom ${release.version}: open beta (${release.state})\n${r
 const short = `Set up agent teams, skills, and prompts for Claude Code and Codex.
 
 Start here
-  bowerloom init plan|apply --mode new|existing --target <directory> --name <name> --goal <goal>
+  bowerloom up --team <name>            Prepare this project for a team. Shows each plan first.
   bowerloom ls [teams|skills|prompts]   List what this project holds.
   bowerloom status                      Show whether this project is ready.
 
@@ -28,6 +28,7 @@ Skills and setup
   bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
   bowerloom skills check                Check the pins in .bowerloom/skills.json.
   bowerloom skills sync [--offline]     Install the pinned skills on this machine.
+  bowerloom apply [--harness claude|codex|both]
 
 Create (mostly used by agents)
   bowerloom team create <name> [--profile engineer|founder|research]
@@ -66,21 +67,20 @@ test('help advanced prints the cc117ac help byte for byte, under the release hea
 });
 
 test('the short help is shorter than the advanced help and lists no plumbing', () => {
-  // DESIGN-01 section B's first screen has four sections; with three of them (M1 to M3 and M2) it stays under 24 lines.
-  assert.ok(short.split('\n').length < 24); assert.doesNotMatch(short, /skills source|harness|portable|recipe|backend|--installation/);
+  // DESIGN-01 section B's first screen: with M1 to M6 it fills 24 entries, the last one the empty string after the final newline.
+  assert.ok(short.split('\n').length <= 24); assert.doesNotMatch(short, /skills source|bowerloom harness|portable|recipe|backend|--installation/);
 });
 
 test('the short help lists only commands that exist at this commit, and each has help of its own', t => {
   const root = folder(t);
   const listed = [...short.matchAll(/^ {2}bowerloom (\w+)/gm)].map(m => m[1]!);
-  assert.deepEqual([...new Set(listed)].sort(), ['help', 'init', 'ls', 'prompt', 'skill', 'skills', 'status', 'team']);
-  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
-  for (const name of ['up', 'apply']) assert.equal(run(root, ['help', name]).status, 2, name);
+  assert.deepEqual([...new Set(listed)].sort(), ['apply', 'help', 'ls', 'prompt', 'skill', 'skills', 'status', 'team', 'up']);
+  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
 });
 
 test('help <command> and <command> --help agree, and an unknown topic is a usage error', t => {
   const root = folder(t);
-  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
+  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
   assert.equal(run(root, ['help', 'init']).stdout, run(root, ['init', '--help']).stdout);
   const unknown = run(root, ['help', 'nonsense']); assert.equal(unknown.status, 2); assert.equal(unknown.stdout, '');
   assert.equal(JSON.parse(unknown.stderr).error.code, 'USAGE');

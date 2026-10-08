@@ -152,6 +152,17 @@ async function main(args: string[]): Promise<void> {
     process.exitCode = await run(args, process.cwd(), homedir(), text => process.stdout.write(text));
     return;
   }
+  // M6: apply, and up in project mode. `up` without --team stays the --demo session command below.
+  if (args[0] === 'apply') {
+    const { runApplyCommand } = await import('./apply.js');
+    process.exitCode = await runApplyCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'up' && args.includes('--team')) {
+    const { runUpCommand } = await import('./up.js');
+    process.exitCode = await runUpCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
   if (args[0] === 'skills') {
     const { runSkillsCommand } = await import('./skills.js');
     process.stdout.write(`${canonicalJson(await runSkillsCommand(args))}\n`);

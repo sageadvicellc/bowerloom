@@ -36,7 +36,14 @@ export const MIN_FREE_BYTES = 33554432;
 export const SYNC_ITEM_LIMIT = 64;
 const HOSTS = { npm: 'registry.npmjs.org', git: 'api.github.com' } as const;
 
-export interface SyncInput { project: ProjectContext; stateRoot: string; team: string | null; offline: boolean }
+export interface SyncInput {
+  project: ProjectContext; stateRoot: string; team: string | null; offline: boolean;
+  /**
+   * Set only by `bowerloom apply` (M6): the harnesses it adds copies for, in place of the skills.json set. A copy for a
+   * harness outside this set is kept as it is and never reported as one to remove. Absent for `skills sync`.
+   */
+  apply?: { harnesses: Harness[] };
+}
 export type ItemState = 'up-to-date' | 'needs-fetch' | 'cached' | 'drift' | 'pin-changed' | 'harnesses-changed' | 'orphaned' | 'local';
 export type ItemAction = 'none' | 'install' | 'update' | 'hold';
 export interface ItemSurface { id: SurfaceId; path: string }
@@ -129,8 +136,8 @@ export function beforePins(surfaces: { id: SurfaceId; kind: SurfaceKind; path: s
 export const union = (a: readonly Harness[], b: readonly Harness[]): Harness[] => (['claude', 'codex'] as Harness[]).filter(h => a.includes(h) || b.includes(h));
 export const byPath = (rows: InventoryRow[]): InventoryRow[] => [...rows].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
 
-interface CatalogView { source: Record<string, unknown>; skill: { name?: unknown; sourceRoot?: unknown } | null; inventory: unknown }
-function readCatalog(file: string): CatalogView {
+export interface CatalogView { source: Record<string, unknown>; skill: { name?: unknown; sourceRoot?: unknown } | null; inventory: unknown }
+export function readCatalog(file: string): CatalogView {
   const value = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(raw(file, 262144, false).bytes), 262144) as Record<string, unknown>;
   return { source: value.source as Record<string, unknown>, skill: value.skill as CatalogView['skill'], inventory: value.inventory };
 }
@@ -150,12 +157,12 @@ function samePin(entry: Entry, c: CatalogView): boolean {
   return was.commit === s.commit && was.tree === s.tree && sameValue(was.pathTrees, s.pathTrees) && was.metadataSha256 === s.metadataSha256;
 }
 
-const recoverNext = (id: string) => `Run bowerloom skills recover plan --item ${id}, then bowerloom skills sync.`;
-const driftNext = (paths: string[]) => `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
+export const recoverNext = (id: string) => `Run bowerloom skills recover plan --item ${id}, then bowerloom skills sync.`;
+export const driftNext = (paths: string[]) => `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
 
-interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact' }
+interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: Harness[] }
 /** The paths of the item surfaces that differ from the closest committed receipt: what a person changed. */
-function driftedPaths(project: string, stateDir: string, id: string): string[] {
+export function driftedPaths(project: string, stateDir: string, id: string): string[] {
   let best: string[] | null = null;
   try {
     for (const n of names(stateDir)) {
@@ -173,7 +180,7 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
   const name = kind === 'local' ? id : (entry as PinnedEntry).skill.name;
   const pinned = kind === 'local' ? null : entryRequest(entry as PinnedEntry);
   let hold: SyncItem['hold'] = null, heldCode: string | null = null, state: ItemState = 'drift', action: ItemAction = 'hold', previous: ManagedItemReceipt | null = null;
-  let harnesses = [...ctx.manifest.harnesses] as Harness[];
+  let harnesses = [...ctx.target];
   // The material every copy gets: the pinned inventory, or what the authored folder holds now.
   let files: InventoryRow[] = [];
   if (pinned) files = byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })));
@@ -193,8 +200,8 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
   } else {
     try { previous = currentV2(dir, stateDir, { kind: 'skill', id }); } catch (e) { previous = null; heldCode = managedCode(e); }
     if (previous !== null) {
-      harnesses = union(previous.harnesses, ctx.manifest.harnesses);
-      const c = readCatalog(catalog), add = harnesses.length > previous.harnesses.length, drop = previous.harnesses.some(h => !ctx.manifest.harnesses.includes(h));
+      harnesses = union(previous.harnesses, ctx.target);
+      const c = readCatalog(catalog), add = harnesses.length > previous.harnesses.length, drop = !ctx.input.apply && previous.harnesses.some(h => !ctx.manifest.harnesses.includes(h));
       if (!sameOrigin(entry, c)) hold ??= { code: 'MANAGED_SKILL_REFUSED', next: `skills.json now names another source for ${id}. A skill keeps its source: restore the old entry, or add the new source under another id with --id.` };
       else if (!samePin(entry, c)) { state = 'pin-changed'; action = 'update'; }
       else if (!sameValue(c.inventory, files)) {
@@ -253,7 +260,8 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
     if (exists(join(dir, '.bowerloom-revision.json'))) throw syncError('REVISION_PENDING');
     let ignore: 'absent' | 'exact';
     try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
-    const layout = stateLayout(input), ctx: ItemContext = { input, manifest, layout, ignore };
+    const target = input.apply ? [...input.apply.harnesses] : [...manifest.harnesses] as Harness[];
+    const layout = stateLayout(input), ctx: ItemContext = { input, manifest, layout, ignore, target };
     const selected = manifest.skills.filter(e => input.team === null || !e.teams || e.teams.includes(input.team));
     const classified = selected.map(entry => classify(entry, ctx)), items: SyncItem[] = classified.map(c => c.item);
     const catalogs = join(dir, MANAGED_ROOT, 'catalog');
@@ -272,7 +280,8 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
       item.cacheOperationId = item.cache.operationId; if (item.state === 'needs-fetch') item.state = item.cache.status;
     }
     const fetch = items.filter(i => actionable(i) && i.cache?.status === 'needs-fetch');
-    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', `--offline was set, and ${fetch.map(i => i.id).join(', ')} ${fetch.length === 1 ? 'is' : 'are'} not in this machine's cache yet. Nothing was changed. Run bowerloom skills sync without --offline.`);
+    const missing = `${fetch.map(i => i.id).join(', ')} ${fetch.length === 1 ? 'is' : 'are'} not in this machine's cache yet. Nothing was changed.`;
+    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', input.apply ? `bowerloom apply never fetches, and ${missing} Run bowerloom skills sync first, then bowerloom apply.` : `--offline was set, and ${missing} Run bowerloom skills sync without --offline.`);
     const work = items.filter(actionable), create: string[] = [];
     if (work.length) {
       create.push(...layout.missing.filter(p => p !== layout.cacheRoot || fetch.length));
@@ -283,7 +292,7 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
       format: SYNC_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
       manifest: { sha256: state.file.sha256, bytes: state.file.bytes.length },
-      harnesses: [...manifest.harnesses] as Harness[], team: input.team, offline: input.offline,
+      harnesses: target, team: input.team, offline: input.offline,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, items, network: { required: fetch.length > 0, hosts: kinds },
       writesAuthorized: false as const, executionAuthorized: false as const,

@@ -1,5 +1,6 @@
 /**
- * The fixed refusals of `skills sync`, `skills recover --item` and `skills migrate` (build plan 01, M5).
+ * The fixed refusals of `skills sync`, `skills recover --item` and `skills migrate` (build plan 01, M5), and of
+ * `apply` (M6).
  * Each code has a fixed message. A message may add checked item ids and Bowerloom commands, never fetched text.
  * MANAGED_SKILL_* codes from managed-skills pass through under their own code, with words of their own here.
  */
@@ -19,6 +20,8 @@ const MESSAGES = {
   SKILLS_MIGRATE_NOTHING: 'This project has no skill installed by an earlier Bowerloom (.bowerloom-skills), so there is nothing to migrate.',
   SKILLS_MIGRATE_STATE_INVALID: 'The folder given with --state does not hold the committed earlier install of this project.',
   SKILLS_MIGRATE_NOT_IN_MANIFEST: '.bowerloom/skills.json does not pin the installed skill with the same source and file hashes.',
+  APPLY_NAME_COLLISION: 'Two items, or an item and something Bowerloom did not install, would take the same place in the project. Nothing was changed.',
+  PROMPT_INVALID: 'A prompt in .bowerloom/prompts cannot be read safely: it must be a plain text file you own, with one link, no write access for others, at most 64 KiB. Nothing was changed.',
   REVISION_PENDING: 'A revise of this project is unfinished. Finish it first (bowerloom help advanced lists revise recover).',
   MANAGED_SKILL_LEGACY_PRESENT: 'This project still holds a skill installed by an earlier Bowerloom (.bowerloom-skills). Migrate it first: bowerloom skills migrate plan --state <v1-state-dir>.',
   MANAGED_SKILL_RECOVERY_REQUIRED: 'A managed skill operation is unfinished.',

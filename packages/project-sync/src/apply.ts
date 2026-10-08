@@ -29,7 +29,7 @@ import { ownSurface } from '../../managed-skills/src/v2-observed.js';
 import type { ItemSource, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
-import type { PinnedEntry } from '../../skill-manifest/src/schema.js';
+import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { entryRequest, receiptMatches } from './cache-index.js';
 import type { PinnedRequest } from './cache-index.js';
 import { managedPort } from './deps.js';
@@ -152,12 +152,67 @@ function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, c
   return c as ManagedItemPlan;
 }
 
-const interrupted = (done: string[], left: string[]) => syncError('SKILLS_SYNC_INTERRUPTED',
-  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run bowerloom skills sync to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`);
-function childFailure(error: unknown, id: string, done: string[]): Error {
+/** The command a person runs again to finish: `bowerloom skills sync`, or `bowerloom apply` for M6. */
+export type Rerun = 'bowerloom skills sync' | 'bowerloom apply';
+export const interrupted = (done: string[], left: string[], rerun: Rerun = 'bowerloom skills sync') => syncError('SKILLS_SYNC_INTERRUPTED',
+  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run ${rerun} to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`);
+function childFailure(error: unknown, id: string, done: string[], rerun: Rerun): Error {
   const code = managedCode(error), before = done.length ? ` Finished before it: ${done.join(', ')}.` : '';
-  if (code === 'MANAGED_SKILL_RECOVERY_REQUIRED') return syncError(code, `It belongs to ${id}, which stopped inside its change.${before} Run bowerloom skills recover plan --item ${id}, then bowerloom skills sync.`);
-  return outward(error instanceof ManagedSkillError ? error : new ManagedSkillError(code), 'MANAGED_SKILL_REFUSED', `It belongs to ${id}; nothing of ${id} changed.${before} Run bowerloom skills sync again.`);
+  if (code === 'MANAGED_SKILL_RECOVERY_REQUIRED') return syncError(code, `It belongs to ${id}, which stopped inside its change.${before} Run bowerloom skills recover plan --item ${id}, then ${rerun}.`);
+  return outward(error instanceof ManagedSkillError ? error : new ManagedSkillError(code), 'MANAGED_SKILL_REFUSED', `It belongs to ${id}; nothing of ${id} changed.${before} Run ${rerun} again.`);
+}
+
+/** One child of a locked run: the item (its id names its private folder), its request and its phase B plan. */
+export interface Child { item: { id: string; action: SyncItem['action'] }; req: ManagedItemRequest; plan: ManagedItemPlan }
+
+/**
+ * Phases A and B for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching
+ * into the private cache, then build and check every child plan. Neither phase writes in the project.
+ */
+export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<{ children: Child[]; fetched: string[] }> {
+  const dir = plan.project.dir, work = plan.items.filter(isActionable);
+  // Phase A: fetch into the private cache. No project write.
+  const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [];
+  for (const item of work) {
+    const entry = entries.get(item.id);
+    if (!entry) throw stale();
+    if (entry.source.kind === 'local') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
+    const pinned = entryRequest(entry as PinnedEntry); pins.set(item.id, pinned);
+    if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
+    if (item.cache?.status === 'needs-fetch') { held.assertHeld(dir); await fetchPin(item, pinned, plan.privateState.cacheRoot, deps); fetched.push(item.id); }
+    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, plan.privateState.cacheRoot) });
+  }
+  // Phase B: every child plan, checked against the bindings. No project write.
+  const children: Child[] = [];
+  for (const item of work) {
+    if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
+    const req = childRequest(plan, item, sources.get(item.id)!);
+    let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) { if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun); throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`); }
+    children.push({ item, req, plan: checkChild(plan.project.dir, item, pins.get(item.id) ?? null, req, child) });
+  }
+  return { children, fetched };
+}
+
+/**
+ * Phase C: applies the children in order, each with a revision planned right before it in this locked run. The
+ * person's interrupt is read only here, between children. `ignoreExact` is true when the shared ignore file was in
+ * place when the run planned.
+ */
+export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = 'bowerloom skills sync'): Promise<SyncResult['applied']> {
+  const applied: SyncResult['applied'] = [], created = new Set<string>(); let ignoreCreated = ignoreExact;
+  for (const [index, child] of children.entries()) {
+    if (signal.aborted) throw interrupted(applied.map(a => a.id), children.slice(index).map(c => c.item.id), rerun);
+    held.assertHeld(dir);
+    let fresh; try { fresh = await managed.plan(child.req, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id), rerun); }
+    const now = sameExceptShared(child.plan, fresh, created, ignoreCreated);
+    let receipt: ManagedItemReceipt;
+    try { receipt = await managed.apply(held, child.req, now.revision, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id), rerun); }
+    if (receipt.state !== 'committed' || receipt.planRevision !== now.revision) throw childFailure(new ManagedSkillError('MANAGED_SKILL_REFUSED'), child.item.id, applied.map(a => a.id), rerun);
+    applied.push({ id: child.item.id, action: child.item.action as 'install' | 'update', receiptRevision: receipt.revision });
+    for (const p of now.core.parents) if (p.identity === null) created.add(p.path);
+    if (now.core.before.some(s => s.id === 'ignore')) ignoreCreated = true;
+  }
+  return applied;
 }
 
 /** Applies an approved sync plan. `revision` must be the revision this run computes again under the lock. */
@@ -175,39 +230,8 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
       createPrivateFolders(plan, held, dir);
-      // Phase A: fetch into the private cache. No project write.
-      const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [];
-      for (const item of work) {
-        const entry = entries.get(item.id);
-        if (!entry) throw stale();
-        if (entry.source.kind === 'local') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
-        const pinned = entryRequest(entry as PinnedEntry); pins.set(item.id, pinned);
-        if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
-        if (item.cache?.status === 'needs-fetch') { held.assertHeld(dir); await fetchPin(item, pinned, plan.privateState.cacheRoot, deps); fetched.push(item.id); }
-        sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, plan.privateState.cacheRoot) });
-      }
-      // Phase B: every child plan, checked against the bindings. No project write.
-      const children: { item: SyncItem; req: ManagedItemRequest; plan: ManagedItemPlan }[] = [];
-      for (const item of work) {
-        if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
-        const req = childRequest(plan, item, sources.get(item.id)!);
-        let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) { if (deps.signal.aborted) throw interrupted([], work.map(i => i.id)); throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`); }
-        children.push({ item, req, plan: checkChild(plan.project.dir, item, pins.get(item.id) ?? null, req, child) });
-      }
-      // Phase C: apply in order. The interrupt is read only here, between children.
-      const applied: SyncResult['applied'] = [], created = new Set<string>(); let ignoreCreated = plan.managed.ignore === 'exact';
-      for (const [index, child] of children.entries()) {
-        if (deps.signal.aborted) throw interrupted(applied.map(a => a.id), children.slice(index).map(c => c.item.id));
-        held.assertHeld(dir);
-        let fresh; try { fresh = await managed.plan(child.req, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id)); }
-        const now = sameExceptShared(child.plan, fresh, created, ignoreCreated);
-        let receipt: ManagedItemReceipt;
-        try { receipt = await managed.apply(held, child.req, now.revision, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id)); }
-        if (receipt.state !== 'committed' || receipt.planRevision !== now.revision) throw childFailure(new ManagedSkillError('MANAGED_SKILL_REFUSED'), child.item.id, applied.map(a => a.id));
-        applied.push({ id: child.item.id, action: child.item.action as 'install' | 'update', receiptRevision: receipt.revision });
-        for (const p of now.core.parents) if (p.identity === null) created.add(p.path);
-        if (now.core.before.some(s => s.id === 'ignore')) ignoreCreated = true;
-      }
+      const { children, fetched } = await prepareSkillChildren(plan, entries, held, deps, managed);
+      const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, deps.signal);
       return {
         format: SYNC_RESULT_FORMAT, planRevision: plan.revision, applied,
         held: plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next })),

@@ -7,7 +7,7 @@
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, verifyProjectPins, withProjectLock } from '../../../packages/project-context/src/index.js';
-import type { PlannedChange } from '../../../packages/project-context/src/types.js';
+import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { applyCreate, planCreate } from '../../../packages/project-authoring/src/index.js';
 import type { AuthoringReceipt, CreateInput, CreatePlan } from '../../../packages/project-authoring/src/index.js';
 import { startupProfiles } from '../../../packages/startup/src/index.js';
@@ -82,8 +82,13 @@ export async function runCreateCommand(args: readonly string[], cwd: string, hom
   const input: CreateInput = parsed.noun === 'team'
     ? { kind: 'team', project: project.dir, name: parsed.name, ...(parsed.profile !== null ? { profile: parsed.profile } : {}) }
     : { kind: parsed.noun, project: project.dir, name: parsed.name, teams: parsed.teams };
+  return runApprovalCommand(parsed.approval, createChange(project, input), io, write);
+}
+
+/** One create as a change for the approval wrapper: plan reads only; apply runs under the project lock. `up --team` reuses it. */
+export function createChange(project: ProjectContext, input: CreateInput): PlannedChange<CreatePlan> {
   const controller = new AbortController();
-  const change: PlannedChange<CreatePlan> = {
+  return {
     async plan() { verifyProjectPins(project); const plan = await planCreate(input); verifyProjectPins(project); return plan; },
     revision: plan => plan.revision,
     review: renderCreateReview,
@@ -91,5 +96,4 @@ export async function runCreateCommand(args: readonly string[], cwd: string, hom
       return withProjectLock(project.dir, controller.signal, async held => { verifyProjectPins(project); return applyCreate(input, revision, held); });
     },
   };
-  return runApprovalCommand(parsed.approval, change, io, write);
 }
