@@ -5,10 +5,10 @@ section: "Help"
 order: 26
 ---
 
-Bowerloom `0.7.0-beta.0` prepares readable local definitions for your existing personal agent. Use this page to choose a supported task.
+Bowerloom `0.7.0-beta.1` prepares readable local definitions for your existing personal agent. Use this page to choose a supported task.
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 

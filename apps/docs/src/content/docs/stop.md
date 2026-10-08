@@ -10,7 +10,7 @@ order: 10
 It does not stop Docker, a local backend, or unrelated personal-agent sessions.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->

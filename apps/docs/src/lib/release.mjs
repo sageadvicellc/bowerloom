@@ -2,11 +2,19 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {releasePresentation} from '../../../landing/src/release.ts';
 import {sourcePaths} from './build-paths.mjs';
+// A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
+export function expectedInstallCommand(r) {
+  const d = r.distribution;
+  if (d === undefined) return `npm install --global ${r.npm.packageName}@${r.version}`;
+  const archive = `${r.npm.packageName}-${r.version}.tgz`;
+  if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || r.npm.published !== false || r.state !== 'unreleased') return null;
+  return `npm install -g ./${archive}`;
+}
 export async function readRelease() {
   const raw = await readFile(sourcePaths.release,'utf8');
   const r = JSON.parse(raw);
   if (r.schema !== 'bowerloom/release/v1' || !/^\d+\.\d+\.\d+-beta\.\d+$/.test(r.version)
-    || r.npm.installCommand !== `npm install --global ${r.npm.packageName}@${r.version}`
+    || r.npm.installCommand !== expectedInstallCommand(r)
     || (r.state === 'published') !== r.npm.published
     || (r.npm.published && (!r.npm.ownershipVerified || !r.npm.publishingIdentityVerified || !r.systems.releaseQualified.length))) {
     throw new Error('Inconsistent release metadata; documentation publication is refused.');

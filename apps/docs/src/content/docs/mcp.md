@@ -8,7 +8,7 @@ order: 13
 MCP connects applications to tool servers. A portable declaration describes a proposed connection. A private binding selects local endpoints and secret references.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->

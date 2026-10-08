@@ -134,7 +134,7 @@ Installation, runtime enrollment, backend setup, and connected actions need thei
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
