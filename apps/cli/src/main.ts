@@ -144,6 +144,14 @@ async function main(args: string[]): Promise<void> {
     process.exitCode = await runManifestCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
     return;
   }
+  // M5: sync, the v1beta2 item recovery (only with --item; the v1 forms take --request) and migrate.
+  if (args[0] === 'skills' && (args[1] === 'sync' || args[1] === 'migrate' || (args[1] === 'recover' && args.includes('--item')))) {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
+    const { runSyncCommand, runRecoverItemCommand, runMigrateCommand } = await import('./sync.js');
+    const run = args[1] === 'sync' ? runSyncCommand : args[1] === 'migrate' ? runMigrateCommand : runRecoverItemCommand;
+    process.exitCode = await run(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
   if (args[0] === 'skills') {
     const { runSkillsCommand } = await import('./skills.js');
     process.stdout.write(`${canonicalJson(await runSkillsCommand(args))}\n`);

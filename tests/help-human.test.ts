@@ -27,6 +27,7 @@ Skills and setup
   bowerloom skills add npm:<package>@<version>:<path>
   bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
   bowerloom skills check                Check the pins in .bowerloom/skills.json.
+  bowerloom skills sync [--offline]     Install the pinned skills on this machine.
 
 Create (mostly used by agents)
   bowerloom team create <name> [--profile engineer|founder|research]

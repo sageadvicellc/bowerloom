@@ -28,7 +28,7 @@ export function parseApprovalFlags(args: readonly string[]): { approve?: string;
 }
 
 // Flags of the CLI that take no value. Any other `--flag` without `=` takes the next word as its value.
-const NO_VALUE = new Set(['--json', '--synthetic', '--demo', '--pro', '--5x', '--20x', '--help', '--version']);
+const NO_VALUE = new Set(['--json', '--synthetic', '--demo', '--pro', '--5x', '--20x', '--help', '--version', '--offline']);
 const takesValue = (word: string | undefined): boolean => word !== undefined && word.startsWith('--') && !word.includes('=') && !NO_VALUE.has(word);
 /**
  * True when a command line passes `--yes` or `-y` as a flag. `--yes` and `--yes=...` count anywhere. `-y` counts only in a

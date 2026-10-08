@@ -5,6 +5,7 @@ import type { OwnerVerifier, ProjectContext } from '../../../packages/project-co
 import { inspectStartup } from '../../../packages/startup/src/index.js';
 import { authoringVerifier, manifestVerifier } from '../../../packages/project-authoring/src/index.js';
 import { managedVerifier } from '../../../packages/managed-skills/src/v2-verifier.js';
+import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
 import { newCommandJson, plainText } from './human.js';
 
 /**
@@ -25,8 +26,11 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   const project = discoverProject(cwd, home), inspection = await inspectStartup(project.dir, { owners: projectOwners(project, env, home) });
   const status = inspection.status === 'ready-for-review' ? 'ready' : inspection.status;
   const owned = inspection.owned ?? [];
+  // Build plan 01, section 6: a skill installed by the earlier format is named, with the command that migrates it.
+  let legacy = false; try { legacy = legacyPresent(project.dir); } catch { legacy = true; }
+  const MIGRATE = 'bowerloom skills migrate plan --state <earlier-state-folder>';
   if (words[0] === '--json') {
-    return newCommandJson({ format: 'bowerloom/project-status/v1beta1', project: project.dir, projectId: project.projectId, status, specReady: inspection.specReady, runtimeReady: false, executionAuthorized: false, revision: inspection.revision, drift: inspection.drift, owned });
+    return newCommandJson({ format: 'bowerloom/project-status/v1beta1', project: project.dir, projectId: project.projectId, status, specReady: inspection.specReady, runtimeReady: false, executionAuthorized: false, revision: inspection.revision, drift: inspection.drift, owned, ...(legacy ? { legacy: { present: true, next: MIGRATE } } : {}) });
   }
   return [
     `Project: ${plainText(project.dir)}`,
@@ -34,6 +38,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     ...(inspection.revision ? [`Revision: ${plainText(inspection.revision)}`] : []),
     ...inspection.drift.map(item => `  ${plainText(item.kind)}: ${plainText(item.path)}${item.code ? ` (${plainText(item.code)})` : ''}`),
     ...owned.filter(item => item.state === 'edited').map(item => `  edited: ${plainText(item.path)}`),
+    ...(legacy ? [`Legacy managed skill: .bowerloom-skills. Run ${MIGRATE}`] : []),
     'Workers: none started (this beta starts none)',
     '',
   ].join('\n');
