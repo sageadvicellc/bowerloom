@@ -185,7 +185,14 @@ export function historyNext(itemId: string, keep: string, rerun: string): string
   return `Bowerloom deletes no history by itself. With mv in a terminal, move every op-<key> folder except ${keep} out of items/${itemId} in the private state folder into a folder of your own, then run ${rerun}.`;
 }
 export const recoverNext = (id: string) => `Run bowerloom skills recover plan --item ${id}, then bowerloom skills sync.`;
-export const driftNext = (paths: string[]) => `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
+/**
+ * The next step of a copy changed by hand. `source` is the project's own source of the copies (a local skill folder or a
+ * prompt file): edits to keep go there. A pinned skill has none, so its edits go into a skill of the person's own.
+ * Review freeze finding 15: a local skill is already the person's own.
+ */
+export const driftNext = (paths: string[], source: string | null = null) => source !== null
+  ? `Undo your edits in ${paths.join(', ')} (to keep them, put them in ${source}, the source of the copies), then run bowerloom skills sync. Sync never overwrites a changed copy.`
+  : `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
 
 interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: Harness[] }
 /** The paths of the item surfaces that differ from the closest committed receipt: what a person changed. */
@@ -246,7 +253,7 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
   const surfaces = itemSurfaces(dir, id, name, harnesses), before = beforePins(surfaces, dir);
   if (heldCode !== null && hold === null) {
     const changed = heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftedPaths(dir, stateDir, id) : [];
-    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path)) : heldCode === 'MANAGED_SKILL_PATH_OCCUPIED'
+    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), kind === 'local' ? `.bowerloom/skills/${id}` : null) : heldCode === 'MANAGED_SKILL_PATH_OCCUPIED'
       ? `.bowerloom/managed/catalog/${id}.json has no receipt on this machine. Move it and the copies of ${id} out of the project, then run bowerloom skills sync.` : `Run bowerloom status to see what changed in the copies of ${id}.` };
   }
   if (action === 'install' && hold === null) {

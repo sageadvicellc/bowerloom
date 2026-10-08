@@ -144,7 +144,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   const surfaces = promptSurfaces(project, id, harnesses), before = beforePins(surfaces, project);
   if (heldCode !== null && hold === null) {
     const changed = heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftedPaths(project, stateDir, ref.id) : [];
-    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path)).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') : `Run bowerloom status to see what changed in the copies of prompt ${id}.` };
+    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), `.bowerloom/prompts/${id}.md`).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') : `Run bowerloom status to see what changed in the copies of prompt ${id}.` };
   }
   if (action === 'install' && hold === null) {
     const taken = before.filter(b => b.stablePinsDigest !== NULL_PINS).map(b => b.path);

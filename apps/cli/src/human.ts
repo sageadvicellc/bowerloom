@@ -52,7 +52,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
   status: [
     'Usage:', '  bowerloom status [--json]', '',
-    'Shows whether this project\'s setup is ready, and lists any file that changed since it was installed.',
+    'Shows whether this project\'s setup is ready. It names each changed file or folder since setup, and each held',
+    'or missing skill, prompt or team, with its next step.',
     'It reads only and writes nothing, and it starts no workers.',
     'Add --json for one machine-readable object.',
     'bowerloom status --installation <private.json> still reads a prepared session. See bowerloom help advanced.', '',
@@ -97,7 +98,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '  team    when <name> is neither first-team (its id or display name) nor a team you created: team create <name>.',
     '  sync    when .bowerloom/skills.json has skills of the team to install: skills sync --team <team>.',
     '  apply   when skills or prompts of the team need copies for Claude Code and Codex: apply.',
-    'At the end it prints "prepared, workers held", points to .bowerloom/START-HERE.md, and exits 4.',
+    'At the end it prints "prepared, workers held", points to .bowerloom/START-HERE.md, and exits 4. When a skill, prompt',
+    'or team is held or gone, it prints "prepared, N items held" instead, with the next command for each item.',
     'In a terminal it asks before each step. Agents pass --approve <revision>: the step whose revision matches is',
     'applied, then the next plan is shown with its revision (exit 3). If the next plan then refuses, the refusal says',
     'that the step was applied.',
@@ -145,8 +147,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
 };
 
-/** The exit codes: 0 done, 1 refused, 2 usage, 3 approval required, 4 held by a gate. */
-export type ExitCode = 0 | 1 | 2 | 3 | 4;
+/** The exit codes: 0 done, 1 refused, 2 usage, 3 approval required, 4 held by a gate, 130 stopped at a prompt. */
+export type ExitCode = 0 | 1 | 2 | 3 | 4 | 130;
 type GateCode = 'APPROVAL_REQUIRED' | 'WORKERS_HELD';
 const GATE_EXIT: Readonly<Record<GateCode, 3 | 4>> = { APPROVAL_REQUIRED: 3, WORKERS_HELD: 4 };
 
@@ -162,6 +164,18 @@ export function newCommandRefusal(code: GateCode, message: string): DefinitionEr
   raisedByNewCommand.add(error); return error;
 }
 const marked = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && raisedByNewCommand.has(error);
+
+// Freeze review finding 3: Ctrl-C or Ctrl-D at a "[y/N]" prompt. Membership is the error object itself, as above.
+const stoppedAtPrompt = new WeakSet<object>();
+/**
+ * The stop of a person who pressed Ctrl-C or Ctrl-D at a prompt: exit 130, never the generic failure words.
+ * `applied` names a step of the same run that was applied before the prompt, so the words stay true.
+ */
+export function promptStopped(applied?: string): DefinitionError {
+  const error = new DefinitionError('APPROVAL_STOPPED', applied ? `Stopped. The ${applied} step was applied, and nothing else was changed.` : 'Stopped. Nothing was changed.');
+  stoppedAtPrompt.add(error); return error;
+}
+export const isPromptStopped = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && stoppedAtPrompt.has(error);
 const codeOf = (error: unknown): string | null =>
   error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^[A-Z_]{1,100}$/.test(error.code) ? error.code : null;
 
@@ -171,6 +185,7 @@ const codeOf = (error: unknown): string | null =>
  */
 export function exitCodeFor(error: unknown): ExitCode {
   if (error === null) return 0;
+  if (isPromptStopped(error)) return 130;
   const code = codeOf(error);
   if (code === 'USAGE') return 2;
   return marked(error) && Object.hasOwn(GATE_EXIT, error.code) ? GATE_EXIT[error.code as GateCode] : 1;
@@ -318,6 +333,11 @@ export function renderRefusal(code: string, message: string, detail: RefusalDeta
  * JSON envelope, byte for byte, which agents parse. Never exit 0.
  */
 export function reportFailure(error: unknown, tty: boolean): { text: string; exitCode: Exclude<ExitCode, 0> } {
+  // Freeze review finding 3: a stop at a prompt is not a failure. A terminal gets one plain line.
+  if (isPromptStopped(error)) return { text: tty ? `${plainText(error.message)}\n` : `${JSON.stringify({ error: { code: error.code, message: error.message } })}\n`, exitCode: 130 };
+  // Freeze review finding 4: in a terminal, workers held is the successful end of up, already printed on stdout.
+  // Agents keep the JSON envelope on a pipe.
+  if (tty && marked(error) && error.code === 'WORKERS_HELD') return { text: '', exitCode: 4 };
   const code = codeOf(error) ?? 'IO_ERROR';
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;

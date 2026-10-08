@@ -7,6 +7,9 @@ import { authoringVerifier, manifestVerifier } from '../../../packages/project-a
 import { managedVerifier } from '../../../packages/managed-skills/src/v2-verifier.js';
 import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
 import { newCommandJson, plainText } from './human.js';
+import { planProjectApply } from '../../../packages/project-sync/src/index.js';
+import { editedPrompts, missingItems, planHolds, uniqueHolds } from './held.js';
+import type { HeldItem } from './held.js';
 
 /**
  * The registered owners of paths inside `.bowerloom/` (build plan 01, section 2): authoring, the skills.json manifest,
@@ -32,12 +35,22 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   if (words[0] === '--json') {
     return newCommandJson({ format: 'bowerloom/project-status/v1beta1', project: project.dir, projectId: project.projectId, status, specReady: inspection.specReady, runtimeReady: false, executionAuthorized: false, revision: inspection.revision, drift: inspection.drift, owned, ...(legacy ? { legacy: { present: true, next: MIGRATE } } : {}) });
   }
+  // Review finding 16: name the files and items, not only their folders. An edited prompts folder names its edited
+  // prompt files, and each held or missing item comes with its next step. These reads are best effort: when one
+  // cannot be made, the folder line stays.
+  const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts') return [path]; const files = editedPrompts(project); return files === null || files.length === 0 ? [path] : files; };
+  let held: HeldItem[] = missingItems(project, null);
+  try {
+    const plan = await planProjectApply({ project, stateRoot: privateStateRoot(env, home), harnesses: ['claude', 'codex'], team: null });
+    held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts)]);
+  } catch { /* The drift lines above still name the folder. */ }
   return [
     `Project: ${plainText(project.dir)}`,
     `Setup: ${plainText(status)}`,
     ...(inspection.revision ? [`Revision: ${plainText(inspection.revision)}`] : []),
     ...inspection.drift.map(item => `  ${plainText(item.kind)}: ${plainText(item.path)}${item.code ? ` (${plainText(item.code)})` : ''}`),
-    ...owned.filter(item => item.state === 'edited').map(item => `  edited: ${plainText(item.path)}`),
+    ...owned.filter(item => item.state === 'edited').flatMap(item => editedFiles(item.path)).map(path => `  edited: ${plainText(path)}`),
+    ...held.map(item => `  ${item.kind} ${plainText(item.id)}: held (${plainText(item.code)}). Next: ${plainText(item.next)}`),
     ...(legacy ? [`Legacy managed skill: .bowerloom-skills. Run ${MIGRATE}`] : []),
     'Workers: none started (this beta starts none)',
     '',

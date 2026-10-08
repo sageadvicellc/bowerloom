@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalJson } from '../packages/contracts/src/index.js';
+import { PassThrough } from 'node:stream';
 import { namesYesFlag, parseApprovalFlags, runWithApproval } from '../apps/cli/src/confirm.js';
+import { terminalIo } from '../apps/cli/src/manifest.js';
+import { reportFailure } from '../apps/cli/src/human.js';
 import type { ApprovalIo } from '../apps/cli/src/confirm.js';
 import type { PlannedChange } from '../packages/project-context/src/types.js';
 
@@ -122,4 +125,44 @@ test('JSON output writes C1 controls, format characters and the separators as es
   assert.equal(JSON.parse(required.output).plan.name, hidden);
   const applied = await runWithApproval(c, { approve: REV('b'), json: true }, piped);
   assert.equal(applied.exitCode, 0); assert.doesNotMatch(applied.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u); assert.equal(JSON.parse(applied.output).result.name, hidden);
+});
+
+// Freeze review finding 3: Ctrl-C or Ctrl-D at "[y/N]" closes the real readline prompt. It is a stop, not a failure:
+// "Stopped. Nothing was changed." and exit 130, never the generic failure text. These tests drive terminalIo itself.
+function tty() {
+  const input = Object.assign(new PassThrough(), { isTTY: true }), output = Object.assign(new PassThrough(), { isTTY: true, columns: 80 });
+  let shown = ''; output.on('data', chunk => { shown += String(chunk); });
+  return { input, output, shown: () => shown };
+}
+const stopped = (e: unknown): boolean => (e as { code?: string }).code === 'APPROVAL_STOPPED' && (e as Error).message === 'Stopped. Nothing was changed.';
+
+test('terminalIo is interactive only when its input and output are terminals', () => {
+  const t = tty(); assert.equal(terminalIo(t.input, t.output).interactive, true);
+  assert.equal(terminalIo(new PassThrough(), t.output).interactive, false); assert.equal(terminalIo(t.input, new PassThrough()).interactive, false);
+});
+
+test('terminalIo returns the typed answer', async () => {
+  const t = tty(), answer = terminalIo(t.input, t.output).ask('Apply plan aaaa…aaaa? [y/N] ');
+  t.input.write('y\r'); assert.equal(await answer, 'y'); assert.match(t.shown(), /Apply plan aaaa…aaaa\? \[y\/N\] /);
+});
+
+for (const [name, key] of [['Ctrl-C', '\x03'], ['Ctrl-D', '\x04']] as const) {
+  test(`${name} at the terminalIo prompt stops: nothing is applied, the words say so, and the exit code is 130`, async () => {
+    const t = tty(), c = change();
+    const run = runWithApproval(c.value, { json: false }, terminalIo(t.input, t.output));
+    await new Promise(resolve => setImmediate(resolve)); t.input.write(key);
+    let error: unknown; await run.catch(e => { error = e; });
+    assert.ok(stopped(error), String(error)); assert.deepEqual(c.applied, []); assert.equal(c.planned.length, 1);
+    assert.deepEqual(reportFailure(error, true), { text: 'Stopped. Nothing was changed.\n', exitCode: 130 });
+    const piped2 = reportFailure(error, false);
+    assert.equal(piped2.exitCode, 130); assert.equal(piped2.text, '{"error":{"code":"APPROVAL_STOPPED","message":"Stopped. Nothing was changed."}}\n');
+    assert.doesNotMatch(reportFailure(error, true).text, /Refused|failed|registered-work/);
+  });
+}
+
+test('the end of input at the terminalIo prompt stops the same way', async () => {
+  const t = tty(), c = change();
+  const run = runWithApproval(c.value, { json: false }, terminalIo(t.input, t.output));
+  await new Promise(resolve => setImmediate(resolve)); t.input.end();
+  await assert.rejects(run, stopped); assert.deepEqual(c.applied, []);
 });

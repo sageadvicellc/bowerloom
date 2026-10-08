@@ -8,7 +8,9 @@
  * 2. team, when the name matches neither first-team (by id or display name) nor a created team: `team create`.
  * 3. sync, when .bowerloom/skills.json has skills of the team to install: `skills sync --team <id>`.
  * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (Hanna, answer 4): `apply`.
- * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD).
+ * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD). When a
+ *    skill, prompt or team of the team is held or gone, it prints `prepared, N items held` with each item's next
+ *    command instead, and never says the copies are in place (freeze review finding 2).
  *
  * With --approve, it applies only the step whose revision matches, then shows the next plan and exits 3. In a
  * terminal without --approve it asks before each step. It never starts claude, codex or any other process.
@@ -29,7 +31,9 @@ import { renderApplyReview } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { createChange, renderCreateReview } from './create.js';
-import { exitCodeFor, newCommandJson, newCommandRefusal, plainText } from './human.js';
+import { exitCodeFor, isPromptStopped, newCommandJson, newCommandRefusal, plainText, promptStopped } from './human.js';
+import { missingItems, planHolds, uniqueHolds } from './held.js';
+import type { HeldItem } from './held.js';
 import { terminalIo } from './manifest.js';
 import { runStartupCommand } from './startup.js';
 import { harnessWords, renderSyncReview } from './sync.js';
@@ -51,7 +55,11 @@ export interface UpContext {
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
 export interface UpStepPlan<P = unknown> { format: typeof UP_STEP_FORMAT; step: Exclude<UpStep, 'held'>; team: UpTeam; plan: P }
-export interface UpNext { step: UpStep; team: UpTeam; change: PlannedChange<UpStepPlan> | null }
+export interface UpNext {
+  step: UpStep; team: UpTeam; change: PlannedChange<UpStepPlan> | null;
+  /** At the held step: the items of the team that are held or gone, each with its next command. */
+  held?: HeldItem[];
+}
 
 const codeOf = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
 const oneLine = (text: string): string => text.replace(/\r\n|\r|\n/g, ' ');
@@ -115,10 +123,11 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
     const created: UpTeam = { id: ctx.team, name: ctx.team };
     return { step: 'team', team: created, change: wrap('team', created, createChange(project, { kind: 'team', project: project.dir, name: ctx.team }), () => `Next step: team. Create team ${ctx.team} for this project.`) };
   }
-  const stateRoot = privateStateRoot(ctx.env, ctx.home);
+  const stateRoot = privateStateRoot(ctx.env, ctx.home), held: HeldItem[] = missingItems(project, team.id);
   if (readManifestState(project.dir).file !== null) {
     const input = () => ({ project, stateRoot, team: team.id, offline: false });
     const plan = await planSync(input());
+    held.push(...planHolds(plan.items));
     if (plan.items.some(i => i.action === 'install' || i.action === 'update')) {
       const lock = new AbortController(), change: PlannedChange<SyncPlan> = {
         plan: () => planSync(input()), revision: p => p.revision, review: renderSyncReview,
@@ -127,26 +136,40 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id });
-  if ((await planProjectApply(applyInput())).actionable) {
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id }), applyPlan = await planProjectApply(applyInput());
+  if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
     return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills and prompts of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
   }
-  return { step: 'held', team, change: null };
+  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts));
+  return { step: 'held', team, change: null, held: uniqueHolds(held) };
 }
 
-/** The end of every chain: prepared, workers held. Exit 4 through newCommandRefusal. */
-function held(ctx: UpContext, team: UpTeam, json: boolean, write: (text: string) => void): never {
+/** The team as the held text names it: once when its id is its name (review finding 12). */
+const teamWords = (team: UpTeam): string => team.name === team.id ? team.id : `${team.name} (${team.id})`;
+
+/**
+ * The end of every chain: prepared, workers held. Exit 4 through newCommandRefusal. With held items it says
+ * `prepared, N items held` and names each item's next command; it never says the copies are in place then.
+ * The WORKERS_HELD envelope agents read on stderr is the same either way.
+ */
+function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string) => void): never {
+  const team = next.team, items = next.held ?? [], count = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
   write(json
-    ? newCommandJson({ format: 'bowerloom/up-held/v1beta1', step: 'held', status: 'prepared, workers held', team, harnesses: ctx.harnesses, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
-    : plainText([
+    ? newCommandJson({ format: 'bowerloom/up-held/v1beta1', step: 'held', status: 'prepared, workers held', team, harnesses: ctx.harnesses, held: items, startHere: START_HERE, workersStarted: false, executionAuthorized: false })
+    : plainText((items.length ? [
+      `prepared, ${count} held`,
+      `  Team: ${teamWords(team)}, for ${harnessWords(ctx.harnesses)}. Workers stay held.`,
+      ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${i.next}`]),
+      `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
+    ] : [
       'prepared, workers held',
-      `  Team: ${team.name} (${team.id}), with skills and prompts in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills and prompts in place for ${harnessWords(ctx.harnesses)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
-    ].join('\n'), true));
+    ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);
 }
 
@@ -172,6 +195,8 @@ const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '
  * An approval gate (exit 3) or workers held (exit 4) passes through unchanged.
  */
 function afterApplied(step: UpStep, error: unknown): unknown {
+  // Freeze review finding 3: a stop at the next prompt keeps exit 130, and its words say the step was applied.
+  if (isPromptStopped(error)) return promptStopped(step);
   const exit = exitCodeFor(error);
   if (exit === 3 || exit === 4) return error;
   const raw = codeOf(error), code = typeof raw === 'string' && /^[A-Z_]{1,100}$/.test(raw) ? raw : 'IO_ERROR';
@@ -187,13 +212,15 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer };
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
+  // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.
+  if (next.step !== 'init' && (ctx.goal !== null || ctx.name !== null) && !approval.json) write('Note: this project is set up already, so up does not use --goal or --name. The project brief keeps its goal and name.\n');
   if (approval.approve !== undefined) {
-    if (next.change === null) return held(ctx, next.team, approval.json, write);
+    if (next.change === null) return held(ctx, next, approval.json, write);
     await runApprovalCommand(['--approve', approval.approve, ...json], next.change, QUIET, write);
     const applied = next.step;
     try {
       next = await nextUpStep(ctx);
-      if (next.change === null) return held(ctx, next.team, approval.json, write);
+      if (next.change === null) return held(ctx, next, approval.json, write);
       if (!approval.json) write('\n');
       return await runApprovalCommand(json, next.change, QUIET, write);
     } catch (error) { throw afterApplied(applied, error); }
@@ -202,7 +229,7 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   let applied: UpStep | null = null;
   try {
     for (;;) {
-      if (next.change === null) return held(ctx, next.team, approval.json, write);
+      if (next.change === null) return held(ctx, next, approval.json, write);
       const code = await runApprovalCommand(json, next.change, io, write);
       if (code !== 0) return code;
       applied = next.step; write('\n'); next = await nextUpStep(ctx);

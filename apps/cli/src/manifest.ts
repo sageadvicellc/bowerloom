@@ -28,7 +28,7 @@ import { resolveGit } from '../../../packages/skill-manifest/src/resolve-git.js'
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
 import { runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { newCommandJson } from './human.js';
+import { newCommandJson, promptStopped } from './human.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
 const ADD_USAGE = 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --approve <revision> and --json.';
@@ -54,11 +54,24 @@ export function parseAddArgs(words: readonly string[]): AddArgs {
   return { spec: spec!, id, teams, replace, approval };
 }
 
-/** A prompt on the terminal, when both stdin and stdout are terminals. */
-export function terminalIo(): ApprovalIo {
+const aborted = (error: unknown): boolean => error instanceof Error && (error.name === 'AbortError' || (error as { code?: unknown }).code === 'ABORT_ERR');
+/**
+ * A prompt on the terminal, when both stdin and stdout are terminals. Freeze review finding 3: Ctrl-C or Ctrl-D closes
+ * the prompt, and readline rejects with an AbortError. That is a stop (exit 130), never the generic failure.
+ * The streams are parameters so a test can drive this very prompt.
+ */
+export function terminalIo(input: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin, output: NodeJS.WritableStream & { isTTY?: boolean } = process.stdout): ApprovalIo {
   return {
-    interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
-    async ask(question: string): Promise<string> { const rl = createInterface({ input: process.stdin, output: process.stdout }); try { return await rl.question(question); } finally { rl.close(); } },
+    interactive: input.isTTY === true && output.isTTY === true,
+    async ask(question: string): Promise<string> {
+      const rl = createInterface({ input, output });
+      // The end of input closes the prompt without settling the question, so a close before an answer is a stop too.
+      const closed = new Promise<never>((_, reject) => rl.once('close', () => reject(Object.assign(new Error('The prompt closed.'), { name: 'AbortError' }))));
+      closed.catch(() => { /* Raced below. */ });
+      try { return await Promise.race([rl.question(question), closed]); }
+      catch (error) { if (aborted(error)) { output.write('\n'); throw promptStopped(); } throw error; }
+      finally { rl.close(); }
+    },
   };
 }
 
