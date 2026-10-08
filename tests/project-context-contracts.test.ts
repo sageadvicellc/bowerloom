@@ -69,7 +69,7 @@ test('npm test runs the skill packages and each beta 0.7.0 project test folder t
     for (const name of ['test', 'test:project']) assert.equal(words(scripts[name]).includes(glob), hasTest(folder), `${name}: ${glob}`);
   }
   for (const glob of ['packages/managed-skills/test/*.test.mjs', 'packages/skill-sources/test/*.test.mjs', 'dist/tests/*.test.js']) assert.ok(words(scripts.test).includes(glob), glob);
-  assert.equal(words(scripts.test).slice(0, 9).join(' '), 'npm run build && node tools/check-test-patterns.mjs && node --test');
-  assert.equal(words(scripts['test:project']).slice(0, 6).join(' '), 'npm run build && node --test');
+  assert.equal(words(scripts.test).slice(0, 9).join(' '), 'npm run build && node tools/check-test-patterns.mjs && node tools/run-node-tests.mjs');
+  assert.equal(words(scripts['test:project']).slice(0, 6).join(' '), 'npm run build && node tools/run-node-tests.mjs');
   assert.ok(words(scripts['test:project']).includes('dist/tests/project-context-contracts.test.js'));
 });

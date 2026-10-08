@@ -18,16 +18,20 @@ function tree(t, files) {
   return root;
 }
 
-test('patterns come from every node --test segment of test and test:* scripts only', () => {
+test('patterns come from every node --test or test runner segment of test and test:* scripts only', () => {
   const scripts = {
     build: 'tsc',
     test: 'npm run build && node tools/check-test-patterns.mjs && node --test a/test/*.test.mjs dist/b/*.test.js',
     'test:one': 'npm run build && node --test --test-concurrency=1 c/test/only.test.mjs',
+    'test:runner': 'npm run build && node tools/run-node-tests.mjs --test-timeout=120000 d/test/*.test.mjs e/test/one.test.mjs',
+    'test:other': 'node tools/other.mjs f/test/*.test.mjs',
     trellis: 'node --test never/*.test.mjs',
+    'trellis:runner': 'node tools/run-node-tests.mjs never/*.test.mjs',
   };
   assert.deepEqual(testPatterns(scripts), [
     { script: 'test', pattern: 'a/test/*.test.mjs' }, { script: 'test', pattern: 'dist/b/*.test.js' },
     { script: 'test:one', pattern: 'c/test/only.test.mjs' },
+    { script: 'test:runner', pattern: 'd/test/*.test.mjs' }, { script: 'test:runner', pattern: 'e/test/one.test.mjs' },
   ]);
   assert.deepEqual(testPatterns({}), []);
 });

@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 // `node --test` exits 0 when a listed pattern matches nothing, so an empty or missing test folder passes silently.
-// This check reads every `node --test` pattern in the test and test:* scripts and fails when one matches no file.
+// This check reads every `node --test` and tools/run-node-tests.mjs pattern in the test and test:* scripts, and
+// fails when one matches no file.
 // A wildcard is supported in the file name only. Any other pattern shape is refused, not guessed.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const GLOB = /[*?[\]{}]/;
+// Test scripts run `node --test` through this runner, which takes the same arguments without --test.
+const RUNNER = 'tools/run-node-tests.mjs';
 
-/** Lists the `node --test` file patterns of each test script, in script order. Flags are skipped. */
+/** Lists the `node --test` or runner file patterns of each test script, in script order. Flags are skipped. */
 export function testPatterns(scripts) {
   const found = [];
   for (const [script, command] of Object.entries(scripts)) {
     if (script !== 'test' && !script.startsWith('test:')) continue;
     for (const segment of String(command).split('&&')) {
       const words = segment.trim().split(/\s+/);
-      if (words[0] !== 'node' || words[1] !== '--test') continue;
+      if (words[0] !== 'node' || (words[1] !== '--test' && words[1] !== RUNNER)) continue;
       for (const word of words.slice(2)) if (!word.startsWith('-')) found.push({ script, pattern: word });
     }
   }
