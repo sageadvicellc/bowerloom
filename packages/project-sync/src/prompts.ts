@@ -6,7 +6,9 @@
  *
  * Planning reads only. Every check of the planned child mirrors the skill check in apply.ts.
  */
+import { lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { parseDocument } from 'yaml';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, stablePins } from '../../managed-skills/src/observed.js';
 import { readLocalPrompt } from '../../managed-skills/src/local-source.js';
@@ -26,10 +28,23 @@ export type PromptState = 'new' | 'edited' | 'harnesses-changed' | 'up-to-date' 
  * quotes the prompt.
  */
 export type PromptNotice = 'allowed-tools' | 'shell-lines';
+const FENCE = /^---[ \t]*$/;
+/** True when the frontmatter names allowed-tools, in any case, quoted or not. More notices are safe; a missing one is not. */
+function grantsTools(block: string): boolean {
+  // Security freeze finding 2: the key as YAML reads it, and any line that names it, so a block YAML refuses still counts.
+  if (block.split('\n').some(l => /^\s*["']?allowed-tools["']?\s*:/i.test(l))) return true;
+  try {
+    const doc = parseDocument(block, { uniqueKeys: false });
+    const value: unknown = doc.toJS({ maxAliasCount: 0 });
+    return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(k => k.trim().toLowerCase() === 'allowed-tools');
+  } catch { return false; }
+}
 export function promptNotices(text: string): PromptNotice[] {
   const notices: PromptNotice[] = [], lines = text.split(/\r?\n/);
-  if (lines[0] === '---') { const end = lines.indexOf('---', 1); if (end > 0 && lines.slice(1, end).some(l => /^allowed-tools\s*:/.test(l))) notices.push('allowed-tools'); }
-  if (lines.some(l => l.startsWith('!'))) notices.push('shell-lines');
+  // The opener and closer may carry trailing spaces, as `--- ` does in files people write.
+  if (FENCE.test(lines[0] ?? '')) { const end = lines.findIndex((l, i) => i > 0 && FENCE.test(l)); if (end > 0 && grantsTools(lines.slice(1, end).join('\n'))) notices.push('allowed-tools'); }
+  // A shell command is `!` then a backquote anywhere in the text; a line that starts with `!` is named too.
+  if (text.includes('!`') || lines.some(l => l.startsWith('!'))) notices.push('shell-lines');
   return notices;
 }
 export interface PromptItem {

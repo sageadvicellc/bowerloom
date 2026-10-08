@@ -88,8 +88,8 @@ test('finding 5: the apply review names each prompt that sets allowed-tools or h
   writeFileSync(join(prompts, 'shell.md'), '---\ndescription: Synthetic.\n---\n\n# shell\n\n!`date`\n');
   writeFileSync(join(prompts, 'plain.md'), '---\ndescription: Synthetic. allowed-tools in prose is fine.\n---\n\n# plain\n\nSay hello! Not a shell line.\n');
   const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
-  assert.match(shown.stdout, /^ {2}Note: prompt tooled sets allowed-tools in its frontmatter and has lines that start with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/tooled\.md\.$/m);
-  assert.match(shown.stdout, /^ {2}Note: prompt shell has lines that start with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/shell\.md\.$/m);
+  assert.match(shown.stdout, /^ {2}Note: prompt tooled sets allowed-tools in its frontmatter and runs shell commands marked with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/tooled\.md\.$/m);
+  assert.match(shown.stdout, /^ {2}Note: prompt shell runs shell commands marked with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/shell\.md\.$/m);
   assert.doesNotMatch(shown.stdout, /Note: prompt plain/);
   assert.doesNotMatch(shown.stdout, /SECRET_TOOL_TEXT|SECRET_SHELL_TEXT|Bash\(|echo|date`/);
   const json = run(p, ['apply', '--json']); assert.equal(json.status, 3);
