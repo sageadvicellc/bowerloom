@@ -29,9 +29,26 @@ Running a team needs separate runtime permissions and controls. The setup comman
 
 ## Beta limits
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
-`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are not available in this beta release. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
+Bowerloom `0.7.0` adds these commands, and each one is documented:
+
+- `bowerloom up --team <name>` prepares a project one approved step at a time and ends at `prepared, workers held`.
+- `bowerloom ls` and `bowerloom status` read the project and write nothing.
+- `bowerloom team create`, `skill create`, and `prompt create` make files inside `.bowerloom`.
+- `.bowerloom/skills.json` pins skills at exact versions and commits. `skills add`, `skills check`, `skills sync`, `skills recover`, and `skills migrate` manage it.
+- `bowerloom apply` puts skills and prompts in place for Claude Code and Codex.
+
+Every change shows a plan first and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+
+These limits are current facts of this beta:
+
+- No worker starts. `up` ends at `prepared, workers held`.
+- Native discovery of the skill and prompt copies by Claude Code and Codex is not observed.
+- Skills come from public sources only, and only MIT and Apache-2.0 skills install.
+- `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
+- Bowerloom keeps history and deletes none. A full item needs a manual step. See [the guide](/docs/guides/add-skills/#current-beta-limits).
+- The beta needs Node `>=24.11.0 <25`. If a global npm prefix needs `sudo`, set a user prefix instead. See [Install Bowerloom](/docs/start/).
 
 <a id="read-results-at-their-actual-scope"></a>
 
@@ -49,7 +66,7 @@ Revision plans a replacement before applying it. These paths do not import live 
 
 Synthetic configuration commands process selected Codex and Claude Code fixtures. They do not change live configuration or run models.
 
-Portable skill installation supports a new Codex workspace and a new Claude Code workspace. Native discovery by Claude Code has not been observed. It does not support an existing target.
+Portable skill installation supports a new Codex workspace and a new Claude Code workspace. It does not support an existing target. For an existing project, `skills sync` and `apply` put skills and prompts in place for both harnesses. Native discovery by Claude Code and Codex is not observed.
 
 A projected file does not prove that an agent discovers or runs it. Read [Codex and Claude Code](/docs/harnesses/).
 

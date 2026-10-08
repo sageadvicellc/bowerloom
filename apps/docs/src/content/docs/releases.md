@@ -25,6 +25,14 @@ Plan changes to an installed goal or profile before replacing managed files. Int
 
 Status reports specification readiness, runtime readiness, execution authority, review requirements, and drift. Setup remains ready for human review without starting workers.
 
+Run `bowerloom up --team <name> --goal <goal>` in a project folder to prepare it one approved step at a time. The run ends at `prepared, workers held`. No worker starts. Install the private archive with `npm install -g ./bowerloom-0.7.0-beta.N.tgz`.
+
+List a project with `bowerloom ls` and read its state with `bowerloom status`. Create a team, a skill, or a prompt inside `.bowerloom` with `team create`, `skill create`, and `prompt create`.
+
+Pin skills from npm or GitHub in `.bowerloom/skills.json` with `skills add`. Check the pins with `skills check`. Install them with `skills sync`, and put them in place for Claude Code and Codex with `apply`. Only exact pins and MIT or Apache-2.0 skills are accepted. Commit `skills.json` and your authored skills. Managed copies and the `.claude` and `.agents` projections stay on each machine.
+
+Every change shows a plan and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate. There is no `--yes`. Project commands refuse a project in a cloud-synced folder with `PROJECT_IN_CLOUD_FOLDER`. `bowerloom help` and `bowerloom help advanced` list the commands.
+
 Project selected portable skill files into a new Codex or Claude Code workspace. MCP planning reads selected synthetic inputs without connecting a server.
 
 ## Compatibility

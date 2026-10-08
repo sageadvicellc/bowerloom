@@ -70,11 +70,30 @@ The CLI validates accepted fields and text. The goal remains data in a fixed tem
 
 The fixed graph connects scope to draft and both outputs to review. Its declarations do not start a model, socket, backend, or retrieval system. [Teams and files](/docs/concepts/teams-and-files/) explains the specification, and [Map your existing workflow](/docs/guides/integrate-workflow/) connects it to your process.
 
+## Skills, prompts, and what to commit
+
+<a id="skills-json"></a>
+
+`.bowerloom/skills.json` is the one file that pins third-party skills. Its format is `bowerloom/skills/v1beta1`. It lists the harnesses (`claude` and `codex`) and one entry for each skill. A pinned entry holds an exact npm version or a full 40-character Git commit, the integrity and tree values that prove the bytes, the license, and the hash of every file. Exact pins only. A range, tag, or branch is not a pin. An entry made by `skill create` is a local entry that points at `skills/<id>`. The file is its own lock. It holds at most 32 skills and 1 MiB. Bowerloom reads it strictly, so a hand edit can break it (`MANIFEST_INVALID`). Use `bowerloom skills add` to change it.
+
+| Path | Holds | Commit it |
+| --- | --- | --- |
+| `.bowerloom/skills.json` | Exact pins and local skill entries | Yes |
+| `.bowerloom/skills/<name>/SKILL.md` | A skill you authored with `skill create` | Yes |
+| `.bowerloom/prompts/<name>.md` | A prompt you created with `prompt create` | Yes |
+| `.bowerloom/teams/<name>/` | A team you created with `team create` | Yes |
+| `.bowerloom/managed/` | Managed copies of pinned skills. Bowerloom writes a `.gitignore` inside it | No |
+| `.claude/skills/`, `.claude/commands/`, `.agents/skills/` | Projections for Claude Code and Codex | No |
+
+Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`, or with `bowerloom up --team <name>`.
+
+Receipts and the fetch cache live in a private state folder outside the project. That folder is `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, and `~/.local/state/bowerloom` otherwise. Bowerloom makes new folders there with mode 0700. Keep that folder private.
+
+[Add third-party skills](/docs/guides/add-skills/) explains the commands. [Create teams, skills, and prompts](/docs/guides/create-items/) explains the create commands.
+
 ## Portable skill bundles
 
-[Add a portable skill](/docs/guides/add-skills/) explains the separate bundle manifest and project-local projection.
-
-That installer uses a new workspace. It does not add files to this managed first-team inventory or install skills into an existing project.
+The `bowerloom portable` forms project selected skill files from a reviewed bundle into a new workspace. See the [CLI reference](/docs/cli/#portable). They do not add files to this managed first-team inventory or install skills into an existing project. For an existing project, use `skills add`, `skills sync`, and `apply`.
 
 ## Private local records
 

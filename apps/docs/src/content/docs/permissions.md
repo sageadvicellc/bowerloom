@@ -15,6 +15,10 @@ Governance begins with the exact effect you approve. A plan names the proposed f
 
 A general goal does not approve every later effect. Setup approval permits its reviewed file write, not runtime execution.
 
+## Approve with a revision
+
+Every project command shows its plan and a 64-character revision. In a terminal, the command asks before it writes. An agent runs the same command with `--approve <revision>`. A revision that no longer matches refuses with `STALE_APPROVAL`. There is no `--yes`, because an approval always names the plan it approves. The command exits 3 when it waits for approval and 4 when a gate holds the workers. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+
 ## Review what changes
 
 Read the project, team, file inventory, proposed access, operation revision, and limits. A changed target, goal, profile, or binding invalidates earlier setup approval.

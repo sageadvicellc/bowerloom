@@ -16,7 +16,7 @@ Read [Install Bowerloom](/docs/start/) for the version and requirements. Use you
 ## Follow the integration
 
 1. [Map your existing workflow](/docs/guides/integrate-workflow/) into roles and handoffs.
-2. [Integrate your first team](/docs/learn/first-team/) through an exact existing-project plan.
+2. [Integrate your first team](/docs/learn/first-team/) with `bowerloom up`, approving each step.
 3. [Read and review your setup](/docs/learn/review-your-setup/) against the agreed workflow.
 
 <a id="use-your-own-project"></a>

@@ -7,7 +7,7 @@ order: 7.2
 
 Use this optional guide when you want a separate unused workspace. For your current project, use [Integrate your first team](/docs/learn/first-team/) instead. This example prepares the fixed Engineer specification named “Clean install trial.” It ends with a file review and starts no workers.
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
@@ -75,4 +75,4 @@ If an I/O result is uncertain, inspect status and preserved files. Do not repeat
 
 Continue with [Read and review your setup](/docs/learn/review-your-setup/).
 
-For additional portable skills, read [Add a portable skill](/docs/guides/add-skills/). Its current installer requires a separate new workspace.
+To add skills from npm or GitHub to a project, read [Add third-party skills](/docs/guides/add-skills/). The separate `portable` installer requires a new workspace.

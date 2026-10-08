@@ -7,7 +7,7 @@ order: 25
 
 Start with the installed version, actual output, and intended task. Preserve uncertain state before choosing another operation.
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
@@ -47,7 +47,17 @@ If the outcome remains uncertain, preserve the original evidence. A help request
 
 Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying.
 
+If `npm install -g` refuses with a permission error, do not use `sudo`. Set a user prefix with `npm config set prefix "$HOME/.npm-global"` and add `$HOME/.npm-global/bin` to your `PATH`. [Install Bowerloom](/docs/start/#prerequisites-and-availability) shows the steps.
+
 If the version differs, use matching documentation. A setup command does not grant model execution permission.
+
+## Project commands
+
+If a command exits 3, it waits for approval. Read the plan, then run the same command with `--approve <revision>`. If it exits 4 with `prepared, workers held`, the project is prepared and a gate holds the workers.
+
+If `PROJECT_IN_CLOUD_FOLDER` appears, move the project out of `~/Documents`, `~/Desktop`, or a `~/Library` cloud folder. If `PROJECT_NOT_FOUND` appears, change into the project folder, or run `bowerloom up --team <name> --goal <goal>`. [Errors](/docs/reference/errors/#project-and-approval-refusals) lists every code.
+
+If a skill copy is held for local drift, Bowerloom never overwrites it. Follow the `Next:` line. If `MANAGED_SKILL_HISTORY_FULL` appears, move the older `op-<key>` folders out with `mv`, as the `Next:` line says.
 
 ## Existing setup
 

@@ -1,18 +1,18 @@
 ---
 title: "Integrate your first team"
-description: "Plan a team specification for your existing project, then approve its exact files."
+description: "Prepare your project for a team with bowerloom up, and approve each step."
 section: "Learn"
 order: 3
 ---
 
-Integrate a team specification with the project you already use. First [map your existing workflow](/docs/guides/integrate-workflow/) and compare it with a fixed profile. Existing mode adds `.bowerloom/` without reading project-file contents or importing live agent configuration. Review the exact file plan before installation, then compare the resulting roles and handoffs with your process.
+Integrate a team with the project you already use. First [map your existing workflow](/docs/guides/integrate-workflow/) and compare it with a fixed profile. Then run `bowerloom up --team <name> --goal <goal>` in the project folder. Each step adds only `.bowerloom` and the skill copies. It shows its exact plan first. It writes after you approve that plan. Your other project files stay as they are.
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
 ```text
-Help me integrate a Bowerloom team specification with this existing project. Use the workflow description we reviewed and compare it with the fixed Engineer profile. Show the complete file plan and working agreement before changing anything. If .bowerloom already exists, use revision instead of fresh installation. Wait for my exact approval. Do not import project contents or live agent configuration, start workers, or execute the project.
+Help me prepare this project for a Bowerloom team with bowerloom up. Use the workflow description we reviewed. Run each step without --approve first, and show me the plan and its revision. Wait for my exact approval of each step, then run the same command with that revision. Stop at "prepared, workers held". Do not start workers, do not edit AGENTS.md or CLAUDE.md, and do not import live agent configuration.
 ```
 
 ## Agent procedure
@@ -21,48 +21,52 @@ Help me integrate a Bowerloom team specification with this existing project. Use
 
 Install the matching CLI version through [Install Bowerloom](/docs/start/).
 
-Select an existing absolute project directory that you own. Its ancestors must meet the setup path requirements.
+Open a terminal in the project folder. The folder must be outside iCloud Drive and other cloud-synced folders.
 
-The project must contain no `.bowerloom/` installation or pending revision. Inspect the intended target before planning.
+A folder with no `.bowerloom` needs `--goal`. The project name is the folder name unless you pass `--name`.
 
-### Plan the files
+### Plan the first step
 
-Replace `/absolute/projects/existing-project` with that exact project path.
-
+<!-- BIND: pending installed evidence -->
 ```sh
-bowerloom init plan --mode existing --target /absolute/projects/existing-project --name "First team" --goal "Plan an accessible project website and its meaningful checks." --profile engineer --json
+bowerloom up --team "Studio crew" --goal "Plan an accessible project website and its meaningful checks."
 ```
 
-Read the complete inputs, binding, file inventory, identity policy, and revision. Review the fixed roles, agreement, and milestones.
-
-The plan's `specReady` field does not mean that files exist or execution is authorized.
+The first plan is the `init` step. Read the folder, the team, and the count of setup files. The plan ends with a revision and exit code 3. Nothing is written yet.
 
 ### Wait for exact approval
 
-Wait for the human to approve the exact plan. Replace `EXACT_REVIEWED_PLAN_REVISION` with its complete 64-character `revision`.
-
-Keep every input identical to that approved plan.
+Wait for the human to approve the plan. Replace `REVISION_FROM_THE_PLAN` with its complete 64-character revision. Keep every other input identical.
 
 ```sh
-bowerloom init apply --mode existing --target /absolute/projects/existing-project --name "First team" --goal "Plan an accessible project website and its meaningful checks." --profile engineer --approve EXACT_REVIEWED_PLAN_REVISION
+bowerloom up --team "Studio crew" --goal "Plan an accessible project website and its meaningful checks." --approve REVISION_FROM_THE_PLAN
 ```
+
+The command applies the step whose revision matches. It then prints the next plan and exits 3. A changed project gives a different revision, and the old approval refuses with `STALE_APPROVAL`.
+
+Repeat for each later step. Later steps are `team`, `sync`, and `apply`, and `up` shows only the steps your project needs. Once the folder holds `.bowerloom`, `up` ignores `--goal`.
 
 ### Read the result
 
+When no step is left, `up` prints `prepared, workers held`, points to `.bowerloom/START-HERE.md`, and exits 4. No worker started.
+
 ```sh
-bowerloom init status --target /absolute/projects/existing-project
+bowerloom status
+bowerloom ls
 ```
 
-A successful setup reports `ready-for-review` with no drift. Runtime readiness and execution authority remain false.
+When nothing drifted, `bowerloom status` reports `Setup: ready`. It also prints `Workers: none started (this beta starts none)`. With `--json`, it reports `runtimeReady` and `executionAuthorized` as false. `bowerloom ls` lists the teams, skills, and prompts in the project.
 
-Approval adds 20 setup files and one private receipt. Unrelated project files remain unchanged.
+Approval of the `init` step adds 20 setup files and one private receipt. Unrelated project files remain unchanged.
 
 ### If the command refuses
 
-If `.bowerloom/` exists, inspect it and follow [revision](/docs/revision/). Do not overwrite the installation through fresh setup.
+If the plan changed after you saw it, the refusal is `STALE_APPROVAL`. Nothing was applied. Run the command again without `--approve` to see the new plan.
 
-If inputs or binding change, prepare another plan and obtain exact approval. Do not guess a replacement revision.
+If you declined in a terminal, the refusal is `APPROVAL_DECLINED`. Nothing changed.
 
-If a revision is pending, preserve its transaction records. Use [revision recovery](/docs/guides/recover-revision/).
+If a refusal names `PROJECT_IN_CLOUD_FOLDER`, move the project out of the synced folder. See [Errors](/docs/reference/errors/#project-and-approval-refusals).
+
+If a revision is pending from an earlier setup, preserve its transaction records. Use [revision recovery](/docs/guides/recover-revision/).
 
 Continue with [Read and review your setup](/docs/learn/review-your-setup/).

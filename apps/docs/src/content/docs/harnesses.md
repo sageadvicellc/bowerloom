@@ -7,7 +7,7 @@ order: 12
 
 A harness is an application that runs a model and exposes tools. Bowerloom separates portable definitions from harness-specific configuration.
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
@@ -47,9 +47,11 @@ If the selected inputs are live or their scope is unclear, stop before changing 
 
 ## Portable skills for Codex and Claude Code
 
-[Add a portable skill](/docs/guides/add-skills/) describes the separate installer for a new workspace. The `codex` value projects reviewed skill files into `.agents/skills/`. The `claude` value projects them into `.claude/skills/`. Native discovery by Claude Code has not been observed.
+For an existing project, `bowerloom skills sync` and `bowerloom apply` put pinned skills and prompts in place for Claude Code, Codex, or both. Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. `bowerloom up --team <name>` targets both harnesses by default. Pass `--harness claude`, `--harness codex`, or `--harness both` to `apply` to choose. [Add third-party skills](/docs/guides/add-skills/) explains the commands.
 
-The synthetic configuration commands above do not project skill files. Portable skill installation for an existing target remains unsupported.
+These copies are files. Native discovery of them by Claude Code and Codex is not observed. A copy does not prove that either harness finds or runs it. Bowerloom never edits `AGENTS.md` or `CLAUDE.md`. `apply` prints a line for you to add.
+
+The separate `bowerloom portable` installer projects reviewed skill files into a new workspace. The `codex` value projects them into `.agents/skills/`. The `claude` value projects them into `.claude/skills/`. The synthetic configuration commands above do not project skill files. Portable skill installation for an existing target remains unsupported.
 
 ## Support boundary
 

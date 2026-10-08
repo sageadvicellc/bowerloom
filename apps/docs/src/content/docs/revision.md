@@ -13,7 +13,7 @@ Open beta · 0.7.0-beta.0
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
@@ -26,6 +26,8 @@ Help me revise my installed Bowerloom setup. Read its current state and show the
 ### Prerequisites
 
 Install the matching CLI version through [Install Bowerloom](/docs/start/).
+
+`bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release. Use revision on a project that only holds the setup files.
 
 Use the original target and a readable installation receipt. Resolve any pending revision before starting another change.
 

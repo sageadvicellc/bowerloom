@@ -5,7 +5,7 @@ section: "Reference"
 order: 22
 ---
 
-Use the documentation for the installed version. This reference describes `0.7.0-beta.0`.
+Use the documentation for the installed version. This reference describes the `0.7.0-beta` line.
 
 <!-- release:status:start -->
 Open beta · 0.7.0-beta.0
@@ -13,9 +13,9 @@ Open beta · 0.7.0-beta.0
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
-`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are not available in this beta release. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
+Workers do not start in this beta.
 
 ## Discovery
 
@@ -24,18 +24,68 @@ After meeting [installation requirements](/docs/start/), read:
 ```sh
 bowerloom --version
 bowerloom --help
-bowerloom init --help
+bowerloom help <command>
+bowerloom help advanced
 ```
 
-The version output identifies `Bowerloom 0.7.0-beta.0`. Command syntax does not grant execution permission.
+`bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help for `up`, `ls`, `status`, `skills`, `apply`, `team`, `skill`, `prompt`, and `init`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
 
-## Read reference forms
+The version output identifies `Bowerloom 0.7.0-beta.N`. Command syntax does not grant execution permission.
 
-The forms below describe CLI help. They are reference syntax, not ready-to-run commands.
+## Approvals and exit codes
 
-Angle brackets name required values. A vertical bar separates alternatives. Square brackets mark optional syntax.
+Every command that changes a project shows a plan first. The plan ends with a revision, a 64-character lowercase hex value that names that exact plan.
 
-Use absolute paths where the form requests them. Establish every private input and capability prerequisite before invoking a command.
+- In a terminal, the command asks `Apply plan <short revision>? [y/N]`, plans again, and applies only if the revision is unchanged.
+- With `--approve <revision>`, the command applies once and never asks. A revision that no longer matches refuses with `STALE_APPROVAL` and changes nothing.
+- With `--json`, or without a terminal, the command prints the plan and its revision and exits 3. Nothing is written.
+- Pass `--approve` once. There is no `--yes` and no `-y`. Either one is a usage error, exit 2, and no environment variable changes that.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Done, or nothing to change. |
+| 1 | Refused. The refusal code names the reason. |
+| 2 | Usage error. The command line did not match a Bowerloom command. |
+| 3 | Approval required. Read the plan, then run the same command with `--approve <revision>`. |
+| 4 | Held by a gate. `up` returns 4 with `prepared, workers held`. |
+
+In a terminal, a refusal prints its code, a plain sentence, and a `Next:` line. Without a terminal, a refusal prints one line of JSON on standard error: `{"error":{"code":"...","message":"..."}}`. Agents parse that line. [Errors](/docs/reference/errors/) lists the codes.
+
+## Project commands
+
+These commands work in a project folder. The project is the nearest parent folder that holds `.bowerloom`, found the way git finds `.git`. The search stops at your home folder. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`. A home folder or a whole disk refuses with `PROJECT_ROOT_REFUSED`.
+
+```text
+bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--approve <revision>] [--json]
+bowerloom ls [teams|skills|prompts] [--json]
+bowerloom status [--json]
+```
+
+`up` prepares the project one step at a time and starts no workers. See [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command). With `--json`, each line is one JSON object, and each step plan names its `step` and `team`. `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
+
+`ls` reads the names of teams, skills, and prompts in `.bowerloom` and writes nothing. An empty section shows `none yet`. A link, a stray file, or a name that is not a plain id counts as `Not listed`, and `ls` never follows it. A folder with more than 256 entries refuses with `INSPECTION_LIMIT`.
+
+`status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object with `status`, `revision`, `drift`, `owned`, `runtimeReady`, and `executionAuthorized`. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
+
+`bowerloom status --installation <private.json>` still reads a prepared session. See [Historical demo and session](#historical-demo).
+
+## Create commands
+
+```text
+bowerloom team create <name> [--profile engineer|founder|research] [--approve <revision>] [--json]
+bowerloom skill create <name> [--team <team>]... [--approve <revision>] [--json]
+bowerloom prompt create <name> [--team <team>]... [--approve <revision>] [--json]
+```
+
+Agents use these commands most. They write inside `.bowerloom` only. You and your agents own the files they make. [Create teams, skills, and prompts](/docs/guides/create-items/) explains each one.
+
+## Apply
+
+```text
+bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]
+```
+
+`apply` puts the skills in `.bowerloom/skills.json` and the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default). It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 
@@ -146,6 +196,31 @@ The macOS Docker context, ARM64 daemon, Compose v2, storage, and approval requir
 ## Third-party skills
 
 ```text
+bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]
+bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]
+bowerloom skills check [--json]
+bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]
+bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon] [--approve <revision>] [--json]
+bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <revision>] [--json]
+```
+
+`skills add` pins one skill in `.bowerloom/skills.json`. The pin must be exact. An npm source takes an exact version such as `1.2.3`. A GitHub source takes a full 40-character lower-case commit, and the repository name is lower case. Ranges, tags, branches, and short commits refuse before anything is fetched. `<path>` is the skill folder inside the package or repository. `skills add` reads only `registry.npmjs.org` or `api.github.com`, without credentials. It takes MIT and Apache-2.0 skills only. It records the pin and installs nothing.
+
+`--id` sets the entry id. The default is the skill name. `--team` limits the skill to a team. Without it, every team gets the skill.
+
+`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing.
+
+`skills sync` installs every skill in `skills.json` for Claude Code and Codex into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. It fetches only pins that the private cache does not hold yet, and it checks every byte against its pin first. `--offline` refuses before any change if a pin still needs fetching. `--team` syncs only that team's skills. A skill whose copy you changed is held and shown with its next step, and the others apply. Sync removes nothing. Ctrl-C stops it between two skills, never inside one.
+
+`skills recover` finishes or undoes the one unfinished change of an item, after a crash or a refusal inside it. `skills migrate` moves a skill that an earlier Bowerloom installed in `.bowerloom-skills` to `.bowerloom/managed`. `skills.json` must pin the same source first. `migrate plan` prints the `skills add` command if it does not.
+
+[Add third-party skills](/docs/guides/add-skills/) explains the sequence and the refusal codes. `bowerloom help skills` shows the same forms.
+
+### Request-file forms
+
+These older forms take hand-written request files. `bowerloom help advanced` lists them. The `skills add`, `sync`, and `apply` commands above replace them for everyday use.
+
+```text
 bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
 bowerloom skills source acquire --plan <absolute-json> --approve <revision>
 bowerloom skills source git plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
@@ -161,7 +236,7 @@ bowerloom skills recover plan --request <absolute-json>
 bowerloom skills recover apply --plan <absolute-json> --approve <revision>
 ```
 
-These forms read public npm and public GitHub sources only. Each install uses a hand-written request and installs one skill per project. [Add a third-party skill](/docs/guides/add-skills/) explains the sequence and the refusal codes.
+These forms read public npm and public GitHub sources only. `skills recover` takes `--item` for the new forms and `--request` for the request-file forms.
 
 <a id="routine"></a>
 

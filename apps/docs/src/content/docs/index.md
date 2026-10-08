@@ -13,6 +13,8 @@ Bowerloom brings governance to agent workflows in files that follow you. Start w
 | --- | --- |
 | Map your current process into a team specification | [Map your existing workflow](/docs/guides/integrate-workflow/) |
 | Install the CLI for your project | [Install Bowerloom](/docs/start/) |
+| Add pinned skills from npm or GitHub | [Add third-party skills](/docs/guides/add-skills/) |
+| Create a team, skill, or prompt | [Create teams, skills, and prompts](/docs/guides/create-items/) |
 | Add the reviewed specification to your project | [Integrate your first team](/docs/learn/first-team/) |
 | Change an installed goal or profile | [Revise an installed setup](/docs/revision/) |
 | Understand definitions and approval | [Concepts](/docs/concepts/) |

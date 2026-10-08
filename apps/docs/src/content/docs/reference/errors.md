@@ -7,7 +7,7 @@ order: 24
 
 Use the actual result from the matching installed version. A status is an observed state. An error identifies a refused operation.
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Status fields
 
@@ -23,6 +23,8 @@ Keep your project out of iCloud Drive folders. This beta does not support them, 
 | `compiledCandidate` | The compiled definition identity when inspection can establish it |
 | `contextImported` | False in the setup results documented here |
 | `hostedAgentCreated` | False in the setup results documented here |
+
+`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it also reports `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. Read [CLI reference](/docs/cli/#project-commands).
 
 `ready-for-review` requires human review. It does not mean that a team runs or has execution permission.
 
@@ -44,9 +46,84 @@ Keep your project out of iCloud Drive folders. This beta does not support them, 
 
 A wrong setup approval returns `STALE_APPROVAL` with exit 1 and no project changes. Do not infer every I/O failure is unchanged.
 
-## Skills refusals
+## Exit codes
 
-The `bowerloom skills` commands print one line of JSON on standard error. A refusal exits 1. A usage error exits 2. [Add a third-party skill](/docs/guides/add-skills/#if-a-command-refuses-or-stops) shows the exact forms.
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Done, or nothing to change. |
+| 1 | Refused. The code names the reason. |
+| 2 | Usage error (`USAGE`). |
+| 3 | Approval required. The plan and its revision are printed. Nothing was written. |
+| 4 | Held by a gate. `bowerloom up` returns 4 with `prepared, workers held`. |
+
+Exit 3 and exit 4 belong to the project commands: `up`, `ls`, `status`, `team`, `skill`, `prompt`, `skills add`, `check`, `sync`, `recover`, `migrate`, and `apply`. There is no `--yes`. Pass `--approve <revision>` with the revision from the plan. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the flow.
+
+In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentence, and a `Next:` line. Without a terminal, it prints one line of JSON on standard error.
+
+## Project and approval refusals
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `USAGE` | The command line did not match a Bowerloom command. Nothing changed. | Run `bowerloom help`. |
+| `APPROVAL_REQUIRED` | The plan needs your approval. Exit 3. | Run the same command with `--approve <revision>`. |
+| `APPROVAL_DECLINED` | You declined. Nothing changed. | Run the command again to see the plan. |
+| `STALE_APPROVAL` | The plan changed after you saw it. Nothing was applied. | Run the command again without `--approve` to see the new plan. |
+| `WORKERS_HELD` | The project is prepared. No worker was started. Exit 4. | Run `bowerloom status`. |
+| `PROJECT_NOT_FOUND` | Bowerloom looked in this folder and every parent up to your home folder. | Run `bowerloom up --team <name> --goal <goal>` in the project folder. |
+| `PROJECT_ROOT_REFUSED` | A whole disk or home folder is too broad to be a project. | Change into the project folder. |
+| `PROJECT_IN_CLOUD_FOLDER` | The project is under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder. Cloud sync changes file times and moves files, which breaks the checks that keep a project safe. | Move the project, for example `mv <project-folder> ~/Projects/`. |
+| `PROJECT_UNSAFE` | Bowerloom does not trust a `.bowerloom` folder that other people or links can change. | Run `ls -ld .bowerloom`. |
+| `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
+| `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
+| `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. | Run `bowerloom status`. |
+| `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port, and another program is listening on it. | Run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
+| `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. | Run `bowerloom status`. |
+| `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
+
+Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_INVALID`, `TEAM_NOT_FOUND`, `SKILL_EXISTS`, `SKILL_NAME_RESERVED`, `SKILL_NAME_INVALID`, `PROMPT_EXISTS`, `PROMPT_NAME_INVALID`, `REVISION_PENDING`, `AUTHORING_PENDING`, `AUTHORING_RECEIPT_INVALID`, `AUTHORING_UNSAFE_PATH`, `AUTHORING_UNREGISTERED`, `AUTHORING_WRITE_INTERRUPTED`, and `AUTHORING_ITEM_MISSING`. [Create teams, skills, and prompts](/docs/guides/create-items/#if-a-command-refuses) explains them. `AUTHORING_RECEIPT_INVALID` means Bowerloom reads its record of created items strictly, so a hand edit can break it. Run `git diff .bowerloom/authoring/receipt.json`. `AUTHORING_UNSAFE_PATH` means Bowerloom does not read or write through links, shared files, or files others can change. Run `ls -la .bowerloom`. `AUTHORING_ITEM_MISSING` means a created item is gone. Run `git status .bowerloom`.
+
+## Skills and sync refusals
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `MANIFEST_NOT_FOUND` | There is no `skills.json` to check yet. | Run `bowerloom skills add npm:<package>@<version>:<path>`. |
+| `MANIFEST_INVALID` | Bowerloom reads `skills.json` strictly, so a hand edit can break it. | Run `git diff .bowerloom/skills.json`. |
+| `MANIFEST_UNSAFE` | Bowerloom does not trust a `skills.json` that other people or links can change. | Run `ls -l .bowerloom/skills.json`. |
+| `MANIFEST_WRITE_UNCONFIRMED` | `skills.json` was written, but it changed again before Bowerloom read it back. | Check it, then run `bowerloom skills check`. |
+| `MANIFEST_PIN_NOT_EXACT` | A pin that can move installs different files on different machines. | Run `bowerloom help skills`. |
+| `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill. |
+| `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
+| `MANIFEST_LIMIT` | `skills.json` holds at most 32 skills and 1 MiB. | Run `bowerloom skills check`. |
+| `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
+| `SKILLS_ADD_EXISTS` | `skills.json` already pins this. | Run `bowerloom skills check`. |
+| `SKILLS_ADD_NOT_FOUND` | The package name, version, commit, or folder was not found. | Check each. |
+| `SKILLS_ADD_SKILL_MISSING` | A skill folder holds a `SKILL.md` file at its top. | Check the folder. |
+| `SKILLS_ADD_LICENSE_UNKNOWN` | This beta installs a skill only when its MIT or Apache-2.0 license ships with it. | Choose another skill. |
+| `SKILLS_ADD_UNSAFE_CONTENT` | Skills here are text files only, and nothing in them is run. | Choose another skill. |
+| `SKILLS_ADD_NETWORK` | The fetch failed. Nothing changed. | Run the same command again. |
+| `SKILLS_ADD_HOST_REFUSED` | Bowerloom asked no other host than `registry.npmjs.org` or `api.github.com`. Nothing changed. | Run `bowerloom help skills`. |
+| `SKILLS_OFFLINE` | `--offline` found a pin that needs a fetch. Nothing changed in the project. | Run `bowerloom skills sync` without `--offline`. |
+| `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom stopped before any change to the project. | Run `bowerloom skills check`. |
+| `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
+| `SKILLS_SYNC_LIMIT` | A sync handles at most 64 skills at once. | Run `bowerloom skills check`. |
+| `SKILLS_CACHE_RECOVERY_REQUIRED` | The private cache needs a look before this pin can be read. | Run `bowerloom help advanced`. |
+| `SKILLS_STATE_UNSAFE` | The private state folder is not one that only you can change. | Check `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. |
+| `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. | Move the named entry out with `mv`. |
+| `SKILLS_RECOVER_NOTHING` | Nothing of this item is unfinished. | Run `bowerloom status`. |
+| `SKILLS_MIGRATE_NOTHING` | The project has no `.bowerloom-skills` folder. | Run `bowerloom skills sync`. |
+| `SKILLS_MIGRATE_STATE_INVALID` | Migrate needs the private state folder the earlier install was made with. | Run `bowerloom help skills`. |
+| `SKILLS_MIGRATE_NOT_IN_MANIFEST` | `skills.json` must pin the installed skill before it can be migrated. | Run `bowerloom skills check`. |
+| `MANAGED_SKILL_LEGACY_PRESENT` | Skills from an earlier Bowerloom must be migrated before sync can manage this project. | Run `bowerloom skills migrate plan --state <earlier-state-folder>`. |
+| `MANAGED_SKILL_RECOVERY_REQUIRED` | A change was interrupted inside one skill. Bowerloom changes nothing else until it is recovered. | Run `bowerloom skills recover plan --item <id>`. |
+| `MANAGED_SKILL_LOCAL_DRIFT` | You changed a copy. Bowerloom never overwrites it. | Undo the edit, then run `bowerloom skills sync`. |
+| `MANAGED_SKILL_PATH_OCCUPIED` | Something Bowerloom did not install is where a copy goes. | Move it, then run `bowerloom skills sync`. |
+| `MANAGED_SKILL_HISTORY_FULL` | A skill has 64 operations in its private history. Bowerloom deletes no history by itself. | Follow the `Next:` line: move the older `op-<key>` folders out with `mv`, then run the command again. |
+| `APPLY_NAME_COLLISION` | Bowerloom never overwrites what it did not install, and two items cannot share one place. | Run `bowerloom apply` after you resolve it. |
+| `PROMPT_INVALID` | Bowerloom reads only plain prompt files you own. | Run `ls -l .bowerloom/prompts`. |
+
+## Request-file skills refusals
+
+The request-file `bowerloom skills source`, `skills plan`, `skills update`, `skills apply`, and `skills inspect` forms print one line of JSON on standard error. A refusal exits 1. A usage error exits 2. [CLI reference](/docs/cli/#skills) lists the forms.
 
 <!-- BIND: pending installed evidence -->
 | Code | Trigger and meaning | Preserve and next action |
