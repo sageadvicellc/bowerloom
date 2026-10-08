@@ -24,27 +24,41 @@ import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
 export type PromptState = 'new' | 'edited' | 'harnesses-changed' | 'up-to-date' | 'drift' | 'orphaned';
 /**
  * What a Claude Code command can do beyond text (review M6 finding 5): `allowed-tools` in its frontmatter grants tools,
- * and a line that starts with `!` runs a shell command when the command is used. The review names them; it never
- * quotes the prompt.
+ * `hooks` registers hooks that keep running for the rest of the session, and `!` then a backquote, a line that starts
+ * with `!`, or a fence opened with ```! runs shell commands when the command is used (Claude Code skills docs,
+ * Frontmatter reference). The review names them; it never quotes the prompt.
  */
-export type PromptNotice = 'allowed-tools' | 'shell-lines';
+export type PromptNotice = 'allowed-tools' | 'hooks' | 'shell-lines';
 const FENCE = /^---[ \t]*$/;
-/** True when the frontmatter names allowed-tools, in any case, quoted or not. More notices are safe; a missing one is not. */
-function grantsTools(block: string): boolean {
-  // Security freeze finding 2: the key as YAML reads it, and any line that names it, so a block YAML refuses still counts.
-  if (block.split('\n').some(l => /^\s*["']?allowed-tools["']?\s*:/i.test(l))) return true;
+const KEYS = ['allowed-tools', 'hooks'] as const;
+/**
+ * The notice keys the frontmatter names, in any case, quoted or not. More notices are safe; a missing one is not, so
+ * frontmatter the bounded parser cannot read (an alias, a merge key, a parse error, anything but a map) fails closed
+ * and names every key (F' security review finding 1).
+ */
+function frontmatterKeys(block: string): Set<(typeof KEYS)[number]> {
+  const found = new Set<(typeof KEYS)[number]>();
+  // Any line that names a key counts, so a block YAML refuses still counts.
+  for (const key of KEYS) if (block.split('\n').some(l => new RegExp(`^\\s*["']?${key}["']?\\s*:`, 'i').test(l))) found.add(key);
   try {
     const doc = parseDocument(block, { uniqueKeys: false });
+    if (doc.errors.length) throw new Error('unreadable');
     const value: unknown = doc.toJS({ maxAliasCount: 0 });
-    return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).some(k => k.trim().toLowerCase() === 'allowed-tools');
-  } catch { return false; }
+    if (value === null || value === undefined) return found;
+    if (typeof value !== 'object' || Array.isArray(value)) throw new Error('unreadable');
+    for (const name of Object.keys(value)) { const k = name.trim().toLowerCase(); for (const key of KEYS) if (k === key) found.add(key); }
+    return found;
+  } catch { return new Set(KEYS); }
 }
 export function promptNotices(text: string): PromptNotice[] {
   const notices: PromptNotice[] = [], lines = text.split(/\r?\n/);
   // The opener and closer may carry trailing spaces, as `--- ` does in files people write.
-  if (FENCE.test(lines[0] ?? '')) { const end = lines.findIndex((l, i) => i > 0 && FENCE.test(l)); if (end > 0 && grantsTools(lines.slice(1, end).join('\n'))) notices.push('allowed-tools'); }
-  // A shell command is `!` then a backquote anywhere in the text; a line that starts with `!` is named too.
-  if (text.includes('!`') || lines.some(l => l.startsWith('!'))) notices.push('shell-lines');
+  if (FENCE.test(lines[0] ?? '')) {
+    const end = lines.findIndex((l, i) => i > 0 && FENCE.test(l));
+    if (end > 0) { const keys = frontmatterKeys(lines.slice(1, end).join('\n')); for (const key of KEYS) if (keys.has(key)) notices.push(key); }
+  }
+  // A shell command: `!` then a backquote anywhere, a line that starts with `!`, or a code fence opened with ```!.
+  if (text.includes('!`') || lines.some(l => l.startsWith('!') || /^[ \t]*(?:`{3,}|~{3,})!/.test(l))) notices.push('shell-lines');
   return notices;
 }
 export interface PromptItem {

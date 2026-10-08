@@ -36,7 +36,10 @@ function skillLine(item: SyncItem, width: number): string[] {
 function noticeLine(item: PromptItem): string[] {
   const copies = item.action === 'install' || item.action === 'update';
   if (!copies || !item.notices.length || !item.expected.surfaces.some(s => s.id === 'command-claude')) return [];
-  const what = [item.notices.includes('allowed-tools') ? 'sets allowed-tools in its frontmatter' : null, item.notices.includes('shell-lines') ? 'runs shell commands marked with !' : null].filter(Boolean).join(' and ');
+  const what = [item.notices.includes('allowed-tools') ? 'sets allowed-tools in its frontmatter' : null,
+    item.notices.includes('hooks') ? 'registers hooks that keep running for the rest of the session' : null,
+    item.notices.includes('shell-lines') ? 'runs shell commands marked with !' : null].filter((w): w is string => w !== null)
+    .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
   return [`  Note: prompt ${item.id} ${what}. Claude Code applies them when the command runs. Review .bowerloom/prompts/${item.id}.md.`];
 }
 function promptLine(item: PromptItem, width: number): string[] {
