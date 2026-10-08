@@ -66,6 +66,14 @@ export function lockedDependencies(lock, dependencies, manifest) {
   }
   return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':{name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,bin:manifest.bin,engines:manifest.engines},...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
 }
+// A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
+export function expectedInstallCommand(release, name, version) {
+  const d = release.distribution;
+  if (d === undefined) return `npm install --global ${name}@${version}`;
+  const archive = `${name}-${version}.tgz`;
+  if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || release.npm?.published !== false || release.state !== 'unreleased') return null;
+  return `npm install -g ./${archive}`;
+}
 export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   if(typeof releaseCandidate !== 'boolean') fail('releaseCandidate must be boolean');
   if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name) || name.length > 214) fail('Invalid npm package identity');
@@ -76,7 +84,7 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
     || release.npm.published !== (release.state === 'published')
     || release.npm.registry !== 'https://registry.npmjs.org'
     || release.npm.distTag !== 'beta'
-    || release.npm.installCommand !== `npm install --global ${name}@${rootPackage.version}`) fail('Release record does not match package identity');
+    || release.npm.installCommand !== expectedInstallCommand(release, name, rootPackage.version)) fail('Release record does not match package identity');
   if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
   const versions = {}, manifests = [];
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {

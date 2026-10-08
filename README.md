@@ -134,7 +134,7 @@ Installation, runtime enrollment, backend setup, and connected actions need thei
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
@@ -159,7 +159,7 @@ Running a team needs separate runtime permissions and controls. The setup comman
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
-npm install --global bowerloom@0.7.0-beta.0
+npm install -g ./bowerloom-0.7.0-beta.1.tgz
 bowerloom --version
 bowerloom --help
 ```

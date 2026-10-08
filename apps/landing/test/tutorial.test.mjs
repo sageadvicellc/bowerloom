@@ -58,7 +58,7 @@ test('reader setup uses the exact release command without changing operational p
   assert.equal(installAvailable,release.npm.published&&release.state==='published');
   assert.equal(Object.hasOwn(readerRelease,'published'),false);
   assert.equal(Object.hasOwn(readerRelease,'state'),false);
-  const next={...release,version:'0.7.0-beta.99',npm:{...release.npm,installCommand:'npm install --global bowerloom@0.7.0-beta.99'}};
+  const next={...release,version:'0.7.0-beta.99',distribution:{...release.distribution,archive:'bowerloom-0.7.0-beta.99.tgz'},npm:{...release.npm,installCommand:'npm install -g ./bowerloom-0.7.0-beta.99.tgz'}};
   const view=releasePresentation(next);assert.equal(view.version,next.version);assert.ok(view.setupCommands.startsWith(next.npm.installCommand));
   assert.equal(JSON.stringify(release),before);assert.equal(next.npm.published,release.npm.published);
 });

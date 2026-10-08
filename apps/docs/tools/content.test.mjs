@@ -65,7 +65,7 @@ test('reader projection preserves raw operational state and presents bounded set
   assert(sections.support.includes('Shared company access and unattended services are outside this setup walkthrough.'));
   assert.doesNotMatch(Object.values(sections).join('\n'),/unpublished|unreleased|candidate|ownership|founder acceptance|publication approval|release-qualified/i);
   assert.equal(JSON.stringify(release),before);
-  const next={...release,version:'0.7.0-beta.99',npm:{...release.npm,installCommand:'npm install --global bowerloom@0.7.0-beta.99'}};
+  const next={...release,version:'0.7.0-beta.99',distribution:{...release.distribution,archive:'bowerloom-0.7.0-beta.99.tgz'},npm:{...release.npm,installCommand:'npm install -g ./bowerloom-0.7.0-beta.99.tgz'}};
   assert(releaseSections(next).install.includes(next.npm.installCommand));assert(releaseReference(next).includes(next.version));
   assert.equal(next.state,release.state);assert.equal(next.npm.published,release.npm.published);
 });

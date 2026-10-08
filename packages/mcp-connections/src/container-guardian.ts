@@ -236,7 +236,7 @@ process.on('message', supplied => {
       requireValue(value.jsonrpc === '2.0');
       const notification = value.method === 'notifications/initialized';
       requireValue(Object.keys(value).sort().join(',') === (notification ? 'jsonrpc,method' : 'id,jsonrpc,method,params'));
-      if (value.method === 'initialize') requireValue(canonicalJson(value.params) === canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.0' } }));
+      if (value.method === 'initialize') requireValue(canonicalJson(value.params) === canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.1' } }));
       if (value.method === 'tools/list') { const params = value.params as Record<string, unknown>; requireValue(params && typeof params === 'object' && !Array.isArray(params) && Object.keys(params).every(key => key === 'cursor')); if (params.cursor !== undefined) requireValue(typeof params.cursor === 'string' && params.cursor.length > 0 && Buffer.byteLength(params.cursor) <= 256 && !/[\p{Cc}\p{Cf}]/u.test(params.cursor)); }
       if (phase === 'new') { requireValue(value.method === 'initialize' && value.id === inputCount); phase = 'initialized'; }
       else if (phase === 'initialized') { requireValue(value.method === 'notifications/initialized' && value.id === undefined); phase = 'ready'; }

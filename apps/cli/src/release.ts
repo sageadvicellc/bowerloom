@@ -6,6 +6,17 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/**
+ * The install command a release record must carry. A private archive (a colleague beta, never an npm publication)
+ * installs the packed file from the current folder and must stay unpublished; any other record installs from npm.
+ */
+export function expectedInstallCommand(record: Record<string, unknown>, npm: Record<string, unknown>): string {
+  if (record.distribution === undefined) return `npm install --global ${String(npm.packageName)}@${String(record.version)}`;
+  const d = object(record.distribution), archive = `${String(npm.packageName)}-${String(record.version)}.tgz`;
+  if (Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || npm.published !== false || record.state !== 'unreleased') throw new Error();
+  return `npm install -g ./${archive}`;
+}
+
 export function validateReleaseIdentity(value: unknown, metadata: unknown): { version: string; state: string; execution: string } {
   try {
     const record = object(value), pkg = object(metadata), npm = object(record.npm), capabilities = object(record.capabilities);
@@ -14,7 +25,7 @@ export function validateReleaseIdentity(value: unknown, metadata: unknown): { ve
       || record.version !== pkg.version || npm.packageName !== 'bowerloom' || npm.packageName !== pkg.name
       || !['unreleased', 'published'].includes(String(record.state)) || typeof record.state !== 'string'
       || npm.published !== (record.state === 'published') || typeof capabilities.execution !== 'string'
-      || npm.installCommand !== `npm install --global ${npm.packageName}@${record.version}`) throw new Error();
+      || npm.installCommand !== expectedInstallCommand(record, npm)) throw new Error();
     return { version: record.version, state: record.state, execution: capabilities.execution };
   } catch {
     throw new DefinitionError('RELEASE_METADATA', 'The installed release record does not match this package. Inspect this installation before using it.');

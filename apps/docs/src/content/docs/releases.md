@@ -8,7 +8,7 @@ order: 27
 Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->

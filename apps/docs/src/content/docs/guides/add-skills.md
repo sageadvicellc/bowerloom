@@ -183,7 +183,7 @@ To review changed skill files, prepare another source plan for a new target. The
 
 ## Version and source
 
-These commands describe `0.7.0-beta.0` and its `report-seed` example. Use the matching example files with that version.
+These commands describe `0.7.0-beta.1` and its `report-seed` example. Use the matching example files with that version.
 
 The example installs files. It does not demonstrate live skill discovery or execution.
 

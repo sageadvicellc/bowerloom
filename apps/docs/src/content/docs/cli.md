@@ -5,10 +5,10 @@ section: "Reference"
 order: 22
 ---
 
-Use the documentation for the installed version. This reference describes `0.7.0-beta.0`.
+Use the documentation for the installed version. This reference describes `0.7.0-beta.1`.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.0
+Open beta · 0.7.0-beta.1
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
@@ -23,7 +23,7 @@ bowerloom --help
 bowerloom init --help
 ```
 
-The version output identifies `Bowerloom 0.7.0-beta.0`. Command syntax does not grant execution permission.
+The version output identifies `Bowerloom 0.7.0-beta.1`. Command syntax does not grant execution permission.
 
 ## Read reference forms
 

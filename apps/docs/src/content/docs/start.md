@@ -12,7 +12,7 @@ Install the `bowerloom` CLI to add a reviewed team specification to your existin
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.0. Review the requirements and installation command with me. After installation, read the version and help, then help me integrate our reviewed workflow specification with my existing project.
+Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements and installation command with me. After installation, read the version and help, then help me integrate our reviewed workflow specification with my existing project.
 ```
 
 ## Agent procedure
@@ -25,7 +25,7 @@ Read the Bowerloom installation guide for 0.7.0-beta.0. Review the requirements 
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
-npm install --global bowerloom@0.7.0-beta.0
+npm install -g ./bowerloom-0.7.0-beta.1.tgz
 bowerloom --version
 bowerloom --help
 ```
@@ -49,7 +49,7 @@ bowerloom --help
 bowerloom init --help
 ```
 
-The version output identifies `Bowerloom 0.7.0-beta.0`. Use the documentation that matches your installed version.
+The version output identifies `Bowerloom 0.7.0-beta.1`. Use the documentation that matches your installed version.
 
 Help describes command syntax. Read each task's prerequisites before using that command.
 
