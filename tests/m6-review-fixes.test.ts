@@ -45,3 +45,37 @@ test('finding 3: team create refuses an id equal to first-team\'s display name, 
   const up = run(p, ['up', '--team', 'writers']); assert.equal(up.status, 4, up.stderr + up.stdout); assert.match(up.stdout, /first-team/);
   assert.deepEqual(p.network(), []);
 });
+
+/** First-team with one prompt and one skill, and `up` showing the sync step. Returns the up words and the sync revision. */
+function atSync(p: Fresh) {
+  const up = ['up', '--team', 'Studio crew', '--goal', GOAL]; initWith(p, 'Studio crew');
+  create(p, ['prompt', 'create', 'weekly-update']); create(p, ['skill', 'create', 'house-style']);
+  const shown = run(p, up); assert.equal(shown.status, 3, shown.stderr); assert.match(shown.stdout, /^Next step: sync\./m);
+  return { up, revision: revisionIn(shown.stdout) };
+}
+/** Breaks the authoring receipt so the apply step's plan refuses, while the sync step does not read it. */
+const breakReceipt = (p: Fresh) => writeFileSync(join(p.dir, '.bowerloom', 'authoring', 'receipt.json'), `${readFileSync(join(p.dir, '.bowerloom', 'authoring', 'receipt.json'), 'utf8')} `);
+
+test('finding 4: when up applies a step and the next plan refuses, the refusal says the step was applied', t => {
+  const p = fresh(t), { up, revision } = atSync(p); breakReceipt(p);
+  const r = run(p, [...up, '--approve', revision]);
+  assert.equal(r.status, 1, r.stderr + r.stdout); assert.match(r.stdout, new RegExp(`^Applied plan ${revision}\\.$`, 'm'));
+  const error = errorOf(r.stderr);
+  assert.equal(error.code, 'AUTHORING_RECEIPT_INVALID', 'the code stays the refusal\'s own');
+  assert.match(error.message, /^The sync step was applied\. The next step was then refused: The record of created items/);
+  assert.ok(readFileSync(join(p.dir, '.claude', 'skills', 'house-style', 'SKILL.md')), 'the sync step is in place');
+});
+
+test('finding 4: with --json, up prints one JSON document per line, and an applied step then a refusal still say so', t => {
+  const p = fresh(t), { up, revision } = atSync(p);
+  const json = run(p, [...up, '--approve', revision, '--json']); assert.equal(json.status, 3, json.stderr);
+  const lines = json.stdout.split('\n').filter(Boolean);
+  assert.equal(lines.length, 2, json.stdout); const docs = lines.map(l => JSON.parse(l) as { code?: string; revision?: string; plan?: { step?: string } });
+  assert.equal(docs[1]!.code, 'APPROVAL_REQUIRED'); assert.equal(docs[1]!.plan?.step, 'apply');
+  breakReceipt(p);
+  const refused = run(p, [...up, '--approve', docs[1]!.revision!, '--json']); assert.equal(refused.status, 1);
+  assert.equal(errorOf(refused.stderr).code, 'AUTHORING_RECEIPT_INVALID');
+  const help = run(p, ['help', 'up']); assert.equal(help.status, 0);
+  assert.match(help.stdout, /With --json, every line is one JSON document: an --approve run prints the result of the step it applied,\n.*then the next plan\./);
+  assert.match(help.stdout, /If the next plan then refuses, the refusal says\nthat the step was applied\./);
+});

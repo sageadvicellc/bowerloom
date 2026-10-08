@@ -29,7 +29,7 @@ import { renderApplyReview } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { createChange, renderCreateReview } from './create.js';
-import { newCommandJson, newCommandRefusal, plainText } from './human.js';
+import { exitCodeFor, newCommandJson, newCommandRefusal, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { runStartupCommand } from './startup.js';
 import { harnessWords, renderSyncReview } from './sync.js';
@@ -166,6 +166,20 @@ export function parseUpArgs(args: readonly string[]): { team: string; goal: stri
 }
 
 const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '' });
+/**
+ * Review M6 finding 4: a step was applied and the next plan then refused. The refusal keeps its code (and its port or
+ * hint), and its message first says that the step was applied, so nobody takes the exit 1 for "nothing changed".
+ * An approval gate (exit 3) or workers held (exit 4) passes through unchanged.
+ */
+function afterApplied(step: UpStep, error: unknown): unknown {
+  const exit = exitCodeFor(error);
+  if (exit === 3 || exit === 4) return error;
+  const raw = codeOf(error), code = typeof raw === 'string' && /^[A-Z_]{1,100}$/.test(raw) ? raw : 'IO_ERROR';
+  const then = error instanceof DefinitionError ? `The next step was then refused: ${error.message}` : 'The next step then failed. Review the relevant local files before another action.';
+  const wrapped = new DefinitionError(code, `The ${step} step was applied. ${then}`);
+  for (const key of ['port', 'hint']) if (error !== null && typeof error === 'object' && key in error) Object.defineProperty(wrapped, key, { value: (error as Record<string, unknown>)[key], enumerable: false });
+  return wrapped;
+}
 /** `bowerloom up --team <name>`. Returns 3 when a step waits for approval; held throws WORKERS_HELD (exit 4). */
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
@@ -176,16 +190,22 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   if (approval.approve !== undefined) {
     if (next.change === null) return held(ctx, next.team, approval.json, write);
     await runApprovalCommand(['--approve', approval.approve, ...json], next.change, QUIET, write);
-    next = await nextUpStep(ctx);
-    if (next.change === null) return held(ctx, next.team, approval.json, write);
-    if (!approval.json) write('\n');
-    return runApprovalCommand(json, next.change, QUIET, write);
+    const applied = next.step;
+    try {
+      next = await nextUpStep(ctx);
+      if (next.change === null) return held(ctx, next.team, approval.json, write);
+      if (!approval.json) write('\n');
+      return await runApprovalCommand(json, next.change, QUIET, write);
+    } catch (error) { throw afterApplied(applied, error); }
   }
   // In a terminal: ask before each step, until the project is prepared.
-  for (;;) {
-    if (next.change === null) return held(ctx, next.team, approval.json, write);
-    const code = await runApprovalCommand(json, next.change, io, write);
-    if (code !== 0) return code;
-    write('\n'); next = await nextUpStep(ctx);
-  }
+  let applied: UpStep | null = null;
+  try {
+    for (;;) {
+      if (next.change === null) return held(ctx, next.team, approval.json, write);
+      const code = await runApprovalCommand(json, next.change, io, write);
+      if (code !== 0) return code;
+      applied = next.step; write('\n'); next = await nextUpStep(ctx);
+    }
+  } catch (error) { throw applied === null ? error : afterApplied(applied, error); }
 }
