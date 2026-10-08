@@ -16,7 +16,7 @@ import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
-import { harnessWords, itemLine } from './sync.js';
+import { harnessWords, itemLine, withInterrupt } from './sync.js';
 
 const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
@@ -89,13 +89,11 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
     write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first), true)}\nNothing to change.\n`); return 0;
   }
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
-  const controller = new AbortController(), stop = () => { process.stderr.write('Stopping after the item in progress. No item is left half done.\n'); controller.abort(); };
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
     revision: plan => plan.revision, review: renderApplyReview,
     async apply(revision: string) {
-      process.on('SIGINT', stop);
-      try { result = await applyProjectApply(input(), revision, controller.signal); return result; } finally { process.removeListener('SIGINT', stop); }
+      result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },
   };
   return runApprovalCommand(rest, change, io, text => write(text + (result && !approval.json ? resultWords(result) : '')));

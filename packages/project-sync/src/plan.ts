@@ -106,6 +106,21 @@ export function pendingRefusal(project: string): Error {
   catch { return syncError('MANAGED_SKILL_RECOVERY_REQUIRED', 'Run bowerloom status, then bowerloom skills recover plan --item <id>.'); }
 }
 
+const within = (inner: string, outer: string): boolean => inner === outer || inner.startsWith(outer === '/' ? '/' : outer + '/');
+/**
+ * True when the private state root and the project are nested either way: by path, or by device and inode along the
+ * ancestry, so a symlink, a case alias or a `/System/Volumes/Data` spelling of one folder is caught too.
+ */
+function nested(project: ProjectContext, stateRoot: string, statePins: readonly { path: string; identity: Identity }[]): boolean {
+  if (within(stateRoot, project.dir) || within(project.dir, stateRoot)) return true;
+  const key = (id: { device: string; inode: string }) => `${id.device}:${id.inode}`, projectKey = key(project.identity);
+  // The state root, or a folder above it, is the project: the state is inside the project.
+  if (statePins.some(p => key(p.identity) === projectKey)) return true;
+  // The project, or a folder above it, is the state root or one of its existing folders: the project is inside the state.
+  const below = new Set(statePins.filter(p => within(p.path, stateRoot)).map(p => key(p.identity)));
+  return [project.identity, ...project.ancestry.map(a => a.identity)].some(id => below.has(key(id)));
+}
+
 export interface StateLayout { root: string; cacheRoot: string; itemsRoot: string }
 /** The existing folders of the private state chain, pinned, and the private ones checked 0700. */
 export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): StateLayout & { pins: { path: string; identity: Identity }[]; missing: string[] } {
@@ -121,6 +136,9 @@ export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): St
     }
     // Only the end of the chain may be missing: a folder inside a missing one cannot exist.
     if (missing.length > 8 || missing.some(p => pins.some(q => q.path.startsWith(p + '/')))) throw syncError('SKILLS_STATE_UNSAFE');
+    // Review M5 finding 1: the private state and the project are never nested, either way. Receipts and cached bytes
+    // in the project could be committed, and a project inside the state folder could be swept by it.
+    if (nested(input.project, input.stateRoot, pins)) throw syncError('SKILLS_STATE_UNSAFE', 'The private state folder and the project must not be inside one another. Set XDG_STATE_HOME to a folder outside the project.');
     return { root, cacheRoot, itemsRoot, pins, missing };
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'SKILLS_STATE_UNSAFE') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
@@ -157,6 +175,15 @@ function samePin(entry: Entry, c: CatalogView): boolean {
   return was.commit === s.commit && was.tree === s.tree && sameValue(was.pathTrees, s.pathTrees) && was.metadataSha256 === s.metadataSha256;
 }
 
+/** The hold of an item whose private folder holds entries that are not Bowerloom operations. Names are relative. */
+export function strayHold(itemId: string, stray: readonly string[], rerun: string): { code: string; next: string } {
+  const shown = stray.slice(0, 4).map(n => `items/${itemId}/${n}`).join(', ') + (stray.length > 4 ? ` and ${stray.length - 4} more` : '');
+  return { code: 'SKILLS_STATE_STRAY_ENTRY', next: `Bowerloom keeps only its own op-<key> folders in the private state folder of ${itemId}. Move ${shown} out of the private state folder with mv in a terminal (Finder adds a .DS_Store), then run ${rerun}.` };
+}
+/** The manual history rule. Names are relative to the private state folder; `mv` keeps Finder from adding entries. */
+export function historyNext(itemId: string, keep: string, rerun: string): string {
+  return `Bowerloom deletes no history by itself. With mv in a terminal, move every op-<key> folder except ${keep} out of items/${itemId} in the private state folder into a folder of your own, then run ${rerun}.`;
+}
 export const recoverNext = (id: string) => `Run bowerloom skills recover plan --item ${id}, then bowerloom skills sync.`;
 export const driftNext = (paths: string[]) => `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
 
@@ -191,7 +218,10 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
   if (exists(stateDir)) {
     try { directory(stateDir, true); } catch { throw syncError('SKILLS_STATE_UNSAFE'); }
     const all = names(stateDir).filter(n => !OP_TEMP.test(n)); ops = all.filter(n => /^op-[a-f0-9]{64}$/.test(n));
-    if (ops.length !== all.length || ops.some(n => !exists(join(stateDir, n, 'receipt.json')))) hold ??= { code: 'MANAGED_SKILL_RECOVERY_REQUIRED', next: recoverNext(id) };
+    // Review M5 finding 3: an entry that is no operation of Bowerloom's (a Finder .DS_Store) is named, not sent to recovery.
+    const stray = all.filter(n => !ops.includes(n));
+    if (stray.length) hold ??= strayHold(id, stray, 'bowerloom skills sync');
+    else if (ops.some(n => !exists(join(stateDir, n, 'receipt.json')))) hold ??= { code: 'MANAGED_SKILL_RECOVERY_REQUIRED', next: recoverNext(id) };
   }
   const catalog = join(dir, MANAGED_ROOT, 'catalog', id + '.json');
   if (!exists(catalog)) { state = kind === 'local' ? 'local' : 'needs-fetch'; action = 'install'; }
@@ -225,7 +255,7 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
   }
   if ((action === 'install' || action === 'update') && hold === null && ops.length >= LIMITS.history) {
     const keep = previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder';
-    hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: `Bowerloom deletes no history by itself. Move every op-<key> folder except ${keep} out of ${stateDir} into a folder of your own, then run bowerloom skills sync.` };
+    hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(id, keep, 'bowerloom skills sync') };
   }
   if (hold !== null) action = 'hold';
   return {
@@ -236,6 +266,33 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
       previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold,
     },
   };
+}
+
+/**
+ * The item that puts back a missing shared ignore file when nothing else changes: the first up-to-date item of
+ * skills.json with room left in its private history. Undefined when there is none.
+ */
+export function ignoreCarrier<T extends { state: string; kind: unknown; history: number; action: string }>(items: readonly T[]): T | undefined {
+  return items.find(i => i.state === 'up-to-date' && i.kind !== null && i.action === 'none' && i.history < LIMITS.history);
+}
+/**
+ * Two skills.json entries whose copies would take one place (one skill name, or an npm name equal to a local id):
+ * every later one is held, with the earlier one named. Holding keeps the file usable: the schema still accepts it,
+ * so `skills check` and every other skill work on each machine; refusing the file would block them all.
+ * Places are compared case-folded, as a case-insensitive volume would.
+ */
+export function holdSharedPlaces(items: SyncItem[]): void {
+  const owner = new Map<string, string>();
+  for (const item of items) {
+    if (item.state === 'orphaned') continue;
+    const clash = item.expected.surfaces.map(s => ({ path: s.path, other: owner.get(s.path.normalize('NFC').toLowerCase()) })).find(c => c.other !== undefined && c.other !== item.id);
+    if (clash && (item.action === 'install' || item.action === 'update' || item.hold?.code === 'MANAGED_SKILL_PATH_OCCUPIED')) {
+      item.action = 'hold';
+      item.hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: `${item.id} would go to ${clash.path}, where ${clash.other} goes. Give one of them another skill name or id in .bowerloom/skills.json, then run bowerloom skills sync.` };
+      continue;
+    }
+    for (const s of item.expected.surfaces) { const k = s.path.normalize('NFC').toLowerCase(); if (!owner.has(k)) owner.set(k, item.id); }
+  }
 }
 
 /** A managed skill whose catalog is here and whose id skills.json no longer names. It is kept, never removed. */
@@ -271,7 +328,10 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
     }
     if (items.length > SYNC_ITEM_LIMIT) throw syncError('SKILLS_SYNC_LIMIT');
     // A sync that changes nothing else still puts back a missing shared ignore file, through one installed skill.
-    if (ignore === 'absent' && !items.some(actionable)) { const first = items.find(i => i.state === 'up-to-date' && i.kind !== null); if (first) first.action = 'update'; }
+    // Review M5 finding 4: a later item whose copy would go where an earlier item's goes is held, not left to fail.
+    holdSharedPlaces(items);
+    // Review M5 finding 5: the carrier has room in its history, so the history rule cannot hold it afterwards.
+    if (ignore === 'absent' && !items.some(actionable)) { const first = ignoreCarrier(items); if (first) first.action = 'update'; }
     // Each pin that a child will read: the completed cache operation to reuse, or the id to fetch into.
     for (const { item, pinned } of classified) {
       if (!pinned || !actionable(item)) continue;

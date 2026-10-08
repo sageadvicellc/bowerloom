@@ -29,7 +29,7 @@ import { applyChildren, createPrivateFolders, interrupted, prepareSkillChildren 
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
-import { checkProjectAncestry, isActionable, observeSync, pendingRefusal, stateLayout } from './plan.js';
+import { checkProjectAncestry, ignoreCarrier, isActionable, observeSync, pendingRefusal, stateLayout } from './plan.js';
 import type { SyncItem, SyncPlan } from './plan.js';
 import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, registeredPrompts } from './prompts.js';
 import type { PromptItem } from './prompts.js';
@@ -86,7 +86,7 @@ function harnessSet(value: unknown): Harness[] {
 /** No item may take a place another item takes, and no new copy may land on something Bowerloom did not install. */
 function checkNames(skills: SyncItem[], prompts: PromptItem[]): void {
   for (const item of skills) if (item.hold?.code === 'MANAGED_SKILL_PATH_OCCUPIED') {
-    throw syncError('APPLY_NAME_COLLISION', `Skill ${item.id} goes to ${item.expected.surfaces.map(s => s.path).join(', ')}, and Bowerloom did not install what is there. ${item.hold.next.replace('bowerloom skills sync', 'bowerloom apply')}`);
+    throw syncError('APPLY_NAME_COLLISION', `Skill ${item.id}: ${item.hold.next.replace('bowerloom skills sync', 'bowerloom apply')}`);
   }
   const owner = new Map<string, string>();
   const rows = [...skills.filter(i => i.state !== 'orphaned').map(i => ({ name: `skill ${i.id}`, surfaces: i.expected.surfaces })), ...prompts.filter(p => p.state !== 'orphaned').map(p => ({ name: `prompt ${p.id}`, surfaces: p.expected.surfaces }))];
@@ -128,7 +128,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     checkNames(skills?.items ?? [], prompts);
     const skillWork = (skills?.items ?? []).filter(isActionable);
     // An apply that changes nothing else still puts back a missing shared ignore file, through one installed prompt.
-    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable)) { const first = prompts.find(p => p.state === 'up-to-date'); if (first) first.action = 'update'; }
+    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable)) { const first = ignoreCarrier(prompts.map(p => ({ ...p, kind: 'prompt' }))); if (first) prompts.find(p => p.id === first.id)!.action = 'update'; }
     const promptWork = prompts.filter(promptActionable), create: string[] = [];
     if (skillWork.length || promptWork.length) {
       create.push(...layout.missing.filter(p => p !== layout.cacheRoot));

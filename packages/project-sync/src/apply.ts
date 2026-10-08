@@ -25,6 +25,7 @@ import type { NpmAcquisitionPlan } from '../../skill-sources/src/npm.js';
 import { planGitAcquisition } from '../../skill-sources/src/git.js';
 import type { GitAcquisitionPlan } from '../../skill-sources/src/git.js';
 import { ManagedSkillError, absent, directory, stablePins } from '../../managed-skills/src/observed.js';
+import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { ownSurface } from '../../managed-skills/src/v2-observed.js';
 import type { ItemSource, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -36,7 +37,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
-import { managedCode, outward, syncError } from './refusal.js';
+import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
 
 export const SYNC_RESULT_FORMAT = 'bowerloom/skills-sync-result/v1beta1' as const;
 export interface SyncResult {
@@ -136,7 +137,7 @@ export function checkChild(dir: string, item: SyncItem, pinned: PinnedRequest | 
  * Phase C: the plan made right before the apply equals the phase B plan, except that a shared parent folder or the
  * shared ignore file an earlier child of this run created is now present.
  */
-function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, created: Set<string>, ignoreCreated: boolean): ManagedItemPlan {
+function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, created: ReadonlyMap<string, Identity>, ignoreCreated: boolean): ManagedItemPlan {
   if (c.format !== 'bowerloom/managed-item-plan/v1beta2') throw stale();
   const x = b.core, y = (c as ManagedItemPlan).core;
   const fixed = (core: typeof x) => ({ request: core.request, bindings: core.bindings, closure: core.closure, previous: core.previous, previousReceiptPin: core.previousReceiptPin, legacy: core.legacy, history: core.history, own: core.before.filter(ownSurface) });
@@ -146,7 +147,9 @@ function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, c
   if (x.parents.length !== y.parents.length) throw stale();
   for (const p of y.parents) {
     const was = x.parents.find(q => q.path === p.path);
-    if (!was || !(same(was.identity, p.identity) || (was.identity === null && p.identity !== null && created.has(p.path)))) throw stale();
+    // Review M5 finding 6: a parent an earlier child created must be that very folder, by its recorded identity.
+    const made = created.get(p.path);
+    if (!was || !(same(was.identity, p.identity) || (was.identity === null && p.identity !== null && made !== undefined && same(made, p.identity)))) throw stale();
   }
   if (!same(b.material.filter(ownSurface), (c as ManagedItemPlan).material.filter(ownSurface))) throw stale();
   return c as ManagedItemPlan;
@@ -199,17 +202,21 @@ export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<
  * place when the run planned.
  */
 export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = 'bowerloom skills sync'): Promise<SyncResult['applied']> {
-  const applied: SyncResult['applied'] = [], created = new Set<string>(); let ignoreCreated = ignoreExact;
+  const applied: SyncResult['applied'] = [], created = new Map<string, Identity>(); let ignoreCreated = ignoreExact;
   for (const [index, child] of children.entries()) {
     if (signal.aborted) throw interrupted(applied.map(a => a.id), children.slice(index).map(c => c.item.id), rerun);
     held.assertHeld(dir);
     let fresh; try { fresh = await managed.plan(child.req, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id), rerun); }
-    const now = sameExceptShared(child.plan, fresh, created, ignoreCreated);
+    let now: ManagedItemPlan;
+    try { now = sameExceptShared(child.plan, fresh, created, ignoreCreated); }
+    catch (e) { if (applied.length) throw staleAfterApplied(applied.map(a => a.id), child.item.id, rerun); throw e; }
     let receipt: ManagedItemReceipt;
     try { receipt = await managed.apply(held, child.req, now.revision, {}); } catch (e) { throw childFailure(e, child.item.id, applied.map(a => a.id), rerun); }
     if (receipt.state !== 'committed' || receipt.planRevision !== now.revision) throw childFailure(new ManagedSkillError('MANAGED_SKILL_REFUSED'), child.item.id, applied.map(a => a.id), rerun);
     applied.push({ id: child.item.id, action: child.item.action as 'install' | 'update', receiptRevision: receipt.revision });
-    for (const p of now.core.parents) if (p.identity === null) created.add(p.path);
+    // The identity of each parent this child created, read right after it committed. One that cannot be read is not
+    // recorded, so a later child that needs it refuses STALE_APPROVAL.
+    for (const p of now.core.parents) if (p.identity === null) { try { created.set(p.path, directory(p.path)); } catch { /* Not recorded. */ } }
     if (now.core.before.some(s => s.id === 'ignore')) ignoreCreated = true;
   }
   return applied;

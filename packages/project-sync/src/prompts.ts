@@ -14,7 +14,7 @@ import { catalogPath, currentV2, ownSurface } from '../../managed-skills/src/v2-
 import type { Harness, InventoryRow, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
-import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, readCatalog, recoverNext, union } from './plan.js';
+import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold, union } from './plan.js';
 import { managedCode, syncError } from './refusal.js';
 import { locateV2 } from '../../managed-skills/src/v2-observed.js';
 import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
@@ -68,7 +68,9 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   if (exists(stateDir)) {
     try { directory(stateDir, true); } catch { throw syncError('SKILLS_STATE_UNSAFE'); }
     const all = names(stateDir).filter(n => !OP_TEMP.test(n)); ops = all.filter(n => /^op-[a-f0-9]{64}$/.test(n));
-    if (ops.length !== all.length || ops.some(n => !exists(join(stateDir, n, 'receipt.json')))) hold = { code: 'MANAGED_SKILL_RECOVERY_REQUIRED', next: recoverNext(itemId) };
+    const stray = all.filter(n => !ops.includes(n));
+    if (stray.length) hold = strayHold(itemId, stray, 'bowerloom apply');
+    else if (ops.some(n => !exists(join(stateDir, n, 'receipt.json')))) hold = { code: 'MANAGED_SKILL_RECOVERY_REQUIRED', next: recoverNext(itemId) };
   }
   const catalog = catalogPath(project, ref);
   if (!exists(catalog)) { state = 'new'; action = 'install'; }
@@ -93,7 +95,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
     if (taken.length) throw collision(taken, id);
   }
   if ((action === 'install' || action === 'update') && hold === null && ops.length >= LIMITS.history) {
-    hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: `Bowerloom deletes no history by itself. Move every op-<key> folder except the newest out of the private state folder of ${itemId}, then run bowerloom apply.` };
+    hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(itemId, previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder', 'bowerloom apply') };
   }
   if (hold !== null) action = 'hold';
   return {

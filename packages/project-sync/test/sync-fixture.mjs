@@ -11,6 +11,8 @@ import http from 'node:http';
 import https from 'node:https';
 import dns from 'node:dns';
 import dnsPromises from 'node:dns/promises';
+import net from 'node:net';
+import tls from 'node:tls';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { syncBuiltinESMExports } from 'node:module';
@@ -22,12 +24,22 @@ import { entryRequest, cacheOperationId } from '../../../dist/packages/project-s
 
 export const hash = b => createHash('sha256').update(b).digest('hex');
 
-/** dns.lookup (both APIs, except the literal 127.0.0.1 the project lock listens on), https and http throw and are counted. */
+/**
+ * dns.lookup (both APIs), net.connect and net.createConnection (each except the literal 127.0.0.1 the project lock
+ * listens and probes on), tls.connect, https, http and globalThis.fetch throw and are counted (review M5 finding 9).
+ */
 export function denyNetwork() {
   const calls = [];
-  const deny = name => (...args) => { calls.push({ name, target: String(args[0]) }); throw new Error('TEST_NETWORK_DENIED'); };
+  const deny = name => (...args) => { const target = args[0]; calls.push({ name, target: typeof target === 'object' && target !== null ? JSON.stringify({ host: target.host, port: target.port, path: target.path }) : String(target) }); throw new Error('TEST_NETWORK_DENIED'); };
   const original = dns.lookup, denied = deny('dns.lookup');
   dnsPromises.lookup = deny('dns.promises.lookup'); dns.lookup = (host, ...rest) => host === '127.0.0.1' ? original(host, ...rest) : denied(host, ...rest);
+  // A lock probe is net.connect({ host: '127.0.0.1', port }). Anything else, including a literal public address, is denied.
+  const local = args => { const [a, b] = args; return (typeof a === 'object' && a !== null && a.host === '127.0.0.1') || (typeof a === 'number' && b === '127.0.0.1'); };
+  const connect = net.connect, createConnection = net.createConnection, deniedConnect = deny('net.connect'), deniedCreate = deny('net.createConnection');
+  net.connect = (...args) => local(args) ? connect(...args) : deniedConnect(...args);
+  net.createConnection = (...args) => local(args) ? createConnection(...args) : deniedCreate(...args);
+  tls.connect = deny('tls.connect');
+  const deniedFetch = deny('fetch'); globalThis.fetch = async (...args) => deniedFetch(...args);
   https.request = deny('https.request'); https.get = deny('https.get'); http.request = deny('http.request'); http.get = deny('http.get');
   syncBuiltinESMExports();
   return calls;

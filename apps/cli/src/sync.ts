@@ -11,8 +11,8 @@ import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { isId } from '../../../packages/skill-manifest/src/schema.js';
-import { planSync, applySync, productionAcquirer, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
-import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps } from '../../../packages/project-sync/src/index.js';
+import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
+import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
@@ -64,13 +64,51 @@ export function renderSyncReview(plan: SyncPlan): string {
     'This copies text files only. It starts no workers and runs nothing.',
   ].join('\n');
 }
-function resultWords(result: SyncResult): string {
-  return [
+/** What a finished sync did, in plain words. Every line passes through plainText (review M5 finding 7). */
+export function resultWords(result: SyncResult): string {
+  return plainText([
     ...result.applied.map(a => `  ${a.id}: ${a.action === 'install' ? 'installed' : 'updated'}`),
     ...result.held.map(h => `  ${h.id}: held (${h.code}). Next: ${h.next}`),
     ...(result.orphaned.length ? [`  kept, not in skills.json: ${result.orphaned.join(', ')}`] : []),
     '',
-  ].join('\n');
+  ].join('\n'), true);
+}
+
+/**
+ * Ctrl-C during a write (review M5 finding 8). The first one stops between two items, never inside one. A second one
+ * stops at once: it names the item whose change is running, which then needs recovery, and exits 130.
+ */
+export function interruptHandler(controller: AbortController, current: () => string | null, write: (text: string) => void, exit: (code: number) => void): () => void {
+  let count = 0;
+  return () => {
+    if (++count === 1) { write('Stopping after the item in progress. No item is left half done. Press Ctrl-C again to stop at once.\n'); controller.abort(); return; }
+    const id = current();
+    write(id !== null
+      ? plainText(`Stopped at once, during ${id}. Its change is unfinished: run bowerloom skills recover plan --item ${id}.\n`, true)
+      : 'Stopped at once. No item was changing in the project, so nothing there is left unfinished.\n');
+    exit(130);
+  };
+}
+/** The production managed port, watched: `current()` names the item whose apply is running, or null. */
+export function watchedPort(): { managed: ManagedPort; current: () => string | null } {
+  let running: string | null = null;
+  return {
+    current: () => running,
+    managed: {
+      plan: (req, options) => managedPort.plan(req, options),
+      async apply(held, req, revision, options) {
+        running = req.item.kind === 'prompt' ? 'prompt-' + req.item.id : req.item.id;
+        try { return await managedPort.apply(held, req, revision, options); } finally { running = null; }
+      },
+    },
+  };
+}
+/** Installs the Ctrl-C handler for the length of one write. */
+export async function withInterrupt<T>(run: (signal: AbortSignal, managed: ManagedPort) => Promise<T>): Promise<T> {
+  const controller = new AbortController(), watched = watchedPort();
+  const handler = interruptHandler(controller, watched.current, text => { process.stderr.write(text); }, code => process.exit(code));
+  process.on('SIGINT', handler);
+  try { return await run(controller.signal, watched.managed); } finally { process.removeListener('SIGINT', handler); }
 }
 
 const actionable = (plan: SyncPlan) => plan.items.some(i => i.action === 'install' || i.action === 'update');
@@ -87,13 +125,11 @@ export async function runSyncCommand(args: readonly string[], cwd: string, home:
   const first = await planSync(input());
   if (!actionable(first) && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;
-  const controller = new AbortController(), stop = () => { process.stderr.write('Stopping after the skill in progress. No skill is left half done.\n'); controller.abort(); };
   const change: PlannedChange<SyncPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planSync(input()); },
     revision: plan => plan.revision, review: renderSyncReview,
     async apply(revision: string) {
-      process.on('SIGINT', stop);
-      try { result = await applySync(input(), revision, { acquirer, signal: controller.signal }); return result; } finally { process.removeListener('SIGINT', stop); }
+      result = await withInterrupt((signal, managed) => applySync(input(), revision, { acquirer, signal, managed })); return result;
     },
   };
   const outcome = await runWithApproval(change, { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json: approval.json }, io);

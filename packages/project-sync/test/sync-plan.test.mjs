@@ -118,7 +118,8 @@ test('history: a full item is held with a safe manual rule, and nothing is delet
   fs.writeFileSync(path.join(f.projectDir, '.bowerloom/skills/house-style/references/notes.md'), '# Notes\nlast\n');
   const ops = fs.readdirSync(stateDir).sort(), held = (await planSync(f.input())).items[0];
   assert.deepEqual([held.state, held.action, held.hold.code], ['local', 'hold', 'MANAGED_SKILL_HISTORY_FULL']);
-  assert.ok(held.hold.next.includes(stateDir), held.hold.next);
+  // Review M5 finding 7: the rule names the folder relative to the private state folder, never by its absolute path.
+  assert.ok(held.hold.next.includes('items/house-style') && /\bmv\b/.test(held.hold.next) && !held.hold.next.includes(stateDir), held.hold.next);
   const result = await applySync(f.input(), (await planSync(f.input())).revision, deps(noAcquirer()));
   assert.deepEqual(result.applied, []); assert.deepEqual(result.held.map(h => [h.id, h.code]), [['house-style', 'MANAGED_SKILL_HISTORY_FULL']]);
   assert.deepEqual(fs.readdirSync(stateDir).sort(), ops);

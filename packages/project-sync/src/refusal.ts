@@ -20,6 +20,7 @@ const MESSAGES = {
   SKILLS_MIGRATE_NOTHING: 'This project has no skill installed by an earlier Bowerloom (.bowerloom-skills), so there is nothing to migrate.',
   SKILLS_MIGRATE_STATE_INVALID: 'The folder given with --state does not hold the committed earlier install of this project.',
   SKILLS_MIGRATE_NOT_IN_MANIFEST: '.bowerloom/skills.json does not pin the installed skill with the same source and file hashes.',
+  SKILLS_STATE_STRAY_ENTRY: 'An item\'s private folder holds an entry that is not one of Bowerloom\'s operations.',
   APPLY_NAME_COLLISION: 'Two items, or an item and something Bowerloom did not install, would take the same place in the project. Nothing was changed.',
   PROMPT_INVALID: 'A prompt in .bowerloom/prompts cannot be read safely: it must be a plain text file you own, with one link, no write access for others, at most 64 KiB. Nothing was changed.',
   REVISION_PENDING: 'A revise of this project is unfinished. Finish it first (bowerloom help advanced lists revise recover).',
@@ -45,6 +46,14 @@ const own = new WeakSet<object>();
 export function syncError(code: SyncCode, extra?: string): DefinitionError {
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('syncError takes a listed code only.');
   const error = new DefinitionError(code, extra ? `${MESSAGES[code]} ${extra}` : MESSAGES[code]); own.add(error); return error;
+}
+/**
+ * Review M5 finding 2: STALE_APPROVAL after earlier children of the run applied. Its fixed message never says that
+ * nothing was applied; it names the finished items, which are complete, and the item that changed.
+ */
+export function staleAfterApplied(done: readonly string[], id: string, rerun: string): DefinitionError {
+  const error = new DefinitionError('STALE_APPROVAL', `The plan changed part way through the run: ${id} changed after the approval, so it was not applied. Finished before it: ${done.join(', ')}. Each finished item is complete. Run ${rerun} again to see the new plan.`);
+  own.add(error); return error;
 }
 export const isSyncError = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && own.has(error);
 /** A managed-skills code as it passes through: its own code when listed, else MANAGED_SKILL_REFUSED. */
