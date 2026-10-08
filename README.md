@@ -155,25 +155,30 @@ Running a team needs separate runtime permissions and controls. The setup comman
 
 ## Beta limits
 
-Keep your project out of iCloud Drive folders. This beta does not support them, and it does not check for them yet. It reads skills only from public sources. See the [beta limits](https://bowerloom.ai/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. See the [beta limits](https://bowerloom.ai/docs/guides/add-skills/#current-beta-limits).
 
-`bowerloom up --team`, `bowerloom ls`, a `skills.json` file, `bowerloom skills sync`, one-command apply, and commands that create teams, skills, and prompts are not available in this beta release. Today each skill install takes a hand-written request and installs one skill per project. Workers do not start.
+- No worker starts. `up` ends at `prepared, workers held`.
+- Skills come from public sources only. Only MIT and Apache-2.0 skills install.
+- `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
+- The portable install supports Claude Code and Codex. Native discovery of the installed files has not been observed.
 
 ## Install Bowerloom
 
-<!-- release:install:start -->
+Bowerloom is an open beta. You receive it as a private archive named `bowerloom-0.7.0-beta.N.tgz`. Replace `N` with the number in the file name. The package is not on the public npm registry.
+
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
-npm install --global bowerloom@0.7.0-beta.0
+npm install -g ./bowerloom-0.7.0-beta.N.tgz
 bowerloom --version
 bowerloom --help
 ```
 
+If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
+
 First-team setup does not need Docker. The separate local backend requires Docker Desktop and its own plan and approval.
 
 These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
-<!-- release:install:end -->
 
 ## Build with your agent
 
@@ -198,36 +203,90 @@ Ask what each step reads and produces, where work changes hands, and which decis
 Compare that process with the fixed Engineer, Founder, or Research profile.
 Use my description as input. Ask before reading additional project files.
 Show the roles, handoffs, proposed access, working agreement, and exact file plan.
-Use my existing project path. If .bowerloom exists, use the revision guide instead of fresh installation.
+Use bowerloom up in my project folder and show me each plan.
 Wait for my approval of the exact plan revision.
-After installation, read init status, .bowerloom/startup-review.md, and .bowerloom/START-HERE.md with me.
+After installation, read bowerloom status, .bowerloom/startup-review.md, and .bowerloom/START-HERE.md with me.
 Do not import live agent configuration, start workers, or execute the project.
 ```
 
 <a id="plan-the-setup"></a>
 
-### Plan the existing-project addition
+### Prepare the project with one command
 
-Replace the example target with your intended project's absolute directory. Use `--mode existing` for that project:
+Open a terminal in your project folder. Run `up` with a team name and a goal:
 
 ```sh
-bowerloom init plan --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
+bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio."
 ```
 
-Existing mode proposes a new `.bowerloom/` directory while preserving project files and leaving live agent configuration unread. An existing `.bowerloom/` installation requires [revision](https://bowerloom.ai/docs/revision/) instead of fresh setup. The default review explains the proposed roles, files, and approval effect. Add `--json` to inspect each file and its hash. Read the full plan before approval.
+`up` shows one next step at a time. The steps are `init`, `team`, `sync`, and `apply`. In a terminal, it asks before each step. An agent passes `--approve <revision>` instead.
 
 <a id="approve-the-exact-files"></a>
 
-### Approve and inspect the exact files
-
-Replace `REPLACE_WITH_EXACT_PLAN_REVISION` with the complete revision from the plan you approve. Keep its target, profile, name, goal, and other inputs unchanged.
+Each run without `--approve` prints the plan and its revision, then exits 3. Read the plan. Then run the same command again with the revision:
 
 ```sh
+bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio." --approve REVISION_FROM_THE_PLAN
+```
+
+Repeat until the project is prepared. The last run prints `prepared, workers held` and exits 4. Exit 4 means a gate holds the workers. It does not mean the command failed.
+
+`up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
+
+Exit codes:
+
+- 0 means done.
+- 1 means refused.
+- 2 means a usage error.
+- 3 means approval required.
+- 4 means held by a gate.
+
+### Look at the project
+
+```sh
+bowerloom ls
+bowerloom status
+```
+
+`ls` lists the teams, skills, and prompts in `.bowerloom`. `status` shows the setup state, any drift, and any skill you edited by hand. Both commands only read.
+
+Read `.bowerloom/startup-review.md` and `.bowerloom/START-HERE.md` with your personal agent. Compare the team specification, role prompts, handoff map, and working agreement with your process. A successful file installation starts no workers, backend services, or connected tools. If the fixed profile leaves a workflow requirement unmet, record that gap before any later project work. Use [files and configuration](https://bowerloom.ai/docs/configuration/) for the inventory and [revision](https://bowerloom.ai/docs/revision/) for a supported goal or profile change.
+
+### Add and sync third-party skills
+
+Pin a skill at an exact npm version or a full 40-character GitHub commit. Then check, sync, and apply:
+
+```sh
+bowerloom skills add npm:<package>@<version>:<path>
+bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
+bowerloom skills check
+bowerloom skills sync
+bowerloom apply
+```
+
+`skills add` records the pin in `.bowerloom/skills.json` and installs nothing. `skills check` checks every pin offline. `skills sync` installs the pinned skills for Claude Code and Codex. `apply` puts the skills and prompts in place for Claude Code, Codex, or both. Each command that changes files shows a plan first. Read the [skills guide](https://bowerloom.ai/docs/guides/add-skills/) for the refusal codes.
+
+### Create teams, skills, and prompts
+
+```sh
+bowerloom team create <name> [--profile engineer|founder|research]
+bowerloom skill create <name> [--team <team>]
+bowerloom prompt create <name> [--team <team>]
+```
+
+These commands write inside `.bowerloom` only. Read [Create teams, skills, and prompts](https://bowerloom.ai/docs/guides/create-items/) for each one.
+
+### Advanced: plan and apply with explicit paths
+
+The older plumbing forms take an absolute target path. They do not check for cloud-synced folders. Replace the example target with your project's absolute directory:
+
+```sh
+bowerloom init plan --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks."
 bowerloom init apply --mode existing --target /absolute/projects/existing-project --profile engineer --name "First team" --goal "Plan an accessible project website and its meaningful checks." --approve REPLACE_WITH_EXACT_PLAN_REVISION
 bowerloom init status --target /absolute/projects/existing-project
 ```
 
-Read `.bowerloom/startup-review.md` and `.bowerloom/START-HERE.md` with your personal agent. Compare the team specification, role prompts, handoff map, and working agreement with your process. A successful file installation starts no workers, backend services, or connected tools. If the fixed profile leaves a workflow requirement unmet, record that gap before any later project work. Use [files and configuration](https://bowerloom.ai/docs/configuration/) for the inventory and [revision](https://bowerloom.ai/docs/revision/) for a supported goal or profile change.
+Existing mode proposes a new `.bowerloom/` directory while preserving project files and leaving live agent configuration unread. Add `--json` to `init plan` to inspect each file and its hash. Keep the inputs unchanged between plan and apply. An existing `.bowerloom/` installation needs [revision](https://bowerloom.ai/docs/revision/) instead of fresh setup. Run `bowerloom help advanced` for every form.
 
 ### Optional separate workspace
 
