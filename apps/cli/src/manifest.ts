@@ -165,10 +165,12 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
   const check = checkManifest(project.dir);
   verifyProjectPins(project);
   if (words[0] === '--json') { write(newCommandJson(check)); return 0; }
-  const count = check.skills.length;
+  // Review freeze finding 10: the harness names every other command uses, and one column for the ids.
+  const count = check.skills.length, width = Math.max(0, ...check.skills.map(s => s.id.length));
+  const harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
   write([
-    `skills.json is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.join(' and ')}.`,
-    ...check.skills.map(s => `  ${s.id}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}`),
+    `skills.json is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.map(h => harness[h] ?? h).join(' and ')}.`,
+    ...check.skills.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}`),
     '',
   ].join('\n'));
   return 0;

@@ -53,6 +53,11 @@ function promptState(item: PromptItem, width: number): string[] {
     default: return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
   }
 }
+/** Where copies go, for the chosen harnesses only (review freeze finding 9). */
+function places(harnesses: readonly Harness[]): string {
+  const all = ['.bowerloom/managed', ...harnesses.map(h => h === 'claude' ? '.claude' : '.agents')];
+  return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
+}
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderApplyReview(plan: ApplyPlan): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length)) + 1;
@@ -61,7 +66,7 @@ export function renderApplyReview(plan: ApplyPlan): string {
     `Apply skills and prompts for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
     ...(lines.length ? lines : ['  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
     'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.',
-    'Copies go to .bowerloom/managed, .claude and .agents, and stay on this machine. Apply adds copies and removes none.',
+    `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
   ].join('\n');

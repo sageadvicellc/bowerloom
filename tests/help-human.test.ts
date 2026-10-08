@@ -12,7 +12,8 @@ const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 // The help text of commit cc117ac, without its two-line release heading. It is the contract of `help advanced`.
 const advanced = readFileSync(new URL('../../tests/fixtures/help-advanced-cc117ac.txt', import.meta.url), 'utf8');
 const release = readInstalledRelease();
-const heading = `Bowerloom ${release.version}: open beta (${release.state})\n${release.execution}\n\n`;
+// Freeze review finding 8: the heading says open beta, without the record's state.
+const heading = `Bowerloom ${release.version}: open beta\n${release.execution}\n\n`;
 
 // The first screen a person sees. It lists only commands that exist at this commit.
 // Each later milestone adds its lines here and to the command table in apps/cli/src/human.ts.
@@ -62,7 +63,7 @@ test('help advanced prints the cc117ac help byte for byte, under the release hea
   assert.equal(createHash('sha256').update(advanced).digest('hex'), 'e54b0442cb62f029a539a4ef141cf4ac7a24ca2b4753188ef443127d7fb192eb');
   const r = run(root, ['help', 'advanced']); assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr, '');
   assert.equal(r.stdout, heading + advanced);
-  assert.ok(r.stdout.startsWith(`Bowerloom ${release.version}: open beta (${release.state})`));
+  assert.ok(r.stdout.startsWith(`Bowerloom ${release.version}: open beta\n`));
   assert.deepEqual(readdirSync(root), before);
 });
 

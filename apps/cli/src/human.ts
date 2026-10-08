@@ -218,11 +218,12 @@ export function plainText(value: string, multiline = false): string {
   return value.replace(multiline ? CONTROLS_BUT_NEWLINE : CONTROLS, escapeUnits);
 }
 
-const INIT_NEXT = 'bowerloom init plan --mode existing --target <directory> --name <name> --goal <goal>';
+// Freeze review finding 5: a folder with no project starts with up, never with the init plumbing.
+const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
 interface Words { readonly sentence: string; readonly next: string }
 const REFUSALS: Readonly<Record<string, Words>> = {
-  USAGE: { sentence: 'The command line did not match a Bowerloom command, so nothing was changed.', next: 'bowerloom help' },
-  APPROVAL_DECLINED: { sentence: 'You declined, so nothing was changed.', next: 'run the same command again to see the plan' },
+  USAGE: { sentence: 'Nothing was changed.', next: 'bowerloom help' },
+  APPROVAL_DECLINED: { sentence: 'Bowerloom applies a plan only when you answer y.', next: 'run the same command again to see the plan' },
   STALE_APPROVAL: { sentence: 'The plan changed after you saw it, so nothing was applied.', next: 'run the same command again, without --approve, to see the new plan' },
   PROJECT_NOT_FOUND: { sentence: 'Bowerloom looked in this folder and in every parent folder up to your home folder.', next: INIT_NEXT },
   PROJECT_ROOT_REFUSED: { sentence: 'A whole disk or home folder is too broad to be a project.', next: 'cd <project-folder>' },
@@ -272,7 +273,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PROMPT_RESTORE_UNAVAILABLE: { sentence: 'Create writes only the text it would write today, and the record names other text.', next: 'git restore .bowerloom/prompts' },
   APPLY_NAME_COLLISION: { sentence: 'Bowerloom never overwrites what it did not install, and two items cannot share one place.', next: 'bowerloom apply' },
   PROMPT_INVALID: { sentence: 'Bowerloom reads only plain prompt files you own.', next: 'ls -l .bowerloom/prompts' },
-  SKILLS_OFFLINE: { sentence: 'Sync fetches only pins that are not cached yet, and it changed nothing in the project.', next: 'bowerloom skills sync' },
+  SKILLS_OFFLINE: { sentence: 'Only bowerloom skills sync fetches, and only the pins that are not cached yet.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 64 skills at once.', next: 'bowerloom skills check' },
@@ -288,6 +289,14 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANAGED_SKILL_LOCAL_DRIFT: { sentence: 'Bowerloom never overwrites a copy you changed.', next: 'bowerloom skills sync' },
   MANAGED_SKILL_PATH_OCCUPIED: { sentence: 'Something Bowerloom did not install is where a copy goes.', next: 'bowerloom skills sync' },
   MANAGED_SKILL_HISTORY_FULL: { sentence: 'Bowerloom deletes no history by itself.', next: 'bowerloom skills sync' },
+  // Freeze review finding 14: the managed codes that pass through from managed-skills.
+  MANAGED_SKILL_STALE_APPROVAL: { sentence: 'A copy changed after you approved the plan, so Bowerloom stopped before that copy.', next: 'run the same command again, without --approve, to see the new plan' },
+  MANAGED_SKILL_LOCKED: { sentence: 'Two commands must not change one project at the same time.', next: 'run the same command again when the other command is done' },
+  MANAGED_SKILL_LOCK_NOT_HELD: { sentence: 'Bowerloom stops when it cannot show that it still holds the project lock.', next: 'bowerloom status' },
+  MANAGED_SKILL_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+  MANAGED_SKILL_ABORTED: { sentence: 'The change stopped before it finished. Status shows any item that needs recovery.', next: 'bowerloom status' },
+  MANAGED_SKILL_TIMEOUT: { sentence: 'A step ran past its time limit, so Bowerloom stopped it. Status shows any item that needs recovery.', next: 'bowerloom status' },
+  MANAGED_SKILL_REFUSED: { sentence: 'A safety check of the copies failed, so Bowerloom changed nothing more.', next: 'bowerloom status' },
 };
 // Only for an error a new command raised (newCommandRefusal).
 const GATE_REFUSALS: Readonly<Record<GateCode, Words>> = {
@@ -316,7 +325,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
-  if (code === 'PROJECT_LOCK_SLOT_COLLISION' && validPort(detail.port)) {
+  if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
     return { sentence: `The lock uses a local port, and another program is listening on port ${detail.port}.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
   return Object.hasOwn(REFUSALS, code) ? REFUSALS[code]! : GENERIC;

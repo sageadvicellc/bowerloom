@@ -37,11 +37,27 @@ import { managedCode, outward, syncError } from './refusal.js';
 
 export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta1' as const;
 export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta1' as const;
-/** What apply prints in place of an edit to AGENTS.md or CLAUDE.md. Fixed text: it names no path of this machine. */
-export const APPLY_POINTER = [
-  'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:',
-  '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>.',
-].join('\n');
+/**
+ * What apply prints in place of an edit to AGENTS.md or CLAUDE.md, for the harnesses it adds copies for (review
+ * freeze finding 9). Fixed text: it names no path of this machine.
+ */
+export function applyPointer(harnesses: readonly Harness[]): string {
+  const claude = harnesses.includes('claude'), codex = harnesses.includes('codex');
+  if (claude && !codex) return [
+    'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:',
+    '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands.',
+  ].join('\n');
+  if (codex && !claude) return [
+    'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Codex at these copies, add a line like this to AGENTS.md yourself:',
+    '  Project skills are in .agents/skills. Prompts are Codex skills named prompt-<name>.',
+  ].join('\n');
+  return [
+    'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:',
+    '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>.',
+  ].join('\n');
+}
+/** The pointer for both harnesses, the default. */
+export const APPLY_POINTER = applyPointer(['claude', 'codex']);
 
 export interface ApplyInput {
   project: ProjectContext; stateRoot: string;
@@ -139,7 +155,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
       harnesses, team, skills, prompts,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, actionable: skillWork.length + promptWork.length > 0, pointer: APPLY_POINTER,
+      managed: { ignore }, actionable: skillWork.length + promptWork.length > 0, pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     return { plan: freezeSkillData({ ...body, revision: revisionOf(body) }) as ApplyPlan, entries };
@@ -192,7 +208,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
         held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next }))],
         upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id }))],
         orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id }))],
-        pointer: APPLY_POINTER, executionAuthorized: false,
+        pointer: plan.pointer, executionAuthorized: false,
       };
     });
   } catch (e) { throw outward(e); }

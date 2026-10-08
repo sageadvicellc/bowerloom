@@ -109,25 +109,41 @@ const INIT_HELP = [
 
 function installedVersion(): string { return readInstalledRelease().version; }
 
+// Freeze review finding 8 (Hanna's default: F' is the launch build): the heading says "open beta". The release
+// record and its validators keep their state values.
 function releaseHeading(): string {
   const record = readInstalledRelease();
-  return `Bowerloom ${record.version}: open beta (${record.state})\n${record.execution}\n`;
+  return `Bowerloom ${record.version}: open beta\n${record.execution}\n`;
 }
 
 function topic(name: string | undefined): string | null { return name !== undefined && Object.hasOwn(TOPICS, name) ? TOPICS[name]! : null; }
+const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
+/** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
+function helpText(words: readonly string[]): string | null {
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : topic(words[0]);
+  if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
+  if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
+  return null;
+}
+// The flags of the session commands (up --demo, status --installation). With one of them, the session parser keeps
+// its own usage words, as at cc117ac.
+const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
+// Every first word main() handles. Any other first word is a typo: review finding 6.
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
   if (namesYesFlag(args)) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
   if (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help')) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
   if (args[0] === 'help') {
-    const text = args.length === 2 ? args[1] === 'advanced' ? HELP : args[1] === 'init' ? INIT_HELP : topic(args[1]) : null;
-    if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands, or bowerloom help advanced for every form.');
+    const text = helpText(args.slice(1));
+    if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');
     process.stdout.write(`${releaseHeading()}\n${text}`); return;
   }
   if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
-  if (args[0] === 'status' && args.slice(1).every(word => word === '--json') && args.length <= 2) {
+  // Review finding 6: status without a session flag is the project status, which names its own usage.
+  if (args[0] === 'status' && !SESSION_FLAGS.some(flag => args.includes(flag))) {
     const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
   }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
@@ -158,7 +174,8 @@ async function main(args: string[]): Promise<void> {
     process.exitCode = await runApplyCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
     return;
   }
-  if (args[0] === 'up' && args.includes('--team')) {
+  // `up` with --team, or with no session flag at all, is project mode: bare up gets the up --team usage (finding 6).
+  if (args[0] === 'up' && (args.includes('--team') || !SESSION_FLAGS.some(flag => args.includes(flag)))) {
     const { runUpCommand } = await import('./up.js');
     process.exitCode = await runUpCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
     return;
@@ -274,6 +291,7 @@ async function main(args: string[]): Promise<void> {
     } finally { process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort); }
     return;
   }
+  if (args[0] !== undefined && !COMMANDS.has(args[0])) throw new DefinitionError('USAGE', `Unknown command ${args[0]}. Run bowerloom help.`);
   const [command, file, flag, root] = args;
   if (!['validate', 'plan'].includes(command ?? '') || !file || file.startsWith('-')
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {

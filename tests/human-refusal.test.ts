@@ -4,15 +4,18 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
+import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
+import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 
-const INIT_NEXT = 'bowerloom init plan --mode existing --target <directory> --name <name> --goal <goal>';
+// Freeze review finding 5: the next step for a folder with no project is the up command, not plumbing.
+const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
 const GENERIC_FAILURE = 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.';
 const text = (code: string, message: string, sentence: string, next: string): string => `Refused (${code}): ${message}\n${sentence}\nNext: ${next}\n`;
 
 // The terminal text of every M1 refusal code. Each line is the contract a person reads.
 const M1: ReadonlyArray<readonly [string, string, string]> = [
-  ['USAGE', 'The command line did not match a Bowerloom command, so nothing was changed.', 'bowerloom help'],
-  ['APPROVAL_DECLINED', 'You declined, so nothing was changed.', 'run the same command again to see the plan'],
+  ['USAGE', 'Nothing was changed.', 'bowerloom help'],
+  ['APPROVAL_DECLINED', 'Bowerloom applies a plan only when you answer y.', 'run the same command again to see the plan'],
   ['STALE_APPROVAL', 'The plan changed after you saw it, so nothing was applied.', 'run the same command again, without --approve, to see the new plan'],
   ['PROJECT_NOT_FOUND', 'Bowerloom looked in this folder and in every parent folder up to your home folder.', INIT_NEXT],
   ['PROJECT_ROOT_REFUSED', 'A whole disk or home folder is too broad to be a project.', 'cd <project-folder>'],
@@ -119,7 +122,8 @@ test('reportFailure on a terminal prints plain words, with the right exit code',
   assert.deepEqual(reportFailure(new DefinitionError('USAGE', 'Use it right.'), true), { text: renderRefusal('USAGE', 'Use it right.'), exitCode: 2 });
   const approval = reportFailure(newCommandRefusal('APPROVAL_REQUIRED', 'Approve.'), true);
   assert.equal(approval.exitCode, 3); assert.match(approval.text, /Next: run the same command again with --approve <revision>\n$/);
-  assert.equal(reportFailure(newCommandRefusal('WORKERS_HELD', 'Held.'), true).exitCode, 4);
+  // Freeze review finding 4: in a terminal, exit 4 is the successful end of up. It prints no Refused block.
+  assert.deepEqual(reportFailure(newCommandRefusal('WORKERS_HELD', 'Held.'), true), { text: '', exitCode: 4 });
   // The recipe case: exit 1 and never the --approve hint, since `recipe run` takes no such flag.
   for (const error of [new RecipeError('APPROVAL_REQUIRED'), new BrokerError('APPROVAL_REQUIRED', 'm'), new DefinitionError('APPROVAL_REQUIRED', 'm')]) {
     const failure = reportFailure(error, true);
@@ -141,4 +145,27 @@ test('newCommandJson escapes C1, format characters and the separators, and parse
   // A plumbing refusal on a pipe keeps today's envelope exactly: JSON.stringify of the code and message.
   const error = new DefinitionError('PLUMBING_CODE', 'kept \u202e as is');
   assert.equal(reportFailure(error, false).text, `${JSON.stringify({ error: { code: 'PLUMBING_CODE', message: 'kept \u202e as is' } })}\n`);
+});
+
+// Freeze review finding 14: every refusal code of sync, apply and create has words of its own, never the generic ones.
+test('every sync, apply and create refusal code has its own plain words and next step', () => {
+  const generic = 'Nothing more is known about this refusal beyond its code.';
+  for (const code of [...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES]) {
+    const text = renderRefusal(code, 'The message.');
+    assert.doesNotMatch(text, new RegExp(generic.replace(/\./g, '\\.')), code);
+    if (code !== 'USAGE') assert.doesNotMatch(text, /Next: bowerloom help\n$/, code);
+  }
+  for (const code of ['MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_LOCKED', 'MANAGED_SKILL_LOCK_NOT_HELD', 'MANAGED_SKILL_LOCK_SLOT_COLLISION', 'MANAGED_SKILL_ABORTED', 'MANAGED_SKILL_TIMEOUT', 'MANAGED_SKILL_REFUSED']) {
+    assert.ok(SYNC_REFUSAL_CODES.includes(code as never), code);
+    assert.match(renderRefusal(code, 'm.'), /^Refused \([A-Z_]+\): m\.\n[A-Z][^\n]+\.\nNext: [^\n]+\n$/, code);
+  }
+});
+
+// Freeze review finding 13: no refusal says the same thing twice.
+test('the declined, usage and offline refusals do not repeat themselves', () => {
+  const declined = renderRefusal('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
+  assert.equal(declined.match(/nothing was changed/gi)?.length, 1, declined);
+  const offline = renderRefusal('SKILLS_OFFLINE', 'A pinned skill is not in this machine\'s cache yet. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
+  assert.equal(offline.match(/nothing (?:in the project )?(?:was )?changed/gi)?.length, 1, offline);
+  assert.equal(renderRefusal('USAGE', 'Use bowerloom up --team <name> --goal <goal>.').includes('did not match'), false);
 });

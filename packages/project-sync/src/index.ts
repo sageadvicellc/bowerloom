@@ -12,6 +12,6 @@ export { planItemRecovery, applyItemRecovery, RECOVERY_ACTIONS } from './recover
 export type { RecoverInput } from './recover.js';
 export { planMigrate, applyMigrate, MIGRATE_PLAN_FORMAT } from './migrate.js';
 export type { MigrateInput, MigratePlan } from './migrate.js';
-export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, APPLY_RESULT_FORMAT, APPLY_POINTER } from './apply-project.js';
+export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, APPLY_RESULT_FORMAT, APPLY_POINTER, applyPointer } from './apply-project.js';
 export type { ApplyInput, ApplyPlan, ApplyResult, ApplyItemRef } from './apply-project.js';
 export type { PromptItem, PromptState } from './prompts.js';

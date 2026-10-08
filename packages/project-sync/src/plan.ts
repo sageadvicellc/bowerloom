@@ -347,8 +347,9 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
       item.cacheOperationId = item.cache.operationId; if (item.state === 'needs-fetch') item.state = item.cache.status;
     }
     const fetch = items.filter(i => actionable(i) && i.cache?.status === 'needs-fetch');
-    const missing = `${fetch.map(i => i.id).join(', ')} ${fetch.length === 1 ? 'is' : 'are'} not in this machine's cache yet. Nothing was changed.`;
-    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', input.apply ? `bowerloom apply never fetches, and ${missing} Run bowerloom skills sync first, then bowerloom apply.` : `--offline was set, and ${missing} Run bowerloom skills sync without --offline.`);
+    // Review freeze finding 13: the fixed message already says that a pin is not cached and that nothing changed.
+    const missing = `${fetch.length === 1 ? 'The skill is' : 'The skills are'} ${fetch.map(i => i.id).join(', ')}.`;
+    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', input.apply ? `bowerloom apply never fetches. ${missing} Run bowerloom skills sync first, then bowerloom apply.` : `--offline was set. ${missing} Run bowerloom skills sync without --offline.`);
     const work = items.filter(actionable), create: string[] = [];
     if (work.length) {
       create.push(...layout.missing.filter(p => p !== layout.cacheRoot || fetch.length));

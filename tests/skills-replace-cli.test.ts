@@ -123,7 +123,8 @@ test('--replace moves a GitHub skill to a new commit and keeps its teams when no
   approve(p, ['skills', 'add', GIT_SPEC2, '--id', 'verify', '--replace'], p.serve);
   assert.deepEqual(skills(p.manifest).map(s => [s.id, s.source.commit ?? s.source.version, s.teams ?? null]), [['synthetic-db-collections', '0.0.1', null], ['verify', COMMIT2, ['first-team']]]);
   const check = run(p.dir, ['skills', 'check'], p.deny); assert.equal(check.status, 0, check.stderr);
-  assert.match(check.stdout, new RegExp(`^ {2}verify  git synthetic-owner/skills-repo@${COMMIT2}:skills/verification-loop {2}\\(teams: first-team\\)$`, 'm'));
+  // Review freeze finding 10: skills check pads the ids into one column.
+  assert.match(check.stdout, new RegExp(`^ {2}verify +git synthetic-owner/skills-repo@${COMMIT2}:skills/verification-loop {2}\\(teams: first-team\\)$`, 'm'));
 });
 
 test('--replace refuses a change of source with SKILLS_ADD_SOURCE_CHANGED before any network call, and writes nothing', t => {

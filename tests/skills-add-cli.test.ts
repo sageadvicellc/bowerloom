@@ -119,7 +119,7 @@ test('a GitHub skill with --id and --team is added next to the npm one, and skil
   const manifest = JSON.parse(readFileSync(p.manifest, 'utf8'));
   assert.deepEqual(manifest.skills.map((s: { id: string; teams?: string[] }) => [s.id, s.teams ?? null]), [['synthetic-db-collections', null], ['verify', ['first-team']]]);
   const check = run(p.dir, ['skills', 'check'], p.deny); assert.equal(check.status, 0, check.stderr);
-  assert.match(check.stdout, /^skills\.json is valid: 2 skills, for claude and codex\.\n/);
+  assert.match(check.stdout, /^skills\.json is valid: 2 skills, for Claude Code and Codex\.\n/);
   const json = run(p.dir, ['skills', 'check', '--json'], p.deny); assert.equal(json.status, 0);
   assert.equal(JSON.parse(json.stdout).valid, true); assert.deepEqual(p.denied.calls(), []);
 });
@@ -148,7 +148,7 @@ test('skills check exits 0 for a valid file and 1 with a code for a bad, absent 
   const p = project(t);
   const absent = run(p.dir, ['skills', 'check'], p.deny); assert.equal(absent.status, 1); assert.equal(errorCode(absent.stderr), 'MANIFEST_NOT_FOUND');
   writeFileSync(p.manifest, JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] }, null, 2) + '\n');
-  const ok = run(p.dir, ['skills', 'check'], p.deny); assert.equal(ok.status, 0, ok.stderr); assert.equal(ok.stdout, 'skills.json is valid: 1 skill, for claude and codex.\n  house-style  local skills/house-style\n');
+  const ok = run(p.dir, ['skills', 'check'], p.deny); assert.equal(ok.status, 0, ok.stderr); assert.equal(ok.stdout, 'skills.json is valid: 1 skill, for Claude Code and Codex.\n  house-style  local skills/house-style\n');
   for (const [text, code] of [['{"format":"bowerloom/skills/v1beta1","format":"x"}', 'MANIFEST_INVALID'], ['{"format":"bowerloom/skills/v1beta1","harnesses":["claude"],"skills":[{"id":"a","source":{"kind":"local","path":"skills/b"}}]}', 'MANIFEST_INVALID'], ['not json', 'MANIFEST_INVALID']] as const) {
     writeFileSync(p.manifest, text); const r = run(p.dir, ['skills', 'check'], p.deny); assert.equal(r.status, 1, text); assert.equal(errorCode(r.stderr), code);
   }
