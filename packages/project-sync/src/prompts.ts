@@ -20,6 +20,18 @@ import { locateV2 } from '../../managed-skills/src/v2-observed.js';
 import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
 
 export type PromptState = 'new' | 'edited' | 'harnesses-changed' | 'up-to-date' | 'drift' | 'orphaned';
+/**
+ * What a Claude Code command can do beyond text (review M6 finding 5): `allowed-tools` in its frontmatter grants tools,
+ * and a line that starts with `!` runs a shell command when the command is used. The review names them; it never
+ * quotes the prompt.
+ */
+export type PromptNotice = 'allowed-tools' | 'shell-lines';
+export function promptNotices(text: string): PromptNotice[] {
+  const notices: PromptNotice[] = [], lines = text.split(/\r?\n/);
+  if (lines[0] === '---') { const end = lines.indexOf('---', 1); if (end > 0 && lines.slice(1, end).some(l => /^allowed-tools\s*:/.test(l))) notices.push('allowed-tools'); }
+  if (lines.some(l => l.startsWith('!'))) notices.push('shell-lines');
+  return notices;
+}
 export interface PromptItem {
   /** The prompt name, `.bowerloom/prompts/<id>.md`. */
   id: string;
@@ -36,6 +48,8 @@ export interface PromptItem {
   previousReceiptRevision: string | null;
   history: number;
   hold: { code: string; next: string } | null;
+  /** What the prompt's Claude Code command can do beyond text. Empty for an orphan. */
+  notices: PromptNotice[];
 }
 
 const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
@@ -58,8 +72,8 @@ const collision = (paths: string[], id: string) => syncError('APPLY_NAME_COLLISI
 
 /** Classifies one registered prompt. Reads only. */
 export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[]): PromptItem {
-  let files: InventoryRow[];
-  try { if (id.startsWith('prompt-')) throw new Error('reserved'); files = [...readLocalPrompt(project, id, () => {}).inventory]; }
+  let files: InventoryRow[], notices: PromptNotice[];
+  try { if (id.startsWith('prompt-')) throw new Error('reserved'); const read = readLocalPrompt(project, id, () => {}); files = [...read.inventory]; notices = promptNotices(read.files[0]!.text); }
   catch { throw syncError('PROMPT_INVALID', `The prompt is .bowerloom/prompts/${id}.md.`); }
   const ref: ItemRef = { kind: 'prompt', id }, itemId = 'prompt-' + id, stateDir = join(itemsRoot, itemId);
   let hold: PromptItem['hold'] = null, heldCode: string | null = null, state: PromptState = 'drift', action: SyncItem['action'] = 'hold', previous: ManagedItemReceipt | null = null;
@@ -101,7 +115,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   return {
     id, itemId, teams, state, action, harnesses,
     expected: { files, surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before,
-    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold,
+    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices,
   };
 }
 
@@ -109,7 +123,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
 export function orphanPrompt(project: string, itemsRoot: string, id: string): PromptItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, 'prompt-' + id), { kind: 'prompt', id }); } catch { previous = null; }
-  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null };
+  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [] };
 }
 
 /** The child request of one prompt. Every field comes from the plan this run computed. */

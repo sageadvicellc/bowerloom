@@ -79,3 +79,23 @@ test('finding 4: with --json, up prints one JSON document per line, and an appli
   assert.match(help.stdout, /With --json, every line is one JSON document: an --approve run prints the result of the step it applied,\n.*then the next plan\./);
   assert.match(help.stdout, /If the next plan then refuses, the refusal says\nthat the step was applied\./);
 });
+
+test('finding 5: the apply review names each prompt that sets allowed-tools or has lines starting with !, quoting none of it', t => {
+  const p = fresh(t); initWith(p, 'Studio crew');
+  for (const name of ['tooled', 'plain', 'shell']) create(p, ['prompt', 'create', name]);
+  const prompts = join(p.dir, '.bowerloom', 'prompts');
+  writeFileSync(join(prompts, 'tooled.md'), '---\ndescription: Synthetic.\nallowed-tools: Bash(SECRET_TOOL_TEXT:*)\n---\n\n# tooled\n\n!`echo SECRET_SHELL_TEXT`\n');
+  writeFileSync(join(prompts, 'shell.md'), '---\ndescription: Synthetic.\n---\n\n# shell\n\n!`date`\n');
+  writeFileSync(join(prompts, 'plain.md'), '---\ndescription: Synthetic. allowed-tools in prose is fine.\n---\n\n# plain\n\nSay hello! Not a shell line.\n');
+  const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
+  assert.match(shown.stdout, /^ {2}Note: prompt tooled sets allowed-tools in its frontmatter and has lines that start with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/tooled\.md\.$/m);
+  assert.match(shown.stdout, /^ {2}Note: prompt shell has lines that start with !\. Claude Code applies them when the command runs\. Review \.bowerloom\/prompts\/shell\.md\.$/m);
+  assert.doesNotMatch(shown.stdout, /Note: prompt plain/);
+  assert.doesNotMatch(shown.stdout, /SECRET_TOOL_TEXT|SECRET_SHELL_TEXT|Bash\(|echo|date`/);
+  const json = run(p, ['apply', '--json']); assert.equal(json.status, 3);
+  const items = (JSON.parse(json.stdout) as { plan: { prompts: { id: string; notices: string[] }[] } }).plan.prompts;
+  assert.deepEqual(items.map(i => [i.id, i.notices]), [['plain', []], ['shell', ['shell-lines']], ['tooled', ['allowed-tools', 'shell-lines']]]);
+  const applied = run(p, ['apply', '--approve', revisionIn(shown.stdout)]); assert.equal(applied.status, 0, applied.stderr);
+  assert.equal(readFileSync(join(p.dir, '.claude', 'commands', 'tooled.md'), 'utf8'), readFileSync(join(prompts, 'tooled.md'), 'utf8'));
+  const again = run(p, ['apply']); assert.equal(again.status, 0); assert.doesNotMatch(again.stdout, /Note: prompt/, 'nothing to copy, nothing to note');
+});

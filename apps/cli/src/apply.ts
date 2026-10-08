@@ -32,7 +32,17 @@ function skillLine(item: SyncItem, width: number): string[] {
   if (item.state === 'harnesses-changed' && item.action === 'update') return [`  ${item.id.padEnd(width)} add ${harnessWords(added(item.before))} copies`];
   return itemLine(item, width);
 }
+/** Review M6 finding 5: a prompt whose Claude Code command can grant tools or run shell lines is named, never quoted. */
+function noticeLine(item: PromptItem): string[] {
+  const copies = item.action === 'install' || item.action === 'update';
+  if (!copies || !item.notices.length || !item.expected.surfaces.some(s => s.id === 'command-claude')) return [];
+  const what = [item.notices.includes('allowed-tools') ? 'sets allowed-tools in its frontmatter' : null, item.notices.includes('shell-lines') ? 'has lines that start with !' : null].filter(Boolean).join(' and ');
+  return [`  Note: prompt ${item.id} ${what}. Claude Code applies them when the command runs. Review .bowerloom/prompts/${item.id}.md.`];
+}
 function promptLine(item: PromptItem, width: number): string[] {
+  return [...promptState(item, width), ...noticeLine(item)];
+}
+function promptState(item: PromptItem, width: number): string[] {
   const id = item.id.padEnd(width), where = ['command-claude', 'projection-codex'].flatMap(id => item.expected.surfaces.filter(s => s.id === id).map(s => s.path)).join(' and ');
   if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
   switch (item.state) {
