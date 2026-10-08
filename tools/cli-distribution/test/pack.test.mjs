@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {collect,stage,pack,imports,lockedDependencies,sha256,MODULES} from '../pack.mjs';
+import {collect,stage,pack,imports,lockedDependencies,installHeading,sha256,MODULES} from '../pack.mjs';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -114,17 +114,51 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
 });
 
+// An npm release record: the private-archive record of this repository without its distribution block.
+function npmRecord(t) {
+ const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ delete r.distribution;r.npm.installCommand=`npm install --global ${r.npm.packageName}@${r.version}`;writeFileSync(path,JSON.stringify(r,null,2)+'\n');
+ return {root,path};
+}
 test('release candidate uses the shared record and explicit public beta metadata without publication',t=>{
- const candidate=collect({repoDir:repo,releaseCandidate:true});
+ const {root,path}=npmRecord(t),candidate=collect({repoDir:root,releaseCandidate:true});
  assert.equal(candidate.manifest.private,false);
  assert.deepEqual(candidate.manifest.publishConfig,{access:'public',tag:'beta',registry:'https://registry.npmjs.org'});
  assert.equal(candidate.record.publicationState,'unreleased');
- assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(join(repo,'release/beta.json'))));
- assert.match(candidate.files.get('README.md').toString(),/After publication:/);
+ assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(path)));
+ assert.match(candidate.files.get('README.md').toString(),/After publication:\n\n```sh\nnpm install --global bowerloom@/);
  assert.doesNotMatch(candidate.files.get('README.md').toString(),/alpha|Private, unpublished/);
- const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ const r=JSON.parse(readFileSync(path));
  r.version='9.9.9';writeFileSync(path,JSON.stringify(r));
  assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+// Freeze security review finding 1: a private-archive record is never packed as a public release candidate, so its
+// package.json never loses private:true or gains a public publishConfig.
+test('a release candidate of a private-archive record refuses before anything is packed',t=>{
+ assert.ok(JSON.parse(readFileSync(join(repo,'release/beta.json'))).distribution,'this repository carries the private-archive record');
+ assert.throws(()=>collect({repoDir:repo,releaseCandidate:true}),/private archive/);
+ const root=area(t);assert.throws(()=>stage({repoDir:repo,stageDir:join(root,'stage'),releaseCandidate:true}),/private archive/);
+ assert.deepEqual(readdirSync(root),[]);
+ const plain=collect({repoDir:repo});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);
+});
+
+// Freeze review finding 7: the install heading is true for the record it is written for.
+test('the candidate install heading says After publication only for an npm record',t=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json')));
+ assert.equal(installHeading(record),'Install it from the folder that holds the archive:');
+ const {path}=npmRecord(t);assert.equal(installHeading(JSON.parse(readFileSync(path))),'After publication:');
+ for(const [path,bytes] of collect({repoDir:repo}).files)assert.doesNotMatch(bytes.toString('latin1'),/After publication/,path);
+});
+
+// Freeze security review info 5: "no install scripts" is a checked rule of the shrinkwrap, not an observation.
+test('a locked dependency with an install script refuses',()=>{
+ const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
+ const item={version:'1.0.0',resolved:'https://registry.npmjs.org/x/-/x-1.0.0.tgz',integrity:'sha512-x'};
+ assert.ok(lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest).packages['node_modules/x']);
+ for(const flag of [true,'true',1])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':{...item,hasInstallScript:flag}}},manifest.dependencies,manifest),/install script/);
+ const nested={...item,dependencies:{y:'2.0.0'}},y={version:'2.0.0',resolved:'https://registry.npmjs.org/y/-/y-2.0.0.tgz',integrity:'sha512-y',hasInstallScript:true};
+ assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':nested,'node_modules/y':y}},manifest.dependencies,manifest),/install script/);
 });
 
 test('packaging refuses a same-version renamed root package',t=>{
