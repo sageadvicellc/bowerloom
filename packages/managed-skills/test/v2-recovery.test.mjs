@@ -35,7 +35,7 @@ function writes(t, kill = null) {
   syncBuiltinESMExports(); return seen;
 }
 
-for (const update of [false, true]) test(`${update ? 'update' : 'install'}: abandon converges from a kill at every staging boundary`, async t => {
+for (const update of [false, true]) test(`${update ? 'update' : 'install'}: abandon converges from a kill at every staging boundary`, { timeout: 600_000 }, async t => {
   const reference = await scenario(t, update), seen = writes(t); await applyManagedItem(null, reference.req, reference.plan.revision); restore(t);
   const last = seen.lastIndexOf('STAGE_READY'); assert.equal(seen[0], 'bowerloom/managed-item-intent/v1beta2'); assert.equal(seen[1], 'bowerloom/managed-item-pending/v1beta2');
   assert.ok(seen.slice(0, last + 1).filter(k => k === 'stage-file').length >= (update ? 7 : 8));

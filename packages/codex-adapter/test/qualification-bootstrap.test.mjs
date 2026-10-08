@@ -16,6 +16,9 @@ import { startupLaunchRevision } from '../../../dist/packages/codex-adapter/src/
 import { MODEL_ROUTE,POLICY_VERSION,SUPPORTED_NATIVE_SHA256 } from '../../../dist/packages/codex-adapter/src/policy.js';
 const hash=x=>createHash('sha256').update(x).digest('hex'),tick=()=>new Promise(r=>setImmediate(r));
 const deferred=()=>{let resolve,reject;const promise=new Promise((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};};
+// The hook a test waits for, or a named failure when the run settles first: under load the product correctly refuses
+// an expired grant before it reaches the hook, and a bare await would then never settle.
+const beforeSettle=(hook,run)=>Promise.race([hook,run.then(r=>{throw Error(`run settled before hook: ${JSON.stringify(r)}`);},e=>{throw Error(`run settled before hook: ${e?.message??e}`);})]);
 const symbol='bowerloom.bootstrap.synthetic-core';
 globalThis[symbol]={proposalPrompt};
 const fixture='data:text/javascript,'+encodeURIComponent(`export const proposalPrompt=globalThis['${symbol}'].proposalPrompt;export class CodexAdapterCore{constructor(options,gate){this.options=options;this.gate=gate;globalThis['${symbol}'].owners?.push(new WeakRef(this));}start(input,signal){return globalThis['${symbol}'].start(this.options,this.gate,input,signal);}quiescence(){return globalThis['${symbol}'].quiescence?.()??Promise.resolve({cleanup:'verified'});}}`);
@@ -130,9 +133,9 @@ test('bootstrap passes its signal to host reader and retains late no-handle read
  read.reject(Error('late private read'));await tick();assert.equal(settled,false);cleanup.resolve({cleanup:'verified'});assert.deepEqual(await quiet,{cleanup:'verified'});assert.equal(e.stats().starts,0);
 });
 test('bootstrap retains an expired complete core start attempt before a handle, then awaits internal cleanup',async()=>{
- const e=await setup(),entered=deferred(),start=deferred(),cleanup=deferred();const {revision,...body}=e.grant;body.expiresAtMs=Date.now()+400;const grant={...body,revision:hash(canonicalJson(body))};e.options.lookupGrant=async()=>grant;e.input.grantRevision=grant.revision;
+ const e=await setup(),entered=deferred(),start=deferred(),cleanup=deferred();const {revision,...body}=e.grant;body.expiresAtMs=Date.now()+1500;const grant={...body,revision:hash(canonicalJson(body))};e.options.lookupGrant=async()=>grant;e.input.grantRevision=grant.revision;
  globalThis[symbol].start=async()=>{entered.resolve();return start.promise;};globalThis[symbol].quiescence=()=>cleanup.promise;
- const runner=e.runner(),pending=runner.run(e.input,e.abort.signal);await entered.promise;const r=await pending;assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(runner.lifecycle(r.jobId),'pending');
+ const runner=e.runner(),pending=runner.run(e.input,e.abort.signal);await beforeSettle(entered.promise,pending);const r=await pending;assert.equal(r.status,'held');assert.equal(r.cleanup,'pending');assert.equal(runner.lifecycle(r.jobId),'pending');
  let settled=false;const quiet=runner.quiescence(r.jobId).then(v=>{settled=true;return v;});start.reject(Error('late pre-handle rejection'));await tick();assert.equal(settled,false);cleanup.resolve({cleanup:'unverified'});assert.deepEqual(await quiet,{cleanup:'unverified'});assert.equal(runner.lifecycle(r.jobId),'unverified');assert.equal(runner.inspect(r.jobId),null);
  const second=await runner.run({...e.input,operationId:'another-operation'},new AbortController().signal);assert.equal(second.status,'refused');assert.equal(e.stats().terminates,0);
 });
@@ -292,23 +295,23 @@ test('v2 observed overlapping reset is refused by unchanged admission without re
  const r=await e.runner().run(e.input,e.abort.signal);assert.equal(r.status,'refused');assert.equal(currentRow(e),undefined);assert.deepEqual(e.pool.snapshot().highWater,e.before.highWater);assertHistory(e);
 });
 test('v2 binding expiry during pending observer cancels and observes late settlement with no reservation',async()=>{
- const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+1500;rehashAccounting(e);
  let signal;e.options.observer={read:async(alias,s)=>{signal=s;entered.resolve();return pending.promise;},async quiescence(){return{cleanup:'verified'};}};
- const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'held');assert.equal(signal.aborted,true);assert.equal(currentRow(e),undefined);assertHistory(e);
+ const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await beforeSettle(entered.promise,running);const r=await running;assert.equal(r.status,'held');assert.equal(signal.aborted,true);assert.equal(currentRow(e),undefined);assertHistory(e);
  pending.resolve(e.sample());assert.deepEqual(await runner.quiescence(r.jobId),{cleanup:'verified'});assert.equal(e.events.some(x=>x.kind==='reserve'),false);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
 });
 test('v2 binding expiry during pending registry refresh retains reservation after late rejection',async()=>{
- const e=await setupAccounting(),pending=deferred(),entered=deferred(),base=e.options.lookupGrant;let count=0;e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ const e=await setupAccounting(),pending=deferred(),entered=deferred(),base=e.options.lookupGrant;let count=0;e.grant.historicalAccounting.expiresAtMs=Date.now()+1500;rehashAccounting(e);
  e.options.lookupGrant=async()=>{const g=await base();if(++count===3){entered.resolve();return pending.promise;}return g;};
- const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'held');assert.equal(currentRow(e).status,'RESERVED');assert.equal(e.stats().coreStarts,0);
+ const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await beforeSettle(entered.promise,running);const r=await running;assert.equal(r.status,'held');assert.equal(currentRow(e).status,'RESERVED');assert.equal(e.stats().coreStarts,0);
  pending.reject(Error('PRIVATE_LATE_REGISTRY'));await tick();assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');
 });
 test('v2 fixed helper import shares existing artifact deadline and cannot resume after late completion',async()=>{
- const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+300;rehashAccounting(e);
+ const e=await setupAccounting(),pending=deferred(),entered=deferred();e.grant.historicalAccounting.expiresAtMs=Date.now()+1500;rehashAccounting(e);
  globalThis[symbol].importBarrier=pending.promise;globalThis[symbol].importEntered=()=>entered.resolve();
  const source=`globalThis[${JSON.stringify(symbol)}].importEntered();await globalThis[${JSON.stringify(symbol)}].importBarrier;export {captureHistoricalAccounting,projectHistoricalAccounting} from ${JSON.stringify(pathToFileURL(resolve(accountingHelperPath)).href)};`;
  const url='data:text/javascript,'+encodeURIComponent(source),hook=registerHooks({resolve(spec,context,next){if(spec==='./historical-accounting.js'&&context.parentURL?.endsWith('/qualification-bootstrap.js'))return{url,shortCircuit:true};return next(spec,context);}});
- try{const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await entered.promise;const r=await running;assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);pending.resolve();await tick();await tick();assert.equal(currentRow(e),undefined);assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');}
+ try{const runner=e.runner(),running=runner.run(e.input,e.abort.signal);await beforeSettle(entered.promise,running);const r=await running;assert.equal(r.status,'refused');assert.equal(e.stats().readCount,0);pending.resolve();await tick();await tick();assert.equal(currentRow(e),undefined);assertHistory(e);assert.equal((await runner.run(e.input,e.abort.signal)).status,'refused');}
  finally{pending.resolve();hook.deregister();delete globalThis[symbol].importBarrier;delete globalThis[symbol].importEntered;}
 });
 test('v2 refused fixed helper import cannot fall back to unmeasured or v1 accounting',async()=>{

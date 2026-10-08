@@ -105,7 +105,7 @@ test('refusals before any item: no skills.json, legacy v1 content, a pending ope
   await assert.rejects(planSync(f.input()), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED' && /bowerloom skills recover plan/.test(e.message));
 });
 
-test('history: a full item is held with a safe manual rule, and nothing is deleted; an up-to-date item is not held', async t => {
+test('history: a full item is held with a safe manual rule, and nothing is deleted; an up-to-date item is not held', { timeout: 600_000 }, async t => {
   const f = syncProject(t); localSkill(f, 'house-style'); writeManifest(f, [localEntry('house-style')]);
   await sync(f, noAcquirer());
   const stateDir = path.join(f.itemsRoot, 'house-style'); let previous = (await planSync(f.input())).items[0].previousReceiptRevision;

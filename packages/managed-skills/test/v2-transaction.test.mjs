@@ -146,7 +146,7 @@ async function scenario(t, update) {
   if (update) { const { receipt } = await install(req); fs.writeFileSync(path.join(f.projectDir, '.bowerloom/skills/house-style/references/notes.md'), '# Notes\nTwo.\n'); req = { ...req, operation: 'update', expectedPreviousRevision: receipt.revision }; }
   return { f, req, before: inventory(f.projectDir), plan: await planManagedItem(req) };
 }
-for (const update of [false, true]) test(`${update ? 'update' : 'install'}: a crash at every boundary of the second harness projection converges both ways`, async t => {
+for (const update of [false, true]) test(`${update ? 'update' : 'install'}: a crash at every boundary of the second harness projection converges both ways`, { timeout: 600_000 }, async t => {
   const reference = await scenario(t, update), events = boundaries(t); await applyManagedItem(null, reference.req, reference.plan.revision); restore(t);
   const after = inventory(reference.f.projectDir, { inodes: false }), selected = events.map((e, i) => secondProjection(e) ? i : -1).filter(i => i >= 0);
   const lastStage = events.findLastIndex(e => e.kind === 'STAGE_READY');

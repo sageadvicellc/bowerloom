@@ -11,7 +11,7 @@ import { createRecipeMcpServer } from '../src/server.ts';
 import { openRecipeService, runRecipeCommand } from '../../../dist/apps/cli/src/recipe.js';
 import { spec } from '../../../dist/tests/recipes-fixtures.js';
 
-test('compiled recipe controller rejects invalid MCP arguments and matches CLI inspection without connections', async () => {
+test('compiled recipe controller rejects invalid MCP arguments and matches CLI inspection without connections', { timeout: 120_000 }, async () => {
   const folder = await realpath(await mkdtemp(join(tmpdir(), 'trellis-mcp-proof-')));
   const installation = join(folder, 'installation.json');
   const passwordFile = join(folder, 'password.json');
@@ -47,8 +47,14 @@ test('compiled recipe controller rejects invalid MCP arguments and matches CLI i
     let stderr = '', stdout = '';
     child.stderr.on('data', chunk => { stderr += chunk; });
     child.stdout.on('data', chunk => { stdout += chunk; });
-    const response = once(child.stdout, 'data');
-    const timeout = setTimeout(() => child.kill('SIGKILL'), 5000);
+    // The first stdout data, or a named failure when the child closes first ('close' fires after stdout drains).
+    // A bare once(child.stdout, 'data') never settles when the kill timer fires first under load.
+    const response = new Promise((resolve, reject) => {
+      const onData = chunk => { child.off('close', onClose); resolve(chunk); };
+      const onClose = (code, signal) => { child.stdout.off('data', onData); reject(new Error(`MCP child closed before any stdout: code ${code}, signal ${signal}, stderr ${JSON.stringify(stderr)}`)); };
+      child.stdout.once('data', onData); child.once('close', onClose);
+    });
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 30000);
     try {
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
         protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'stdio-proof', version: '1' },
