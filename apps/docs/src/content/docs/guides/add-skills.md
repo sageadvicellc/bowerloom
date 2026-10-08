@@ -117,7 +117,7 @@ Show the plan. After approval, run the same command with the revision:
 bowerloom skills sync --approve REVISION_FROM_THE_PLAN
 ```
 
-Sync fetches only pins that the private cache does not hold yet. The private cache lives in `$XDG_STATE_HOME/bowerloom` when that variable is set, and in `~/.local/state/bowerloom` otherwise. It sits outside the project.
+Sync fetches only pins that the private cache does not hold yet. The private cache lives in `$XDG_STATE_HOME/bowerloom` when that variable is set, and in `~/.local/state/bowerloom` otherwise. It sits outside the project. Each project has its own cache folder there, so the cache is per project on this machine and not shared between projects.
 
 Use `--offline` on a machine with no network or when you want no fetch. With `--offline`, sync refuses before any change if a pin still needs fetching (`SKILLS_OFFLINE`). Use `--team <team>` to sync only that team's skills.
 
@@ -135,7 +135,7 @@ bowerloom apply
 
 Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. These copies stay on this machine.
 
-`apply` shows a plan, exits 3, and applies after you approve:
+`apply` shows a plan and exits 3. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
 
 ```sh
 bowerloom apply --approve REVISION_FROM_THE_PLAN

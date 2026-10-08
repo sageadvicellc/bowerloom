@@ -48,7 +48,7 @@ Repeat for each later step. Later steps are `team`, `sync`, and `apply`, and `up
 
 ### Read the result
 
-When no step is left, `up` prints `prepared, workers held`, points to `.bowerloom/START-HERE.md`, and exits 4. No worker started.
+When no step is left, `up` prints `prepared, workers held`, points to `.bowerloom/START-HERE.md`, and exits 4. No worker started. If an item is held, it prints `prepared, N items held` and a next command for each item.
 
 ```sh
 bowerloom status

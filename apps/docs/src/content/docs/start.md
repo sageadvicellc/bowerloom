@@ -116,7 +116,7 @@ prepared, workers held
   Next: read .bowerloom/START-HERE.md. This beta starts no worker; worker launch comes after the startup gate.
 ```
 
-Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+When a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
 `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
 

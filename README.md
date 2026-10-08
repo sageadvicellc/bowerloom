@@ -229,7 +229,7 @@ Each run without `--approve` prints the plan and its revision, then exits 3. Rea
 bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio." --approve REVISION_FROM_THE_PLAN
 ```
 
-Repeat until the project is prepared. The last run prints `prepared, workers held` and exits 4. Exit 4 means a gate holds the workers. It does not mean the command failed.
+Repeat until the project is prepared. The last run prints `prepared, workers held` and exits 4. If a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` and a next command for each item. Exit 4 means a gate holds the workers. It does not mean the command failed.
 
 `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
 
@@ -240,6 +240,7 @@ Exit codes:
 - 2 means a usage error.
 - 3 means approval required.
 - 4 means held by a gate.
+- 130 means you stopped at the yes/no question with Ctrl-C or Ctrl-D. It prints `Stopped. Nothing was changed.`
 
 ### Look at the project
 

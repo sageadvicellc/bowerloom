@@ -30,6 +30,8 @@ bowerloom help advanced
 
 `bowerloom --help` lists the commands you use first. `bowerloom help <command>` shows the full help for `up`, `ls`, `status`, `skills`, `apply`, `team`, `skill`, `prompt`, and `init`. `bowerloom help advanced` lists every form, including the request-file forms and the plumbing commands below. A command followed by `--help` shows the same text as `help <command>`.
 
+Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
+
 The version output identifies `Bowerloom 0.7.0-beta.N`. Command syntax does not grant execution permission.
 
 ## Approvals and exit codes
@@ -47,7 +49,8 @@ Every command that changes a project shows a plan first. The plan ends with a re
 | 1 | Refused. The refusal code names the reason. |
 | 2 | Usage error. The command line did not match a Bowerloom command. |
 | 3 | Approval required. Read the plan, then run the same command with `--approve <revision>`. |
-| 4 | Held by a gate. `up` returns 4 with `prepared, workers held`. |
+| 4 | Held by a gate. `up` returns 4 with `prepared, workers held`, or `prepared, N items held` with a next command for each item. |
+| 130 | You stopped at the yes/no question with Ctrl-C or Ctrl-D. It prints `Stopped. Nothing was changed.` |
 
 In a terminal, a refusal prints its code, a plain sentence, and a `Next:` line. Without a terminal, a refusal prints one line of JSON on standard error: `{"error":{"code":"...","message":"..."}}`. Agents parse that line. [Errors](/docs/reference/errors/) lists the codes.
 
@@ -61,11 +64,11 @@ bowerloom ls [teams|skills|prompts] [--json]
 bowerloom status [--json]
 ```
 
-`up` prepares the project one step at a time and starts no workers. See [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command). With `--json`, each line is one JSON object, and each step plan names its `step` and `team`. `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
+`up` prepares the project one step at a time and starts no workers. See [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command). With `--json`, each line is one JSON object, and each step plan names its `step` and `team`. `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program. `up` ends at `prepared, workers held`. When a skill, prompt, or team is held or gone, it ends at `prepared, N items held` and prints a next command for each item.
 
-`ls` reads the names of teams, skills, and prompts in `.bowerloom` and writes nothing. An empty section shows `none yet`. A link, a stray file, or a name that is not a plain id counts as `Not listed`, and `ls` never follows it. A folder with more than 256 entries refuses with `INSPECTION_LIMIT`.
+`ls` reads the names of teams, skills, and prompts in `.bowerloom` and writes nothing. An empty section shows `none yet`. A link, a stray file, or a name that is not a plain id counts as `Not listed`, and `ls` never follows it. With `--json`, `ls` and `ls skills` also print `pinned`, a list of the pinned skill ids. `pinned` is null when `.bowerloom/skills.json` cannot be read. Run `bowerloom skills check` then. A folder with more than 256 entries refuses with `INSPECTION_LIMIT`.
 
-`status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object with `status`, `revision`, `drift`, `owned`, `runtimeReady`, and `executionAuthorized`. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
+`status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object with `status`, `revision`, `drift`, `owned`, `runtimeReady`, and `executionAuthorized`. `status` names each held or missing skill, prompt, or team with its next step. A deleted prompt or team is held. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
 
 `bowerloom status --installation <private.json>` still reads a prepared session. See [Historical demo and session](#historical-demo).
 
@@ -85,7 +88,7 @@ Agents use these commands most. They write inside `.bowerloom` only. You and you
 bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]
 ```
 
-`apply` puts the skills in `.bowerloom/skills.json` and the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default). It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
+`apply` puts the skills in `.bowerloom/skills.json` and the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default). It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands. Read that prompt before you approve. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 

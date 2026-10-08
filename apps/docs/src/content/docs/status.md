@@ -33,13 +33,13 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 
 Bowerloom `0.7.0` adds these commands, and each one is documented:
 
-- `bowerloom up --team <name>` prepares a project one approved step at a time and ends at `prepared, workers held`.
+- `bowerloom up --team <name>` prepares a project one approved step at a time and ends at `prepared, workers held`, or at `prepared, N items held` with a next command for each item.
 - `bowerloom ls` and `bowerloom status` read the project and write nothing.
 - `bowerloom team create`, `skill create`, and `prompt create` make files inside `.bowerloom`.
 - `.bowerloom/skills.json` pins skills at exact versions and commits. `skills add`, `skills check`, `skills sync`, `skills recover`, and `skills migrate` manage it.
 - `bowerloom apply` puts skills and prompts in place for Claude Code and Codex.
 
-Every change shows a plan first and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+Every change shows a plan first and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate, and 130 stopped at the yes/no question. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
 These limits are current facts of this beta:
 

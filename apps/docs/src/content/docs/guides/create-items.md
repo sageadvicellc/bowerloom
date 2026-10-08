@@ -13,6 +13,8 @@ Install Bowerloom and run `bowerloom up --team <name> --goal <goal>` once, so th
 
 Every command takes `--approve <revision>` and `--json`. Without `--approve`, a terminal asks before it writes. Without a terminal, or with `--json`, the command prints the plan and its revision and exits 3. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the flow.
 
+If you delete a created prompt or team, `status` and `up` hold it and name it. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control.
+
 ## Ask your agent
 
 ```text

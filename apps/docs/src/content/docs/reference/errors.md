@@ -54,7 +54,8 @@ A wrong setup approval returns `STALE_APPROVAL` with exit 1 and no project chang
 | 1 | Refused. The code names the reason. |
 | 2 | Usage error (`USAGE`). |
 | 3 | Approval required. The plan and its revision are printed. Nothing was written. |
-| 4 | Held by a gate. `bowerloom up` returns 4 with `prepared, workers held`. |
+| 4 | Held by a gate. `bowerloom up` returns 4 with `prepared, workers held`, or `prepared, N items held`. |
+| 130 | Stopped at the yes/no question with Ctrl-C or Ctrl-D. It prints `Stopped. Nothing was changed.` |
 
 Exit 3 and exit 4 belong to the project commands: `up`, `ls`, `status`, `team`, `skill`, `prompt`, `skills add`, `check`, `sync`, `recover`, `migrate`, and `apply`. There is no `--yes`. Pass `--approve <revision>` with the revision from the plan. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the flow.
 
