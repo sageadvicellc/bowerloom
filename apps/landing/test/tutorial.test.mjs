@@ -13,7 +13,9 @@ test('all profiles and review cadences produce the selected bounded setup brief'
     assert.ok(prompt.includes('Do not execute the project or start workers'));
     assert.ok(prompt.includes('Wait for my explicit approval'));
     assert.ok(prompt.includes('Apply unchanged inputs with --approve and that exact revision'));
-    assert.ok(prompt.includes('then run init status'));
+    assert.ok(prompt.includes('then run bowerloom status'));
+    assert.ok(prompt.includes('run bowerloom up --team <name> --goal <goal> in my project folder'));
+    assert.ok(!prompt.includes('init status'));
     assert.ok(prompt.includes('.bowerloom/startup-review.md'));
     assert.ok(prompt.includes('Offer --json'));
     assert.ok(!prompt.includes('Option B'));
@@ -50,7 +52,7 @@ test('reader setup uses the exact release command without changing operational p
   assert.doesNotMatch(setupCommands, /git clone|npm ci|npm run build|dist\/apps/);
   const prompt=buildTutorialPrompt(initialSelection);
   assert.ok(prompt.includes(`Use Bowerloom ${release.version}.`));
-  assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
+  assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes('Use the path where I saved the file.'));assert.equal(readerRelease.installNote,'Use the path where you saved the file.');assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
   assert.doesNotMatch(prompt,/unpublished|unreleased|After publication|candidate|availabilityNote/i);
   assert.ok(prompt.includes('Wait for my explicit approval'));
   assert.ok(prompt.includes('Do not execute the project or start workers'));
@@ -68,7 +70,7 @@ test('existing-workflow planning retains a fixed-profile comparison and revision
   for(const profile of profiles){
     const prompt=buildTutorialPrompt({...initialSelection,profileId:profile.id,goal:profile.goal});
     assert.equal(brief(prompt).profile,profile.id);
-    assert(prompt.includes('existing absolute project path'));
+    assert(prompt.includes('existing project folder'));
     assert(prompt.includes('If .bowerloom already exists, use the revision guide instead of fresh installation.'));
     assert(prompt.includes('Offer new-workspace setup only when I request a separate workspace.'));
     assert(prompt.includes('bowerloom init plan --mode existing'));
