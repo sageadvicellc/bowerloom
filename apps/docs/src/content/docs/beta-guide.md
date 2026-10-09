@@ -5,12 +5,6 @@ section: "Help"
 order: 28.5
 ---
 
-<!-- release:status:start -->
-Open beta · 0.7.0-beta.1
-
-Setup does not start workers, grant runtime access, or authorize connected actions.
-<!-- release:status:end -->
-
 Use the [setup builder](/#build) to describe the work you already do and the decisions you retain. Your personal agent helps map that process into roles and handoffs, then compares it with a fixed Engineer, Founder, or Research specification. The setup builder prepares text locally. It does not connect your account or start workers.
 
 ## Review before installation
