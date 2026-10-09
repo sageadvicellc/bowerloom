@@ -13,7 +13,7 @@ This guide uses two public skills. The first is `collections` from `@tanstack/db
 
 ## Before you start
 
-Install Bowerloom from the private archive. [Install Bowerloom](/docs/start/) lists the Node requirement, the global npm prefix steps, and the first `bowerloom up` run.
+Install Bowerloom from npm with `npm install -g bowerloom@beta`. [Install Bowerloom](/docs/start/) lists the Node requirement, the global npm prefix steps, and the first `bowerloom up` run.
 
 Run these commands in a project folder that holds `.bowerloom`. Run `bowerloom up --team <name> --goal <goal>` first if it does not. Keep the folder out of iCloud Drive. A project under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder, refuses with `PROJECT_IN_CLOUD_FOLDER`. [Errors](/docs/reference/errors/#project-and-approval-refusals) shows the fix.
 

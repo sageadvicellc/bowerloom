@@ -3,13 +3,18 @@ import {createHash} from 'node:crypto';
 import {releasePresentation} from '../../../landing/src/release.ts';
 import {sourcePaths} from './build-paths.mjs';
 const literal = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
+// The registry form installs the package by its dist-tag or by its exact version, with -g or --global.
+const registry = r => typeof r.npm.distTag === 'string' && /^[a-z][a-z0-9-]*$/.test(r.npm.distTag)
+  ? new RegExp(`^npm install (?:-g|--global) ${literal(r.npm.packageName)}@(?:${literal(r.npm.distTag)}|${literal(r.version)})$`) : null;
+// A public beta stream installs from the registry under its dist-tag.
+// A private archive (a colleague beta) installs the packed file and is never published.
 // The archive path may be relative (./), under the home folder (~/), or absolute (/). Inside Claude Code a cd
 // outside the project does not last, so the docs show a full path such as ~/Downloads/<archive>.
 // Folder names hold letters, digits, dots, underscores and hyphens only: no space and no shell character.
 export function expectedInstallCommand(r) {
   const d = r.distribution;
-  if (d === undefined) return new RegExp(`^${literal(`npm install --global ${r.npm.packageName}@${r.version}`)}$`);
+  if (d === undefined) return registry(r);
+  if (d && d.kind === 'npm-beta-stream') return Object.keys(d).length === 2 && d.distTag === r.npm.distTag ? registry(r) : null;
   const archive = `${r.npm.packageName}-${r.version}.tgz`;
   if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || r.npm.published !== false || r.state !== 'unreleased') return null;
   return new RegExp(`^npm install -g (?:\\./|~/(?:[A-Za-z0-9._-]+/)*|/(?:[A-Za-z0-9._-]+/)*)${literal(archive)}$`);

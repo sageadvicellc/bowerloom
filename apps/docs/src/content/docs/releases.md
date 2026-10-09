@@ -17,20 +17,18 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ### Install
 
-This beta comes as a private archive. A private archive is one `.tgz` file that the team sends you. There is no public npm package. Install it globally, with the full path to the file:
+This beta ships on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. The beta stream is opt-in, and there is no stable release yet. Install it globally:
 
 ```sh
-npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
+npm install -g bowerloom@beta
 bowerloom --version
 ```
 
-Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
-
-The second command prints `Bowerloom 0.7.0-beta.1`. [Install Bowerloom](/docs/start/) has the full steps.
+The second command prints the installed version, `0.7.0-beta.1` for this release. Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`. A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`. [Install Bowerloom](/docs/start/) has the full steps.
 
 ### What the tests covered
 
-We installed this archive globally with npm and ran the installed `bowerloom` command. A pin is the exact npm version or Git commit that a project records for a skill. The tests covered these tasks:
+The tests installed a build of this release globally with npm, from a file, and ran the installed `bowerloom` command. They did not install the package from npm. A pin is the exact npm version or Git commit that a project records for a skill. The tests covered these tasks:
 
 - Install a skill from an npm package and from a Git repository.
 - Update a skill to a new pin.

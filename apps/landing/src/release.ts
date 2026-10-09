@@ -23,7 +23,7 @@ export function releasePresentation(source: typeof record = record) {
     beyondSetup: 'Running a team needs separate runtime permissions and controls. The setup commands do not grant them.',
     unattended: 'Shared company access and unattended services are outside this setup walkthrough.',
     setupCommands: `${source.npm.installCommand}\nbowerloom --version\nbowerloom --help`,
-    installNote: 'Use the path where you saved the file.',
+    installNote: 'The beta stream is opt-in, and there is no stable release yet.',
   };
 }
 export const readerRelease = releasePresentation();

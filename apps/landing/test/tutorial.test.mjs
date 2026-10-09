@@ -53,7 +53,7 @@ test('reader setup uses the exact release command without changing operational p
   assert.doesNotMatch(setupCommands, /git clone|npm ci|npm run build|dist\/apps/);
   const prompt=buildTutorialPrompt(initialSelection);
   assert.ok(prompt.includes(`Use Bowerloom ${release.version}.`));
-  assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes('Use the path where I saved the file.'));assert.equal(readerRelease.installNote,'Use the path where you saved the file.');assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
+  assert.ok(prompt.includes(setupRequirements));assert.ok(prompt.includes('The beta stream is opt-in.'));assert.ok(prompt.includes('npm install -g bowerloom@beta'));assert.equal(readerRelease.installNote,'The beta stream is opt-in, and there is no stable release yet.');assert.ok(prompt.includes(release.urls.site+docsPath+'start/'));
   assert.doesNotMatch(prompt,/unpublished|unreleased|After publication|candidate|availabilityNote/i);
   assert.ok(prompt.includes('Wait for my explicit approval'));
   assert.ok(prompt.includes('Do not execute the project or start workers'));

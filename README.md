@@ -164,17 +164,17 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 
 ## Install Bowerloom
 
-Bowerloom is an open beta. You receive it as a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry.
+Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. The beta stream is opt-in, and there is no stable release yet.
 
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
-npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
+npm install -g bowerloom@beta
 bowerloom --version
 bowerloom --help
 ```
 
-Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 

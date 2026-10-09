@@ -45,7 +45,7 @@ If the outcome remains uncertain, preserve the original evidence. A help request
 
 ## Installation
 
-Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying.
+Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying. Install with `npm install -g bowerloom@beta`. To update, run the same command again. `npm update -g bowerloom` follows the `latest` tag, not `beta`.
 
 If `npm install -g` refuses with a permission error, do not use `sudo`. Set a user prefix with `npm config set prefix "$HOME/.npm-global"` and add `$HOME/.npm-global/bin` to your `PATH`. [Install Bowerloom](/docs/start/#prerequisites-and-availability) shows the steps.
 
@@ -58,7 +58,7 @@ Bowerloom needs two kinds of network access:
 - Direct HTTPS to `registry.npmjs.org` and `api.github.com`. `skills add`, `skills sync`, and the sync step of `bowerloom up` fetch from these hosts. Bowerloom does not use a proxy, so it ignores the proxy that a sandbox sets.
 - Connections to `localhost`. Bowerloom holds its project lock on a local port and checks the lock by connecting to it. `up`, the create commands, `skills add`, `skills sync`, `apply`, `skills recover`, and `skills migrate` take this lock. When a sandbox blocks that connection, the commands that change skill copies, such as `skills sync` and `apply`, refuse with `MANAGED_SKILL_LOCK_SLOT_COLLISION`. When a sandbox blocks the local port itself, the refusal is `PROJECT_LOCK_UNAVAILABLE`.
 
-Claude Code can run its commands in a sandbox that allows neither. By default, a sandboxed command can also write only inside the project and a temporary folder. `sandbox.filesystem.allowWrite` adds other folders. So when the Claude Code sandbox is on, run the install command, `npm install -g` with the archive path, in your own terminal. Run the `bowerloom` commands outside the sandbox too. There are two ways:
+Claude Code can run its commands in a sandbox that allows neither. By default, a sandboxed command can also write only inside the project and a temporary folder. `sandbox.filesystem.allowWrite` adds other folders. So when the Claude Code sandbox is on, run the install command, `npm install -g bowerloom@beta`, in your own terminal. Run the `bowerloom` commands outside the sandbox too. There are two ways:
 
 - Run each `bowerloom` command in your own terminal, in the project folder. Then show the output to your agent.
 - Add `bowerloom` to the commands that Claude Code runs outside its sandbox. Add both entries to `sandbox.excludedCommands` in `~/.claude/settings.json` for all your projects, or in the project's `.claude/settings.json` for one project:

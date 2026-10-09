@@ -4,23 +4,22 @@
   "release": "v0.7-beta",
   "version": "0.7.0-beta.1",
   "state": "unreleased",
-  "audience": "private-colleague-beta",
+  "audience": "public-beta-stream",
   "launch": "soft",
-  "statusLabel": "Private colleague beta \u00b7 unreleased",
+  "statusLabel": "Public beta stream \u00b7 unreleased",
   "distribution": {
-    "kind": "private-archive",
-    "archive": "bowerloom-0.7.0-beta.1.tgz",
-    "npmPublication": false
+    "kind": "npm-beta-stream",
+    "distTag": "beta"
   },
   "npm": {
     "packageName": "bowerloom",
     "registry": "https://registry.npmjs.org",
     "distTag": "beta",
-    "installCommand": "npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz",
+    "installCommand": "npm install -g bowerloom@beta",
     "published": false,
     "ownershipVerified": false,
     "publishingIdentityVerified": true,
-    "availabilityNote": "This is a private colleague beta. It is not published to npm. Install it from the bowerloom-0.7.0-beta.1.tgz archive you were given. Use the full path where you saved the file.",
+    "availabilityNote": "This is the opt-in beta stream on npm, under the beta dist-tag. There is no stable release yet. Install it with npm install -g bowerloom@beta.",
     "authenticatedIdentity": "hannasage",
     "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate."
   },

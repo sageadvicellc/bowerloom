@@ -23,7 +23,7 @@ Read the [documentation](/docs/) and the [README](https://github.com/sageadvicel
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
 ```sh
-npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
+npm install -g bowerloom@beta
 bowerloom --version
 bowerloom --help
 ```
@@ -33,7 +33,7 @@ First-team setup does not need Docker. The separate local backend requires Docke
 These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 <!-- release:install:end -->
 
-Use the path where you saved the file. `~/Downloads` is only an example.
+The beta stream is opt-in, and there is no stable release yet. Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal.
 
 ## Choose your startup path
 

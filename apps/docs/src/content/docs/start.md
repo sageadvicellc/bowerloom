@@ -1,13 +1,13 @@
 ---
 title: "Install Bowerloom"
-description: "Install the private beta archive, read its version, and prepare your first project."
+description: "Install the beta from npm, read its version, and prepare your first project."
 section: "Start here"
 order: 1
 ---
 
 Bowerloom brings governance to the agent teams, skills, and prompts in your project. It shows a plan before every change. It writes only after you approve that exact plan. It pins every third-party skill to an exact version or commit. It accepts only MIT and Apache-2.0 skills. It copies text files and runs nothing. In this beta no worker starts.
 
-Install the `bowerloom` command from the private archive that you received. Then run one command in a project folder. Each step shows its plan first, and you approve each step.
+Install the `bowerloom` command from the npm beta stream. Then run one command in a project folder. Each step shows its plan first, and you approve each step.
 
 Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
@@ -27,19 +27,21 @@ Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements 
 
 You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
 
-You received a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry.
+Bowerloom is on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. The beta stream is opt-in, and there is no stable release yet.
 
-Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. If your agent runs in a sandbox, ask the human to run the install command in their own terminal. The command installs the archive globally, with the full path to the file:
+Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. If your agent runs in a sandbox that blocks writes outside the project, ask the human to run the install command in their own terminal. The command installs the beta globally:
 
 ```sh
-npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
+npm install -g bowerloom@beta
 bowerloom --version
 bowerloom --help
 ```
 
-Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`.
 
-npm reports the packages it added and exits 0. For the `0.7.0-beta.1` archive, `bowerloom --version` prints this line:
+A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
+
+npm reports the packages it added and exits 0. In the tests for this release, `bowerloom --version` printed this line:
 
 ```text
 Bowerloom 0.7.0-beta.1
@@ -145,9 +147,9 @@ When a skill, prompt, or team is held or gone, the last run prints `prepared, N 
 
 Read the npm error before you try another command. Make sure that your Node and npm versions meet the requirements above.
 
-If the installed version differs from the archive name, use the matching documentation. Keep the original error for a sanitized [bug report](/docs/feedback/#report-a-bug).
+If the installed version differs from the version these docs name, use the matching documentation. Keep the original error for a sanitized [bug report](/docs/feedback/#report-a-bug).
 
-Do not use an unknown archive or a different package name to get around an installation failure.
+Do not use an unknown package, archive, or package name to get around an installation failure.
 
 ## Choose the next task
 
