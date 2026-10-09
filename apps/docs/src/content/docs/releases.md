@@ -13,6 +13,40 @@ Open beta · 0.7.0-beta.1
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+## 0.7.0-beta.1
+
+### Install
+
+This beta comes as a private archive. A private archive is one `.tgz` file that the team sends you. There is no public npm package. Open a terminal in the folder that holds the file, and install it globally:
+
+```sh
+npm install -g ./bowerloom-0.7.0-beta.1.tgz
+bowerloom --version
+```
+
+The second command prints `Bowerloom 0.7.0-beta.1`. [Install Bowerloom](/docs/start/) has the full steps.
+
+### What the tests covered
+
+We installed this archive with the command above and ran the installed `bowerloom` command. A pin is the exact npm version or Git commit that a project records for a skill. The tests covered these tasks:
+
+- Install a skill from an npm package and from a Git repository.
+- Update a skill to a new pin.
+- Resume a change that stopped part way. Resume finishes the approved change.
+- Roll back a change that stopped part way. Rollback puts back what was there before.
+- Refusals for npm and Git sources. A refusal stops the command with a code. The tests covered a wrong or old approval, a skill copy that you changed, and private records that no longer match.
+- Two real public skills. The first is `collections` from the TanStack npm package `@tanstack/db-skills@0.0.1`. The second is `verification-loop` from the ECC repository on GitHub, first at one commit and then at a later commit.
+- A teammate who receives a project with its `skills.json`, checks the pins, and reaches the sync step of `bowerloom up`.
+- Help, usage errors, and exit codes.
+
+### Known limits
+
+- Two refusals have no test yet: `SKILLS_SYNC_LIMIT` and `SKILLS_CACHE_RECOVERY_REQUIRED`. Tests for both come in 0.7.1.
+- Claude Code can run its commands in a sandbox. The sandbox limits what those commands can reach, and it sends web requests through a proxy. A proxy is a server that passes requests on. Bowerloom ignores that proxy and sends its HTTPS requests directly. So when the sandbox is on, Bowerloom cannot reach npm or GitHub from inside Claude Code. This beta has no setting that changes this. Run the commands that fetch, `bowerloom skills add` and `bowerloom skills sync`, in your own terminal outside the sandbox. `bowerloom up` fetches at its sync step, so run it outside the sandbox too. `skills check`, `apply`, and `skills sync --offline` make no network request. 0.7.1 will address this limit.
+- The tests used Node 24.11.0 and npm 11.6.1 on macOS only. They cover no other version or system.
+- Bowerloom checks every byte of a skill against its pin, and it checks the skill license. It does not prove that a skill is safe. Read a skill before you approve its plan.
+- Workers stay held in this beta. `bowerloom up` ends at `prepared, workers held` and exits 4 with the code `WORKERS_HELD`. No worker starts.
+
 <a id="070-beta0-unreleased"></a>
 
 ## 0.7.0-beta.0
