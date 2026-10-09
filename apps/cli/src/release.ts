@@ -7,12 +7,20 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 /**
- * The install command a release record must carry. A private archive (a colleague beta, never an npm publication)
- * installs the packed file from the current folder and must stay unpublished; any other record installs from npm.
+ * The install command a release record must carry. A public beta stream installs from npm under its dist-tag, which
+ * the distribution and the npm block name alike and which is never latest, the stable stream. A private archive (a
+ * colleague beta, never an npm publication) installs the packed file from the current folder and must stay
+ * unpublished; a record with no distribution installs its exact version from npm.
  */
 export function expectedInstallCommand(record: Record<string, unknown>, npm: Record<string, unknown>): string {
   if (record.distribution === undefined) return `npm install --global ${String(npm.packageName)}@${String(record.version)}`;
-  const d = object(record.distribution), archive = `${String(npm.packageName)}-${String(record.version)}.tgz`;
+  const d = object(record.distribution);
+  if (d.kind === 'npm-beta-stream') {
+    if (Object.keys(d).length !== 2 || typeof d.distTag !== 'string' || d.distTag !== npm.distTag
+      || !/^[a-z][a-z0-9-]*$/.test(d.distTag) || d.distTag === 'latest') throw new Error();
+    return `npm install -g ${String(npm.packageName)}@${d.distTag}`;
+  }
+  const archive = `${String(npm.packageName)}-${String(record.version)}.tgz`;
   if (Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || npm.published !== false || record.state !== 'unreleased') throw new Error();
   return `npm install -g ./${archive}`;
 }

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {collect,stage,pack,imports,lockedDependencies,installHeading,sha256,MODULES} from '../pack.mjs';
+import {collect,stage,pack,imports,lockedDependencies,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -114,11 +114,19 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
 });
 
-// An npm release record: the private-archive record of this repository without its distribution block.
-function npmRecord(t) {
+// A fixture copy of this repository whose release record is rewritten by edit.
+function rewritten(t,edit) {
  const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
- delete r.distribution;r.npm.installCommand=`npm install --global ${r.npm.packageName}@${r.version}`;writeFileSync(path,JSON.stringify(r,null,2)+'\n');
+ edit(r);writeFileSync(path,JSON.stringify(r,null,2)+'\n');
  return {root,path};
+}
+// An npm release record: this repository's record without its distribution block, unreleased.
+function npmRecord(t) {
+ return rewritten(t,r=>{delete r.distribution;r.state='unreleased';r.npm.published=false;r.npm.installCommand=`npm install --global ${r.npm.packageName}@${r.version}`;});
+}
+// A private-archive record (a colleague beta): installed from the packed file, unreleased and never published.
+function privateArchiveRecord(t) {
+ return rewritten(t,r=>{r.state='unreleased';r.distribution={kind:'private-archive',archive:`${r.npm.packageName}-${r.version}.tgz`,npmPublication:false};r.npm.published=false;r.npm.installCommand=`npm install -g ./${r.npm.packageName}-${r.version}.tgz`;});
 }
 test('release candidate uses the shared record and explicit public beta metadata without publication',t=>{
  const {root,path}=npmRecord(t),candidate=collect({repoDir:root,releaseCandidate:true});
@@ -136,16 +144,16 @@ test('release candidate uses the shared record and explicit public beta metadata
 // Freeze security review finding 1: a private-archive record is never packed as a public release candidate, so its
 // package.json never loses private:true or gains a public publishConfig.
 test('a release candidate of a private-archive record refuses before anything is packed',t=>{
- assert.ok(JSON.parse(readFileSync(join(repo,'release/beta.json'))).distribution,'this repository carries the private-archive record');
- assert.throws(()=>collect({repoDir:repo,releaseCandidate:true}),/private archive/);
- const root=area(t);assert.throws(()=>stage({repoDir:repo,stageDir:join(root,'stage'),releaseCandidate:true}),/private archive/);
+ const {root:source}=privateArchiveRecord(t);
+ assert.throws(()=>collect({repoDir:source,releaseCandidate:true}),/private archive/);
+ const root=area(t);assert.throws(()=>stage({repoDir:source,stageDir:join(root,'stage'),releaseCandidate:true}),/private archive/);
  assert.deepEqual(readdirSync(root),[]);
- const plain=collect({repoDir:repo});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);
+ const plain=collect({repoDir:source});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);
 });
 
 // Freeze review finding 7: the install heading is true for the record it is written for.
 test('the candidate install heading says After publication only for an npm record',t=>{
- const record=JSON.parse(readFileSync(join(repo,'release/beta.json')));
+ const record=JSON.parse(readFileSync(privateArchiveRecord(t).path));
  assert.equal(installHeading(record),'Install it from the folder that holds the archive:');
  const {path}=npmRecord(t);assert.equal(installHeading(JSON.parse(readFileSync(path))),'After publication:');
  for(const [path,bytes] of collect({repoDir:repo}).files)assert.doesNotMatch(bytes.toString('latin1'),/After publication/,path);
@@ -243,4 +251,47 @@ test('skills CLI reaches exact source/cache/manager closure with locked tar runt
 test('skills collection refuses missing reachable source or compiled modules',()=>{
  const original=fs.lstatSync;let selected='';fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
  try{for(const path of ['dist/apps/cli/src/skills.js','packages/skill-sources/src/cache.ts','dist/packages/managed-skills/src/transaction.js']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),e=>e.code==='ENOENT');}}finally{fs.lstatSync=original;syncBuiltinESMExports();}
+});
+
+// Beta 0.7.0-beta.1 is published on npm under the beta dist-tag: the record carries an npm-beta-stream distribution.
+test('the published npm-beta-stream record of this repository packs privately and never as a release candidate',t=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json')));
+ assert.deepEqual(record.distribution,{kind:'npm-beta-stream',distTag:'beta'});
+ assert.equal(expectedInstallCommand(record,'bowerloom',record.version),'npm install -g bowerloom@beta');
+ const plain=collect({repoDir:repo});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);assert.equal(plain.record.publicationState,'published');
+ assert.throws(()=>collect({repoDir:repo,releaseCandidate:true}),/unreleased record/);
+ const root=area(t);assert.throws(()=>stage({repoDir:repo,stageDir:join(root,'stage'),releaseCandidate:true}),/unreleased record/);assert.deepEqual(readdirSync(root),[]);
+});
+test('an npm-beta-stream install command is exactly npm install -g <name>@<distTag>',()=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json'))),v=record.version;
+ assert.equal(expectedInstallCommand({...record,state:'unreleased',npm:{...record.npm,published:false}},'bowerloom',v),'npm install -g bowerloom@beta');
+ for(const command of ['npm install --global bowerloom@beta',`npm install -g bowerloom@${v}`,'npm install -g bowerloom@next','npm install -g bowerloom@latest',`npm install -g ./bowerloom-${v}.tgz`])
+  assert.notEqual(expectedInstallCommand(record,'bowerloom',v),command,command);
+});
+test('an npm-beta-stream distribution has exactly kind and distTag, matches npm.distTag, and never names latest',()=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json'))),v=record.version;
+ const tagged=tag=>({...record,distribution:{kind:'npm-beta-stream',distTag:tag},npm:{...record.npm,distTag:tag}});
+ assert.equal(expectedInstallCommand(tagged('next-beta'),'bowerloom',v),'npm install -g bowerloom@next-beta');
+ for(const tag of ['latest','Beta','1beta','be ta','-beta','',7,undefined])assert.equal(expectedInstallCommand(tagged(tag),'bowerloom',v),null,String(tag));
+ for(const distribution of [{kind:'npm-beta-stream',distTag:'beta',archive:`bowerloom-${v}.tgz`},{kind:'npm-beta-stream',distTag:'beta',npmPublication:true},{kind:'npm-beta-stream'},{kind:'npm-beta-stream',tag:'beta'},{kind:'npm-beta-stream',distTag:'next'},{kind:'npm-stable',distTag:'beta'},null])
+  assert.equal(expectedInstallCommand({...record,distribution},'bowerloom',v),null,JSON.stringify(distribution));
+ assert.equal(expectedInstallCommand({...record,npm:{...record.npm,distTag:'next'}},'bowerloom',v),null,'npm.distTag differs from the distribution');
+});
+test('packaging refuses an npm-beta-stream record with latest, a third key, a mismatched tag, or a noncanonical command',t=>{
+ for(const edit of [
+  r=>{r.distribution.distTag='latest';r.npm.distTag='latest';r.npm.installCommand='npm install -g bowerloom@latest';},
+  r=>{r.distribution.archive=`bowerloom-${r.version}.tgz`;},
+  r=>{r.distribution.distTag='next';},
+  r=>{r.npm.installCommand='npm install --global bowerloom@beta';},
+  r=>{r.npm.installCommand=`npm install -g bowerloom@${r.version}`;},
+  r=>{r.npm.installCommand='npm install -g bowerloom@next';},
+  r=>{r.state='unreleased';},
+ ]){const {root}=rewritten(t,edit);assert.throws(()=>collect({repoDir:root}),/Release record/,String(edit));}
+});
+test('an unaccepted distribution refuses even when the install command is missing, so a null expectation never matches',t=>{
+ for(const edit of [
+  r=>{r.distribution={kind:'unknown'};r.npm.installCommand=null;},
+  r=>{r.distribution={kind:'npm-beta-stream',distTag:'latest'};r.npm.installCommand=null;},
+  r=>{r.distribution=null;delete r.npm.installCommand;},
+ ]){const {root}=rewritten(t,edit);assert.throws(()=>collect({repoDir:root}),/Release record does not match package identity/,String(edit));}
 });

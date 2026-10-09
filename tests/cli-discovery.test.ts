@@ -62,7 +62,7 @@ test('release identity refuses same-version wrong names and inconsistent publica
   [{...release,npm:{...release.npm,packageName:'other'}},pkg],
   [release,{...pkg,name:'other'}],
   [{...release,npm:{...release.npm,packageName:'other'}},{...pkg,name:'other'}],
-  [{...release,npm:{...release.npm,published:true}},pkg],
+  [{...release,npm:{...release.npm,published:!release.npm.published}},pkg],
   [{...release,npm:{...release.npm,installCommand:'npm install unrelated'}},pkg],
   [{...release,version:'9.9.9'},pkg],
   [{...release,capabilities:{}},pkg],

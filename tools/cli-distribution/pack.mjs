@@ -68,10 +68,16 @@ export function lockedDependencies(lock, dependencies, manifest) {
   }
   return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':{name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,bin:manifest.bin,engines:manifest.engines},...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
 }
-// A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
+// A public beta stream installs from npm under its dist-tag, named alike by the distribution and the npm block and
+// never latest. A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
 export function expectedInstallCommand(release, name, version) {
   const d = release.distribution;
   if (d === undefined) return `npm install --global ${name}@${version}`;
+  if (d && d.kind === 'npm-beta-stream') {
+    if (Object.keys(d).length !== 2 || typeof d.distTag !== 'string' || d.distTag !== release.npm?.distTag
+      || !/^[a-z][a-z0-9-]*$/.test(d.distTag) || d.distTag === 'latest') return null;
+    return `npm install -g ${name}@${d.distTag}`;
+  }
   const archive = `${name}-${version}.tgz`;
   if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || release.npm?.published !== false || release.state !== 'unreleased') return null;
   return `npm install -g ./${archive}`;
@@ -86,12 +92,14 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name) || name.length > 214) fail('Invalid npm package identity');
   const repo = realpathSync(repoDir), rootPackage = JSON.parse(regular(repo,'package.json'));
   const release = JSON.parse(regular(repo,'release/beta.json'));
-  if(release.schema !== 'bowerloom/release/v1' || release.version !== rootPackage.version || rootPackage.name !== name
+  // null means the record carries no acceptable install command, so it never matches a missing one.
+  const installCommand = expectedInstallCommand(release, name, rootPackage.version);
+  if(installCommand === null || release.schema !== 'bowerloom/release/v1' || release.version !== rootPackage.version || rootPackage.name !== name
     || release.npm?.packageName !== name || !['unreleased','published'].includes(release.state)
     || release.npm.published !== (release.state === 'published')
     || release.npm.registry !== 'https://registry.npmjs.org'
     || release.npm.distTag !== 'beta'
-    || release.npm.installCommand !== expectedInstallCommand(release, name, rootPackage.version)) fail('Release record does not match package identity');
+    || release.npm.installCommand !== installCommand) fail('Release record does not match package identity');
   if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
   // Security freeze finding 1: a private archive is never packed as a public candidate (private:false, publishConfig).
   if(releaseCandidate && release.distribution !== undefined) fail('Release candidate refused: this record is a private archive, never an npm publication');
