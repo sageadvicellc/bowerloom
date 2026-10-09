@@ -4,7 +4,8 @@ import {releasePresentation} from '../../../landing/src/release.ts';
 import {sourcePaths} from './build-paths.mjs';
 const literal = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // The registry form installs the package by its dist-tag or by its exact version, with -g or --global.
-const registry = r => typeof r.npm.distTag === 'string' && /^[a-z][a-z0-9-]*$/.test(r.npm.distTag)
+// latest is the stable stream, so a beta record never names it.
+const registry = r => typeof r.npm.distTag === 'string' && /^[a-z][a-z0-9-]*$/.test(r.npm.distTag) && r.npm.distTag !== 'latest'
   ? new RegExp(`^npm install (?:-g|--global) ${literal(r.npm.packageName)}@(?:${literal(r.npm.distTag)}|${literal(r.version)})$`) : null;
 // A public beta stream installs from the registry under its dist-tag.
 // A private archive (a colleague beta) installs the packed file and is never published.

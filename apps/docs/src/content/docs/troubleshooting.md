@@ -45,7 +45,7 @@ If the outcome remains uncertain, preserve the original evidence. A help request
 
 ## Installation
 
-Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying. Install with `npm install -g bowerloom@beta`. To update, run the same command again. `npm update -g bowerloom` follows the `latest` tag, not `beta`.
+Make sure that Node and npm meet the requirements in [Install Bowerloom](/docs/start/). Read the npm error before retrying. Install with `npm install -g bowerloom@beta`. To update, run the same command again. `npm update -g bowerloom` follows the `latest` tag, not `beta`, and it can downgrade a beta install.
 
 If `npm install -g` refuses with a permission error, do not use `sudo`. Set a user prefix with `npm config set prefix "$HOME/.npm-global"` and add `$HOME/.npm-global/bin` to your `PATH`. [Install Bowerloom](/docs/start/#prerequisites-and-availability) shows the steps.
 

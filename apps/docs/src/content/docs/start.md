@@ -37,7 +37,7 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install.
 
 A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
 
@@ -149,7 +149,7 @@ Read the npm error before you try another command. Make sure that your Node and 
 
 If the installed version differs from the version these docs name, use the matching documentation. Keep the original error for a sanitized [bug report](/docs/feedback/#report-a-bug).
 
-Do not use an unknown package, archive, or package name to get around an installation failure.
+Do not use an unknown package or archive to get around an installation failure.
 
 ## Choose the next task
 

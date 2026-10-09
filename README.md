@@ -174,7 +174,7 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 

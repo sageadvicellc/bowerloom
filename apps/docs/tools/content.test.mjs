@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {htmlIds,duplicateHtmlIds,missingLegacyAliases} from '../src/lib/html-ids.mjs';
 import {copyFeedback} from '../src/lib/copy-feedback.mjs';
 import {expandRelease,readRelease,releaseReference,releaseSections,installCommandAccepted} from '../src/lib/release.mjs';
+import {unsupportedPublicInstalls} from './install-guard.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
 test('resolved reader release block preserves exact installation command and refuses unknown markers',async()=>{
@@ -30,6 +31,15 @@ test('the beta stream installs from the registry by its dist-tag or its exact ve
     assert(!installCommandAccepted(withCommand(command)),command);
   assert(!installCommandAccepted({...withCommand('npm install -g bowerloom@beta'),distribution:{kind:'npm-beta-stream',distTag:'next'}}));
   assert(installCommandAccepted({...withCommand('npm install --global bowerloom@beta'),distribution:undefined}));
+  const latest={...release,distribution:{kind:'npm-beta-stream',distTag:'latest'},npm:{...release.npm,distTag:'latest',installCommand:'npm install -g bowerloom@latest'}};
+  assert(!installCommandAccepted(latest),'the latest tag is refused even when the record names it');
+  assert(!installCommandAccepted({...latest,npm:{...latest.npm,installCommand:'npm install -g bowerloom@0.7.0-beta.1'}}));
+});
+test('the install guard finds a bare or latest global install and passes the beta forms',()=>{
+  for(const text of ['Run `npm install -g bowerloom`.','Run npm install -g bowerloom.','`npm i -g bowerloom`','`npm install bowerloom -g`','npm add --global bowerloom','`npm install -g bowerloom@latest`','Install it with npm install -g bowerloom'])
+    assert.equal(unsupportedPublicInstalls(text).length,1,text);
+  for(const text of ['`npm install -g bowerloom@beta`','npm install -g bowerloom@beta. Then run bowerloom up.','`npm install --global bowerloom@0.7.0-beta.1`','`npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`','Do not use `npm update -g bowerloom` for this.','`npm install bowerloom@beta`','npm pack --dry-run'])
+    assert.deepEqual(unsupportedPublicInstalls(text),[],text);
 });
 test('a private archive install command may name the archive by a relative, home or absolute path',async()=>{
   const current=await readRelease();

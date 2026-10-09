@@ -33,7 +33,7 @@ First-team setup does not need Docker. The separate local backend requires Docke
 These guides use macOS arm64 and Node 24.11.0. Other host systems are outside this documented installation path.
 <!-- release:install:end -->
 
-The beta stream is opt-in, and there is no stable release yet. Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal.
+The beta stream is opt-in, and there is no stable release yet. Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal.
 
 ## Choose your startup path
 
