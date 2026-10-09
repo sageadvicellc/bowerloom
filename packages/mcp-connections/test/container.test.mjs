@@ -14,7 +14,7 @@ import {guardianSignaturePayload} from '../../../dist/packages/mcp-connections/s
 import {createGuardianCheckpoint,createGuardianClosure,guardianTerminalPayload,terminalDeclaration} from '../../../dist/packages/mcp-connections/src/container-guardian-checkpoint.js';
 const hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex');
 const DIGEST='sha256:'+'a'.repeat(64), MANIFEST='application/vnd.oci.image.manifest.v1+json';
-const initial={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.0'}};
+const initial={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.1'}};
 const refused=e=>e instanceof McpConnectionError&&/^MCP_CONTAINER_[A-Z_]+$/.test(e.code)&&e.message===e.code&&!e.message.includes('PRIVATE');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function fixture({config,manifest,index}={}){

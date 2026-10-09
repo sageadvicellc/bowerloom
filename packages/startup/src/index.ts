@@ -17,6 +17,8 @@ import type { InstallationIdentityPolicy, PersistentIdentityComparison } from '.
 import { classifyStartupIdentityDiagnostic } from './identity-diagnostic.js';
 import type { StartupIdentityDiagnostic } from './identity-diagnostic.js';
 import type { StartupProfile } from './profiles.js';
+import { askOwners, validOwners } from './owners.js';
+import type { OwnedEntryKind, OwnerName, OwnerVerifier } from '../../project-context/src/types.js';
 export { startupProfiles } from './profiles.js';
 export type { StartupProfile } from './profiles.js';
 import type { GeneratedFile, NormalizedBrief, StartupBrief } from './scaffold.js';
@@ -52,13 +54,19 @@ export interface V2StartupReceipt extends ReceiptBody {
   derivedBirthtimeNs: { target: string; bowerloom: string };
 }
 export type StartupReceipt = LegacyStartupReceipt | V2StartupReceipt;
-export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' }
+/** `owner-refused` (with its `code`) appears only when `inspectStartup` was given owners. */
+export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' | 'owner-refused'; code?: string }
+/** An entry a registered owner verified. `edited` is authored content a person or agent changed; it is not drift. */
+export interface OwnedEntry { path: string; owner: OwnerName; state: 'verified' | 'edited' }
+export interface InspectStartupOptions { owners?: readonly OwnerVerifier[] }
 export interface StartupInspection {
   format: 'bowerloom/startup-inspection/v1alpha1'; status: 'ready-for-review' | 'drifted' | 'revision-pending'; targetDir: string; revision: string | null;
   specReady: boolean; runtimeReady: false; executionAuthorized: false; reviewRequired: true;
   drift: Drift[]; compiledCandidate: string | null; contextImported: false; hostedAgentCreated: false;
   identityDiagnostic?: Readonly<StartupIdentityDiagnostic>;
   identityPolicy?: { algorithm: InstallationIdentityPolicy['algorithm']; target: PersistentIdentityComparison; bowerloom: PersistentIdentityComparison; limitation: string };
+  /** Only when owners were given: every entry an owner verified, sorted by path. */
+  owned?: OwnedEntry[];
 }
 export class StartupError extends Error { constructor(public readonly code: string) { super(code); this.name = 'StartupError'; } }
 function fail(code: string): never { throw new StartupError(code); }
@@ -278,9 +286,25 @@ function receiptValue(raw: Buffer): StartupReceipt {
   }
   return value as unknown as StartupReceipt;
 }
-export async function inspectStartup(targetDir: string): Promise<StartupInspection> {
+function inspectionOwners(options: unknown): readonly OwnerVerifier[] | null {
+  if (options === undefined) return null;
+  record(options, [], ['owners']);
+  const owners = (options as InspectStartupOptions).owners;
+  if (owners === undefined) return null;
+  if (!validOwners(owners)) fail('STARTUP_INPUT');
+  // No verifiers: exactly the cc117ac result.
+  return owners.length ? owners : null;
+}
+/**
+ * Inspects an installed project. With `options.owners`, an entry inside `.bowerloom/` that the startup receipt does
+ * not account for passes only when exactly one owner claims it and verifies it (build plan 01, M2); a claimed folder is
+ * verified whole and not walked. A link or other special entry is unsafe and no owner is asked. Without owners, the
+ * result is exactly as at cc117ac.
+ */
+export async function inspectStartup(targetDir: string, options?: InspectStartupOptions): Promise<StartupInspection> {
+  const owners = inspectionOwners(options), ownerSignal = new AbortController().signal, owned: OwnedEntry[] = [];
   const target = canonicalTarget(targetDir); ancestors(target); ownedDirectory(identity(target));
-  const result: StartupInspection = { format: 'bowerloom/startup-inspection/v1alpha1', status: 'drifted', targetDir: target, revision: null, specReady: false, runtimeReady: false, executionAuthorized: false, reviewRequired: true, drift: [], compiledCandidate: null, contextImported: false, hostedAgentCreated: false };
+  const result: StartupInspection = { format: 'bowerloom/startup-inspection/v1alpha1', status: 'drifted', targetDir: target, revision: null, specReady: false, runtimeReady: false, executionAuthorized: false, reviewRequired: true, drift: [], compiledCandidate: null, contextImported: false, hostedAgentCreated: false, ...(owners ? { owned } : {}) };
   if (names(target).some(name => fold(name) === '.bowerloom-revision.json')) { result.status = 'revision-pending'; result.drift.push({ path: '.bowerloom-revision.json', kind: 'revision-pending' }); return result; }
   const directory = join(target, '.bowerloom'), aliases = names(target).filter(name => fold(name) === '.bowerloom');
   if (aliases.length !== 1 || aliases[0] !== '.bowerloom') { result.drift.push({ path: '.bowerloom', kind: aliases.length ? 'unsafe' : 'missing' }); return result; }
@@ -297,17 +321,29 @@ export async function inspectStartup(targetDir: string): Promise<StartupInspecti
   }
   const expectedPaths = new Set([...receipt.plan.files.map(file => file.path), RECEIPT]);
   let count = 0;
-  const walk = (relative: string) => {
-    for (const entry of readdirSync(join(directory, relative), { withFileTypes: true })) {
+  // An entry the receipt does not account for. Without owners it is unexpected, as at cc117ac.
+  const unaccounted = async (path: string, kind: OwnedEntryKind | null): Promise<void> => {
+    if (!owners) { result.drift.push({ path: `.bowerloom/${path}`, kind: 'unexpected' }); return; }
+    if (kind === null) { result.drift.push({ path: `.bowerloom/${path}`, kind: 'unsafe' }); return; }
+    const outcome = await askOwners(owners, path, kind, ownerSignal);
+    if (outcome.result === 'unclaimed') result.drift.push({ path: `.bowerloom/${path}`, kind: 'unexpected' });
+    else if (outcome.result === 'refused') result.drift.push({ path: `.bowerloom/${path}`, kind: 'owner-refused', code: outcome.code });
+    else owned.push({ path: `.bowerloom/${path}`, owner: outcome.owner, state: outcome.result });
+  };
+  const walk = async (relative: string): Promise<void> => {
+    const entries = readdirSync(join(directory, relative), { withFileTypes: true });
+    if (owners) entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
       if (++count > 256) fail('INSPECTION_LIMIT');
       const path = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory() && !entry.isSymbolicLink()) {
-        if (!receipt.plan.files.some(file => file.path.startsWith(path + '/'))) result.drift.push({ path: `.bowerloom/${path}`, kind: 'unexpected' });
-        else walk(path);
-      } else if (!expectedPaths.has(path)) result.drift.push({ path: `.bowerloom/${path}`, kind: 'unexpected' });
+        if (!receipt.plan.files.some(file => file.path.startsWith(path + '/'))) await unaccounted(path, 'directory');
+        else await walk(path);
+      } else if (!expectedPaths.has(path)) await unaccounted(path, entry.isFile() && !entry.isSymbolicLink() ? 'file' : null);
     }
   };
-  try { walk(''); } catch { result.drift.push({ path: '.bowerloom', kind: 'unsafe' }); }
+  try { await walk(''); } catch { result.drift.push({ path: '.bowerloom', kind: 'unsafe' }); }
+  owned.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   if (!result.drift.length) {
     try {
       const compiled = await compileCrew(join(directory, TEAM_PATH)); result.compiledCandidate = compiled.candidateRevision;

@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { mkdirSync,writeFileSync,readFileSync } from 'node:fs';
 import {join} from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {parseCrew} from '../../../dist/packages/crew/src/index.js';
 import {planControl,registerControl,openControlOwner} from '../../../dist/packages/local-control/src/index.js';
 import { DBOS } from '@dbos-inc/dbos-sdk';
@@ -68,7 +69,7 @@ process.once('message', async ({ config, options, root, schemas, resetAtMs, acco
     } };
     const effects = await PostgresWorkspaceEffects.open(effectConnection, { schema: schemas.effects,
       workspaces: [{ workspaceId: 'synthetic-workspace', root, writablePaths: ['output/job-board/index.html','output/design/brief.md'] }] });
-    const adapter = new SyntheticProcessAdapter({ command: [process.execPath, new URL('./synthetic-child.mjs', import.meta.url).pathname], cwd: root, timeoutMs: 15000, outputBytes: 65536 });
+    const adapter = new SyntheticProcessAdapter({ command: [process.execPath, fileURLToPath(new URL('./synthetic-child.mjs', import.meta.url))], cwd: root, timeoutMs: 15000, outputBytes: 65536 });
     if(mode==='registered-control'){
       const bytes=readFileSync('examples/endor/crew.yaml','utf8'),definition=parseCrew(bytes),spec=`teams/${definition.id}/team.yaml`;
       mkdirSync(join(root,'.bowerloom','teams',definition.id),{recursive:true,mode:0o700});writeFileSync(join(root,'.bowerloom',spec),bytes,{mode:0o600});

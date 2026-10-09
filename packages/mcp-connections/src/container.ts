@@ -141,7 +141,7 @@ export function createMcpContainerDiscoveryFactory(value: McpContainerOptions): 
         busy = true; count++;
         const params = data(suppliedParams ?? {});
         if (method === 'initialize') {
-          if (canonicalJson(params) !== canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.0' } })) fail('MCP_CONTAINER_INPUT');
+          if (canonicalJson(params) !== canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.1' } })) fail('MCP_CONTAINER_INPUT');
         } else if (method === 'tools/list') {
           if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => key !== 'cursor')) fail('MCP_CONTAINER_INPUT');
           const cursor = (params as Record<string, unknown>).cursor;

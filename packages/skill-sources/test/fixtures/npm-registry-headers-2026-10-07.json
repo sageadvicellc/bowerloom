@@ -1,0 +1,10 @@
+{
+  "format": "bowerloom/recorded-response-headers/v1",
+  "request": "GET https://registry.npmjs.org/@tanstack/db-skills/0.0.1",
+  "observed": "2026-10-07",
+  "status": 200,
+  "contentLength": 1926,
+  "contentType": "application/json",
+  "headerNames": ["date", "content-type", "content-length", "connection", "set-cookie", "set-cookie", "cf-ray", "cf-cache-status", "access-control-allow-origin", "server"],
+  "valuesRecorded": false
+}

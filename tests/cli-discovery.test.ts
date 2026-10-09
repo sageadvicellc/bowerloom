@@ -31,10 +31,10 @@ test('version aliases report the actual distribution version independent of work
 });
 test('root and exact init help aliases succeed without creating a target or changing files',t=>{
   const f=fixture(t),before=readdirSync(f.root).sort();
-  for(const args of [['--help'],['-h'],['init','--help'],['init','-h']]) {
+  for(const args of [['help','advanced'],['init','--help'],['init','-h']]) {
     const r=run(f.root,args);assert.equal(r.status,0,r.stderr);assert.equal(r.stderr,'');assert.match(r.stdout,/bowerloom init plan/);
     assert.match(r.stdout,/engineer\|founder\|research/);
-    assert.ok(r.stdout.startsWith(`Bowerloom ${version}: open beta (unreleased)`));
+    assert.ok(r.stdout.startsWith(`Bowerloom ${version}: open beta\n`));
     assert.doesNotMatch(r.stdout,/alpha/i);
   }
   assert.deepEqual(readdirSync(f.root).sort(),before);assert.equal(existsSync(f.target),false);
@@ -49,7 +49,7 @@ test('discovery flags with extra arguments and malformed startup remain usage re
     const r=run(f.root,args);assert.equal(r.status,2,JSON.stringify({args,...r}));assert.equal(r.stdout,'');
     assert.equal(JSON.parse(r.stderr).error.code,'USAGE');
   }
-  const unknown=run(f.root,['unknown']);assert.equal(unknown.status,2);assert.match(JSON.parse(unknown.stderr).error.message,/bowerloom plan/);assert.doesNotMatch(unknown.stderr,/trellis plan/);
+  const unknown=run(f.root,['unknown']);assert.equal(unknown.status,2);assert.equal(JSON.parse(unknown.stderr).error.message,'Unknown command unknown. Run bowerloom help.');assert.doesNotMatch(unknown.stderr,/trellis/);
   assert.deepEqual(readdirSync(f.root).sort(),before);assert.equal(existsSync(f.target),false);
   assert.equal(readFileSync(join(f.root,'preserve.txt'),'utf8'),'Synthetic existing file.\n');
 });

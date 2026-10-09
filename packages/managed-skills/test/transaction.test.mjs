@@ -1,4 +1,5 @@
-import test from 'node:test';
+import '../../../dist/tests/support/isolate-home.js';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,6 +14,7 @@ import { applyObservedManagedSkill, planObservedManagedSkillRecovery, recoverObs
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
 import { observeSkillCacheRoot, openNpmCacheOperation, inspectSkillCache } from '../../../dist/packages/skill-sources/src/cache.js';
 import { planObservedManagedSkill, inspectObservedManagedSkill } from '../../../dist/packages/managed-skills/src/observed.js';
+import { lockPort, withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 const hash = b => createHash('sha256').update(b).digest('hex');
 function archive(files) {
   const blocks = [];
@@ -94,7 +96,7 @@ test('a second interruption during rollback remains recoverable without replayin
 });
 test('lost terminal fsync acknowledgement remains pending until fresh exact recovery', async t => {
   const f = await fixture(t), plan = await planObservedManagedSkill(f.input), open = fs.openSync, fsync = fs.fsyncSync; let receiptFd, hit = false;
-  t.mock.method(fs, 'openSync', (file, ...args) => { const fd = open(file, ...args); if (String(file) === path.join(opDir(f, plan), 'receipt.json') && (args[0] & fs.constants.O_CREAT)) receiptFd = fd; return fd; });
+  t.mock.method(fs, 'openSync', (file, ...args) => { const fd = open(file, ...args); if (String(file) === path.join(opDir(f, plan), '.receipt.json.tmp') && (args[0] & fs.constants.O_CREAT)) receiptFd = fd; return fd; });
   t.mock.method(fs, 'fsyncSync', fd => { fsync(fd); if (fd === receiptFd && !hit) { hit = true; throw Error('PRIVATE_ACK_LOSS'); } });
   await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null)); t.mock.restoreAll(); assert.equal(hit, true); assert.equal((await recover(f, plan, 'resume')).state, 'committed');
 });
@@ -127,6 +129,16 @@ for (const first of ['startup', 'manager']) for (const method of ['apply', 'reco
   assert.equal((await inspectStartup(f.projectDir)).specReady, true);
 });
 
+test('a lock slot held by another program refuses LOCK_SLOT_COLLISION naming the port, with no write', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), port = lockPort(f.projectDir), before = inventory(f.projectDir);
+  const blocker = net.createServer(socket => socket.destroy()); await new Promise((resolve, reject) => { blocker.once('error', reject); blocker.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
+  try { await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION' && e.message.includes(String(port))); }
+  finally { await new Promise(resolve => blocker.close(resolve)); }
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  // This project's own lock holder is LOCKED, as before.
+  await withProjectLock(f.projectDir, new AbortController().signal, async () => { await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_LOCKED'); });
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+});
 test('concurrent real apply calls create one operation and one committed receipt', async t => {
   const f = await fixture(t), p = await planObservedManagedSkill(f.input);
   const results = await Promise.allSettled([applyObservedManagedSkill(f.input, p.revision, null), applyObservedManagedSkill(f.input, p.revision, null)]);
@@ -134,7 +146,7 @@ test('concurrent real apply calls create one operation and one committed receipt
 });
 test('changed recovery approval, foreign marker and substituted stages refuse without repair', async t => {
   const f = await fixture(t), p = await planObservedManagedSkill(f.input), rename = fs.renameSync; let hit = false;
-  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit) { hit = true; throw Error('before first rename'); } return rename(from, to); });
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('before first rename'); } return rename(from, to); });
   await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll();
   const recovery = await planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'resume' });
   await assert.rejects(recoverObservedManagedSkill(recovery, '0'.repeat(64)));
@@ -195,7 +207,8 @@ test('cancellation in the closing operation-space observation permits no followi
   const effects = trackEffects(t, () => hit);
   t.mock.method(fs, 'statfsSync', (dir, ...args) => { const result = statfs(dir, ...args); if (!hit && String(dir) === opDir(f, plan)) { hit = true; controller.abort(); } return result; });
   await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null, { signal: controller.signal }), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
-  t.mock.restoreAll(); assert.equal(hit, true); assert.deepEqual(effects, []); assert.deepEqual(fs.readdirSync(opDir(f, plan)), []);
+  // The first observation of the published operation folder: it holds its intent and nothing else.
+  t.mock.restoreAll(); assert.equal(hit, true); assert.deepEqual(effects, []); assert.deepEqual(fs.readdirSync(opDir(f, plan)), ['intent.json']);
 });
 test('cancellation during final destination-name inspection permits no rename or journal effect', async t => {
   const f = await fixture(t), plan = await planObservedManagedSkill(f.input), controller = new AbortController(), readdir = fs.readdirSync;
@@ -258,4 +271,139 @@ test('terminal marker cleanup refuses a replaced approved parent without removin
   assert.ok(swapped); unchangedReplacement(swapped, 'directory'); assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), true);
   await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: plan.operationKey, action: 'resume' }));
   assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), true);
+});
+for (const [kind, id] of [['MOVE_INTENT', 'projection-publish'], ['MOVE_DONE', 'projection-publish'], ['RECEIPT_INTENT', null]]) for (const action of ['resume', 'rollback']) test(`a kill between the open and the write of ${kind}${id ? ' ' + id : ''} leaves no empty record and ${action} converges`, async t => {
+  const f = await fixture(t), before = inventory(f.projectDir), plan = await planObservedManagedSkill(f.input), write = fs.writeFileSync; let hit = false;
+  t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (!hit && typeof data === 'string' && data.startsWith('{"sequence":') && data.includes(`"kind":"${kind}"`) && (!id || data.includes(`"id":"${id}"`))) { hit = true; throw Error('PRIVATE_KILL'); } return write(fd, data, ...rest); });
+  await assert.rejects(applyObservedManagedSkill(f.input, plan.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); t.mock.restoreAll(); assert.equal(hit, true);
+  for (const n of fs.readdirSync(opDir(f, plan))) if (/^record-\d{3}\.json$/.test(n)) assert.ok(fs.statSync(path.join(opDir(f, plan), n)).size > 0, n);
+  const result = await recover(f, plan, action); assert.equal(result.state, action === 'resume' ? 'committed' : 'rolled-back'); assert.equal(fs.existsSync(path.join(f.projectDir, '.bowerloom-skills-pending.json')), false);
+  if (action === 'rollback') assert.deepEqual(inventory(f.projectDir), before);
+});
+
+const intentWriteV1 = (t, also = () => {}) => {
+  const write = fs.writeFileSync; t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (typeof data === 'string' && data.includes('"bowerloom/managed-skill-intent/v1beta1"')) throw Error('PRIVATE_KILL'); return write(fd, data, ...rest); });
+  also(); syncBuiltinESMExports();
+};
+test('v1: a failure before the operation folder is published leaves no operation, and the same approval applies', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), before = inventory(f.projectDir);
+  intentWriteV1(t); await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_REFUSED' && !e.message.includes('PRIVATE')); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+});
+test('v1: a leftover private operation temporary is ignored by plan and removed under the lock', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input);
+  intentWriteV1(t, () => t.mock.method(fs, 'rmdirSync', () => { throw Error('PRIVATE_KILLED'); }));
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.deepEqual(fs.readdirSync(f.stateDir), ['.op-' + p.operationKey + '.tmp']);
+  assert.equal((await planObservedManagedSkill(f.input)).revision, p.revision);
+  assert.equal((await applyObservedManagedSkill(f.input, p.revision, null)).state, 'committed');
+  assert.deepEqual(fs.readdirSync(f.stateDir), ['op-' + p.operationKey]);
+  // A temporary with other content is never removed.
+  const g = await fixture(t), q = await planObservedManagedSkill(g.input), temp = path.join(g.stateDir, '.op-' + 'c'.repeat(64) + '.tmp');
+  fs.mkdirSync(temp, { mode: 0o700 }); fs.writeFileSync(path.join(temp, 'notes.txt'), 'user data', { mode: 0o600 });
+  await assert.rejects(applyObservedManagedSkill(g.input, q.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(fs.readdirSync(temp), ['notes.txt']);
+});
+for (const initial of [true, false]) test(`v1: after a rolled-back ${initial ? 'install' : 'update'}, the same request plans a new operation and applies`, async t => {
+  const f = await fixture(t); let previous = null, input = f.input;
+  if (!initial) { previous = await install(f); const next = await fixture(t, '2.0.0'); input = { ...f.input, operation: 'update', cache: next.input.cache, expectedPreviousRevision: previous.receipt.revision }; }
+  const first = await planObservedManagedSkill(input);
+  // A first install on an empty state folder keeps the key it always had: no history field.
+  assert.equal(Object.hasOwn(first.core, 'history'), !initial);
+  const rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(input, first.revision, previous?.receipt.revision ?? null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); t.mock.restoreAll(); syncBuiltinESMExports(); assert.equal(hit, true);
+  assert.equal((await recover(f, first, 'rollback')).state, 'rolled-back');
+  const again = await planObservedManagedSkill(input);
+  assert.notEqual(again.operationKey, first.operationKey); assert.ok(again.core.history.includes(first.operationKey));
+  const receipt = await applyObservedManagedSkill(input, again.revision, previous?.receipt.revision ?? null); assert.equal(receipt.state, 'committed');
+  const inspected = await inspectObservedManagedSkill({ projectDir: f.projectDir, stateDir: f.stateDir }); assert.equal(inspected.status, 'committed'); assert.equal(inspected.operationKey, again.operationKey);
+});
+test('v1: an operation folder may hold at most one record temporary, with exactly the next name', async t => {
+  const killed = async () => { const f = await fixture(t), p = await planObservedManagedSkill(f.input), rename = fs.renameSync; let hit = false;
+    t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+    await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); return { f, p, op: opDir(f, p) }; };
+  const next = op => '.record-' + String(fs.readdirSync(op).filter(n => /^record-\d{3}\.json$/.test(n)).length).padStart(3, '0') + '.json.tmp';
+  for (const names of [['.record-200.json.tmp'], ['.intent.json.tmp'], ['NEXT', '.receipt.json.tmp']]) {
+    const { f, p, op } = await killed(); for (const n of names) fs.writeFileSync(path.join(op, n === 'NEXT' ? next(op) : n), 'junk', { mode: 0o600 });
+    await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'rollback' }), names.join());
+  }
+  const { f, p, op } = await killed(); fs.writeFileSync(path.join(op, next(op)), '', { mode: 0o600 });
+  assert.equal((await recover(f, p, 'rollback')).state, 'rolled-back'); assert.deepEqual(fs.readdirSync(op).filter(n => n.endsWith('.tmp')), []);
+});
+test('v1: a marker twin from a kill between link and unlink is settled, and a leftover marker temporary goes only when it is ours', async t => {
+  const killFirstMove = () => { const rename = fs.renameSync; let hit = false; t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports(); };
+  const killed = async () => { const f = await fixture(t), p = await planObservedManagedSkill(f.input); killFirstMove(); await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); return { f, p, marker: path.join(f.projectDir, '.bowerloom-skills-pending.json'), temp: path.join(f.projectDir, '..bowerloom-skills-pending.json.tmp') }; };
+  // The twin: the marker and its temporary are one file with two links.
+  let k = await killed(); fs.linkSync(k.marker, k.temp);
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.existsSync(k.temp), false); assert.equal(fs.existsSync(k.marker), false);
+  // A part-written temporary of this operation's marker is removed with the marker.
+  k = await killed(); fs.writeFileSync(k.temp, fs.readFileSync(k.marker).subarray(0, 30), { mode: 0o600 });
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.existsSync(k.temp), false);
+  // Other bytes under that name stay.
+  k = await killed(); fs.writeFileSync(k.temp, 'not ours', { mode: 0o600 });
+  assert.equal((await recover(k.f, k.p, 'rollback')).state, 'rolled-back'); assert.equal(fs.readFileSync(k.temp, 'utf8'), 'not ours');
+  // A marker published while a file appeared at its name after the check is never replaced.
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), marker = path.join(f.projectDir, '.bowerloom-skills-pending.json'), link = fs.linkSync, rename = fs.renameSync;
+  const plant = to => { if (String(to) === marker && !fs.existsSync(marker)) fs.writeFileSync(marker, 'foreign', { mode: 0o600 }); };
+  t.mock.method(fs, 'linkSync', (from, to) => { plant(to); return link(from, to); }); t.mock.method(fs, 'renameSync', (from, to) => { plant(to); return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports(); assert.equal(fs.readFileSync(marker, 'utf8'), 'foreign');
+});
+test('v1 apply and recovery refuse inside their own lock while a v1beta2 operation is unfinished or v1beta2 owns the project', async t => {
+  const { managedV2State } = await import('../../../dist/packages/managed-skills/src/v2-observed.js');
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), bowerloom = path.join(f.projectDir, '.bowerloom'); fs.mkdirSync(bowerloom, { mode: 0o700 });
+  // A kill while the v1beta2 marker was written leaves only its temporary: that is pending too.
+  const temp = path.join(bowerloom, '.managed-pending.json.tmp'); fs.writeFileSync(temp, '{"format":"bowerloom/managed-item-pen', { mode: 0o600 });
+  assert.equal(managedV2State(f.projectDir), 'pending'); const before = inventory(f.projectDir);
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  assert.deepEqual(fs.readdirSync(f.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+  fs.rmSync(temp); fs.mkdirSync(path.join(bowerloom, 'managed'), { mode: 0o700 }); assert.equal(managedV2State(f.projectDir), 'managed');
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_REFUSED'); assert.deepEqual(fs.readdirSync(f.stateDir), []);
+  // Recovery of an unfinished v1 operation refuses the same way while v1beta2 state is present.
+  fs.rmSync(path.join(bowerloom, 'managed'), { recursive: true }); const rename = fs.renameSync; let hit = false;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (!hit && !String(from).endsWith('.tmp')) { hit = true; throw Error('PRIVATE_KILL'); } return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null)); t.mock.restoreAll(); syncBuiltinESMExports();
+  const recovery = await planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'rollback' });
+  fs.writeFileSync(temp, '', { mode: 0o600 }); const pending = inventory(f.projectDir);
+  await assert.rejects(recoverObservedManagedSkill(recovery, recovery.revision), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED'); assert.deepEqual(inventory(f.projectDir), pending);
+  fs.rmSync(temp); assert.equal((await recoverObservedManagedSkill(recovery, recovery.revision)).state, 'rolled-back');
+});
+
+// Review F2 (lock hardening): a kill after the operation folder is published and before the marker lands.
+const MARKER_V1 = '.bowerloom-skills-pending.json', MARKER_TEMP_V1 = '..bowerloom-skills-pending.json.tmp';
+async function killedBeforeMarker(t, how) {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), before = inventory(f.projectDir);
+  if (how === 'link') { const link = fs.linkSync; t.mock.method(fs, 'linkSync', (from, to) => { if (String(to).endsWith(MARKER_V1)) throw Error('PRIVATE_KILL'); return link(from, to); }); }
+  else { const write = fs.writeFileSync; t.mock.method(fs, 'writeFileSync', (fd, data, ...rest) => { if (typeof data === 'string' && data.includes('"bowerloom/managed-skill-pending/v1beta1"')) throw Error('PRIVATE_KILL'); return write(fd, data, ...rest); }); }
+  syncBuiltinESMExports();
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED' && !e.message.includes('PRIVATE')); t.mock.restoreAll(); syncBuiltinESMExports();
+  return { f, p, before, op: opDir(f, p) };
+}
+for (const how of ['link', 'temp write']) test(`v1: a kill between the operation folder and the marker (${how}) recovers only by a rollback that writes a rolled-back receipt`, async t => {
+  const { f, p, before, op } = await killedBeforeMarker(t, how);
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_V1)), false); assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), true);
+  assert.deepEqual(fs.readdirSync(op).sort(), ['intent.json']);
+  await assert.rejects(planObservedManagedSkillRecovery({ projectDir: f.projectDir, stateDir: f.stateDir, operationKey: p.operationKey, action: 'resume' }), e => /^MANAGED_SKILL_/.test(e.code), 'resume needs the marker');
+  const receipt = await recover(f, p, 'rollback');
+  assert.equal(receipt.state, 'rolled-back'); assert.equal(receipt.restoredPrevious, null);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(op, 'receipt.json'), 'utf8')).revision, receipt.revision);
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), false, 'our own marker temporary goes, through discardMarkerTemp');
+  assert.deepEqual(inventory(f.projectDir).filter(r => r.path !== MARKER_TEMP_V1), before);
+  // The rollback is final: the same request plans a new operation, which applies.
+  const again = await planObservedManagedSkill(f.input); assert.notEqual(again.operationKey, p.operationKey);
+  assert.equal((await applyObservedManagedSkill(f.input, again.revision, null)).state, 'committed');
+});
+test('v1: a rollback of an unpublished marker that is itself killed recovers again', async t => {
+  const { f, p, op } = await killedBeforeMarker(t, 'link');
+  const rename = fs.renameSync; t.mock.method(fs, 'renameSync', (from, to) => { if (String(to).endsWith('receipt.json')) throw Error('PRIVATE_KILL'); return rename(from, to); }); syncBuiltinESMExports();
+  await assert.rejects(recover(f, p, 'rollback')); t.mock.restoreAll(); syncBuiltinESMExports();
+  assert.ok(fs.readdirSync(op).some(n => /^record-\d{3}\.json$/.test(n)), 'the first rollback left its own records');
+  assert.equal((await recover(f, p, 'rollback')).state, 'rolled-back');
+  assert.equal(fs.existsSync(path.join(f.projectDir, MARKER_TEMP_V1)), false);
+});
+test('v1: a marker temporary that is not ours is never removed: apply refuses before it creates the operation', async t => {
+  const f = await fixture(t), p = await planObservedManagedSkill(f.input), temp = path.join(f.projectDir, MARKER_TEMP_V1);
+  fs.writeFileSync(temp, 'not ours', { mode: 0o600 });
+  await assert.rejects(applyObservedManagedSkill(f.input, p.revision, null), e => e.code === 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  assert.equal(fs.readFileSync(temp, 'utf8'), 'not ours'); assert.deepEqual(fs.readdirSync(f.stateDir), []);
 });

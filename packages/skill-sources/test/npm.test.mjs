@@ -1,3 +1,4 @@
+import '../../../dist/tests/support/isolate-home.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -252,4 +253,68 @@ test('a declared length over the limit is NPM_RESPONSE_BOUND, while a redirect s
   await assert.rejects(run(f), code('NPM_RESPONSE_BOUND')); assert.equal(n.calls.length, 1); t.mock.restoreAll();
   const g = fixture(t), m = network(t, g, () => ({ status: 302, headers: ['Location', 'https://evil.example/a'] }));
   await assert.rejects(run(g), code('NPM_RESPONSE')); assert.equal(m.calls.length, 1);
+});
+
+// Decision D11: a repeated header name refuses only when the transport reads it or it frames the body.
+const recordedHeaders = JSON.parse(fs.readFileSync(new URL('./fixtures/npm-registry-headers-2026-10-07.json', import.meta.url), 'utf8'));
+const HEADER_CANARY = 'PRIVATE_HEADER_VALUE';
+// The recorded names in their recorded order. Values are synthetic: none was recorded.
+function recordedResponse(body, type) {
+  let cookie = 0; const value = { date: 'Wed, 07 Oct 2026 00:00:00 GMT', 'content-type': type, 'content-length': String(body.length), connection: 'keep-alive', 'cf-ray': 'synthetic-ray', 'cf-cache-status': 'HIT', 'access-control-allow-origin': '*', server: 'cloudflare' };
+  return recordedHeaders.headerNames.flatMap(name => [name, name === 'set-cookie' ? `${HEADER_CANARY}_${++cookie}=1; Path=/` : value[name]]);
+}
+function quietConsole(t) { const lines = []; for (const method of ['log', 'info', 'warn', 'error', 'debug', 'trace']) t.mock.method(console, method, (...args) => { lines.push(args.map(String).join(' ')); }); return lines; }
+function treeText(root) { let text = ''; for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) if (entry.isFile()) text += fs.readFileSync(path.join(entry.parentPath, entry.name), 'latin1'); return text; }
+test('D11: the recorded registry header list, with two set-cookie headers, completes and logs no header value', async t => {
+  assert.equal(recordedHeaders.headerNames.filter(name => name === 'set-cookie').length, 2);
+  const f = fixture(t), lines = quietConsole(t);
+  const n = network(t, f, count => ({ headers: recordedResponse(count === 1 ? f.metadata : f.archive, count === 1 ? 'application/json' : 'application/octet-stream') }));
+  const receipt = await run(f);
+  assert.equal(receipt.format, 'bowerloom/acquired-skill-cache/v1beta1'); assert.equal(n.calls.length, 2);
+  assert.equal(lines.some(line => line.includes(HEADER_CANARY)), false); assert.equal(JSON.stringify(receipt).includes(HEADER_CANARY), false); assert.equal(treeText(f.root).includes(HEADER_CANARY), false);
+  assert.equal((await inspectSkillCache({ root: f.root, operationId: f.binding.operationId })).status, 'COMPLETED');
+});
+test('D11: two set-cookie headers alone pass on both requests', async t => {
+  const f = fixture(t);
+  const n = network(t, f, count => ({ headers: ['Set-Cookie', HEADER_CANARY + '_A=1', 'Content-Length', String((count === 1 ? f.metadata : f.archive).length), 'set-cookie', HEADER_CANARY + '_B=2'] }));
+  const receipt = await run(f); assert.equal(receipt.source.archiveSha256, hash(f.archive)); assert.equal(n.calls.length, 2);
+});
+test('D11: a repeated guarded header still refuses with NPM_RESPONSE before any body is kept', async t => {
+  const cases = [
+    count => ['Content-Length', String(count), 'Content-Length', String(count)],
+    () => ['Content-Type', 'application/json', 'Content-Type', 'application/json'],
+    () => ['content-type', 'application/json', 'Content-Type', HEADER_CANARY],
+    () => ['Content-Encoding', 'identity', 'Content-Encoding', 'identity'],
+    () => ['Location', 'https://registry.npmjs.org/a', 'Location', 'https://registry.npmjs.org/a'],
+    () => ['Transfer-Encoding', 'chunked', 'Transfer-Encoding', 'chunked'],
+    () => ['Content-Range', 'bytes 0-1/2', 'Content-Range', 'bytes 0-1/2'],
+  ];
+  for (const headers of cases) {
+    const f = fixture(t), lines = quietConsole(t);
+    const n = network(t, f, () => ({ headers: ['set-cookie', HEADER_CANARY, ...headers(f.metadata.length), 'set-cookie', HEADER_CANARY] }));
+    await assert.rejects(run(f), e => code('NPM_RESPONSE')(e) && !String(e.stack).includes(HEADER_CANARY) && !JSON.stringify(e).includes(HEADER_CANARY));
+    assert.equal(n.calls.length, 1); assert.ok(n.responses[0].destroyed); assert.equal(lines.some(line => line.includes(HEADER_CANARY)), false);
+    assert.equal((await inspectSkillCache({ root: f.root, operationId: f.binding.operationId })).status === 'COMPLETED', false);
+    t.mock.restoreAll();
+  }
+});
+// Header flood (security review of 48257d5, finding 1): Node drops raw headers past about 2000 entries without an error.
+const padHeaders = count => Array.from({ length: count }, (_, i) => ['x-pad-' + i, 'a']).flat();
+test('header flood: a list Node truncated after 1000 padding headers refuses with NPM_RESPONSE, and 128 pairs pass', async t => {
+  // Node kept the first Content-Length and the padding, and dropped the repeat that followed.
+  const f = fixture(t), n = network(t, f, () => ({ headers: ['Content-Length', String(f.metadata.length), ...padHeaders(1000)] }));
+  await assert.rejects(run(f), code('NPM_RESPONSE')); assert.equal(n.calls.length, 1); assert.ok(n.responses[0].destroyed); t.mock.restoreAll();
+  const g = fixture(t), m = network(t, g, count => ({ headers: ['Content-Length', String((count === 1 ? g.metadata : g.archive).length), ...padHeaders(127)] }));
+  assert.equal((await run(g)).format, 'bowerloom/acquired-skill-cache/v1beta1'); assert.equal(m.calls.length, 2);
+});
+// Transfer-Encoding (lead decision, 2026-10-07): absent, or exactly `chunked` after trimming.
+test('Transfer-Encoding: absent and chunked pass, and every other value refuses with NPM_RESPONSE', async t => {
+  for (const name of ['Transfer-Encoding', 'transfer-encoding']) {
+    const f = fixture(t), n = network(t, f, () => ({ headers: [name, 'chunked'] }));
+    assert.equal((await run(f)).format, 'bowerloom/acquired-skill-cache/v1beta1'); assert.equal(n.calls.length, 2); t.mock.restoreAll();
+  }
+  for (const value of ['gzip, chunked', 'identity', 'Chunked']) {
+    const f = fixture(t), n = network(t, f, () => ({ headers: ['Transfer-Encoding', value] }));
+    await assert.rejects(run(f), code('NPM_RESPONSE')); assert.equal(n.calls.length, 1); assert.ok(n.responses[0].destroyed); t.mock.restoreAll();
+  }
 });

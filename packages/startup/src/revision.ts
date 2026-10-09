@@ -1,7 +1,8 @@
 import { constants, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { createServer } from 'node:net';
 import { canonicalJson } from '../../contracts/src/index.js';
+import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
+import type { LockSlot } from '../../project-context/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
 import { inspectStartup, StartupError, STARTUP_FORMAT, startupInternals as io } from './index.js';
@@ -43,15 +44,27 @@ function move(from: string, to: string): void {
   io.ancestors(dirname(from)); io.ancestors(dirname(to)); if (present(to)) fail('REVISION_DESTINATION_EXISTS');
   renameSync(from, to); syncDirectory(dirname(from)); if (dirname(from) !== dirname(to)) syncDirectory(dirname(to));
 }
-/** A kernel-owned, path-derived local port excludes cooperating writers and releases on process death.
+/** A kernel-owned local port, keyed on the target folder's device and inode (`lockSlot`), excludes cooperating writers and releases on process death.
  * A collision refuses work. No protocol, PID adoption, remote interface or daemon is provided. */
 async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
-  const port = 20000 + (Number.parseInt(io.hash(target).slice(0, 8), 16) % 30000);
-  const server = createServer(socket => socket.destroy());
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', () => reject(new StartupError('REVISION_LOCK_UNAVAILABLE')));
-    server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve);
+  let slot: LockSlot; try { slot = lockSlot(target); } catch { throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
+  const bind = (listener: ReturnType<typeof lockServer>) => new Promise<string | undefined>(resolve => {
+    listener.once('error', error => resolve((error as NodeJS.ErrnoException).code ?? 'UNKNOWN'));
+    listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => resolve(undefined));
   });
+  let server = lockServer(slot);
+  for (let attempt = 0; ; attempt++) {
+    const code = await bind(server);
+    if (code === undefined) break;
+    // This project's own lock (its banner) stays REVISION_LOCK_UNAVAILABLE; anything else on the slot is a collision.
+    // A holder that let go before its banner was read gets one more bind, with a fresh listener.
+    const verdict = code === 'EADDRINUSE' ? await slotRefusal(slot, attempt === 0) : 'locked';
+    if (verdict === 'free') { server = lockServer(slot); continue; }
+    if (verdict === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
+    throw new StartupError('REVISION_LOCK_UNAVAILABLE');
+  }
+  // A folder replaced between the key and the bind has another slot: this port locks nothing. Release and refuse.
+  if (!slotStillNames(target, slot)) { await new Promise<void>(resolve => server.close(() => resolve())); throw new StartupError('REVISION_LOCK_UNAVAILABLE'); }
   try { return await work(); }
   finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }

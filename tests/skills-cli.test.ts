@@ -1,3 +1,4 @@
+import './support/isolate-home.js';
 // CLI composition tests: real argv/file custody; synthetic downstream modules, no acquisition/effects.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,6 +36,11 @@ function fixture(t:any,value:unknown={synthetic:true}){
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const file=join(root,'request.json');fs.writeFileSync(file,JSON.stringify(value),{mode:0o600});
   calls.length=0;action=name=>({synthetic:true,name,executionAuthorized:false});return {root,file};
 }
+/** A record whose projectDir is a clean project folder under the fixture root. */
+function withProject(t:any,value:Record<string,unknown>){
+  const f=fixture(t);const projectDir=join(f.root,'project');fs.mkdirSync(projectDir,{mode:0o700});
+  const write=(v:Record<string,unknown>)=>fs.writeFileSync(f.file,JSON.stringify({...v,projectDir}));write(value);return {...f,projectDir,write};
+}
 const hex='a'.repeat(64);
 const deferred=()=>{let resolve!:(value:unknown)=>void,reject!:(error:unknown)=>void;const promise=new Promise((r,j)=>{resolve=r;reject=j;});return {promise,resolve,reject};};
 const tick=()=>new Promise<void>(r=>setImmediate(r));
@@ -51,9 +57,9 @@ test('exact source routes preserve arguments and separate acquisition approval f
   ] as const){calls.length=0;await runSkillsCommand(['skills',...tail]);assert.deepEqual(calls.map(c=>c.name),[name]);}
 });
 test('manager routes preserve previous approval, harness request and cancellation signal',async t=>{
-  const f=fixture(t,{operation:'install',harness:'claude'});await runSkillsCommand(['skills','plan','--request',f.file]);assert.equal(calls[0]!.name,'planObservedManagedSkill');assert.equal(calls[0]!.args[0].harness,'claude');assert.ok(calls[0]!.args[1].signal instanceof AbortSignal);
+  const f=withProject(t,{operation:'install',harness:'claude'});await runSkillsCommand(['skills','plan','--request',f.file]);assert.equal(calls[0]!.name,'planObservedManagedSkill');assert.equal(calls[0]!.args[0].harness,'claude');assert.ok(calls[0]!.args[1].signal instanceof AbortSignal);
   calls.length=0;await assert.rejects(runSkillsCommand(['skills','update','plan','--request',f.file]),code('USAGE'));assert.equal(calls.length,0);
-  fs.writeFileSync(f.file,JSON.stringify({operation:'update',harness:'codex'}));await runSkillsCommand(['skills','update','plan','--request',f.file]);assert.equal(calls[0]!.args[0].operation,'update');
+  f.write({operation:'update',harness:'codex'});await runSkillsCommand(['skills','update','plan','--request',f.file]);assert.equal(calls[0]!.args[0].operation,'update');
   for(const previous of ['none',hex]){calls.length=0;await runSkillsCommand(['skills','apply','--plan',f.file,'--approve',hex,'--previous',previous]);assert.equal(calls[0]!.name,'applyObservedManagedSkill');assert.equal(calls[0]!.args[1],hex);assert.equal(calls[0]!.args[2],previous==='none'?null:hex);}
   for(const [tail,name] of [
     [['inspect','--request',f.file],'inspectObservedManagedSkill'],
@@ -172,7 +178,7 @@ test('a partial open tells the user to start again with a new SOURCE_OPERATION, 
 
 test('a managed refusal appends only its listed managed code, so stale approval, local edit and drift differ',async t=>{
   const {ManagedSkillError}=await import(new URL('../packages/managed-skills/src/observed.js',import.meta.url).href);
-  const f=fixture(t,{operation:'update',harness:'codex'});
+  const f=withProject(t,{operation:'update',harness:'codex'});
   const message=(code:string)=>`The skills command stopped (${code}). Inspect the exact local cache and operation records before another action; no native execution authority is granted.`;
   for(const [code,argv] of [
     ['MANAGED_SKILL_STALE_APPROVAL',['skills','apply','--plan',f.file,'--approve',hex,'--previous','none']],
@@ -183,4 +189,77 @@ test('a managed refusal appends only its listed managed code, so stale approval,
   for(const error of [new ManagedSkillError('MANAGED_SKILL_PRIVATE_OTHER'),new Error('MANAGED_SKILL_LOCKED'),Object.create(ManagedSkillError.prototype,{code:{get(){throw Error('PRIVATE');}}})]){
     action=()=>{throw error;};await assert.rejects(runSkillsCommand(['skills','update','plan','--request',f.file]),(e:any)=>e.code==='SKILLS_REFUSED'&&e.message===plain);
   }
+});
+test('v1 apply and recovery refuse while a v1beta2 marker or managed folder exists, before dispatch',async t=>{
+  const v1Routes=[['skills','apply','--plan','FILE','--approve',hex,'--previous','none'],['skills','recover','plan','--request','FILE'],['skills','recover','apply','--plan','FILE','--approve',hex]];
+  const f=withProject(t,{operation:'install',harness:'claude'}),argv=(route:string[])=>route.map(x=>x==='FILE'?f.file:x);
+  const refused=(code:string)=>(e:any)=>e.code==='SKILLS_REFUSED'&&e.message.includes(code)&&!e.message.includes('PRIVATE');
+  // A clean project dispatches.
+  for(const route of v1Routes){calls.length=0;await runSkillsCommand(argv(route));assert.equal(calls.length,1);}
+  const bowerloom=join(f.projectDir,'.bowerloom');fs.mkdirSync(bowerloom,{mode:0o700});
+  for(const route of v1Routes){calls.length=0;await runSkillsCommand(argv(route));assert.equal(calls.length,1);}
+  // An unfinished v1beta2 operation: its marker.
+  const marker=join(bowerloom,'managed-pending.json');fs.writeFileSync(marker,'{}\n',{mode:0o600});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_RECOVERY_REQUIRED'),route.join(' '));assert.equal(calls.length,0);}
+  // A marker of any type counts, and a symlink is never followed.
+  fs.unlinkSync(marker);fs.symlinkSync(join(f.root,'absent-target'),marker);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_RECOVERY_REQUIRED'));assert.equal(calls.length,0);}
+  fs.unlinkSync(marker);
+  // The v1beta2 managed folder, with no marker.
+  fs.mkdirSync(join(bowerloom,'managed'),{mode:0o700});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_REFUSED'));assert.equal(calls.length,0);}
+  fs.rmdirSync(join(bowerloom,'managed'));
+  // A .bowerloom that is a symlink, group-writable or not a folder refuses rather than being read through.
+  fs.rmdirSync(bowerloom);const elsewhere=join(f.root,'elsewhere');fs.mkdirSync(elsewhere,{mode:0o700});fs.symlinkSync(elsewhere,bowerloom);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)),refused('MANAGED_SKILL_REFUSED'));assert.equal(calls.length,0);}
+  fs.unlinkSync(bowerloom);fs.mkdirSync(bowerloom,{mode:0o700});fs.chmodSync(bowerloom,0o770);
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  fs.rmdirSync(bowerloom);fs.writeFileSync(bowerloom,'not a folder\n',{mode:0o644});
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  // A record with no usable projectDir never dispatches.
+  fs.writeFileSync(f.file,JSON.stringify({operation:'install',harness:'claude'}));
+  for(const route of v1Routes){calls.length=0;await assert.rejects(runSkillsCommand(argv(route)));assert.equal(calls.length,0);}
+  // Plan and inspect stay read-only routes and are not gated.
+  fs.unlinkSync(bowerloom);fs.mkdirSync(bowerloom,{mode:0o700});fs.writeFileSync(join(bowerloom,'managed-pending.json'),'{}\n',{mode:0o600});f.write({operation:'install',harness:'claude'});
+  calls.length=0;await runSkillsCommand(['skills','plan','--request',f.file]);await runSkillsCommand(['skills','inspect','--request',f.file]);assert.equal(calls.length,2);
+});
+// Lead call 4 (DECISIONS-01, from the lock-hardening review): on SKILLS_CHANGED from a parent folder, read once more.
+// Each read of the record opens it once, so `opens` counts the reads. A parent folder changes when a file is added to it.
+const touchParent=(f:{root:string},n:number)=>fs.writeFileSync(join(f.root,`sibling-${n}.txt`),'x',{mode:0o600});
+function onOpen(t:any,f:{file:string},each:(n:number)=>void){
+  const open=fs.openSync;let opens=0;
+  t.mock.method(fs,'openSync',(path:any,...rest:any[])=>{const fd=(open as any)(path,...rest);if(path===f.file)each(++opens);return fd;});
+  return ()=>opens;
+}
+test('a parent folder that changes once during the first read is read again once, then the command dispatches',async t=>{
+  const f=fixture(t,{synthetic:true,id:1});const opens=onOpen(t,f,n=>{if(n===1)touchParent(f,n);});
+  await runSkillsCommand(['skills','inspect','--request',f.file]);
+  assert.deepEqual(calls.map(c=>c.name),['inspectObservedManagedSkill']);assert.deepEqual({...calls[0]!.args[0]},{synthetic:true,id:1});
+  assert.equal(opens(),3,'the first read, its one repeat, and the check before dispatch');
+});
+test('a parent folder that changes during the check before dispatch is read again once, and the same value dispatches',async t=>{
+  const f=fixture(t,{synthetic:true,id:2});const opens=onOpen(t,f,n=>{if(n===2)touchParent(f,n);});
+  await runSkillsCommand(['skills','inspect','--request',f.file]);
+  assert.deepEqual(calls.map(c=>c.name),['inspectObservedManagedSkill']);assert.deepEqual({...calls[0]!.args[0]},{synthetic:true,id:2});
+  assert.equal(opens(),3);
+});
+test('a parent folder that keeps changing still refuses SKILLS_CHANGED after exactly one more read, with no dispatch',async t=>{
+  const f=fixture(t);const opens=onOpen(t,f,n=>touchParent(f,n));
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(opens(),2);
+});
+test('the record file changing during the first read refuses at once: only a parent change is read again',async t=>{
+  const f=fixture(t,{synthetic:true,id:3});const opens=onOpen(t,f,n=>{if(n===1)fs.writeFileSync(f.file,'{"synthetic":true,"id":4}');});
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(opens(),1);
+});
+test('a new record renamed into place after the first read changes the parent folder too: the repeat still refuses SKILLS_CHANGED, with no dispatch (review M1F 5)',async t=>{
+  const f=fixture(t,{synthetic:true,id:5});
+  // The first read ends when it closes the record. Only then is a new record renamed into place, so the first read
+  // succeeds, the check before dispatch finds the parent folder changed, and its one repeat finds another record.
+  const open=fs.openSync,close=fs.closeSync;let opens=0,recordFd:number|undefined,replaced=false;
+  t.mock.method(fs,'openSync',(path:any,...rest:any[])=>{const fd=(open as any)(path,...rest);if(path===f.file){opens++;recordFd=fd;}return fd;});
+  t.mock.method(fs,'closeSync',(fd:any)=>{(close as any)(fd);if(fd===recordFd&&!replaced){replaced=true;const next=join(f.root,'next.json');fs.writeFileSync(next,'{"synthetic":true,"id":6}',{mode:0o600});fs.renameSync(next,f.file);}});
+  await assert.rejects(runSkillsCommand(['skills','inspect','--request',f.file]),code('SKILLS_CHANGED'));assert.equal(calls.length,0);
+  assert.equal(replaced,true);assert.equal(opens,2,'the first read completed, then the check before dispatch read once more and refused');
 });

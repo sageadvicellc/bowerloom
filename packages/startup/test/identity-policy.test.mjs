@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import {INSTALLATION_IDENTITY_POLICY as policy,parseInstallationIdentityPolicy,canonicalBirthtimeNs,comparePersistentIdentity as compare} from '../../../dist/packages/startup/src/identity-policy.js';
 const id=birthtimeNs=>({device:'16777229',inode:'123',uid:501,mode:448,birthtimeNs});

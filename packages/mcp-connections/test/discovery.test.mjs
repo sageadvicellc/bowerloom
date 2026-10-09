@@ -20,7 +20,7 @@ function harness(input,custom={}){
 test('exact approved discovery initializes, acknowledges, lists, matches and closes without tool calls',async()=>{
  const input=fixture(),h=harness(input),before=copy(input),result=await discoverMcpCatalog(input,h.options);
  assert.equal(h.observed.opens,1);assert.equal(h.observed.closed,1);assert.deepEqual(h.observed.methods.map(x=>x[0]),['initialize','notifications/initialized','tools/list']);
- assert.deepEqual(h.observed.methods[0][1],{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.0'}});
+ assert.deepEqual(h.observed.methods[0][1],{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.1'}});
  assert.equal(result.catalogRevision,planMcpConnection(input).catalogRevision);assert.equal(result.catalogMatched,true);assert.equal(result.cleanup,'closed');
  assert.equal(result.observedToolCount,2);assert.equal(result.pageCount,1);assert.equal(result.toolCalls,0);assert.equal(result.executionAuthorized,false);
  assert.equal(result.authenticationVerified,false);assert.equal(result.runtimePortabilityVerified,false);assert.deepEqual(result.grants,[]);

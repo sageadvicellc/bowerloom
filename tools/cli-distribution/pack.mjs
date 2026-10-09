@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
-export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','startup','workbench','workspace-effects']);
+export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-authoring','skill-manifest','project-sync','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -58,6 +58,8 @@ export function lockedDependencies(lock, dependencies, manifest) {
     const path=queue.shift(); if(chosen[path]) continue;
     const item=lock.packages[path];
     if(item.link || !/^https:\/\/registry\.npmjs\.org\//.test(item.resolved??'') || !/^sha512-/.test(item.integrity??'')) fail('Nonregistry or unpinned dependency: '+path);
+    // Security freeze info 5: "no install scripts" is a checked rule, not an observation.
+    if(Object.hasOwn(item,'hasInstallScript') && item.hasInstallScript!==false) fail('Locked dependency has an install script: '+path);
     const {dev,devOptional,workspaces,...entry}=item; chosen[path]=entry;
     for(const [name] of Object.entries({...item.dependencies,...item.optionalDependencies,...item.peerDependencies})) {
       const optional=Object.hasOwn(item.optionalDependencies??{},name) || item.peerDependenciesMeta?.[name]?.optional===true;
@@ -65,6 +67,19 @@ export function lockedDependencies(lock, dependencies, manifest) {
     }
   }
   return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':{name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,bin:manifest.bin,engines:manifest.engines},...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
+}
+// A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
+export function expectedInstallCommand(release, name, version) {
+  const d = release.distribution;
+  if (d === undefined) return `npm install --global ${name}@${version}`;
+  const archive = `${name}-${version}.tgz`;
+  if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || release.npm?.published !== false || release.state !== 'unreleased') return null;
+  return `npm install -g ./${archive}`;
+}
+// Freeze review finding 7: the heading above the install command is true for the record. A private archive is
+// installed from the folder that holds it; only an npm record is installed after publication.
+export function installHeading(release) {
+  return release.distribution === undefined ? 'After publication:' : 'Install it from the folder that holds the archive:';
 }
 export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   if(typeof releaseCandidate !== 'boolean') fail('releaseCandidate must be boolean');
@@ -76,13 +91,15 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
     || release.npm.published !== (release.state === 'published')
     || release.npm.registry !== 'https://registry.npmjs.org'
     || release.npm.distTag !== 'beta'
-    || release.npm.installCommand !== `npm install --global ${name}@${rootPackage.version}`) fail('Release record does not match package identity');
+    || release.npm.installCommand !== expectedInstallCommand(release, name, rootPackage.version)) fail('Release record does not match package identity');
   if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
+  // Security freeze finding 1: a private archive is never packed as a public candidate (private:false, publishConfig).
+  if(releaseCandidate && release.distribution !== undefined) fail('Release candidate refused: this record is a private archive, never an npm publication');
   const versions = {}, manifests = [];
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {
     // These explicit internal modules belong to the root MIT package; no standalone workspace is claimed.
     // If present, either manifest must undergo the normal license/dependency checks below.
-    if (['packages/connections/package.json', 'packages/routines/package.json', 'packages/skill-sources/package.json', 'packages/managed-skills/package.json'].includes(path)) {
+    if (['packages/connections/package.json', 'packages/routines/package.json', 'packages/skill-sources/package.json', 'packages/managed-skills/package.json', 'packages/project-context/package.json', 'packages/project-authoring/package.json', 'packages/skill-manifest/package.json', 'packages/project-sync/package.json'].includes(path)) {
       try { lstatSync(join(repo,path)); } catch(error) { if(error?.code === 'ENOENT') continue; throw error; }
     }
     const bytes=regular(repo,path), manifest=JSON.parse(bytes);
@@ -119,7 +136,7 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; external pinned npm dependencies must be available from cache or a separately authorized registry connection. No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
   if(releaseCandidate) {
     files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom beta candidate\n\nThis candidate is unreleased. Publication requires founder acceptance and an authorized npm identity. The monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. External dependencies retain their own licenses.\n'));
-    files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta, ${release.state}. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\nAfter publication:\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
+    files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta, ${release.state}. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\n${installHeading(release)}\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
   }
   const inventory=[...files].sort(([a],[b])=>a.localeCompare(b)).map(([path,bytes])=>({path,bytes:bytes.length,sha256:sha256(bytes),executable:ENTRY.includes(path)}));
   const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:manifest.private,releaseRecordSha256:sha256(regular(repo,'release/beta.json')),publicationState:release.state,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};

@@ -59,8 +59,9 @@ function stamp(s: fs.BigIntStats): string {
 function readRecord(file: string, limit: number, check:()=>void): { value: any; verify:()=>void } {
   canonicalPath(file);const parents:string[]=[];for(let p=dirname(file);;p=dirname(p)){parents.unshift(p);if(p==='/')break;}
   const uid=BigInt(process.getuid!());
-  const ancestorPins=parents.map(p=>{check();const s=fs.lstatSync(p,{bigint:true});if(!s.isDirectory()||s.isSymbolicLink()||(s.uid!==uid&&s.uid!==0n)||(s.mode&0o7022n)!==0n)refuse('SKILLS_RECORD');return {path:p,stamp:stamp(s)};});
-  const verifyAncestors=()=>{for(const p of ancestorPins){check();if(stamp(fs.lstatSync(p.path,{bigint:true}))!==p.stamp)refuse('SKILLS_CHANGED');}};
+  const pinAncestors=()=>parents.map(p=>{check();const s=fs.lstatSync(p,{bigint:true});if(!s.isDirectory()||s.isSymbolicLink()||(s.uid!==uid&&s.uid!==0n)||(s.mode&0o7022n)!==0n)refuse('SKILLS_RECORD');return {path:p,stamp:stamp(s)};});
+  let ancestorPins=pinAncestors(),ancestorChanged=false;
+  const verifyAncestors=()=>{for(const p of ancestorPins){check();if(stamp(fs.lstatSync(p.path,{bigint:true}))!==p.stamp){ancestorChanged=true;refuse('SKILLS_CHANGED');}}};
   let original='';let hash='';
   const read=()=>{
     check();verifyAncestors();const before=fs.lstatSync(file,{bigint:true});
@@ -75,10 +76,21 @@ function readRecord(file: string, limit: number, check:()=>void): { value: any; 
       if(original&&(stamp(before)!==original||digest!==hash))refuse('SKILLS_CHANGED');original=stamp(before);hash=digest;return content;
     }finally{if(fd!==undefined)fs.closeSync(fd);}
   };
-  const bytes=read(),text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+  // A parent folder that changed (SKILLS_CHANGED from verifyAncestors) gets one more read, before dispatch: the parents
+  // are pinned again and the record is read again with every check. The record file's own pins never relax: after the
+  // first read, the repeat must find the same stamp and hash. A second change of any kind refuses.
+  let repeated=false;
+  const readOnceMore=():Buffer=>{
+    ancestorChanged=false;
+    try{return read();}catch(error){
+      if(repeated||!ancestorChanged)throw error;
+      repeated=true;ancestorChanged=false;ancestorPins=pinAncestors();return read();
+    }
+  };
+  const bytes=readOnceMore(),text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
   if(!Buffer.from(text).equals(bytes))refuse('SKILLS_RECORD');
   const value=strictJson(text,limit);if(!value||typeof value!=='object'||Array.isArray(value))refuse('SKILLS_RECORD');
-  return {value,verify:()=>{read();}};
+  return {value,verify:()=>{readOnceMore();}};
 }
 /** CLI-owned single operation. No runtime registration or model authority. */
 export async function runSkillsCommand(args:string[]):Promise<unknown>{
@@ -120,6 +132,11 @@ export async function runSkillsCommand(args:string[]):Promise<unknown>{
       }
       if(command==='inspect'){record.verify();check();return observed.inspectObservedManagedSkill(record.value);}
       const tx=await import('../../../packages/managed-skills/src/transaction.js');record.verify();check();
+      // v1 apply and recovery know nothing of v1beta2. While a v1beta2 operation is unfinished, or v1beta2 owns the
+      // project, a v1 write could strand it, so these routes refuse before dispatch. Plan and inspect only read.
+      // v1 apply and recovery repeat this check inside their own lock (transaction.ts `noV2`), which closes the race.
+      const v2=await import('../../../packages/managed-skills/src/v2-observed.js');check();const seen=v2.managedV2State(record.value.projectDir);check();
+      if(seen==='pending')refuse('SKILLS_REFUSED',['MANAGED_SKILL_RECOVERY_REQUIRED']);if(seen!=='absent')refuse('SKILLS_REFUSED',['MANAGED_SKILL_REFUSED']);
       if(command==='apply')return tx.applyObservedManagedSkill(record.value,flags.get('--approve')!,flags.get('--previous')==='none'?null:flags.get('--previous')!,{signal});
       if(command==='recover plan')return tx.planObservedManagedSkillRecovery(record.value,{signal});
       return tx.recoverObservedManagedSkill(record.value,flags.get('--approve')!,{signal});

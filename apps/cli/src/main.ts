@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
+import { shortHelp, TOPICS, reportFailure } from './human.js';
+import { namesYesFlag } from './confirm.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -106,15 +109,78 @@ const INIT_HELP = [
 
 function installedVersion(): string { return readInstalledRelease().version; }
 
+// Freeze review finding 8 (Hanna's default: F' is the launch build): the heading says "open beta". The release
+// record and its validators keep their state values.
 function releaseHeading(): string {
   const record = readInstalledRelease();
-  return `Bowerloom ${record.version}: open beta (${record.state})\n${record.execution}\n`;
+  return `Bowerloom ${record.version}: open beta\n${record.execution}\n`;
 }
 
+function topic(name: string | undefined): string | null { return name !== undefined && Object.hasOwn(TOPICS, name) ? TOPICS[name]! : null; }
+const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
+/** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
+function helpText(words: readonly string[]): string | null {
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : topic(words[0]);
+  if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
+  if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
+  return null;
+}
+// The flags of the session commands (up --demo, status --installation). With one of them, the session parser keeps
+// its own usage words, as at cc117ac.
+const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
+// Every first word main() handles. Any other first word is a typo: review finding 6.
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+
 async function main(args: string[]): Promise<void> {
-  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(`${releaseHeading()}\n${HELP}`); return; }
+  // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
+  if (namesYesFlag(args)) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
+  // F' code review C: bare bowerloom prints the short help. At cc117ac it was a usage refusal, not a plumbing form.
+  if (args.length === 0 || (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help'))) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
+  if (args[0] === 'help') {
+    const text = helpText(args.slice(1));
+    if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');
+    process.stdout.write(`${releaseHeading()}\n${text}`); return;
+  }
+  if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
+  if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  // Review finding 6: status without a session flag is the project status, which names its own usage.
+  if (args[0] === 'status' && !SESSION_FLAGS.some(flag => args.includes(flag))) {
+    const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
+  }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
+  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt') {
+    if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    const { runCreateCommand } = await import('./create.js');
+    process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
+    const { runManifestCommand } = await import('./manifest.js');
+    process.exitCode = await runManifestCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // M5: sync, the v1beta2 item recovery (only with --item; the v1 forms take --request) and migrate.
+  if (args[0] === 'skills' && (args[1] === 'sync' || args[1] === 'migrate' || (args[1] === 'recover' && args.includes('--item')))) {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
+    const { runSyncCommand, runRecoverItemCommand, runMigrateCommand } = await import('./sync.js');
+    const run = args[1] === 'sync' ? runSyncCommand : args[1] === 'migrate' ? runMigrateCommand : runRecoverItemCommand;
+    process.exitCode = await run(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // M6: apply, and up in project mode. `up` without --team stays the --demo session command below.
+  if (args[0] === 'apply') {
+    const { runApplyCommand } = await import('./apply.js');
+    process.exitCode = await runApplyCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // `up` with --team, or with no session flag at all, is project mode: bare up gets the up --team usage (finding 6).
+  if (args[0] === 'up' && (args.includes('--team') || !SESSION_FLAGS.some(flag => args.includes(flag)))) {
+    const { runUpCommand } = await import('./up.js');
+    process.exitCode = await runUpCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
   if (args[0] === 'skills') {
     const { runSkillsCommand } = await import('./skills.js');
     process.stdout.write(`${canonicalJson(await runSkillsCommand(args))}\n`);
@@ -226,6 +292,7 @@ async function main(args: string[]): Promise<void> {
     } finally { process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort); }
     return;
   }
+  if (args[0] !== undefined && !COMMANDS.has(args[0])) throw new DefinitionError('USAGE', `Unknown command ${args[0]}. Run bowerloom help.`);
   const [command, file, flag, root] = args;
   if (!['validate', 'plan'].includes(command ?? '') || !file || file.startsWith('-')
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
@@ -244,8 +311,8 @@ async function main(args: string[]): Promise<void> {
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-  const code=error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&/^[A-Z_]{1,100}$/.test(error.code)?error.code:'IO_ERROR';
-  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
-  process.stderr.write(`${JSON.stringify({ error: { code: safeError.code, message: safeError.message } })}\n`);
-  process.exitCode = safeError.code === 'USAGE' ? 2 : 1;
+  // A terminal gets plain words. Anything else gets the JSON envelope agents parse.
+  const failure = reportFailure(error, process.stderr.isTTY === true);
+  process.stderr.write(failure.text);
+  process.exitCode = failure.exitCode;
 });

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {collect,stage,pack,imports,lockedDependencies,sha256} from '../pack.mjs';
+import {collect,stage,pack,imports,lockedDependencies,installHeading,sha256,MODULES} from '../pack.mjs';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -114,17 +114,51 @@ test('actual npm tarballs are byte-deterministic with exact inventory and standa
  console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
 });
 
+// An npm release record: the private-archive record of this repository without its distribution block.
+function npmRecord(t) {
+ const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ delete r.distribution;r.npm.installCommand=`npm install --global ${r.npm.packageName}@${r.version}`;writeFileSync(path,JSON.stringify(r,null,2)+'\n');
+ return {root,path};
+}
 test('release candidate uses the shared record and explicit public beta metadata without publication',t=>{
- const candidate=collect({repoDir:repo,releaseCandidate:true});
+ const {root,path}=npmRecord(t),candidate=collect({repoDir:root,releaseCandidate:true});
  assert.equal(candidate.manifest.private,false);
  assert.deepEqual(candidate.manifest.publishConfig,{access:'public',tag:'beta',registry:'https://registry.npmjs.org'});
  assert.equal(candidate.record.publicationState,'unreleased');
- assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(join(repo,'release/beta.json'))));
- assert.match(candidate.files.get('README.md').toString(),/After publication:/);
+ assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(path)));
+ assert.match(candidate.files.get('README.md').toString(),/After publication:\n\n```sh\nnpm install --global bowerloom@/);
  assert.doesNotMatch(candidate.files.get('README.md').toString(),/alpha|Private, unpublished/);
- const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ const r=JSON.parse(readFileSync(path));
  r.version='9.9.9';writeFileSync(path,JSON.stringify(r));
  assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+// Freeze security review finding 1: a private-archive record is never packed as a public release candidate, so its
+// package.json never loses private:true or gains a public publishConfig.
+test('a release candidate of a private-archive record refuses before anything is packed',t=>{
+ assert.ok(JSON.parse(readFileSync(join(repo,'release/beta.json'))).distribution,'this repository carries the private-archive record');
+ assert.throws(()=>collect({repoDir:repo,releaseCandidate:true}),/private archive/);
+ const root=area(t);assert.throws(()=>stage({repoDir:repo,stageDir:join(root,'stage'),releaseCandidate:true}),/private archive/);
+ assert.deepEqual(readdirSync(root),[]);
+ const plain=collect({repoDir:repo});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);
+});
+
+// Freeze review finding 7: the install heading is true for the record it is written for.
+test('the candidate install heading says After publication only for an npm record',t=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json')));
+ assert.equal(installHeading(record),'Install it from the folder that holds the archive:');
+ const {path}=npmRecord(t);assert.equal(installHeading(JSON.parse(readFileSync(path))),'After publication:');
+ for(const [path,bytes] of collect({repoDir:repo}).files)assert.doesNotMatch(bytes.toString('latin1'),/After publication/,path);
+});
+
+// Freeze security review info 5: "no install scripts" is a checked rule of the shrinkwrap, not an observation.
+test('a locked dependency with an install script refuses',()=>{
+ const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
+ const item={version:'1.0.0',resolved:'https://registry.npmjs.org/x/-/x-1.0.0.tgz',integrity:'sha512-x'};
+ assert.ok(lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest).packages['node_modules/x']);
+ for(const flag of [true,'true',1])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':{...item,hasInstallScript:flag}}},manifest.dependencies,manifest),/install script/);
+ const nested={...item,dependencies:{y:'2.0.0'}},y={version:'2.0.0',resolved:'https://registry.npmjs.org/y/-/y-2.0.0.tgz',integrity:'sha512-y',hasInstallScript:true};
+ assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':nested,'node_modules/y':y}},manifest.dependencies,manifest),/install script/);
 });
 
 test('packaging refuses a same-version renamed root package',t=>{
@@ -166,6 +200,29 @@ test('internal routine and skills manifests are exact exceptions and present man
    mode='symlink';assert.throws(()=>collect({repoDir:repo}),/symlink/);
   }
   selected=join(repo,'packages/crew/package.json');mode='missing';assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');
+ }finally{Object.assign(fs,original);syncBuiltinESMExports();}
+});
+
+// Beta 0.7.0 Day 0: the four project-layer packages are runtime modules with optional internal manifests.
+test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
+ const added=['project-context','project-authoring','skill-manifest','project-sync'];
+ for(const name of added)assert.ok(MODULES.includes(name),name);
+ assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
+ const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
+ let selected='',mode='missing';const valid={name:'synthetic-internal',license:'MIT',dependencies:{yaml:'2.9.1'}};
+ // A package folder that does not exist yet is presented as a plain directory, so only the manifest decides.
+ fs.lstatSync=function(path,...args){if(path===selected){if(mode==='missing'){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}if(mode==='symlink'){const s=original.lstatSync(join(repo,'package.json'),...args);s.isSymbolicLink=()=>true;return s;}return original.lstatSync(join(repo,'package.json'),...args);}if(mode!=='missing'&&path===dirname(selected))return original.lstatSync(join(repo,'packages'),...args);return original.lstatSync(path,...args);};
+ fs.readFileSync=function(path,...args){if(path===selected){const manifest=mode==='bad-license'?{...valid,license:'UNREVIEWED'}:mode==='unpinned'?{...valid,dependencies:{yaml:'^2.9.1'}}:mode==='conflict'?{...valid,dependencies:{yaml:'2.8.3'}}:valid;const bytes=Buffer.from(JSON.stringify(manifest));return args[0]==='utf8'?bytes.toString('utf8'):bytes;}return original.readFileSync(path,...args);};
+ syncBuiltinESMExports();
+ try{
+  for(const name of added){const relative=`packages/${name}/package.json`;
+   selected=join(repo,relative);mode='missing';assert.equal(collect({repoDir:repo}).record.sourceManifests.some(m=>m.path===relative),false,relative);
+   mode='valid';const included=collect({repoDir:repo}).record.sourceManifests.find(m=>m.path===relative);assert.equal(included.sha256,sha256(Buffer.from(JSON.stringify(valid))));
+   mode='bad-license';assert.throws(()=>collect({repoDir:repo}),/Unreviewed first-party license/);
+   mode='unpinned';assert.throws(()=>collect({repoDir:repo}),/exactly pinned/);
+   mode='conflict';assert.throws(()=>collect({repoDir:repo}),/Conflicting dependency/);
+   mode='symlink';assert.throws(()=>collect({repoDir:repo}),/symlink/);
+  }
  }finally{Object.assign(fs,original);syncBuiltinESMExports();}
 });
 

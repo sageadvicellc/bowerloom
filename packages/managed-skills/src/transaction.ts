@@ -1,10 +1,12 @@
 import fs from 'node:fs';
-import { join, dirname, relative } from 'node:path';
-import { createServer } from 'node:net';
+import { join, dirname, relative, basename } from 'node:path';
+import type { Server } from 'node:net';
+import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
-import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
+import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
 import type { Lifetime } from './observed.js';
+import { managedV2State } from './v2-observed.js';
 import type { Identity, FilePin, Surface, ObservedSkillPlan, ObservedSkillReceipt, Intent, JournalRecord, RecoveryPlan, SkillInspection } from './observed-types.js';
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
 const recordKeys = ['sequence', 'previous', 'kind', 'data', 'revision'];
@@ -16,23 +18,66 @@ function durable(p: string, bytes: string | Buffer, guard: () => void, mode = 0o
   try { guard(); fs.fchmodSync(fd, mode); guard(); fs.writeFileSync(fd, bytes); guard(); fs.fsyncSync(fd); guard(); } finally { fs.closeSync(fd); }
   guard(); sync(dirname(p), guard); guard();
 }
-function json(p: string, value: unknown, guard: () => void): void { durable(p, JSON.stringify(value) + '\n', guard); }
+// A record lands whole: a hidden temporary in the same folder, fsynced, renamed into place, folder fsynced.
+// A leftover temporary never became a record; readState allows it and the next write removes it.
+function discard(tmp: string, guard: () => void): void {
+  guard(); if (!exists(tmp)) return; const s = fs.lstatSync(tmp, { bigint: true }); check(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n && Number(s.uid) === process.getuid?.());
+  guard(); fs.unlinkSync(tmp); sync(dirname(tmp), guard); guard();
+}
+function json(p: string, value: unknown, guard: () => void): void {
+  const tmp = temporary(p); guard(); absent(p); discard(tmp, guard); durable(tmp, JSON.stringify(value) + '\n', guard);
+  guard(); absent(p); guard(); fs.renameSync(tmp, p); sync(dirname(p), guard); guard();
+}
+/** The marker sits in the shared project, so it is published by a link that fails if its name exists, never by a
+ * rename over it. Then its temporary is unlinked; a kill between the two leaves the twin state of `markerTwin`. */
+function publish(p: string, value: unknown, guard: () => void): void {
+  // A leftover temporary goes only when its bytes begin ours; any other one stays, and the exclusive create refuses.
+  const tmp = temporary(p), text = JSON.stringify(value) + '\n'; guard(); absent(p); discardMarkerTemp(p, text, guard); durable(tmp, text, guard);
+  guard(); absent(p); guard(); fs.linkSync(tmp, p); sync(dirname(p), guard); settleTwin(p, guard);
+}
+/** Unlinks the marker's own temporary when the two are one file (`markerTwin`), so the marker has one link again. */
+function settleTwin(p: string, guard: () => void): void { guard(); if (!markerTwin(p)) return; fs.unlinkSync(temporary(p)); sync(dirname(p), guard); guard(); }
+/** Removes a leftover marker temporary only when it is a private one-link file whose bytes begin `expected`. */
+function discardMarkerTemp(p: string, expected: string, guard: () => void): void {
+  const tmp = temporary(p), want = Buffer.from(expected); guard(); if (!exists(tmp)) return;
+  const s = fs.lstatSync(tmp, { bigint: true });
+  if (!s.isFile() || s.nlink !== 1n || Number(s.uid) !== process.getuid?.() || (Number(s.mode) & 0o7777) !== 0o600 || s.size > BigInt(want.length)) return;
+  const got = raw(tmp, want.length).bytes; if (got.equals(want.subarray(0, got.length))) discard(tmp, guard);
+}
 /** Same key as startup revision apply/recovery. Initial startup has a different lock. */
 async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>): Promise<T> {
-  life.check(); const server = createServer(socket => socket.destroy()); let acquired = false, pending = true;
-  const port = 20000 + Number.parseInt(hash(project).slice(0, 8), 16) % 30000;
-  let stop: (() => void) | undefined;
+  life.check(); const slot = lockSlot(project), port = slot.port; let server = lockServer(slot), acquired = false, pending = true;
+  let stop: (() => void) | undefined, verdict: 'locked' | 'collision' | 'free' | undefined;
+  const acquire = (listener: Server) => new Promise<void>((resolve, reject) => {
+    pending = true;
+    const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
+    stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
+    listener.once('error', error => settle(error));
+    // If cancellation wins first, late listen completion only closes this listener.
+    listener.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { listener.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
+    if (life.signal.aborted) stop();
+  });
   try {
-    await new Promise<void>((resolve, reject) => {
-      const settle = (error?: unknown) => { if (!pending) return; pending = false; life.signal.removeEventListener('abort', stop!); error ? reject(error) : resolve(); };
-      stop = () => settle(new Error('stopped')); life.signal.addEventListener('abort', stop, { once: true });
-      server.once('error', () => settle(new Error('locked')));
-      // If cancellation wins first, late listen completion only closes this listener.
-      server.listen({ host: '127.0.0.1', port, exclusive: true }, () => { acquired = true; if (!pending) { try { server.close(() => {}); } catch { /* Already closed by cancellation. */ } return; } try { life.check(); settle(); } catch (e) { settle(e); } });
-      if (life.signal.aborted) stop();
-    });
-    life.check(); const result = await work(); life.check(); return result;
-  } catch (e) { life.check(); if (!acquired) fail('MANAGED_SKILL_LOCKED'); throw e; }
+    for (let attempt = 0; ; attempt++) {
+      try { await acquire(server); break; }
+      catch (e) {
+        // Only EADDRINUSE reads the holder's banner. A holder that let go before the read (ECONNREFUSED) gets one more
+        // bind, with a fresh listener; binding alone decides the lock.
+        if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
+        life.check(); verdict = await slotRefusal(slot, attempt === 0);
+        if (verdict !== 'free') throw e;
+        server = lockServer(slot);
+      }
+    }
+    // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
+    life.check(); check(slotStillNames(project, slot), 'MANAGED_SKILL_LOCKED');
+    const result = await work(); life.check(); return result;
+  } catch (e) {
+    life.check();
+    // This project's own lock is LOCKED, anything else on the slot is a collision.
+    if (!acquired) { if (verdict === 'collision') { life.check(); fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', port); } fail('MANAGED_SKILL_LOCKED'); }
+    throw e;
+  }
   finally {
     if (stop) life.signal.removeEventListener('abort', stop);
     // Closing during pending listen cancels Node's listen handle. A late callback
@@ -40,6 +85,12 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
     await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('close-unconfirmed')), 1000); timer.unref(); const done = (error?: Error) => { clearTimeout(timer); if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') reject(new Error('close-unconfirmed')); else resolve(); }; try { server.close(done); } catch { clearTimeout(timer); reject(new Error('close-unconfirmed')); } });
   }
 }
+/**
+ * v1 apply and recovery know nothing of v1beta2. Checked again inside v1's own lock, so a v1beta2 operation cannot
+ * start between the CLI's early check and the lock: unfinished v1beta2 work refuses RECOVERY_REQUIRED, and v1beta2
+ * content refuses.
+ */
+function noV2(project: string): void { const seen = managedV2State(project); check(seen !== 'pending', 'MANAGED_SKILL_RECOVERY_REQUIRED'); check(seen === 'absent'); }
 interface State { intent: Intent; op: string; records: JournalRecord[]; receipt: ObservedSkillReceipt | null; opIdentity: Identity; createdParents?: Map<string, Identity>; markerRemoved?: boolean }
 function recordName(sequence: number): string { return `record-${String(sequence).padStart(3, '0')}.json`; }
 function readState(project: string, state: string, key: string, life: Lifetime): State {
@@ -47,18 +98,28 @@ function readState(project: string, state: string, key: string, life: Lifetime):
   const op = join(state, 'op-' + key), opIdentity = directory(op, true), intent = parsed<Intent>(join(op, 'intent.json'), intentKeys);
   check(intent.format === 'bowerloom/managed-skill-intent/v1beta1' && same(intent.operationIdentity, opIdentity)); const plan = validatePlan(intent.plan);
   check(plan.operationKey === key && plan.core.request.projectDir === project && plan.core.request.stateDir === state && intent.approvalRevision === plan.revision); bindings(plan.core, () => life.check());
-  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || /^(?:new|old|returned)-(?:canonical|projection|catalog)$/.test(n)));
+  const all = names(op); check(all.every(n => /^(?:intent|receipt)\.json$/.test(n) || /^record-\d{3}\.json$/.test(n) || /^(?:new|old|returned)-(?:canonical|projection|catalog)$/.test(n) || /^\.(?:intent|receipt|record-\d{3})\.json\.tmp$/.test(n)));
   const files = all.filter(n => /^record-\d{3}\.json$/.test(n)).sort(); check(files.length <= 256);
   const records = files.map((n, i) => { const r = parsed<JournalRecord>(join(op, n), recordKeys), { revision, ...body } = r; check(n === recordName(i) && r.sequence === i && r.previous === (i ? parsed<JournalRecord>(join(op, recordName(i - 1)), recordKeys).revision : null) && revisionOf(body) === revision); check(['STAGE_INTENT', 'STAGE_READY', 'PARENT_INTENT', 'PARENT_CREATED', 'MOVE_INTENT', 'MOVE_DONE', 'ROLLBACK_START', 'ROLLBACK_INTENT', 'ROLLBACK_DONE', 'PARENT_REMOVE_INTENT', 'PARENT_REMOVED', 'RECEIPT_INTENT', 'RECEIPT_DONE', 'MARKER_REMOVE_INTENT'].includes(r.kind)); return r; });
   const receipt = exists(join(op, 'receipt.json')) ? receiptAt(state, key) : null;
+  // At most one temporary, and only the one an interrupted write leaves: the next record's, or the receipt's while
+  // RECEIPT_INTENT is the last record and no receipt landed.
+  const temps = all.filter(n => n.endsWith('.tmp')); check(temps.length <= 1);
+  if (temps.length) check(temps[0] === '.' + recordName(records.length) + '.tmp' || (temps[0] === '.receipt.json.tmp' && receipt === null && records.at(-1)?.kind === 'RECEIPT_INTENT'));
   return { intent, op, records, receipt, opIdentity };
 }
 function marker(state: State, allowAbsent = false): FilePin | null {
   const plan = state.intent.plan, file = join(plan.core.request.projectDir, MARKER);
-  if (!exists(file)) { check(allowAbsent && state.receipt !== null); return null; }
-  const m = parsed<{ format: string; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys);
-  check(m.format === 'bowerloom/managed-skill-pending/v1beta1' && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return raw(file).pin;
+  // Absent only where the caller allows it: after a receipt, or for the rollback of an unpublished operation (`markerOptional`).
+  if (!exists(file)) { check(allowAbsent); return null; }
+  const m = parsed<{ format: string; operationKey: string; stateDir: string; operationIdentity: Identity; intentSha256: string }>(file, pendingKeys, true);
+  check(m.format === 'bowerloom/managed-skill-pending/v1beta1' && m.operationKey === plan.operationKey && m.stateDir === plan.core.request.stateDir && same(m.operationIdentity, state.opIdentity) && m.intentSha256 === hash(raw(join(state.op, 'intent.json')).bytes)); return rawMarker(file).pin;
 }
+/** The pending marker of one operation. Apply writes exactly these bytes, and a leftover temporary is compared with them. */
+function pendingBody(plan: ObservedSkillPlan, operationIdentity: Identity, intentSha256: string) {
+  return { format: 'bowerloom/managed-skill-pending/v1beta1', operationKey: plan.operationKey, stateDir: plan.core.request.stateDir, operationIdentity, intentSha256 };
+}
+const pendingText = (state: State): string => JSON.stringify(pendingBody(state.intent.plan, state.opIdentity, hash(raw(join(state.op, 'intent.json')).bytes))) + '\n';
 /** Only this invocation may remember a just-created parent before its durable stamp.
  * Recovery has no such memory and cannot adopt a present, unstamped directory. */
 function parentGuard(state: State): void {
@@ -202,6 +263,24 @@ function removeCreatedParents(state: State, guard: () => void): void {
     guard(); check(same(directory(parent.path, true), parent.identity) && names(parent.path).length === 0); guard(); fs.rmdirSync(parent.path); sync(dirname(parent.path), guard); guard(); append(state, 'PARENT_REMOVED', parent, guard);
   }
 }
+/**
+ * The marker may be absent only after a receipt, or for a rollback whose journal holds nothing but its own records:
+ * the apply was killed after the operation folder landed and before the marker did, so nothing else ran.
+ */
+function markerOptional(state: State, action: 'resume' | 'rollback'): boolean {
+  return state.receipt !== null || (action === 'rollback' && state.records.every(r => r.kind === 'ROLLBACK_START' || r.kind === 'RECEIPT_INTENT'));
+}
+/** An operation whose marker never landed: no receipt, no record but a rollback's own, and the project as planned. */
+function unpublished(state: State): void {
+  check(!state.receipt && state.records.every(r => r.kind === 'ROLLBACK_START' || r.kind === 'RECEIPT_INTENT'), 'MANAGED_SKILL_RECOVERY_REQUIRED');
+  const starts = state.records.filter(r => r.kind === 'ROLLBACK_START'); check(starts.length <= 1 && starts.every(r => same(r.data, { count: 0 })));
+  check(matches(currentSurfaces(state.intent.plan), state.intent.plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
+}
+/** The only recovery of an unpublished operation: a rollback of nothing that writes a rolled-back receipt (v2's abandon). */
+function rollbackUnpublished(state: State, guard: () => void): ObservedSkillReceipt {
+  unpublished(state); if (!state.records.some(r => r.kind === 'ROLLBACK_START')) append(state, 'ROLLBACK_START', { count: 0 }, guard);
+  unpublished(state); return finish(state, 'rolled-back', guard);
+}
 function terminal(state: State, receipt: ObservedSkillReceipt): void {
   const p = state.intent.plan; check(receipt.planRevision === p.revision && receipt.operationKey === p.operationKey && receipt.projectDir === p.core.request.projectDir && receipt.stateDir === p.core.request.stateDir && receipt.harness === p.core.request.harness && receipt.previousRevision === p.core.request.expectedPreviousRevision);
   const observed = currentSurfaces(p); check(matches(observed, receipt.installed), 'MANAGED_SKILL_LOCAL_DRIFT');
@@ -216,6 +295,8 @@ function publishReceipt(state: State, outcome: 'committed' | 'rolled-back', guar
 function finish(state: State, outcome: 'committed' | 'rolled-back', guard: () => void): ObservedSkillReceipt {
   const r = publishReceipt(state, outcome, guard), file = join(r.projectDir, MARKER); terminal(state, r);
   if (exists(file)) { marker(state); if (!state.records.some(x => x.kind === 'MARKER_REMOVE_INTENT')) append(state, 'MARKER_REMOVE_INTENT', { receiptRevision: r.revision }, guard); guard(); marker(state); guard(); fs.unlinkSync(file); state.markerRemoved = true; sync(r.projectDir, guard); }
+  // A leftover marker temporary of this operation never became a marker: removed only when its bytes are ours.
+  discardMarkerTemp(file, pendingText(state), guard);
   return r;
 }
 function resume(state: State, life: Lifetime, guard: () => void): ObservedSkillReceipt {
@@ -236,29 +317,40 @@ export async function applyObservedManagedSkill(value: unknown, exactRevision: s
   const life = lifetime(options); let mutated = false;
   try { const input = request(value); check(typeof exactRevision === 'string' && /^[a-f0-9]{64}$/.test(exactRevision) && expectedPreviousRevision === input.expectedPreviousRevision);
     return await locked(input.projectDir, life, async () => {
+      noV2(input.projectDir); sweepOpTemps(input.stateDir, () => life.check());
       const proposed = await planWithLifetime(input, life); life.check(); check(proposed.format === 'bowerloom/observed-managed-skill-plan/v1beta1' && proposed.revision === exactRevision, 'MANAGED_SKILL_STALE_APPROVAL'); const plan = proposed as ObservedSkillPlan;
       const closure = await readAcquiredSkillCache(input.cache, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); check(same(closure, plan.core.closure));
       const op = intentPath(plan); bindings(plan.core, () => life.check()); check(same(currentSurfaces(plan), plan.core.before), 'MANAGED_SKILL_LOCAL_DRIFT');
       for (const p of plan.core.parents) { if (p.identity) check(same(directory(p.path), p.identity)); else if (exists(dirname(p.path))) absent(p.path); }
-      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json'))); absent(op); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check(); fs.mkdirSync(op, { mode: 0o700 }); mutated = true; const opIdentity = directory(op, true);
-      const state: State = { op, opIdentity, intent: { format: 'bowerloom/managed-skill-intent/v1beta1', plan, operationIdentity: opIdentity, approvalRevision: exactRevision }, records: [], receipt: null };
-      let guard = stateGuard(state, life, null); sync(input.stateDir, guard); json(join(op, 'intent.json'), state.intent, guard); guard();
-      const markerFile = join(input.projectDir, MARKER); json(markerFile, { format: 'bowerloom/managed-skill-pending/v1beta1', operationKey: plan.operationKey, stateDir: input.stateDir, operationIdentity: opIdentity, intentSha256: hash(raw(join(op, 'intent.json')).bytes) }, guard);
+      const temp = opTemp(input.stateDir, plan.operationKey);
+      check(!exists(join(input.projectDir, MARKER)) && !exists(join(input.projectDir, '.bowerloom-revision.json')));
+      // A marker temporary is a kill before some marker landed: its operation needs recovery first.
+      check(!exists(temporary(join(input.projectDir, MARKER))), 'MANAGED_SKILL_RECOVERY_REQUIRED'); absent(op); absent(temp); check(names(input.stateDir).length < LIMITS.history); capacity(input); life.check();
+      // The operation folder appears whole, with its intent, or not at all: built under its private temporary name,
+      // then renamed. The rename keeps the inode and birthtime, so the intent's operationIdentity still matches.
+      fs.mkdirSync(temp, { mode: 0o700 }); const opIdentity = directory(temp, true);
+      const state: State = { op: temp, opIdentity, intent: { format: 'bowerloom/managed-skill-intent/v1beta1', plan, operationIdentity: opIdentity, approvalRevision: exactRevision }, records: [], receipt: null };
+      let guard = stateGuard(state, life, null);
+      try { json(join(temp, 'intent.json'), state.intent, guard); guard(); absent(op); fs.renameSync(temp, op); }
+      catch (e) { try { removeOpTemp(temp, () => {}); } catch { /* A leftover temporary is removed by the next apply. */ } throw e; }
+      mutated = true; state.op = op; sync(input.stateDir, guard); guard();
+      const markerFile = join(input.projectDir, MARKER); publish(markerFile, pendingBody(plan, opIdentity, hash(raw(join(op, 'intent.json')).bytes)), guard);
       guard = stateGuard(state, life, marker(state)); stageAll(state, life, guard); return resume(state, life, guard);
     });
   } catch (e) { if (mutated) fail('MANAGED_SKILL_RECOVERY_REQUIRED'); return boundary(e); } finally { life.close(); }
 }
-function snapshot(state: State, life: Lifetime): string {
+function snapshot(state: State, life: Lifetime, action: 'resume' | 'rollback'): string {
   const rows: unknown[] = []; let bytes = 0, count = 0;
   const walk = (p: string) => { life.check(); const s = fs.lstatSync(p, { bigint: true }); check(++count < 2048 && !s.isSymbolicLink());
     if (s.isDirectory()) { const id = directory(p, true); rows.push({ path: p, identity: id, mtimeNs: String(s.mtimeNs), ctimeNs: String(s.ctimeNs) }); for (const n of names(p)) walk(join(p, n)); }
     else { const got = raw(p, LIMITS.record, (Number(s.mode) & 0o7777) === 0o600); bytes += got.bytes.length; check(bytes <= LIMITS.bytes); rows.push(got.pin); }
-  }; walk(state.op); const m = marker(state, state.receipt !== null); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
+  }; walk(state.op); const m = marker(state, markerOptional(state, action)); rows.push(m); rows.push(currentSurfaces(state.intent.plan)); return revisionOf(rows);
 }
 async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state: State; plan: RecoveryPlan }> {
   const v = schema<{ projectDir: string; stateDir: string; operationKey: string; action: 'resume' | 'rollback' }>(value, ['projectDir', 'stateDir', 'operationKey', 'action']); check(v.action === 'resume' || v.action === 'rollback');
-  const state = readState(v.projectDir, v.stateDir, v.operationKey, life); marker(state, state.receipt !== null); parentGuard(state); life.check();
+  const state = readState(v.projectDir, v.stateDir, v.operationKey, life), pending = marker(state, markerOptional(state, v.action)); parentGuard(state); life.check();
   if (state.receipt) { check(v.action === (state.receipt.state === 'committed' ? 'resume' : 'rollback')); terminal(state, state.receipt); }
+  else if (pending === null) unpublished(state); // Stages and prestamp parent intents are never read: this rollback touches neither.
   else {
     stages(state); // Incomplete/prestamp stages are held, never adopted.
     for (const r of state.records.filter(x => x.kind === 'PARENT_INTENT')) {
@@ -267,7 +359,7 @@ async function recoveryWithLife(value: unknown, life: Lifetime): Promise<{ state
       check(state.records.filter(x => x.kind === 'PARENT_CREATED' && (x.data as { path: string }).path === v.path).length === 1, 'MANAGED_SKILL_RECOVERY_REQUIRED');
     }
   }
-  const body = { format: 'bowerloom/observed-managed-skill-recovery/v1beta1' as const, ...v, snapshotRevision: snapshot(state, life), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
+  const body = { format: 'bowerloom/observed-managed-skill-recovery/v1beta1' as const, ...v, snapshotRevision: snapshot(state, life, v.action), planRevision: state.intent.plan.revision, writesAuthorized: false as const, executionAuthorized: false as const };
   life.check(); return { state, plan: freezeSkillData({ ...body, revision: revisionOf(body) }) };
 }
 export async function planObservedManagedSkillRecovery(value: unknown, options: unknown = {}): Promise<RecoveryPlan> { const life = lifetime(options); try { return (await recoveryWithLife(value, life)).plan; } catch (e) { return boundary(e); } finally { life.close(); } }
@@ -276,9 +368,13 @@ export async function recoverObservedManagedSkill(value: unknown, exactRevision:
   try { const plan = schema<RecoveryPlan>(value, ['format', 'projectDir', 'stateDir', 'operationKey', 'action', 'snapshotRevision', 'planRevision', 'writesAuthorized', 'executionAuthorized', 'revision']);
     path(plan.projectDir); path(plan.stateDir); const { revision, ...body } = plan; check(typeof exactRevision === 'string' && exactRevision === revision && /^[a-f0-9]{64}$/.test(revision) && revisionOf(body) === revision && plan.format === 'bowerloom/observed-managed-skill-recovery/v1beta1' && plan.writesAuthorized === false && plan.executionAuthorized === false, 'MANAGED_SKILL_STALE_APPROVAL');
     return await locked(plan.projectDir, life, async () => {
+      noV2(plan.projectDir);
       const fresh = await recoveryWithLife({ projectDir: plan.projectDir, stateDir: plan.stateDir, operationKey: plan.operationKey, action: plan.action }, life); life.check(); check(same(fresh.plan, plan) && exactRevision === plan.revision, 'MANAGED_SKILL_STALE_APPROVAL'); const state = fresh.state; capacity(state.intent.plan.core.request);
-      const pending = marker(state, state.receipt !== null), guard = stateGuard(state, life, pending);
-      if (state.receipt) { terminal(state, state.receipt); guard(); if (!pending) return state.receipt; return finish(state, state.receipt.state, guard); }
+      // The approved snapshot saw the marker twin, if any; settling it changes the marker's ctime, so it comes after.
+      settleTwin(join(plan.projectDir, MARKER), () => life.check());
+      const pending = marker(state, markerOptional(state, plan.action)), guard = stateGuard(state, life, pending);
+      if (state.receipt) { terminal(state, state.receipt); guard(); if (!pending) { discardMarkerTemp(join(plan.projectDir, MARKER), pendingText(state), guard); return state.receipt; } return finish(state, state.receipt.state, guard); }
+      if (!pending) return rollbackUnpublished(state, guard);
       return plan.action === 'resume' ? resume(state, life, guard) : rollback(state, life, guard);
     });
   } catch (e) { return boundary(e, 'MANAGED_SKILL_RECOVERY_REQUIRED'); } finally { life.close(); }

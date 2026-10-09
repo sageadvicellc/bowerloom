@@ -1,4 +1,5 @@
-import test from 'node:test';
+import '../../../dist/tests/support/isolate-home.js';
+import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

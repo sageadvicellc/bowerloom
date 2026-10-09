@@ -12,6 +12,8 @@ import { SkillSourceError, captureSkillData, closed, boundedText, relativeSkillP
 import type { SkillTextFile, SkillLicense } from './types.js';
 import { validateCacheBinding, openNpmCacheOperation, fixedCode, secondaryCodes, strictUtf8, REFUSAL_CODES, SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
+import { guardedResponseHeaders } from './response-headers.js';
+import { publicIPv4 } from './public-address.js';
 
 export const NPM_ACQUISITION_POLICY = 'bowerloom/npm-acquisition/ustar-v1beta1';
 export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 524288, compressedBytes: 8388608, tarBytes: 33554432, records: 1024, files: 128, directories: 128, fileBytes: 65536, selectedBytes: 2097152, headerBytes: 16384, requests: 2, durationMs: 30000, requestMs: 10000, storageBytes: 12582912 });
@@ -116,10 +118,15 @@ function asciiField(block: Buffer, from: number, length: number): string {
   npmCheck([...b.subarray(0, end)].every(v => v >= 32 && v <= 126) && (zero < 0 || b.subarray(zero).every(v => v === 0)), 'NPM_TAR_FIELD');
   return b.subarray(0, end).toString('ascii');
 }
+/**
+ * A numeric field at full width: octal digits with leading zeros, then one NUL or one space (length - 1 digits), or a
+ * space then a NUL (length - 2 digits), the POSIX ending that node-tar and real npm tarballs write (decision 7A).
+ */
 function octal(block: Buffer, from: number, length: number): number {
   const text = block.subarray(from, from + length).toString('latin1');
-  npmCheck(new RegExp(`^[0-7]{${length - 1}}[\\x00 ]$`).test(text), 'NPM_TAR_NUMBER');
-  const value = Number.parseInt(text.slice(0, -1), 8); npmCheck(Number.isSafeInteger(value) && value >= 0, 'NPM_TAR_NUMBER'); return value;
+  const match = new RegExp(`^(?:([0-7]{${length - 1}})[\\x00 ]|([0-7]{${length - 2}}) \\x00)$`).exec(text);
+  npmCheck(match !== null, 'NPM_TAR_NUMBER');
+  const value = Number.parseInt(match[1] ?? match[2]!, 8); npmCheck(Number.isSafeInteger(value) && value >= 0, 'NPM_TAR_NUMBER'); return value;
 }
 /** Strict original-field admission precedes Header; decoded normalization cannot change framing. */
 function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; size: number; mode: number } {
@@ -133,7 +140,7 @@ function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; s
   npmCheck(octal(block, 329, 8) === 0 && octal(block, 337, 8) === 0 && mode <= 0o777 && size <= NPM_LIMITS.tarBytes, 'NPM_TAR_NUMBER');
   const type = flag === 48 ? 'File' : 'Directory';
   npmCheck(type === 'File' ? !path.endsWith('/') : path.endsWith('/') && size === 0, 'NPM_TAR_ALIAS');
-  const sumText = block.subarray(148, 156).toString('latin1'); npmCheck(/^[0-7]{6}\x00 $/.test(sumText), 'NPM_TAR_CHECKSUM');
+  const sumText = block.subarray(148, 156).toString('latin1'); npmCheck(/^[0-7]{6}(?:\x00 | \x00)$/.test(sumText), 'NPM_TAR_CHECKSUM');
   let sum = 0; for (let i = 0; i < block.length; i++) sum += i >= 148 && i < 156 ? 32 : block[i]!;
   npmCheck(sum === Number.parseInt(sumText.slice(0, 6), 8), 'NPM_TAR_CHECKSUM');
   try {
@@ -204,11 +211,6 @@ export async function verifyNpmPayload(planValue: unknown, metadataBytes: Buffer
   } catch (error) { if (error instanceof SkillSourceError) return npmRefuse('NPM_CONTENT'); throw error; }
   check(); return freezeSkillData({ source, skill: plan.request.skill, files, references: plan.request.references, license: plan.request.license, contentRevision, inventoryRevision: revisionOf(plan.request.files), recordCount });
 }
-function publicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const [a, b, c] = address.split('.').map(Number) as [number, number, number];
-  return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 100 && b >= 64 && b <= 127 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 88 && c === 99) || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113);
-}
 // Plan, options and cache admission. A refusal here is certain, unless it carries NPM_CACHE_OPEN_PARTIAL or
 // NPM_CACHE_RELEASE_UNCERTAIN. Those mean the operation folder or its owner lock was left behind.
 function admit(planValue: unknown, options: unknown): { plan: Readonly<NpmAcquisitionPlan>; signal: AbortSignal; operation: ReturnType<typeof openNpmCacheOperation> } {
@@ -251,7 +253,8 @@ export async function acquireNpmSkill(planValue: unknown, options: { approvalRev
           response = incoming; responses.add(incoming);
           const guard = () => { check(); npmCheck(performance.now() < requestDeadline, 'NPM_TIMEOUT'); };
           try {
-            guard(); const headers = new Map<string, string>(); for (let i = 0; i < incoming.rawHeaders.length; i += 2) { const key = incoming.rawHeaders[i]!.toLowerCase(); npmCheck(!headers.has(key), 'NPM_RESPONSE'); headers.set(key, incoming.rawHeaders[i + 1]!); }
+            // A repeated guarded header, more than 128 header pairs, or a transfer-encoding other than chunked refuses. Repeats of headers nothing reads, such as set-cookie, are ignored (D11).
+            guard(); const headers = guardedResponseHeaders(incoming.rawHeaders); npmCheck(headers !== null, 'NPM_RESPONSE');
             const length = headers.get('content-length'); npmCheck(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'NPM_RESPONSE');
             // A declared length over the limit is a bound refusal, the same code as an oversized body.
             npmCheck(length === undefined || Number(length) <= maximum, 'NPM_RESPONSE_BOUND');
