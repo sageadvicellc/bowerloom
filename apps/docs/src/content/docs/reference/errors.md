@@ -126,7 +126,6 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 
 The request-file `bowerloom skills source`, `skills plan`, `skills update`, `skills apply`, and `skills inspect` forms print one line of JSON on standard error. A refusal exits 1. A usage error exits 2. [CLI reference](/docs/cli/#skills) lists the forms.
 
-<!-- BIND: pending installed evidence -->
 | Code | Trigger and meaning | Preserve and next action |
 | --- | --- | --- |
 | `USAGE` | The command form is not valid. Exit 2. | Read help. Use the exact form. |
@@ -134,13 +133,12 @@ The request-file `bowerloom skills source`, `skills plan`, `skills update`, `ski
 | `SKILLS_CHANGED` | The record or its directory changed. | Inspect the record and its directory. Plan again. |
 | `SKILLS_OUTPUT` | The command could not write its result. | Inspect the output path. Do not assume a write happened. |
 | `SKILLS_INTERRUPTED_UNCERTAIN` | A signal or the 35-second limit stopped the command. | Inspect before another write. |
-| `SKILLS_REFUSED (<CODE>)` | The command stopped for a known reason. The code in parentheses names it, such as `NPM_CACHE_DIRECTORY` or `GIT_TREE_BOUND`. | Keep the error. Inspect the cache and installation records. |
+| `SKILLS_REFUSED` | The command stopped for a known reason. The message names the reason in parentheses, such as `NPM_CACHE_DIRECTORY` or `GIT_TREE_BOUND`. | Keep the error. Inspect the cache and installation records. |
 | `SKILLS_UNCERTAIN` | The cache state is not certain. The message names two codes. | Run `skills source inspect`, then `skills source recover plan`, before another action. |
 | `SKILLS_UNCERTAIN` with `_CACHE_OPEN_PARTIAL` | Recovery cannot read the operation folder. | Start again with a new `SOURCE_OPERATION`. |
 
-Installation commands print these codes inside the parentheses of `SKILLS_REFUSED (...)`:
+Installation commands name these reasons in parentheses, in the message of a `SKILLS_REFUSED` error:
 
-<!-- BIND: pending installed evidence -->
 | Code in parentheses | Meaning | Preserve and next action |
 | --- | --- | --- |
 | `MANAGED_SKILL_STALE_APPROVAL` | The approved revision no longer matches the plan. | Plan again and obtain new approval. |
@@ -150,6 +148,12 @@ Installation commands print these codes inside the parentheses of `SKILLS_REFUSE
 | `MANAGED_SKILL_TIMEOUT` | The command ran past its time limit. | Inspect before you plan again. |
 | `MANAGED_SKILL_ABORTED` | The command stopped early. | Inspect before you plan again. |
 | `MANAGED_SKILL_REFUSED` | The general installation refusal. It also covers cache or receipt drift. | Inspect the cache and installation. Do not overwrite local files. |
+
+For example, an approval that no longer matches its plan printed this line on standard error in the test run for this release, and exited 1:
+
+```text
+{"error":{"code":"SKILLS_REFUSED","message":"The skills command stopped (MANAGED_SKILL_STALE_APPROVAL). Inspect the exact local cache and operation records before another action; no native execution authority is granted."}}
+```
 
 ## Stop results
 
