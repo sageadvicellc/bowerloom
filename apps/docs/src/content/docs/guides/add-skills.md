@@ -262,9 +262,8 @@ my-skills/
       references/
 ```
 
-The `package.json` needs `name`, `version`, `files`, and `license`. List `skills` and `LICENSE` in `files`.
+The `package.json` needs `name`, `version`, `files`, and `license`. List `skills` and `LICENSE` in `files`. This is an example. Use your own name and version:
 
-<!-- BIND: pending installed evidence -->
 ```json
 {
   "name": "@my-team/skills",
@@ -276,7 +275,6 @@ The `package.json` needs `name`, `version`, `files`, and `license`. List `skills
 
 Publish to the public npm registry. The package name is lower case, with an optional lower-case scope. The version is an exact version such as `1.0.0`. A range, `latest`, or a tag does not work. Ask your agent to pack the folder and show the file list before you publish:
 
-<!-- BIND: pending installed evidence -->
 ```sh
 npm pack --dry-run
 ```
@@ -295,7 +293,6 @@ Add a `skills/` folder to a repository you already have. Put each skill at `skil
 
 Use a public GitHub repository. Write `owner/repo` in lower case. Pin a full commit of 40 lower-case hex characters. A short commit, a branch, or a tag does not work. Read the commit with:
 
-<!-- BIND: pending installed evidence -->
 ```sh
 git rev-parse HEAD
 ```
