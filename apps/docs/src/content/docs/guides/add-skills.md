@@ -214,9 +214,14 @@ After the human approves, run the same command with `--approve` and the revision
 
 ## What to commit
 
-Commit `.bowerloom/skills.json`. It holds exact pins only and is its own lock. Commit the skills, teams, and prompts that you create with `skill create`, `team create`, and `prompt create`. They live in `.bowerloom/skills/<name>`, `.bowerloom/teams/<name>`, and `.bowerloom/prompts/<name>.md`. A team that you create holds a copy of the project brief in `assets/brief.json`, with your goal text. Read it before you commit or share it.
+Commit `.bowerloom/skills.json`. It holds exact pins only and is its own lock. Commit the team, skill, and prompt definitions too:
 
-Everything else stays on each machine. That covers the setup files that `bowerloom up` writes, the managed copies in `.bowerloom/managed`, and the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. A projection is the copy of a skill or prompt that a harness reads. `.bowerloom/installation-receipt.json` holds absolute paths on your machine. `.bowerloom/brief.json` holds your goal text.
+- Every team in `.bowerloom/teams/<team id>/`, including `first-team`, which setup makes. Each team holds a copy of the project brief in `assets/brief.json`, with the goal text. The goal is the team's shared purpose. Read the file before you commit it, as you would any file you share.
+- Every skill in `.bowerloom/skills/<name>/`, including `personal-assistant`, which setup makes. Its `profile.json` holds the project name.
+- Every prompt in `.bowerloom/prompts/<name>.md`.
+- `.bowerloom/authoring/receipt.json`, the record of the teams, skills, and prompts that you create.
+
+Everything else stays on each machine. That covers the setup receipt and the setup notes that `bowerloom up` writes, the managed copies in `.bowerloom/managed`, and the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. A projection is the copy of a skill or prompt that a harness reads. `.bowerloom/installation-receipt.json` holds absolute paths on your machine. `.bowerloom/brief.json` holds your goal text.
 
 Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not add the other files to your `.gitignore`. Add these lines to the `.gitignore` at the top of the project yourself:
 
@@ -237,7 +242,7 @@ Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not ad
 .agents/skills/
 ```
 
-This block does not list three items that setup writes: `.bowerloom/teams/first-team/`, `.bowerloom/skills/personal-assistant/`, and `.bowerloom/authoring/receipt.json`. A teammate's `skills sync` does not need them. In the trial run for this release, the teammate's clone held only `.bowerloom/skills.json`, and sync and apply worked.
+Git then shows `skills.json` and the team, skill, and prompt definitions as files to commit. A teammate's `skills sync` needs only `.bowerloom/skills.json`. In the trial run for this release, the teammate's clone held only that file, and sync and apply worked.
 
 If you keep files of your own in `.claude/skills`, `.claude/commands`, or `.agents/skills`, list only the folders that Bowerloom makes instead, such as `.claude/skills/tanstack-db-collections/`. Each machine rebuilds the same files from the same pins.
 

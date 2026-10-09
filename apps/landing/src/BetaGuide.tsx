@@ -33,7 +33,7 @@ export default function BetaGuide() {
       <h3>Review before installation</h3>
       <p>{readerRelease.capabilities.setup}</p>
       <p>{readerRelease.capabilities.execution} A portable assistant profile and team blueprint in <code>.bowerloom</code> are the complete result of this exercise.</p>
-      <p>Roles, skills, handoffs, and review expectations stay in files that follow you. You can version those definitions with your project and inspect them in another agent application. Credentials and installation receipts stay private. Moving definitions does not transfer permissions or prove that another application can execute them.</p>
+      <p>Roles, skills, handoffs, and review expectations stay in files that follow you. Commit <code>skills.json</code> and the team, skill, and prompt definitions with your project, and inspect them in another agent application. Keep the installation receipt, the setup notes, and credentials on your machine. Moving definitions does not transfer permissions or prove that another application can execute them.</p>
       <h3>Install the beta CLI</h3>
       <p><ProductText>{`Requirements: ${setupRequirements}`}</ProductText> Read the <a href={docsPath}>documentation</a> and <a href={destinations.readme} target="_blank" rel="noopener noreferrer">README <span className="sr-only">(opens in a new tab)</span></a> before installing anything.</p>
       <pre><code>{setupCommands}</code></pre>

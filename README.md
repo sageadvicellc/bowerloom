@@ -43,7 +43,7 @@ Capability additions are planned work, not features supplied by the current setu
 
 ## Portable teams
 
-Roles, skills, handoffs, and review expectations stay in files that follow you. You can version these definitions with your project and inspect them in another agent application. Their portability does not transfer credentials, approval, or runtime authority. Before sharing a definition, review its project name, goal, and brief for private information. Keep installation receipts, private bindings, credentials, and execution records out of shared files.
+Roles, skills, handoffs, and review expectations stay in files that follow you. Commit `.bowerloom/skills.json` and the team, skill, and prompt definitions with your project, and inspect them in another agent application. Keep the receipt and the setup notes, such as `brief.json` and `START-HERE.md`, on your machine. Their portability does not transfer credentials, approval, or runtime authority. Before sharing a definition, review its project name, goal, and brief for private information. Keep installation receipts, private bindings, credentials, and execution records out of shared files.
 
 The beta's harness commands process selected synthetic configuration files for Codex and Claude Code. They do not change live agent configuration or run models. The separate portable skill installer projects selected files into a new Codex workspace, rather than an existing project. Use the [harness guide](https://bowerloom.ai/docs/harnesses/) and [portable skill guide](https://bowerloom.ai/docs/guides/add-skills/) for their distinct prerequisites and limits.
 
@@ -55,7 +55,7 @@ The beta's harness commands process selected synthetic configuration files for C
 ## Inside `.bowerloom/`
 
 
-The setup places the team specification, role prompts, skills, working agreement, and handoff maps under `.bowerloom/` in your project. Planning proposes 20 definition files. Exact approval installs them and adds one private receipt that binds those files to the local project. You can version the definitions with the project, while the receipt and credentials stay private. The tree below lists that installed layout.
+The setup places the team specification, role prompts, skills, working agreement, and handoff maps under `.bowerloom/` in your project. Planning proposes 20 definition files. Exact approval installs them and adds one private receipt that binds those files to the local project. Commit the team, skill, and prompt definitions with the project. The receipt, the setup notes, and credentials stay on your machine. The [skills guide](https://bowerloom.ai/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines. The tree below lists that installed layout.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-beta/exports/structure-dark.png">
