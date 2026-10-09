@@ -27,22 +27,21 @@ A folder with no `.bowerloom` needs `--goal`. The project name is the folder nam
 
 ### Plan the first step
 
-<!-- BIND: pending installed evidence -->
 ```sh
-bowerloom up --team "Studio crew" --goal "Plan an accessible project website and its meaningful checks."
+bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio."
 ```
 
-The first plan is the `init` step. Read the folder, the team, and the count of setup files. The plan ends with a revision and exit code 3. Nothing is written yet.
+The first plan is the `init` step. Read the folder, the team, and the count of setup files. The plan ends with a revision and exit code 3. Nothing is written yet. [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command) shows the plan that this command printed in the test run for this release.
 
 ### Wait for exact approval
 
 Wait for the human to approve the plan. Replace `REVISION_FROM_THE_PLAN` with its complete 64-character revision. Keep every other input identical.
 
 ```sh
-bowerloom up --team "Studio crew" --goal "Plan an accessible project website and its meaningful checks." --approve REVISION_FROM_THE_PLAN
+bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio." --approve REVISION_FROM_THE_PLAN
 ```
 
-The command applies the step whose revision matches. It then prints the next plan and exits 3. A changed project gives a different revision, and the old approval refuses with `STALE_APPROVAL`.
+The command applies the step whose revision matches and prints `Applied plan <revision>.` If a step is left, it then prints the next plan and exits 3. A changed project gives a different revision, and the old approval refuses with `STALE_APPROVAL`.
 
 Repeat for each later step. Later steps are `team`, `sync`, and `apply`, and `up` shows only the steps your project needs. Once the folder holds `.bowerloom`, `up` ignores `--goal`.
 

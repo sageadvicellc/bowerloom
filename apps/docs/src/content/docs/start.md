@@ -29,7 +29,6 @@ You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engin
 
 You received a private archive named `bowerloom-0.7.0-beta.N.tgz`. Replace `N` with the number in that file name. The package is not on the public npm registry. Install the archive globally:
 
-<!-- BIND: pending installed evidence -->
 ```sh
 npm install -g ./bowerloom-0.7.0-beta.N.tgz
 bowerloom --version
@@ -37,6 +36,19 @@ bowerloom --help
 ```
 
 Review the command and its local effect with the human before you run it.
+
+npm reports the packages it added and exits 0. For the `0.7.0-beta.1` archive, `bowerloom --version` prints this line:
+
+```text
+Bowerloom 0.7.0-beta.1
+```
+
+`bowerloom --help` starts with these two lines:
+
+```text
+Bowerloom 0.7.0-beta.1: open beta
+Setup does not start workers, grant runtime access, or authorize connected actions.
+```
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead:
 
@@ -85,19 +97,20 @@ bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for
 
 Each run without `--approve` prints the plan and its revision, then exits 3. This is the first plan that `up` showed in the test run for this release:
 
-<!-- BIND: pending installed evidence -->
 ```text
 Next step: init. Set up .bowerloom in this folder for team Studio crew.
   Project: studio
   Goal: Prepare a fictional onboarding kit for an independent design studio.
-  Folder: <your project folder> (an existing folder: adds .bowerloom only, and your files stay as they are)
+  Folder: ~/code/studio (an existing folder: adds .bowerloom only, and your files stay as they are)
   Team: Studio crew (first-team)
   Creates 20 setup files and a private installation receipt in .bowerloom.
 Then each run shows the next step, if any: team, skills sync and apply, each with its own plan. Workers stay held.
 This writes setup files only. It starts no workers and runs nothing.
-Revision: 784250f36cc32765fadd59a3bcd1c41706c8788a4e2588e7515bc0fb5255399c
-Approval required. Run the same command again with --approve 784250f36cc32765fadd59a3bcd1c41706c8788a4e2588e7515bc0fb5255399c
+Revision: a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078
+Approval required. Run the same command again with --approve a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078
 ```
+
+The project name comes from the folder name. Your revision will differ from this one. Use the revision that your own plan prints.
 
 Show the plan to the human. After the human approves it, run the same command again with the revision:
 
@@ -105,16 +118,18 @@ Show the plan to the human. After the human approves it, run the same command ag
 bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio." --approve REVISION_FROM_THE_PLAN
 ```
 
-That run applies the step whose revision matches. It then shows the next plan and exits 3. Repeat until the project is prepared.
+That run applies the step whose revision matches and prints `Applied plan <revision>.` If a step is left, it then shows the next plan and exits 3. Repeat until the project is prepared.
 
-The last run prints this text and exits 4:
+When no step is left, the run prints `prepared, workers held` and exits 4. In the test run for this release, the project needed only the `init` step. So the first approved run was also the last, and it printed this text:
 
-<!-- BIND: pending installed evidence -->
 ```text
+Applied plan a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078.
 prepared, workers held
   Team: Studio crew (first-team), with skills and prompts in place for Claude Code and Codex.
   Next: read .bowerloom/START-HERE.md. This beta starts no worker; worker launch comes after the startup gate.
 ```
+
+The test run also recorded standard error. It held one line of JSON with the code `WORKERS_HELD`.
 
 When a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
