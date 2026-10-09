@@ -17,18 +17,20 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ### Install
 
-This beta comes as a private archive. A private archive is one `.tgz` file that the team sends you. There is no public npm package. Open a terminal in the folder that holds the file, and install it globally:
+This beta comes as a private archive. A private archive is one `.tgz` file that the team sends you. There is no public npm package. Install it globally, with the full path to the file:
 
 ```sh
-npm install -g ./bowerloom-0.7.0-beta.1.tgz
+npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
 bowerloom --version
 ```
+
+Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
 
 The second command prints `Bowerloom 0.7.0-beta.1`. [Install Bowerloom](/docs/start/) has the full steps.
 
 ### What the tests covered
 
-We installed this archive with the command above and ran the installed `bowerloom` command. A pin is the exact npm version or Git commit that a project records for a skill. The tests covered these tasks:
+We installed this archive globally with npm and ran the installed `bowerloom` command. A pin is the exact npm version or Git commit that a project records for a skill. The tests covered these tasks:
 
 - Install a skill from an npm package and from a Git repository.
 - Update a skill to a new pin.
@@ -59,7 +61,7 @@ Plan changes to an installed goal or profile before replacing managed files. Int
 
 Status reports specification readiness, runtime readiness, execution authority, review requirements, and drift. Setup remains ready for human review without starting workers.
 
-Run `bowerloom up --team <name> --goal <goal>` in a project folder to prepare it one approved step at a time. The run ends at `prepared, workers held`. No worker starts. Install the private archive with `npm install -g ./bowerloom-0.7.0-beta.N.tgz`.
+Run `bowerloom up --team <name> --goal <goal>` in a project folder to prepare it one approved step at a time. The run ends at `prepared, workers held`. No worker starts. Install the private archive with `npm install -g ~/Downloads/bowerloom-0.7.0-beta.N.tgz`. Use the full path where you saved the file.
 
 List a project with `bowerloom ls` and read its state with `bowerloom status`. Create a team, a skill, or a prompt inside `.bowerloom` with `team create`, `skill create`, and `prompt create`.
 

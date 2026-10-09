@@ -16,7 +16,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.N. Review the requirements and the install command with me. After installation, read the version and help. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
+Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements and the install command with me. After installation, read the version and help. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
 ```
 
 ## Agent procedure
@@ -27,13 +27,15 @@ Read the Bowerloom installation guide for 0.7.0-beta.N. Review the requirements 
 
 You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
 
-You received a private archive named `bowerloom-0.7.0-beta.N.tgz`. Replace `N` with the number in that file name. The package is not on the public npm registry. Install the archive globally:
+You received a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry. Install the archive globally, with the full path to the file:
 
 ```sh
-npm install -g ./bowerloom-0.7.0-beta.N.tgz
+npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
 bowerloom --version
 bowerloom --help
 ```
+
+Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
 
 Review the command and its local effect with the human before you run it.
 
