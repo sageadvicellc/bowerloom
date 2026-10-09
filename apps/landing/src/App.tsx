@@ -17,11 +17,10 @@ import ThemeControl from "./ThemeControl";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
-import CinematicIntro from "./CinematicIntro";
-import { selectIntroMedia } from "./intro-media";
-import type { IntroExit } from "./intro-controller";
+import ThemeSplash from "./ThemeSplash";
+import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
 import "./splash.css";
-import { rememberSplash, shouldShowSplash, SPLASH_FIXTURE_SESSION_KEY, SPLASH_SESSION_KEY } from "./splash-playback";
+import "./hero-parallax.css";
 import HomepageBanner from "./HomepageBanner";
 import SectionCompanion from "./SectionCompanion";
 import FooterCompanion from "./FooterCompanion";
@@ -98,30 +97,26 @@ function useReducedMotion() {
   return reduced;
 }
 
+function browserStorage(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
+}
+
+/** Once per browser, never for a deep link or reduced motion, and never before the clips exist. */
+function initialSplash(): SplashMedia | null {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!shouldShowThemeSplash({ hash: window.location.hash, reducedMotion, storage: browserStorage() })) return null;
+  return splashMediaFor(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+}
+
 export default function App() {
-  const [introMedia, setIntroMedia] = useState(() => selectIntroMedia(new URLSearchParams(window.location.search).get('intro') === 'fixture', window.innerHeight > window.innerWidth));
-  const sessionKey = introMedia?.kind === 'fixture' ? SPLASH_FIXTURE_SESSION_KEY : SPLASH_SESSION_KEY;
-  const [introExit, setIntroExit] = useState<IntroExit | null>(null);
-  const [splashOpen, setSplashOpen] = useState(() => {
-    if (!introMedia) return false;
-    try { return shouldShowSplash(window.location.hash, window.sessionStorage, sessionKey); }
-    catch { return shouldShowSplash(window.location.hash, null, sessionKey); }
-  });
-  const replayRef = useRef<HTMLButtonElement>(null);
-  const replaying = useRef(false);
-  const enterSite = (reason: IntroExit) => {
-    setIntroExit(reason);
-    try { rememberSplash(window.sessionStorage, sessionKey); } catch { /* Entry never depends on storage. */ }
-    setSplashOpen(false);
+  const [splash, setSplash] = useState<SplashMedia | null>(initialSplash);
+  const finishSplash = () => {
+    setSplash(null);
     requestAnimationFrame(() => {
-      if (replaying.current) replayRef.current?.focus({ preventScroll: true });
-      else document.getElementById('main')?.focus({ preventScroll: true });
+      // Give the page focus only if the visitor has not already moved it.
+      const active = document.activeElement;
+      if (!active || active === document.body) document.getElementById('main')?.focus({ preventScroll: true });
     });
-  };
-  const replaySplash = () => {
-    const next = selectIntroMedia(new URLSearchParams(window.location.search).get('intro') === 'fixture', window.innerHeight > window.innerWidth);
-    if (!next) return;
-    setIntroMedia(next); replaying.current = true; setSplashOpen(true);
   };
   const [selected, setSelected] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -168,8 +163,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="normal-site" data-intro-exit={introExit ?? undefined}>
-      {splashOpen && introMedia && <CinematicIntro media={introMedia} reducedMotion={reduced} onEnter={enterSite} />}
+    <div className="normal-site">
+      {splash && !reduced && <ThemeSplash media={splash} onStart={() => rememberThemeSplash(browserStorage())} onDone={finishSplash} />}
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -185,11 +180,7 @@ export default function App() {
       </header>
       <main id="main" tabIndex={-1}>
         {cinematic ? <section className="hero normal-hero" aria-labelledby="hero-title">
-          <HomepageBanner>
-            {introMedia && <button ref={replayRef} type="button" className="banner-replay" onClick={replaySplash} aria-label="Replay workshop animation" title="Replay animation">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5" /><path d="M19.1 8a8 8 0 1 0 .4 7M20 12l-.9-4" /></svg>
-            </button>}
-          </HomepageBanner>
+          <HomepageBanner />
           <div className="hero-copy">
             <p className="eyebrow">{hero.Eyebrow}</p>
             <h1 id="hero-title">{hero.H1}</h1>

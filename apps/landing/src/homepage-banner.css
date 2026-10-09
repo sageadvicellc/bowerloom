@@ -2,7 +2,8 @@
 .homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
 .homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms ease; }
 .homepage-banner[data-artwork="ready"] > img { opacity: 1; }
-.homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 70%, var(--ui-bg) 100%); }
+/* A short soft edge hides the line where the lagging art is clipped. Depth on scroll lives in hero-parallax.css. */
+.homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 84%, var(--ui-bg) 100%); }
 .normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }
 .normal-site .normal-hero::before { display: none; }
 .normal-site .normal-hero .hero-copy { max-width: 1040px; margin: auto; padding: 24px 5% 16px; text-align: center; }
@@ -83,13 +84,3 @@
 
 /* Main is the entry destination for assistive technology, not an interactive control. */
 .normal-site > main:focus { outline: none; }
-.banner-replay {
-  position: absolute; z-index: 2; top: clamp(12px, 2vw, 24px); right: clamp(12px, 2vw, 24px);
-  display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
-  border: 1px solid #fff9; border-radius: 50%; color: #27262b; background: #fff9;
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 2px 12px #27262b20, inset 0 1px 0 #fffc; cursor: pointer;
-}
-.banner-replay:hover { background: #fffc; }
-.banner-replay:focus-visible { outline: 3px solid #27262b; outline-offset: 3px; }
-.banner-replay svg { width: 22px; height: 22px; }
