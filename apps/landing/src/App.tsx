@@ -1,4 +1,4 @@
-import { readerRelease, docsPath } from './release';
+import { readerRelease, docsPath, betaGuidePath } from './release';
 import {
   Component,
   lazy,
@@ -278,8 +278,8 @@ export default function App() {
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
           <div className="resource-links">
-            <a href="#beta-guide">Read the beta boundaries</a>
-            <a href="#release-plan">Explore the release plan</a>
+            <a href={betaGuidePath}>Read the beta boundaries</a>
+            <a href={`${betaGuidePath}#release-plan`}>Explore the release plan</a>
             <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
         </section></SectionCompanion>
@@ -348,7 +348,7 @@ export default function App() {
           <a href={`${docsPath}feedback/`}>Bug reports and feedback</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
           <ExternalLink href={destinations.readme}>README</ExternalLink>
-          <a href="#beta-evidence">Beta guide</a>
+          <a href={betaGuidePath}>Beta guide</a>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
         <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>

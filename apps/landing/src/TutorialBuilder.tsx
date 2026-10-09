@@ -1,8 +1,7 @@
-import { setupRequirements, docsPath } from './release';
+import { setupRequirements, docsPath, betaGuidePath } from './release';
 import { useRef, useState } from 'react';
 import { buildTutorialPrompt, profiles, initialSelection, reviewModes } from './tutorial';
 import './tutorial.css';
-import BetaGuide from './BetaGuide';
 import ProductText from './ProductText';
 
 export default function TutorialBuilder() {
@@ -30,7 +29,7 @@ export default function TutorialBuilder() {
       <p>Describe a workflow that you perform manually or with one agent. Name its inputs, decisions, outputs, and the points that need your review. Choose a starting profile and take the prompt to your existing personal agent. The beta prepares a fixed team specification for comparison with your workflow, then installs only the exact files you approve.</p>
       <p><a href={`${docsPath}guides/integrate-workflow/`}>Integrate your existing workflow</a></p>
     </div>
-    <BetaGuide />
+    <p className="tutorial-guide-link" id="beta-guide"><a href={betaGuidePath}>Beta guide: integrate a workflow with your project</a></p>
     <form onSubmit={event => {
       event.preventDefault();
       try { setPrompt(buildTutorialPrompt(selection)); setError(''); setCopyStatus('Your setup prompt is ready below.'); }
@@ -81,7 +80,7 @@ export default function TutorialBuilder() {
       <label htmlFor="tutorial-prompt">Your setup prompt</label>
       <textarea id="tutorial-prompt" ref={output} value={prompt} readOnly spellCheck={false} rows={10} />
       <button className="tutorial-primary" type="button" onClick={copyPrompt}>Copy my prompt</button>
-      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable assistant profile and team blueprint after your approval. That reviewable setup is the finish line for this exercise.</p><p>Nothing runs automatically. Your new blueprint can guide later work after you agree on an execution path and its permissions.</p><p><ProductText>{`Requirements: ${setupRequirements} The Beta Guide above explains setup and backend boundaries.`}</ProductText></p></details>
+      <details className="tutorial-setup"><summary>What runs, and where?</summary><p>This page builds the prompt locally. Your personal agent uses its existing account to prepare a startup plan. The CLI installs a portable assistant profile and team blueprint after your approval. That reviewable setup is the finish line for this exercise.</p><p>Nothing runs automatically. Your new blueprint can guide later work after you agree on an execution path and its permissions.</p><p><ProductText>{`Requirements: ${setupRequirements}`}</ProductText> The <a href={betaGuidePath}>beta guide</a> explains setup and backend boundaries.</p></details>
     </div>}
   </section>;
 }

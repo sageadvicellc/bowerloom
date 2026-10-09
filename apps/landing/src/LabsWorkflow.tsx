@@ -51,7 +51,6 @@ export default function LabsWorkflow() {
         <li><details><summary>Next scoped change</summary><p>Feedback becomes a specific next task with an owner and acceptance criteria. The team records the result and brings it back for review.</p></details></li>
       </ol>
     </div>
-    <p className="labs-boundary"><code>workbench</code> versions belong to Labs, not the end-user release sequence. The diagram and YAML illustrate those responsibilities. They do not claim that the runtime independently executed this Sagespec team.</p>
     <a className="hero-secondary" href="#build">Plan your own team</a>
   </section>;
 }

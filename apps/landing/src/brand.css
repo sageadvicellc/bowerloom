@@ -100,9 +100,6 @@
 :root .tutorial-builder .tutorial-primary:hover { background: var(--brand-ink); color: var(--brand-ground); }
 :root .button.primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--brand-ground); }
 :root .tutorial-builder ::selection { background: var(--brand-action); color: var(--brand-action-ink); }
-:root .tutorial-builder .beta-guide pre { color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
-:root .tutorial-builder .beta-guide code { font-family: var(--ui-code-font); font-size: max(14px, .9em); }
-:root .tutorial-builder .beta-guide pre code { font: inherit; }
 :root .yaml-key { color: var(--brand-action); }
 :root .yaml-value { color: var(--brand-muted); }
 :root .site-footer {

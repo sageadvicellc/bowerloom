@@ -51,16 +51,8 @@
 .labs-loop summary:hover { color: var(--ui-primary); }
 .labs-loop summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .labs-loop details > p { margin: 0 0 20px; font-size: 16px; line-height: 1.65; }
-.labs-boundary { margin-top: 24px; max-width: 85ch; font-size: 15px; line-height: 1.65; color: var(--ui-muted); }
-.beta-guide { margin: 24px 0 32px; border-block: 1px solid var(--tutorial-accent, var(--ui-border)); }
-.beta-guide > summary { padding: 18px 0; min-height: 52px; font-size: 21px; cursor: pointer; }
-.beta-guide-body { padding: 0 0 28px; max-width: 85ch; }
-.beta-guide h3 { font-size: 24px; margin: 28px 0 12px; }
-.beta-guide p, .beta-guide li { line-height: 1.65; margin: 10px 0; }
-.beta-guide pre { padding: 18px; background: var(--tutorial-surface); white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 var(--ui-font); border: 1px solid var(--tutorial-accent); }
-.beta-guide a { text-decoration: underline; text-underline-offset: 3px; }
-.beta-guide summary:focus-visible, .file-list summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
-.beta-guide code, .labs-section code { font-family: var(--ui-font); font-size: .86em; }
+.file-list summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.labs-section code { font-family: var(--ui-font); font-size: .86em; }
 @media (max-width: 760px) {
   .labs-workspace, .labs-loop { grid-template-columns: 1fr; }
   .labs-role { border-top: 1px solid var(--ui-border); }

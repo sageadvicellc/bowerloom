@@ -4,6 +4,8 @@ import record from '../../../release/beta.json' with { type: 'json' };
 // it is not a publication receipt or permission to activate a supported action.
 export const release = record;
 export const docsPath = new URL(release.urls.docs).pathname;
+/** The beta guide moved from a landing accordion to the documentation. */
+export const betaGuidePath = `${docsPath}beta-guide/`;
 export const installAvailable = release.npm.published && release.state === 'published';
 export function releasePresentation(source: typeof record = record) {
   return {
