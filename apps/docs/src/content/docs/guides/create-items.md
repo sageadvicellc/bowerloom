@@ -51,19 +51,20 @@ The prompt lands in `.bowerloom/prompts/weekly-update.md`. The name is the promp
 
 ### Read the plan
 
-Each create command prints a plan before it writes. The plan has this shape:
+Each create command prints a plan before it writes. This is the plan that `bowerloom skill create house-style` printed in the test run for this release. It exited 3:
 
-<!-- BIND: pending installed evidence -->
 ```text
 Create skill house-style in .bowerloom/skills/house-style
   Teams: every team
-  Files: <count>
+  Files: 1
   skills.json: adds a local entry; a new file
 You and your agents own these files and can edit them.
 This writes inside .bowerloom only. It starts no workers and runs nothing.
-Revision: <64-character revision>
-Approval required. Run the same command again with --approve <64-character revision>
+Revision: 453b4d27eca25021d4146bd11a0e0b59677a23f4100d887020854bdabaeb5f51
+Approval required. Run the same command again with --approve 453b4d27eca25021d4146bd11a0e0b59677a23f4100d887020854bdabaeb5f51
 ```
+
+Your revision will differ from this one. Use the revision that your own plan prints.
 
 Show the plan to the human. After approval, run the same command with the revision:
 

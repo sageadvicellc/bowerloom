@@ -9,7 +9,7 @@ Bowerloom governs every file that a third-party skill adds to your project. Ever
 
 Three commands carry the work. `skills add` records a pin in `.bowerloom/skills.json`. `skills sync` installs the pinned skills on this machine. `apply` puts the skills in place for Claude Code and Codex.
 
-This guide uses two public skills. The first is `collections` from `@tanstack/db-skills@0.0.1`, an npm package. <!-- BIND: pending installed evidence --> Its native name is `tanstack-db-collections`. <!-- BIND: pending installed evidence --> The example includes `SKILL.md`, five reference files, and the package MIT notice. <!-- BIND: pending installed evidence --> The reviewed selection totals seven files and 37,953 bytes. The second is `verification-loop` from the GitHub repository `affaan-m/ecc`, pinned to one commit.
+This guide uses two public skills. The first is `collections` from `@tanstack/db-skills@0.0.1`, an npm package. Its native name is `tanstack-db-collections`. The selection holds `SKILL.md`, five reference files, and the package `LICENSE` file, which is MIT. It totals seven files and 37,953 bytes. The second is `verification-loop` from the GitHub repository `affaan-m/ecc`, pinned to one full commit. Its selection holds `SKILL.md` and the repository `LICENSE` file, which is MIT.
 
 ## Before you start
 
@@ -41,12 +41,11 @@ Add the collections skill from @tanstack/db-skills@0.0.1 and the verification-lo
 
 Add the npm skill. `--id` names the entry:
 
-<!-- BIND: pending installed evidence -->
 ```sh
 bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --id collections
 ```
 
-The command reads the package metadata and the selected skill folder from `registry.npmjs.org`. It then prints the plan and exits 3. The plan has this shape:
+The command reads the package metadata and the package archive from `registry.npmjs.org`. It selects the skill folder and the package license file from that archive. It then prints the plan and exits 3. Add `--json` to get the plan as one JSON object, with the code `APPROVAL_REQUIRED` and the revision. The plan has this shape:
 
 <!-- BIND: pending installed evidence -->
 ```text
@@ -64,19 +63,19 @@ Approval required. Run the same command again with --approve <64-character revis
 
 Show the plan to the human. Read the license line and the file count. After approval, run the same command with the revision:
 
-<!-- BIND: pending installed evidence -->
 ```sh
 bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --id collections --approve REVISION_FROM_THE_PLAN
 ```
 
+The command reads the same two files again, records the pin in `.bowerloom/skills.json`, and exits 0.
+
 Add the Git skill the same way. The repository name is lower case. The commit is 40 lower-case hex characters:
 
-<!-- BIND: pending installed evidence -->
 ```sh
-bowerloom skills add github:affaan-m/ecc@d29cf651c795869f733669c33e3d33dfd8307d10:skills/verification-loop
+bowerloom skills add github:affaan-m/ecc@d29cf651c795869f733669c33e3d33dfd8307d10:skills/verification-loop --id verification-loop
 ```
 
-The Git route reads only the selected skill folder through `api.github.com`, not the rest of the repository. Approve and run it again with `--approve`, as above. Without `--id`, the entry id is the skill name.
+The Git route reads through `api.github.com`. It reads the commit, the folder listings on the path to the skill, and each selected file. It reads no other file. In this example, the selected files are `SKILL.md` and the `LICENSE` file at the top of the repository. Approve and run it again with `--approve`, as above. Without `--id`, the entry id is the skill name.
 
 By default every team gets the skill. Pass `--team <team>` once for each team that gets it. A team must exist, or the command refuses with `TEAM_NOT_FOUND`.
 
@@ -88,7 +87,14 @@ By default every team gets the skill. Pass `--team <team>` once for each team th
 bowerloom skills check
 ```
 
-`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing. It prints `skills.json is valid: 2 skills, for claude and codex.` with one line per skill, shown as the id, the source kind, and the pin. Add `--json` for one machine-readable object.
+`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing. It prints the count of skills and the harnesses, then one line per skill, shown as the id, the source kind, and the pin. With only the TanStack pin, it printed this text in the test run for this release:
+
+```text
+skills.json is valid: 1 skill, for Claude Code and Codex.
+  collections  npm @tanstack/db-skills@0.0.1:skills/tanstack-db/collections
+```
+
+Add `--json` for one machine-readable object.
 
 ### Sync the skills
 
@@ -96,26 +102,38 @@ bowerloom skills check
 bowerloom skills sync
 ```
 
-`skills sync` reads `skills.json` and prints a plan. Each skill shows what sync does with it. A skill that needs a fetch shows its host. The plan ends with a revision and exit 3. This is the shape of a sync plan from the test run for this release:
+`skills sync` reads `skills.json` and prints a plan. Each skill shows what sync does with it. A skill that needs a fetch shows its host. The plan ends with a revision and exit 3.
 
-<!-- BIND: pending installed evidence -->
+In the test run for this release, a teammate project received a `skills.json` that pins `verification-loop` at a later commit. `bowerloom up --team "Studio crew"` then showed this sync step:
+
 ```text
-Sync skills from .bowerloom/skills.json for Claude Code and Codex
-  collections  install npm @tanstack/db-skills@0.0.1:skills/tanstack-db/collections, fetched from registry.npmjs.org
-  verification-loop  install git affaan-m/ecc@d29cf651c795869f733669c33e3d33dfd8307d10:skills/verification-loop, fetched from api.github.com
-Network: reads api.github.com and registry.npmjs.org for 2 skills, public and without credentials. Bytes must match their pins.
-Private state: <private state folder> (new folders get mode 0700)
+Next step: sync. Install the skills of team Studio crew on this machine.
+Sync skills from .bowerloom/skills.json for Claude Code and Codex, team first-team
+  verification-loop  install git affaan-m/ecc@ef648e01899ba3e8dc6371642deaaf64b4477775:skills/verification-loop, fetched from api.github.com
+Network: reads api.github.com for 1 skill, public and without credentials. Bytes must match their pins.
+Private state: ~/.local/state/bowerloom/bdf8c073f8b7f31a72b8014d900edc27 (new folders get mode 0700)
 Copies go to .bowerloom/managed, .claude/skills and .agents/skills, and stay on this machine. Commit .bowerloom/skills.json and your own skills.
 This copies text files only. It starts no workers and runs nothing.
-Revision: <64-character revision>
-Approval required. Run the same command again with --approve <64-character revision>
+Revision: 1180cef330b62e1b90f22b9e5e513e07e26db22b05ce10bb9382afbfc20220b5
+Approval required. Run the same command again with --approve 1180cef330b62e1b90f22b9e5e513e07e26db22b05ce10bb9382afbfc20220b5
 ```
+
+A direct `bowerloom skills sync` prints the same plan without the `Next step:` line and without the team.
 
 Show the plan. After approval, run the same command with the revision:
 
 ```sh
 bowerloom skills sync --approve REVISION_FROM_THE_PLAN
 ```
+
+The result names what sync did with each skill. For the TanStack skill, the test run printed this text:
+
+```text
+Applied plan 2bf293ff8c60a9ea41fa0cfcb25800ad0f20b3f242330f298e88e966d5a2434d.
+  collections: installed
+```
+
+After the pin moved to a later commit, the same step reported `verification-loop: updated`.
 
 Sync fetches only pins that the private cache does not hold yet. The private cache lives in `$XDG_STATE_HOME/bowerloom` when that variable is set, and in `~/.local/state/bowerloom` otherwise. It sits outside the project. Each project has its own cache folder there, so the cache is per project on this machine and not shared between projects.
 
@@ -135,7 +153,7 @@ bowerloom apply
 
 Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. These copies stay on this machine.
 
-`apply` shows a plan and exits 3. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
+`apply` shows a plan and exits 3. When `skills sync` already put every copy in place, `apply` prints its plan and `Nothing to change.` and exits 0. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
 
 ```sh
 bowerloom apply --approve REVISION_FROM_THE_PLAN
@@ -143,7 +161,6 @@ bowerloom apply --approve REVISION_FROM_THE_PLAN
 
 `apply` never edits `AGENTS.md` or `CLAUDE.md`. It prints a line for you to add yourself. This is the text from the test run:
 
-<!-- BIND: pending installed evidence -->
 ```text
 Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:
   Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>.
@@ -291,8 +308,7 @@ bowerloom skills add github:<owner>/<repo>@<40-char-commit>:skills/<name>
 
 The path to the skill folder is at most 8 folders deep. A longer path refuses with `SKILLS_ADD_SPEC_INVALID`.
 
-<!-- BIND: pending installed evidence -->
-GitHub limits requests that carry no credentials. A large skill can reach the GitHub limit. If GitHub refuses, wait before you run the command again.
+GitHub limits requests that carry no credentials. The Git route makes one request for the commit, one for each folder listing on the path, and one for each selected file. `skills add` makes these requests when it plans and again when you approve. `skills sync` makes them when you approve. In the test run for this release, the two-file ECC skill took 6 requests at each of these steps, and GitHub allowed 60 requests in each window. A skill with many files can reach that limit. If GitHub refuses, wait before you run the command again.
 
 ## Bug reports, feedback, and feature discussions
 
