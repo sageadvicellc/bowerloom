@@ -28,7 +28,6 @@ export default function LabsWorkflow() {
     <div className="labs-workspace">
       <div className="labs-files" aria-label="Illustrative Labs file structure">
         <div className="finder-title"><FileIcon folder /><span>Sagespec Labs</span><span className="finder-view" aria-hidden="true"><i /><i /><i /></span></div>
-        <div className="finder-path">Labs / <code>v0.7-workbench</code></div>
         <ul className="file-list">
           <li><details open><summary><FileIcon folder /><span>teams</span></summary><ul>{roles.map((item, index) => <li key={item.id}><button className={selected === index ? 'file-row selected' : 'file-row'} type="button" onClick={() => setSelected(index)} aria-pressed={selected === index} aria-controls="labs-role"><FileIcon /><span>{item.file}</span></button></li>)}</ul></details></li>
         </ul>
@@ -43,7 +42,7 @@ export default function LabsWorkflow() {
       </div>
     </div>
     <div className="labs-loop">
-      <div><h3>The project becomes the next example.</h3><p>The first Sagespec team used Bowerloom and its landing page as a shared project. The internal <code>v0.7-workbench</code> label marks that Labs experiment. Product review informs the page; feedback on the page returns to the team.</p></div>
+      <div><h3>The project becomes the next example.</h3><p>The first Sagespec team used Bowerloom and its landing page as a shared project. Product review informs the page; feedback on the page returns to the team.</p></div>
       <ol aria-label="The Labs feedback loop">
         <li><details><summary>Shared brief</summary><p>Knowledge officer turns source material into usable context and specifications. Brand review sets the creative direction and delegates design. The Tech lead researches the request, defines scope, and assigns specialists.</p></details></li>
         <li><details><summary>Framework + landing page</summary><p>The team develops the framework and explains its capabilities here. Tests and peer review distinguish working behavior from proposed features.</p></details></li>

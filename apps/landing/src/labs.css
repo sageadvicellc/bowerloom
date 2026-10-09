@@ -17,7 +17,6 @@
 .labs-workspace svg { width: 22px; height: 22px; flex: 0 0 auto; color: var(--ui-primary); }
 .finder-view { display: grid; gap: 3px; margin-left: auto; width: 17px; }
 .finder-view i { height: 1px; background: var(--ui-muted); }
-.finder-path { padding: 14px 24px 8px; color: var(--ui-muted); font-size: 15px; }
 .file-list, .file-list ul { list-style: none; padding: 0; margin: 0; }
 .file-list { padding: 8px 14px; }
 .file-row, .file-list summary { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 10px; width: 100%; border: 0; background: transparent; text-align: left; font: 14px/1.5 var(--ui-font); overflow-wrap: anywhere; }

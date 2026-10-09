@@ -38,5 +38,7 @@ test('the docs page keeps the install command, path note, up startup path and iC
 test('the Labs section no longer carries the workbench version paragraph', async () => {
   const labs = await read('src/LabsWorkflow.tsx'), css = await read('src/labs.css');
   assert.doesNotMatch(labs, /labs-boundary|versions belong to Labs|independently executed this Sagespec team/);
+  // Workbench version labels stay in the docs and README. The landing page does not name them.
+  assert.doesNotMatch(labs, /workbench|finder-path/i);
   assert.doesNotMatch(css, /labs-boundary|\.beta-guide/);
 });
