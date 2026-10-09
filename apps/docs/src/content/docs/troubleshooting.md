@@ -51,6 +51,30 @@ If `npm install -g` refuses with a permission error, do not use `sudo`. Set a us
 
 If the version differs, use matching documentation. A setup command does not grant model execution permission.
 
+## Agent sandboxes
+
+Bowerloom needs two kinds of network access:
+
+- Direct HTTPS to `registry.npmjs.org` and `api.github.com`. `skills add`, `skills sync`, and the sync step of `bowerloom up` fetch from these hosts. Bowerloom does not use a proxy, so it ignores the proxy that a sandbox sets.
+- Connections to `localhost`. Bowerloom holds its project lock on a local port and checks the lock by connecting to it. `up`, the create commands, `skills add`, `skills sync`, `apply`, `skills recover`, and `skills migrate` take this lock. When a sandbox blocks that connection, the commands that change skill copies, such as `skills sync` and `apply`, refuse with `MANAGED_SKILL_LOCK_SLOT_COLLISION`. When a sandbox blocks the local port itself, the refusal is `PROJECT_LOCK_UNAVAILABLE`.
+
+Claude Code can run its commands in a sandbox that allows neither. So when the Claude Code sandbox is on, run the `bowerloom` commands outside it. There are two ways:
+
+- Run each `bowerloom` command in your own terminal, in the project folder. Then show the output to your agent.
+- Add `bowerloom` to the commands that Claude Code runs outside its sandbox. In the Claude Code settings, add both entries to `sandbox.excludedCommands`:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": ["bowerloom", "bowerloom *"]
+  }
+}
+```
+
+An excluded command runs without the limits of the sandbox. Decide this with the human. Run each `bowerloom` command on its own. A `bowerloom` command joined to another one with `cd`, `&&`, a pipe, or a redirect still runs inside the sandbox.
+
+If you run Bowerloom inside a sandbox of your own, allow HTTPS on port 443 to the two hosts and TCP connections to `localhost`. 0.7.1 will address the proxy.
+
 ## Project commands
 
 If a command exits 3, it waits for approval. Read the plan, then run the same command with `--approve <revision>`. If it exits 4 with `prepared, workers held`, the project is prepared and a gate holds the workers.

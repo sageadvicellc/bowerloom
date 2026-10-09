@@ -7,7 +7,7 @@ order: 7.5
 
 Bowerloom governs every file that a third-party skill adds to your project. Every step shows a plan first, and nothing is written until you approve that exact plan. Every skill is pinned to an exact npm version or a full Git commit, so each machine gets the same bytes. Bowerloom installs only MIT and Apache-2.0 skills, and only when the license ships with the skill. It copies text files and runs nothing. No worker starts.
 
-Three commands carry the work. `skills add` records a pin in `.bowerloom/skills.json`. `skills sync` installs the pinned skills on this machine. `apply` puts the skills in place for Claude Code and Codex.
+Three commands carry the work. `skills add` records a pin in `.bowerloom/skills.json`. `skills sync` installs the pinned skills on this machine and copies them into place for Claude Code and Codex. `apply` puts the prompts in place, and it confirms that every skill copy is there. It never fetches.
 
 This guide uses two public skills. The first is `collections` from `@tanstack/db-skills@0.0.1`, an npm package. Its native name is `tanstack-db-collections`. The selection holds `SKILL.md`, five reference files, and the package `LICENSE` file, which is MIT. It totals seven files and 37,953 bytes. The second is `verification-loop` from the GitHub repository `affaan-m/ecc`, pinned to one full commit. Its selection holds `SKILL.md` and the repository `LICENSE` file, which is MIT.
 
@@ -37,6 +37,8 @@ Add the collections skill from @tanstack/db-skills@0.0.1 and the verification-lo
 
 ## Agent procedure
 
+When this guide does not answer a question, run `bowerloom help skills`. It lists every skills form and option, and it reads only.
+
 ### Add the pins
 
 Add the npm skill. `--id` names the entry:
@@ -45,20 +47,19 @@ Add the npm skill. `--id` names the entry:
 bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --id collections
 ```
 
-The command reads the package metadata and the package archive from `registry.npmjs.org`. It selects the skill folder and the package license file from that archive. It then prints the plan and exits 3. Add `--json` to get the plan as one JSON object, with the code `APPROVAL_REQUIRED` and the revision. The plan has this shape:
+The command reads the package metadata and the package archive from `registry.npmjs.org`. It selects the skill folder and the package license file from that archive. It then prints the plan and exits 3. Add `--json` to get the plan as one JSON object, with the code `APPROVAL_REQUIRED` and the revision. In a trial run of this release, the plan read:
 
-<!-- BIND: pending installed evidence -->
 ```text
-Add skill collections to <path to .bowerloom/skills.json>
+Add skill collections to .bowerloom/skills.json
   Source: npm @tanstack/db-skills 0.0.1, folder skills/tanstack-db/collections
-  Skill name: <name from SKILL.md>
-  License: <MIT or Apache-2.0> (<license files>)
-  Files: <count>
+  Skill name: tanstack-db-collections
+  License: MIT (LICENSE)
+  Files: 7
   Teams: every team
   skills.json: a new file
 This records the pin only. Nothing is installed or run.
-Revision: <64-character revision>
-Approval required. Run the same command again with --approve <64-character revision>
+Revision: e4c0e12968b83e9e86dfd964496624507af8f47fc8ffe9e4b28c207be0b7315b
+Approval required. Run the same command again with --approve e4c0e12968b83e9e86dfd964496624507af8f47fc8ffe9e4b28c207be0b7315b
 ```
 
 Show the plan to the human. Read the license line and the file count. After approval, run the same command with the revision:
@@ -79,7 +80,7 @@ The Git route reads through `api.github.com`. It reads the commit, the folder li
 
 By default every team gets the skill. Pass `--team <team>` once for each team that gets it. A team must exist, or the command refuses with `TEAM_NOT_FOUND`.
 
-`skills add` refuses an id that `skills.json` already holds (`SKILLS_ADD_EXISTS`). It records the pin only. Nothing is installed yet.
+`skills add` refuses an id that `skills.json` already holds (`SKILLS_ADD_EXISTS`). To move that id to a newer version or commit, add `--replace`. [Move a skill to a newer pin](#move-a-skill-to-a-newer-pin) shows how. `skills add` records the pin only. Nothing is installed yet.
 
 ### Check the pins
 
@@ -135,7 +136,7 @@ Applied plan 2bf293ff8c60a9ea41fa0cfcb25800ad0f20b3f242330f298e88e966d5a2434d.
 
 After the pin moved to a later commit, the same step reported `verification-loop: updated`.
 
-Sync fetches only pins that the private cache does not hold yet. The private cache lives in `$XDG_STATE_HOME/bowerloom` when that variable is set, and in `~/.local/state/bowerloom` otherwise. It sits outside the project. Each project has its own cache folder there, so the cache is per project on this machine and not shared between projects.
+Sync writes three things. In the project, it writes the managed copy in `.bowerloom/managed` and a copy for each harness in `.claude/skills` and `.agents/skills`. Outside the project, it keeps its fetch cache and its records in a private state folder, `~/.local/state/bowerloom/<project id>`. Set `XDG_STATE_HOME` to an absolute path to move that folder to `$XDG_STATE_HOME/bowerloom/<project id>`. Each project has its own folder there, so the cache is not shared between projects. Sync fetches only pins that the cache does not hold yet.
 
 Use `--offline` on a machine with no network or when you want no fetch. With `--offline`, sync refuses before any change if a pin still needs fetching (`SKILLS_OFFLINE`). Use `--team <team>` to sync only that team's skills.
 
@@ -145,6 +146,8 @@ A skill whose copy you changed is held. The result shows `held (MANAGED_SKILL_LO
 
 ### Apply the skills
 
+`skills sync` already copies each skill into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. So after a sync, `apply` has no skill left to place. Run `apply` when the project has prompts in `.bowerloom/prompts`, because sync places skills only. `apply` also confirms that every skill copy is in place.
+
 ```sh
 bowerloom apply
 ```
@@ -153,7 +156,7 @@ bowerloom apply
 
 Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. These copies stay on this machine.
 
-`apply` shows a plan and exits 3. When `skills sync` already put every copy in place, `apply` prints its plan and `Nothing to change.` and exits 0. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
+When there is something to place, `apply` shows a plan and exits 3. When every copy is already in place, it prints its plan and `Nothing to change.` and exits 0. In the test runs for this release, `apply` right after `skills sync` printed `Nothing to change.`, because those projects had no prompt to place. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
 
 ```sh
 bowerloom apply --approve REVISION_FROM_THE_PLAN
@@ -179,17 +182,57 @@ bowerloom status
 
 `ls skills` lists the skills you authored in `.bowerloom/skills`. `skills check` lists the pinned skills. `status` lists any copy that changed since install. All three read only.
 
+To check that your agent sees a skill, start a new agent session in the project folder. Ask the agent to list the skills it can use, and look for the skill name, such as `tanstack-db-collections`. If the name is missing, the agent did not find the copy. Bowerloom places the files, but it does not prove that a harness finds them.
+
+### Move a skill to a newer pin
+
+To move a skill to a newer version or commit, run `skills add` with the new pin, the same `--id`, and `--replace`. Then run `skills sync`. The source must stay the same npm package or GitHub repository. The entry keeps its teams unless you pass `--team`.
+
+In a trial run of this release, the ECC skill moved from commit `d29cf651c795869f733669c33e3d33dfd8307d10` to `ef648e01899ba3e8dc6371642deaaf64b4477775`:
+
+```sh
+bowerloom skills add github:affaan-m/ecc@ef648e01899ba3e8dc6371642deaaf64b4477775:skills/verification-loop --id verification-loop --replace
+```
+
+The plan shows the old pin and the new pin, and exits 3:
+
+```text
+Replace the pin of skill verification-loop in .bowerloom/skills.json
+  Old pin: GitHub affaan-m/ecc at d29cf651c795869f733669c33e3d33dfd8307d10, folder skills/verification-loop
+  New pin: GitHub affaan-m/ecc at ef648e01899ba3e8dc6371642deaaf64b4477775, folder skills/verification-loop
+  Skill name: verification-loop
+  License: MIT (LICENSE)
+  Files: 2
+  Teams: every team
+  skills.json: replaces the file with sha256 f134a9b2e5e7a3dfc085ee64011ad49e38afa1750b3bc13d3455e8f96ebd7aaf
+This records the new pin only. Nothing is installed or run. Run bowerloom skills sync to update the installed copies.
+Revision: 9c5d61e6fc96ce737e5859b13966228e38500368a5413610d6123d6fb3261aeb
+Approval required. Run the same command again with --approve 9c5d61e6fc96ce737e5859b13966228e38500368a5413610d6123d6fb3261aeb
+```
+
+After the human approves, run the same command with `--approve` and the revision. Then run `bowerloom skills sync`. Its plan shows `update to affaan-m/ecc@ef648e01899ba3e8dc6371642deaaf64b4477775:skills/verification-loop` for the skill. After approval, the sync result reads `verification-loop: updated`.
+
 ## What to commit
 
 Commit `.bowerloom/skills.json`. It holds exact pins only and is its own lock. Commit the skills you author, in `.bowerloom/skills/<name>`. Commit the teams and prompts you create.
 
-Do not commit the managed copies in `.bowerloom/managed`, or the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. They stay on each machine. Bowerloom writes a `.gitignore` inside `.bowerloom/managed`. A teammate clones the project, then runs `bowerloom up --team <name>` or `bowerloom skills sync` and `bowerloom apply`. Each machine rebuilds the same files from the same pins.
+Do not commit the managed copies in `.bowerloom/managed`, or the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. They stay on each machine. Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not add the projection folders to your `.gitignore`. Add these lines to the `.gitignore` at the top of the project yourself:
 
-When a teammate changes a pin in `skills.json` and you pull it, `skills sync` shows `update to <pin>` for that skill. You approve the update the same way.
+```text
+.claude/skills/
+.claude/commands/
+.agents/skills/
+```
+
+If you keep files of your own in those folders, list only the folders that Bowerloom makes instead, such as `.claude/skills/tanstack-db-collections/`. A teammate clones the project, then runs `bowerloom up --team <name>` or `bowerloom skills sync` and `bowerloom apply`. Each machine rebuilds the same files from the same pins.
+
+When a teammate changes a pin in `skills.json` and you pull it, `skills sync` shows `update to <pin>` for that skill. You approve the update the same way. To change a pin yourself, see [Move a skill to a newer pin](#move-a-skill-to-a-newer-pin).
 
 ## If a command refuses or stops
 
 In a terminal, a refusal prints its code, a plain sentence, and a `Next:` line. Without a terminal, it prints one line of JSON on standard error. A refusal exits 1. A usage error exits 2. Read the code, then follow its `Next:` line. [Errors](/docs/reference/errors/#skills-and-sync-refusals) lists the codes.
+
+After any refusal, run the command again without `--approve` and read the new plan. Show it to the human and approve that plan, not the earlier one. A refusal can change what the next plan holds. For example, a sync that fetched a skill and then refused plans the next run from the cache.
 
 - `SKILLS_ADD_SPEC_INVALID` and `MANIFEST_PIN_NOT_EXACT` mean the source is not an exact pin or a package, repository, and folder. Check the form.
 - `SKILLS_ADD_NOT_FOUND` means the package, version, commit, or folder does not exist. Check each.
@@ -197,6 +240,8 @@ In a terminal, a refusal prints its code, a plain sentence, and a `Next:` line. 
 - `SKILLS_ADD_UNSAFE_CONTENT` means a file breaks the plain-text, size, or link rules. Skills here are text files only, and nothing in them is run.
 - `SKILLS_ADD_NETWORK` means the fetch failed. Nothing changed. Run the same command again.
 - `SKILLS_ADD_HOST_REFUSED` means the source needs a host other than `registry.npmjs.org` or `api.github.com`. Bowerloom asked no other host.
+- `SKILLS_ADD_EXISTS` means `skills.json` already holds this id or source. To move the id to a new pin, add `--replace`.
+- `MANAGED_SKILL_LOCK_SLOT_COLLISION` means Bowerloom could not confirm its project lock on a local port. Another program may hold the port, or a sandbox may block Bowerloom from connecting to `localhost`. [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) explains the second case.
 - `MANAGED_SKILL_LOCAL_DRIFT` means you changed a copy. Bowerloom never overwrites it. Undo your edit, or copy it into a skill of your own with `bowerloom skill create <name>`, then run `skills sync` again.
 - `MANAGED_SKILL_PATH_OCCUPIED` means something Bowerloom did not install is where a copy goes.
 - `MANAGED_SKILL_RECOVERY_REQUIRED` means a change stopped inside one skill. Run `bowerloom skills recover plan --item <id>`.

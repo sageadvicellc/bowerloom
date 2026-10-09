@@ -88,7 +88,7 @@ Agents use these commands most. They write inside `.bowerloom` only. You and you
 bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]
 ```
 
-`apply` puts the skills in `.bowerloom/skills.json` and the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default). It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands. Read that prompt before you approve. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
+`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it confirms that every skill copy is in place. Run it when the project has prompts. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands. Read that prompt before you approve. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 
@@ -199,8 +199,8 @@ The macOS Docker context, ARM64 daemon, Compose v2, storage, and approval requir
 ## Third-party skills
 
 ```text
-bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]
-bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--approve <revision>] [--json]
+bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]
+bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]
 bowerloom skills check [--json]
 bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]
 bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon] [--approve <revision>] [--json]
@@ -209,7 +209,7 @@ bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <r
 
 `skills add` pins one skill in `.bowerloom/skills.json`. The pin must be exact. An npm source takes an exact version such as `1.2.3`. A GitHub source takes a full 40-character lower-case commit, and the repository name is lower case. Ranges, tags, branches, and short commits refuse before anything is fetched. `<path>` is the skill folder inside the package or repository. `skills add` reads only `registry.npmjs.org` or `api.github.com`, without credentials. It takes MIT and Apache-2.0 skills only. It records the pin and installs nothing.
 
-`--id` sets the entry id. The default is the skill name. `--team` limits the skill to a team. Without it, every team gets the skill.
+`--id` sets the entry id. The default is the skill name. `--team` limits the skill to a team. Without it, every team gets the skill. `--replace` moves an existing id to another version or commit of the same package or repository. The plan shows the old pin and the new pin, and the entry keeps its teams unless you pass `--team`. Then `skills sync` updates the copies. [Move a skill to a newer pin](/docs/guides/add-skills/#move-a-skill-to-a-newer-pin) shows an example.
 
 `skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing.
 

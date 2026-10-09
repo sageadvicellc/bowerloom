@@ -12,7 +12,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Help me prepare this project for a Bowerloom team with bowerloom up. Use the workflow description we reviewed. Run each step without --approve first, and show me the plan and its revision. Wait for my exact approval of each step, then run the same command with that revision. Stop at "prepared, workers held". Do not start workers, do not edit AGENTS.md or CLAUDE.md, and do not import live agent configuration.
+Help me prepare this project for a Bowerloom team with bowerloom up. Use the workflow description we reviewed. Ask me for the team name and the goal first. Run each step without --approve first, and show me the plan and its revision. Wait for my exact approval of each step, then run the same command with that revision. Stop at "prepared, workers held". Do not start workers, do not edit AGENTS.md or CLAUDE.md, and do not import live agent configuration.
 ```
 
 ## Agent procedure
@@ -26,6 +26,8 @@ Open a terminal in the project folder. The folder must be outside iCloud Drive a
 A folder with no `.bowerloom` needs `--goal`. The project name is the folder name unless you pass `--name`.
 
 ### Plan the first step
+
+Ask the human for the team name and the goal before the first `up`. Do not choose them yourself. This example uses the team `Studio crew` and a goal from the test run for this release.
 
 ```sh
 bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio."

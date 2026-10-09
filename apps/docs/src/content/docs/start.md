@@ -16,7 +16,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements and the install command with me. After installation, read the version and help. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
+Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
 ```
 
 ## Agent procedure
@@ -27,7 +27,9 @@ Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements 
 
 You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
 
-You received a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry. Install the archive globally, with the full path to the file:
+You received a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry.
+
+Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. The command installs the archive globally, with the full path to the file:
 
 ```sh
 npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
@@ -36,8 +38,6 @@ bowerloom --help
 ```
 
 Use the full path where you saved the file. `~/Downloads` is only an example. Inside Claude Code, a `cd` to a folder outside the project does not last, so a path such as `./bowerloom-0.7.0-beta.1.tgz` works only when the command already runs in the folder that holds the file.
-
-Review the command and its local effect with the human before you run it.
 
 npm reports the packages it added and exits 0. For the `0.7.0-beta.1` archive, `bowerloom --version` prints this line:
 
@@ -84,7 +84,9 @@ Use the documentation that matches your installed version.
 
 ### Prepare a project with one command
 
-Open a terminal in your project folder. Run `up` with a team name and a goal:
+If Claude Code runs with its sandbox on, run the `bowerloom` commands outside it. [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) shows how.
+
+Before the first `up`, ask the human for the team name and the goal. Do not choose them yourself. Then open a terminal in your project folder and run `up` with that team name and goal:
 
 ```sh
 bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for an independent design studio."

@@ -96,7 +96,9 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
 | `MANIFEST_LIMIT` | `skills.json` holds at most 32 skills and 1 MiB. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
-| `SKILLS_ADD_EXISTS` | `skills.json` already pins this. | Run `bowerloom skills check`. |
+| `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
+| `SKILLS_ADD_SOURCE_CHANGED` | `--replace` keeps the npm package or GitHub repository and moves only its version or commit. | Add the other source under a new id. |
+| `SKILLS_ADD_REPLACE_MISSING` | There is no skill with this id to replace. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_NOT_FOUND` | The package name, version, commit, or folder was not found. | Check each. |
 | `SKILLS_ADD_SKILL_MISSING` | A skill folder holds a `SKILL.md` file at its top. | Check the folder. |
 | `SKILLS_ADD_LICENSE_UNKNOWN` | This beta installs a skill only when its MIT or Apache-2.0 license ships with it. | Choose another skill. |
@@ -118,6 +120,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `MANAGED_SKILL_RECOVERY_REQUIRED` | A change was interrupted inside one skill. Bowerloom changes nothing else until it is recovered. | Run `bowerloom skills recover plan --item <id>`. |
 | `MANAGED_SKILL_LOCAL_DRIFT` | You changed a copy. Bowerloom never overwrites it. | Undo the edit, then run `bowerloom skills sync`. |
 | `MANAGED_SKILL_PATH_OCCUPIED` | Something Bowerloom did not install is where a copy goes. | Move it, then run `bowerloom skills sync`. |
+| `MANAGED_SKILL_LOCK_SLOT_COLLISION` | Bowerloom holds its project lock on a local port on `127.0.0.1`, and it checks the lock by connecting to that port. The check failed. Another program may listen on the port, or a sandbox may block Bowerloom from connecting to `localhost`. Nothing of the named skill changed. In this beta the message does not name the port, and the terminal `Next:` line shows `<port>` as written. | If an agent sandbox runs Bowerloom, run Bowerloom outside it, as [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) says. Otherwise list the programs that listen with `lsof -nP -iTCP -sTCP:LISTEN`. Then run `bowerloom skills sync` again. |
 | `MANAGED_SKILL_HISTORY_FULL` | A skill has 64 operations in its private history. Bowerloom deletes no history by itself. | Follow the `Next:` line: move the older `op-<key>` folders out with `mv`, then run the command again. |
 | `APPLY_NAME_COLLISION` | Bowerloom never overwrites what it did not install, and two items cannot share one place. | Run `bowerloom apply` after you resolve it. |
 | `PROMPT_INVALID` | Bowerloom reads only plain prompt files you own. | Run `ls -l .bowerloom/prompts`. |
