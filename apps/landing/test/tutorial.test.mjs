@@ -16,6 +16,7 @@ test('all profiles and review cadences produce the selected bounded setup brief'
     assert.ok(prompt.includes('then run bowerloom status'));
     assert.ok(prompt.includes('run bowerloom up --team <name> --goal <goal> in my project folder'));
     assert.ok(!prompt.includes('init status'));
+    assert.ok(prompt.includes('Keep my project out of iCloud Drive, because init does not check.'));
     assert.ok(prompt.includes('.bowerloom/startup-review.md'));
     assert.ok(prompt.includes('Offer --json'));
     assert.ok(!prompt.includes('Option B'));

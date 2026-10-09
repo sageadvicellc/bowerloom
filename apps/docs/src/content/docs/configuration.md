@@ -86,10 +86,11 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 | `.bowerloom/authoring/receipt.json` | The record of the teams, skills, and prompts you created | Yes |
 | `.bowerloom/installation-receipt.json` | The private setup receipt. It holds absolute paths on your machine | No |
 | `.bowerloom/brief.json`, `manifest.json`, `startup.json`, `startup-review.md`, `START-HERE.md`, `working-agreement.md`, `milestones.md`, `optional-controls.md` | Setup files that `bowerloom up` writes. `brief.json` holds your goal text | No |
+| `.bowerloom-revision.json`, `.bowerloom-revision-<revision>/` | Revision marker and private revision history, next to `.bowerloom`. The `previous` folder holds the earlier installation receipt | No |
 | `.bowerloom/managed/` | Managed copies of pinned skills. Bowerloom writes a `.gitignore` inside it | No |
 | `.claude/skills/`, `.claude/commands/`, `.agents/skills/` | Projections: the copies of skills and prompts that Claude Code and Codex read | No |
 
-Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`. On a fresh clone, `bowerloom up --team <name>` is not tested yet. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines.
+Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`. On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. The [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine) are the supported path. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines.
 
 Receipts and the fetch cache live in a private state folder outside the project. That folder is `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, and `~/.local/state/bowerloom` otherwise. Bowerloom makes new folders there with mode 0700. Keep that folder private.
 

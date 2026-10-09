@@ -69,6 +69,8 @@ Report the actual resulting installation revision and readiness fields. The resu
 
 The operation replaces managed setup files and preserves the recorded previous installation in private history. It starts no workers.
 
+The private history lives in the project folder, next to `.bowerloom`, in `.bowerloom-revision-<revision>/`. Its `previous` folder holds the earlier setup files, including the earlier `installation-receipt.json`. While a revision is pending, `.bowerloom-revision.json` marks it. Keep both out of version control. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the `.gitignore` lines.
+
 ### If the revision stops partway
 
 If status is `revision-pending`, preserve the marker, stage, and backup. Follow [Recover an interrupted revision](/docs/guides/recover-revision/).

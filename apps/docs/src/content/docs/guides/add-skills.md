@@ -119,7 +119,7 @@ Revision: 1180cef330b62e1b90f22b9e5e513e07e26db22b05ce10bb9382afbfc20220b5
 Approval required. Run the same command again with --approve 1180cef330b62e1b90f22b9e5e513e07e26db22b05ce10bb9382afbfc20220b5
 ```
 
-`first-team` is the id of the team named Studio crew. A direct `bowerloom skills sync` prints the same plan without the `Next step:` line and without the team.
+Bowerloom prints full paths. This example shows the home folder as `~`. `first-team` is the id of the team named Studio crew. A direct `bowerloom skills sync` prints the same plan without the `Next step:` line and without the team.
 
 Show the plan. After approval, run the same command with the revision:
 
@@ -171,7 +171,7 @@ Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copi
 
 Show the line to the human. Add it to `AGENTS.md` and `CLAUDE.md` only after the human approves.
 
-`bowerloom up --team <name>` runs `sync` and `apply` for you, one approved step at a time. On a fresh clone of a project, this path is not tested yet. Use [the teammate steps](#get-the-same-skills-on-another-machine) there.
+`bowerloom up --team <name>` runs `sync` and `apply` for you, one approved step at a time. On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. The [teammate steps](#get-the-same-skills-on-another-machine) are the supported path there.
 
 ### Check the result
 
@@ -221,7 +221,7 @@ Commit `.bowerloom/skills.json`. It holds exact pins only and is its own lock. C
 - Every prompt in `.bowerloom/prompts/<name>.md`.
 - `.bowerloom/authoring/receipt.json`, the record of the teams, skills, and prompts that you create.
 
-Everything else stays on each machine. That covers the setup receipt and the setup notes that `bowerloom up` writes, the managed copies in `.bowerloom/managed`, and the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. A projection is the copy of a skill or prompt that a harness reads. `.bowerloom/installation-receipt.json` holds absolute paths on your machine. `.bowerloom/brief.json` holds your goal text.
+Everything else stays on each machine. That covers the setup receipt and the setup notes that `bowerloom up` writes, the revision history next to `.bowerloom`, the managed copies in `.bowerloom/managed`, and the projections in `.claude/skills`, `.claude/commands`, and `.agents/skills`. A projection is the copy of a skill or prompt that a harness reads. `.bowerloom/installation-receipt.json` holds absolute paths on your machine. `.bowerloom/brief.json` holds your goal text.
 
 Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not add the other files to your `.gitignore`. Add these lines to the `.gitignore` at the top of the project yourself:
 
@@ -237,6 +237,8 @@ Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not ad
 .bowerloom/milestones.md
 .bowerloom/optional-controls.md
 .bowerloom/managed/
+.bowerloom-revision.json
+.bowerloom-revision-*/
 .claude/skills/
 .claude/commands/
 .agents/skills/
@@ -255,7 +257,7 @@ A teammate who clones the project gets the pins in `.bowerloom/skills.json`. On 
 3. After approval, run `bowerloom skills sync --approve REVISION_FROM_THE_PLAN`.
 4. Run `bowerloom apply`. It places any prompt or skill copy that is still missing. In the trial, it printed `Nothing to change.`
 
-`bowerloom up --team <name>` on a fresh clone is not tested yet.
+On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. These steps are the supported path.
 
 When a teammate changes a pin in `skills.json` and you pull it, `skills sync` shows `update to <pin>` for that skill. You approve the update the same way. To change a pin yourself, see [Move a skill to a newer pin](#move-a-skill-to-a-newer-pin).
 
