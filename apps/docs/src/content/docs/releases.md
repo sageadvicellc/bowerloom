@@ -17,7 +17,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ### Install
 
-This beta ships on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. The beta stream is opt-in, and there is no stable release yet. Install it globally:
+This beta ships on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. There is no stable release yet, so the `latest` tag also points at this beta. Install with `@beta` to stay on the beta stream. Install it globally:
 
 ```sh
 npm install -g bowerloom@beta

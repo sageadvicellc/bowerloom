@@ -3,10 +3,10 @@
   "product": "Bowerloom",
   "release": "v0.7-beta",
   "version": "0.7.0-beta.1",
-  "state": "unreleased",
+  "state": "published",
   "audience": "public-beta-stream",
   "launch": "soft",
-  "statusLabel": "Public beta stream \u00b7 unreleased",
+  "statusLabel": "Public beta stream \u00b7 published",
   "distribution": {
     "kind": "npm-beta-stream",
     "distTag": "beta"
@@ -16,12 +16,13 @@
     "registry": "https://registry.npmjs.org",
     "distTag": "beta",
     "installCommand": "npm install -g bowerloom@beta",
-    "published": false,
-    "ownershipVerified": false,
+    "published": true,
+    "ownershipVerified": true,
     "publishingIdentityVerified": true,
-    "availabilityNote": "This is the opt-in beta stream on npm, under the beta dist-tag. There is no stable release yet. Install it with npm install -g bowerloom@beta.",
+    "availabilityNote": "Published on npm on 2026-10-09 under the beta dist-tag. There is no stable release yet, so the latest tag also points at this beta. Install it with npm install -g bowerloom@beta.",
     "authenticatedIdentity": "hannasage",
-    "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate."
+    "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate.",
+    "ownershipEvidence": "Public registry read on 2026-10-09: hannasage is the only maintainer of bowerloom, and the 0.7.0-beta.1 integrity equals the prepared archive."
   },
   "urls": {
     "site": "https://bowerloom.ai",
@@ -42,8 +43,16 @@
         "scope": "Isolated package installation, setup, revision, upgrade and removal with cached dependencies"
       }
     ],
-    "releaseQualified": [],
-    "note": "Clean public installation and additional systems remain under review."
+    "releaseQualified": [
+      {
+        "os": "macOS",
+        "architecture": "arm64",
+        "node": "24.11.0",
+        "npm": "11.6.1",
+        "scope": "Registry installation of bowerloom@beta into an empty prefix and cache on 2026-10-09, then bowerloom --version and bowerloom --help, both exit 0"
+      }
+    ],
+    "note": "Additional systems remain under review."
   },
   "capabilities": {
     "setup": "Prepare and review a personal-agent profile, team specification and working agreement in a new or existing project. Exact approval installs the planned files.",
@@ -54,7 +63,6 @@
     "company": "Shared company access, offboarding and deletion remain release requirements.",
     "limits": [
       "Full runtime acceptance remains incomplete.",
-      "The initial beta needs founder acceptance and publication approval.",
       "Unattended support requires an independently accepted installed security configuration."
     ]
   }

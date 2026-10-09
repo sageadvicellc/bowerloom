@@ -43,7 +43,7 @@ test('the install guard finds a bare or latest global install and passes the bet
 });
 test('a private archive install command may name the archive by a relative, home or absolute path',async()=>{
   const current=await readRelease();
-  const release={...current,distribution:{kind:'private-archive',archive:'bowerloom-0.7.0-beta.1.tgz',npmPublication:false}};
+  const release={...current,state:'unreleased',npm:{...current.npm,published:false},distribution:{kind:'private-archive',archive:'bowerloom-0.7.0-beta.1.tgz',npmPublication:false}};
   const withCommand=command=>({...release,npm:{...release.npm,installCommand:command}});
   for(const command of ['npm install -g ./bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/bowerloom-0.7.0-beta.1.tgz','npm install -g /opt/beta/bowerloom-0.7.0-beta.1.tgz'])
     assert(installCommandAccepted(withCommand(command)),command);

@@ -27,7 +27,7 @@ Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements 
 
 You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engines` field of the product's `package.json`.
 
-Bowerloom is on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. The beta stream is opt-in, and there is no stable release yet.
+Bowerloom is on npm as `bowerloom`, under the `beta` dist-tag. A dist-tag is a name that points at one published version. There is no stable release yet, so the `latest` tag also points at this beta. Install with `@beta` to stay on the beta stream.
 
 Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. If your agent runs in a sandbox that blocks writes outside the project, ask the human to run the install command in their own terminal. The command installs the beta globally:
 

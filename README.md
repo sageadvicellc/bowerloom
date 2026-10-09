@@ -164,7 +164,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 
 ## Install Bowerloom
 
-Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. The beta stream is opt-in, and there is no stable release yet.
+Bowerloom is an open beta on npm as `bowerloom`, under the `beta` dist-tag. There is no stable release yet, so the `latest` tag also points at this beta. Install with `@beta` to stay on the beta stream.
 
 Install the beta CLI with Node `>=24.11.0 <25` and npm `11`.
 
