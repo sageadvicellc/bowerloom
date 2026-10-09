@@ -11,7 +11,7 @@ export const destinations = {
 };
 export const hero = {
   "Eyebrow": "Governance for agent workflows",
-  "H1": "Bring governance to your agent workflows.",
+  "H1": "Own your AI skills, agents, and connections",
   "Body": "Turn the work you already do into defined roles, handoffs, and review points. Bowerloom binds setup files to an exact approved plan and records their installed state, while your team definitions stay in files that follow you. Start with an existing project and your personal agent, then review the team specification before approving its installation.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "Explore the Labs workflow",
