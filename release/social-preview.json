@@ -1,0 +1,13 @@
+{
+  "title": "Bowerloom · Bring governance to your agent workflows.",
+  "description": "Turn the work you already do into defined roles, handoffs, and review points.",
+  "siteName": "Bowerloom",
+  "type": "website",
+  "image": {
+    "url": "https://bowerloom.ai/social/bowerloom.png",
+    "width": 1200,
+    "height": 630,
+    "type": "image/png",
+    "alt": "Bowerloom and S4-G3 robot waving with its plant chamber on a cream, rose, and sage background."
+  }
+}

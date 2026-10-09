@@ -82,3 +82,21 @@ Utility labels use at least 13px. Navigation, controls, and the setup prompt use
 The prompt uses line height 1.6 and a 440px text area. Its header wraps on small screens.
 Small sage text uses `#536344`. Its contrast is 6.150124:1 on cream and 5.692158:1 on the pale panel.
 Button backgrounds keep the selected primary color and white labels. Large decorative accents retain the lighter sage.
+
+## Social preview
+
+The landing page and documentation share `release/social-preview.json` and `/social/bowerloom.png`.
+The image uses the approved S4-G3 pose, wordmark, and light palette from `src/brand.css`.
+Its fixed layout lives in `design/social-preview.html`.
+
+With `playwright-cli` and its Chromium browser installed, run these commands from the repository root:
+
+```sh
+node tools/render-social-preview.mjs
+npm run build --workspace apps/landing
+npm --prefix apps/docs run build
+node tools/check-social-preview.mjs
+```
+
+The renderer writes a 1200 by 630 pixel PNG.
+The final command tests the shared preview tags in the built HTML and compares the exported image with its source.

@@ -1,6 +1,7 @@
 ---
 import Header from './Header.astro';
 import '../styles/theme.css';
+import social from '../../../../release/social-preview.json';
 const {title,description,url,markdownUrl}=Astro.props;
 ---
 <!doctype html>
@@ -8,6 +9,21 @@ const {title,description,url,markdownUrl}=Astro.props;
   <head>
     <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>{title} · Bowerloom docs</title><meta name="description" content={description}/>
+    <meta property="og:title" content={social.title}/>
+    <meta property="og:description" content={social.description}/>
+    <meta property="og:site_name" content={social.siteName}/>
+    <meta property="og:type" content={social.type}/>
+    <meta property="og:image" content={social.image.url}/>
+    <meta property="og:image:secure_url" content={social.image.url}/>
+    <meta property="og:image:width" content={social.image.width}/>
+    <meta property="og:image:height" content={social.image.height}/>
+    <meta property="og:image:type" content={social.image.type}/>
+    <meta property="og:image:alt" content={social.image.alt}/>
+    <meta name="twitter:card" content="summary_large_image"/>
+    <meta name="twitter:title" content={social.title}/>
+    <meta name="twitter:description" content={social.description}/>
+    <meta name="twitter:image" content={social.image.url}/>
+    <meta name="twitter:image:alt" content={social.image.alt}/>
     <meta name="theme-color" content="#F6EEE8"/>
     <meta name="robots" content="noindex, nofollow"/>
     <link rel="canonical" href={'https://bowerloom.ai'+url}/>
