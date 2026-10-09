@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "apps/landing/design/social-preview.html"
+        ],
+        "createdAt": "2026-10-09T22:14:31.264Z",
+        "reason": "Hanna requested the Bowerloom light theme colors for this social preview; apps/landing/src/brand.css defines the approved cream background as #F6EEE8."
+      }
+    ]
+  }
+}

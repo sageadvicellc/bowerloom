@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Bowerloom social preview</title>
+  <link rel="stylesheet" href="/src/brand.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+    body { background: var(--brand-ground); color: var(--brand-ink); }
+    .preview { position: relative; width: 1200px; height: 630px; isolation: isolate; }
+    .rose { position: absolute; inset: 0 0 0 770px; background: var(--brand-rose); z-index: -1; }
+    .foliage { position: absolute; inset: auto 0 0; height: 18px; background: var(--brand-foliage); }
+    .wordmark { position: absolute; left: 64px; top: 55px; width: 380px; height: auto; }
+    h1 { position: absolute; top: 170px; left: 64px; width: 650px; margin: 0; font: 500 67px/1.05 Newsreader, Georgia, serif; letter-spacing: -.035em; }
+    .description { position: absolute; top: 415px; left: 64px; margin: 0; font: 400 25px/1.45 Manrope, sans-serif; color: var(--brand-muted); }
+    .address { position: absolute; left: 64px; bottom: 49px; margin: 0; font: 500 18px Manrope, sans-serif; color: var(--brand-action); }
+    .character { position: absolute; width: 416px; height: 624px; object-fit: contain; right: 24px; bottom: 12px; }
+  </style>
+</head>
+<body>
+  <main class="preview">
+    <div class="rose" aria-hidden="true"></div>
+    <img class="wordmark" src="/brand/rose-conservatory/bowerloom-wordmark-plain-ink.svg" alt="Bowerloom" width="2044" height="374">
+    <h1>Own your AI skills,<br>agents, and<br>connections</h1>
+    <p class="description">Defined roles, handoffs,<br>and review points.</p>
+    <p class="address">bowerloom.ai</p>
+    <img class="character" src="/panel-units/s4-g3-footer-wave.png" alt="S4-G3 waves, with a plant growing inside its chest chamber." width="1024" height="1536">
+    <div class="foliage" aria-hidden="true"></div>
+  </main>
+</body>
+</html>
