@@ -33,7 +33,7 @@ No parser here guarantees that arbitrary prose contains no secret. Inspect selec
 
 ## Review each execution environment
 
-Review the prompts, skills, model and harness versions, tool scopes, and isolation for each later action.
+Review the prompts, skills, model and harness versions (a harness is an agent application such as Claude Code or Codex), tool scopes, and isolation for each later action.
 
 A source scan or valid setup does not grant execution permission. If protected controls change, review the affected action again.
 

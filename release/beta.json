@@ -16,11 +16,11 @@
     "packageName": "bowerloom",
     "registry": "https://registry.npmjs.org",
     "distTag": "beta",
-    "installCommand": "npm install -g ./bowerloom-0.7.0-beta.1.tgz",
+    "installCommand": "npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz",
     "published": false,
     "ownershipVerified": false,
     "publishingIdentityVerified": true,
-    "availabilityNote": "This is a private colleague beta. It is not published to npm. Install it from the bowerloom-0.7.0-beta.1.tgz archive you were given, in the folder that holds it.",
+    "availabilityNote": "This is a private colleague beta. It is not published to npm. Install it from the bowerloom-0.7.0-beta.1.tgz archive you were given. Use the full path where you saved the file.",
     "authenticatedIdentity": "hannasage",
     "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate."
   },

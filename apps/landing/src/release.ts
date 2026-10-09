@@ -10,7 +10,7 @@ export function releasePresentation(source: typeof record = record) {
     label: 'Open beta', version: source.version, release: source.release,
     capabilities: {
       setup: 'Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files.',
-      skills: 'Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution.',
+      skills: 'Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. A copy in the project does not prove that Claude Code or Codex finds or runs it.',
       revision: 'Plan a change to an installed setup, then approve its exact revision before replacement.',
       execution: 'Setup does not start workers, grant runtime access, or authorize connected actions.',
       harnesses: 'Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration.',
@@ -21,6 +21,7 @@ export function releasePresentation(source: typeof record = record) {
     beyondSetup: 'Running a team needs separate runtime permissions and controls. The setup commands do not grant them.',
     unattended: 'Shared company access and unattended services are outside this setup walkthrough.',
     setupCommands: `${source.npm.installCommand}\nbowerloom --version\nbowerloom --help`,
+    installNote: 'Use the path where you saved the file.',
   };
 }
 export const readerRelease = releasePresentation();

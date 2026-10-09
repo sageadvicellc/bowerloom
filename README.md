@@ -27,7 +27,7 @@ Bowerloom moves from project integration in the 0.7 beta toward a stable v1. The
 | Stage | Intended outcome | Optimistic estimate | Pessimistic estimate |
 | --- | --- | --- | --- |
 | 0.7 beta handoff | Put project integration and documented limits in colleagues' hands. | Colleague soft launch: Monday, October 12. | Unresolved release defects move the handoff later. |
-| 0.7.x capability additions | Add capabilities from observed use and accepted priorities. | October–November. | Additions extend beyond November if fixes or required controls take longer. |
+| 0.7.x capability additions | Add capabilities from observed use and accepted priorities. | October to November. | Additions extend beyond November if fixes or required controls take longer. |
 | 1.0 beta | Bring the intended v1 capabilities into a defined, tested scope. | Around December. | After December if the 0.7.x work needs more time. |
 | Release candidate | Focus on stability, installation, recovery, security, and documentation. | Toward the end of December. | After the delayed 1.0 beta and its necessary fixes. |
 | Stable v1 | Release the version that meets the final criteria. | After a successful release candidate. No confirmed date. | After remaining release-candidate defects are resolved. No confirmed date. |
@@ -141,7 +141,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 | Capability | Current boundary |
 | --- | --- |
 | Setup | Prepare a personal-agent profile, team definition, and working agreement in a new or existing project. Exact approval writes the planned files. |
-| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |
+| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. A copy in the project does not prove that Claude Code or Codex finds or runs it. |
 | Revision | Plan a change to an installed setup, then approve its exact revision before replacement. |
 | Execution | Setup does not start workers, grant runtime access, or authorize connected actions. |
 | Harnesses | Synthetic configuration commands support Codex and Claude Code fixtures. They do not run models or change live agent configuration. |
@@ -267,7 +267,7 @@ bowerloom skills sync
 bowerloom apply
 ```
 
-`skills add` records the pin in `.bowerloom/skills.json` and installs nothing. `skills check` checks every pin offline. `skills sync` installs the pinned skills for Claude Code and Codex. `apply` puts the skills and prompts in place for Claude Code, Codex, or both. Each command that changes files shows a plan first. Read the [skills guide](https://bowerloom.ai/docs/guides/add-skills/) for the refusal codes.
+`skills add` records the pin in `.bowerloom/skills.json` and installs nothing. `skills check` checks every pin offline. `skills sync` installs the pinned skills and puts them in place for Claude Code and Codex. `apply` puts the prompts in place for Claude Code, Codex, or both, and any skill copy that is still missing. Each command that changes files shows a plan first. Read the [skills guide](https://bowerloom.ai/docs/guides/add-skills/) for the refusal codes.
 
 ### Create teams, skills, and prompts
 

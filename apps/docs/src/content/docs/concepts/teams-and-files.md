@@ -33,6 +33,6 @@ Module names do not imply that setup starts those services. A map declaration do
 
 ## Portable and private
 
-Portable definitions describe the work and its proposed boundaries. Private installation records bind approved file effects to their actual paths and state. This separation lets the definitions follow your project without transferring local credentials or approval. Inspect each definition for private context before sharing it. Moving a file does not prove that another harness can execute it.
+Portable definitions describe the work and its proposed boundaries. Private installation records bind approved file effects to their actual paths and state. This separation lets the definitions follow your project without transferring local credentials or approval. Inspect each definition for private context before sharing it. Moving a file does not prove that another harness, an agent application such as Claude Code or Codex, can execute it.
 
 [Read and review your setup](/docs/learn/review-your-setup/) connects these concepts to the installed guides.

@@ -32,7 +32,7 @@ bowerloom help advanced
 
 Bare `bowerloom` prints the short help. An unknown command prints `Unknown command <word>. Run bowerloom help.` The help heading reads `open beta`.
 
-The version output identifies `Bowerloom 0.7.0-beta.N`. Command syntax does not grant execution permission.
+The version output reads `Bowerloom 0.7.0-beta.1`. Command syntax does not grant execution permission.
 
 ## Approvals and exit codes
 
@@ -88,7 +88,7 @@ Agents use these commands most. They write inside `.bowerloom` only. You and you
 bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]
 ```
 
-`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it confirms that every skill copy is in place. Run it when the project has prompts. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands. Read that prompt before you approve. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
+`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it places any skill copy that is still missing. Claude Code and Codex are the harnesses, the agent applications that read these copies. Run `apply` when the project has prompts. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands. Read that prompt before you approve. See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 
@@ -164,7 +164,7 @@ bowerloom harness remove --state <private-directory> --synthetic --approve <remo
 bowerloom harness recover --state <private-directory> --synthetic --approve <recorded-operation-revision>
 ```
 
-Import and plan read separately reviewed synthetic inputs. Approved projection and removal change the selected fixture. Recovery requires its recorded operation approval.
+Import and plan read separately reviewed synthetic inputs. Approved projection and removal change the selected fixture. Projection writes the selected files into that fixture configuration. Recovery requires its recorded operation approval.
 
 The --synthetic flag is an assertion. If a file is live or unreviewed, stop. Read [Codex and Claude Code](/docs/harnesses/).
 

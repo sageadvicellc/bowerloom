@@ -76,7 +76,7 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `PROJECT_UNSAFE` | Bowerloom does not trust a `.bowerloom` folder that other people or links can change. | Run `ls -ld .bowerloom`. |
 | `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
-| `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. | Run `bowerloom status`. |
+| `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. A sandbox that blocks local ports gives this refusal. | Run `bowerloom status`. If an agent sandbox runs Bowerloom, read [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes). |
 | `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port, and another program is listening on it. | Run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
 | `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. | Run `bowerloom status`. |
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
@@ -152,7 +152,7 @@ Installation commands name these reasons in parentheses, in the message of a `SK
 | `MANAGED_SKILL_ABORTED` | The command stopped early. | Inspect before you plan again. |
 | `MANAGED_SKILL_REFUSED` | The general installation refusal. It also covers cache or receipt drift. | Inspect the cache and installation. Do not overwrite local files. |
 
-For example, an approval that no longer matches its plan printed this line on standard error in the test run for this release, and exited 1:
+For example, a wrong approval printed this line on standard error in the test run for this release, and exited 1:
 
 ```text
 {"error":{"code":"SKILLS_REFUSED","message":"The skills command stopped (MANAGED_SKILL_STALE_APPROVAL). Inspect the exact local cache and operation records before another action; no native execution authority is granted."}}
@@ -170,6 +170,6 @@ A timeout does not establish cleanup. [Stop registered work](/docs/stop/) explai
 
 ## Other subsystem errors
 
-Connection, harness, backend, recipe, and runtime commands have separate boundaries. Read the exact subsystem output and its reference prerequisites.
+Connection, harness, backend, recipe, and runtime commands have separate boundaries. A harness is an agent application, such as Claude Code or Codex. Read the exact subsystem output and its reference prerequisites.
 
 A refused operation does not authorize an older or less restricted path. Use [Troubleshooting](/docs/troubleshooting/) for the next supported inspection.

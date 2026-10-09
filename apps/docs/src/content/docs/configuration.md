@@ -74,18 +74,20 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 
 <a id="skills-json"></a>
 
-`.bowerloom/skills.json` is the one file that pins third-party skills. Its format is `bowerloom/skills/v1beta1`. It lists the harnesses (`claude` and `codex`) and one entry for each skill. A pinned entry holds an exact npm version or a full 40-character Git commit, the integrity and tree values that prove the bytes, the license, and the hash of every file. Exact pins only. A range, tag, or branch is not a pin. An entry made by `skill create` is a local entry that points at `skills/<id>`. The file is its own lock. It holds at most 32 skills and 1 MiB. Bowerloom reads it strictly, so a hand edit can break it (`MANIFEST_INVALID`). Use `bowerloom skills add` to change it.
+`.bowerloom/skills.json` is the one file that pins third-party skills. Its format is `bowerloom/skills/v1beta1`. It lists the harnesses, the agent applications that read the skills (`claude` for Claude Code and `codex` for Codex), and one entry for each skill. A pinned entry holds an exact npm version or a full 40-character Git commit, the integrity and tree values that prove the bytes, the license, and the hash of every file. Exact pins only. A range, tag, or branch is not a pin. An entry made by `skill create` is a local entry that points at `skills/<id>`. The file is its own lock. It holds at most 32 skills and 1 MiB. Bowerloom reads it strictly, so a hand edit can break it (`MANIFEST_INVALID`). Use `bowerloom skills add` to change it.
 
 | Path | Holds | Commit it |
 | --- | --- | --- |
 | `.bowerloom/skills.json` | Exact pins and local skill entries | Yes |
 | `.bowerloom/skills/<name>/SKILL.md` | A skill you authored with `skill create` | Yes |
 | `.bowerloom/prompts/<name>.md` | A prompt you created with `prompt create` | Yes |
-| `.bowerloom/teams/<name>/` | A team you created with `team create` | Yes |
+| `.bowerloom/teams/<name>/` | A team you created with `team create`. Its `assets/brief.json` holds your goal text, so read it before you share it | Yes |
+| `.bowerloom/installation-receipt.json` | The private setup receipt. It holds absolute paths on your machine | No |
+| `.bowerloom/brief.json`, `manifest.json`, `startup.json`, `startup-review.md`, `START-HERE.md`, `working-agreement.md`, `milestones.md`, `optional-controls.md` | Setup files that `bowerloom up` writes. `brief.json` holds your goal text | No |
 | `.bowerloom/managed/` | Managed copies of pinned skills. Bowerloom writes a `.gitignore` inside it | No |
-| `.claude/skills/`, `.claude/commands/`, `.agents/skills/` | Projections for Claude Code and Codex | No |
+| `.claude/skills/`, `.claude/commands/`, `.agents/skills/` | Projections: the copies of skills and prompts that Claude Code and Codex read | No |
 
-Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`, or with `bowerloom up --team <name>`.
+Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`. On a fresh clone, `bowerloom up --team <name>` is not tested yet. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines, and it names three setup items that the lines leave out.
 
 Receipts and the fetch cache live in a private state folder outside the project. That folder is `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, and `~/.local/state/bowerloom` otherwise. Bowerloom makes new folders there with mode 0700. Keep that folder private.
 

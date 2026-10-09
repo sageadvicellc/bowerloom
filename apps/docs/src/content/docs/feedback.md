@@ -36,7 +36,7 @@ Include these details:
 
 1. State the Bowerloom version and installation method.
 2. State the OS, architecture, Node version, and npm version.
-3. Name the harness, such as Codex or Claude Code, and its version when relevant.
+3. Name the harness, the agent application such as Codex or Claude Code, and its version when relevant.
 4. Describe the expected result.
 5. Describe the actual result and exact error code.
 6. Give the smallest reproduction with synthetic inputs.

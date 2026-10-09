@@ -29,7 +29,7 @@ This handoff describes a synthetic Workbench plan. It does not execute the insta
 
 ### Record a comparison
 
-Record the scenario, input, source revision, model, harness, approval scope, outputs, measures, and limits. Retain failed and interrupted attempts.
+Record the scenario, input, source revision, model, harness (the agent application, such as Claude Code or Codex), approval scope, outputs, measures, and limits. Retain failed and interrupted attempts.
 
 Use repeated supported comparisons before claiming an improvement. One example cannot establish an A/B winner or time saving.
 

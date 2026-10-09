@@ -29,7 +29,7 @@ You need Node `>=24.11.0 <25` and npm `11`. The Node range comes from the `engin
 
 You received a private archive named `bowerloom-0.7.0-beta.1.tgz`. The package is not on the public npm registry.
 
-Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. The command installs the archive globally, with the full path to the file:
+Stop before you install. Show the human the install command below and what it does, and wait for the human's approval. If your agent runs in a sandbox, ask the human to run the install command in their own terminal. The command installs the archive globally, with the full path to the file:
 
 ```sh
 npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz
@@ -96,8 +96,8 @@ bowerloom up --team "Studio crew" --goal "Prepare a fictional onboarding kit for
 
 1. `init` sets up `.bowerloom` in this folder. It needs `--goal`.
 2. `team` creates the team when the name is neither `first-team` nor a team you created.
-3. `sync` installs the pinned skills of the team, when `.bowerloom/skills.json` lists any.
-4. `apply` puts the skills and prompts of the team in place for Claude Code and Codex.
+3. `sync` installs the pinned skills of the team and copies them into place for Claude Code and Codex, when `.bowerloom/skills.json` lists any.
+4. `apply` puts the prompts of the team in place for Claude Code and Codex, and any skill copy that sync did not place.
 
 Each run without `--approve` prints the plan and its revision, then exits 3. This is the first plan that `up` showed in the test run for this release:
 
@@ -105,7 +105,7 @@ Each run without `--approve` prints the plan and its revision, then exits 3. Thi
 Next step: init. Set up .bowerloom in this folder for team Studio crew.
   Project: studio
   Goal: Prepare a fictional onboarding kit for an independent design studio.
-  Folder: ~/code/studio (an existing folder: adds .bowerloom only, and your files stay as they are)
+  Folder: ~/studio (an existing folder: adds .bowerloom only, and your files stay as they are)
   Team: Studio crew (first-team)
   Creates 20 setup files and a private installation receipt in .bowerloom.
 Then each run shows the next step, if any: team, skills sync and apply, each with its own plan. Workers stay held.
@@ -114,7 +114,7 @@ Revision: a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078
 Approval required. Run the same command again with --approve a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078
 ```
 
-The project name comes from the folder name. Your revision will differ from this one. Use the revision that your own plan prints.
+Bowerloom prints the full path of the folder. This example shows it as `~/studio`. The project name comes from the folder name. Your revision will differ from this one. Use the revision that your own plan prints.
 
 Show the plan to the human. After the human approves it, run the same command again with the revision:
 

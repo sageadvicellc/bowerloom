@@ -37,16 +37,17 @@ We installed this archive globally with npm and ran the installed `bowerloom` co
 - Resume a change that stopped part way. Resume finishes the approved change.
 - Roll back a change that stopped part way. Rollback puts back what was there before.
 - Refusals for npm and Git sources. A refusal stops the command with a code. The tests covered a wrong or old approval, a skill copy that you changed, and private records that no longer match.
-- Two real public skills. The first is `collections` from the TanStack npm package `@tanstack/db-skills@0.0.1`. The second is `verification-loop` from the ECC repository on GitHub, first at one commit and then at a later commit.
+- Two real public skills. The first is `collections` from the TanStack npm package `@tanstack/db-skills@0.0.1`. The second is `verification-loop` from ECC, the public GitHub repository `affaan-m/ecc`, first at one commit and then at a later commit.
 - A teammate who receives a project with its `skills.json`, checks the pins, and reaches the sync step of `bowerloom up`.
 - Help, usage errors, and exit codes.
 
 ### Known limits
 
-- Two refusals have no test yet: `SKILLS_SYNC_LIMIT` and `SKILLS_CACHE_RECOVERY_REQUIRED`. Tests for both come in 0.7.1.
-- Claude Code can run its commands in a sandbox. The sandbox limits what those commands can reach, and it sends web requests through a proxy. A proxy is a server that passes requests on. Bowerloom ignores that proxy and sends its HTTPS requests directly. It also needs connections to `localhost` for its project lock. So when the sandbox is on, Bowerloom cannot reach npm or GitHub from inside Claude Code, and its lock check can fail. Bowerloom has no setting that changes this. Run the `bowerloom` commands outside the sandbox: in your own terminal, or as an excluded command in the Claude Code settings. [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) shows both ways. 0.7.1 will address the proxy.
-- When the lock check fails, the refusal `MANAGED_SKILL_LOCK_SLOT_COLLISION` does not name the port. Its `Next:` line shows `<port>` as written. 0.7.1 fixes this.
-- Bowerloom does not add `.claude/skills`, `.claude/commands`, or `.agents/skills` to your `.gitignore`. Add them yourself, as [What to commit](/docs/guides/add-skills/#what-to-commit) says. 0.7.1 fixes this.
+- Two refusals have no test yet: `SKILLS_SYNC_LIMIT` and `SKILLS_CACHE_RECOVERY_REQUIRED`. Tests for both are planned for 0.7.1.
+- Claude Code can run its commands in a sandbox. The sandbox limits what those commands can reach, and it sends web requests through a proxy. A proxy is a server that passes requests on. Bowerloom ignores that proxy and sends its HTTPS requests directly. It also needs connections to `localhost` for its project lock. So when the sandbox is on, Bowerloom cannot reach npm or GitHub from inside Claude Code, and its lock check can fail. Bowerloom has no setting that changes this. Run the `bowerloom` commands outside the sandbox: in your own terminal, or as an excluded command in the Claude Code settings. [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes) shows both ways. A fix for the proxy is planned for 0.7.1.
+- When the lock check fails, the refusal `MANAGED_SKILL_LOCK_SLOT_COLLISION` does not name the port. Its `Next:` line shows `<port>` as written. A fix is planned for 0.7.1.
+- Bowerloom does not add `.claude/skills`, `.claude/commands`, `.agents/skills`, or its setup files to your `.gitignore`. Add them yourself, as [What to commit](/docs/guides/add-skills/#what-to-commit) says. A fix is planned for 0.7.1.
+- A copy in `.claude/skills` or `.agents/skills` does not prove that Claude Code or Codex finds it. The tests did not check that.
 - The tests used Node 24.11.0 and npm 11.6.1 on macOS only. They cover no other version or system.
 - Bowerloom checks every byte of a skill against its pin, and it checks the skill license. It does not prove that a skill is safe. Read a skill before you approve its plan.
 - Workers stay held in this beta. `bowerloom up` ends at `prepared, workers held` and exits 4 with the code `WORKERS_HELD`. No worker starts.
@@ -63,7 +64,7 @@ Plan changes to an installed goal or profile before replacing managed files. Int
 
 Status reports specification readiness, runtime readiness, execution authority, review requirements, and drift. Setup remains ready for human review without starting workers.
 
-Run `bowerloom up --team <name> --goal <goal>` in a project folder to prepare it one approved step at a time. The run ends at `prepared, workers held`. No worker starts. Install the private archive with `npm install -g ~/Downloads/bowerloom-0.7.0-beta.N.tgz`. Use the full path where you saved the file.
+Run `bowerloom up --team <name> --goal <goal>` in a project folder to prepare it one approved step at a time. The run ends at `prepared, workers held`. No worker starts. Install the private archive with `npm install -g ~/Downloads/bowerloom-0.7.0-beta.0.tgz`. Use the full path where you saved the file.
 
 List a project with `bowerloom ls` and read its state with `bowerloom status`. Create a team, a skill, or a prompt inside `.bowerloom` with `team create`, `skill create`, and `prompt create`.
 

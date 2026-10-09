@@ -37,7 +37,7 @@ Bowerloom `0.7.0` adds these commands, and each one is documented:
 - `bowerloom ls` and `bowerloom status` read the project and write nothing.
 - `bowerloom team create`, `skill create`, and `prompt create` make files inside `.bowerloom`.
 - `.bowerloom/skills.json` pins skills at exact versions and commits. `skills add`, `skills check`, `skills sync`, `skills recover`, and `skills migrate` manage it.
-- `bowerloom apply` puts skills and prompts in place for Claude Code and Codex.
+- `bowerloom skills sync` puts the pinned skills in place for Claude Code and Codex. `bowerloom apply` puts the prompts in place, and any skill copy that is still missing.
 
 Every change shows a plan first and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate, and 130 stopped at the yes/no question. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
@@ -66,7 +66,7 @@ Revision plans a replacement before applying it. These paths do not import live 
 
 Synthetic configuration commands process selected Codex and Claude Code fixtures. They do not change live configuration or run models.
 
-Portable skill installation supports a new Codex workspace and a new Claude Code workspace. It does not support an existing target. For an existing project, `skills sync` and `apply` put skills and prompts in place for both harnesses. Native discovery by Claude Code and Codex is not observed.
+Portable skill installation supports a new Codex workspace and a new Claude Code workspace. It does not support an existing target. For an existing project, `skills sync` puts skills in place and `apply` puts prompts in place for both harnesses, Claude Code and Codex. A harness is the agent application that reads the copies. Native discovery by Claude Code and Codex is not observed.
 
 A projected file does not prove that an agent discovers or runs it. Read [Codex and Claude Code](/docs/harnesses/).
 

@@ -7,7 +7,7 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {htmlIds,duplicateHtmlIds,missingLegacyAliases} from '../src/lib/html-ids.mjs';
 import {copyFeedback} from '../src/lib/copy-feedback.mjs';
-import {expandRelease,readRelease,releaseReference,releaseSections} from '../src/lib/release.mjs';
+import {expandRelease,readRelease,releaseReference,releaseSections,installCommandAccepted} from '../src/lib/release.mjs';
 import {pairedCopy,normalizeNotices,markdownSections,getDocuments,indexMarkdown,searchIndexes,pageTree} from '../src/lib/content.mjs';
 
 test('resolved reader release block preserves exact installation command and refuses unknown markers',async()=>{
@@ -18,6 +18,15 @@ test('resolved reader release block preserves exact installation command and ref
   assert.match(resolved,/First-team setup does not need Docker/);
   assert.throws(()=>expandRelease('<!-- release:unknown:start -->x<!-- release:unknown:end -->',release));
   assert.throws(()=>expandRelease('<!-- release:status:start -->',release));
+});
+test('a private archive install command may name the archive by a relative, home or absolute path',async()=>{
+  const release=await readRelease();
+  assert.equal(release.npm.installCommand,'npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz');
+  const withCommand=command=>({...release,npm:{...release.npm,installCommand:command}});
+  for(const command of ['npm install -g ./bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/bowerloom-0.7.0-beta.1.tgz','npm install -g /opt/beta/bowerloom-0.7.0-beta.1.tgz'])
+    assert(installCommandAccepted(withCommand(command)),command);
+  for(const command of ['npm install -g bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Down loads/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/x;y/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz','npm install --global bowerloom@0.7.0-beta.1','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz && echo'])
+    assert(!installCommandAccepted(withCommand(command)),command);
 });
 test('paired copy keeps prerequisite and refusal context, handles headings inside code, and distinguishes prompt',()=>{
   const page='# Title\n\n## Prerequisites\nExact approval required.\n\n## Ask your agent\nHelp me review this plan.\n\n## Agent procedure\n```sh\n# Ask your agent\nbowerloom init --help\n```\n\n## On refusal\nStop; preserve files.\n';
@@ -59,7 +68,7 @@ test('reader projection preserves raw operational state and presents bounded set
   for(const row of release.systems.tested)for(const value of [row.os,row.architecture,row.node])assert(sections.support.includes(value));
   assert(sections.support.includes('Other host systems are outside this documented installation path.'));
   assert(sections.support.includes('They do not run models or change live agent configuration.'));
-  assert(sections.support.includes('| Portable skills | Project selected skill files into a new Codex workspace. The installer does not prove discovery or execution. |'));
+  assert(sections.support.includes('| Portable skills | Pin skills from npm or GitHub with skills add, then install them for Claude Code and Codex with skills sync. A copy in the project does not prove that Claude Code or Codex finds or runs it. |'));
   assert(!sections.status.startsWith('**'));
   assert(sections.support.includes('Setup does not start workers, grant runtime access, or authorize connected actions.'));
   assert(sections.support.includes('Shared company access and unattended services are outside this setup walkthrough.'));

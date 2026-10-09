@@ -83,7 +83,7 @@ bowerloom ls prompts
 
 ### Put the files in place
 
-Created skills and prompts are not copied for your harnesses until you run `apply`:
+`skills sync` or `apply` copies a created skill for your harnesses. A harness is the agent application that reads the copies, such as Claude Code or Codex. Only `apply` copies a created prompt:
 
 ```sh
 bowerloom apply
