@@ -12,6 +12,8 @@
 .tutorial-builder h2 { margin: 0 0 20px; color: var(--tutorial-ink); font-size: clamp(32px, 4.5vw, 54px); line-height: 1.13; font-weight: 500; letter-spacing: -.035em; }
 .tutorial-builder h3 { margin: 0 0 20px; color: var(--tutorial-ink); font-size: clamp(26px, 3vw, 34px); line-height: 1.25; font-weight: 500; }
 .tutorial-intro { max-width: 740px; margin-bottom: 40px; }
+.tutorial-guide-link { margin: -16px 0 40px; max-width: 740px; scroll-margin-top: 96px; }
+.tutorial-guide-link a { text-decoration: underline; text-underline-offset: 3px; }
 .tutorial-builder .tutorial-hint, .tutorial-builder .tutorial-copy-status, .tutorial-builder label[for='tutorial-prompt'] { font: 14px/1.65 var(--ui-font); color: var(--tutorial-accent); }
 .tutorial-layout { display: grid; grid-template-columns: 1.08fr 1fr; gap: clamp(28px, 4vw, 60px); align-items: start; }
 .tutorial-fields, .tutorial-preview { min-width: 0; }

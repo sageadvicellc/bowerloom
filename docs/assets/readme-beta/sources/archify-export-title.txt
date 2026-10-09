@@ -1,0 +1,11 @@
+Derived raster export title replacement in paintFigure. Canonical Archify output stays unchanged.
+
+if (layout.title === 'Inside .bowerloom') {
+            ctx.font = '650 ' + FIGURE_TITLE_SIZE + 'px ' + layout.family;
+            ctx.fillText('Inside ', m + 22, titleMid + 1);
+            var prefixWidth = ctx.measureText('Inside ').width;
+            ctx.font = '650 ' + (FIGURE_TITLE_SIZE * 0.94) + 'px "JetBrains Mono", monospace';
+            ctx.fillText('.bowerloom', m + 22 + prefixWidth, titleMid + 1);
+          } else {
+            ctx.fillText(fitCanvasText(ctx, layout.title, layout.width - m * 2 - 22, FIGURE_TITLE_SIZE, 14, '650', layout.family), m + 22, titleMid + 1);
+          }

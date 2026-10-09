@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountBindingDigest,bindingCopy,observationFromResponses,requireHeadroom,capacityCeiling,provisionalMargin,verifyModel,verifyProvenance } from '../src/observation.js';
-import { CONTROLS,MODEL_ROUTE } from '../src/policy.js';
+import { CONTROLS,MODEL_ROUTE,MODEL,EFFORT } from '../src/policy.js';
 import { strictJson } from '../src/safe.js';
 import type { AccountBinding } from '../src/types.js';
 const now=1900000000000;
@@ -44,9 +44,19 @@ test('configuration provenance refuses non-user injection and unexpected feature
   const d=config();d.config.features.plugins=true;assert.throws(()=>verifyProvenance(d,{requirements:null}));
   for(const r of [{modelProvider:'other'},{additionalDeveloperInstructions:'SECRET'},{featureRequirements:{plugins:true}},{allowedLoginMethods:['apiKey']}])assert.throws(()=>verifyProvenance(config(),{requirements:r}));
 });
-test('model route has no fallback and low effort is explicit',()=>{
-  const m={model:'gpt-5.5',hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null};verifyModel({nextCursor:null,data:[m]});
-  for(const value of [{nextCursor:'more',data:[m]},{data:[{...m,model:'other'}]},{data:[{...m,supportedReasoningEfforts:[]}]},{data:[m,m]},{data:[{...m,availabilityNux:{}} ,{...m}]}])assert.throws(()=>verifyModel(value));
+test('selected Sol route is exact and does not follow catalog default or other eligible revisions',()=>{
+  assert.equal(MODEL,'gpt-6-sol');assert.equal(MODEL_ROUTE,'codex:gpt-6-sol:low');assert.equal(EFFORT,'low');
+  const chosen={model:MODEL,hidden:false,supportedReasoningEfforts:[{reasoningEffort:EFFORT}],availabilityNux:null};
+  const other={...chosen,model:'gpt-5.6-sol'},blockedDefault={...chosen,model:'gpt-6.1-sol',isDefault:true,availabilityNux:{}};
+  verifyModel({nextCursor:null,data:[blockedDefault,other,chosen]});
+  for(const model of ['gpt-5.5','gpt-5.6-sol','gpt-6.1-sol','gpt-6-astra'])
+    assert.throws(()=>verifyModel({nextCursor:null,data:[{...chosen,model}]}),{code:'MODEL_UNAVAILABLE'});
+  for(const value of [
+    {nextCursor:'more',data:[chosen]}, {nextCursor:null,data:[]}, {nextCursor:null,data:[chosen,chosen]},
+    {nextCursor:null,data:[{...chosen,hidden:true}]}, {nextCursor:null,data:[{...chosen,supportedReasoningEfforts:[{reasoningEffort:'medium'}]}]},
+    ...['notice',{},false,undefined].map(availabilityNux=>({nextCursor:null,data:[{...chosen,availabilityNux}]})), {nextCursor:null,data:Array(101).fill(other)},
+    {nextCursor:null,data:[null]}, {nextCursor:null,data:'invalid'},
+  ])assert.throws(()=>verifyModel(value));
 });
 test('strict parser rejects duplicate, nonfinite, trailing and deeply nested data',()=>{
   assert.equal((strictJson('{"a":[1,true,null,"ok"]}') as any).a[0],1);
@@ -58,7 +68,7 @@ test('no-thread authenticated workflow only uses the seven reviewed RPC method t
   const rpc=async(method:string,params:unknown)=>{methods.push(method);
     switch(method){case 'initialize':return {};case 'config/read':return config();case 'configRequirements/read':return {requirements:null};case 'environment/status':return {status:'unknown'};
       case 'account/read':assert.deepEqual(params,{refreshToken:false});return f.account;
-      case 'model/list':return {data:[{model:'gpt-5.5',hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null}],nextCursor:null};
+      case 'model/list':return {data:[{model:MODEL,hidden:false,supportedReasoningEfforts:[{reasoningEffort:'low'}],availabilityNux:null}],nextCursor:null};
       case 'account/rateLimits/read':return f.usage;default:assert.fail('Unexpected RPC');}
   };
   const out=await readAuthenticatedObservation(rpc,()=>notifications++,binding,'/synthetic-owned',now-10,()=>now);
@@ -114,7 +124,37 @@ test('explicit Pro Max subscription requires matching authenticated account and 
   f.usage.rateLimitsByLimitId.codex.planType='pro';assert.throws(()=>observe(f),{code:'USAGE_RESTRICTED_OR_UNKNOWN'});
 });
 test('only exact supported native version and hash pairs pass',async()=>{
-  const {requireNativePin}=await import('../src/installation.js');const {SUPPORTED_NATIVE_BINARIES}=await import('../src/policy.js');
-  for(const [version,hash]of Object.entries(SUPPORTED_NATIVE_BINARIES))requireNativePin(version,hash);
-  for(const [version,hash]of [['0.159.2',SUPPORTED_NATIVE_BINARIES['0.157.0']!],['0.157.0',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['0.159.3',SUPPORTED_NATIVE_BINARIES['0.159.2']!],['constructor','x'],['0.159.2','changed']])assert.throws(()=>requireNativePin(version!,hash!),{code:'UNSUPPORTED_BINARY'});
+  const {requireNativePin}=await import('../src/installation.js');
+  const {SUPPORTED_NATIVE_BINARIES,CODEX_VERSION,SUPPORTED_NATIVE_SHA256}=await import('../src/policy.js');
+  const expected={
+    '0.157.0':'ad0be20d04e2ba6146ecdb51d7f8b7b0fe15420a15dc9b0057518d858f1f3714',
+    '0.159.2':'50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5',
+    '0.160.0':'6b582e8813ce7e8ed4c52814ee5cf230dba647bf2292df747a4003f2657ef201',
+  };
+  assert.deepEqual(SUPPORTED_NATIVE_BINARIES,expected);
+  assert.equal(CODEX_VERSION,'0.157.0');assert.equal(SUPPORTED_NATIVE_SHA256,expected['0.157.0']);
+  for(const [version,hash] of Object.entries(expected)){
+    requireNativePin(version,hash);
+    // All six cross-version pairings must refuse, even though each hash is supported elsewhere.
+    for(const [otherVersion,otherHash] of Object.entries(expected))if(otherVersion!==version)
+      assert.throws(()=>requireNativePin(version,otherHash),{code:'UNSUPPORTED_BINARY'});
+    const wrapperHash='50ab38ba21d0d9f8346f32f41848382f15b556190f3c7a07e885a4fb73e379c8';
+    for(const wrong of [wrapperHash,(hash[0]==='0'?'1':'0')+hash.slice(1),'changed'])
+      assert.throws(()=>requireNativePin(version,wrong),{code:'UNSUPPORTED_BINARY'});
+  }
+  for(const version of ['0.159.3','0.160.1','constructor'])
+    assert.throws(()=>requireNativePin(version,expected['0.160.0']),{code:'UNSUPPORTED_BINARY'});
+});
+test('valid candidate declaration cannot admit different on-disk native bytes',{
+  skip:process.platform!=='darwin'||process.arch!=='arm64'
+},async()=>{
+  const {mkdtemp,realpath,writeFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+  const {installationChecks}=await import('../src/installation.js');
+  const root=await mkdtemp(join(await realpath(tmpdir()),'bowerloom-pin-drift-'));
+  try{
+    const nativePath=join(root,'native-fixture');await writeFile(nativePath,'synthetic altered bytes; never executed',{mode:0o600});
+    const install:import('../src/types.js').Installation={nativePath,nativeSha256:'6b582e8813ce7e8ed4c52814ee5cf230dba647bf2292df747a4003f2657ef201',version:'0.160.0',workRoot:root};
+    await assert.rejects(installationChecks(install),{code:'BINARY_CHANGED'});
+  }finally{await rm(root,{recursive:true,force:true});}
 });

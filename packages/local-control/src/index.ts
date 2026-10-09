@@ -1,5 +1,5 @@
 import { createHash, randomUUID, randomBytes } from 'node:crypto';
-import { constants, existsSync, lstatSync, mkdirSync, openSync, closeSync, fstatSync, readSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { constants, existsSync, lstatSync, mkdirSync, openSync, closeSync, fstatSync, readSync, renameSync, unlinkSync, writeFileSync, realpathSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -37,15 +37,23 @@ function registryPath(path=defaultRegistry()):string {
   ancestors(path,true);if(existsSync(path)){identity(path);if((lstatSync(path).mode&0o077)!==0)fail('PRIVATE_REGISTRY_REQUIRED');}return path;
 }
 function registryAncestor(registry:string):ControlPlan['registryAncestor'] {let path=registry;while(!existsSync(path))path=dirname(path);return{path,identity:identity(path)};}
-function readBytes(path:string,max=2*1024*1024,privateFile=false):Buffer {
+function readBytes(path:string,max=2*1024*1024,privateFile=false,replacementRetries=0):Buffer {
   ancestors(dirname(path));const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
   try{const s=fstatSync(fd);if(!s.isFile()||s.nlink!==1||s.uid!==process.getuid?.()||(s.mode&(privateFile?0o077:0o022))||s.size>max)fail('CONTROL_FILE');
     const buffer=Buffer.alloc(max+1);let length=0;while(length<buffer.length){const count=readSync(fd,buffer,length,buffer.length-length,null);if(!count)break;length+=count;}
-    const after=fstatSync(fd),now=lstatSync(path);if(length>max||length!==s.size||after.size!==s.size||after.mtimeMs!==s.mtimeMs||after.ctimeMs!==s.ctimeMs||now.ino!==s.ino||now.dev!==s.dev)fail('CONTROL_FILE_CHANGED');return buffer.subarray(0,length);
+    const after=fstatSync(fd),now=lstatSync(path);if(length>max||length!==s.size||after.size!==s.size||after.mtimeMs!==s.mtimeMs)fail('CONTROL_FILE_CHANGED');
+    if(now.ino!==s.ino||now.dev!==s.dev){
+      // Registry writers replace whole snapshots. Reopen and repeat every file check.
+      if(replacementRetries>0)return readBytes(path,max,privateFile,replacementRetries-1);
+      fail('CONTROL_FILE_CHANGED');
+    }
+    if(after.ctimeMs!==s.ctimeMs)fail('CONTROL_FILE_CHANGED');
+    return buffer.subarray(0,length);
   }finally{closeSync(fd);}
 }
 function binding(input:ControlInput):Binding {
   const root=canonical(input.root);ancestors(root);const rootIdentity=identity(root);
+  if(readdirSync(root).some(name=>name.normalize('NFC').toLowerCase()==='.bowerloom-revision.json'))fail('CONTROL_REVISION_PENDING');
   if(!validId(input.team)||typeof input.spec!=='string'||!input.spec||input.spec.split('/').some(p=>!p||p==='.'||p==='..'||p.startsWith('.'))||input.spec.includes('\\')||!input.spec.startsWith(`teams/${input.team}/`))fail('CONTROL_TEAM');
   const specPath=join(root,'.bowerloom',input.spec),specBytes=readBytes(specPath,262144),specHash=hash(specBytes);
   const definition=parseCrew(specBytes.toString('utf8'));if(definition.id!==input.team)fail('CONTROL_TEAM_BINDING');
@@ -74,7 +82,7 @@ function validBinding(value:unknown):value is Binding {
 }
 function state(registry:string):State {
   const file=join(registry,'registry.json');if(!existsSync(file))return empty();
-  const v=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(readBytes(file,4*1024*1024,true)),4*1024*1024) as unknown as State;
+  const v=strictJson(new TextDecoder('utf-8',{fatal:true}).decode(readBytes(file,4*1024*1024,true,2)),4*1024*1024) as unknown as State;
   if(!exactKeys(v,['format','epoch','allStop','entries'])||v.format!=='bowerloom/control-registry/v1alpha1'||!natural(v.epoch)||!validStop(v.allStop)||v.allStop!==null&&v.allStop.scope!=='registry'||(v.epoch===0)!==(v.allStop===null)||!v.entries||typeof v.entries!=='object'||Array.isArray(v.entries)||Object.keys(v.entries).length>128)fail('CONTROL_REGISTRY');
   const ownerIds=new Set<string>();
   for(const[k,e]of Object.entries(v.entries)){
@@ -157,7 +165,10 @@ export function openControlOwner(installation:string,adapter:AdapterKind,registr
   });
   const abort=new AbortController();let handler:(()=>Promise<void>)|undefined,handling:Promise<void>|undefined,finished=false;
   const stopped=()=>{abort.abort();if(handler&&!handling){handling=Promise.resolve().then(handler);void handling.catch(()=>{});}};
-  const guard=()=>{if(finished)fail('CONTROL_OWNER_CLOSED');try{const v=state(registry),e=v.entries[entryKey];if(!e||e.generation!==generation||e.stop||v.epoch!==epoch||!e.executions.some(x=>x.id===id&&x.tokenHash===hash(nonce)&&x.status==='ACTIVE'))fail('TEAM_STOPPED');}catch(e){stopped();throw e;}};
+  const guard=()=>{if(finished)fail('CONTROL_OWNER_CLOSED');try{const v=state(registry),e=v.entries[entryKey];if(!e||e.generation!==generation||e.stop||v.epoch!==epoch||!e.executions.some(x=>x.id===id&&x.tokenHash===hash(nonce)&&x.status==='ACTIVE'))fail('TEAM_STOPPED');
+    if(abort.signal.aborted)fail('TEAM_STOPPED');
+    if(!same(binding({root:e!.binding.root,team:e!.binding.team,spec:e!.binding.spec,installation,adapter,registry}),e!.binding))fail('CONTROL_BINDING_CHANGED');
+  }catch(e){stopped();throw e;}};
   const timer=setInterval(()=>{try{guard();}catch{/* Stop callback records cleanup, not this observation. */}},100);timer.unref();
   return{id,signal:abort.signal,guard,onStop(fn){if(handler)fail('CONTROL_HANDLER_EXISTS');handler=fn;if(abort.signal.aborted)stopped();},
     async finish(evidence,confirmed=true){if(finished)return;clearInterval(timer);

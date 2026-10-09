@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { readInstalledRelease } from './release.js';
+import { shortHelp, TOPICS, reportFailure } from './human.js';
+import { namesYesFlag } from './confirm.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import { localInstallation, privateJson, openLocalSession } from './controller.js';
 import { executeSession, parseSessionCommand } from './session.js';
@@ -6,13 +11,40 @@ import type { TestExecutor } from '../../../packages/controlled-tests/src/index.
 import { compileCrew } from '../../../packages/crew/src/index.js';
 import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
-const HELP = `Bowerloom v0.7-alpha: local controlled workflows
-
-Usage:
-  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--assistant <name>] [--team <name>] [--review milestones|handoff] [--approve <revision>]
-  bowerloom init plan|apply --mode new|existing --target <absolute-directory> --brief <brief.json> [--approve <revision>]
+const HELP = `Usage:
+  bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source inspect --request <absolute-local-cache-selector-json>
+  bowerloom skills source recover plan --request <absolute-json>
+  bowerloom skills source recover apply --plan <absolute-json> --approve <revision>
+  bowerloom skills plan --request <absolute-install-request-json>
+  bowerloom skills update plan --request <absolute-update-request-json>
+  bowerloom skills apply --plan <absolute-json> --approve <revision> --previous <revision|none>
+  bowerloom skills inspect --request <absolute-json>
+  bowerloom skills recover plan --request <absolute-json>
+  bowerloom skills recover apply --plan <absolute-json> --approve <revision>
+  bowerloom routine plan --root <absolute-.bowerloom-directory> --experiment-id <logical-id> --experiment-digest <sha256:hex>
+  bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
+  bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
+  bowerloom init plan --mode new|existing --target <absolute-directory> --brief <brief.json> [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --brief <brief.json> --approve <revision>
   bowerloom init status --target <absolute-directory>
-  bowerloom link plan|apply --from <root> --to <root> --file <definition> --out <private-new-file> [--approve <revision>]
+  bowerloom init demo-plan --target <absolute-directory> --from <installed-revision> [--json]
+  bowerloom revise plan --target <absolute-directory> --brief <brief.json>
+  bowerloom revise apply --target <absolute-directory> --brief <brief.json> --from <installed-revision> --approve <plan-revision>
+  bowerloom revise recover --target <absolute-directory> --approve <plan-revision> --action resume|rollback
+  bowerloom harness import --harness codex|claude --file <absolute-fixture-file> --synthetic
+  bowerloom harness plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --synthetic
+  bowerloom harness managed-plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic
+  bowerloom harness apply --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic --approve <revision>
+  bowerloom harness removal-plan --state <private-directory> --synthetic
+  bowerloom harness remove --state <private-directory> --synthetic --approve <removal-plan-revision>
+  bowerloom harness recover --state <private-directory> --synthetic --approve <recorded-operation-revision>
+  bowerloom link plan --from <root> --to <root> --file <definition> --out <private-new-file>
+  bowerloom link apply --from <root> --to <root> --file <definition> --out <private-new-file> --approve <revision>
   bowerloom link read --connection <file> --target <receiving-root>
   bowerloom link revoke --connection <file>
   bowerloom control plan|register --root <root> --team <id> --spec <relative-team-file> [--adapter graph|recipe --installation <private.json>] [--registry <directory>] [--approve <revision>]
@@ -22,7 +54,7 @@ Usage:
   bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
   bowerloom backend status --root <private-installation-directory>
   bowerloom portable validate <bundle-directory>
-  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex --target <new-absolute-directory> [--approve <revision>]
+  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex|claude --target <new-absolute-directory> [--approve <revision>]
   bowerloom recipe inspect|setup --installation <private.json>
   bowerloom recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
   bowerloom validate <crew.yaml> [--root <directory>]
@@ -32,15 +64,26 @@ Usage:
   bowerloom status|review|cancel --installation <private.json>
   bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
 
+Routine plan reads a standalone portable authoring tree and prints local review JSON.
+It does not install/import files, validate an installation receipt, or grant execution authority.
+MCP plan reads three selected test files and prints a private review plan.
+The recorded catalog is untrusted input. This command does not discover tools, connect a server, resolve secrets, or grant authority.
+Keep its output private. It includes installed paths and connection details.
 The trellis and trellis-mcp commands remain compatibility aliases.
 Init prepares a personal-agent profile and first team specification from your brief.
 Init apply requires the exact plan revision. It starts no workers or backend services.
 Init plan offers a plain-English review. Add --json for the complete machine-readable plan.
+Init demo-plan offers an optional synthetic Workbench handoff. It does not execute the installed team or grant action approval.
+Revise plans changes to an installed specification. Apply requires the old revision and exact new approval.
+Revision recovery resumes the approved transaction or restores its recorded prior installation. It starts no workers.
+Harness import and plan are for synthetic files. They do not install settings, connect tools, or start a team.
+Harness apply and remove require separate exact approvals. They change only the selected synthetic configuration and retain recovery records.
+Harness recover requires the exact recorded operation approval. No harness command grants model execution authority.
 Choose --profile engineer|founder|research, or set profile in the brief.
 Links share one approved definition between installed local roots. They grant no execution authority.
 Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
 Destruct all covers one local registry, not other users, remote machines, or unrelated agent sessions.
-Existing mode adds .bowerloom only. Claude and Codex settings import belongs to beta.
+Existing mode adds only .bowerloom. Harness commands process selected test fixtures. Live Codex and Claude Code configuration support and two-harness execution remain unproven.
 Backend install requires --approve with the exact current plan revision.
 Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
 Docker Desktop is a prerequisite. The CLI never installs privileged host software.
@@ -50,17 +93,115 @@ The source root defaults to the directory that contains crew.yaml.
 Validate and plan read source files and print JSON. They start no workers.
 Status and review read the prepared session without a model or browser.
 Up stops for exact approval. Approve writes and tests the stored proposal.
-Tier flags do not promise measured throughput. Alpha runs tasks sequentially.
+Tier flags do not promise measured throughput. The task runner executes tasks sequentially.
 The plan records declarations. It grants no runtime permission.
 Recipe commands share their controller with MCP. The operator CLI owns exact approval.
 `;
 
+const INIT_HELP = [
+  'Bowerloom setup: review a personal-agent profile and first team specification', '', 'Usage:',
+  ...HELP.split('\n').filter(line => line.startsWith('  bowerloom init ')), '',
+  'Plan prints a plain-English review. Add --json for exact file contents and hashes.',
+  'New mode requires an absent target; existing mode adds only .bowerloom to an existing project.',
+  'Apply requires unchanged inputs and the exact plan revision. It starts no workers or backend services.',
+  'Status inspects the saved specification. Demo-plan offers an optional handoff without execution.', '',
+].join('\n');
+
+function installedVersion(): string { return readInstalledRelease().version; }
+
+// Freeze review finding 8 (Hanna's default: F' is the launch build): the heading says "open beta". The release
+// record and its validators keep their state values.
+function releaseHeading(): string {
+  const record = readInstalledRelease();
+  return `Bowerloom ${record.version}: open beta\n${record.execution}\n`;
+}
+
+function topic(name: string | undefined): string | null { return name !== undefined && Object.hasOwn(TOPICS, name) ? TOPICS[name]! : null; }
+const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
+/** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
+function helpText(words: readonly string[]): string | null {
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : topic(words[0]);
+  if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
+  if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
+  return null;
+}
+// The flags of the session commands (up --demo, status --installation). With one of them, the session parser keeps
+// its own usage words, as at cc117ac.
+const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
+// Every first word main() handles. Any other first word is a typo: review finding 6.
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+
 async function main(args: string[]): Promise<void> {
-  if (args.length === 1 && (args[0] === '--help' || args[0] === '-h')) { process.stdout.write(HELP); return; }
+  // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
+  if (namesYesFlag(args)) throw new DefinitionError('USAGE', 'There is no --yes. Review the plan, then pass --approve <revision>.');
+  // F' code review C: bare bowerloom prints the short help. At cc117ac it was a usage refusal, not a plumbing form.
+  if (args.length === 0 || (args.length === 1 && (args[0] === '--help' || args[0] === '-h' || args[0] === 'help'))) { process.stdout.write(`${releaseHeading()}\n${shortHelp()}`); return; }
+  if (args[0] === 'help') {
+    const text = helpText(args.slice(1));
+    if (text === null) throw new DefinitionError('USAGE', 'There is no help for that. Run bowerloom help to see the commands.');
+    process.stdout.write(`${releaseHeading()}\n${text}`); return;
+  }
+  if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
+  if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  // Review finding 6: status without a session flag is the project status, which names its own usage.
+  if (args[0] === 'status' && !SESSION_FLAGS.some(flag => args.includes(flag))) {
+    const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
+  }
+  if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
+  if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
+  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt') {
+    if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    const { runCreateCommand } = await import('./create.js');
+    process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
+    const { runManifestCommand } = await import('./manifest.js');
+    process.exitCode = await runManifestCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // M5: sync, the v1beta2 item recovery (only with --item; the v1 forms take --request) and migrate.
+  if (args[0] === 'skills' && (args[1] === 'sync' || args[1] === 'migrate' || (args[1] === 'recover' && args.includes('--item')))) {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.skills!}`); return; }
+    const { runSyncCommand, runRecoverItemCommand, runMigrateCommand } = await import('./sync.js');
+    const run = args[1] === 'sync' ? runSyncCommand : args[1] === 'migrate' ? runMigrateCommand : runRecoverItemCommand;
+    process.exitCode = await run(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // M6: apply, and up in project mode. `up` without --team stays the --demo session command below.
+  if (args[0] === 'apply') {
+    const { runApplyCommand } = await import('./apply.js');
+    process.exitCode = await runApplyCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // `up` with --team, or with no session flag at all, is project mode: bare up gets the up --team usage (finding 6).
+  if (args[0] === 'up' && (args.includes('--team') || !SESSION_FLAGS.some(flag => args.includes(flag)))) {
+    const { runUpCommand } = await import('./up.js');
+    process.exitCode = await runUpCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'skills') {
+    const { runSkillsCommand } = await import('./skills.js');
+    process.stdout.write(`${canonicalJson(await runSkillsCommand(args))}\n`);
+    return;
+  }
+  if (args[0] === 'routine') {
+    const { runRoutineCommand } = await import('./routine.js');
+    process.stdout.write(`${canonicalJson(await runRoutineCommand(args))}\n`);
+    return;
+  }
+  if (args[0] === 'mcp') {
+    const { runMcpPlanCommand } = await import('./mcp-plan.js');
+    process.stdout.write(`${canonicalJson(await runMcpPlanCommand(args))}\n`);
+    return;
+  }
   if (args[0] === 'init') {
-    const { runStartupCommand, renderStartupReview } = await import('./startup.js');
+    const { runStartupCommand, renderStartupReview, renderStartupDemoReview } = await import('./startup.js');
     const result = await runStartupCommand(args);
-    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+    process.stdout.write(args[1] === 'demo-plan' && !args.includes('--json')
+      ? renderStartupDemoReview(result as import('../../../packages/startup/src/index.js').StartupDemoPlan)
+      : args[1] === 'plan' && !args.includes('--json')
       ? renderStartupReview(result as import('../../../packages/startup/src/index.js').StartupPlan)
       : `${canonicalJson(result)}\n`);
     return;
@@ -71,6 +212,19 @@ async function main(args: string[]): Promise<void> {
     process.stdout.write(args[1] === 'plan' && !args.includes('--json')
       ? renderLinkReview(result as import('../../../packages/connections/src/index.js').LinkPlan)
       : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'revise') {
+    const { runRevisionCommand, renderStartupRevisionReview } = await import('./revision.js');
+    const result = await runRevisionCommand(args);
+    process.stdout.write(args[1] === 'plan' && !args.includes('--json')
+      ? renderStartupRevisionReview(result as import('../../../packages/startup/src/index.js').StartupRevisionPlan)
+      : `${canonicalJson(result)}\n`);
+    return;
+  }
+  if (args[0] === 'harness') {
+    const { runHarnessCommand } = await import('./harness.js');
+    process.stdout.write(`${canonicalJson(await runHarnessCommand(args))}\n`);
     return;
   }
   if (args[0] === 'control') {
@@ -138,10 +292,11 @@ async function main(args: string[]): Promise<void> {
     } finally { process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort); }
     return;
   }
+  if (args[0] !== undefined && !COMMANDS.has(args[0])) throw new DefinitionError('USAGE', `Unknown command ${args[0]}. Run bowerloom help.`);
   const [command, file, flag, root] = args;
   if (!['validate', 'plan'].includes(command ?? '') || !file || file.startsWith('-')
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
-    throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or trellis plan <crew.yaml>, with optional --root <directory>.');
+    throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   }
   const plan = await compileCrew(file, root ? { root } : {});
   const result = command === 'plan' ? plan : {
@@ -156,8 +311,8 @@ async function main(args: string[]): Promise<void> {
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-  const code=error!==null&&typeof error==='object'&&'code' in error&&typeof error.code==='string'&&/^[A-Z_]{1,100}$/.test(error.code)?error.code:'IO_ERROR';
-  const safeError = error instanceof DefinitionError ? error : new DefinitionError(code, 'Bowerloom stopped. Read the local session state before another action.');
-  process.stderr.write(`${JSON.stringify({ error: { code: safeError.code, message: safeError.message } })}\n`);
-  process.exitCode = safeError.code === 'USAGE' ? 2 : 1;
+  // A terminal gets plain words. Anything else gets the JSON envelope agents parse.
+  const failure = reportFailure(error, process.stderr.isTTY === true);
+  process.stderr.write(failure.text);
+  process.exitCode = failure.exitCode;
 });

@@ -71,7 +71,7 @@
 .brand-mascot .brand-dark, .brand-wordmark .brand-dark { display: none; }
 [data-theme='dark'] .brand-mascot .brand-light, [data-theme='dark'] .brand-wordmark .brand-light { display: none; }
 [data-theme='dark'] .brand-mascot .brand-dark, [data-theme='dark'] .brand-wordmark .brand-dark { display: block; }
-:root .site-header .alpha-label { margin-left: 0; white-space: nowrap; color: var(--brand-ink); background: var(--brand-surface); border-color: var(--brand-line); font: 500 13px/1.5 var(--ui-font); }
+:root .site-header .release-label { margin-left: 0; white-space: nowrap; color: var(--brand-ink); background: var(--brand-surface); border-color: var(--brand-line); font: 500 13px/1.5 var(--ui-font); }
 :root .desktop-navigation { gap: 22px; font: 500 14px/1.6 var(--ui-font); white-space: nowrap; color: var(--ui-muted); }
 /* The icon reflects the saved preference; system stays distinct from resolved color. */
 .theme-control.theme-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 10px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--trellis-control-border); border-radius: var(--ui-radius-sm); cursor: pointer; }
@@ -100,9 +100,6 @@
 :root .tutorial-builder .tutorial-primary:hover { background: var(--brand-ink); color: var(--brand-ground); }
 :root .button.primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--brand-ground); }
 :root .tutorial-builder ::selection { background: var(--brand-action); color: var(--brand-action-ink); }
-:root .tutorial-builder .alpha-guide pre { color: var(--ui-text); font: 14px/1.7 var(--ui-code-font); }
-:root .tutorial-builder .alpha-guide code { font-family: var(--ui-code-font); font-size: max(14px, .9em); }
-:root .tutorial-builder .alpha-guide pre code { font: inherit; }
 :root .yaml-key { color: var(--brand-action); }
 :root .yaml-value { color: var(--brand-muted); }
 :root .site-footer {
@@ -120,7 +117,7 @@
 :root .hero-description, :root .hero-note, :root .hero-footer, :root .scene-caption, :root .scene-bottom { color: var(--ui-muted); }
 :root .hero-copy h1, :root .section-heading h2 { color: var(--ui-text); }
 :root .scene-caption, :root .scene-bottom, :root .hero-footer, :root .hero-note { font-family: var(--ui-font); font-size: 14px; }
-:root .alpha-label > span, :root .status-dot { box-shadow: none; }
+:root .release-label > span, :root .status-dot { box-shadow: none; }
 :root .offer-controls button { color: var(--ui-primary); }
 :root .offer-controls button[aria-pressed='true'] { color: var(--ui-primary-fg); }
 @media (max-width: 1280px) and (min-width: 1101px) {
@@ -132,7 +129,7 @@
 @media (max-width: 1100px) {
   :root .site-header .theme-control { margin-left: auto; }
   :root .site-header .mobile-menu-toggle { margin-left: 0; }
-  :root .site-header .alpha-label { margin-left: 0; }
+  :root .site-header .release-label { margin-left: 0; }
 }
 @media (max-width: 600px) {
   :root .site-header { padding-inline: 16px; gap: 10px; }

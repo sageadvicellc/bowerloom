@@ -283,3 +283,29 @@ test('an explicit five percent reserve changes the candidate while the example k
   assert.notEqual(after.candidateRevision, before.candidateRevision);
   assert.equal(baseline.budget.reservePercent, 25);
 });
+
+
+test('CLI unexpected file errors do not claim a work stop or disclose private diagnostics', async t => {
+  const root = await fixture(t);
+  const preload = `import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const originalOpen = fs.open;
+fs.open = async (...args) => {
+  const handle = await originalOpen(...args);
+  handle.read = async () => { throw Object.assign(new Error('PRIVATE_DIAGNOSTIC_CANARY'), {code: 'EACCES'}); };
+  return handle;
+};
+syncBuiltinESMExports();`;
+  await assert.rejects(exec(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, cli, 'plan', join(root, 'crew.yaml')]), (error: unknown) => {
+    const result = error as { code: number; stdout: string; stderr: string };
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '');
+    const failure = JSON.parse(result.stderr).error;
+    assert.equal(failure.code, 'EACCES');
+    assert.match(failure.message, /^The command failed\./);
+    assert.match(failure.message, /no registered-work stop result/);
+    assert(!result.stderr.includes('PRIVATE_DIAGNOSTIC_CANARY'));
+    assert(!result.stderr.includes('Bowerloom stopped'));
+    return true;
+  });
+});

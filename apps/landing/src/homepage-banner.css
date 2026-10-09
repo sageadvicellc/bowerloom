@@ -1,0 +1,86 @@
+/* The image fades into the active theme ground; copy is below the art. */
+.homepage-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 220px; width: 100%; background: radial-gradient(ellipse at 50% 30%, var(--ui-surface), var(--ui-bg) 76%); }
+.homepage-banner > img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity 400ms ease; }
+.homepage-banner[data-artwork="ready"] > img { opacity: 1; }
+/* A short soft edge hides the line where the lagging art is clipped. Depth on scroll lives in hero-parallax.css. */
+.homepage-banner::after { content: ''; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 84%, var(--ui-bg) 100%); }
+.normal-site .normal-hero { display: block; max-width: 1440px; min-height: 0; padding: 0; overflow: visible; background: var(--ui-bg); }
+.normal-site .normal-hero::before { display: none; }
+.normal-site .normal-hero .hero-copy { max-width: 1040px; margin: auto; padding: 24px 5% 16px; text-align: center; }
+.normal-site .normal-hero .hero-description { margin-inline: auto; }
+.normal-site .normal-hero :is(.eyebrow, .hero-secondary) { margin-inline: auto; justify-content: center; }
+/* Three panel-bound compositions: artwork behind the surface, hands and vine loops above its rim. */
+.normal-site .companion-panel-wrap { --robot-width: 180px; --robot-top: -118px; position: relative; isolation: isolate; width: min(1320px, calc(100% - 48px)); margin: 156px auto 40px; }
+.normal-site .companion-h4n { --robot-width: 210px; margin-top: 48px; margin-bottom: 164px; }
+.companion-mask-defs { position: absolute; pointer-events: none; }
+.companion-decoration { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.companion-behind { z-index: 0; }
+.companion-ahead { z-index: 2; }
+.companion-robot { position: absolute; width: var(--robot-width); height: auto; top: var(--robot-top); object-fit: contain; display: block; }
+.companion-right .companion-robot { right: 24px; }
+.companion-left .companion-robot { left: 24px; }
+.companion-robot-front { clip-path: inset(34% 0 49% 0); filter: drop-shadow(0 3px 2px #27262b20); }
+.companion-h4n .companion-robot { top: auto; bottom: -106px; }
+/* Preserve the complete cylinder and face; only the far-left arm passes behind the panel. */
+.companion-h4n .companion-robot-front { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 47%, 21% 47%, 25% 43%, 25% 35%, 21% 32%, 0 32%); }
+.companion-surface { position: relative; }
+.companion-surface::before { content: ''; position: absolute; z-index: 1; inset: 0; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: 14px; box-shadow: 0 8px 24px #27262b08; pointer-events: none; }
+.normal-site .companion-surface > :is(.product-section, .recipe-section, .faq-section) { position: relative; z-index: 3; width: 100%; max-width: none; margin: 0; border: 0; background: transparent; padding: 64px 40px 40px; }
+.normal-site .companion-h4n .companion-surface > .recipe-section { padding-bottom: 96px; }
+.companion-vine { position: absolute; width: 160px; height: auto; top: -28px; color: var(--brand-foliage, #B9C6A0); }
+.companion-right .companion-vine { left: -12px; }
+.companion-left .companion-vine { right: -12px; transform: scaleX(-1); }
+.companion-h4n .companion-vine { top: auto; bottom: -28px; transform: rotate(180deg); }
+/* Underpass is hidden by the actual panel surface; only the narrow outer rim and top loop re-emerge. */
+.companion-vine-front { clip-path: polygon(0 0, 100% 0, 100% 40%, 17% 40%, 17% 100%, 0 100%); filter: drop-shadow(0 2px 1px #27262b14); }
+.vine-stem { stroke: currentColor; stroke-width: 2; fill: none; }
+.vine-leaf { fill: currentColor; }
+/* Tablet columns must not squeeze carousel controls into the heading column. */
+@media (min-width: 641px) and (max-width: 900px) {
+  .normal-site .companion-surface > .product-section { display: block; }
+  .normal-site .companion-surface > .product-section h2 { margin-bottom: 24px; max-width: none; }
+}
+@media (max-width: 640px) {
+  .normal-site .normal-hero .hero-copy { padding: 24px 24px 8px; }
+  .normal-site .companion-panel-wrap { --robot-width: 140px; --robot-top: -98px; width: calc(100% - 32px); margin-top: 122px; margin-bottom: 32px; }
+  /* Keep only the original hands/forearms above the rim; the panel hides the chest. */
+  .companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }
+  .normal-site .companion-h4n { --robot-width: 166px; margin-top: 40px; margin-bottom: 130px; }
+  .companion-h4n .companion-robot { bottom: -83px; }
+  .companion-right .companion-robot { right: 16px; }
+  .companion-left .companion-robot { left: 16px; }
+  .normal-site .companion-surface > :is(.product-section, .recipe-section, .faq-section) { padding: 56px 24px 28px; }
+  .companion-vine { width: 120px; top: -22px; }
+  .companion-right .companion-vine { left: -8px; }
+  .companion-left .companion-vine { right: -8px; }
+  .companion-h4n .companion-vine { top: auto; bottom: -22px; }
+  .normal-site .companion-h4n .companion-surface > .recipe-section { padding-bottom: 80px; }
+}
+@media (prefers-reduced-motion: reduce) { .homepage-banner > img { transition: none; } }
+
+
+/* Slate pose: the edge meets the bent forearm at 47% of its unchanged image height. */
+.normal-site .companion-s4-slate { --robot-width: 200px; --robot-top: -112.18px; margin-top: 144px; }
+.companion-s4-slate .companion-robot-front { clip-path: var(--companion-grip); }
+/* The footer edge crosses the seated pose at 61%; knees, feet and resting palm stay in front. */
+.footer-companion { --footer-robot-width: 240px; --footer-robot-height: 360px; position: relative; isolation: isolate; max-width: 1440px; margin: 240px auto 0; }
+.footer-companion-art { position: absolute; right: 48px; top: calc(var(--footer-robot-height) * -.61); width: var(--footer-robot-width); height: auto; pointer-events: none; user-select: none; }
+.footer-companion-back { z-index: 0; }
+.footer-companion-front { z-index: 2; clip-path: inset(58% 0 0); }
+:root .footer-companion > .site-footer { position: relative; z-index: 1; min-height: 220px; padding-right: 336px; }
+@media (max-width: 900px) {
+  .footer-companion { --footer-robot-width: 180px; --footer-robot-height: 270px; margin-top: 188px; }
+  .footer-companion-art { right: calc(50% - 90px); }
+  :root .footer-companion > .site-footer { padding: 132px 24px 32px; }
+}
+@media (max-width: 640px) {
+  .normal-site .companion-s4-slate { --robot-width: 160px; --robot-top: -89.74px; margin-top: 122px; }
+}
+
+/* Pink S4 only: image y=420 meets the actual panel rim at every responsive size.
+   The back layer is occluded by the panel; only the registered hands cross in front. */
+.normal-site .companion-s4 { --pink-rim-source-y: 420; --pink-source-width: 640; --robot-top: calc(var(--robot-width) * var(--pink-rim-source-y) / var(--pink-source-width) * -1); }
+.companion-s4 .companion-robot-front { clip-path: var(--companion-grip); }
+
+/* Main is the entry destination for assistive technology, not an interactive control. */
+.normal-site > main:focus { outline: none; }

@@ -1,0 +1,413 @@
+{
+  "format": "bowerloom/readme-structure-handoff/v1",
+  "sourceRevision": "d2e5847b3c78e728a441cf2c2777fd6652c26a2c",
+  "templateVersion": "bowerloom/startup-template/v1beta3",
+  "planRevision": "4076ddb06ec0c181214206db6f9868499b477028c631c471384115abf2e97991",
+  "compiledCandidateRevision": "sha256:b172fa925aae1e1782125ad1f12158db73f94b6f48ea62bd11fa319da97ec89c",
+  "evidence": {
+    "method": "synthetic init plan only",
+    "planFile": "generated/startup-plan.json",
+    "planSha256": "b3d5e6cedec7765e50b636bc73af22033af7e6beea68587fb32f7e486703c42f",
+    "proposedFileCount": 20,
+    "applyOnlyReceiptCount": 1,
+    "targetCreated": false,
+    "specReady": true,
+    "runtimeReady": false,
+    "executionAuthorized": false
+  },
+  "startupFiles": [
+    {
+      "path": ".bowerloom/START-HERE.md",
+      "category": "startup-portable-definition",
+      "description": "First review instructions for the existing personal agent.",
+      "sha256": "4c428ef92d9dd0bb694f7f66ca67db50352575c64e1c5d93ef407c9dc113f001",
+      "bytes": 2942,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 28
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/brief.json",
+      "category": "startup-portable-definition",
+      "description": "Explicit project brief; no captured project context.",
+      "sha256": "655f1c1afdf42e714b0f25b35d63caa7712f5c06527eb597667cfba81dc21765",
+      "bytes": 419,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 22
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/manifest.json",
+      "category": "startup-portable-definition",
+      "description": "Portable assistant and team parts, dependencies, and required controls.",
+      "sha256": "7b015d6c923b2bffb0228760a1bf8a734136d61f15ce46f6955616a8b0de7306",
+      "bytes": 1068,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 89
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/milestones.md",
+      "category": "startup-portable-definition",
+      "description": "Proposed review milestones; no scheduled work.",
+      "sha256": "ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1",
+      "bytes": 668,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 27
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/optional-controls.md",
+      "category": "startup-portable-definition",
+      "description": "Instructions for separately approved connections and local controls.",
+      "sha256": "3dc6422155cc6aadf89d551e48fd90a03ae76150760629bb7c151efa5b90c257",
+      "bytes": 3867,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 47
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/skills/personal-assistant/SKILL.md",
+      "category": "startup-portable-definition",
+      "description": "Guidance for the existing personal agent; creates no hosted agent.",
+      "sha256": "0999ccffcdae1066b36cade76045ddadbba87dafdaf8f005069656c4c579d99b",
+      "bytes": 1783,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 25
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/skills/personal-assistant/profile.json",
+      "category": "startup-portable-definition",
+      "description": "Selected profile and review settings; imports no harness settings.",
+      "sha256": "52ed6e1d75fc66e046af4d27098e8c989caa62e76bd10a1dbab5c92005b4e704",
+      "bytes": 365,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 23
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/startup-review.md",
+      "category": "startup-portable-definition",
+      "description": "Human review document with a complete technical snapshot.",
+      "sha256": "a836795054b9e3a5e6e5e9eaf124acb7ff2bafd57abdabf340074793e0096b64",
+      "bytes": 47606,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 95
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/startup.json",
+      "category": "startup-portable-definition",
+      "description": "Startup index, template version, and readiness flags.",
+      "sha256": "735c5ad38c706402df7d461283c40d144517465e82d0287a92ea750b585dac67",
+      "bytes": 446,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 48
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/assets/brief.json",
+      "category": "startup-portable-definition",
+      "description": "Pinned brief copy for the team.",
+      "sha256": "655f1c1afdf42e714b0f25b35d63caa7712f5c06527eb597667cfba81dc21765",
+      "bytes": 419,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 50
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/assets/milestones.md",
+      "category": "startup-portable-definition",
+      "description": "Pinned milestone copy for the team.",
+      "sha256": "ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1",
+      "bytes": 668,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 52
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/assets/working-agreement.md",
+      "category": "startup-portable-definition",
+      "description": "Pinned agreement copy for the team.",
+      "sha256": "ec5d25c0e2298e0cd947b0e7bf5aaf2c3a4e16276e60b2a8e4c9c019901b6948",
+      "bytes": 1202,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 51
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/maps/relay.json",
+      "category": "startup-portable-definition",
+      "description": "Declared accepted-output handoffs between roles.",
+      "sha256": "c6ac4b065f3d5e63d15bd6de274a52acf9f5ccfc8b1f613243e5214d775029b8",
+      "bytes": 925,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 67
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/maps/vines.json",
+      "category": "startup-portable-definition",
+      "description": "Declared logging evidence and sinks; no self-improvement.",
+      "sha256": "6b59121a4868cd63157ebe0d4c8c178293d2e2a41c370dab0891b469f623df32",
+      "bytes": 698,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 72
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/prompts/lead.md",
+      "category": "startup-portable-definition",
+      "description": "Instructions for the proposed lead role.",
+      "sha256": "2fb9802430bf61a788652abb04e54887b5ce09f663399acbade3232ea15f8e7b",
+      "bytes": 631,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 54
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/prompts/maker.md",
+      "category": "startup-portable-definition",
+      "description": "Instructions for the proposed maker role.",
+      "sha256": "2e12e0800d301a28fa148b2ee6c92e8c6c389502a80c54a78f51d8c9e958c063",
+      "bytes": 656,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 54
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/prompts/reviewer.md",
+      "category": "startup-portable-definition",
+      "description": "Instructions for the proposed reviewer role.",
+      "sha256": "da3e4ff68b0e17836ac80e16753be67a790e12b74326252db9e531f6c09e2886",
+      "bytes": 614,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 54
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/skills/bounded-draft.md",
+      "category": "startup-portable-definition",
+      "description": "Bounded drafting and review skill.",
+      "sha256": "6cf7745923ff3014d40e51d5dd07e4f7126353654a29bab7f706b09399604846",
+      "bytes": 916,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 55
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/teams/first-team/team.yaml",
+      "category": "startup-portable-definition",
+      "description": "Team specification: roles, tasks, assets, permissions, and approvals.",
+      "sha256": "9550fee2f0240338865b7cd304a7831cfc6ac40f214c9e86df7a6c5d59ec4fdf",
+      "bytes": 6498,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 81
+      },
+      "observedAs": "proposed text in plan, not installed"
+    },
+    {
+      "path": ".bowerloom/working-agreement.md",
+      "category": "startup-portable-definition",
+      "description": "Proposed responsibilities, access limits, and approval rules.",
+      "sha256": "ec5d25c0e2298e0cd947b0e7bf5aaf2c3a4e16276e60b2a8e4c9c019901b6948",
+      "bytes": 1202,
+      "source": {
+        "path": "packages/startup/src/scaffold.ts",
+        "line": 26
+      },
+      "observedAs": "proposed text in plan, not installed"
+    }
+  ],
+  "applyOnlyPrivateFiles": [
+    {
+      "path": ".bowerloom/installation-receipt.json",
+      "description": "Exact file-creation approval, complete plan, and machine-specific identities. Exclude from sharing. Added only by approved apply; not created here.",
+      "source": {
+        "path": "packages/startup/src/index.ts",
+        "line": 137
+      }
+    }
+  ],
+  "optionalSeparateOperations": [
+    {
+      "name": "Selective portable installation",
+      "paths": [
+        ".agents/skills/bowerloom-<part-id>/<selected-content>",
+        ".bowerloom/teams/<part-id>/<selected-content>",
+        "START-HERE.md",
+        ".bowerloom/installation-receipt.json"
+      ],
+      "boundary": "Separate installer projection, not extra init output. The receipt is private. Root START-HERE differs from startup .bowerloom/START-HERE.",
+      "source": {
+        "path": "packages/portable/src/index.ts",
+        "line": 155
+      }
+    },
+    {
+      "name": "Startup revision history",
+      "paths": [
+        "<project>/.bowerloom-revision.json",
+        "<project>/.bowerloom-revision-<revision>/"
+      ],
+      "boundary": "Private transaction marker and retained history for explicitly approved revision or recovery. These are siblings of .bowerloom, not children.",
+      "source": {
+        "path": "packages/startup/src/revision.ts",
+        "line": 19
+      }
+    },
+    {
+      "name": "Harness projection state",
+      "paths": [
+        "<selected-private-state-dir>/install.json",
+        "<selected-private-state-dir>/original.bin",
+        "<selected-private-state-dir>/installed.json",
+        "<selected-private-state-dir>/remove.json",
+        "<selected-private-state-dir>/removed.json"
+      ],
+      "boundary": "Optional synthetic harness projection with separate exact approvals. Caller selects state directory and config file; no canonical .bowerloom/harness directory. Original bytes and receipts remain private. Removal files exist only after the corresponding operation.",
+      "source": {
+        "path": "packages/harness-portability/src/managed.ts",
+        "line": 83
+      }
+    },
+    {
+      "name": "MCP planning inputs",
+      "paths": [
+        "<selected-declaration.json>",
+        "<selected-private-binding.json>",
+        "<selected-private-recorded-catalog.json>"
+      ],
+      "boundary": "Read-only planning consumes three existing absolute paths. Declarations are portable. Bindings, catalogs, source identities, and output plans are private. No standard .bowerloom/mcp directory is generated. Internal discovery APIs do not establish a public connect command.",
+      "source": {
+        "path": "packages/mcp-connections/src/files.ts",
+        "line": 70
+      }
+    },
+    {
+      "name": "Local connection receipt",
+      "paths": [
+        "<selected-private-links-dir>/<receipt.json>"
+      ],
+      "boundary": "Separately approved local link writes a receipt outside both project roots. It neither merges definitions nor grants execution.",
+      "source": {
+        "path": "packages/startup/src/handoff.ts",
+        "line": 23
+      }
+    },
+    {
+      "name": "Local control registry",
+      "paths": [
+        "~/.local/state/bowerloom/registry.json"
+      ],
+      "boundary": "Default private registry for separate local control registration. Startup registers no work. An explicit registry location can replace the default.",
+      "source": {
+        "path": "packages/local-control/src/index.ts",
+        "line": 25
+      }
+    },
+    {
+      "name": "Local backend installation",
+      "paths": [
+        "<selected-private-backend-root>/compose.json",
+        "<selected-private-backend-root>/credentials.json",
+        "<selected-private-backend-root>/stack.env",
+        "<selected-private-backend-root>/gateway.json",
+        "<selected-private-backend-root>/roles.sql",
+        "<selected-private-backend-root>/jwt.sql",
+        "<selected-private-backend-root>/installation.json"
+      ],
+      "boundary": "Separate backend plan and exact approval. Credentials and environment files remain private. Docker Desktop is an existing prerequisite. Startup installs no backend. Backend installation alone does not provision execution runtime.",
+      "source": {
+        "path": "packages/local-backend/src/index.ts",
+        "line": 155
+      }
+    },
+    {
+      "name": "Private execution installation",
+      "paths": [
+        "<selected-private-installation.json>",
+        "<separately-selected-private-credentials.json>"
+      ],
+      "boundary": "Execution and recipe services require explicit private configuration and separate approvals. These are not startup-generated project files or automatically installed connections.",
+      "source": {
+        "path": "apps/cli/src/controller.ts",
+        "line": 24
+      }
+    }
+  ],
+  "plannedOnly": [
+    {
+      "path": ".bowerloom/routines/",
+      "status": "planned-only at pinned revision",
+      "description": "Issue #66 proposes versioned routines referencing existing recipes, teams, skills, and approved MCP declarations. No routine filename, generator, or public routine command was established by inspection. Scheduling and event triggers remain deferred.",
+      "source": {
+        "path": "docs/beta/engineering-plan.md",
+        "line": 69
+      }
+    }
+  ],
+  "documentationNotes": [
+    {
+      "status": "observed path ambiguity",
+      "source": {
+        "path": "apps/landing/src/tutorial.ts",
+        "line": 36
+      },
+      "description": "The tutorial says .bowerloom/startup-review.md and bare START-HERE.md. Init generates .bowerloom/START-HERE.md. The separate portable installer generates workspace-root START-HERE.md. README line 117 and AlphaGuide line 46 already use the startup path."
+    },
+    {
+      "status": "roadmap versus generated structure",
+      "source": {
+        "path": "docs/beta/engineering-plan.md",
+        "line": 72
+      },
+      "description": "Routines belong in a future panel, not the current generated startup tree."
+    }
+  ],
+  "presentationRules": [
+    "Startup neither executes teams nor imports project context.",
+    "Do not combine the separate portable-installer layout with the init tree.",
+    "Portable text still requires review for private brief and goal content.",
+    "Do not show proposed output/scope.md, output/draft.md, or output/review.md as existing files.",
+    "Historical trellis/ formats and alpha compiler versions are compatibility identifiers; preserve their bytes."
+  ]
+}

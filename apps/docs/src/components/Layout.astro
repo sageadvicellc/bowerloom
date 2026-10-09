@@ -1,0 +1,22 @@
+---
+import Header from './Header.astro';
+import '../styles/theme.css';
+const {title,description,url,markdownUrl}=Astro.props;
+---
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>{title} · Bowerloom docs</title><meta name="description" content={description}/>
+    <meta name="theme-color" content="#F6EEE8"/>
+    <meta name="robots" content="noindex, nofollow"/>
+    <link rel="canonical" href={'https://bowerloom.ai'+url}/>
+    {markdownUrl&&<link rel="alternate" type="text/markdown" href={markdownUrl}/>}
+    <link rel="icon" type="image/svg+xml" href="/docs/brand/s4-g3-icon.svg"/>
+    <script is:inline>
+      let t='system';try{t=localStorage.getItem('bowerloom.theme')??'system';}catch{}
+      const dark=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.classList.toggle('dark',dark);document.documentElement.style.colorScheme=dark?'dark':'light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#27262B':'#F6EEE8');document.querySelector('link[rel="icon"]')?.setAttribute('href',dark?'/docs/brand/s4-g3-icon-dark.svg':'/docs/brand/s4-g3-icon.svg');
+    </script>
+  </head>
+  <body><a class="skip-link" href="#main-content">Skip to content</a><Header/><slot/></body>
+</html>

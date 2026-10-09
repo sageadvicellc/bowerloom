@@ -1,0 +1,24 @@
+{
+  "format": "bowerloom/mcp-binding/v1beta1",
+  "connectionId": "labs",
+  "bindingId": "synthetic-labs",
+  "protocolVersion": "2025-11-25",
+  "serverIdentity": {
+    "name": "labs-fixture",
+    "version": "1.0.0"
+  },
+  "transport": {
+    "kind": "streamable-http",
+    "endpoint": "https://mcp.example.test/mcp",
+    "auth": {
+      "kind": "oauth2",
+      "issuer": "https://identity.example.test/",
+      "audience": "https://mcp.example.test/",
+      "scopes": [
+        "experiments:read",
+        "drafts:write"
+      ],
+      "credentialRef": "secret-ref:synthetic/labs-access"
+    }
+  }
+}

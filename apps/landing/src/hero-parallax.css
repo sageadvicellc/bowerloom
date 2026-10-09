@@ -1,0 +1,28 @@
+/* Hero depth on scroll. Two planes, transforms only, driven by the scroll position on the compositor.
+   The artwork lags the scroll and the copy leads it slightly, so the copy passes over the art.
+   Depth per pixel scrolled: art +0.18 (moves at 82% of scroll speed), copy -0.05 (105%).
+   The art range ends one viewport down and the copy range ends one and a half viewports down.
+   Each plane is off screen at its range end on phone, tablet and desktop, so no speed change shows.
+   Browsers without scroll timelines, and reduced motion, keep the static hero. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .normal-site .normal-hero .homepage-banner > img {
+      animation: hero-depth-far linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 100vh;
+    }
+    .normal-site .normal-hero .hero-copy {
+      animation: hero-depth-near linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 150vh;
+    }
+  }
+}
+@keyframes hero-depth-far {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 18vh, 0); }
+}
+@keyframes hero-depth-near {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, -7.5vh, 0); }
+}

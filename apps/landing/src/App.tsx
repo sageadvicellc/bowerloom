@@ -1,3 +1,4 @@
+import { readerRelease, docsPath, betaGuidePath } from './release';
 import {
   Component,
   lazy,
@@ -16,7 +17,14 @@ import ThemeControl from "./ThemeControl";
 
 import StaticWorkshop from "./StaticWorkshop";
 import TutorialBuilder from "./TutorialBuilder";
-import CinematicWorld from "./CinematicWorld";
+import ThemeSplash from "./ThemeSplash";
+import { rememberThemeSplash, shouldShowThemeSplash, splashMediaFor, type SplashMedia } from "./theme-splash";
+import "./splash.css";
+import "./hero-parallax.css";
+import HomepageBanner from "./HomepageBanner";
+import SectionCompanion from "./SectionCompanion";
+import FooterCompanion from "./FooterCompanion";
+import { INITIAL_ANCHOR_EVENT, scheduleInitialAnchor } from "./fullpage-anchor";
 import { renderingBudget, type RenderSample } from "./diagnostics";
 
 const Workshop = lazy(() => import("./Workshop"));
@@ -26,15 +34,24 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 }
 
 const offers = [
-  { title: "A toolkit that works together.", body: "The Teams module describes roles and skills. Relay carries messages, Roots holds knowledge, and Vines records logs. Workbench supplies repeatable tests. Each tool has a clear job; check the alpha evidence for what is ready today." },
-  { title: "Your agent manages the project.", body: "Start with the personal agent you already use. It helps describe the task, prepare the team, and bring proposed changes back to you. Bowerloom supplies explicit controls and records around the tested actions; your agent remains your interface." },
-  { title: "Take your team with you.", body: "Keep team definitions, skills, and permissions in versioned files outside one agent app. Keep credentials separate. Codex is the tested alpha path; execution across other harnesses is a beta plan, not a current guarantee." },
+  {
+    "title": "Agree on the work before it changes.",
+    "body": "Define each role, its inputs, its outputs, and the handoff to the next role. The beta requires an exact plan revision before writing setup files, detects drift, and records revision recovery. Team files declare proposed permissions and review points. They do not grant runtime authority or start workers."
+  },
+  {
+    "title": "Build around your existing workflow.",
+    "body": "Start with a manual process or the work you already share with one agent. Your personal agent helps separate decisions, drafting, and review into a team graph. Choose a fixed Engineer, Founder, or Research profile, then compare its specification with your process. Existing-project setup adds .bowerloom without importing project contents or live agent configuration."
+  },
+  {
+    "title": "Keep the definitions with the project.",
+    "body": "Roles, skills, handoffs, and review expectations stay in files that follow you. You can version those definitions with your project and inspect them in another agent application. Credentials and installation receipts stay private. Moving definitions does not transfer permissions or prove that another application can execute them."
+  }
 ];
 
 function CoreOffers() {
   const [active, setActive] = useState(0);
   const offer = offers[active];
-  return <section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
+  return <SectionCompanion unit="s4" side="right"><section className="product-section" aria-labelledby="product-title" aria-roledescription="carousel">
     <div><p className="eyebrow">Portable tools and teams</p><h2 id="product-title">Keep the work in your hands.</h2></div>
     <div className="offer-content">
       <div className="offer-slide" role="group" aria-roledescription="slide" aria-label={`${active + 1} of ${offers.length}`} aria-live="polite" aria-atomic="true">
@@ -43,7 +60,7 @@ function CoreOffers() {
       <div className="offer-controls" role="group" aria-label="Explore Bowerloom">
         <div className="offer-tabs" style={{ '--active-offer': active } as React.CSSProperties}>
           <span className="offer-indicator" aria-hidden="true" />
-          {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["The tools", "Your agent", "Portability"][index]}</button>)}
+          {offers.map((item, index) => <button type="button" key={item.title} aria-pressed={index === active} onClick={() => setActive(index)}>{["Governance", "Your workflow", "Portability"][index]}</button>)}
         </div>
         <div className="offer-arrows">
           <button type="button" onClick={() => setActive((active + offers.length - 1) % offers.length)} aria-label="Previous offer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" /></svg></button>
@@ -51,7 +68,7 @@ function CoreOffers() {
         </div>
       </div>
     </div>
-  </section>;
+  </section></SectionCompanion>;
 }
 
 class SceneBoundary extends Component<
@@ -80,7 +97,27 @@ function useReducedMotion() {
   return reduced;
 }
 
+function browserStorage(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
+}
+
+/** Once per browser, never for a deep link or reduced motion, and never before the clips exist. */
+function initialSplash(): SplashMedia | null {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!shouldShowThemeSplash({ hash: window.location.hash, reducedMotion, storage: browserStorage() })) return null;
+  return splashMediaFor(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+}
+
 export default function App() {
+  const [splash, setSplash] = useState<SplashMedia | null>(initialSplash);
+  const finishSplash = () => {
+    setSplash(null);
+    requestAnimationFrame(() => {
+      // Give the page focus only if the visitor has not already moved it.
+      const active = document.activeElement;
+      if (!active || active === document.body) document.getElementById('main')?.focus({ preventScroll: true });
+    });
+  };
   const [selected, setSelected] = useState(0);
   const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -98,6 +135,13 @@ export default function App() {
     new URLSearchParams(window.location.search).get("diagnostics") === "1";
   const reduced = useReducedMotion();
   const sceneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => scheduleInitialAnchor(
+    window.location.hash,
+    id => document.getElementById(id),
+    { request: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id) },
+    () => window.dispatchEvent(new Event(INITIAL_ANCHOR_EVENT)),
+  ), []);
 
   useEffect(() => {
     let onScreen = true;
@@ -119,7 +163,8 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <div className="normal-site">
+      {splash && !reduced && <ThemeSplash media={splash} onStart={() => rememberThemeSplash(browserStorage())} onDone={finishSplash} />}
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -129,19 +174,28 @@ export default function App() {
         </a>
         <SiteNavigation />
         <ThemeControl />
-        <span className="alpha-label">
-          <span /> v0.7 alpha
+        <span className="release-label">
+          <span /> {readerRelease.label}
         </span>
       </header>
-      <main id="main">
-        {cinematic ? <CinematicWorld reducedMotion={reduced} /> : (
+      <main id="main" tabIndex={-1}>
+        {cinematic ? <section className="hero normal-hero" aria-labelledby="hero-title">
+          <HomepageBanner />
+          <div className="hero-copy">
+            <p className="eyebrow">{hero.Eyebrow}</p>
+            <h1 id="hero-title">{hero.H1}</h1>
+            <p className="hero-description">{hero.Body}</p>
+            <a className="button primary" href="#build">Build with your agent</a>
+            <a className="hero-secondary" href="#recipe">Explore the Labs workflow</a>
+          </div>
+        </section> : (
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy">
             <p className="eyebrow">
               <span className="tiny-cross">✳</span> {hero.Eyebrow}
             </p>
             <h1 id="hero-title">
-              Grow your capabilities with <em>Bowerloom</em>
+              {hero.H1}
             </h1>
             <p className="hero-description">
               {hero.Body}
@@ -216,19 +270,19 @@ export default function App() {
         </section>
         )}
         <CoreOffers />
-        <LabsWorkflow />
+        <SectionCompanion unit="h4n" side="left"><LabsWorkflow /></SectionCompanion>
         <TutorialBuilder />
-        <section className="faq-section" aria-labelledby="faq-title">
+        <SectionCompanion unit="s4-slate" side="right"><section className="faq-section" aria-labelledby="faq-title">
           <h2 id="faq-title">Before you build</h2>
           <div className="faq-list">
             {questions.map((item, index) => <details key={item.question} open={index === 0 ? true : undefined}><summary>{item.question}</summary><p><ProductText>{item.answer}</ProductText></p></details>)}
           </div>
           <div className="resource-links">
-            <a href="#alpha-guide">Read the alpha boundaries</a>
-            <a href="#release-plan">Explore the release plan</a>
+            <a href={betaGuidePath}>Read the beta boundaries</a>
+            <a href={`${betaGuidePath}#release-plan`}>Explore the release plan</a>
             <ExternalLink href={destinations.license}>Read the license declaration</ExternalLink>
           </div>
-        </section>
+        </section></SectionCompanion>
       </main>
       {diagnostics && !cinematic && (
         <aside
@@ -283,21 +337,24 @@ export default function App() {
           </p>
         </aside>
       )}
-      <footer className="site-footer" data-theme="dark">
+      <FooterCompanion><footer className="site-footer" data-theme="dark">
         <a className="brand" href="#" aria-label="Bowerloom home">
           <BrandIdentity />
         </a>
         <p>An open-source framework for agent teams.</p>
         <div>
+          <a href={docsPath}>Documentation</a>
+          <a href={`${docsPath}roadmap/`}>Roadmap</a>
+          <a href={`${docsPath}feedback/`}>Bug reports and feedback</a>
           <ExternalLink href={repository}>GitHub</ExternalLink>
           <ExternalLink href={destinations.readme}>README</ExternalLink>
-          <a href="#alpha-evidence">Alpha evidence</a>
+          <a href={betaGuidePath}>Beta guide</a>
           <ExternalLink href={destinations.license}>License declaration</ExternalLink>
         </div>
         <p className="footer-access">Read the README on GitHub. Explore the guide here.</p>
         <span className="footer-note">bowerloom.ai · Made by Sage Advice.</span>
-        <p className="footer-release">Local alpha. Founder acceptance and public release remain pending.</p>
-      </footer>
-    </>
+        <p className="footer-release">{readerRelease.label} · {readerRelease.version}. Setup prepares files for review.</p>
+      </footer></FooterCompanion>
+    </div>
   );
 }

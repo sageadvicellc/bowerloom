@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AccountObservation, UsageWindow } from '../../admission/src/types.js';
 import { AdapterError, check, finite, id, object, sha, time } from './safe.js';
-import { CONTROLS, INPUT_KEYS, ROUTE_KEYS, MODEL_ROUTE, LIMITS } from './policy.js';
+import { CONTROLS, INPUT_KEYS, ROUTE_KEYS, MODEL_ROUTE, MODEL, EFFORT, LIMITS } from './policy.js';
 import type { AccountBinding } from './types.js';
 export function accountBindingDigest(providerAccountId:string):string {
   check(typeof providerAccountId==='string'&&providerAccountId.length>0&&providerAccountId.length<=512,'ACCOUNT_ID_UNAVAILABLE');
@@ -39,8 +39,8 @@ export function verifyProvenance(body:unknown,requirementsBody:unknown):void {
 }
 export function verifyModel(body:unknown):void {
   const b=object(body);check(b.nextCursor==null&&Array.isArray(b.data)&&b.data.length>0&&b.data.length<=100,'MODEL_CATALOG');
-  const candidates=b.data.filter((m:unknown)=>object(m).model==='gpt-5.5');check(candidates.length===1,'MODEL_UNAVAILABLE');
-  const m=object(candidates[0]);check(m.hidden===false&&Array.isArray(m.supportedReasoningEfforts)&&m.supportedReasoningEfforts.some((e:unknown)=>object(e).reasoningEffort==='low')&&!active(m.availabilityNux),'MODEL_CAPABILITY');
+  const candidates=b.data.filter((m:unknown)=>object(m).model===MODEL);check(candidates.length===1,'MODEL_UNAVAILABLE');
+  const m=object(candidates[0]);check(m.hidden===false&&Array.isArray(m.supportedReasoningEfforts)&&m.supportedReasoningEfforts.some((e:unknown)=>object(e).reasoningEffort===EFFORT)&&m.availabilityNux===null,'MODEL_CAPABILITY');
 }
 export function supportedSubscriptionPlan(value:unknown):value is 'pro'|'promax' {return value==='pro'||value==='promax';}
 export function observationFromResponses(accountBody:unknown,usageBody:unknown,binding:AccountBinding,startedAtMs:number,nowMs:number):AccountObservation {

@@ -17,7 +17,6 @@
 .labs-workspace svg { width: 22px; height: 22px; flex: 0 0 auto; color: var(--ui-primary); }
 .finder-view { display: grid; gap: 3px; margin-left: auto; width: 17px; }
 .finder-view i { height: 1px; background: var(--ui-muted); }
-.finder-path { padding: 14px 24px 8px; color: var(--ui-muted); font-size: 15px; }
 .file-list, .file-list ul { list-style: none; padding: 0; margin: 0; }
 .file-list { padding: 8px 14px; }
 .file-row, .file-list summary { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 10px; width: 100%; border: 0; background: transparent; text-align: left; font: 14px/1.5 var(--ui-font); overflow-wrap: anywhere; }
@@ -51,16 +50,8 @@
 .labs-loop summary:hover { color: var(--ui-primary); }
 .labs-loop summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 3px; }
 .labs-loop details > p { margin: 0 0 20px; font-size: 16px; line-height: 1.65; }
-.labs-boundary { margin-top: 24px; max-width: 85ch; font-size: 15px; line-height: 1.65; color: var(--ui-muted); }
-.alpha-guide { margin: 24px 0 32px; border-block: 1px solid var(--tutorial-accent, var(--ui-border)); }
-.alpha-guide > summary { padding: 18px 0; min-height: 52px; font-size: 21px; cursor: pointer; }
-.alpha-guide-body { padding: 0 0 28px; max-width: 85ch; }
-.alpha-guide h3 { font-size: 24px; margin: 28px 0 12px; }
-.alpha-guide p, .alpha-guide li { line-height: 1.65; margin: 10px 0; }
-.alpha-guide pre { padding: 18px; background: var(--tutorial-surface); white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 var(--ui-font); border: 1px solid var(--tutorial-accent); }
-.alpha-guide a { text-decoration: underline; text-underline-offset: 3px; }
-.alpha-guide summary:focus-visible, .file-list summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
-.alpha-guide code, .labs-section code { font-family: var(--ui-font); font-size: .86em; }
+.file-list summary:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.labs-section code { font-family: var(--ui-font); font-size: .86em; }
 @media (max-width: 760px) {
   .labs-workspace, .labs-loop { grid-template-columns: 1fr; }
   .labs-role { border-top: 1px solid var(--ui-border); }

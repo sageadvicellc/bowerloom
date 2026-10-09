@@ -80,3 +80,19 @@ Pass the same ceiling to `CodexAdapter` and the third argument of `CodexObservat
 The PostgreSQL admission policy and crew reserve still apply separately. This argument does not clear held allowances or bypass a refused runtime admission.
 
 An invalid ceiling fails before a native request. Missing or refused account observations still stop model work.
+
+## Explicit beta qualification gate
+
+`CodexBetaAdapter` adds a private trusted-host qualification gate around the existing proposal runner.
+Its task interface cannot select a receipt, alpha fallback or probe mode.
+The host pins an independently reviewed receipt and distribution inventory; the gate measures the actual installed runtime files before launch.
+Missing, revoked, stale or mismatched qualification refuses before account observation or model dispatch.
+The gate repeats before dispatch, followed by native, workspace, account-freshness, expiry and cancellation checks.
+
+This slice does not supply a qualification record or a live native-policy pass.
+The finite probe bootstrap remains unavailable because its durable admission binding is not implemented here.
+`refuseCodexQualificationProbe()` always refuses. Ordinary beta cannot silently use the historical alpha runner when qualification is absent.
+The original explicit `CodexAdapter` keeps its historical behavior and false universal-denial evidence fields.
+
+Proposal completion grants no effect authority and does not claim an optional write occurred.
+The trusted vendor/host model, file-measurement limits, exact interfaces and remaining Claude/live gates are documented in [the beta boundary](../../docs/beta/native-harness-boundary.md).

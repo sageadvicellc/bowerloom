@@ -21,6 +21,14 @@ export function createAccount(accountId: string, aliases: string[], policy: Admi
   return stateCopy({ version: 1, accountId, aliases: aliases.map(identifier).sort(), policy: policyCopy(policy), observation: null, highWater: {}, reservations: {} });
 }
 function observationReason(state: AccountState, observation: AccountObservation, now: number): string | null {
+  if(state.version===2){
+    if(state.continuity.phase==='HELD')return 'CONTINUITY_HELD';
+    if(observation.authentication!=='subscription')return 'SUBSCRIPTION_REQUIRED';
+    if(!observation.ordinaryUsageAllowed)return 'ORDINARY_USAGE_REFUSED';
+    const anchor=state.continuity.plan.newAnchor, sample=observation.windows.primary;
+    if(canonicalJson(Object.keys(observation.windows).sort())!==canonicalJson(['primary','secondary']) || observation.windows.secondary!==null
+      || !sample || sample.accountedThroughMs!==null || !sameAccountingWindow(anchor,sample))return 'CONTINUITY_WINDOW';
+  }
   if (!validTime(now)) return 'CLOCK_UNAVAILABLE';
   if (observation.accountId !== state.accountId) return 'ACCOUNT_MISMATCH';
   if (observation.observedAtMs > now) return 'FUTURE_OBSERVATION';
@@ -67,6 +75,7 @@ export function acceptObservation(input: AccountState, value: unknown, now: numb
   }
   state.observation = observation;
   for (const reservation of Object.values(state.reservations)) {
+    if(state.version===2)continue;
     if (reservation.status !== 'COMPLETED' || reservation.completedAtMs === null || observation.observedAtMs <= reservation.completedAtMs) continue;
     const covered = Object.entries(reservation.retained).every(([name, retained]) => {
       const window = own(observation.windows, name);
@@ -120,8 +129,8 @@ function evaluate(stateInput: AccountState, requestInput: ReservationRequest, no
     const highWater = own(state.highWater, name); const sample = own(observation.windows, name);
     if (!sample || !highWater || !sameAccountingWindow(highWater, sample) || highWater.usedPercent < sample.usedPercent) return deny('MISSING_WINDOW_HISTORY');
     const retained = Object.values(state.reservations).reduce((total, reservation) => total + charge(own(reservation.retained, name)?.percent ?? 0), 0);
-    const total = charge(highWater.usedPercent) + retained + charge(state.policy.headroomPercent) + (proposed ? charge(request.allowancePercent[name]!) : 0);
-    if (total >= threshold(state.policy.thresholdPercent)) return deny('CAPACITY_LIMIT');
+    const total = (state.version===2?state.continuity.plan.historicalFloorBasisPoints:0) + charge(highWater.usedPercent) + retained + charge(state.policy.headroomPercent) + (proposed ? charge(request.allowancePercent[name]!) : 0);
+    if (!Number.isSafeInteger(total) || total >= threshold(state.policy.thresholdPercent)) return deny('CAPACITY_LIMIT');
   }
   return { allowed: true, windows };
 }

@@ -46,8 +46,28 @@ test('Bowerloom help and legacy command aliases share the existing CLI',()=>{
   const root=JSON.parse(readFileSync(new URL('../../package.json',import.meta.url),'utf8')) as {bin:Record<string,string>};
   assert.equal(root.bin.bowerloom,root.bin.trellis);
   assert.equal(root.bin['bowerloom-mcp'],root.bin['trellis-mcp']);
-  const result=spawnSync(process.execPath,['dist/apps/cli/src/main.js','--help'],{encoding:'utf8'});
+  const result=spawnSync(process.execPath,['dist/apps/cli/src/main.js','help','advanced'],{encoding:'utf8'});
   assert.equal(result.status,0);
-  assert.match(result.stdout,/Bowerloom v0.7-alpha/);
+  const release = JSON.parse(readFileSync(new URL('../../release/beta.json', import.meta.url), 'utf8')) as {version: string};
+  assert.ok(result.stdout.startsWith(`Bowerloom ${release.version}:`));
   assert.match(result.stdout,/bowerloom portable/);
 });
+
+for (const harness of ['codex', 'claude']) {
+  test(`portable CLI prepares ${harness} files with exact approval and no authority`, () => {
+    const f = fixture();
+    try {
+      const args = ['portable', 'plan', f.bundle, '--select', 'draft', '--harness', harness, '--target', f.target];
+      const plan = runPortableCommand(args) as {revision: string; adapterVersion: string; harness: string};
+      assert.equal(plan.harness, harness);
+      for (const extra of [['--harness', harness], ['--bad', 'yes'], ['--target']])
+        assert.throws(() => runPortableCommand([...args, ...extra]), {code: 'USAGE'});
+      assert.throws(() => runPortableCommand(args.slice(0, -2)), {code: 'USAGE'});
+      const receipt = runPortableCommand([...args.map(v => v === 'plan' ? 'install' : v), '--approve', plan.revision]) as {adapterVersion: string; executionAuthorized: boolean};
+      assert.equal(receipt.adapterVersion, plan.adapterVersion);
+      assert.equal(receipt.executionAuthorized, false);
+      const root = harness === 'codex' ? '.agents' : '.claude';
+      assert.equal(readFileSync(join(f.target, root, 'skills/bowerloom-draft/SKILL.md'), 'utf8'), readFileSync(join(f.bundle, '.bowerloom/skills/draft/SKILL.md'), 'utf8'));
+    } finally { rmSync(f.root, {recursive: true, force: true}); }
+  });
+}

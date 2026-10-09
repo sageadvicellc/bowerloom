@@ -1,0 +1,85 @@
+Usage:
+  bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
+  bowerloom skills source git acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source acquire --plan <absolute-json> --approve <revision>
+  bowerloom skills source inspect --request <absolute-local-cache-selector-json>
+  bowerloom skills source recover plan --request <absolute-json>
+  bowerloom skills source recover apply --plan <absolute-json> --approve <revision>
+  bowerloom skills plan --request <absolute-install-request-json>
+  bowerloom skills update plan --request <absolute-update-request-json>
+  bowerloom skills apply --plan <absolute-json> --approve <revision> --previous <revision|none>
+  bowerloom skills inspect --request <absolute-json>
+  bowerloom skills recover plan --request <absolute-json>
+  bowerloom skills recover apply --plan <absolute-json> --approve <revision>
+  bowerloom routine plan --root <absolute-.bowerloom-directory> --experiment-id <logical-id> --experiment-digest <sha256:hex>
+  bowerloom mcp plan --declaration <absolute-json-file> --binding <absolute-json-file> --catalog <absolute-json-file> --synthetic
+  bowerloom init plan --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --name <project-name> --goal <goal> [--profile engineer|founder|research] [--assistant <name>] [--team <name>] [--review milestones|handoff] --approve <revision>
+  bowerloom init plan --mode new|existing --target <absolute-directory> --brief <brief.json> [--json]
+  bowerloom init apply --mode new|existing --target <absolute-directory> --brief <brief.json> --approve <revision>
+  bowerloom init status --target <absolute-directory>
+  bowerloom init demo-plan --target <absolute-directory> --from <installed-revision> [--json]
+  bowerloom revise plan --target <absolute-directory> --brief <brief.json>
+  bowerloom revise apply --target <absolute-directory> --brief <brief.json> --from <installed-revision> --approve <plan-revision>
+  bowerloom revise recover --target <absolute-directory> --approve <plan-revision> --action resume|rollback
+  bowerloom harness import --harness codex|claude --file <absolute-fixture-file> --synthetic
+  bowerloom harness plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --synthetic
+  bowerloom harness managed-plan --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic
+  bowerloom harness apply --harness codex|claude --file <absolute-fixture-file> --neutral <private-json-file> --state <new-private-directory> --synthetic --approve <revision>
+  bowerloom harness removal-plan --state <private-directory> --synthetic
+  bowerloom harness remove --state <private-directory> --synthetic --approve <removal-plan-revision>
+  bowerloom harness recover --state <private-directory> --synthetic --approve <recorded-operation-revision>
+  bowerloom link plan --from <root> --to <root> --file <definition> --out <private-new-file>
+  bowerloom link apply --from <root> --to <root> --file <definition> --out <private-new-file> --approve <revision>
+  bowerloom link read --connection <file> --target <receiving-root>
+  bowerloom link revoke --connection <file>
+  bowerloom control plan|register --root <root> --team <id> --spec <relative-team-file> [--adapter graph|recipe --installation <private.json>] [--registry <directory>] [--approve <revision>]
+  bowerloom destruct <team-id> --root <root> [--registry <directory>] [--timeout-ms <milliseconds>]
+  bowerloom destruct all [--registry <directory>] [--timeout-ms <milliseconds>]
+  bowerloom backend doctor
+  bowerloom backend plan|install --root <new-absolute-directory> [--studio-port <port>] [--database-port <port>] [--approve <revision>]
+  bowerloom backend status --root <private-installation-directory>
+  bowerloom portable validate <bundle-directory>
+  bowerloom portable plan|install <bundle-directory> --select <part,part> --harness codex|claude --target <new-absolute-directory> [--approve <revision>]
+  bowerloom recipe inspect|setup --installation <private.json>
+  bowerloom recipe plan|review|approve|run|reconcile|cancel|status --installation <private.json> --input <request.json>
+  bowerloom validate <crew.yaml> [--root <directory>]
+  bowerloom plan <crew.yaml> [--root <directory>]
+  bowerloom authoring validate|export <authoring.json> --scenario <frozen-scenario.json> [--root <directory>]
+  bowerloom up --demo --pro|--5x|--20x --installation <private.json>
+  bowerloom status|review|cancel --installation <private.json>
+  bowerloom approve --installation <private.json> --candidate <sha256:...> --action <sha256:...>
+
+Routine plan reads a standalone portable authoring tree and prints local review JSON.
+It does not install/import files, validate an installation receipt, or grant execution authority.
+MCP plan reads three selected test files and prints a private review plan.
+The recorded catalog is untrusted input. This command does not discover tools, connect a server, resolve secrets, or grant authority.
+Keep its output private. It includes installed paths and connection details.
+The trellis and trellis-mcp commands remain compatibility aliases.
+Init prepares a personal-agent profile and first team specification from your brief.
+Init apply requires the exact plan revision. It starts no workers or backend services.
+Init plan offers a plain-English review. Add --json for the complete machine-readable plan.
+Init demo-plan offers an optional synthetic Workbench handoff. It does not execute the installed team or grant action approval.
+Revise plans changes to an installed specification. Apply requires the old revision and exact new approval.
+Revision recovery resumes the approved transaction or restores its recorded prior installation. It starts no workers.
+Harness import and plan are for synthetic files. They do not install settings, connect tools, or start a team.
+Harness apply and remove require separate exact approvals. They change only the selected synthetic configuration and retain recovery records.
+Harness recover requires the exact recorded operation approval. No harness command grants model execution authority.
+Choose --profile engineer|founder|research, or set profile in the brief.
+Links share one approved definition between installed local roots. They grant no execution authority.
+Destruct stops registered Bowerloom work and preserves project files, definitions, and saved state.
+Destruct all covers one local registry, not other users, remote machines, or unrelated agent sessions.
+Existing mode adds only .bowerloom. Harness commands process selected test fixtures. Live Codex and Claude Code configuration support and two-harness execution remain unproven.
+Backend install requires --approve with the exact current plan revision.
+Backend setup uses a separate local Supabase profile. It provisions no agent runtime.
+Docker Desktop is a prerequisite. The CLI never installs privileged host software.
+Portable install requires --approve with the exact current plan revision.
+Portable installation copies selected files. It starts no workers.
+The source root defaults to the directory that contains crew.yaml.
+Validate and plan read source files and print JSON. They start no workers.
+Status and review read the prepared session without a model or browser.
+Up stops for exact approval. Approve writes and tests the stored proposal.
+Tier flags do not promise measured throughput. The task runner executes tasks sequentially.
+The plan records declarations. It grants no runtime permission.
+Recipe commands share their controller with MCP. The operator CLI owns exact approval.

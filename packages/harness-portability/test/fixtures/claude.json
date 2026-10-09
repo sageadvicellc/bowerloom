@@ -1,0 +1,6 @@
+{
+  "model": "sonnet",
+  "effortLevel": "high",
+  "permissions": { "defaultMode": "manual" },
+  "unrelated_demo_flag": false
+}

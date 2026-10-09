@@ -1,7 +1,7 @@
-import { hero, stages } from "./content.js";
+import { hero, stages } from "./content.ts";
 
-/** Media is supplied and reviewed separately. Ready means matching media is present, not accepted. */
-export const cinematicJourney = {
+/** Historical six-scene study. Kept as an unmounted reference; not the beta preview. */
+export const historicalCinematicJourney = {
   scrollPerScene: 1.4,
   maxClipBytes: 16 * 1024 * 1024,
   maxClipSeconds: 15,
@@ -14,4 +14,78 @@ export const cinematicJourney = {
     { id: "scene-05", label: "Review desk beside the open workshop", title: stages[3].title, body: stages[3].description, poster: "/scroll-world/scene-05.webp", clip: "/scroll-world/scene-05.mp4", posterReady: true, clipReady: true },
     { id: "scene-06", label: "Open balcony across the connected forest", title: "Build with your agent", body: "Give your personal agent a goal. Define a small team, agree on the work, and review the result at milestones.", poster: "/scroll-world/scene-06.webp", clip: "/scroll-world/scene-06.mp4", posterReady: true, clipReady: true },
   ],
+};
+
+/** Founder-approved lab-robots-03, reused byte-for-byte. This is one scene, not the full journey. */
+export const cinematicJourney = {
+  scrollPerScene: 1.4,
+  maxClipBytes: 16 * 1024 * 1024,
+  maxClipSeconds: 8.1,
+  openingPoster: "/animation-review/assets/motion-poster.webp",
+  illustrationNote: "This illustrated preview represents an intended workflow. It does not establish software behavior, benchmark results, or a winning model.",
+  approvalNote: "Review the exact plan. Approve only the actions you choose.",
+  scenes: [
+    {
+      id: "lab-robots-03",
+      label: "Hanna reviews a plan in a forest lab.",
+      poster: "/animation-review/assets/motion-poster.webp",
+      clip: "/animation-review/robots-lab.mp4",
+      durationSeconds: 8.04,
+      posterReady: true,
+      clipReady: true,
+    },
+  ],
+};
+
+/** Brand coverage-01 ranges. Six page regions share one unchanged clip. */
+export const fullpageRegions = [
+  {
+    "id": "hero",
+    "selector": ".cinematic-world",
+    "start": 0,
+    "end": 0.9,
+    "poster": "/fullpage-coverage/hero.jpg"
+  },
+  {
+    "id": "portable-teams",
+    "selector": ".product-section",
+    "start": 0.9,
+    "end": 2.6,
+    "poster": "/fullpage-coverage/portable-teams.jpg"
+  },
+  {
+    "id": "labs",
+    "selector": "#recipe",
+    "start": 2.6,
+    "end": 4.5,
+    "poster": "/fullpage-coverage/labs.jpg"
+  },
+  {
+    "id": "build",
+    "selector": "#build",
+    "start": 4.5,
+    "end": 6.4,
+    "poster": "/fullpage-coverage/build.jpg"
+  },
+  {
+    "id": "questions",
+    "selector": ".faq-section",
+    "start": 6.4,
+    "end": 7.5,
+    "poster": "/fullpage-coverage/questions.jpg"
+  },
+  {
+    "id": "footer",
+    "selector": ".site-footer",
+    "start": 7.5,
+    "end": 8,
+    "poster": "/fullpage-coverage/footer.jpg"
+  }
+] as const;
+
+/** Exact four-second frame from the approved clip, reused as the splash resting image. */
+export const splashRestingFrame = {
+  poster: '/fullpage-coverage/labs.jpg',
+  seconds: 4,
+  sha256: 'dd0d210520c64fefa41c93f5ed6d01abe96daa017fd2bad8b7f3139b7ef1effb',
 };

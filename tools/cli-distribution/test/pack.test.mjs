@@ -1,0 +1,297 @@
+import test from 'node:test';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+import assert from 'node:assert/strict';
+import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,existsSync,chmodSync,readdirSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import {collect,stage,pack,imports,lockedDependencies,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
+const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
+function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
+function fixture(t) {
+ const root=join(area(t),'source');mkdirSync(root);
+ const collected=collect({repoDir:repo}); const names=new Set(['package.json','package-lock.json',...collected.record.sourceManifests.map(x=>x.path)]);
+ for(const path of collected.files.keys()) if(path.startsWith('dist/')) {names.add(path);names.add(path.replace(/^dist\//,'').replace(/\.js$/,'.ts'));}else if(!['package.json','npm-shrinkwrap.json','README.md','DISTRIBUTION-NOTICE.md','DISTRIBUTION.json'].includes(path))names.add(path);
+ for(const path of names) {mkdirSync(dirname(join(root,path)),{recursive:true});writeFileSync(join(root,path),readFileSync(join(repo,path)));}
+ return root;
+}
+test('runtime closure is deterministic, pins bins/assets/licenses and omits repository-only material',()=>{
+ const a=collect({repoDir:repo}),b=collect({repoDir:repo});assert.deepEqual(a,b);
+ assert.equal(a.manifest.private,true);assert.equal(a.manifest.dependencies.jose,'6.2.12');assert.equal(a.manifest.name,'bowerloom');assert.deepEqual(Object.keys(a.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(a.manifest.scripts,undefined);
+ for(const path of a.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|node_modules|\.git|\.env|work)(?:\/|$)|\.map$|\.ts$/.test(path),path);
+ for(const path of ['LICENSE','docs/beta/license-boundary.md','dist/packages/codex-adapter/src/guardian.js','dist/packages/codex-adapter/src/supervisor.js','dist/packages/codex-adapter/src/boundary.js','dist/packages/mcp-connections/src/discovery.js','dist/packages/mcp-connections/src/auth.js','dist/packages/mcp-connections/src/authority.js','dist/packages/mcp-connections/src/authority-postgres.js','dist/packages/mcp-connections/src/http.js','dist/packages/mcp-connections/src/stdio.js','dist/packages/mcp-connections/src/container.js','dist/packages/mcp-connections/src/container-supervisor.js','dist/packages/mcp-connections/src/container-guardian.js','dist/packages/mcp-connections/src/container-policy.js','packages/linux-browser/assets/runner.cjs','npm-shrinkwrap.json'])assert.ok(a.files.has(path),path);
+ const supabaseLicense='packages/local-backend/licenses/supabase-Apache-2.0.txt';
+ assert.deepEqual(a.files.get(supabaseLicense),readFileSync(join(repo,supabaseLicense)));
+ assert.match(a.files.get(supabaseLicense).toString('utf8'),/Apache License/);
+ for(const entry of a.record.files)assert.equal(sha256(a.files.get(entry.path)),entry.sha256);
+ const lock=JSON.parse(a.files.get('npm-shrinkwrap.json'));assert.ok(Object.keys(lock.packages).length>100);assert.ok(!Object.keys(lock.packages).some(p=>p.includes('vite')||p.includes('typescript')));
+ assert.throws(()=>collect({repoDir:repo,name:'@example/custom-cli'}),/Release record/);
+ assert.throws(()=>collect({repoDir:repo,name:'../escape'}),/identity/);
+});
+test('AST traversal captures dynamic imports and fork URL, rejecting dynamic module selectors',()=>{
+ assert.deepEqual(imports('import x from "pg"; export * from "./x.js"; import("./y.js"); new URL("./guardian.js", import.meta.url);','x.js'),['pg','./x.js','./y.js','./guardian.js']);
+ assert.throws(()=>imports('import(process.env.SECRET)','x.js'),/Nonliteral/);assert.deepEqual(imports('// import("fake")\nconst s="import(fake)";','x.js'),[]);
+});
+test('unexpected private files and test artifacts never enter stage; source escapes and undeclared deps fail',t=>{
+ const root=fixture(t);writeFileSync(join(root,'.env'),'DO_NOT_SHIP');writeFileSync(join(root,'dist/apps/cli/src/ignored.js'),'DO_NOT_SHIP');
+ assert.ok(!collect({repoDir:root}).files.has('dist/apps/cli/src/ignored.js'));
+ const entry=join(root,'dist/apps/cli/src/main.js'),original=readFileSync(entry);
+ writeFileSync(entry,original+'\nimport "../../../../private.js";');assert.throws(()=>collect({repoDir:root}),/allowlist/);
+ writeFileSync(entry,original+'\nimport "not-approved";');assert.throws(()=>collect({repoDir:root}),/Undeclared/);
+ writeFileSync(entry,original);rmSync(entry);symlinkSync(join(repo,'dist/apps/cli/src/main.js'),entry);assert.throws(()=>collect({repoDir:root}),/symlink/);
+});
+test('new destinations only: existing contents and symlink parents remain untouched',t=>{
+ const root=area(t),destination=join(root,'existing');mkdirSync(destination);writeFileSync(join(destination,'keep'),'untouched');
+ assert.throws(()=>stage({repoDir:repo,stageDir:destination}),/new absolute/);assert.equal(readFileSync(join(destination,'keep'),'utf8'),'untouched');
+ const link=join(root,'link');symlinkSync(destination,link);assert.throws(()=>stage({repoDir:repo,stageDir:join(link,'new')}),/real directory/);assert.deepEqual(readdirSync(destination),['keep']);
+});
+test('dependency lock rejects unpinned, wrong-version, and workspace-linked packages',()=>{
+ const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
+ for(const item of [{version:'2.0.0'},{version:'1.0.0',link:true},{version:'1.0.0',resolved:'file:private',integrity:'sha512-x'}])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest));
+});
+test('actual npm tarballs are byte-deterministic with exact inventory and standalone offline startup', {timeout:180000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
+ const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage-one'),outputDir:join(root,'pack-one')}),two=pack({repoDir:repo,stageDir:join(root,'stage-two'),outputDir:join(root,'pack-two')});
+ assert.equal(one.sha256,two.sha256);assert.equal(one.files,collect({repoDir:repo}).files.size);
+ const install=join(root,'isolated-install');mkdirSync(install);writeFileSync(join(install,'.empty-npmrc'),'');
+ const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_offline:'true',npm_config_ignore_scripts:'true'};
+ const npm=spawnSync('npm',['install','--prefix',install,'--offline','--ignore-scripts','--no-audit','--no-fund','--no-save',one.file],{cwd:install,env,encoding:'utf8',timeout:120000,maxBuffer:2**20});
+ assert.equal(npm.status,0,npm.stderr||npm.stdout);
+ assert.deepEqual(readFileSync(join(install,'node_modules/bowerloom/packages/local-backend/licenses/supabase-Apache-2.0.txt')),readFileSync(join(repo,'packages/local-backend/licenses/supabase-Apache-2.0.txt')));
+ const bin=join(install,'node_modules/.bin/bowerloom'),mcp=join(install,'node_modules/.bin/bowerloom-mcp');assert.ok(existsSync(bin));assert.ok(existsSync(mcp));
+ function run(args,success=true) {const r=spawnSync(bin,args,{cwd:install,env,encoding:'utf8',timeout:30000,maxBuffer:2**20});if(success)assert.equal(r.status,0,r.stderr||r.stdout);return r;}
+ assert.match(run(['--help']).stdout,/Bowerloom/);
+ const installedVersion=JSON.parse(readFileSync(join(install,'node_modules/bowerloom/package.json'),'utf8')).version;
+ assert.equal(run(['--version']).stdout.trim(),`Bowerloom ${installedVersion}`);
+ assert.equal(run(['-V']).stdout.trim(),`Bowerloom ${installedVersion}`);
+ assert.match(run(['init','--help']).stdout,/init plan/);
+ const target=join(root,'Reviewed Project'),args=['--mode','new','--target',target,'--name','Packaged proof','--goal','Review the setup without executing a team','--profile','engineer'];
+ const plan=JSON.parse(run(['init','plan',...args,'--json']).stdout);assert.equal(existsSync(target),false);assert.equal(plan.executionAuthorized,false);
+ assert.notEqual(run(['init','apply',...args,'--approve','invalid'],false).status,0);assert.equal(existsSync(target),false);
+ assert.notEqual(run(['init','apply',...args.map(a=>a==='Review the setup without executing a team'?'Different requested goal':a),'--approve',plan.revision],false).status,0);assert.equal(existsSync(target),false);
+ const receipt=JSON.parse(run(['init','apply',...args,'--approve',plan.revision]).stdout);assert.equal(receipt.runtimeReady,false);
+ const status=JSON.parse(run(['init','status','--target',target]).stdout);assert.equal(status.specReady,true);assert.equal(status.runtimeReady,false);assert.equal(status.executionAuthorized,false);assert.equal(status.status,'ready-for-review');
+ assert.deepEqual(readdirSync(target),['.bowerloom']);
+ const revisionArgs=['--target',target,'--name','Packaged proof','--goal','Review a revised project goal','--profile','engineer'];
+ const revision=JSON.parse(run(['revise','plan',...revisionArgs,'--json']).stdout);
+ assert.equal(revision.fromRevision,plan.revision);assert.equal(revision.executionAuthorized,false);
+ const revised=JSON.parse(run(['revise','apply',...revisionArgs,'--from',plan.revision,'--approve',revision.revision]).stdout);
+ assert.equal(revised.plan.revision,revision.toRevision);assert.equal(revised.executionAuthorized,false);
+ const demo=JSON.parse(run(['init','demo-plan','--target',target,'--from',revised.plan.revision,'--json']).stdout);
+ assert.equal(demo.executionAuthorized,false);assert.equal(demo.runtimeReady,false);
+ const synthetic=join(root,'synthetic');mkdirSync(synthetic,{mode:0o700});
+ const codex=join(synthetic,'config.toml'),claude=join(synthetic,'settings.json'),neutral=join(synthetic,'neutral.json');
+ writeFileSync(codex,'model = "o3"\nmodel_reasoning_effort = "high"\n',{mode:0o600});writeFileSync(claude,'{}\n',{mode:0o600});
+ const imported=JSON.parse(run(['harness','import','--harness','codex','--file',codex,'--synthetic']).stdout);
+ writeFileSync(neutral,JSON.stringify(imported.neutral),{mode:0o600});
+ const projection=JSON.parse(run(['harness','plan','--harness','claude','--file',claude,'--neutral',neutral,'--synthetic']).stdout);
+ assert.equal(projection.status,'review-required');assert.equal(projection.executionAuthorized,false);assert.equal(projection.writesAuthorized,false);
+ assert.equal(readFileSync(claude,'utf8'),'{}\n');
+ const stateDir=join(root,'managed-projection'),managedArgs=['--harness','claude','--file',claude,'--neutral',neutral,'--state',stateDir,'--synthetic'];
+ const managed=JSON.parse(run(['harness','managed-plan',...managedArgs]).stdout);
+ assert.notEqual(run(['harness','apply',...managedArgs,'--approve','0'.repeat(64)],false).status,0);
+ const projected=JSON.parse(run(['harness','apply',...managedArgs,'--approve',managed.revision]).stdout);assert.equal(projected.executionAuthorized,false);
+ assert.notEqual(readFileSync(claude,'utf8'),'{}\n');
+ const removalArgs=['--state',stateDir,'--synthetic'],removal=JSON.parse(run(['harness','removal-plan',...removalArgs]).stdout);
+ const removed=JSON.parse(run(['harness','remove',...removalArgs,'--approve',removal.revision]).stdout);assert.equal(removed.executionAuthorized,false);
+ assert.equal(readFileSync(claude,'utf8'),'{}\n');
+ const mcpFixture=join(root,'mcp-fixture');mkdirSync(mcpFixture,{mode:0o700});
+ const mcpArgs=['mcp','plan'];
+ const fixtureBefore=[];
+ for(const kind of ['declaration','binding','catalog']) {
+  const file=join(mcpFixture,kind+'.json'),bytes=readFileSync(join(repo,'packages/mcp-connections/test/fixtures/streamable-http-'+kind+'.json'));
+  writeFileSync(file,bytes,{mode:0o600});fixtureBefore.push([file,bytes]);mcpArgs.push('--'+kind,file);
+ }
+ mcpArgs.push('--synthetic');
+ const connectionPlan=JSON.parse(run(mcpArgs).stdout);
+ assert.equal(connectionPlan.status,'planning-only');assert.equal(connectionPlan.executionAuthorized,false);assert.equal(connectionPlan.authenticationVerified,false);
+ assert.equal(connectionPlan.selectedTools.find(tool=>tool.name==='create_draft').permissionClass,'external-write');
+ assert.notEqual(run(mcpArgs.slice(0,-1),false).status,0);
+ assert.notEqual(run(['mcp','invoke',...mcpArgs.slice(2)],false).status,0);
+ for(const [file,bytes] of fixtureBefore)assert.deepEqual(readFileSync(file),bytes);
+ const mcpResult=spawnSync(mcp,[],{cwd:install,env,encoding:'utf8',timeout:30000});assert.equal(mcpResult.status,2);assert.match(mcpResult.stderr,/--installation/);
+ console.log(JSON.stringify({artifactSha256:one.sha256,artifactBytes:one.bytes,unpackedBytes:one.unpackedBytes,files:one.files,offlineInstall:true,startupRevision:plan.revision,revisionPlan:revision.revision,harnessPlanning:true,managedProjection:true,demoPlan:demo.revision,status:status.status,runtimeReady:status.runtimeReady,mcpArgumentGuard:true,mcpPlanning:connectionPlan.contentRevision}));
+});
+
+// A fixture copy of this repository whose release record is rewritten by edit.
+function rewritten(t,edit) {
+ const root=fixture(t),path=join(root,'release/beta.json'),r=JSON.parse(readFileSync(path));
+ edit(r);writeFileSync(path,JSON.stringify(r,null,2)+'\n');
+ return {root,path};
+}
+// An npm release record: this repository's record without its distribution block, unreleased.
+function npmRecord(t) {
+ return rewritten(t,r=>{delete r.distribution;r.state='unreleased';r.npm.published=false;r.npm.installCommand=`npm install --global ${r.npm.packageName}@${r.version}`;});
+}
+// A private-archive record (a colleague beta): installed from the packed file, unreleased and never published.
+function privateArchiveRecord(t) {
+ return rewritten(t,r=>{r.state='unreleased';r.distribution={kind:'private-archive',archive:`${r.npm.packageName}-${r.version}.tgz`,npmPublication:false};r.npm.published=false;r.npm.installCommand=`npm install -g ./${r.npm.packageName}-${r.version}.tgz`;});
+}
+test('release candidate uses the shared record and explicit public beta metadata without publication',t=>{
+ const {root,path}=npmRecord(t),candidate=collect({repoDir:root,releaseCandidate:true});
+ assert.equal(candidate.manifest.private,false);
+ assert.deepEqual(candidate.manifest.publishConfig,{access:'public',tag:'beta',registry:'https://registry.npmjs.org'});
+ assert.equal(candidate.record.publicationState,'unreleased');
+ assert.equal(candidate.record.releaseRecordSha256,sha256(readFileSync(path)));
+ assert.match(candidate.files.get('README.md').toString(),/After publication:\n\n```sh\nnpm install --global bowerloom@/);
+ assert.doesNotMatch(candidate.files.get('README.md').toString(),/alpha|Private, unpublished/);
+ const r=JSON.parse(readFileSync(path));
+ r.version='9.9.9';writeFileSync(path,JSON.stringify(r));
+ assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+// Freeze security review finding 1: a private-archive record is never packed as a public release candidate, so its
+// package.json never loses private:true or gains a public publishConfig.
+test('a release candidate of a private-archive record refuses before anything is packed',t=>{
+ const {root:source}=privateArchiveRecord(t);
+ assert.throws(()=>collect({repoDir:source,releaseCandidate:true}),/private archive/);
+ const root=area(t);assert.throws(()=>stage({repoDir:source,stageDir:join(root,'stage'),releaseCandidate:true}),/private archive/);
+ assert.deepEqual(readdirSync(root),[]);
+ const plain=collect({repoDir:source});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);
+});
+
+// Freeze review finding 7: the install heading is true for the record it is written for.
+test('the candidate install heading says After publication only for an npm record',t=>{
+ const record=JSON.parse(readFileSync(privateArchiveRecord(t).path));
+ assert.equal(installHeading(record),'Install it from the folder that holds the archive:');
+ const {path}=npmRecord(t);assert.equal(installHeading(JSON.parse(readFileSync(path))),'After publication:');
+ for(const [path,bytes] of collect({repoDir:repo}).files)assert.doesNotMatch(bytes.toString('latin1'),/After publication/,path);
+});
+
+// Freeze security review info 5: "no install scripts" is a checked rule of the shrinkwrap, not an observation.
+test('a locked dependency with an install script refuses',()=>{
+ const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
+ const item={version:'1.0.0',resolved:'https://registry.npmjs.org/x/-/x-1.0.0.tgz',integrity:'sha512-x'};
+ assert.ok(lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest).packages['node_modules/x']);
+ for(const flag of [true,'true',1])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':{...item,hasInstallScript:flag}}},manifest.dependencies,manifest),/install script/);
+ const nested={...item,dependencies:{y:'2.0.0'}},y={version:'2.0.0',resolved:'https://registry.npmjs.org/y/-/y-2.0.0.tgz',integrity:'sha512-y',hasInstallScript:true};
+ assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':nested,'node_modules/y':y}},manifest.dependencies,manifest),/install script/);
+});
+
+test('packaging refuses a same-version renamed root package',t=>{
+ const root=fixture(t),path=join(root,'package.json'),pkg=JSON.parse(readFileSync(path));
+ pkg.name='other';writeFileSync(path,JSON.stringify(pkg));
+ assert.throws(()=>collect({repoDir:root}),/Release record/);
+ assert.throws(()=>collect({repoDir:root,releaseCandidate:true}),/Release record/);
+});
+
+
+test('routine packaging collection includes only reachable loader closure and exact source pins',()=>{
+ const result=collect({repoDir:repo});
+ for(const path of ['dist/apps/cli/src/routine.js','dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']){
+  assert.ok(result.files.has(path),path);
+  assert.equal(result.record.files.find(item=>item.path===path).sha256,sha256(readFileSync(join(repo,path))));
+  const source=path.replace(/^dist\//,'').replace(/\.js$/,'.ts');
+  assert.equal(result.record.sourceFiles.find(item=>item.path===source).sha256,sha256(readFileSync(join(repo,source))));
+ }
+ assert.equal(result.manifest.dependencies.yaml,'2.9.1');
+ const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/yaml'].version,'2.9.1');
+ assert.deepEqual(Object.keys(result.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(result.manifest.scripts,undefined);assert.equal(result.manifest.exports,undefined);
+ for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|work|\.bowerloom)(?:\/|$)|labs-to-blog\.yaml$/.test(path),path);
+ assert.deepEqual([...result.files.keys()].filter(path=>path.startsWith('dist/packages/routines/')).sort(),['dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']);
+});
+
+test('internal routine and skills manifests are exact exceptions and present manifests still validate',()=>{
+ const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
+ let selected='',mode='missing';const valid={name:'synthetic-internal',license:'MIT',dependencies:{yaml:'2.9.1'}};
+ fs.lstatSync=function(path,...args){if(path===selected){if(mode==='missing'){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}if(mode==='symlink'){const s=original.lstatSync(join(repo,'package.json'),...args);s.isSymbolicLink=()=>true;return s;}return original.lstatSync(join(repo,'package.json'),...args);}return original.lstatSync(path,...args);};
+ fs.readFileSync=function(path,...args){if(path===selected){const manifest=mode==='bad-license'?{...valid,license:'UNREVIEWED'}:mode==='unpinned'?{...valid,dependencies:{yaml:'^2.9.1'}}:mode==='conflict'?{...valid,dependencies:{yaml:'2.8.3'}}:valid;const bytes=Buffer.from(JSON.stringify(manifest));return args[0]==='utf8'?bytes.toString('utf8'):bytes;}return original.readFileSync(path,...args);};
+ syncBuiltinESMExports();
+ try{
+  for(const relative of ['packages/routines/package.json','packages/connections/package.json','packages/skill-sources/package.json','packages/managed-skills/package.json']){
+   selected=join(repo,relative);mode='missing';assert.equal(collect({repoDir:repo}).record.sourceManifests.some(m=>m.path===relative),false);
+   mode='valid';const included=collect({repoDir:repo}).record.sourceManifests.find(m=>m.path===relative);assert.equal(included.sha256,sha256(Buffer.from(JSON.stringify(valid))));
+   mode='bad-license';assert.throws(()=>collect({repoDir:repo}),/Unreviewed first-party license/);
+   mode='unpinned';assert.throws(()=>collect({repoDir:repo}),/exactly pinned/);
+   mode='conflict';assert.throws(()=>collect({repoDir:repo}),/Conflicting dependency/);
+   mode='symlink';assert.throws(()=>collect({repoDir:repo}),/symlink/);
+  }
+  selected=join(repo,'packages/crew/package.json');mode='missing';assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');
+ }finally{Object.assign(fs,original);syncBuiltinESMExports();}
+});
+
+// Beta 0.7.0 Day 0: the four project-layer packages are runtime modules with optional internal manifests.
+test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
+ const added=['project-context','project-authoring','skill-manifest','project-sync'];
+ for(const name of added)assert.ok(MODULES.includes(name),name);
+ assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
+ const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
+ let selected='',mode='missing';const valid={name:'synthetic-internal',license:'MIT',dependencies:{yaml:'2.9.1'}};
+ // A package folder that does not exist yet is presented as a plain directory, so only the manifest decides.
+ fs.lstatSync=function(path,...args){if(path===selected){if(mode==='missing'){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}if(mode==='symlink'){const s=original.lstatSync(join(repo,'package.json'),...args);s.isSymbolicLink=()=>true;return s;}return original.lstatSync(join(repo,'package.json'),...args);}if(mode!=='missing'&&path===dirname(selected))return original.lstatSync(join(repo,'packages'),...args);return original.lstatSync(path,...args);};
+ fs.readFileSync=function(path,...args){if(path===selected){const manifest=mode==='bad-license'?{...valid,license:'UNREVIEWED'}:mode==='unpinned'?{...valid,dependencies:{yaml:'^2.9.1'}}:mode==='conflict'?{...valid,dependencies:{yaml:'2.8.3'}}:valid;const bytes=Buffer.from(JSON.stringify(manifest));return args[0]==='utf8'?bytes.toString('utf8'):bytes;}return original.readFileSync(path,...args);};
+ syncBuiltinESMExports();
+ try{
+  for(const name of added){const relative=`packages/${name}/package.json`;
+   selected=join(repo,relative);mode='missing';assert.equal(collect({repoDir:repo}).record.sourceManifests.some(m=>m.path===relative),false,relative);
+   mode='valid';const included=collect({repoDir:repo}).record.sourceManifests.find(m=>m.path===relative);assert.equal(included.sha256,sha256(Buffer.from(JSON.stringify(valid))));
+   mode='bad-license';assert.throws(()=>collect({repoDir:repo}),/Unreviewed first-party license/);
+   mode='unpinned';assert.throws(()=>collect({repoDir:repo}),/exactly pinned/);
+   mode='conflict';assert.throws(()=>collect({repoDir:repo}),/Conflicting dependency/);
+   mode='symlink';assert.throws(()=>collect({repoDir:repo}),/symlink/);
+  }
+ }finally{Object.assign(fs,original);syncBuiltinESMExports();}
+});
+
+test('routine packaging missing compiled/source loader cannot become a partial accepted closure',()=>{
+ const original=fs.lstatSync;let selected='';
+ fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
+ try{for(const path of ['dist/apps/cli/src/routine.js','dist/packages/routines/src/files.js','dist/packages/routines/src/index.js','packages/routines/src/files.ts']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),error=>error.code==='ENOENT');}}
+ finally{fs.lstatSync=original;syncBuiltinESMExports();}
+});
+
+// Requires the separately reviewed tar dependency and fresh selected compiler closure.
+test('skills CLI reaches exact source/cache/manager closure with locked tar runtime and no proof material',()=>{
+ const result=collect({repoDir:repo});
+ for(const path of ['dist/apps/cli/src/skills.js','dist/packages/skill-sources/src/npm.js','dist/packages/skill-sources/src/cache.js','dist/packages/skill-sources/src/validation.js','dist/packages/managed-skills/src/observed.js','dist/packages/managed-skills/src/transaction.js']){assert.ok(result.files.has(path),path);assert.ok(result.record.sourceFiles.some(row=>row.path===path.replace(/^dist\//,'').replace(/\.js$/,'.ts')),path);}
+ assert.equal(result.manifest.dependencies.tar,'7.5.20');const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/tar'].version,'7.5.20');
+ for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:work|test|tests|fixtures)(?:\/)|\.bowerloom-skills|owner\.lock/.test(path),path);
+});
+test('skills collection refuses missing reachable source or compiled modules',()=>{
+ const original=fs.lstatSync;let selected='';fs.lstatSync=function(path,...args){if(path===selected){const e=new Error('SYNTHETIC_ENOENT');e.code='ENOENT';throw e;}return original(path,...args);};syncBuiltinESMExports();
+ try{for(const path of ['dist/apps/cli/src/skills.js','packages/skill-sources/src/cache.ts','dist/packages/managed-skills/src/transaction.js']){selected=join(repo,path);assert.throws(()=>collect({repoDir:repo}),e=>e.code==='ENOENT');}}finally{fs.lstatSync=original;syncBuiltinESMExports();}
+});
+
+// Beta 0.7.0-beta.1 is published on npm under the beta dist-tag: the record carries an npm-beta-stream distribution.
+test('the published npm-beta-stream record of this repository packs privately and never as a release candidate',t=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json')));
+ assert.deepEqual(record.distribution,{kind:'npm-beta-stream',distTag:'beta'});
+ assert.equal(expectedInstallCommand(record,'bowerloom',record.version),'npm install -g bowerloom@beta');
+ const plain=collect({repoDir:repo});assert.equal(plain.manifest.private,true);assert.equal(plain.manifest.publishConfig,undefined);assert.equal(plain.record.publicationState,'published');
+ assert.throws(()=>collect({repoDir:repo,releaseCandidate:true}),/unreleased record/);
+ const root=area(t);assert.throws(()=>stage({repoDir:repo,stageDir:join(root,'stage'),releaseCandidate:true}),/unreleased record/);assert.deepEqual(readdirSync(root),[]);
+});
+test('an npm-beta-stream install command is exactly npm install -g <name>@<distTag>',()=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json'))),v=record.version;
+ assert.equal(expectedInstallCommand({...record,state:'unreleased',npm:{...record.npm,published:false}},'bowerloom',v),'npm install -g bowerloom@beta');
+ for(const command of ['npm install --global bowerloom@beta',`npm install -g bowerloom@${v}`,'npm install -g bowerloom@next','npm install -g bowerloom@latest',`npm install -g ./bowerloom-${v}.tgz`])
+  assert.notEqual(expectedInstallCommand(record,'bowerloom',v),command,command);
+});
+test('an npm-beta-stream distribution has exactly kind and distTag, matches npm.distTag, and never names latest',()=>{
+ const record=JSON.parse(readFileSync(join(repo,'release/beta.json'))),v=record.version;
+ const tagged=tag=>({...record,distribution:{kind:'npm-beta-stream',distTag:tag},npm:{...record.npm,distTag:tag}});
+ assert.equal(expectedInstallCommand(tagged('next-beta'),'bowerloom',v),'npm install -g bowerloom@next-beta');
+ for(const tag of ['latest','Beta','1beta','be ta','-beta','',7,undefined])assert.equal(expectedInstallCommand(tagged(tag),'bowerloom',v),null,String(tag));
+ for(const distribution of [{kind:'npm-beta-stream',distTag:'beta',archive:`bowerloom-${v}.tgz`},{kind:'npm-beta-stream',distTag:'beta',npmPublication:true},{kind:'npm-beta-stream'},{kind:'npm-beta-stream',tag:'beta'},{kind:'npm-beta-stream',distTag:'next'},{kind:'npm-stable',distTag:'beta'},null])
+  assert.equal(expectedInstallCommand({...record,distribution},'bowerloom',v),null,JSON.stringify(distribution));
+ assert.equal(expectedInstallCommand({...record,npm:{...record.npm,distTag:'next'}},'bowerloom',v),null,'npm.distTag differs from the distribution');
+});
+test('packaging refuses an npm-beta-stream record with latest, a third key, a mismatched tag, or a noncanonical command',t=>{
+ for(const edit of [
+  r=>{r.distribution.distTag='latest';r.npm.distTag='latest';r.npm.installCommand='npm install -g bowerloom@latest';},
+  r=>{r.distribution.archive=`bowerloom-${r.version}.tgz`;},
+  r=>{r.distribution.distTag='next';},
+  r=>{r.npm.installCommand='npm install --global bowerloom@beta';},
+  r=>{r.npm.installCommand=`npm install -g bowerloom@${r.version}`;},
+  r=>{r.npm.installCommand='npm install -g bowerloom@next';},
+  r=>{r.state='unreleased';},
+ ]){const {root}=rewritten(t,edit);assert.throws(()=>collect({repoDir:root}),/Release record/,String(edit));}
+});
+test('an unaccepted distribution refuses even when the install command is missing, so a null expectation never matches',t=>{
+ for(const edit of [
+  r=>{r.distribution={kind:'unknown'};r.npm.installCommand=null;},
+  r=>{r.distribution={kind:'npm-beta-stream',distTag:'latest'};r.npm.installCommand=null;},
+  r=>{r.distribution=null;delete r.npm.installCommand;},
+ ]){const {root}=rewritten(t,edit);assert.throws(()=>collect({repoDir:root}),/Release record does not match package identity/,String(edit));}
+});

@@ -89,3 +89,74 @@ for(const[name,corrupt]of[
 test('already finished execution reports not running without rewriting its receipt',async t=>{
  const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);await owner.finish({completedBeforeStop:true});const before=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));const result=await destruct({team:'all',registry:f.registry,timeoutMs:100});assert.equal(result.teams[0].status,'NOT_RUNNING');assert.deepEqual(result.teams[0].executions,JSON.parse(JSON.stringify(Object.values(before.entries)[0].executions)));
 });
+test('pending setup revision blocks enrollment and permanently aborts an active owner',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const marker=join(input.root,'.bowerloom-revision.json');writeFileSync(marker,'{}',{mode:0o600});
+ assert.throws(()=>planControl(input),{code:'CONTROL_REVISION_PENDING'});
+ assert.throws(()=>owner.guard(),{code:'CONTROL_REVISION_PENDING'});assert.equal(owner.signal.aborted,true);
+ rmSync(marker);assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});
+ await owner.finish({notLaunched:true});
+ const state=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));
+ assert.equal(Object.values(state.entries)[0].executions[0].status,'STOPPED');
+});
+test('changed live team definition aborts the owner and cannot regain its old authority',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const path=join(input.root,'.bowerloom',input.spec),before=readFileSync(path,'utf8');writeFileSync(path,before+'\n# revision change\n');
+ assert.throws(()=>owner.guard(),{code:'CONTROL_BINDING_CHANGED'});assert.equal(owner.signal.aborted,true);
+ writeFileSync(path,before);assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});
+ await owner.finish({notLaunched:true});
+});
+test('revision observation reaps an actual registered worker at the next guard',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const worker=runOwner(t,input);const started=await worker.next('started');
+ writeFileSync(join(input.root,'.bowerloom-revision.json'),'{}',{mode:0o600});
+ const result=await worker.next('stopped');assert.ok(result);
+ assert.throws(()=>process.kill(started.pid,0),{code:'ESRCH'});
+ const state=JSON.parse(readFileSync(join(f.registry,'registry.json'),'utf8'));
+ assert.equal(Object.values(state.entries)[0].executions[0].status,'STOPPED');
+});
+
+async function duringRegistryRead(file, replacement, body) {
+ const fs=await import('node:fs');const {syncBuiltinESMExports}=await import('node:module');
+ const original=fs.default.readSync;const seen=new Set();let replacements=0;
+ fs.default.readSync=(fd,buffer,offset,length,position)=>{
+  const count=original(fd,buffer,offset,length,position);const held=fs.fstatSync(fd);
+  if(count>0&&!seen.has(held.ino)&&held.ino===fs.lstatSync(file).ino){
+   seen.add(held.ino);if(replacement(replacements,fs)){replacements++;}
+  }
+  return count;
+ };syncBuiltinESMExports();
+ try{return await body(()=>replacements);}finally{fs.default.readSync=original;syncBuiltinESMExports();}
+}
+test('registry replacement rereads the new stop latch before an owner can proceed',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const owner=openControlOwner(input.installation,'graph',f.registry);
+ const file=join(f.registry,'registry.json'),value=JSON.parse(readFileSync(file,'utf8'));
+ Object.values(value.entries)[0].stop={id:'1'.repeat(64),at:Date.now(),scope:'team'};
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,JSON.stringify(value),{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>owner.guard(),{code:'TEAM_STOPPED'});assert.equal(count(),1);assert.equal(owner.signal.aborted,true);
+ });
+ await owner.finish({notLaunched:true});
+});
+test('continuous registry replacement is bounded and refuses a snapshot',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json'),bytes=readFileSync(file);
+ await duringRegistryRead(file,(n,fs)=>{const next=join(f.registry,`next-${n}.json`);writeFileSync(next,bytes,{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE_CHANGED'});assert.equal(count(),3);
+ });
+});
+test('registry retry rejects unsafe replacement permissions',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json'),bytes=readFileSync(file);
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,bytes,{mode:0o644});chmodSync(next,0o644);fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE'});assert.equal(count(),1);
+ });
+});
+test('registry retry still rejects malformed replacement state',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json');
+ await duringRegistryRead(file,(n,fs)=>{if(n)return false;const next=join(f.registry,'next.json');writeFileSync(next,'{}',{mode:0o600});fs.renameSync(next,file);return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_REGISTRY'});assert.equal(count(),1);
+ });
+});
+test('same-inode registry growth stays a strict failure without retry',async t=>{
+ const f=fixture(t),input=team(f);enroll(input);const file=join(f.registry,'registry.json');
+ await duringRegistryRead(file,(n,fs)=>{fs.appendFileSync(file,' ');return true;},count=>{
+  assert.throws(()=>planControl(input),{code:'CONTROL_FILE_CHANGED'});assert.equal(count(),1);
+ });
+});

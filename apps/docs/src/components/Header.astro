@@ -1,0 +1,16 @@
+---
+import ThemeControl from './ThemeControl';
+---
+<header class="docs-header">
+  <span class="docs-brand" aria-hidden="true">
+    <img class="brand-light bot" src="/docs/brand/s4-g3-icon.svg" alt="" width="32" height="32" />
+    <img class="brand-dark bot" src="/docs/brand/s4-g3-icon-dark.svg" alt="" width="32" height="32" />
+    <img class="brand-light wordmark" src="/docs/brand/bowerloom-wordmark-plain-ink.svg" alt="" width="144" height="26" />
+    <img class="brand-dark wordmark" src="/docs/brand/bowerloom-wordmark-plain-cream.svg" alt="" width="144" height="26" />
+  </span>
+  <nav class="home-links" aria-label="Bowerloom home navigation">
+    <a href="/">Main site</a>
+    <a href="/docs/">Docs home</a>
+  </nav>
+  <div class="docs-theme"><ThemeControl client:load/></div>
+</header>

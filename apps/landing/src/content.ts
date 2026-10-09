@@ -1,13 +1,18 @@
-export const repository = "https://github.com/sageadvicellc/bowerloom";
-const branch = `${repository}/blob/feature/trellis-v1`;
+import { release } from './release.ts';
+export const repository = release.urls.repository;
+const branch = `${repository}/blob/main`;
 export const destinations = {
   readme: `${branch}/README.md`,
   license: `${branch}/package.json`,
+  bugs: `${repository}/issues`,
+  questions: `${repository}/discussions/categories/q-a`,
+  feedback: `${repository}/discussions/categories/general`,
+  ideas: `${repository}/discussions/categories/ideas`,
 };
 export const hero = {
-  "Eyebrow": "Portable tools and teams",
-  "H1": "Grow your capabilities with Bowerloom",
-  "Body": "Bowerloom is an open-source framework for building agent teams in files you can read. Start with your personal agent and a small local task you can review.",
+  "Eyebrow": "Governance for agent workflows",
+  "H1": "Bring governance to your agent workflows.",
+  "Body": "Turn the work you already do into defined roles, handoffs, and review points. Bowerloom binds setup files to an exact approved plan and records their installed state, while your team definitions stay in files that follow you. Start with an existing project and your personal agent, then review the team specification before approving its installation.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "Explore the Labs workflow",
   "Illustration caption": "A maker and a robot helper at the workshop."
@@ -22,20 +27,21 @@ export const stages = [
 
 export const questions = [
   {
-    question: "What should I try first?",
-    answer: "Describe a useful goal in the tutorial maker. Your personal agent helps define a team, a working agreement, and review milestones. It confirms the available execution path before you approve work. The page itself prepares a prompt; it does not start a team."
+    question: "How do I bring my workflow into Bowerloom?",
+    answer: "Describe the process you already perform, including its inputs, outputs, handoffs, and human decisions. Your personal agent helps compare that workflow with a fixed team profile and its specification. Review the proposed files, permissions, and working agreement before approving installation in your existing project. Setup does not import project contents or run the team."
   },
+  { question: "What does the beta govern?", answer: "The installer binds a file write to an exact approved plan. Status identifies drift, and revision uses recorded transactions with supported recovery choices. Team definitions declare roles, proposed access, handoffs, and review expectations. Those declarations do not enforce every future tool action or grant runtime permissions." },
   {
     question: "Do I need to connect GitHub for the tutorial?",
-    answer: "No. The default tutorial creates local project artifacts in your chosen workspace. The Labs-to-blog workflow is a separate, recorded integration proof that uses PostgreSQL and a repository-scoped GitHub App. Its setup and exact approval requirements apply when you choose that workflow."
+    answer: "No. The page prepares a prompt locally. After CLI installation and your exact approval, your agent creates setup files. Setup does not connect GitHub. Connected workflows need separate permissions and exact action approval."
   },
   {
     question: "What does the Labs workflow show?",
-    answer: "The Labs workflow describes the development team behind this alpha and landing page: Knowledge officer, Brand review, Tech lead, and a scalable project team. It explains how their work connects. It is not proof that Bowerloom independently ran the whole team. The Alpha Guide separates that story from recorded runtime tests."
+    answer: "The Labs workflow describes the development team behind this framework and landing page: Knowledge officer, Brand review, Tech lead, and a scalable project team. It explains how their work connects. It is not proof that Bowerloom independently ran the whole team. The Beta Guide separates that story from recorded runtime tests."
   },
   {
     question: "Who approves external changes?",
-    answer: "In the tested GitHub workflow, the designated local operator records exact approval through the command-line interface. MCP does not expose approval. The alpha trusts local operator authority; it does not independently establish that a human issued it. The local tutorial grants no authority to publish, merge, or change connected applications."
+    answer: "Each external change needs approval for its exact action and scope. The local tutorial grants no authority to publish, merge, or change connected applications. MCP planning does not expose an approval action."
   },
   {
     question: "What stays in my files?",
@@ -43,14 +49,15 @@ export const questions = [
   },
   {
     question: "How do the modules fit together?",
-    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools. The Alpha Guide records the current limits and upstream dependencies."
+    answer: "The Teams module defines roles, skills, and permissions. Relay connects agents. Roots holds knowledge with controlled access. Vines records logs. Workbench holds repeatable experiments and tests. Readiness differs across these tools. The Beta Guide records the current limits and upstream dependencies."
   },
   {
     question: "Can I take my team to another agent app?",
-    answer: "Definitions live outside an individual agent app. Codex is the tested alpha path. Cross-harness execution, including Claude Code, and shared company installations are beta plans. Portable files do not yet mean every harness can execute the team."
+    answer: "Roles, skills, handoffs, and review expectations stay in files that follow you. You can version those definitions with your project and inspect them in another agent application. Credentials and installation receipts stay private. Moving definitions does not transfer permissions or prove that another application can execute them."
   },
   {
     question: "What does it cost to try?",
-    answer: "Bowerloom is intended to remain free and open source. Your agent account, hosting, and connected services can have separate costs. This alpha has no published installer or public release, and the source is available on GitHub. The tutorial lists the setup requirements and tells your agent not to spend money."
-  }
+    answer: "Bowerloom is free and open source. Your agent account, hosting, and connected services can have separate costs. The tutorial does not authorize spending."
+  },
+  { question: "Where can I get help or share an idea?", answer: "Use GitHub Issues for reproducible bugs. Use Discussions Q&A for questions, General for feedback, and Ideas for feature proposals. The feedback guide explains what to include and how to protect private data." }
 ] as const;

@@ -3,13 +3,13 @@ import { open, realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { strictJson } from '../../../packages/codex-adapter/src/safe.js';
-import { planStartup, applyStartup, inspectStartup, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
+import { planStartup, applyStartup, inspectStartup, planStartupDemo, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
 
-export { renderStartupReview } from '../../../packages/startup/src/index.js';
+export { renderStartupReview, renderStartupDemoReview } from '../../../packages/startup/src/index.js';
 
-const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom init plan|apply --mode new|existing --target <absolute-directory> with --brief <brief.json> or --name <name> --goal <goal>, with --profile engineer|founder|research. Plan supports --json. Apply requires --approve <revision>. Use init status --target <directory> to inspect installed files.'); };
+const usage = (): never => { throw new DefinitionError('USAGE', 'Use bowerloom init plan|apply --mode new|existing --target <absolute-directory> with --brief <brief.json> or --name <name> --goal <goal>, with --profile engineer|founder|research. Plan supports --json. Apply requires --approve <revision>. Use init status --target <directory> to inspect installed files. Use init demo-plan --target <directory> --from <installed-revision> [--json] for an optional handoff without execution.'); };
 
-async function readBrief(file: string): Promise<StartupInput['brief']> {
+export async function readBrief(file: string): Promise<StartupInput['brief']> {
   const path = resolve(file);
   if (await realpath(path) !== path) throw new DefinitionError('UNSAFE_BRIEF', 'Use a regular brief file without symbolic links.');
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -34,13 +34,13 @@ async function readBrief(file: string): Promise<StartupInput['brief']> {
 
 async function dispatchStartup(args: string[]): Promise<unknown> {
   const [, command, ...flags] = args;
-  if (args[0] !== 'init' || !['plan', 'apply', 'status'].includes(command ?? '')) usage();
+  if (args[0] !== 'init' || !['plan', 'apply', 'status', 'demo-plan'].includes(command ?? '')) usage();
   const values = new Map<string, string>();
-  const allowed = command === 'status' ? ['--target'] : ['--mode', '--target', '--brief', '--name', '--goal', '--assistant', '--team', '--review', '--profile', '--approve'];
+  const allowed = command === 'status' ? ['--target'] : command === 'demo-plan' ? ['--target', '--from'] : ['--mode', '--target', '--brief', '--name', '--goal', '--assistant', '--team', '--review', '--profile', '--approve'];
   let jsonRequested = false;
   for (let i = 0; i < flags.length; i += 2) {
     if (flags[i] === '--json') {
-      if (command !== 'plan' || jsonRequested) usage();
+      if ((command !== 'plan' && command !== 'demo-plan') || jsonRequested) usage();
       jsonRequested = true; i -= 1; continue;
     }
     const key = flags[i], value = flags[i + 1];
@@ -49,6 +49,10 @@ async function dispatchStartup(args: string[]): Promise<unknown> {
   }
   if (!values.has('--target')) usage();
   if (command === 'status') return inspectStartup(values.get('--target')!);
+  if (command === 'demo-plan') {
+    if (!values.has('--from')) usage();
+    return planStartupDemo({ targetDir: values.get('--target')!, expectedRevision: values.get('--from')! });
+  }
   const mode = values.get('--mode');
   if (mode !== 'new' && mode !== 'existing') usage();
   if ((command === 'apply') !== values.has('--approve')) usage();
@@ -72,7 +76,12 @@ export async function runStartupCommand(args: string[]): Promise<unknown> {
   try { return await dispatchStartup(args); }
   catch (error) {
     if (error instanceof StartupError) {
-      throw new DefinitionError(error.code, 'Startup stopped. Read the error code, project brief, and target directory. Create a new plan after a change.');
+      const message = error.code === 'EXACT_APPROVAL_REQUIRED'
+        ? 'Approval must match the exact reviewed plan. Review the plan and use its revision with --approve.'
+        : error.code === 'STALE_APPROVAL'
+          ? 'The inputs changed after review. Create a new plan and approve its exact revision before setup.'
+          : 'Startup stopped. Read the error code, project brief, and target directory. Create a new plan after a change.';
+      throw new DefinitionError(error.code, message);
     }
     if (error instanceof DefinitionError) throw error;
     throw new DefinitionError('STARTUP_IO', 'Startup failed to read or write the selected files. Inspect the paths and permissions before another attempt.');

@@ -1,0 +1,20 @@
+/* The ground is the active theme token, so the clip's empty frame meets the page with no seam. */
+.theme-splash {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  background: var(--ui-bg);
+  opacity: 1;
+  transition-property: opacity;
+  transition-duration: 600ms;
+  transition-timing-function: cubic-bezier(.32, .72, 0, 1);
+}
+.theme-splash[data-leaving="true"] { opacity: 0; pointer-events: none; }
+.theme-splash > video {
+  display: block; width: 100%; height: 100%;
+  object-fit: contain; object-position: center;
+  background: var(--ui-bg);
+}
+/* The splash never mounts under reduced motion. This rule covers a preference change mid-play. */
+@media (prefers-reduced-motion: reduce) {
+  .theme-splash { transition-duration: 0ms !important; }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@sageadvicellc/bowerloom-docs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev --host 127.0.0.1",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview --host 127.0.0.1",
+    "check:links": "node tools/check-links.mjs",
+    "check:release": "node tools/sync-release.mjs --check",
+    "check:exports": "node tools/check-exports.mjs",
+    "test": "node ../../tools/run-node-tests.mjs tools/content.test.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.1",
+    "@astrojs/react": "6.0.2",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.3.5",
+    "fumadocs-core": "16.16.2",
+    "fumadocs-ui": "16.16.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "4.3.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4"
+  },
+  "engines": {
+    "node": ">=24.11.0 <25"
+  }
+}

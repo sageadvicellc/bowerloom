@@ -61,7 +61,7 @@ export interface Reservation {
   retained: Record<string, RetainedAllowance>;
   proofs: ReconciliationProof[];
 }
-export interface AccountState {
+export interface LegacyAccountState {
   version: 1;
   accountId: string;
   aliases: string[];
@@ -77,3 +77,66 @@ export type ReserveResult = { kind: 'accepted'; reservation: ReservationView; la
   | { kind: 'denied'; reason: string };
 export type LaunchResult = { kind: 'started'; reservation: ReservationView }
   | { kind: 'denied'; reason: string };
+
+/** Trusted host configuration. Never supplied by task text or a model. */
+export interface AdmissionControlIdentity { installationId: string; databaseName: string }
+export interface AdmissionControlBinding extends AdmissionControlIdentity {
+  admissionSchema: string; launcherId: string; accountId: string; accountAlias: string;
+  requestDigest: string; authorizationRevision: string; expiresAtMs: number;
+}
+export interface AdmissionControl {
+  binding: AdmissionControlBinding;
+  signal: AbortSignal;
+  /** Synchronous host coordinator/local-control fence. A Promise result is refused. */
+  assert(): void;
+}
+export interface AdmissionDispatchEnvelope {
+  format: 'bowerloom/admission-dispatch/v1';
+  binding: Readonly<AdmissionControlBinding>;
+  reservationId: string; requestDigest: string; claimedAtMs: number;
+  notAfterWallMs: number; notAfterHrNs: string; parentWallMs: number; parentHrNs: string;
+}
+export interface AdmissionDispatchGate {
+  check(observation: unknown): Promise<void>;
+  consume(): Readonly<AdmissionDispatchEnvelope>;
+}
+
+
+export interface ContinuityScope extends AdmissionControlIdentity {
+  admissionSchema: string; launcherId: string; accountId: string; accountAlias: string;
+}
+export interface ContinuityEvidence {
+  receiptId: string; receiptRevision: string; artifactRevision: string; nativeRevision: string; accountBindingRevision: string;
+}
+export interface WindowContinuityInput {
+  operationId: string; scope: ContinuityScope; observation: AccountObservation; evidence: ContinuityEvidence;
+  sourceRevision: string; reviewRevision: string;
+}
+export interface WindowContinuityPlan extends WindowContinuityInput {
+  format: 'bowerloom/window-continuity-plan/v1'; originState: LegacyAccountState;
+  originChecksum: string; aliasesDigest: string; policyChecksum: string; observationDigest: string;
+  historicalFloorBasisPoints: number; newAnchor: { resetAtMs: number; durationMs: number };
+  resultCoreDigest: string; revision: string;
+}
+export interface ContinuityApproval {
+  format: 'bowerloom/window-continuity-approval/v1'; purpose: 'window-continuity'; approvalId: string;
+  planRevision: string; resultCoreDigest: string; scope: ContinuityScope;
+  principalId: string; approverId: string; ownerEpoch: number;
+  issuedAtMs: number; expiresAtMs: number; leaseExpiresAtMs: number; approvalRevision: string;
+}
+/** Trusted host registry and authenticated reader, never model/task supplied. No default implementation. */
+export interface ContinuityAuthority {
+  resolveApproval(approvalId: string, planRevision: string, signal: AbortSignal): Promise<unknown>;
+  readObservation(receiptId: string, signal: AbortSignal): Promise<unknown>;
+  assertCurrent(approval: Readonly<ContinuityApproval>): void;
+}
+export interface WindowContinuityRecord {
+  format: 'bowerloom/admission-window-continuity/v1'; phase: 'HELD' | 'APPLIED';
+  plan: WindowContinuityPlan; approval: ContinuityApproval;
+  providerResetEstablished: false; coverageEstablished: false; providerAllocationEquivalenceEstablished: false;
+  retentionReleaseAuthorized: false; effectsAuthorized: false;
+}
+export interface ContinuityAccountState extends Omit<LegacyAccountState, 'version'> {
+  version: 2; continuity: WindowContinuityRecord;
+}
+export type AccountState = LegacyAccountState | ContinuityAccountState;

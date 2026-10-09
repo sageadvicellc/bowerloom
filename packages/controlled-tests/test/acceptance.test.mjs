@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { fixture,manifest,report,canonicalJson,digest,Executor,testOperationId } from './fixtures.mjs';
+import { fixture,manifest,report,canonicalJson,digest,Executor,testOperationId,RegisteredTestAcceptance,identity } from './fixtures.mjs';
 import { validateRegisteredManifest,validateTestManifestPlan,TestError } from '../../../dist/packages/controlled-tests/src/index.js';
 const key=f=>testOperationId(f.authority.scope,f.receipt);
 const read=f=>f.make().read(f.input,f.receipt,f.context);
@@ -39,8 +39,17 @@ test('cancel during active execution reaps and prevents late positive publicatio
 });
 test('revocation during execution prevents publishing a result',async()=>{const f=await fixture();f.executor.handler=async r=>{f.store.authority.approverSubjects=[];return report(r);};await assert.rejects(read(f),{code:'APPROVAL_REQUIRED'});assert.equal(f.store.records.get(key(f)).status,'HOLD');});
 test('bounded timeout consumes claim and aborts/reaps the owned operation',async()=>{
-  const f=await fixture('timeout',manifest({limits:{timeoutMs:30,outputBytes:16384,artifactBytes:65536}}));let signal;f.executor.handler=async(_,s)=>{signal=s;await new Promise(()=>{});};
-  await assert.rejects(read(f),{code:'TEST_DEADLINE'});assert.equal(signal.aborted,true);assert.equal(f.executor.reaped.length,1);await assert.rejects(read(f),{code:'TEST_DEADLINE'});assert.equal(f.executor.calls.length,1);
+  const f=await fixture('timeout',manifest({limits:{timeoutMs:30,outputBytes:16384,artifactBytes:65536}}));
+  let at=Date.now(),signal,started;const alarms=new Map(),ready=new Promise(resolve=>started=resolve);
+  const clock={now:()=>at,alarm(deadline,handler){const key=Symbol();alarms.set(key,{deadline,handler});return()=>alarms.delete(key);}};
+  f.executor.handler=async(request,s)=>{signal=s;started(request.deadlineMs);await new Promise(()=>{});};
+  const reader=new RegisteredTestAcceptance({store:f.store,manifest:f.manifest,executor:f.executor,identity,clock});
+  const pending=reader.read(f.input,f.receipt,f.context);const rejected=assert.rejects(pending,{code:'TEST_DEADLINE'});
+  // Trigger the registered deadline only after execution starts. Host load must
+  // not turn this active-operation test into a pre-dispatch timeout test.
+  at=await ready;assert.equal(alarms.size,1);for(const alarm of [...alarms.values()])if(alarm.deadline<=at)alarm.handler();
+  await rejected;assert.equal(signal.aborted,true);assert.equal(f.executor.reaped.length,1);
+  await assert.rejects(reader.read(f.input,f.receipt,f.context),{code:'TEST_DEADLINE'});assert.equal(f.executor.calls.length,1);assert.equal(alarms.size,0);
 });
 test('cleanup failure holds and quarantines until owned cleanup is proved',async()=>{
   const f=await fixture(),reader=f.make();f.executor.reap=async()=>{throw Error('owned process not reaped');};await assert.rejects(reader.read(f.input,f.receipt,f.context),{code:'TEST_CLEANUP_UNKNOWN'});

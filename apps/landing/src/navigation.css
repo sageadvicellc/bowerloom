@@ -13,12 +13,12 @@
 .mobile-drawer nav a:hover { color: var(--ui-primary); }
 .mobile-drawer :is(a, button):focus-visible, .mobile-menu-toggle:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 4px; }
 .drawer-version { margin: 32px 0 0; font: 14px/1.6 var(--ui-font); color: var(--ui-muted); }
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .site-header .desktop-navigation { display: none; }
   .site-header .mobile-menu-toggle { display: inline-flex; margin-left: auto; order: 3; }
-  .site-header .alpha-label { margin-left: auto; }
+  .site-header .release-label { margin-left: auto; }
   .cinematic-theme .site-header, .site-header { flex-wrap: nowrap; height: 76px; min-height: 76px; padding-block: 0; gap: 16px; }
 }
 @media (max-width: 760px) {
-  .site-header .alpha-label { display: none; }
+  .site-header .release-label { display: none; }
 }

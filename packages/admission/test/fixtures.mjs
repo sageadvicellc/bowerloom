@@ -12,5 +12,6 @@ export const request = (accountAlias = 'alias', jobId = 'job', overrides = {}) =
 export const proof = (kind, observedAtMs, processRef = null) => ({ kind, observedAtMs, processRef, proofRef: `trusted-${kind}-${observedAtMs}`, fencedLauncherId: null });
 export const intercept = (pool, handler) => ({ async connect() {
   const client = await pool.connect();
-  return { query: (sql, values) => handler(client, sql, values), release: destroy => client.release(destroy) };
+  return { query: (sql, values) => handler(client, sql, values), release: destroy => client.release(destroy),
+    on: (event, listener) => client.on(event, listener), removeListener: (event, listener) => client.removeListener(event, listener) };
 } });

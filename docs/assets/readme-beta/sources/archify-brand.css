@@ -1,0 +1,22 @@
+/* Rose Conservatory / After Hours. Category meaning is unchanged.
+   Light diagram strokes are contrast-adjusted shades derived from the site palette. */
+[data-theme="dark"][data-preset] {
+ --bg:#27262B;--grid:#343238;--canvas-dot:#665B63;--text:#F6EEE8;--text-muted:#D0BEC6;--text-dim:#D0BEC6;--text-faint:#D0BEC6;
+ --panel:#343238;--panel-border:#665B63;--mask:#343238;--lane-fill:#343238;--lane-stroke:#D0BEC6;
+ --arrow:#D0BEC6;--arrow-emphasis:#C5D4AC;
+ --frontend-fill:#343D41;--frontend-stroke:#A0C5CD;
+ --backend-fill:#3A4036;--backend-stroke:#C5D4AC;
+ --security-fill:#45353E;--security-stroke:#E8B3BF;
+ --toolbar-bg:#343238;--toolbar-border:#665B63;--toolbar-text:#F6EEE8;--toolbar-hover:#454149;--toolbar-menu-bg:#343238;
+}
+[data-theme="light"][data-preset] {
+ --bg:#F6EEE8;--grid:#FFF9F4;--canvas-dot:#D5C9C8;--text:#373A32;--text-muted:#655D61;--text-dim:#655D61;--text-faint:#655D61;
+ --panel:#FFF9F4;--panel-border:#D5C9C8;--mask:#FFF9F4;--lane-fill:#FFF9F4;--lane-stroke:#655D61;
+ --arrow:#655D61;--arrow-emphasis:#526240;
+ --frontend-fill:#E6EEEB;--frontend-stroke:#47626A;
+ --backend-fill:#EDF0E3;--backend-stroke:#526240;
+ --security-fill:#F5E6E8;--security-stroke:#80515B;
+ --toolbar-bg:#FFF9F4;--toolbar-border:#655D61;--toolbar-text:#373A32;--toolbar-hover:#F6EEE8;--toolbar-menu-bg:#FFF9F4;
+}
+
+.header h1 code {font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.94em;font-weight:650;}

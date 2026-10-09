@@ -1,8 +1,13 @@
+import { captureContinuityAuthority, continuityAliasesDigest, continuityApprovalCopy, continuityCapability, continuityData, continuityDeadline, continuityEnvelopes, continuityFailure, continuityInspection, continuityPlanCopy, freezeContinuity, validateContinuityMutation } from './window-continuity.js';
+import type { ContinuityAuthority, WindowContinuityPlan } from './types.js';
+export { planWindowContinuity } from './window-continuity.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { canonicalJson, digest } from '../../contracts/src/index.js';
 import { createAccount, acceptObservation, evaluateAdmission, evaluateLaunch } from './policy.js';
 import { AdmissionError, identifier, requestCopy, proofCopy, stateCopy, validTime, observationCopy, policyCopy } from './validation.js';
+import { AdmissionAttempt, createDispatchGate, captureControl } from './dispatch-gate.js';
+import type { AdmissionControl, AdmissionControlIdentity, AdmissionDispatchGate } from './types.js';
 import type { AccountState, AdmissionPolicy, ReservationRequest, Reservation, ReservationView, ReserveResult, LaunchResult, ReconciliationProof } from './types.js';
 export type * from './types.js';
 export { AdmissionError } from './validation.js';
@@ -11,7 +16,7 @@ export const ADMISSION_VERSION = 1;
 const own = <T>(values: Record<string, T>, key: string): T | undefined => Object.hasOwn(values, key) ? values[key] : undefined;
 const view = (reservation: Reservation): ReservationView => { const { permitHash: _redacted, ...result } = structuredClone(reservation); return result; };
 const observationSnapshot = (value: unknown): unknown => { try { return observationCopy(value); } catch { return undefined; } };
-async function query(client: PoolClient, sql: string, values?: unknown[]) {
+async function query(client: Pick<PoolClient, 'query'>, sql: string, values?: unknown[]) {
   try { return await client.query(sql, values); }
   catch { throw new AdmissionError('DATABASE_ERROR', 'The admission database operation failed. No retry was attempted.'); }
 }
@@ -20,29 +25,94 @@ export class PostgresAdmission {
   readonly #schema: string;
   readonly #clock: () => number;
   readonly #launcherId: string;
-  constructor(pool: Pick<Pool, 'connect'>, options: { schema: string; launcherId: string; now?: () => number }) {
+  readonly #controlIdentity: Readonly<AdmissionControlIdentity> | undefined;
+  readonly #monotonic: () => bigint;
+  readonly #continuityAuthority: Readonly<ContinuityAuthority> | undefined;
+  constructor(pool: Pick<Pool, 'connect'>, options: { schema: string; launcherId: string; now?: () => number; monotonicNow?: () => bigint; controlIdentity?: AdmissionControlIdentity; continuityAuthority?: ContinuityAuthority }) {
     if (typeof options.schema !== 'string' || !/^trellis_[a-z][a-z0-9_]{0,46}$/.test(options.schema)) throw new AdmissionError('INVALID_SCHEMA', 'Use a bounded explicit trellis_ schema.');
     this.#launcherId = identifier(options.launcherId);
+    if(options.continuityAuthority)this.#continuityAuthority=captureContinuityAuthority(options.continuityAuthority);
+    this.#monotonic = options.monotonicNow ?? (() => process.hrtime.bigint());
+    if (options.controlIdentity) {
+      const d = Object.getOwnPropertyDescriptors(options.controlIdentity);
+      if (Reflect.ownKeys(options.controlIdentity).length !== 2 || Object.keys(d).sort().join() !== 'databaseName,installationId'
+        || Object.values(d).some(v => !Object.hasOwn(v, 'value'))) throw new AdmissionError('CONTROL_IDENTITY', 'Invalid controller identity.');
+      this.#controlIdentity = Object.freeze({ installationId: identifier(d.installationId!.value), databaseName: identifier(d.databaseName!.value) });
+    }
     this.#pool = pool; this.#schema = `"${options.schema}"`; this.#clock = options.now ?? Date.now;
   }
   #now(): number {
     const now = this.#clock(); if (!validTime(now)) throw new AdmissionError('CLOCK_UNAVAILABLE', 'A valid controller clock is required.'); return now;
   }
-  async #transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+  async #transaction<T>(operation: (client: Pick<PoolClient, 'query'>) => Promise<T>, attempt?: AdmissionAttempt): Promise<T> {
     let client: PoolClient;
-    try { client = await this.#pool.connect(); } catch { throw new AdmissionError('STORE_UNAVAILABLE', 'The admission database is unavailable.'); }
-    let committing = false; let discard = false;
-    try {
-      await query(client, 'BEGIN ISOLATION LEVEL READ COMMITTED');
-      await query(client, "SET LOCAL lock_timeout='5s'"); await query(client, "SET LOCAL statement_timeout='10s'");
-      await query(client, "SET LOCAL idle_in_transaction_session_timeout='10s'"); await query(client, "SET LOCAL synchronous_commit='on'");
-      const result = await operation(client); committing = true; await query(client, 'COMMIT'); return result;
-    } catch (error) {
-      if (committing) { discard = true; throw new AdmissionError('COMMIT_UNKNOWN', 'Admission commit acknowledgement failed. Lookup and trusted reconciliation are required; do not launch or retry automatically.'); }
-      try { await client.query('ROLLBACK'); }
-      catch { discard = true; throw new AdmissionError('ROLLBACK_FAILED', 'Admission rollback acknowledgement failed; the connection was discarded.'); }
-      throw error;
-    } finally { client.release(discard); }
+    let earlyFault = false;
+    const earlyError = () => { earlyFault = true; };
+    const acquire = async () => {
+      const value = await this.#pool.connect();
+      // Cover the extra controlled-wait handoff microtasks before run installs its latch.
+      if (attempt && typeof value.on === 'function') value.on('error', earlyError);
+      return value;
+    };
+    const discardLate = (late: PoolClient) => {
+      const swallow = () => {};
+      if (typeof late.on === 'function') late.on('error', swallow);
+      try { late.release(true); } catch { return; }
+      if (typeof late.removeListener === 'function') { late.removeListener('error', swallow); late.removeListener('error', earlyError); }
+    };
+    try { client = attempt ? await attempt.wait(acquire, discardLate) : await this.#pool.connect(); }
+    catch (error) { if (attempt && error instanceof AdmissionError) throw error; throw new AdmissionError('STORE_UNAVAILABLE', 'The admission database is unavailable.'); }
+    let committing = false, discard = false, fault = false, released = false, returning = false, entered = false;
+    let live = () => { attempt?.check(); };
+    const databaseError = () => new AdmissionError('DATABASE_ERROR', 'The admission database operation failed. No retry was attempted.');
+    const commitUnknown = () => new AdmissionError('COMMIT_UNKNOWN', 'Admission commit acknowledgement failed. Lookup and trusted reconciliation are required; do not launch or retry automatically.');
+    const run = async (): Promise<T> => {
+      entered = true;
+      let rejectFault!: (error: AdmissionError) => void;
+      const failure = new Promise<never>((_, reject) => { rejectFault = reject; });
+      void failure.catch(() => {});
+      // pg-pool's idle listener is absent while checked out. Retain only a sanitized fault.
+      const onError = () => { if (fault) return; fault = true; discard = true; rejectFault(databaseError()); };
+      const check = () => { if (fault) throw databaseError(); live(); if (fault) throw databaseError(); };
+      if (typeof client.on !== 'function' || typeof client.removeListener !== 'function') {
+        try { client.release(true); released = true; } catch {}
+        throw new AdmissionError('STORE_UNAVAILABLE', 'The admission database is unavailable.');
+      }
+      client.on('error', onError);
+      if (attempt) { client.removeListener('error', earlyError); if (earlyFault) onError(); }
+      const race = <R>(pending: Promise<R>) => Promise.race([pending, failure, ...(attempt ? [attempt.failed] : [])]);
+      const guarded = { query: async (...args: unknown[]) => {
+        check();
+        const result = await race(Promise.resolve(Reflect.apply(client.query, client, args)));
+        check(); return result;
+      } } as unknown as Pick<PoolClient, 'query'>;
+      try {
+        await query(guarded, 'BEGIN ISOLATION LEVEL READ COMMITTED');
+        await query(guarded, "SET LOCAL lock_timeout='5s'"); await query(guarded, "SET LOCAL statement_timeout='10s'");
+        await query(guarded, "SET LOCAL idle_in_transaction_session_timeout='10s'"); await query(guarded, "SET LOCAL synchronous_commit='on'");
+        const result = await race(operation(guarded));
+        check(); committing = true; await query(guarded, 'COMMIT'); check();
+        returning = true; return result;
+      } catch (error) {
+        if (committing) { discard = true; throw commitUnknown(); }
+        if (fault) { discard = true; throw databaseError(); }
+        if (attempt?.closed) { discard = true; attempt.check(); }
+        // Healthy rollback is also bounded by the remaining controlled transaction lifetime.
+        try { check(); await race(client.query('ROLLBACK')); check(); }
+        catch { discard = true; throw new AdmissionError('ROLLBACK_FAILED', 'Admission rollback acknowledgement failed; the connection was discarded.'); }
+        if (error instanceof AdmissionError) throw error;
+        throw databaseError();
+      } finally {
+        // Keep listener through synchronous pool handoff; retain it if handoff throws.
+        try { client.release(discard || fault || Boolean(attempt?.closed)); released = true; }
+        catch { throw committing ? commitUnknown() : databaseError(); }
+        finally { if (released) client.removeListener('error', onError); }
+        if (fault && returning) throw committing ? commitUnknown() : databaseError();
+      }
+    };
+    try { return attempt ? await attempt.wait(check => { live = check; return run(); }) : await run(); }
+    catch (error) { if (committing) throw commitUnknown(); throw error; }
+    finally { if (!entered && !released) discardLate(client); }
   }
   async createSchema(registrations: { accountId: string; aliases: string[]; policy: AdmissionPolicy }[]): Promise<void> {
     if (!Array.isArray(registrations) || registrations.length < 1 || registrations.length > 16) throw new AdmissionError('INVALID_ACCOUNTS', 'Register between one and sixteen canonical accounts.');
@@ -62,25 +132,83 @@ export class PostgresAdmission {
       }
     });
   }
-  async #account<T>(aliasInput: string, operation: (state: AccountState) => T): Promise<T> {
+  async #account<T>(aliasInput: string, operation: (state: AccountState) => T, attempt?: AdmissionAttempt): Promise<T> {
     const alias = identifier(aliasInput);
     return this.#transaction(async client => {
+      if (attempt) {
+        const rows = (await query(client, 'SELECT current_database() AS name')).rows;
+        if (rows.length !== 1 || rows[0].name !== attempt.control.binding.databaseName) throw new AdmissionError('CONTROL_IDENTITY', 'The controlled database identity changed.');
+      }
       const metadata = (await query(client, `SELECT singleton, version FROM ${this.#schema}.metadata FOR SHARE`)).rows;
       if (metadata.length !== 1 || metadata[0].singleton !== true || metadata[0].version !== ADMISSION_VERSION) throw new AdmissionError('UNSUPPORTED_VERSION', 'The admission schema is unsupported.');
       const rows = (await query(client, `SELECT account_id, version, state, checksum FROM ${this.#schema}.accounts
         WHERE account_id=(SELECT account_id FROM ${this.#schema}.aliases WHERE alias=$1) FOR UPDATE`, [alias])).rows;
       if (rows.length !== 1) throw new AdmissionError('UNKNOWN_ACCOUNT', 'The controller has not registered this account alias.');
       const row = rows[0];
-      if (row.version !== ADMISSION_VERSION) throw new AdmissionError('UNSUPPORTED_VERSION', 'The account state version is unsupported.');
+      if (![1,2].includes(row.version)) throw new AdmissionError('UNSUPPORTED_VERSION', 'The account state version is unsupported.');
       const state = stateCopy(row.state);
-      if (state.accountId !== row.account_id || !state.aliases.includes(alias) || digest(canonicalJson(state)) !== row.checksum) throw new AdmissionError('CORRUPT_ACCOUNT', 'The account binding or checksum is invalid.');
+      if (state.version !== row.version || state.accountId !== row.account_id || !state.aliases.includes(alias) || digest(canonicalJson(state)) !== row.checksum) throw new AdmissionError('CORRUPT_ACCOUNT', 'The account binding or checksum is invalid.');
+      if (attempt && (state.accountId !== attempt.control.binding.accountId || alias !== attempt.control.binding.accountAlias)) throw new AdmissionError('CONTROL_IDENTITY', 'The controlled account identity changed.');
+      if(state.version===2 && state.continuity.phase==='HELD')throw continuityFailure('CONTINUITY_HELD');
+      const before=structuredClone(state);
+      attempt?.check();
       const result = structuredClone(operation(state));
+      validateContinuityMutation(before,state);
       const json = canonicalJson(stateCopy(state));
       if (Buffer.byteLength(json) > 8 * 1024 * 1024) throw new AdmissionError('ACCOUNT_LIMIT', 'The bounded account history is full.');
-      await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1`, [state.accountId, json, digest(json)]);
+      if(state.version===2){
+        const result=await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1 AND version=2 AND checksum=$4`, [state.accountId,json,digest(json),row.checksum]);
+        if(result.rowCount!==1)throw continuityFailure('CONTINUITY_CONFLICT');
+      }else{await query(client, `UPDATE ${this.#schema}.accounts SET state=$2::jsonb, checksum=$3 WHERE account_id=$1`, [state.accountId,json,digest(json)]);} 
       return result;
-    });
+    }, attempt);
   }
+
+  /** Inspect without the ordinary account rewrite path. No resume capability is returned. */
+  inspectWindowContinuity(accountAlias:string){
+    const alias=identifier(accountAlias);
+    return this.#transaction(async client=>continuityInspection((await this.#continuityRow(client,alias)).state));
+  }
+  async #continuityRow(client:Pick<PoolClient,'query'>,alias:string){
+    const database=(await query(client,'SELECT current_database() AS name')).rows;
+    if(!this.#controlIdentity || database.length!==1 || database[0].name!==this.#controlIdentity.databaseName)throw continuityFailure('CONTINUITY_IDENTITY');
+    const metadata=(await query(client,`SELECT singleton, version FROM ${this.#schema}.metadata FOR SHARE`)).rows;
+    if(metadata.length!==1 || metadata[0].singleton!==true || metadata[0].version!==1)throw continuityFailure('UNSUPPORTED_VERSION');
+    await query(client,`LOCK TABLE ${this.#schema}.aliases IN SHARE MODE`);
+    const rows=(await query(client,`SELECT account_id, version, state, checksum FROM ${this.#schema}.accounts WHERE account_id=(SELECT account_id FROM ${this.#schema}.aliases WHERE alias=$1) FOR UPDATE`,[alias])).rows;
+    if(rows.length!==1)throw continuityFailure('UNKNOWN_ACCOUNT');const row=rows[0],state=stateCopy(row.state);
+    if(row.version!==state.version || row.account_id!==state.accountId || !state.aliases.includes(alias) || row.checksum!==digest(canonicalJson(state)))throw continuityFailure('CORRUPT_ACCOUNT');
+    const aliases=(await query(client,`SELECT alias FROM ${this.#schema}.aliases WHERE account_id=$1 ORDER BY alias`,[state.accountId])).rows.map((v:any)=>v.alias);
+    if(canonicalJson(aliases)!==canonicalJson([...state.aliases].sort()))throw continuityFailure('CONTINUITY_IDENTITY');
+    return {state,checksum:row.checksum,aliasesDigest:continuityAliasesDigest(state.accountId,aliases)};
+  }
+  /** Exact approved one-use accounting transition. Never launches work or resumes a HELD attempt. */
+  async applyWindowContinuity(input:WindowContinuityPlan,approvalIdInput:string,signal:AbortSignal){
+    const plan=continuityPlanCopy(input),approvalId=identifier(approvalIdInput),authority=this.#continuityAuthority;
+    const scope=plan.scope;
+    if(!authority || !this.#controlIdentity || scope.installationId!==this.#controlIdentity.installationId || scope.databaseName!==this.#controlIdentity.databaseName
+      || scope.admissionSchema!==this.#schema.slice(1,-1) || scope.launcherId!==this.#launcherId)throw continuityFailure('CONTINUITY_IDENTITY');
+    const approval=freezeContinuity(continuityApprovalCopy(await continuityCapability(signal,()=>authority.resolveApproval(approvalId,plan.revision,signal)),plan));
+    if(approval.approvalId!==approvalId)throw continuityFailure('CONTINUITY_AUTHORITY');
+    const observed=continuityData(await continuityCapability(signal,()=>authority.readObservation(plan.evidence.receiptId,signal)));
+    if(canonicalJson(observed)!==canonicalJson({observation:plan.observation,evidence:plan.evidence}))throw continuityFailure('CONTINUITY_OBSERVATION');
+    const {held,applied}=continuityEnvelopes(plan,approval);
+    const attempt=this.#controlled({binding:{...scope,requestDigest:plan.revision,authorizationRevision:approval.approvalRevision.slice(7),expiresAtMs:continuityDeadline(plan,approval,this.#now())},signal,assert:()=>authority.assertCurrent(approval)});
+    const write=async(expected:AccountState,next:AccountState)=>this.#transaction(async client=>{
+      const row=await this.#continuityRow(client,scope.accountAlias);attempt.check();
+      if(row.state.accountId!==scope.accountId || row.aliasesDigest!==plan.aliasesDigest || row.checksum!==digest(canonicalJson(expected)) || canonicalJson(row.state)!==canonicalJson(expected))throw continuityFailure('CONTINUITY_CONFLICT');
+      continuityDeadline(plan,approval,this.#now());attempt.check();
+      const json=canonicalJson(stateCopy(next));if(Buffer.byteLength(json)>8*1024*1024)throw continuityFailure('ACCOUNT_LIMIT');
+      const result=await query(client,`UPDATE ${this.#schema}.accounts SET version=2, state=$2::jsonb, checksum=$3 WHERE account_id=$1 AND version=$4 AND checksum=$5`,[scope.accountId,json,digest(json),expected.version,row.checksum]);
+      if(result.rowCount!==1)throw continuityFailure('CONTINUITY_CONFLICT');
+    },attempt);
+    try{
+      await write(plan.originState,held); // Only acknowledged durable claim permits this invocation to continue.
+      attempt.check();await write(held,applied);attempt.check();
+      return continuityInspection(applied);
+    }finally{attempt.close();}
+  }
+
   #observe(state: AccountState, value: unknown, now: number): { accepted: boolean; reason: string } {
     const observation = acceptObservation(state, value, now); Object.assign(state, observation.state);
     return { accepted: observation.accepted, reason: observation.reason };
@@ -100,11 +228,15 @@ export class PostgresAdmission {
       if (canonicalJson(state.policy) !== canonicalJson(previous)) {
         throw new AdmissionError('POLICY_CONFLICT', 'The account policy changed. Read its current policy before another replacement.');
       }
+      if(state.version===2)throw continuityFailure('CONTINUITY_POLICY');
       state.policy = next;
       return structuredClone(state.policy);
     });
   }
   reserve(input: ReservationRequest, observation: unknown): Promise<ReserveResult> {
+    return this.#reserve(input, observation);
+  }
+  #reserve(input: ReservationRequest, observation: unknown, attempt?: AdmissionAttempt): Promise<ReserveResult> {
     // The alias alone identifies the trusted account even if the rest of a request is refused.
     const alias = identifier(Object.getOwnPropertyDescriptor(input ?? {}, 'accountAlias')?.value);
     const snapshot = observationSnapshot(observation);
@@ -127,7 +259,7 @@ export class PostgresAdmission {
         status: 'RESERVED', createdAtMs: now, claimedAtMs: null, launcherId: null, completedAtMs: null, processRef: null, permitHash: digest(launchPermit), retained, proofs: [] };
       state.reservations[request.jobId] = reservation;
       return { kind: 'accepted', reservation: view(reservation), launchPermit };
-    });
+    }, attempt);
   }
   lookup(accountAlias: string, jobId: string): Promise<ReservationView | null> {
     identifier(jobId);
@@ -175,6 +307,88 @@ export class PostgresAdmission {
       throw new AdmissionError('LAUNCH_UNKNOWN', 'The launch outcome is uncertain. Retained capacity requires trusted reconciliation; never launch this job again automatically.');
     }
   }
+  #controlled(control: AdmissionControl): AdmissionAttempt {
+    const pinned = captureControl(control), b = pinned.binding;
+    if (!this.#controlIdentity || b.installationId !== this.#controlIdentity.installationId || b.databaseName !== this.#controlIdentity.databaseName
+      || b.launcherId !== this.#launcherId || `"${b.admissionSchema}"` !== this.#schema) throw new AdmissionError('CONTROL_IDENTITY', 'The controller identity does not match its configured admission store.');
+    return new AdmissionAttempt(pinned, () => this.#now(), this.#monotonic);
+  }
+  #boundRequest(input: ReservationRequest, attempt: AdmissionAttempt): ReservationRequest {
+    const request = requestCopy(input);
+    if (request.accountAlias !== attempt.control.binding.accountAlias || digest(canonicalJson(request)) !== attempt.control.binding.requestDigest) throw new AdmissionError('CONTROL_REQUEST', 'The controlled request does not match its pinned digest.');
+    return request;
+  }
+  #cutoff(state: AccountState): number {
+    const observed = state.observation!;
+    const age = observed.observedAtMs + state.policy.maxObservationAgeMs;
+    if (!Number.isSafeInteger(age)) throw new AdmissionError('CONTROL_CLOCK', 'The controlled observation cutoff is invalid.');
+    return Math.min(age, ...Object.entries(observed.windows).flatMap(([name, window]) => window === null ? [] : [Math.min(window.resetAtMs, state.highWater[name]!.resetAtMs) - 1]));
+  }
+  async reserveControlled(input: ReservationRequest, observation: unknown, control: AdmissionControl): Promise<ReserveResult> {
+    const attempt = this.#controlled(control);
+    try {
+      const request = this.#boundRequest(input, attempt), observed = observationSnapshot(observation);
+      const result = await this.#reserve(request, observed, attempt); attempt.check(); return result;
+    } finally { attempt.close(); }
+  }
+  async launchOnceControlled(accountAlias: string, jobId: string, launchPermit: string, observation: unknown,
+    start: (request: ReservationRequest, gate: AdmissionDispatchGate) => Promise<{ processRef: string; launcherId: string }>, control: AdmissionControl): Promise<LaunchResult> {
+    const attempt = this.#controlled(control);
+    let acknowledged = false;
+    let ownedGate: ReturnType<typeof createDispatchGate> | undefined;
+    try {
+      const alias = identifier(accountAlias), job = identifier(jobId), snapshot = observationSnapshot(observation);
+      if (alias !== attempt.control.binding.accountAlias || typeof start !== 'function') throw new AdmissionError('CONTROL_REQUEST', 'The controlled launcher binding is invalid.');
+      type Claim = { kind: 'claimed'; request: ReservationRequest; requestDigest: string; reservationId: string; claimedAtMs: number } | { kind: 'denied'; reason: string };
+      const claim = await this.#account<Claim>(alias, state => {
+        const now = attempt.check().wall; const observed = this.#observe(state, snapshot, now);
+        if (!observed.accepted) return { kind: 'denied', reason: observed.reason };
+        const reservation = own(state.reservations, job);
+        if (!reservation) return { kind: 'denied', reason: 'UNKNOWN_JOB' };
+        const pinned = this.#boundRequest(reservation.request, attempt);
+        if (reservation.status !== 'RESERVED') return { kind: 'denied', reason: 'ALREADY_CLAIMED' };
+        if (typeof launchPermit !== 'string' || !/^[a-f0-9]{64}$/.test(launchPermit)
+          || !timingSafeEqual(Buffer.from(digest(launchPermit)), Buffer.from(reservation.permitHash!))) return { kind: 'denied', reason: 'INVALID_PERMIT' };
+        const decision = evaluateLaunch(state, pinned, now); if (!decision.allowed) return { kind: 'denied', reason: decision.reason };
+        // Capture and tighten before COMMIT waiting. The original budget is never renewed.
+        attempt.tighten(this.#cutoff(state));
+        reservation.status = 'LAUNCHING'; reservation.claimedAtMs = now; reservation.launcherId = this.#launcherId; reservation.permitHash = null;
+        return { kind: 'claimed', request: pinned, requestDigest: reservation.requestDigest, reservationId: reservation.reservationId, claimedAtMs: now };
+      }, attempt);
+      attempt.check(); if (claim.kind === 'denied') return claim; acknowledged = true;
+      const requireClaim = (state: AccountState) => {
+        const current = own(state.reservations, job);
+        if (!current || current.status !== 'LAUNCHING' || current.launcherId !== this.#launcherId || current.permitHash !== null
+          || current.requestDigest !== claim.requestDigest || current.reservationId !== claim.reservationId || current.claimedAtMs !== claim.claimedAtMs
+          || canonicalJson(current.request) !== canonicalJson(claim.request)) throw new AdmissionError('CONTROL_CLAIM', 'The controlled claim no longer matches.');
+        return current;
+      };
+      ownedGate = createDispatchGate(attempt, { requestDigest: claim.requestDigest, reservationId: claim.reservationId, claimedAtMs: claim.claimedAtMs }, async observation => {
+        const sample = observationSnapshot(observation);
+        await this.#account(alias, state => {
+          requireClaim(state); const now = attempt.check().wall;
+          const observed = this.#observe(state, sample, now);
+          if (!observed.accepted) throw new AdmissionError('CONTROL_OBSERVATION', 'The controlled observation was refused.');
+          const decision = evaluateLaunch(state, claim.request, now);
+          if (!decision.allowed) throw new AdmissionError('CONTROL_CAPACITY', 'The controlled launch is no longer admitted.');
+          attempt.tighten(this.#cutoff(state));
+        }, attempt);
+      });
+      const launched = await Promise.race([Promise.resolve().then(() => { attempt.check(); return start(structuredClone(claim.request), ownedGate!.gate); }), attempt.failed]);
+      attempt.check();
+      if (!ownedGate.consumed() || launched?.launcherId !== this.#launcherId) throw new AdmissionError('CONTROL_START', 'The controlled callback did not consume its bound gate.');
+      const processRef = identifier(launched.processRef);
+      const reservation = await this.#account(alias, state => { const current = requireClaim(state); current.status = 'RUNNING'; current.processRef = processRef; return view(current); }, attempt);
+      attempt.check(); return { kind: 'started', reservation };
+    } catch (error) {
+      attempt.close(error);
+      if (error instanceof AdmissionError && error.code === 'COMMIT_UNKNOWN') throw error;
+      if (!acknowledged && error instanceof AdmissionError) throw error;
+      // Do not issue fresh database work through a closed attempt just to relabel it.
+      // LAUNCHING is already durable, non-replayable and retains its allowance.
+      throw new AdmissionError('LAUNCH_UNKNOWN', 'The controlled launch outcome is uncertain. Keep its claim and allowance held; do not retry automatically.');
+    } finally { ownedGate?.finish(); attempt.close(); }
+  }
   complete(accountAlias: string, jobId: string, input: ReconciliationProof): Promise<ReservationView> {
     const proof = proofCopy(input); identifier(jobId);
     return this.#account(accountAlias, state => {
@@ -182,6 +396,22 @@ export class PostgresAdmission {
       if (!current || !['RUNNING', 'COMPLETED'].includes(current.status) || proof.kind !== 'completed' || proof.processRef !== current.processRef) throw new AdmissionError('INVALID_COMPLETION', 'A matching running process and trusted completion proof are required.');
       this.#resolve(current, proof, this.#now()); return view(current);
     });
+  }
+  /** Controlled accounting only; does not reopen a claim or authorize another launch. */
+  async completeControlled(accountAlias: string, jobId: string, input: ReconciliationProof, control: AdmissionControl): Promise<ReservationView> {
+    const attempt=this.#controlled(control);
+    try {
+      const proof=proofCopy(input); identifier(jobId);
+      if(accountAlias!==attempt.control.binding.accountAlias)throw new AdmissionError('CONTROL_IDENTITY','Controlled accounting identity changed.');
+      return await this.#account(accountAlias,state=>{
+        const current=own(state.reservations,jobId);
+        if(!current || !['RUNNING','COMPLETED'].includes(current.status) || current.launcherId!==attempt.control.binding.launcherId
+          || current.requestDigest!==attempt.control.binding.requestDigest || proof.kind!=='completed' || proof.processRef!==current.processRef)
+          throw new AdmissionError('CONTROL_CLAIM','Controlled completion must match its exact running claim.');
+        this.#boundRequest(current.request,attempt);
+        this.#resolve(current,proof,this.#now());return view(current);
+      },attempt);
+    } finally {attempt.close();}
   }
   reconcile(input: ReservationRequest, inputProof: ReconciliationProof): Promise<ReservationView> {
     const request = requestCopy(input); const proof = proofCopy(inputProof);

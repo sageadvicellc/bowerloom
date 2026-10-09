@@ -69,7 +69,7 @@ test('unknown selection, dependency cycles, and missing dependencies fail closed
 
 test('unsupported harnesses and mandatory controls are not silently dropped', t => {
   const { input, change } = fixture(t);
-  assert.throws(() => planInstallation({ ...input, harness: 'claude' }), code('UNSUPPORTED_HARNESS'));
+  assert.throws(() => planInstallation({ ...input, harness: 'unknown' }), code('UNSUPPORTED_HARNESS'));
   change(m => { m.parts[0].requiredControls = ['network-sandbox']; });
   assert.throws(() => validateBundle(input.bundleDir), code('UNSUPPORTED_CONTROL'));
   change(m => { m.parts[0].requiredControls = []; m.hooks = { install: 'run.sh' }; });

@@ -1,0 +1,81 @@
+/* One persistent scene, with opaque reading panels around actual content. */
+.fullpage-journey { position: relative; isolation: isolate; }
+.fullpage-journey .cinematic-stage,
+.fullpage-journey .cinematic-static .cinematic-stage {
+  position: relative; isolation: auto; min-height: 92svh;
+  padding: 48px 5% 32px; display: flex; flex-direction: column; align-items: flex-start;
+}
+.fullpage-journey .fullpage-media {
+  position: fixed; inset: 0; width: 100%; height: 100svh;
+  z-index: -1; aspect-ratio: auto; pointer-events: none;
+}
+.fullpage-journey .fullpage-media :is(img, video) { object-fit: cover; object-position: center; }
+.fullpage-journey .cinematic-scrim { display: none; }
+.fullpage-journey .cinematic-copy { max-height: none; overflow: visible; box-shadow: 0 12px 48px #0002; }
+.fullpage-journey .cinematic-bottom {
+  position: relative; inset: auto; margin-top: 40px; width: min(100%, 1100px);
+  flex-wrap: wrap; box-shadow: 0 12px 48px #0002;
+}
+.fullpage-journey :is(.product-section, .recipe-section, .tutorial-builder, .faq-section) {
+  background: transparent; border: 0; margin-block: 0;
+  padding-block: clamp(48px, 9vh, 110px); padding-inline: 5.55%;
+}
+.fullpage-journey :is(.product-section > div, .labs-intro, .labs-role, .labs-loop > div, .labs-loop > ol, .labs-boundary, .faq-section > h2, .faq-section > .faq-list, .faq-section > .resource-links) {
+  background: var(--ui-bg); padding: clamp(22px, 3vw, 36px); box-shadow: 0 12px 48px #0002;
+}
+.fullpage-journey .product-section { gap: 28px; }
+.fullpage-journey .product-section > div { align-self: start; }
+.fullpage-journey .labs-intro { max-width: 820px; }
+.fullpage-journey .labs-graph { background: var(--ui-bg); padding: 0 24px; }
+.fullpage-journey .labs-boundary { max-width: none; }
+.fullpage-journey .labs-loop > ol { border-top: 0; }
+.fullpage-journey .tutorial-builder { border-radius: 0; max-width: 1440px; }
+.fullpage-journey .tutorial-builder > :is(.tutorial-intro, .beta-guide, form, .tutorial-result) {
+  background: var(--tutorial-bg); padding: clamp(22px, 3vw, 36px); box-shadow: 0 12px 48px #0002;
+}
+.fullpage-journey .tutorial-builder .tutorial-intro { max-width: 820px; }
+.fullpage-journey .tutorial-copy-status:not(:empty) { background: var(--tutorial-bg); padding: 20px; }
+.fullpage-journey .faq-section > h2 { max-width: 680px; margin-bottom: 24px; }
+.fullpage-journey .faq-section > .resource-links { width: fit-content; }
+:root .fullpage-journey .site-footer {
+  margin: 60px 5.55% 0; width: auto; padding: 40px; border: 0;
+  box-shadow: 0 12px 48px #0003;
+}
+.fullpage-journey { padding-bottom: 64px; }
+@media (max-width: 860px), (pointer: coarse) {
+  .fullpage-journey .cinematic-stage, .fullpage-journey .cinematic-static .cinematic-stage {
+    padding: 160px 6% 28px; min-height: 0;
+  }
+  .fullpage-journey .cinematic-copy { width: 100%; padding: 24px; }
+  .fullpage-journey .cinematic-bottom { margin: 24px 0 0; width: 100%; padding: 20px; }
+  .fullpage-journey :is(.product-section, .recipe-section, .tutorial-builder, .faq-section) { padding-inline: 6%; padding-block: 44px; }
+  .fullpage-journey .product-section > div + div { margin-top: 24px; }
+  .fullpage-journey .labs-graph { padding: 0 22px; }
+  :root .fullpage-journey .site-footer { margin-inline: 6%; padding: 24px; }
+}
+.fullpage-journey .labs-section > .hero-secondary { background: var(--ui-bg); padding: 16px 24px; margin-top: 20px; }
+.fullpage-journey .site-header { background: var(--ui-bg); }
+
+/* Keep the cast visible beside the opening and between dense reading sections. */
+@media (min-width: 1101px) and (pointer: fine) {
+  .fullpage-journey .cinematic-copy { width: clamp(320px, 28vw, 390px); padding: 26px; }
+  .fullpage-journey .cinematic-copy h1 { font-size: clamp(38px, 3.4vw, 50px); letter-spacing: -1.7px; }
+}
+@media (min-width: 861px) and (max-width: 1100px) and (pointer: fine) {
+  .fullpage-journey .cinematic-stage, .fullpage-journey .cinematic-static .cinematic-stage { padding-top: 36svh; }
+  .fullpage-journey .cinematic-copy { width: min(440px, 60%); }
+}
+.fullpage-journey .product-section::after,
+.fullpage-journey .labs-section::after {
+  content: ''; display: block; grid-column: 1 / -1;
+  height: clamp(260px, 48svh, 440px); pointer-events: none;
+}
+.fullpage-journey .tutorial-builder > form { background: transparent; box-shadow: none; padding: 0; }
+.fullpage-journey .tutorial-fields { background: var(--tutorial-bg); padding: clamp(22px, 3vw, 36px); box-shadow: 0 12px 48px #0002; }
+.fullpage-journey .tutorial-builder .tutorial-layout { gap: clamp(36px, 6vw, 88px); }
+.fullpage-journey .tutorial-builder .tutorial-action { background: var(--tutorial-bg); padding: 24px; box-shadow: 0 12px 48px #0002; }
+.fullpage-journey .tutorial-builder #tutorial-error { background: var(--tutorial-bg); padding: 18px 24px; }
+@media (max-width: 860px), (pointer: coarse) {
+  .fullpage-journey .product-section::after, .fullpage-journey .labs-section::after { height: clamp(180px, 36svh, 300px); }
+  .fullpage-journey .tutorial-builder .tutorial-layout { gap: 28px; }
+}

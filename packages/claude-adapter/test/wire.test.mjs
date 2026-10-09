@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {ClaudeWire,decodeEnvelope} from '../../../dist/packages/claude-adapter/src/wire.js';
+test('strict response mechanics refuse duplicates invalid UTF8 arrays and excess bytes',()=>{for(const b of [Buffer.from('{"a":1,"a":2}'),Buffer.from([0xff]),Buffer.alloc(65537)])assert.throws(()=>decodeEnvelope(b));assert.deepEqual(decodeEnvelope(Buffer.from('{"synthetic":true}')),{synthetic:true});});
+test('unqualified vendor metadata can never claim effective requested effort',()=>{for(const body of [{model:'claude-sonnet-5-5',effort:'high'},{type:'result',result:'synthetic'},{effective:{model:'claude-sonnet-5-5',effort:'high'}}]){const w=new ClaudeWire();w.feed(Buffer.from(JSON.stringify(body)));assert.throws(()=>w.finish({requestedRoute:'claude:claude-sonnet-5-5:high'}));assert.throws(()=>w.feed(Buffer.from('{}')));}});
+test('wire byte ownership and total output bound survive chunk mutation',()=>{const w=new ClaudeWire(),b=Buffer.from('{}');w.feed(b);b[0]=255;assert.throws(()=>w.finish({}));const x=new ClaudeWire();x.feed(Buffer.alloc(40000));assert.throws(()=>x.feed(Buffer.alloc(30000)));});

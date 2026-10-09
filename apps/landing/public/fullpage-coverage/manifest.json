@@ -1,0 +1,50 @@
+{
+  "sourceVideo": "/animation-review/robots-lab.mp4",
+  "sourceSha256": "b7e80159d0d1a38bcf66c67ee82a5a3f1fcea34e24e166325e43d7db2215798b",
+  "durationSeconds": 8.041667,
+  "scope": "One approved eight-second animation across every homepage section, not a new multi-scene film.",
+  "stills": [
+    {
+      "id": "hero",
+      "path": "/fullpage-coverage/hero.jpg",
+      "sha256": "64a32adeaddd4bdac71fe4c235058394c8b0458c98d0b2fc170fc674e18bc84c",
+      "frameSeconds": 0.5,
+      "alt": "Decorative workshop illustration. Hanna and S4-G3 at the hologram"
+    },
+    {
+      "id": "portable-teams",
+      "path": "/fullpage-coverage/portable-teams.jpg",
+      "sha256": "c31abf50bf8069c5a4d9d81309a26cb24becfc6ec60e97a9ce6dfb1e51774d91",
+      "frameSeconds": 1.5,
+      "alt": "Decorative workshop illustration. Assistant and plan"
+    },
+    {
+      "id": "labs",
+      "path": "/fullpage-coverage/labs.jpg",
+      "sha256": "dd0d210520c64fefa41c93f5ed6d01abe96daa017fd2bad8b7f3139b7ef1effb",
+      "frameSeconds": 4,
+      "alt": "Decorative workshop illustration. Tree transition and shared platform"
+    },
+    {
+      "id": "build",
+      "path": "/fullpage-coverage/build.jpg",
+      "sha256": "293af93583a291cbfeb6f0a3e969f7ae11bc20d9263812c78ecfc8cae37dbe34",
+      "frameSeconds": 5.5,
+      "alt": "Decorative workshop illustration. H4N-N4 builds while S4-G3 assists Hanna"
+    },
+    {
+      "id": "questions",
+      "path": "/fullpage-coverage/questions.jpg",
+      "sha256": "e4803a79d01d32cf32d9e69cbef128ed01c5460156fd7ec6a0f9da283f445806",
+      "frameSeconds": 6.5,
+      "alt": "Decorative workshop illustration. Shared workbench close view"
+    },
+    {
+      "id": "footer",
+      "path": "/fullpage-coverage/footer.jpg",
+      "sha256": "73f8ee7fabb72d7c62c84f69b88452db306e5f3321e90834e858d535cd2de248",
+      "frameSeconds": 7.5,
+      "alt": "Decorative workshop illustration. Finish at the tree laboratory"
+    }
+  ]
+}

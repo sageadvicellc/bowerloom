@@ -63,8 +63,9 @@ The generated `.bowerloom` directory includes these portable definitions:
 - `teams/first-team/` contains readable YAML, prompts, skills, assets, and maps.
 - `working-agreement.md` records boundaries and responsibilities.
 - `milestones.md` describes review points and the selected review cadence.
-- `startup-review.md` gives the roles, proposed permissions, limits, and file-only approval effect. Its `<details>` block includes all other generated files and compiler evidence. The review cannot recursively contain itself; its own bytes are pinned by the exact plan and installation receipt.
-- `START-HERE.md` gives the user a short prompt for their personal agent.
+- `startup-review.md` shows the actual project and goal before any collapsed technical contents, then gives the roles, proposed permissions, limits, and file-only approval effect. Its `<details>` block includes all other generated files and compiler evidence. The review cannot recursively contain itself; its own bytes are pinned by the exact plan and installation receipt.
+- `START-HERE.md` gives the user a plain-language project/goal handoff and a short prompt for their personal agent. YAML and JSON reading is optional for the human.
+- `optional-controls.md` describes the existing separately approved local connection, revocation, and registered-work stop commands. None is a setup prerequisite.
 - `manifest.json` declares selectable parts in the portable bundle format.
 - `startup.json` identifies the startup template and its main documents.
 
@@ -140,9 +141,32 @@ Repeated inspection is read-only. `specReady: true` means the specification matc
 
 Portable definitions still compile after a move. Installation inspection reports the changed location because the machine-specific receipt binds the original installation.
 
+## Revising an installed goal
+
+Discussion remains a proposal until the user approves an exact revision plan. The revision APIs are:
+
+```ts
+planStartupRevision(input: RevisionInput): Promise<StartupRevisionPlan>
+applyStartupRevision(input: RevisionInput, expectedOldRevision: string, exactRevision: string): Promise<StartupReceipt>
+recoverStartupRevision(targetDir: string, exactRevision: string, action: 'resume' | 'rollback'): Promise<StartupRevisionRecovery>
+renderStartupRevisionReview(plan: StartupRevisionPlan): string
+```
+
+`RevisionInput` contains `targetDir` and a complete `brief`. The plan binds the exact prior receipt bytes, old installation revision, proposed brief, new compiled plan, target identity, and new plan approval digest. Application requires both `fromRevision` and the exact plan `revision`. It grants no execution, network, backend, or worker authority.
+
+Planning and application refuse managed-file drift, unexpected content inside `.bowerloom`, symlinks and changed directory bindings. They never overwrite custom additions to make a revision fit. Unrelated files outside `.bowerloom` remain unchanged. The new template includes a digest of its complete brief in the team definition, so a new goal cannot reuse an old exact specification binding. Existing connections and runtime registrations require their own new approvals; revision does not edit private registries, connection receipts or live runtime state.
+
+Application first saves an immutable private `.bowerloom-revision.json` journal in the selected project. Every later stage remains visibly `revision-pending` until commit or rollback completes. A private `.bowerloom-revision-<approval>` directory holds staged bytes and the preserved old managed directory. Compilation and exact inventory checks precede replacement. The two directory renames can be interrupted; the journal prevents that intermediate state from being accepted as ready.
+
+Recovery takes the exact original revision approval and an explicit action. `resume` completes the recorded new installation; `rollback` restores the recorded original and retains staged evidence. The original approval covers that deterministic rollback, not cleanup or deletion. Once rollback starts, resume is refused. After a final result is durably recorded, recovery must use the matching action to finish archival. Completed transactions remain private history, including the previous installation. Recovery cannot act on altered journal or staged bytes. Corrupt or unrecognized states remain pending for investigation; they are never silently repaired or promoted to ready.
+
+The writer lock is an exclusive, short-lived listener on `127.0.0.1` at a deterministic path-derived port. It reads no protocol and immediately closes incoming connections. The operating system releases it on process exit, allowing recovery without stale-PID inference. Port collisions and permission failures conservatively refuse revision; no process is killed. This is a cooperative local-writer lock, not a security boundary against hostile same-user filesystem changes. Both revision application and recovery acquire the same lock. The durable journal, not the lock, binds approval.
+
+Each file write is flushed and directory changes are flushed before the next stage. Process-interruption tests cover the journal, stage metadata, staged files, readiness marker, both renames, final result, and archival. Filesystem corruption or a partial damaged write remains pending and fails validation rather than being guessed away.
+
 ## Historical compatibility
 
-New plans use `bowerloom/startup-template/v1alpha2`. The public plan and receipt envelopes remain `v1alpha1`. Inspection dispatches by the exact template version and reconstructs old receipts with the preserved `scaffold-v1alpha1.ts` implementation. It does not inject a default profile into a historical normalized brief, add new review files, rewrite an old receipt, or relax drift checks. Unknown template versions are rejected.
+New plans use `bowerloom/startup-template/v1beta2`. The public plan and receipt envelopes remain `v1alpha1`. Inspection dispatches by the exact template version and reconstructs old receipts with the preserved `scaffold-v1alpha1.ts` , `scaffold-v1alpha2.ts`, and `scaffold-v1beta1.ts` implementations (including the frozen beta1 handoff helper). All historical versions remain inspectable without rewriting installed artifacts. It does not inject a default profile into a historical normalized brief, add new review files, rewrite an old receipt, or relax drift checks. Unknown template versions are rejected.
 
 An uninstalled historical approval does not authorize the new template. Request a fresh plan and approval. The frozen historical fixture contains its original normalized brief, complete file bytes, and compiler result.
 
@@ -152,9 +176,27 @@ From the repository root, run the build and package tests:
 
 ```sh
 npm run build
-node --test packages/startup/test/startup.test.mjs
+node --test packages/startup/test/*.test.mjs
 ```
 
 The tests exercise frozen historical receipt compatibility, all three profiles, profile-bound approval, readable review output, maximum-size escaped review contents, new workspaces, existing-project preservation, the actual compiler, portable validation, stale approval, directory replacement, case collisions, locks, rollback, and drift.
 
 The preservation test intercepts reads of existing project files and refuses them. The tests make no network or model calls.
+
+## Optional demo discussion
+
+`init demo-plan --target ABS --from INSTALLED_REVISION` inspects an exact installed setup and returns a plain-language, read-only proposal. `--json` includes a portable handoff. It derives the engineer, founder, or research lens from the installed receipt; there is no profile or scenario override. Skip it without changing setup.
+
+```ts
+planStartupDemo({ targetDir, expectedRevision }): Promise<StartupDemoPlan>
+verifyStartupDemoPlan(value: unknown): Promise<StartupDemoPlan>
+renderStartupDemoReview(plan: StartupDemoPlan): string
+```
+
+Verification re-inspects the live installation, receipt bytes and candidate, then reconstructs the exact deterministic proposal. Stale revisions, managed-file drift, pending revisions, and changed plan bytes are refused. Plan and handoff revisions use `sha256:` digests; the installed startup revision is the original bare 64-character hash. The handoff excludes installation paths, but includes the user-supplied project name and goal as discussion context. Keep that context private unless you separately choose to share it.
+
+The package carries the frozen `craft-shop-v1/r1` synthetic scenario and its exact inputs as compiled source. It needs no checkout to read these inputs. Tests compare them with the independently cleared Workbench source. The real project goal never substitutes for those inputs.
+
+The installed three-role Markdown scaffold is not a runnable Workbench crew. This proposal describes two sequential HTML tasks with two execution owners and a planning-only lead. It supplies no authored bundle, registered tester, grant, enrollment, runtime identity, model call, backend provisioning, or execution permission. The research lens proposes a comparison; it provides no measured improvement. Historical startup templates and installed files remain unchanged.
+
+If the user elects this demo, their personal agent first obtains a separate authoring scope and the actual registered tester manifest from a trusted controller. The existing `authoring validate|export` commands can then validate a separately authored project. Controller preparation (`prepareAuthoredCraftShop`, `provisionAuthoredInstallation`) and the Workbench runner (`createWorkbenchRunner`) require separate bindings and approvals. There is no demo apply/run alias. Full live demo acceptance remains pending in beta work #57/#60.

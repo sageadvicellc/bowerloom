@@ -1,0 +1,168 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { canonicalJson } from '../packages/contracts/src/index.js';
+import { PassThrough } from 'node:stream';
+import { namesYesFlag, parseApprovalFlags, runWithApproval } from '../apps/cli/src/confirm.js';
+import { terminalIo } from '../apps/cli/src/manifest.js';
+import { reportFailure } from '../apps/cli/src/human.js';
+import type { ApprovalIo } from '../apps/cli/src/confirm.js';
+import type { PlannedChange } from '../packages/project-context/src/types.js';
+
+const REV = (c: string) => c.repeat(64);
+interface Plan { readonly files: readonly string[]; readonly stamp: string }
+/** A change whose revision follows `state.stamp`, so a test can change an input between plan and apply. */
+function change(state = { stamp: 'a' }) {
+  const applied: string[] = [], planned: number[] = []; let count = 0;
+  const value: PlannedChange<Plan> = {
+    plan: async () => { planned.push(++count); return { files: ['teams/research/team.md'], stamp: state.stamp }; },
+    revision: plan => REV(plan.stamp),
+    review: plan => `Create ${plan.files.join(', ')}.`,
+    apply: async revision => { applied.push(revision); return { done: revision }; },
+  };
+  return { value, applied, planned, state };
+}
+const terminal = (answers: string[], seen: string[] = [], hook?: () => void): ApprovalIo => ({ interactive: true, ask: async q => { seen.push(q); hook?.(); return answers.shift() ?? ''; } });
+const piped: ApprovalIo = { interactive: false, ask: async () => { throw new Error('a pipe must not prompt'); } };
+
+test('in a terminal, a yes plans again and applies once', async () => {
+  const c = change(), seen: string[] = [];
+  const result = await runWithApproval(c.value, { json: false }, terminal(['y'], seen));
+  assert.equal(result.exitCode, 0); assert.deepEqual(c.applied, [REV('a')]); assert.equal(c.planned.length, 2);
+  assert.match(seen[0]!, /Create teams\/research\/team\.md\./); assert.match(seen[0]!, /Apply plan aaaa…aaaa\? \[y\/N\]/);
+  assert.match(result.output, new RegExp(REV('a')));
+});
+
+test('a yes is accepted as yes, YES or y with spaces; anything else declines', async () => {
+  for (const answer of ['yes', 'YES', ' y ']) { const c = change(); assert.equal((await runWithApproval(c.value, { json: false }, terminal([answer]))).exitCode, 0, answer); assert.equal(c.applied.length, 1); }
+  for (const answer of ['', 'n', 'no', 'maybe', 'yy']) {
+    const c = change(); await assert.rejects(runWithApproval(c.value, { json: false }, terminal([answer])), (e: { code: string }) => e.code === 'APPROVAL_DECLINED', answer); assert.deepEqual(c.applied, []);
+  }
+});
+
+test('an input changed during the prompt gives STALE_APPROVAL with no write', async () => {
+  const c = change();
+  await assert.rejects(runWithApproval(c.value, { json: false }, terminal(['y'], [], () => { c.state.stamp = 'b'; })), (e: { code: string }) => e.code === 'STALE_APPROVAL');
+  assert.deepEqual(c.applied, []);
+});
+
+test('a no gives APPROVAL_DECLINED with no write and no second plan', async () => {
+  const c = change();
+  await assert.rejects(runWithApproval(c.value, { json: false }, terminal(['n'])), (e: { code: string }) => e.code === 'APPROVAL_DECLINED');
+  assert.deepEqual(c.applied, []); assert.equal(c.planned.length, 1);
+});
+
+test('without a terminal and without --approve, it prints the plan and revision and needs approval', async () => {
+  const c = change(), result = await runWithApproval(c.value, { json: false }, piped);
+  assert.equal(result.exitCode, 3); assert.deepEqual(c.applied, []);
+  assert.equal(result.output, `Create teams/research/team.md.\nRevision: ${REV('a')}\nApproval required. Run the same command again with --approve ${REV('a')}\n`);
+});
+
+test('with --json and no --approve, it prints the full plan as one JSON object and needs approval, even in a terminal', async () => {
+  const c = change(), result = await runWithApproval(c.value, { json: true }, terminal(['y']));
+  assert.equal(result.exitCode, 3); assert.deepEqual(c.applied, []);
+  assert.equal(result.output, canonicalJson({ approvalRequired: true, code: 'APPROVAL_REQUIRED', plan: { files: ['teams/research/team.md'], stamp: 'a' }, revision: REV('a') }) + '\n');
+});
+
+test('with the matching --approve it applies once and never prompts', async () => {
+  const c = change(), result = await runWithApproval(c.value, { approve: REV('a'), json: false }, piped);
+  assert.equal(result.exitCode, 0); assert.deepEqual(c.applied, [REV('a')]); assert.equal(result.output, `Applied plan ${REV('a')}.\n`);
+  const j = change(), json = await runWithApproval(j.value, { approve: REV('a'), json: true }, piped);
+  assert.equal(json.output, canonicalJson({ applied: true, revision: REV('a'), result: { done: REV('a') } }) + '\n');
+});
+
+test('a different --approve gives STALE_APPROVAL with no write', async () => {
+  const c = change();
+  await assert.rejects(runWithApproval(c.value, { approve: REV('c'), json: false }, piped), (e: { code: string }) => e.code === 'STALE_APPROVAL');
+  assert.deepEqual(c.applied, []);
+});
+
+test('a plan whose revision is not 64 lowercase hex is refused, never applied', async () => {
+  const c = change(); const bad: PlannedChange<Plan> = { ...c.value, revision: () => 'xyz' };
+  await assert.rejects(runWithApproval(bad, { approve: 'xyz', json: false }, piped), (e: { code: string }) => e.code === 'IO_ERROR');
+  assert.deepEqual(c.applied, []);
+});
+
+test('parseApprovalFlags takes --approve and --json and returns the other words', () => {
+  assert.deepEqual(parseApprovalFlags(['a', '--json', 'b']), { json: true, rest: ['a', 'b'] });
+  assert.deepEqual(parseApprovalFlags(['--approve', REV('f'), 'x']), { approve: REV('f'), json: false, rest: ['x'] });
+  assert.deepEqual(parseApprovalFlags([]), { json: false, rest: [] });
+});
+
+test('parseApprovalFlags refuses --yes, malformed or repeated --approve and --json as usage', () => {
+  const usage = (args: string[]) => assert.throws(() => parseApprovalFlags(args), (e: { code: string }) => e.code === 'USAGE', args.join(' '));
+  usage(['--yes']); usage(['-y']); usage(['--yes=true']); usage(['--approve']); usage(['--approve', 'abc']); usage(['--approve', 'A'.repeat(64)]);
+  usage(['--approve', 'sha256:' + REV('a')]); usage(['--approve', REV('a') + '0']); usage([`--approve=${REV('a')}`]);
+  usage(['--approve', REV('a'), '--approve', REV('a')]); usage(['--json', '--json']); usage(['--approve', '--json']);
+});
+
+test('the review text escapes control bytes in the prompt and on a pipe, and keeps its lines; JSON keeps the plan exact', async () => {
+  const c = change(), seen: string[] = [];
+  const hostile: PlannedChange<Plan> = { ...c.value, review: plan => `Create ${plan.files.join(', ')}.\nNote: \x1b[2J\u202eevil\x9b` };
+  await runWithApproval(hostile, { json: false }, terminal(['y'], seen));
+  assert.equal(seen[0]!.includes('\x1b'), false); assert.equal(seen[0]!.includes('\u202e'), false); assert.equal(seen[0]!.includes('\x9b'), false);
+  assert.match(seen[0]!, /^Create teams\/research\/team\.md\.\nNote: \\u001b\[2J\\u202eevil\\u009b\nApply plan /);
+  const piped3 = await runWithApproval(hostile, { json: false }, piped);
+  assert.equal(piped3.output, `Create teams/research/team.md.\nNote: \\u001b[2J\\u202eevil\\u009b\nRevision: ${REV('a')}\nApproval required. Run the same command again with --approve ${REV('a')}\n`);
+  const weird: PlannedChange<{ note: string }> = { plan: async () => ({ note: 'a\x1bb' }), revision: () => REV('a'), review: p => p.note, apply: async () => ({}) };
+  assert.equal((await runWithApproval(weird, { json: true }, piped)).output, canonicalJson({ approvalRequired: true, code: 'APPROVAL_REQUIRED', plan: { note: 'a\x1bb' }, revision: REV('a') }) + '\n');
+});
+
+test('namesYesFlag finds --yes anywhere and -y only in a flag position, never as the value of a flag', () => {
+  for (const args of [['--yes'], ['init', 'plan', '--yes'], ['--yes=1'], ['-y'], ['init', 'apply', '-y'], ['ls', '--json', '-y'], ['init', 'plan', '--goal', 'x', '-y'], ['init', 'plan', '--goal', '--yes'], ['up', '--demo', '-y'], ['harness', 'import', '--synthetic', '-y']]) {
+    assert.equal(namesYesFlag(args), true, args.join(' '));
+  }
+  for (const args of [['init', 'plan', '--goal', '-y'], ['init', 'plan', '--assistant', '-y', '--json'], ['init', 'plan', '--name', 'x', '--goal', '-y'], ['ls'], ['init', 'plan', '--goal', 'yes'], ['init', 'plan', '--goal=-y'], ['-yy'], ['--yesterday']]) {
+    assert.equal(namesYesFlag(args), false, args.join(' '));
+  }
+});
+
+test('JSON output writes C1 controls, format characters and the separators as escapes; the parsed value is the same (lead call 5)', async () => {
+  const hidden = 'x\u009b\u202e\u200b\u2028\u{e0041}y';
+  const c: PlannedChange<{ name: string }> = { plan: async () => ({ name: hidden }), revision: () => REV('b'), review: p => p.name, apply: async () => ({ name: hidden }) };
+  const required = await runWithApproval(c, { json: true }, piped);
+  assert.equal(required.exitCode, 3); assert.doesNotMatch(required.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u);
+  assert.ok(required.output.includes('x\\u009b\\u202e\\u200b\\u2028\\udb40\\udc41y'), required.output);
+  assert.equal(JSON.parse(required.output).plan.name, hidden);
+  const applied = await runWithApproval(c, { approve: REV('b'), json: true }, piped);
+  assert.equal(applied.exitCode, 0); assert.doesNotMatch(applied.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u); assert.equal(JSON.parse(applied.output).result.name, hidden);
+});
+
+// Freeze review finding 3: Ctrl-C or Ctrl-D at "[y/N]" closes the real readline prompt. It is a stop, not a failure:
+// "Stopped. Nothing was changed." and exit 130, never the generic failure text. These tests drive terminalIo itself.
+function tty() {
+  const input = Object.assign(new PassThrough(), { isTTY: true }), output = Object.assign(new PassThrough(), { isTTY: true, columns: 80 });
+  let shown = ''; output.on('data', chunk => { shown += String(chunk); });
+  return { input, output, shown: () => shown };
+}
+const stopped = (e: unknown): boolean => (e as { code?: string }).code === 'APPROVAL_STOPPED' && (e as Error).message === 'Stopped. Nothing was changed.';
+
+test('terminalIo is interactive only when its input and output are terminals', () => {
+  const t = tty(); assert.equal(terminalIo(t.input, t.output).interactive, true);
+  assert.equal(terminalIo(new PassThrough(), t.output).interactive, false); assert.equal(terminalIo(t.input, new PassThrough()).interactive, false);
+});
+
+test('terminalIo returns the typed answer', async () => {
+  const t = tty(), answer = terminalIo(t.input, t.output).ask('Apply plan aaaa…aaaa? [y/N] ');
+  t.input.write('y\r'); assert.equal(await answer, 'y'); assert.match(t.shown(), /Apply plan aaaa…aaaa\? \[y\/N\] /);
+});
+
+for (const [name, key] of [['Ctrl-C', '\x03'], ['Ctrl-D', '\x04']] as const) {
+  test(`${name} at the terminalIo prompt stops: nothing is applied, the words say so, and the exit code is 130`, async () => {
+    const t = tty(), c = change();
+    const run = runWithApproval(c.value, { json: false }, terminalIo(t.input, t.output));
+    await new Promise(resolve => setImmediate(resolve)); t.input.write(key);
+    let error: unknown; await run.catch(e => { error = e; });
+    assert.ok(stopped(error), String(error)); assert.deepEqual(c.applied, []); assert.equal(c.planned.length, 1);
+    assert.deepEqual(reportFailure(error, true), { text: 'Stopped. Nothing was changed.\n', exitCode: 130 });
+    const piped2 = reportFailure(error, false);
+    assert.equal(piped2.exitCode, 130); assert.equal(piped2.text, '{"error":{"code":"APPROVAL_STOPPED","message":"Stopped. Nothing was changed."}}\n');
+    assert.doesNotMatch(reportFailure(error, true).text, /Refused|failed|registered-work/);
+  });
+}
+
+test('the end of input at the terminalIo prompt stops the same way', async () => {
+  const t = tty(), c = change();
+  const run = runWithApproval(c.value, { json: false }, terminalIo(t.input, t.output));
+  await new Promise(resolve => setImmediate(resolve)); t.input.end();
+  await assert.rejects(run, stopped); assert.deepEqual(c.applied, []);
+});

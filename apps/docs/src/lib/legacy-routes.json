@@ -1,0 +1,413 @@
+{
+  "observedAt": "2026-10-06T17:42:35.542733+00:00",
+  "sourceRows": [
+    {
+      "file": "src/content/docs/404.md",
+      "route": "/docs/404/",
+      "headings": []
+    },
+    {
+      "file": "src/content/docs/backend.md",
+      "route": "/docs/backend/",
+      "headings": [
+        "Supported environment",
+        "Inspect before planning",
+        "Keep the boundaries clear",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/cli.md",
+      "route": "/docs/cli/",
+      "headings": [
+        "Flags and refusal",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/company.md",
+      "route": "/docs/company/",
+      "headings": [
+        "Personal work",
+        "Shared company work",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/configuration.md",
+      "route": "/docs/configuration/",
+      "headings": [
+        "Portable setup",
+        "Private local records",
+        "Configuration changes",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/contributors.md",
+      "route": "/docs/contributors/",
+      "headings": []
+    },
+    {
+      "file": "src/content/docs/harnesses.md",
+      "route": "/docs/harnesses/",
+      "headings": [
+        "Selected synthetic configuration",
+        "Native execution remains gated",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/index.md",
+      "route": "/docs/",
+      "headings": [
+        "Choose your next step",
+        "What setup gives you"
+      ]
+    },
+    {
+      "file": "src/content/docs/mcp.md",
+      "route": "/docs/mcp/",
+      "headings": [
+        "CLI reference: planning only",
+        "Internal engineering evidence",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/permissions.md",
+      "route": "/docs/permissions/",
+      "headings": [
+        "Three different decisions",
+        "Review what changes",
+        "Model output is a proposal",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/releases.md",
+      "route": "/docs/releases/",
+      "headings": [
+        "Publication and support"
+      ]
+    },
+    {
+      "file": "src/content/docs/revision.md",
+      "route": "/docs/revision/",
+      "headings": [
+        "Prepare a revised goal",
+        "If the revision stops partway",
+        "Review dependent access again",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/security.md",
+      "route": "/docs/security/",
+      "headings": [
+        "Read a refusal as a boundary",
+        "Trust and limits",
+        "Getting useful help",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/setup.md",
+      "route": "/docs/setup/",
+      "headings": [
+        "Choose a workspace and profile",
+        "Review the plan",
+        "Approve the exact files",
+        "Share definitions, not private state",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/start.md",
+      "route": "/docs/start/",
+      "headings": [
+        "Check the installed command",
+        "Ask your personal agent"
+      ]
+    },
+    {
+      "file": "src/content/docs/status.md",
+      "route": "/docs/status/",
+      "headings": [
+        "Read results at their actual scope"
+      ]
+    },
+    {
+      "file": "src/content/docs/stop.md",
+      "route": "/docs/stop/",
+      "headings": [
+        "Scope comes from enrollment",
+        "Interpret the result",
+        "Support boundary"
+      ]
+    },
+    {
+      "file": "src/content/docs/workbench.md",
+      "route": "/docs/workbench/",
+      "headings": [
+        "Record a comparison",
+        "Vines records what happened",
+        "Support boundary"
+      ]
+    }
+  ],
+  "builtRows": [
+    {
+      "path": "backend/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "supported-environment",
+        "inspect-before-planning",
+        "keep-the-boundaries-clear",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "cli/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "flags-and-refusal",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "company/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "personal-work",
+        "shared-company-work",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "configuration/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "portable-setup",
+        "private-local-records",
+        "configuration-changes",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "contributors/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top"
+      ]
+    },
+    {
+      "path": "harnesses/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "selected-synthetic-configuration",
+        "native-execution-remains-gated",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "choose-your-next-step",
+        "what-setup-gives-you"
+      ]
+    },
+    {
+      "path": "mcp/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "cli-reference-planning-only",
+        "internal-engineering-evidence",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "permissions/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "three-different-decisions",
+        "review-what-changes",
+        "model-output-is-a-proposal",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "releases/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "publication-and-support"
+      ]
+    },
+    {
+      "path": "revision/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "prepare-a-revised-goal",
+        "if-the-revision-stops-partway",
+        "review-dependent-access-again",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "security/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "read-a-refusal-as-a-boundary",
+        "trust-and-limits",
+        "getting-useful-help",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "setup/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "choose-a-workspace-and-profile",
+        "review-the-plan",
+        "approve-the-exact-files",
+        "share-definitions-not-private-state",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "start/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "check-the-installed-command",
+        "ask-your-personal-agent"
+      ]
+    },
+    {
+      "path": "status/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "read-results-at-their-actual-scope"
+      ]
+    },
+    {
+      "path": "stop/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "scope-comes-from-enrollment",
+        "interpret-the-result",
+        "support-boundary"
+      ]
+    },
+    {
+      "path": "workbench/index.html",
+      "ids": [
+        "theme-icons",
+        "starlight__search",
+        "starlight__sidebar",
+        "starlight__mobile-toc",
+        "starlight__on-this-page--mobile",
+        "starlight__on-this-page",
+        "_top",
+        "record-a-comparison",
+        "vines-records-what-happened",
+        "support-boundary"
+      ]
+    }
+  ]
+}

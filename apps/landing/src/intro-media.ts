@@ -1,0 +1,103 @@
+export type IntroMedia = {
+  kind: 'production' | 'fixture';
+  src: string; poster: string; sha256: string; bytes: number;
+  width: number; height: number; duration: number; logoAt: number;
+  /** Historical field name for the final logo-hold cue. Never authorizes automatic entry. */
+  revealAt: number;
+  audio: 'embedded' | 'silent';
+  /** Optional silent-film finish, driven only by the source media clock. */
+  ending?: { logoSeconds: number };
+};
+/** Historical 23-second delivery remains preserved and is never selected for the active preview. */
+export const historicalIntroDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
+  status: 'awaiting-media',
+  desktop: {
+    kind: 'production', src: '/intro/cinematic-wide.mp4', poster: '/intro/wide-poster.webp',
+    sha256: '9a9e4775250e18c753efef425bb2fdcc18acc906f91e3a68a2988e055d3bdd97', bytes: 10613793,
+    width: 1920, height: 1080, duration: 23, logoAt: 20, revealAt: 22.2, audio: 'embedded',
+  },
+  portrait: {
+    kind: 'production', src: '/intro/cinematic-tall.mp4', poster: '/intro/tall-poster.webp',
+    sha256: 'c58a64b98f00ab9897e4c662017ee0e819b48ecc67e23f74596e07f4ff257d80', bytes: 10916915,
+    width: 1080, height: 1920, duration: 23, logoAt: 20, revealAt: 22.2, audio: 'embedded',
+  },
+};
+/** Founder-selected existing films for the preview. Timings belong to each variant; selection is not software evidence. */
+export const introDelivery: { status: 'awaiting-media' | 'ready'; desktop: IntroMedia | null; portrait: IntroMedia | null } = {
+  "status": "ready",
+  "desktop": {
+    "kind": "production",
+    "src": "/intro/quality-09/desktop.mp4",
+    "poster": "/intro/selected-05/desktop-poster.jpg",
+    "sha256": "6ea553b4edbb60237e99f46c3a5c9897a90d093c726e7ed9847d4a36c23ba8fd",
+    "bytes": 12984380,
+    "width": 1920,
+    "height": 1080,
+    "duration": 10.041667,
+    "logoAt": 7,
+    "revealAt": 8.8,
+    "audio": "silent",
+    "ending": { "logoSeconds": 1.8 }
+  },
+  "portrait": {
+    "kind": "production",
+    "src": "/intro/quality-09/portrait.mp4",
+    "poster": "/intro/selected-05/portrait-poster.jpg",
+    "sha256": "2764d8dee8c8e88998561b3147a8c4718162820b3fc3efe8f8e4a8f04064de46",
+    "bytes": 10624939,
+    "width": 1080,
+    "height": 1920,
+    "duration": 10.041667,
+    "logoAt": 7,
+    "revealAt": 8.8,
+    "audio": "silent",
+    "ending": { "logoSeconds": 1.8 }
+  }
+};
+/** Technical patterns and test tone, admitted only by ?intro=fixture. Never final media. */
+export const introFixtures: Record<'desktop' | 'portrait', IntroMedia> = {
+  "desktop": {
+    "kind": "fixture",
+    "src": "/_diagnostics/intro/landscape.mp4",
+    "poster": "/_diagnostics/intro/poster.svg",
+    "sha256": "94dcb08bb683ec13ba01b1e959e82518466676e68b6ff2de028749dd7f934362",
+    "bytes": 475662,
+    "width": 1280,
+    "height": 720,
+    "duration": 23,
+    "logoAt": 20,
+    "revealAt": 22.2,
+    "audio": "embedded"
+  },
+  "portrait": {
+    "kind": "fixture",
+    "src": "/_diagnostics/intro/portrait.mp4",
+    "poster": "/_diagnostics/intro/poster.svg",
+    "sha256": "875e6beeb02f780edaf243808f9318d3dd661434635bce9c37feb2728426fc48",
+    "bytes": 423397,
+    "width": 720,
+    "height": 1280,
+    "duration": 23,
+    "logoAt": 20,
+    "revealAt": 22.2,
+    "audio": "embedded"
+  }
+};
+export function selectIntroMedia(fixture: boolean, portrait: boolean, delivery = introDelivery): IntroMedia | null {
+  if (fixture) return introFixtures[portrait ? 'portrait' : 'desktop'];
+  if (delivery.status !== 'ready') return null;
+  if (!validProductionMedia(delivery.desktop, false) || !validProductionMedia(delivery.portrait, true)) return null;
+  return portrait ? delivery.portrait : delivery.desktop;
+}
+
+export function validProductionMedia(media: IntroMedia | null, portrait: boolean): media is IntroMedia {
+  return Boolean(media && media.kind === 'production' && media.src.startsWith('/intro/') && media.poster.startsWith('/intro/')
+    && /^[a-f0-9]{64}$/.test(media.sha256) && media.bytes > 0 && media.bytes <= 16 * 1024 * 1024
+    && media.width === (portrait ? 1080 : 1920) && media.height === (portrait ? 1920 : 1080)
+    && Number.isFinite(media.duration) && media.duration >= 10 && media.duration <= 15
+    && Number.isFinite(media.logoAt) && media.logoAt >= 0 && media.logoAt + .8 <= media.revealAt
+    && Number.isFinite(media.revealAt) && media.revealAt <= media.duration - .4 && (media.audio === 'embedded' || media.audio === 'silent')
+    && (!media.ending || (media.audio === 'silent' && Number.isFinite(media.ending.logoSeconds) && media.ending.logoSeconds >= .8 && media.ending.logoSeconds <= 3
+      && media.logoAt + media.ending.logoSeconds <= media.revealAt + .00001
+      )));
+}

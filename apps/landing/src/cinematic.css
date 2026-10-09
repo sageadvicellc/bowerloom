@@ -18,15 +18,15 @@
 .cinematic-theme .copy-button { color: var(--ui-text); background: var(--ui-surface); border-color: var(--trellis-control-border); }
 .cinematic-theme :is(.copy-status, .hero-note, .hero-description, nav) { color: var(--ui-muted); }
 .cinematic-theme :is(h1, h2, h3) { color: var(--ui-text); }
-.cinematic-theme :is(.section-heading > p:last-child, .stage, .stage-number, .stage-arrow, .stage-detail p:last-child, .artifact > .eyebrow, .artifact-note, .toolkit-copy p, .toolkit-line, .toolkit-line i, .build-intro > p:not(.eyebrow), .alpha-boundary p, .site-footer p, .footer-note, nav a span) { color: var(--ui-muted); }
+.cinematic-theme :is(.section-heading > p:last-child, .stage, .stage-number, .stage-arrow, .stage-detail p:last-child, .artifact > .eyebrow, .artifact-note, .toolkit-copy p, .toolkit-line, .toolkit-line i, .build-intro > p:not(.eyebrow), .release-boundary p, .site-footer p, .footer-note, nav a span) { color: var(--ui-muted); }
 .cinematic-theme :is(.stage.active, .artifact strong, .site-footer > div) { color: var(--ui-text); }
 .cinematic-theme :is(.stage.active .stage-number, .stage.active .stage-arrow, .prompt-heading .eyebrow) { color: var(--trellis-link); }
-.cinematic-theme :is(.site-header, .stage-controls, .artifact, .toolkit-section, .toolkit-line, .prompt-heading, .copy-status, .site-footer, .alpha-label) { border-color: var(--ui-border); }
+.cinematic-theme :is(.site-header, .stage-controls, .artifact, .toolkit-section, .toolkit-line, .prompt-heading, .copy-status, .site-footer, .release-label) { border-color: var(--ui-border); }
 .cinematic-theme .toolkit-section { background: var(--ui-surface); }
-.cinematic-theme .alpha-boundary > .status-dot { background: var(--ui-primary); box-shadow: none; }
+.cinematic-theme .release-boundary > .status-dot { background: var(--ui-primary); box-shadow: none; }
 .cinematic-theme .copy-button { min-height: 44px; }
 .cinematic-theme .status-dot { box-shadow: none; }
-.cinematic-theme .alpha-label { background: var(--trellis-soft-accent-2); color: var(--ui-text); }
+.cinematic-theme .release-label { background: var(--trellis-soft-accent-2); color: var(--ui-text); }
 .cinematic-theme :where(button, a, input, textarea, select):focus-visible {
   outline: 2px solid var(--ui-primary);
   outline-offset: 3px;
@@ -84,7 +84,7 @@
 @media (prefers-reduced-motion: reduce) { .cinematic-world { scroll-behavior: auto; } }
 
 /* Founder-requested mono floor; heading and body type stay unchanged. */
-.cinematic-theme :is(.eyebrow, .alpha-label, .hero-note, .stage-number, .artifact-note, .toolkit-line, .alpha-boundary strong, .copy-status, .site-footer p, .footer-note, .cinematic-label, .cinematic-bottom [role="status"]) {
+.cinematic-theme :is(.eyebrow, .release-label, .hero-note, .stage-number, .artifact-note, .toolkit-line, .release-boundary strong, .copy-status, .site-footer p, .footer-note, .cinematic-label, .cinematic-bottom [role="status"]) {
   font-size: var(--trellis-mono-label-size);
   line-height: 1.6;
 }
@@ -108,7 +108,7 @@
 }
 
 /* Reading copy uses the chosen face; utility text remains Projection mono. */
-.cinematic-theme :is(.cinematic-description, .cinematic-chapter > p:last-child, .section-heading > p:last-child, .stage-detail p:last-child, .toolkit-copy p, .build-intro > p:not(.eyebrow), .alpha-boundary p, .cinematic-transcript) {
+.cinematic-theme :is(.cinematic-description, .cinematic-chapter > p:last-child, .section-heading > p:last-child, .stage-detail p:last-child, .toolkit-copy p, .build-intro > p:not(.eyebrow), .release-boundary p, .cinematic-transcript) {
   font-size: 18px;
   font-weight: 400;
   line-height: 1.65;
@@ -180,14 +180,14 @@
 @media (max-width: 1100px) {
   .cinematic-theme nav { gap: 20px; }
   .cinematic-theme .site-header { gap: 20px; }
-  .cinematic-theme .alpha-label { margin-left: 0; }
+  .cinematic-theme .release-label { margin-left: 0; }
 }
 @media (max-width: 760px) {
   .site-header { height: auto; min-height: 75px; flex-wrap: wrap; padding-top: 20px; padding-bottom: 12px; }
   nav { order: 2; width: 100%; margin: 0; flex-wrap: wrap; gap: 0 20px; }
   nav > a { min-height: 44px; display: inline-flex; align-items: center; }
   nav > a:first-child { display: inline-flex; }
-  .alpha-label { display: inline-flex; margin-left: auto; padding: 6px 8px; font-size: 13px; }
+  .release-label { display: inline-flex; margin-left: auto; padding: 6px 8px; font-size: 13px; }
   .product-section, .faq-section { padding: 36px 6%; }
   .product-section { display: block; }
   .product-section h2 { margin-bottom: 22px; }
@@ -214,3 +214,18 @@
 .cinematic-theme .offer-controls button { color: var(--trellis-link); }
 .cinematic-theme .offer-controls button[aria-pressed="true"] { color: var(--ui-primary-fg); }
 .cinematic-theme p code { color: var(--ui-text); }
+
+/* One approved lab scene: keep its visible illustration boundary clear of the hero. */
+.cinematic-stage, .cinematic-static .cinematic-stage { padding-bottom: 210px; }
+.cinematic-copy { max-height: calc(100svh - 250px); }
+.cinematic-illustration-note { max-width: 94ch; }
+.cinematic-approval-note { margin-top: 8px; color: var(--ui-text); font: 14px/1.6 var(--ui-font); }
+@media (max-width: 1100px) and (min-width: 861px) and (pointer: fine) {
+  .cinematic-bottom { flex-direction: column; gap: 8px; }
+  .cinematic-stage, .cinematic-static .cinematic-stage { padding-bottom: 260px; }
+  .cinematic-copy { max-height: calc(100svh - 300px); }
+}
+@media (max-width: 860px), (pointer: coarse) {
+  .cinematic-stage, .cinematic-static .cinematic-stage { padding: 0; }
+  .cinematic-copy { max-height: none; }
+}

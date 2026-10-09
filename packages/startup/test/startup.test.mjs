@@ -183,7 +183,7 @@ for (const profile of ['engineer', 'founder', 'research']) test(`${profile} prof
   const { input } = fixture(t);
   input.brief.profile = profile;
   const plan = await planStartup(input);
-  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1alpha2');
+  assert.equal(plan.templateVersion, 'bowerloom/startup-template/v1beta4');
   assert.equal(plan.input.brief.profile, profile);
   const labels = { engineer: ['Engineering lead', 'Implementation maker', 'Code reviewer'], founder: ['Startup lead', 'Operations maker', 'Claims reviewer'], research: ['Experiment lead', 'Protocol maker', 'Methods reviewer'] };
   assert.deepEqual(plan.compiled.definition.owners.map(owner => owner.role), labels[profile]);
@@ -213,7 +213,7 @@ test('historical v1alpha1 receipt inspects without rewrite, default injection or
   const { input } = fixture(t);
   const historic = JSON.parse(fs.readFileSync(new URL('./fixtures/scaffold-v1alpha1.json', import.meta.url), 'utf8'));
   const currentPlan = await planStartup(input);
-  const body = { format: currentPlan.format, templateVersion: historic.templateVersion, input: { mode: input.mode, targetDir: input.targetDir, brief: historic.brief }, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const body = { format: 'bowerloom/startup-plan/v1alpha1', templateVersion: historic.templateVersion, input: { mode: input.mode, targetDir: input.targetDir, brief: historic.brief }, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
   const plan = { ...body, revision: digest(canonicalJson(body)) };
   const root = join(input.targetDir, '.bowerloom'); fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   for (const file of historic.files) { const path = join(root, file.path); fs.mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path, file.text, { mode: 0o600 }); }
@@ -239,4 +239,131 @@ test('expanded technical review remains escaped and inspectable for a maximum-si
   assert.ok(review.text.includes('&lt;script&gt;'));assert.ok(!review.text.includes('<script>'));
   await applyStartup(input, plan.revision);
   assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+for (const historical of ['v1alpha2', 'v1beta2']) {
+const historicalFixture = JSON.parse(fs.readFileSync(new URL(`./fixtures/scaffold-${historical}.json`, import.meta.url), 'utf8'));
+for (const historic of historicalFixture.cases) test(`historical ${historical} ${historic.brief.profile} receipt preserves all bytes and rejects reused approval`, async t => {
+  const { input } = fixture(t);
+  input.brief = historic.brief;
+  const currentPlan = await planStartup(input);
+  const body = { format: 'bowerloom/startup-plan/v1alpha1', templateVersion: historicalFixture.templateVersion, input: currentPlan.input, binding: currentPlan.binding, files: historic.files, compiled: historic.compiled, specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  const plan = { ...body, revision: digest(canonicalJson(body)) };
+  assert.notEqual(plan.revision, currentPlan.revision);
+  await assert.rejects(applyStartup(input, plan.revision), code('STALE_APPROVAL'));
+  assert.equal(fs.existsSync(input.targetDir), false);
+  const root = join(input.targetDir, '.bowerloom'); fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  for (const file of historic.files) { const path = join(root, file.path); fs.mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path, file.text, { mode: 0o600 }); }
+  const identity = path => { const stat = fs.lstatSync(path, { bigint: true }); return { device: String(stat.dev), inode: String(stat.ino), birthtimeNs: String(stat.birthtimeNs), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 }; };
+  const receipt = { format: 'bowerloom/startup-receipt/v1alpha1', plan, installedTargetIdentity: identity(input.targetDir), installedBowerloomIdentity: identity(root), specReady: true, runtimeReady: false, executionAuthorized: false, reviewRequired: true };
+  fs.writeFileSync(join(root, 'installation-receipt.json'), JSON.stringify(receipt), { mode: 0o600 });
+  const paths = [...historic.files.map(file => file.path), 'installation-receipt.json'];
+  const before = paths.map(path => fs.readFileSync(join(root, path)));
+  for (let pass = 0; pass < 2; pass++) {
+    const result = await inspectStartup(input.targetDir);
+    assert.equal(result.specReady, true); assert.equal(result.revision, plan.revision);
+    assert.equal(result.compiledCandidate, historic.compiled.candidateRevision);
+    assert.deepEqual(paths.map(path => fs.readFileSync(join(root, path))), before);
+  }
+  assert.equal(fs.existsSync(join(root, 'optional-controls.md')), historical === 'v1beta2');
+  await assert.rejects(planStartup({ ...input, mode: 'existing' }), code('BOWERLOOM_EXISTS'));
+  fs.appendFileSync(join(root, 'startup-review.md'), 'changed');
+  assert.ok((await inspectStartup(input.targetDir)).drift.some(item => item.path === '.bowerloom/startup-review.md' && item.kind === 'changed'));
+});
+
+}
+
+test('installed handoff exposes the actual project, goal and decision without expanding technical contents', async t => {
+  const { input } = fixture(t);
+  input.brief.projectName = 'My website project'; input.brief.goal = 'Plan the pages for my ceramics website';
+  const plan = await planStartup(input);
+  await applyStartup(input, plan.revision);
+  const root = join(input.targetDir, '.bowerloom');
+  const start = fs.readFileSync(join(root, 'START-HERE.md'), 'utf8');
+  const review = fs.readFileSync(join(root, 'startup-review.md'), 'utf8');
+  const visible = review.replace(/<details>[\s\S]*?<\/details>/g, '');
+  for (const document of [start.replace(/<details>[\s\S]*?<\/details>/g, ''), visible]) {
+    assert.ok(document.includes(input.brief.projectName)); assert.ok(document.includes(input.brief.goal));
+    assert.match(document, /do not need to read YAML or JSON/i);
+    assert.match(document, /Discussion alone does not approve a change/);
+    assert.doesNotMatch(document, /Revise apply requires both the exact old installation revision/);
+    assert.match(document, /revision-pending/);
+    assert.match(document, /optional-controls\.md/);
+    assert.doesNotMatch(document, /Then read brief\.json|Read the goal in brief\.json/);
+  }
+  assert.ok(visible.includes('Your first decision')); assert.ok(visible.includes('Accepting the direction does not start work'));
+  for (const owner of plan.compiled.definition.owners) assert.ok(visible.includes(owner.role));
+  const technical = JSON.parse(review.match(/<pre>([\s\S]*)<\/pre>/)[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+  assert.deepEqual(technical.files, plan.files.filter(file => file.path !== 'startup-review.md'));
+  assert.deepEqual(technical.compiled, plan.compiled);
+  const before = plan.files.map(file => fs.readFileSync(join(root, file.path)));
+  await assert.rejects(planStartup({ ...input, mode: 'existing', brief: { ...input.brief, goal: 'Discussed but not approved change' } }), code('BOWERLOOM_EXISTS'));
+  assert.deepEqual(plan.files.map(file => fs.readFileSync(join(root, file.path))), before);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+test('optional control instructions preserve separate approval, local scope and uncertain-stop limits', async t => {
+  const { input } = fixture(t);
+  const plan = await planStartup(input);
+  const guide = plan.files.find(file => file.path === 'optional-controls.md').text;
+  for (const command of ['init status --target', 'link plan --from', 'link apply --from', 'link read --connection', 'link revoke --connection', 'destruct first-team --root', 'destruct all']) assert.ok(guide.includes(command));
+  assert.ok(guide.includes('--approve REVISION')); assert.ok(guide.includes('--registry /absolute/private-registry'));
+  assert.ok(guide.includes('This setup enrolls no work')); assert.ok(guide.includes('unrelated personal-agent session'));
+  assert.ok(guide.includes('does not erase copies already read')); assert.ok(guide.includes('STOP_UNCONFIRMED'));
+  assert.ok(guide.includes('Do not treat a timeout as success')); assert.ok(guide.includes('No handoff is required'));
+  assert.equal(plan.runtimeReady, false); assert.equal(plan.executionAuthorized, false);
+});
+
+test('visible project and goal treat markup as data while the raw brief remains exact', async t => {
+  const { input } = fixture(t);
+  input.brief.projectName = '[Pretend link](https://example.invalid) <script>';
+  input.brief.goal = '</details>\n# Fake approval\n<script>alert(1)</script>';
+  const plan = await planStartup(input);
+  for (const path of ['START-HERE.md', 'startup-review.md']) {
+    const visible = plan.files.find(file => file.path === path).text.split('<details>')[0];
+    assert.ok(!visible.includes('<script>')); assert.ok(!visible.includes('</details>'));
+    assert.ok(!visible.includes('\n# Fake approval')); assert.ok(visible.includes('&lt;script&gt;'));
+    assert.ok(!visible.includes('[Pretend link](https://example.invalid)'));
+  }
+  assert.equal(JSON.parse(plan.files.find(file => file.path === 'brief.json').text).goal, input.brief.goal);
+  await applyStartup(input, plan.revision);
+  assert.equal((await inspectStartup(input.targetDir)).specReady, true);
+});
+
+test('frozen beta3 source matches its previously shipped templates except version-local import paths', () => {
+  const source=fs.readFileSync(new URL('../src/scaffold-v1beta3.ts',import.meta.url),'utf8').replace("from './handoff-v1beta3.js'", "from './handoff.js'");
+  const handoff=fs.readFileSync(new URL('../src/handoff-v1beta3.ts',import.meta.url),'utf8').replace("from './scaffold-v1beta3.js'", "from './scaffold.js'");
+  assert.equal(digest(source),'9dcf64d0ac4e0dd211b19e82fac223967fd0007542729bd1fda1337a118fa719');
+  assert.equal(digest(handoff),'6aea606ea3c379eb10924603fb84c39bf86b2fe0e1be48c30d1bb455d4517ba2');
+});
+
+for(const profile of ['engineer','founder','research'])test(`beta4 ${profile} first-read copy accounts for receipt and retains all revision rules in details`,async t=>{
+  const {input}=fixture(t);input.brief.profile=profile;const plan=await planStartup(input);
+  const find=path=>plan.files.find(file=>file.path===path).text;
+  const frozen=await import('../../../dist/packages/startup/src/handoff-v1beta3.js');
+  assert.equal(plan.files.length,20);assert.match(renderStartupReview(plan),/Creates 20 setup files and a private installation receipt/);
+  assert.match(renderStartupReview(plan),/Keep the receipt out of shared definitions/);
+  assert.match(find('startup-review.md'),/creates 20 setup files and a private installation receipt/);
+  assert.match(find('startup-review.md'),/installation-receipt\.json.*private machine-specific evidence/);
+  for(const path of ['START-HERE.md','startup-review.md']) {
+    const text=find(path),visible=text.replace(/<details>[\s\S]*?<\/details>/g,'');
+    assert.match(visible,/Discussion alone does not approve a change/);
+    assert.match(visible,/revision-pending.*keep work stopped/);
+    assert.doesNotMatch(visible,/Revise apply requires both|private backup|explicit resume or rollback/);
+    assert.ok(text.includes(frozen.refinementGuidance),'Every original revision/recovery rule remains verbatim in optional details');
+    assert.match(text,/<summary>Revision approval, backup, and recovery rules<\/summary>/);
+  }
+  const guide=find('optional-controls.md');assert.match(guide,/installed `bowerloom` command/);assert.doesNotMatch(guide,/node dist\/|built Bowerloom checkout/);
+  for(const command of ['init status','link plan','link apply','link read','link revoke','destruct first-team','destruct all'])assert.ok(guide.includes('bowerloom '+command));
+  const agreement=find('working-agreement.md');assert.equal(agreement,find('teams/first-team/assets/working-agreement.md'));
+  assert.doesNotMatch(agreement,/a engineering|a experiment|deterministic/);
+  if(profile==='engineer')assert.match(agreement,/an engineering lead/);
+  if(profile==='research')assert.match(agreement,/an experiment lead/);
+  assert.match(agreement,/when you review proposed work/);assert.match(agreement,/runtime, the software that runs the team/);
+  assert.doesNotMatch(find('skills/personal-assistant/SKILL.md'),/deterministic scaffold/);
+  const receipt=await applyStartup(input,plan.revision);
+  assert.equal(receipt.executionAuthorized,false);assert.equal((await inspectStartup(input.targetDir)).specReady,true);
+  const root=join(input.targetDir,'.bowerloom');
+  const inventory=[];const walk=base=>{for(const entry of fs.readdirSync(join(root,base),{withFileTypes:true})){const path=base?base+'/'+entry.name:entry.name;if(entry.isDirectory())walk(path);else inventory.push(path);}};walk('');
+  assert.deepEqual(inventory.sort(),[...plan.files.map(file=>file.path),'installation-receipt.json'].sort());
 });

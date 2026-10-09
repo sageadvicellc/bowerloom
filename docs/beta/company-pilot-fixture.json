@@ -1,0 +1,32 @@
+{
+  "schema": "bowerloom/company-pilot-fixture/v1",
+  "synthetic": true,
+  "purpose": "Shared-company beta access and personal-installation isolation tests",
+  "emailDelivery": "disabled",
+  "liveAccountsCreated": false,
+  "people": [
+    {
+      "id": "cast-hanna",
+      "displayName": "Hanna (test persona)",
+      "email": "hanna@example.test"
+    },
+    {
+      "id": "cast-miki",
+      "displayName": "Miki (test persona)",
+      "email": "miki@example.test"
+    },
+    {
+      "id": "cast-s4-g3",
+      "displayName": "S4-G3 (test persona)",
+      "email": "s4-g3@example.test"
+    }
+  ],
+  "projectData": "synthetic-only",
+  "authority": "Identity fixtures grant no access. Each test must declare explicit memberships and resource grants.",
+  "limits": [
+    "No real employee addresses or credentials",
+    "No email invitations or external delivery",
+    "No real business data",
+    "Test accounts only, distinct from any real person or production identity"
+  ]
+}
