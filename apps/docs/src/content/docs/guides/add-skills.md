@@ -313,7 +313,7 @@ To keep a skill inside one project, use `bowerloom skill create <name>` instead.
 - Use relative links only, and only to files inside the same skill folder.
 - Use the MIT or the Apache-2.0 license, and no other. Include a license file named `LICENSE` or `NOTICE`. Its text must contain "MIT License" or "Apache License".
 - Write every other file as `.md`, `.txt`, `.json`, `.yaml`, `.yml`, or `.csv`.
-- Start `SKILL.md` with front matter. The allowed keys are `name`, `description`, `license`, `compatibility`, and `metadata`. The `name` must equal the skill name. The `description` is required. If `license` is `MIT` or `Apache-2.0`, it must match the license you ship. The front matter is at most 8 KiB.
+- Start `SKILL.md` with front matter. The allowed keys are `name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools`. The `allowed-tools` value is one line of text, at most 1024 bytes, with no control characters. Claude Code pre-approves those tools while the skill is active, so the add plan prints it as an `Allowed tools:` line before you approve. The `name` must equal the skill name. The `description` is required. If `license` is `MIT` or `Apache-2.0`, it must match the license you ship. The front matter is at most 8 KiB.
 - For Git, set every file to mode 100644, with no executable files. Select every file in the skill folder.
 - Name the skill with lowercase letters, digits, and single hyphens, up to 64 characters.
 - Keep the package working folder out of iCloud Drive.
