@@ -318,7 +318,7 @@ To keep a skill inside one project, use `bowerloom skill create <name>` instead.
 - Name the skill with lowercase letters, digits, and single hyphens, up to 64 characters.
 - Keep the package working folder out of iCloud Drive.
 
-A selection holds at most 128 files. Each file is at most 65,536 bytes. The whole selection is at most 2,097,152 bytes. `skills.json` holds at most 32 skills and 1 MiB, and one sync handles at most 64.
+A selection holds at most 128 files. Each file is at most 65,536 bytes. The whole selection is at most 2,097,152 bytes. `skills.json` holds at most 128 skills, local and pinned together, and 1 MiB. One sync handles at most 256, counting the skills that `skills.json` no longer names.
 
 ### Ask your agent to package the skills
 

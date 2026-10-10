@@ -13,7 +13,7 @@ const MESSAGES = {
   SKILLS_OFFLINE: 'A pinned skill is not in this machine\'s cache yet. Nothing in the project changed.',
   SKILLS_SYNC_CONTENT_MISMATCH: 'The bytes Bowerloom holds for a skill do not match the pins and file hashes in .bowerloom/skills.json. Nothing in the project changed.',
   SKILLS_SYNC_INTERRUPTED: 'skills sync stopped between two skills, as asked. Each skill it finished is complete; no skill was left half done.',
-  SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 64 skills at most, counting the skills that are no longer in skills.json.',
+  SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 256 skills at most, counting the skills that are no longer in skills.json.',
   SKILLS_CACHE_RECOVERY_REQUIRED: 'The private skills cache holds an unfinished or unclear operation for a pin, and every operation id of that pin is used.',
   SKILLS_STATE_UNSAFE: 'The private state folder is not safe to use. Each folder must be a real folder you own, with no write access for others, and Bowerloom\'s own folders must be mode 0700.',
   SKILLS_RECOVER_NOTHING: 'This item has no unfinished operation to recover.',
