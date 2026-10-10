@@ -94,7 +94,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `MANIFEST_PIN_NOT_EXACT` | A pin that can move installs different files on different machines. | Run `bowerloom help skills`. |
 | `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill. |
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
-| `MANIFEST_LIMIT` | `skills.json` holds at most 32 skills and 1 MiB. | Run `bowerloom skills check`. |
+| `MANIFEST_LIMIT` | `skills.json` holds at most 128 skills, local and pinned together, and 1 MiB. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
 | `SKILLS_ADD_SOURCE_CHANGED` | `--replace` keeps the npm package or GitHub repository and moves only its version or commit. | Add the other source under a new id. |
@@ -108,7 +108,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `SKILLS_OFFLINE` | `--offline` found a pin that needs a fetch. Nothing changed in the project. | Run `bowerloom skills sync` without `--offline`. |
 | `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom stopped before any change to the project. | Run `bowerloom skills check`. |
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
-| `SKILLS_SYNC_LIMIT` | A sync handles at most 64 skills at once. | Run `bowerloom skills check`. |
+| `SKILLS_SYNC_LIMIT` | A sync handles at most 256 skills at once. | Run `bowerloom skills check`. |
 | `SKILLS_CACHE_RECOVERY_REQUIRED` | The private cache needs a look before this pin can be read. | Run `bowerloom help advanced`. |
 | `SKILLS_STATE_UNSAFE` | The private state folder is not one that only you can change. | Check `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. |
 | `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. | Move the named entry out with `mv`. |

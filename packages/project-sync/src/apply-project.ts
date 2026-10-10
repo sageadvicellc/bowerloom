@@ -29,7 +29,7 @@ import { applyChildren, createPrivateFolders, interrupted, prepareSkillChildren 
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
-import { checkProjectAncestry, ignoreCarrier, isActionable, observeSync, pendingRefusal, stateLayout } from './plan.js';
+import { bindPrivateState, checkProjectAncestry, ignoreCarrier, isActionable, observeSync, pendingRefusal, stateLayout } from './plan.js';
 import type { SyncItem, SyncPlan } from './plan.js';
 import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, registeredPrompts } from './prompts.js';
 import type { PromptItem } from './prompts.js';
@@ -158,7 +158,10 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       managed: { ignore }, actionable: skillWork.length + promptWork.length > 0, pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
-    return { plan: freezeSkillData({ ...body, revision: revisionOf(body) }) as ApplyPlan, entries };
+    // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
+    // sync in another project that fills the machine cache, or creates a shared folder, does not stale this plan.
+    const binding = { ...body, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState) };
+    return { plan: freezeSkillData({ ...body, revision: revisionOf(binding) }) as ApplyPlan, entries };
   } catch (e) { throw outward(e); }
 }
 

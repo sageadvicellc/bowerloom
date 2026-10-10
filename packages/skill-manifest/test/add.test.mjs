@@ -36,8 +36,9 @@ test('addLocalEntry is pure: it starts a manifest for both harnesses and returns
   for (const id of ['personal-assistant', 'prompt-x', 'Bad', '../x', '']) assert.throws(() => addLocalEntry(null, id, []), code('MANIFEST_INVALID'), id);
   assert.throws(() => addLocalEntry(null, 'ok', ['Bad Team']), code('MANIFEST_INVALID'));
   assert.throws(() => addLocalEntry(null, 'ok', ['a', 'a']), code('MANIFEST_INVALID'));
-  let full = null; for (let i = 0; i < 32; i++) full = addLocalEntry(full, `s-${i}`, []);
-  assert.throws(() => addLocalEntry(full, 's-32', []), code('MANIFEST_LIMIT'));
+  let full = null; for (let i = 0; i < 128; i++) full = addLocalEntry(full, `s-${i}`, []);
+  assert.equal(full.skills.length, 128);
+  assert.throws(() => addLocalEntry(full, 's-128', []), code('MANIFEST_LIMIT'));
   assert.throws(() => addLocalEntry({ format: 'forged', harnesses: [], skills: [] }, 'x', []), code('MANIFEST_INVALID'));
 });
 
@@ -140,4 +141,16 @@ test('checkManifest reports a valid file, and refuses an absent or invalid one w
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_PIN_NOT_EXACT'));
   fs.writeFileSync(p.file, fs.readFileSync(p.file, 'utf8').replace('"^0.0.1"', '"0.0.1"').replace(/"spdx": "MIT"/, '"spdx": "GPL-3.0"'));
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_LICENSE_UNSUPPORTED'));
+});
+
+test('skills add plans a pinned entry next to 127 others and refuses the 129th: local and pinned share the count of 128', t => {
+  const write = (p, n) => { let m = null; for (let i = 0; i < n; i++) m = addLocalEntry(m, `s-${i}`, []); fs.writeFileSync(p.file, serializeManifest(m), { mode: 0o644 }); fs.chmodSync(p.file, 0o644); };
+  const room = project(t); write(room, 32);
+  assert.equal(parseManifest(Buffer.from(planManifestChange(room.dir, { add: npmEntry() }).text)).skills.length, 33);
+  const last = project(t); write(last, 127);
+  const plan = planManifestChange(last.dir, { add: npmEntry() });
+  assert.equal(parseManifest(Buffer.from(plan.text)).skills.length, 128);
+  const full = project(t); write(full, 128);
+  assert.throws(() => planManifestChange(full.dir, { add: npmEntry() }), code('MANIFEST_LIMIT'));
+  assert.equal(checkManifest(full.dir).skills.length, 128);
 });

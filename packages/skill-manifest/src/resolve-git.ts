@@ -11,6 +11,7 @@
  * repository root. Git has no registry field, so the license comes from the exact header of that file. A license
  * outside the skill folder is always a direct child of a walked tree, which the Git planner requires.
  * The proposal is then checked by verifyGitPayload against the same bytes before it is returned.
+ * `resolveGitVerified` also returns those bytes, so `skills add` can keep them in the machine's skills cache.
  */
 import { createHash } from 'node:crypto';
 import { GIT_LIMITS, GitAcquisitionError, planGitAcquisition, verifyGitPayload } from '../../skill-sources/src/git.js';
@@ -23,7 +24,7 @@ import { GIT_HOST, compare, isCommit } from './schema.js';
 import type { GitSource, PinnedContent } from './schema.js';
 import type { PublicTransport } from './public-get.js';
 import { CONTENT_LIMITS, LICENSE_NAME, checkBounds, fetchBytes, fetchedJson, licenseFolders, licenseHeader, pinnedContent, sha256, skillFilePath, text } from './content.js';
-import type { SelectedFile } from './content.js';
+import type { SelectedFile, VerifiedPin } from './content.js';
 import { toGitRequest, probeBinding } from './requests.js';
 
 export type ResolvedGit = PinnedContent<GitSource>;
@@ -70,6 +71,10 @@ function blob(bytes: Buffer, id: string, size: number): Buffer {
 const unsafeKind = (r: Row) => { requireManifest(r.mode !== '120000' && r.mode !== '160000' && r.type !== 'commit', 'SKILLS_ADD_UNSAFE_CONTENT'); };
 
 export async function resolveGit(specValue: unknown, transport: PublicTransport, signal: AbortSignal): Promise<ResolvedGit> {
+  return (await resolveGitVerified(specValue, transport, signal)).content;
+}
+/** The entry, and the commit bytes and Git payload it was verified against. */
+export async function resolveGitVerified(specValue: unknown, transport: PublicTransport, signal: AbortSignal): Promise<VerifiedPin<ResolvedGit>> {
   const spec = checkSpec(specValue, 'github') as GitSpec;
   requireManifest(signal instanceof AbortSignal && !signal.aborted, 'SKILLS_ADD_NETWORK');
   const api = `https://api.github.com/repos/${spec.repository}/git`, segments = spec.path.split('/');
@@ -125,11 +130,12 @@ export async function resolveGit(specValue: unknown, transport: PublicTransport,
   const { texts: _texts, ...content } = pinnedContent(source, spec.path, files.map(({ sha: _sha, ...f }) => f), spdx, headers.map(c => c.path));
 
   // The existing verifier decides, against the bytes that were read: the listings and only the selected blobs.
+  let payload: Buffer;
   try {
     const plan = planGitAcquisition(toGitRequest({ id: content.skill.name, ...content }), probeBinding());
     const selected = [...new Set(files.map(f => f.sha))].sort(compare);
-    const payload = Buffer.from(JSON.stringify({ trees: listings.map(b => b.toString('base64')), blobs: selected.map(id => ({ sha: id, body: read.get(id)!.response.toString('base64') })) }));
+    payload = Buffer.from(JSON.stringify({ trees: listings.map(b => b.toString('base64')), blobs: selected.map(id => ({ sha: id, body: read.get(id)!.response.toString('base64') })) }));
     await verifyGitPayload(plan, metadata, payload, signal, () => { if (signal.aborted) throw manifestRefusal('SKILLS_ADD_NETWORK'); });
   } catch (error) { if (isManifestRefusal(error)) throw error; if (error instanceof GitAcquisitionError || error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; }
-  return content;
+  return { content, bytes: { kind: 'git', metadata: Buffer.from(metadata), data: payload } };
 }

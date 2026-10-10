@@ -7,6 +7,7 @@ import { planSync, applySync, SYNC_PLAN_FORMAT } from '../../../dist/packages/pr
 import { planManagedItem } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
 import { revisionOf } from '../../../dist/packages/skill-sources/src/validation.js';
+import { syncBinding } from '../../../dist/packages/project-sync/src/plan.js';
 import { denyNetwork, npmPackage, localEntry, syncProject, writeManifest, localSkill, fakeAcquirer, noAcquirer, prefill, exactTree, read, exists, deps, code, byId } from './sync-fixture.mjs';
 
 const network = denyNetwork();
@@ -20,7 +21,7 @@ test('a first plan classifies needs-fetch, cached and local, binds every input a
   const before = exactTree(f.base), plan = await planSync(f.input());
   assert.equal(plan.format, SYNC_PLAN_FORMAT); assert.equal(plan.writesAuthorized, false); assert.equal(plan.executionAuthorized, false);
   assert.match(plan.revision, /^[a-f0-9]{64}$/);
-  const { revision, ...body } = plan; assert.equal(revisionOf(body), revision);
+  const { revision, ...body } = plan; assert.equal(revisionOf(syncBinding(body)), revision);
   assert.deepEqual(plan.harnesses, ['claude', 'codex']); assert.equal(plan.team, null); assert.equal(plan.offline, false);
   assert.equal(plan.project.dir, f.projectDir); assert.deepEqual(plan.project.identity, f.project().identity);
   assert.equal(plan.manifest.sha256.length, 64); assert.equal(plan.manifest.bytes, fs.statSync(path.join(f.projectDir, '.bowerloom/skills.json')).size);

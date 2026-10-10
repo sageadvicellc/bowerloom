@@ -30,6 +30,11 @@ export interface ManifestChangePlan {
   change: { add: Entry } | { replace: { from: Entry; to: Entry } };
   /** The exact new bytes of skills.json. */
   text: string;
+  /**
+   * The machine's skills cache, when `skills add` keeps the bytes it verified there after the write (Hanna, global
+   * skill cache). Named so the approval covers it. Absent for a change that keeps no bytes.
+   */
+  cache?: { root: string };
   writesAuthorized: false; executionAuthorized: false;
   revision: string;
 }
@@ -114,8 +119,10 @@ export function replaceTarget(skills: readonly Entry[], entry: Entry): Entry {
  * A replace keeps the id, the kind and the package or repository; the version or commit, the folder and the teams
  * come from the new entry. Like an add, it binds the sha256 of skills.json as it stands.
  */
-export function planManifestChange(project: string, change: ManifestChange): ManifestChangePlan {
+export function planManifestChange(project: string, change: ManifestChange, options: { cacheRoot?: string } = {}): ManifestChangePlan {
   const state = readManifestState(project);
+  const cacheRoot = options?.cacheRoot;
+  requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
   requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace')), 'MANIFEST_INVALID');
   const replacing = 'replace' in change;
   const entry = validateEntry(replacing ? change.replace : change.add);
@@ -139,7 +146,7 @@ export function planManifestChange(project: string, change: ManifestChange): Man
     format: MANIFEST_CHANGE_FORMAT, project, manifest: MANIFEST_PATH, bowerloom: state.bowerloom,
     before: state.file ? { sha256: state.file.sha256, bytes: state.file.bytes.length } : null,
     after: { sha256: sha256(text), bytes: Buffer.byteLength(text) },
-    change: from ? { replace: { from, to: written } } : { add: written }, text, writesAuthorized: false, executionAuthorized: false,
+    change: from ? { replace: { from, to: written } } : { add: written }, text, ...(cacheRoot !== undefined ? { cache: { root: cacheRoot } } : {}), writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: revisionOf(body) };
 }
@@ -166,7 +173,9 @@ export function applyManifestChange(plan: ManifestChangePlan, revision: string, 
   held.assertHeld(plan.project);
   const { revision: claimed, ...body } = plan;
   if (typeof revision !== 'string' || revision !== claimed || revisionOf(body) !== revision) throw stale();
-  const again = planManifestChange(plan.project, changeOf(plan));
+  const cache = (plan as { cache?: unknown }).cache;
+  requireManifest(cache === undefined || (cache !== null && typeof cache === 'object' && typeof (cache as { root?: unknown }).root === 'string'), 'STALE_APPROVAL');
+  const again = planManifestChange(plan.project, changeOf(plan), cache === undefined ? {} : { cacheRoot: (cache as { root: string }).root });
   if (again.revision !== revision) throw stale();
   const folder = join(plan.project, '.bowerloom'), target = join(folder, MANIFEST_FILE);
   const temp = join(folder, `.${MANIFEST_FILE}.${randomBytes(8).toString('hex')}.tmp`);

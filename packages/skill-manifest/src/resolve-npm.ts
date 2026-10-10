@@ -11,6 +11,7 @@
  * skill folder. A license file outside the skill folder keeps its package path as `sourcePath`, and its file name as
  * `path`, which the npm planner accepts for a license file anywhere in the package.
  * The proposal is then checked by verifyNpmPayload against the same bytes before it is returned.
+ * `resolveNpmVerified` also returns those bytes, so `skills add` can keep them in the machine's skills cache.
  */
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
@@ -25,7 +26,7 @@ import { NPM_REGISTRY } from './schema.js';
 import type { NpmSource, PinnedContent } from './schema.js';
 import type { PublicTransport } from './public-get.js';
 import { LICENSE_NAME, LICENSE_TEXT, fetchBytes, fetchedJson, licenseFolders, pinnedContent, sha256, skillFilePath, text } from './content.js';
-import type { SelectedFile } from './content.js';
+import type { SelectedFile, VerifiedPin } from './content.js';
 import { toNpmRequest, probeBinding } from './requests.js';
 
 export type ResolvedNpm = PinnedContent<NpmSource>;
@@ -39,6 +40,10 @@ function declaredLicense(value: unknown): SkillLicense {
 const unsafe = (work: () => void): void => { try { work(); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; } };
 
 export async function resolveNpm(specValue: unknown, transport: PublicTransport, signal: AbortSignal): Promise<ResolvedNpm> {
+  return (await resolveNpmVerified(specValue, transport, signal)).content;
+}
+/** The entry, and the metadata and archive bytes it was verified against. */
+export async function resolveNpmVerified(specValue: unknown, transport: PublicTransport, signal: AbortSignal): Promise<VerifiedPin<ResolvedNpm>> {
   const spec = checkSpec(specValue, 'npm') as NpmSpec;
   requireManifest(signal instanceof AbortSignal && !signal.aborted, 'SKILLS_ADD_NETWORK');
   const base = spec.package.split('/').at(-1)!;
@@ -95,5 +100,5 @@ export async function resolveNpm(specValue: unknown, transport: PublicTransport,
     const plan = planNpmAcquisition(toNpmRequest({ id: content.skill.name, ...content }), probeBinding());
     await verifyNpmPayload(plan, metadata, archive, signal, () => { if (signal.aborted) throw manifestRefusal('SKILLS_ADD_NETWORK'); });
   } catch (error) { if (isManifestRefusal(error)) throw error; if (error instanceof NpmAcquisitionError || error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; }
-  return content;
+  return { content, bytes: { kind: 'npm', metadata: Buffer.from(metadata), data: Buffer.from(archive) } };
 }

@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { denyNetwork } from './support/fixtures.mjs';
 import { npmCollections, gitVerificationLoop, privateFolder } from './support/expected.mjs';
-import { parseManifest, serializeManifest, MANIFEST_FORMAT } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, serializeManifest, MANIFEST_FORMAT, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { manifestRefusal } from '../../../dist/packages/skill-manifest/src/refusal.js';
 import { toNpmRequest, toGitRequest } from '../../../dist/packages/skill-manifest/src/requests.js';
 import { parseSkillSpec } from '../../../dist/packages/skill-manifest/src/spec.js';
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
@@ -118,12 +119,26 @@ test('absolute paths, traversal, hidden segments and a local path other than ski
   ]) assert.throws(parsing(mutate), code('MANIFEST_INVALID'), mutate.toString());
 });
 
-test('at most 32 skills and 1 MiB', () => {
-  const many = n => { const m = sample(); m.skills = Array.from({ length: n }, (_, i) => ({ id: `local-${String(i).padStart(2, '0')}`, source: { kind: 'local', path: `skills/local-${String(i).padStart(2, '0')}` } })); return m; };
-  assert.equal(parseManifest(bytes(many(32))).skills.length, 32);
+test('at most 128 skills, local and pinned counted together, and 1 MiB; teams per entry stay at 32', () => {
+  const local = (n, from = 0) => Array.from({ length: n }, (_, i) => { const id = `local-${String(i + from).padStart(3, '0')}`; return { id, source: { kind: 'local', path: `skills/${id}` } }; });
+  const many = n => { const m = sample(); m.skills = local(n); return m; };
+  assert.equal(MANIFEST_LIMITS.skills, 128); assert.equal(MANIFEST_LIMITS.teams, 32); assert.equal(MANIFEST_LIMITS.bytes, 1048576);
   assert.equal(parseManifest(bytes(many(0))).skills.length, 0);
-  assert.throws(() => parseManifest(bytes(many(33))), code('MANIFEST_LIMIT'));
+  assert.equal(parseManifest(bytes(many(33))).skills.length, 33);
+  assert.equal(parseManifest(bytes(many(128))).skills.length, 128);
+  assert.throws(() => parseManifest(bytes(many(129))), code('MANIFEST_LIMIT'));
+  // Pinned entries share the count with local ones: the sample's pinned entries plus local ones up to 128, then one more.
+  const mixed = n => { const m = sample(); m.skills = [...m.skills, ...local(n - m.skills.length, 500)]; return m; };
+  assert.ok(sample().skills.some(e => e.source.kind !== 'local'));
+  assert.equal(parseManifest(bytes(mixed(128))).skills.length, 128);
+  assert.throws(() => parseManifest(bytes(mixed(129))), code('MANIFEST_LIMIT'));
+  // The byte cap still holds, below the count cap as well.
   assert.throws(() => parseManifest(Buffer.concat([bytes(sample()), Buffer.alloc(1024 * 1024, 0x20)])), code('MANIFEST_LIMIT'));
+  assert.throws(() => parseManifest(Buffer.concat([bytes(many(128)), Buffer.alloc(1024 * 1024, 0x20)])), code('MANIFEST_LIMIT'));
+  const teams = sample(); teams.skills[0].teams = Array.from({ length: 33 }, (_, i) => `team-${i}`);
+  assert.throws(() => parseManifest(bytes(teams)), code('MANIFEST_INVALID'));
+  teams.skills[0].teams = teams.skills[0].teams.slice(0, 32); assert.equal(parseManifest(bytes(teams)).skills[0].teams.length, 32);
+  assert.equal(manifestRefusal('MANIFEST_LIMIT').message, 'The manifest is too large. It holds at most 128 skills and 1 MiB.');
 });
 
 test('each pinned entry maps onto a request the existing acquisition planners accept', t => {
