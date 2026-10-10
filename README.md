@@ -5,7 +5,7 @@
 
 <a id="grow-your-capabilities-with-bowerloom"></a>
 
-# Bring governance to your agent workflows
+# Own your AI skills, agents, and connections
 
 <p>
   <a href="https://bowerloom.ai/docs/releases/"><img src="docs/assets/badge-version.svg" alt="Current beta version" height="28"></a>
@@ -14,7 +14,7 @@
   <a href="#install-bowerloom"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
 </p>
 
-Bowerloom brings governance to agent workflows in files that follow you. Use your existing personal agent to turn a manual process or a one-to-one agent workflow into defined roles, handoffs, and review points. The beta binds setup-file writes to an exact approved plan, records installed state, detects drift, and supports recorded revision recovery. Your team specification declares proposed access and review expectations, while runtime permissions remain a separate decision. Integrate those definitions with your current project before approving later work.
+Bowerloom is an agent environment manager. It sets up the skills, prompts, and teams that Claude Code and Codex use in your project. Each change shows its exact plan first, and Bowerloom writes nothing until you approve that plan. It records what it installed, and it does not overwrite a copy that you changed. Skills come from npm or GitHub, pinned to an exact version or commit. Team definitions declare proposed access and review points. Runtime permissions stay a separate decision.
 
 [Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Build with your agent](#build-with-your-agent) · [Roadmap](#roadmap)
 
