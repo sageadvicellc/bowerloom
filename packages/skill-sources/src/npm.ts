@@ -128,6 +128,10 @@ function octal(block: Buffer, from: number, length: number): number {
   npmCheck(match !== null, 'NPM_TAR_NUMBER');
   const value = Number.parseInt(match[1] ?? match[2]!, 8); npmCheck(Number.isSafeInteger(value) && value >= 0, 'NPM_TAR_NUMBER'); return value;
 }
+/** uid and gid only: npm 11 writes eight NUL bytes, which the Header decoder reads as undefined. Nothing else may be absent. */
+function octalOrAbsent(block: Buffer, from: number): number | undefined {
+  return block.subarray(from, from + 8).every(v => v === 0) ? undefined : octal(block, from, 8);
+}
 /** Strict original-field admission precedes Header; decoded normalization cannot change framing. */
 function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; size: number; mode: number } {
   npmCheck(block.subarray(257, 265).equals(Buffer.from('ustar\0' + '00', 'latin1')) && block.subarray(500).every(v => v === 0), 'NPM_TAR_SIGNATURE');
@@ -136,7 +140,7 @@ function rawHeader(block: Buffer): { path: string; type: 'File' | 'Directory'; s
   const uname = asciiField(block, 265, 32), gname = asciiField(block, 297, 32);
   const path = prefix ? `${prefix}/${name}` : name;
   npmCheck(name.length > 0 && link === '' && path.startsWith('package/') && path.length <= 512 && /^[A-Za-z0-9._/-]+$/.test(path) && !path.includes('//') && !path.split('/').filter(Boolean).some(v => v === '.' || v === '..'), 'NPM_TAR_PATH');
-  const size = octal(block, 124, 12), mode = octal(block, 100, 8), uid = octal(block, 108, 8), gid = octal(block, 116, 8), seconds = octal(block, 136, 12);
+  const size = octal(block, 124, 12), mode = octal(block, 100, 8), uid = octalOrAbsent(block, 108), gid = octalOrAbsent(block, 116), seconds = octal(block, 136, 12);
   npmCheck(octal(block, 329, 8) === 0 && octal(block, 337, 8) === 0 && mode <= 0o777 && size <= NPM_LIMITS.tarBytes, 'NPM_TAR_NUMBER');
   const type = flag === 48 ? 'File' : 'Directory';
   npmCheck(type === 'File' ? !path.endsWith('/') : path.endsWith('/') && size === 0, 'NPM_TAR_ALIAS');
