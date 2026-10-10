@@ -18,7 +18,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 This release changes the package and its checks. It adds no new command.
 
 - The npm package text is public. It holds no private or proof wording.
-- The package carries repository, homepage, and issue links.
+- The package homepage link now points at bowerloom.ai.
 - The installed CLI accepts the npm beta-stream release record. The 0.7.0-beta.1 package did not include this check.
 - Dependency pins are unchanged.
 
