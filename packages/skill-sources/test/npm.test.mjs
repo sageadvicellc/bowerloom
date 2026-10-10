@@ -111,7 +111,7 @@ test('archive records, endings, checksums, paths and padding have finite strict 
   const empty = header('package/a.md', 0); const badChecksum = Buffer.from(empty); badChecksum[136] = 0x32;
   const cases = [[Buffer.concat([empty, Buffer.alloc(512)]), 'NPM_TAR_END'], [Buffer.concat([empty, Buffer.alloc(1024), empty]), 'NPM_TAR_END'], [Buffer.concat([badChecksum, Buffer.alloc(1024)]), 'NPM_TAR_CHECKSUM'], [Buffer.concat([empty, empty, Buffer.alloc(1024)]), 'NPM_TAR_COLLISION'], [Buffer.concat([header('package/../a', 0), Buffer.alloc(1024)]), 'NPM_TAR_PATH'], [Buffer.concat([header('package/A.md', 0), empty, Buffer.alloc(1024)]), 'NPM_TAR_COLLISION'], [Buffer.concat([header('package/a', 0), header('package/a/child.md', 0), Buffer.alloc(1024)]), 'NPM_TAR_COLLISION']];
   for (const [data, expected] of cases) assert.throws(() => enumerateNpmTar(data, () => {}), { code: expected });
-  const many = Array.from({ length: 1025 }, (_, i) => header(`package/${i}.md`, 0)); assert.throws(() => enumerateNpmTar(Buffer.concat([...many, Buffer.alloc(1024)]), () => {}), e => e.code === 'NPM_TAR_BOUND');
+  const many = Array.from({ length: 8193 }, (_, i) => header(`package/${i}.md`, 0)); assert.throws(() => enumerateNpmTar(Buffer.concat([...many, Buffer.alloc(1024)]), () => {}), e => e.code === 'NPM_TAR_BOUND');
   const padded = tar([{ sourcePath: 'a.md', text: 'a' }]); padded[513] = 1; assert.throws(() => enumerateNpmTar(padded, () => {}), code('NPM_TAR_BOUND'));
 });
 test('extra selected files and altered selected modes cannot be hidden by the expected inventory', async t => {

@@ -94,7 +94,7 @@ test('the endings stay narrow: a non-octal digit, a short field, a space before 
     [h => h.write('000644\0 ', 100, 8, 'latin1'), 'NPM_TAR_NUMBER'],
     [h => h.write('000644  ', 100, 8, 'latin1'), 'NPM_TAR_NUMBER'],
     [h => h.write('000644\0\0', 100, 8, 'latin1'), 'NPM_TAR_NUMBER'],
-    [h => h.write('\0\0\0\0\0\0\0\0', 108, 8, 'latin1'), 'NPM_TAR_NUMBER'],
+    [h => h.write('\0\0\0\0\0\0\0\0', 100, 8, 'latin1'), 'NPM_TAR_NUMBER'],
     [h => h.write('000000000 \0 ', 124, 12, 'latin1'), 'NPM_TAR_NUMBER'],
     [h => h.write('0000000008 \0', 124, 12, 'latin1'), 'NPM_TAR_NUMBER'],
   ];
@@ -111,4 +111,44 @@ test('the decoder must still agree with the POSIX fields', t => {
   const original = Header.prototype.decode;
   t.mock.method(Header.prototype, 'decode', function (...args) { const result = Reflect.apply(original, this, args); this.mode = 0o600; return result; });
   assert.throws(() => one(nodeTarHeader('package/a.md', 0)), code('NPM_TAR_DECODER'));
+});
+
+// Current npm (11.x) writes uid and gid as eight NUL bytes. Only those two fields may be absent.
+test('an all-NUL uid and gid (npm 11) is accepted and the entry enumerates', () => {
+  const h = nodeTarHeader('package/a.md', 0); h.fill(0, 108, 124); posixChecksum(h);
+  assert.equal(one(h).recordCount, 1);
+  assert.ok(one(h).entries.has('a.md'));
+  const uidOnly = nodeTarHeader('package/a.md', 0); uidOnly.fill(0, 108, 116); posixChecksum(uidOnly); assert.equal(one(uidOnly).recordCount, 1);
+  const gidOnly = nodeTarHeader('package/a.md', 0); gidOnly.fill(0, 116, 124); posixChecksum(gidOnly); assert.equal(one(gidOnly).recordCount, 1);
+});
+
+test('a partly-NUL or non-octal uid or gid still refuses with NPM_TAR_NUMBER', () => {
+  for (const at of [108, 116]) for (const bad of ['\x00\x00\x00' + '123 \x00', '9999999\x00', '\x00\x00\x00\x00\x00\x00\x00 ', '\x00\x00\x00\x00\x00\x00\x00' + '1', '000000x\x00']) {
+    const h = nodeTarHeader('package/a.md', 0); h.write(bad.padEnd(8, '\0').slice(0, 8), at, 8, 'latin1'); posixChecksum(h);
+    assert.throws(() => one(h), code('NPM_TAR_NUMBER'), JSON.stringify([at, bad]));
+  }
+});
+
+test('other numeric fields stay strict: NUL mode, size, mtime, devmajor, devminor refuse', () => {
+  for (const [at, len] of [[100, 8], [124, 12], [136, 12], [329, 8], [337, 8]]) {
+    const h = nodeTarHeader('package/a.md', 0); h.fill(0, at, at + len); posixChecksum(h);
+    assert.throws(() => one(h), code('NPM_TAR_NUMBER'), String(at));
+  }
+  const bad = nodeTarHeader('package/a.md', 0); bad.write('00000x \0', 329, 8, 'latin1'); posixChecksum(bad);
+  assert.throws(() => one(bad), code('NPM_TAR_NUMBER'));
+});
+
+test('an absent uid must match the decoder, and a present one must still match its value', t => {
+  const original = Header.prototype.decode;
+  const absent = nodeTarHeader('package/a.md', 0); absent.fill(0, 108, 124); posixChecksum(absent);
+  t.mock.method(Header.prototype, 'decode', function (...args) { const r = Reflect.apply(original, this, args); this.uid = 0; return r; });
+  assert.throws(() => one(absent), code('NPM_TAR_DECODER'));
+});
+
+// Hanna's decision: the record cap is 8192, since real packages such as ecc-universal@2.2.1 hold 2615.
+const manyFiles = n => Buffer.concat([...Array.from({ length: n }, (_, i) => nodeTarHeader('package/f' + i + '.md', 0)), Buffer.alloc(1024)]);
+test('an archive of more than 1024 and at most 8192 records enumerates; 8193 refuses with NPM_TAR_BOUND', () => {
+  assert.equal(enumerateNpmTar(manyFiles(2615), () => {}).recordCount, 2615);
+  assert.equal(enumerateNpmTar(manyFiles(8192), () => {}).recordCount, 8192);
+  assert.throws(() => enumerateNpmTar(manyFiles(8193), () => {}), code('NPM_TAR_BOUND'));
 });

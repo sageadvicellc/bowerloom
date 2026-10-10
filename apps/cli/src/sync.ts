@@ -17,7 +17,7 @@ import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-s
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
-import { terminalIo } from './manifest.js';
+import { allowedToolsLine, terminalIo } from './manifest.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
 const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>], with optional --approve <revision> and --json.';
@@ -40,6 +40,10 @@ function takeFlags(words: readonly string[], valued: readonly string[], plain: r
 
 /** One sync item in plain words, its id padded to `width`. `apply` (M6) reuses it. */
 export function itemLine(item: SyncItem, width: number): string[] {
+  const lines = itemLineBase(item, width);
+  return item.allowedTools !== undefined && item.action !== 'hold' && item.state !== 'up-to-date' ? [...lines, `  ${''.padEnd(width)} ${allowedToolsLine(item.allowedTools).trim()}`] : lines;
+}
+function itemLineBase(item: SyncItem, width: number): string[] {
   const id = item.id.padEnd(width), pin = item.pin ?? '';
   const how = item.cache?.status === 'needs-fetch' ? `, fetched from ${item.kind === 'git' ? 'api.github.com' : 'registry.npmjs.org'}` : item.cache?.status === 'cached' ? ", from this machine's cache" : '';
   if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];

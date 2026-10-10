@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { parseDocument } from 'yaml';
-import { SkillSourceError, captureSkillData, relativeSkillPath } from '../../skill-sources/src/validation.js';
+import { SkillSourceError, captureSkillData, allowedToolsText, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
@@ -42,8 +42,8 @@ export function checkBounds(files: readonly { bytes: number }[]): void {
   for (const f of files) requireManifest(Number.isSafeInteger(f.bytes) && f.bytes > 0 && f.bytes <= CONTENT_LIMITS.fileBytes && (total += f.bytes) <= CONTENT_LIMITS.selectedBytes, 'SKILLS_ADD_UNSAFE_CONTENT');
 }
 
-/** The `name` of the SKILL.md frontmatter. Any other frontmatter problem is left to the validator. */
-export function skillName(skill: string): string {
+/** The `name` and the optional `allowed-tools` of the SKILL.md frontmatter. Any other frontmatter problem is left to the validator. */
+export function skillHead(skill: string): { name: string; allowedTools?: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(skill);
   requireManifest(match && Buffer.byteLength(match[1]!) <= CONTENT_LIMITS.frontmatterBytes, 'SKILLS_ADD_UNSAFE_CONTENT');
   let data: unknown;
@@ -53,10 +53,14 @@ export function skillName(skill: string): string {
     data = captureSkillData(doc.toJS({ maxAliasCount: 0 }));
   } catch { return refuse('SKILLS_ADD_UNSAFE_CONTENT'); }
   requireManifest(data !== null && typeof data === 'object' && !Array.isArray(data), 'SKILLS_ADD_UNSAFE_CONTENT');
-  const name = (data as Record<string, unknown>).name;
+  const record = data as Record<string, unknown>, name = record.name;
   requireManifest(isId(name), 'SKILLS_ADD_UNSAFE_CONTENT');
-  return name;
+  if (!Object.hasOwn(record, 'allowed-tools')) return { name };
+  try { allowedToolsText(record['allowed-tools']); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; }
+  return { name, allowedTools: record['allowed-tools'] as string };
 }
+/** The `name` of the SKILL.md frontmatter. */
+export const skillName = (skill: string): string => skillHead(skill).name;
 
 // The local reference patterns of skill-sources validation.ts `localReferences`, so the entry declares each edge.
 function references(body: string, from: string): string[] {
@@ -109,7 +113,7 @@ export function pinnedContent<S>(source: S, sourceRoot: string, files: readonly 
   const skill = texts.get('SKILL.md'); requireManifest(skill !== undefined, 'SKILLS_ADD_SKILL_MISSING');
   requireManifest(licenseFiles.length > 0 && licenseFiles.length <= CONTENT_LIMITS.licenseFiles, 'SKILLS_ADD_LICENSE_UNKNOWN');
   const pins: ManifestFile[] = files.map(f => ({ path: f.path, sourcePath: f.sourcePath, sha256: sha256(f.bytes), bytes: f.bytes.length })).sort((a, b) => compare(a.path, b.path));
-  return { source, skill: { name: skillName(skill), sourceRoot }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
+  return { source, skill: { ...(({ name, allowedTools }) => ({ name, sourceRoot, ...(allowedTools !== undefined ? { allowedTools } : {}) }))(skillHead(skill)) }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
 }
 export const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 

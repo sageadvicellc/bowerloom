@@ -88,6 +88,8 @@ const pinWords = (entry: Pinned): string => {
   const s = entry.source;
   return `${s.kind === 'npm' ? `npm ${s.package} ${s.version}` : `GitHub ${s.repository} at ${s.commit}`}, folder ${entry.skill.sourceRoot}`;
 };
+/** Shown before approval: this list is pre-approved in Claude Code while the skill is active. */
+export const allowedToolsLine = (tools: string): string => `  Allowed tools: ${tools} (pre-approved in Claude Code while this skill is active)`;
 /** The plan in plain words. Values are checked ids, paths, hashes and pins; confirm.ts escapes control characters again. */
 export function renderAddReview(plan: ManifestChangePlan): string {
   const replace = 'replace' in plan.change ? plan.change.replace : null;
@@ -99,6 +101,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
     `  Skill name: ${entry.skill.name}`,
     `  License: ${entry.license.spdx} (${entry.license.files.join(', ')})`,
     `  Files: ${entry.files.length}`,
+    ...(entry.skill.allowedTools !== undefined ? [allowedToolsLine(entry.skill.allowedTools)] : []),
     `  Teams: ${entry.teams ? entry.teams.join(', ') : 'every team'}`,
     `  skills.json: ${plan.before === null ? 'a new file' : `replaces the file with sha256 ${plan.before.sha256}`}`,
     replace ? 'This records the new pin only. Nothing is installed or run. Run bowerloom skills sync to update the installed copies.' : 'This records the pin only. Nothing is installed or run.',

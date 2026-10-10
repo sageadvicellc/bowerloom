@@ -63,6 +63,8 @@ export interface SyncItem {
   previousReceiptRevision: string | null;
   /** Operations in the item's private history (at most LIMITS.history). */
   history: number;
+  /** The skill's `allowed-tools`, when it declares any. Part of the plan, so an approval binds it. */
+  allowedTools?: string;
   /** Why the item is held, and the next step for a person. Null unless `action` is `hold`. */
   hold: { code: string; next: string } | null;
 }
@@ -271,6 +273,7 @@ function classify(entry: Entry, ctx: ItemContext): Classified {
       id, kind, pin: pinOf(entry), state, action, harnesses, requestDigest: pinned?.digest ?? null, cacheOperationId: null, cache: null,
       expected: { files, surfaces: surfaces.map(s => ({ id: s.id, path: relative(dir, s.path) })) }, before,
       previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold,
+      ...(kind !== 'local' && (entry as PinnedEntry).skill.allowedTools !== undefined ? { allowedTools: (entry as PinnedEntry).skill.allowedTools } : {}),
     },
   };
 }
