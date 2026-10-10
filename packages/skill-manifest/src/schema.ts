@@ -4,7 +4,7 @@
  * acquisition planner, so a file that parses can be acquired as written.
  */
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { SkillSourceError, captureSkillData, boundedText, relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
+import { SkillSourceError, captureSkillData, allowedToolsText, boundedText, relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import { planNpmAcquisition } from '../../skill-sources/src/npm.js';
 import { planGitAcquisition } from '../../skill-sources/src/git.js';
@@ -27,7 +27,7 @@ export interface NpmSource { kind: 'npm'; registry: typeof NPM_REGISTRY; package
 export interface GitSource { kind: 'git'; host: typeof GIT_HOST; repository: string; commit: string; tree: string; pathTrees: string[]; metadataSha256: string }
 export interface LocalSource { kind: 'local'; path: string }
 /** What a resolver proposes: everything of a pinned entry except its id and teams. */
-export interface PinnedContent<S> { source: S; skill: { name: string; sourceRoot: string }; license: { spdx: SkillLicense; files: string[] }; files: ManifestFile[]; references: ManifestReference[] }
+export interface PinnedContent<S> { source: S; skill: { name: string; sourceRoot: string; allowedTools?: string }; license: { spdx: SkillLicense; files: string[] }; files: ManifestFile[]; references: ManifestReference[] }
 export type NpmEntry = { id: string; teams?: string[] } & PinnedContent<NpmSource>;
 export type GitEntry = { id: string; teams?: string[] } & PinnedContent<GitSource>;
 export type PinnedEntry = NpmEntry | GitEntry;
@@ -119,8 +119,9 @@ export function validateEntry(value: unknown): Entry {
   const head = { id, ...(teams ? { teams } : {}) };
   if (src.kind === 'local') { requireManifest(src.path === `skills/${id}`, 'MANIFEST_INVALID'); return { ...head, source: src }; }
   const lic = license(v.license);
-  const skill = record(v.skill, ['name', 'sourceRoot']);
+  const skill = record(v.skill, ['name', 'sourceRoot'], ['allowedTools']);
   requireManifest(isId(skill.name), 'MANIFEST_INVALID');
+  if (Object.hasOwn(skill, 'allowedTools')) invalid(() => allowedToolsText(skill.allowedTools, 'SKILL_TEXT'));
   requireManifest(Array.isArray(v.files) && Array.isArray(v.references), 'MANIFEST_INVALID');
   const files = (v.files as unknown[]).map(raw => {
     const f = record(raw, ['path', 'sourcePath', 'sha256', 'bytes']);
@@ -129,7 +130,7 @@ export function validateEntry(value: unknown): Entry {
   }).sort((a, b) => compare(a.path, b.path));
   const references = (v.references as unknown[]).map(raw => { const r = record(raw, ['from', 'to']); return { from: path(r.from), to: path(r.to) }; })
     .sort((a, b) => compare(`${a.from}\0${a.to}`, `${b.from}\0${b.to}`));
-  const entry = { ...head, source: src, skill: { name: skill.name, sourceRoot: path(skill.sourceRoot) }, license: lic, files, references } as PinnedEntry;
+  const entry = { ...head, source: src, skill: { name: skill.name, sourceRoot: path(skill.sourceRoot), ...(Object.hasOwn(skill, 'allowedTools') ? { allowedTools: skill.allowedTools as string } : {}) }, license: lic, files, references } as PinnedEntry;
   if (src.kind === 'npm') npmLicensePlacement(entry);
   // The existing planners hold every rule of an acquisition request: package and repository names, integrity, file
   // bounds, license file placement, references. A probe binding lets them run in memory.
@@ -172,7 +173,7 @@ function serializeEntry(e: Entry) {
     ? { kind: 'npm', registry: s.registry, package: s.package, version: s.version, integrity: s.integrity, metadataSha256: s.metadataSha256, publisher: s.publisher }
     : { kind: 'git', host: s.host, repository: s.repository, commit: s.commit, tree: s.tree, pathTrees: [...s.pathTrees], metadataSha256: s.metadataSha256 };
   return {
-    ...head, source: src, skill: { name: p.skill.name, sourceRoot: p.skill.sourceRoot },
+    ...head, source: src, skill: { name: p.skill.name, sourceRoot: p.skill.sourceRoot, ...(p.skill.allowedTools !== undefined ? { allowedTools: p.skill.allowedTools } : {}) },
     license: { spdx: p.license.spdx, files: [...p.license.files].sort(compare) },
     files: [...p.files].sort((a, b) => compare(a.path, b.path)).map(f => ({ path: f.path, sourcePath: f.sourcePath, sha256: f.sha256, bytes: f.bytes })),
     references: [...p.references].sort((a, b) => compare(`${a.from}\0${a.to}`, `${b.from}\0${b.to}`)).map(r => ({ from: r.from, to: r.to })),

@@ -174,3 +174,20 @@ test('skill specs: npm takes a path the same shape as GitHub, and a scoped packa
   }
   assert.throws(() => parseSkillSpec(42), code('SKILLS_ADD_SPEC_INVALID'));
 });
+
+test('an entry may carry skill.allowedTools; a file without it still reads and writes the same bytes', () => {
+  const old = canonical(sample());
+  assert.equal(serializeManifest(parseManifest(Buffer.from(old))), old);
+  const m = sample(); m.skills[1].skill.allowedTools = 'Bash(npx:*) Bash(npm:*)';
+  // An npm entry must still pass the acquisition planner, which now carries the field.
+  const text = canonical(m), parsed = parseManifest(Buffer.from(text));
+  assert.equal(parsed.skills[1].skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
+  assert.equal(serializeManifest(parsed), text);
+  assert.equal(toNpmRequest(parsed.skills[1]).skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
+  assert.equal(toNpmRequest(parseManifest(Buffer.from(old)).skills[1]).skill.allowedTools, undefined);
+});
+test('skill.allowedTools refuses a non-string, empty, long or control-character value', () => {
+  for (const value of [7, '', 'x'.repeat(1025), 'a\nb', 'a\0b', ['Bash'], null]) {
+    assert.throws(parsing(m => { m.skills[1].skill.allowedTools = value; }), code('MANIFEST_INVALID'), JSON.stringify(value));
+  }
+});

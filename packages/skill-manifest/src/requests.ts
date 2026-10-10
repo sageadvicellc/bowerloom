@@ -17,7 +17,7 @@ import type { NpmEntry, GitEntry, PinnedEntry } from './schema.js';
 function common(e: PinnedEntry) {
   return {
     declaredLicense: e.license.spdx,
-    skill: { id: e.id, name: e.skill.name, sourceRoot: e.skill.sourceRoot },
+    skill: { id: e.id, name: e.skill.name, sourceRoot: e.skill.sourceRoot, ...(e.skill.allowedTools !== undefined ? { allowedTools: e.skill.allowedTools } : {}) },
     files: e.files.map(f => ({ path: f.path, sourcePath: f.sourcePath, sha256: f.sha256, bytes: f.bytes, mode: 420 as const })),
     references: e.references.map(r => ({ from: r.from, to: r.to })),
     license: { spdx: e.license.spdx, origin: 'included' as const, files: [...e.license.files] },

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { SkillSourceError, captureSkillData, closed, boundedText, relativeSkillPath, hashValue, revisionOf, freezeSkillData, validateSkillSource } from './validation.js';
+import { SkillSourceError, captureSkillData, closed, closedWithOptional, allowedToolsText, boundedText, relativeSkillPath, hashValue, revisionOf, freezeSkillData, validateSkillSource } from './validation.js';
 import type { SkillTextFile, SkillLicense, GitSkillSource } from './types.js';
 import { validateCacheBinding, openGitCacheOperation, gitCacheCode, gitCacheName, secondaryCodes, strictUtf8, GIT_CODES, GIT_PLAN_CODES, GIT_SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
@@ -21,7 +21,7 @@ const RETIRED_PLAN_FORMAT = 'bowerloom/git-acquisition-plan/v1beta1';
 export const GIT_LIMITS = Object.freeze({ pathDepth:8, planBytes:196608, metadataBytes:524288, treeBytes:524288, blobResponseBytes:131072, payloadBytes:8388608, responseBytes:8388608, records:1024, files:128, directories:128, fileBytes:65536, selectedBytes:2097152, headerBytes:16384, requests:130, durationMs:30000, requestMs:10000, storageBytes:12582912 });
 export interface GitAcquisitionRequest {
   repository:string; commit:string; tree:string; pathTrees:string[]; metadataSha256:string; declaredLicense:SkillLicense;
-  skill:{id:string;name:string;sourceRoot:string}; files:ExpectedSkillFile[];
+  skill:{id:string;name:string;sourceRoot:string;allowedTools?:string}; files:ExpectedSkillFile[];
   references:{from:string;to:string}[]; license:{spdx:SkillLicense;origin:'included';files:string[]};
 }
 export interface GitAcquisitionPlan {
@@ -54,6 +54,7 @@ const sha256=(b:string|Uint8Array)=>createHash('sha256').update(b).digest('hex')
 const objectId=(kind:'blob'|'tree',b:Buffer)=>createHash('sha1').update(`${kind} ${b.length}\0`).update(b).digest('hex');
 // Only a validation refusal becomes GIT_INPUT. A TypeError or another fault reaches the boundary's fixed fallback.
 function exact<T>(v:unknown,keys:string[]):T{try{return closed(v,keys) as T;}catch(error){if(error instanceof SkillSourceError)return refuse('GIT_INPUT');throw error;}}
+function exactOptional<T>(v:unknown,keys:string[],optional:string[]):T{try{return closedWithOptional(v,keys,optional) as T;}catch(error){if(error instanceof SkillSourceError)return refuse('GIT_INPUT');throw error;}}
 function safe<T>(work:()=>T):T{try{return work();}catch(error){if(error instanceof SkillSourceError)return refuse('GIT_INPUT');throw error;}}
 const compare=(a:string,b:string)=>a<b?-1:a>b?1:0;
 const oid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
@@ -67,7 +68,8 @@ function planRequest(value:unknown,bindingValue:unknown):Readonly<GitAcquisition
   safe(()=>{boundedText(request.repository,200);hashValue(request.metadataSha256);});
   requireGit(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/.test(request.repository)&&!request.repository.endsWith('.git')&&oid(request.commit)&&oid(request.tree),'GIT_INPUT');
   requireGit(['MIT','Apache-2.0'].includes(request.declaredLicense),'GIT_INPUT');
-  request.skill = exact(request.skill, ['id', 'name', 'sourceRoot']);
+  request.skill = exactOptional(request.skill, ['id', 'name', 'sourceRoot'], ['allowedTools']);
+  safe(() => { if (Object.hasOwn(request.skill, 'allowedTools')) allowedToolsText(request.skill.allowedTools); });
   safe(() => { for (const value of [request.skill.id, request.skill.name]) { boundedText(value, 64); requireGit(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value), 'GIT_INPUT'); } relativeSkillPath(request.skill.sourceRoot); });
   // One pinned tree per source root segment. The last one is the skill tree.
   const segments = request.skill.sourceRoot.split('/'), walked = new Set(segments.map((_, i) => segments.slice(0, i).join('/')));

@@ -101,3 +101,39 @@ test('Git sources pin one path tree per source root segment', () => {
   // Nine segments with nine trees passes the length match, and still refuses the depth limit of eight.
   const deep = fixture('git'); deep.skill.sourceRoot = 'a/b/c/d/e/f/g/h/example'; deep.source.pathTrees = Array.from({ length: 9 }, () => 'd'.repeat(40)); refused(deep, 'SKILL_SOURCE');
 });
+
+// Agent Skills `allowed-tools`: accepted only when the pin declares the same value, so a reviewer sees it.
+const withTools = (value, pin = value) => {
+  if (pin === null) pin = undefined;
+  const x = fixture();
+  if (value != null) x.files[0] = file('SKILL.md', x.files[0].text.replace('description:', `allowed-tools: ${value}\ndescription:`));
+  if (pin !== undefined) x.skill.allowedTools = pin;
+  return x;
+};
+test('allowed-tools is accepted when the pin carries the same string, and it changes the revision', () => {
+  const plain = validateSkillSource(fixture()).revision;
+  const result = validateSkillSource(withTools('Bash(npx:*) Bash(npm:*)'));
+  assert.equal(result.input.skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
+  assert.notEqual(result.revision, plain);
+  for (const kind of ['git']) { const g = fixture(kind); g.files[0] = file('SKILL.md', g.files[0].text.replace('description:', 'allowed-tools: Bash\ndescription:')); g.skill.allowedTools = 'Bash'; assert.equal(validateSkillSource(g).input.skill.allowedTools, 'Bash'); }
+  assert.equal(validateSkillSource(fixture()).input.skill.allowedTools, undefined);
+});
+test('allowed-tools in SKILL.md without the pin, or a pin without SKILL.md, refuses with SKILL_FRONTMATTER', () => {
+  refused(withTools('Bash', null), 'SKILL_FRONTMATTER');
+  refused(withTools(null, 'Bash'), 'SKILL_FRONTMATTER');
+  refused(withTools('Bash', 'Read'), 'SKILL_FRONTMATTER');
+});
+test('allowed-tools refuses an over-long, multi-line, non-string, empty or control-character value', () => {
+  refused(withTools('x'.repeat(1025)), 'SKILL_FRONTMATTER');
+  assert.equal(validateSkillSource(withTools('x'.repeat(1024))).input.skill.allowedTools.length, 1024);
+  const mk = (yamlValue, pin) => { const x = fixture(); x.files[0] = file('SKILL.md', x.files[0].text.replace('description:', `allowed-tools: ${yamlValue}\ndescription:`)); x.skill.allowedTools = pin; return x; };
+  refused(mk('"a\\nb"', 'a\nb'), 'SKILL_FRONTMATTER');
+  refused(mk('"a\\rb"', 'a\rb'), 'SKILL_FRONTMATTER');
+  refused(mk('"a\\u0000b"', 'a\0b'), 'SKILL_FRONTMATTER');
+  refused(mk('"a\\u0007b"', 'a\u0007b'), 'SKILL_FRONTMATTER');
+  refused(mk('"a\\tb"', 'a\tb'), 'SKILL_FRONTMATTER');
+  refused(mk('[Bash, Read]', 'Bash'), 'SKILL_FRONTMATTER');
+  refused(mk('42', '42'), 'SKILL_FRONTMATTER');
+  refused(mk('""', ''), 'SKILL_FRONTMATTER');
+  const bad = fixture(); bad.skill.allowedTools = 7; refused(bad);
+});
