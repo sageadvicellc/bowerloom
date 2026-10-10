@@ -168,7 +168,7 @@ function renderMigrateReview(plan: MigratePlan): string {
     `Migrate skill ${plan.item.id} from the earlier install in .bowerloom-skills to .bowerloom/managed`,
     `  Pin: ${plan.item.pin}`,
     `  Copies for: ${harnessWords(plan.item.harnesses)}`,
-    `  Bytes from: ${plan.bytesFrom === 'project-cache' ? "this project's cache" : plan.bytesFrom === 'legacy-cache' ? 'the cache the earlier install read' : `a fetch from ${plan.network.hosts.join(' and ')}`}`,
+    `  Bytes from: ${plan.bytesFrom === 'project-cache' ? "this machine's skills cache" : plan.bytesFrom === 'legacy-cache' ? 'the cache the earlier install read' : `a fetch from ${plan.network.hosts.join(' and ')}`}`,
     '  .bowerloom-skills moves into a private backup. A rollback puts it back exactly.',
     `  The earlier state folder ${plan.legacy.stateDir} is read, never written.`,
     'This copies text files only. It starts no workers and runs nothing.',
