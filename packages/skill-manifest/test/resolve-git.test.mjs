@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { denyNetwork, fakeTransport, repository } from './support/fixtures.mjs';
 import { GIT, gitResponses, gitRepo, gitVerificationLoop, gitVerificationLoopUrls, privateFolder } from './support/expected.mjs';
 import { GIT_ITEMS, GIT_REPO, GIT_COMMIT } from './fixtures/record.mjs';
-import { resolveGit } from '../../../dist/packages/skill-manifest/src/resolve-git.js';
+import { resolveGit, resolveGitVerified } from '../../../dist/packages/skill-manifest/src/resolve-git.js';
 import { parseSkillSpec } from '../../../dist/packages/skill-manifest/src/spec.js';
 import { toGitRequest } from '../../../dist/packages/skill-manifest/src/requests.js';
 import { planGitAcquisition, verifyGitPayload } from '../../../dist/packages/skill-sources/src/git.js';
@@ -108,4 +108,13 @@ test('an aborted signal stops before the first request, and only a parsed GitHub
   }
   assert.deepEqual(transport.urls, []);
   assert.equal(GIT.commit, GIT_COMMIT);
+});
+
+test('resolveGitVerified returns the entry and the exact payload it verified, in the form the Git cache stores', async t => {
+  const transport = fakeTransport(gitResponses());
+  const { content, bytes } = await resolveGitVerified(spec('skills/verification-loop'), transport, signal());
+  assert.deepEqual(content, gitVerificationLoop()); assert.deepEqual(transport.urls, gitVerificationLoopUrls());
+  const plan = planGitAcquisition(toGitRequest({ id: 'verification-loop', ...content }), observeSkillCacheRoot(privateFolder(t), 'f'.repeat(32), 12582912));
+  assert.equal(bytes.kind, 'git'); assert.ok(bytes.metadata.equals(gitResponses().get(plan.metadataUrl)));
+  assert.equal((await verifyGitPayload(plan, bytes.metadata, bytes.data, signal(), () => {})).files.length, 3);
 });

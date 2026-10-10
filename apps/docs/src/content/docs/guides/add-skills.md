@@ -68,7 +68,7 @@ Show the plan to the human. Read the license line and the file count. After appr
 bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --id collections --approve REVISION_FROM_THE_PLAN
 ```
 
-The command reads the same two files again, records the pin in `.bowerloom/skills.json`, and exits 0.
+The command reads the same two files again, records the pin in `.bowerloom/skills.json`, and exits 0. It then keeps the bytes it checked in this machine's skills cache, which the plan names on its `Cache:` line, so `skills sync` need not fetch them again and works with `--offline`. If it cannot keep them, it says why on a `Cache:` line. The pin is still recorded, and `skills sync` fetches the bytes.
 
 Add the Git skill the same way. The repository name is lower case. The commit is 40 lower-case hex characters:
 

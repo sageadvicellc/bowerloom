@@ -106,6 +106,13 @@ export function licenseFolders(sourceRoot: string): string[] {
 }
 
 export interface SelectedFile { path: string; sourcePath: string; bytes: Buffer }
+/**
+ * The bytes a resolver read and verified against the entry it returns: the npm metadata and archive, or the Git
+ * commit and the payload (listings and selected blobs) that verifyGitPayload reads. A cache operation stores exactly these.
+ */
+export interface VerifiedBytes { kind: 'npm' | 'git'; metadata: Buffer; data: Buffer }
+/** A resolved entry and the bytes it was verified against. */
+export interface VerifiedPin<C> { content: C; bytes: VerifiedBytes }
 /** The pinned content of one skill: files sorted by path, the license files, the references. */
 export function pinnedContent<S>(source: S, sourceRoot: string, files: readonly SelectedFile[], spdx: SkillLicense, licenseFiles: readonly string[]): PinnedContent<S> & { texts: Map<string, string> } {
   checkBounds(files.map(f => ({ bytes: f.bytes.length })));
