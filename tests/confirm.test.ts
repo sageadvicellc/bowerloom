@@ -127,7 +127,7 @@ test('JSON output writes C1 controls, format characters and the separators as es
   assert.equal(applied.exitCode, 0); assert.doesNotMatch(applied.output, /[\u0080-\u009f\p{Cf}\u2028\u2029]/u); assert.equal(JSON.parse(applied.output).result.name, hidden);
 });
 
-// Freeze review finding 3: Ctrl-C or Ctrl-D at "[y/N]" closes the real readline prompt. It is a stop, not a failure:
+// Review finding 3: Ctrl-C or Ctrl-D at "[y/N]" closes the real readline prompt. It is a stop, not a failure:
 // "Stopped. Nothing was changed." and exit 130, never the generic failure text. These tests drive terminalIo itself.
 function tty() {
   const input = Object.assign(new PassThrough(), { isTTY: true }), output = Object.assign(new PassThrough(), { isTTY: true, columns: 80 });

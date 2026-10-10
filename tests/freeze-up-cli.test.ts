@@ -1,4 +1,4 @@
-// Freeze review of F (b68f557), findings 1, 2 and 12, through the CLI as an agent runs it (no terminal).
+// Review of F (b68f557), findings 1, 2 and 12, through the CLI as an agent runs it (no terminal).
 // 1: a deleted registered prompt is held with its restore step; status names it; prompt create restores it.
 // 2: up says "prepared, N items held" with each item's next command, never "in place", while items are held.
 // 12: the held text names a created team once, and up says when --goal or --name is not used.

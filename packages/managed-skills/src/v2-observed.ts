@@ -24,7 +24,7 @@ export const PENDING_FORMAT = 'bowerloom/managed-item-pending/v1beta2' as const;
 /** The v2 marker. The plan refuses while it, the v1 marker or `.bowerloom-revision.json` exists. */
 export const MARKER_V2 = '.bowerloom/managed-pending.json';
 export const MANAGED_ROOT = '.bowerloom/managed';
-/** Managed copies and the catalog stay on each machine (Hanna, 2026-10-07): git ignores the whole folder. */
+/** Managed copies and the catalog stay on each machine (owner decision, 2026-10-07): git ignores the whole folder. */
 export const IGNORE_TEXT = '*\n';
 const HEX64 = /^[a-f0-9]{64}$/;
 /** The v1 projection-name rule, kept so every v1 skill name stays valid in v2. */

@@ -56,7 +56,7 @@ export function parseAddArgs(words: readonly string[]): AddArgs {
 
 const aborted = (error: unknown): boolean => error instanceof Error && (error.name === 'AbortError' || (error as { code?: unknown }).code === 'ABORT_ERR');
 /**
- * A prompt on the terminal, when both stdin and stdout are terminals. Freeze review finding 3: Ctrl-C or Ctrl-D closes
+ * A prompt on the terminal, when both stdin and stdout are terminals. Review finding 3: Ctrl-C or Ctrl-D closes
  * the prompt, and readline rejects with an AbortError. That is a stop (exit 130), never the generic failure.
  * The streams are parameters so a test can drive this very prompt.
  */

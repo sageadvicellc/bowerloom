@@ -12,7 +12,7 @@ const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 // The help text of commit cc117ac, without its two-line release heading. It is the contract of `help advanced`.
 const advanced = readFileSync(new URL('../../tests/fixtures/help-advanced-cc117ac.txt', import.meta.url), 'utf8');
 const release = readInstalledRelease();
-// Freeze review finding 8: the heading says open beta, without the record's state.
+// Review finding 8: the heading says open beta, without the record's state.
 const heading = `Bowerloom ${release.version}: open beta\n${release.execution}\n\n`;
 
 // The first screen a person sees. It lists only commands that exist at this commit.

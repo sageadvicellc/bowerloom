@@ -44,7 +44,7 @@ export function authoringVerifier(project: string): OwnerVerifier {
     if (path === AUTHORING_FOLDER) {
       if (state.pending || state.scratch.length) return refused('AUTHORING_PENDING');
       // Review M2 finding 3: the walk visits only what exists, so a registered team, skill or prompt that was deleted is
-      // reported here (freeze review finding 1 added prompts). `prompt create <id>` restores a prompt.
+      // reported here (review finding 1 added prompts). `prompt create <id>` restores a prompt.
       return items.some(i => lstatOrNull(join(bowerloom, itemPath(i.kind, i.id))) === null) ? refused('AUTHORING_ITEM_MISSING') : verified;
     }
     const lookup = (kind: ItemKind, id: string): AuthoredItem | 'pending' | null =>

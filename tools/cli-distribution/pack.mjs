@@ -8,6 +8,7 @@ import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
 export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-authoring','skill-manifest','project-sync','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
+export const CANONICAL_URLS = Object.freeze({site:'https://bowerloom.ai',docs:'https://bowerloom.ai/docs/',repository:'https://github.com/sageadvicellc/bowerloom'});
 const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
@@ -82,10 +83,12 @@ export function expectedInstallCommand(release, name, version) {
   if (!d || Object.keys(d).length !== 3 || d.kind !== 'private-archive' || d.archive !== archive || d.npmPublication !== false || release.npm?.published !== false || release.state !== 'unreleased') return null;
   return `npm install -g ./${archive}`;
 }
-// Freeze review finding 7: the heading above the install command is true for the record. A private archive is
-// installed from the folder that holds it; only an npm record is installed after publication.
+// Review finding 7: the heading above the install command is true for the record. A private archive is
+// installed from the folder that holds it; a beta stream installs from npm; a plain npm record after publication.
 export function installHeading(release) {
-  return release.distribution === undefined ? 'After publication:' : 'Install it from the folder that holds the archive:';
+  if (release.distribution === undefined) return 'After publication:';
+  if (release.distribution?.kind === 'npm-beta-stream') return 'Install it:';
+  return 'Install it from the folder that holds the archive:';
 }
 export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   if(typeof releaseCandidate !== 'boolean') fail('releaseCandidate must be boolean');
@@ -100,9 +103,14 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
     || release.npm.registry !== 'https://registry.npmjs.org'
     || release.npm.distTag !== 'beta'
     || release.npm.installCommand !== installCommand) fail('Release record does not match package identity');
+  // The public package.json and README copy these links, so the record may carry only the canonical set.
+  const urls = release.urls, canonicalKeys = Object.keys(CANONICAL_URLS);
+  if(urls === null || typeof urls !== 'object' || Array.isArray(urls) || Object.getPrototypeOf(urls) !== Object.prototype
+    || Object.keys(urls).length !== canonicalKeys.length || canonicalKeys.some(k => !Object.hasOwn(urls,k) || urls[k] !== CANONICAL_URLS[k])) fail('Release record URLs do not match the package identity');
   if(releaseCandidate && release.state !== 'unreleased') fail('Release candidate requires an unreleased record');
-  // Security freeze finding 1: a private archive is never packed as a public candidate (private:false, publishConfig).
-  if(releaseCandidate && release.distribution !== undefined) fail('Release candidate refused: this record is a private archive, never an npm publication');
+  // Security review finding 1: only an npm record (no distribution, or the npm-beta-stream form accepted above) is
+  // packed as a public candidate (private:false, publishConfig). A private archive or any other kind never is.
+  if(releaseCandidate && release.distribution !== undefined && release.distribution.kind !== 'npm-beta-stream') fail('Release candidate refused: a private archive or unknown distribution is never packed as an npm candidate');
   const versions = {}, manifests = [];
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {
     // These explicit internal modules belong to the root MIT package; no standalone workspace is claimed.
@@ -137,14 +145,14 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
     }
   }
   for (const path of [...ASSETS,'LICENSE','docs/beta/license-boundary.md']) files.set(path,regular(repo,path));
-  const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'Bowerloom open beta release candidate; unreleased':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
+  const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'Bowerloom brings governance to agent workflows in files that follow you.':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{repository:{type:'git',url:'git+'+release.urls.repository+'.git'},homepage:release.urls.site,bugs:{url:release.urls.repository+'/issues'},publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
   files.set('package.json',Buffer.from(json(manifest)));
   files.set('npm-shrinkwrap.json',Buffer.from(json(lockedDependencies(JSON.parse(regular(repo,'package-lock.json')),manifest.dependencies,manifest))));
   files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Private packaging proof\n\nThe current monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for historical source excluded from that grant. This artifact is private; publication remains separately authorized.\n\nPlaywright-derived seccomp policy notice: packages/linux-browser/PLAYWRIGHT-LICENSE.txt. Supabase upstream notice: packages/local-backend/THIRD_PARTY_NOTICES.md. External npm dependencies are installed separately under their own package licenses. No prior module repository source or its history is imported by this staging tool.\n'));
   files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; external pinned npm dependencies must be available from cache or a separately authorized registry connection. No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
   if(releaseCandidate) {
-    files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom beta candidate\n\nThis candidate is unreleased. Publication requires founder acceptance and an authorized npm identity. The monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. External dependencies retain their own licenses.\n'));
-    files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta, ${release.state}. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\n${installHeading(release)}\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
+    files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom notices\n\nThe monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. External dependencies retain their own licenses.\n'));
+    files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\n${installHeading(release)}\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
   }
   const inventory=[...files].sort(([a],[b])=>a.localeCompare(b)).map(([path,bytes])=>({path,bytes:bytes.length,sha256:sha256(bytes),executable:ENTRY.includes(path)}));
   const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:manifest.private,releaseRecordSha256:sha256(regular(repo,'release/beta.json')),publicationState:release.state,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};
