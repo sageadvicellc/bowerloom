@@ -89,11 +89,17 @@ export function locateV2(v: ManagedItemRequest, closure: ItemClosure, extra: { i
   return out;
 }
 const byPath = <T extends { path: string }>(rows: T[]): T[] => [...rows].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-/** A cache closure as v1 `material` checks it, normalized to content only. Third-party bytes are hashed and copied. */
+/**
+ * A cache closure as v1 `material` checks it, normalized to content only. Third-party bytes are hashed and copied.
+ * The machine cache is keyed on content (Hanna, global skill cache): its receipt names the skill, not the entry that
+ * asked for it, so one operation serves the same pin under any id. The check is on what the key covers, a well-formed
+ * skill name; the closure takes the item's own id, so the project records the id its skills.json gives. The caller
+ * that chose the selector binds the name and the pin (project-sync checks the receipt against skills.json).
+ */
 export function cacheClosure(c: Readonly<AcquiredSkillClosure>, item: ItemRef): ItemClosure {
-  check(c.format === 'bowerloom/acquired-skill-closure/v1beta1' && c.acquisitionObserved === true && c.installAuthorized === false && c.executionAuthorized === false && item.kind === 'skill' && c.receipt.skill.id === item.id);
+  check(c.format === 'bowerloom/acquired-skill-closure/v1beta1' && c.acquisitionObserved === true && c.installAuthorized === false && c.executionAuthorized === false && item.kind === 'skill' && typeof c.receipt.skill.name === 'string' && PROJECTION_NAME.test(c.receipt.skill.name));
   const files = byPath(c.files.map(f => ({ path: f.path, text: f.text, sha256: f.sha256, mode: f.mode })));
-  return freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: c.receipt.source, skill: c.receipt.skill, license: c.receipt.license, references: c.receipt.references, inventory: files.map(f => ({ path: f.path, sha256: f.sha256, bytes: Buffer.byteLength(f.text) })), files, name: c.receipt.skill.name });
+  return freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: c.receipt.source, skill: { ...c.receipt.skill, id: item.id }, license: c.receipt.license, references: c.receipt.references, inventory: files.map(f => ({ path: f.path, sha256: f.sha256, bytes: Buffer.byteLength(f.text) })), files, name: c.receipt.skill.name });
 }
 export async function readClosure(v: ManagedItemRequest, life: Lifetime): Promise<{ closure: ItemClosure; acquired: Readonly<AcquiredSkillClosure> | null }> {
   const s = v.source;

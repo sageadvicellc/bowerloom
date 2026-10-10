@@ -34,9 +34,11 @@ export async function readLegacy(v: ManagedItemRequest, acquired: Readonly<Acqui
   check(r.projectDir === v.projectDir && r.stateDir === legacy.stateDir && v.harnesses.includes(r.harness));
   const catalog = schema<{ source: unknown; skill: unknown; inventory: unknown }>(strictJson(new TextDecoder('utf-8', { fatal: true }).decode(raw(join(v.projectDir, LEGACY_NAMESPACE, 'catalog.json'), 262144, false).bytes), 262144),
     ['format', 'operationKey', 'policy', 'source', 'skill', 'license', 'references', 'inventory', 'harness', 'executionAuthorized']);
-  check(same(catalog.source, acquired.receipt.source) && same(catalog.inventory, acquired.receipt.inventory) && same(catalog.skill, acquired.receipt.skill) && acquired.receipt.skill.id === v.item.id);
+  // The cache may be the machine cache, whose receipt names no entry id (cacheClosure): the v1 catalog's skill is
+  // compared with the receipt's skill under the item's id, and that id is the one the v1 install used.
+  check(same(catalog.source, acquired.receipt.source) && same(catalog.inventory, acquired.receipt.inventory) && same(catalog.skill, { ...acquired.receipt.skill, id: v.item.id }));
   const projection = r.installed.find(s => s.kind === 'projection'); check(projection !== undefined && projection.pins !== null);
-  const namespace = join(v.projectDir, LEGACY_NAMESPACE), skills = join(namespace, 'skills'), id = acquired.receipt.skill.id;
+  const namespace = join(v.projectDir, LEGACY_NAMESPACE), skills = join(namespace, 'skills'), id = v.item.id;
   const canonical = r.installed.find(s => s.kind === 'canonical'), catalogSurface = r.installed.find(s => s.kind === 'catalog');
   check(canonical?.pins && catalogSurface?.pins && canonical.path === join(skills, id) && catalogSurface.path === join(namespace, 'catalog.json'));
   // Exactly the namespace folder, `skills/`, and the receipt's canonical and catalog pins: nothing else is moved.
