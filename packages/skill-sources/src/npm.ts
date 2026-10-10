@@ -16,7 +16,7 @@ import { guardedResponseHeaders } from './response-headers.js';
 import { publicIPv4 } from './public-address.js';
 
 export const NPM_ACQUISITION_POLICY = 'bowerloom/npm-acquisition/ustar-v1beta1';
-export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 524288, compressedBytes: 8388608, tarBytes: 33554432, records: 1024, files: 128, directories: 128, fileBytes: 65536, selectedBytes: 2097152, headerBytes: 16384, requests: 2, durationMs: 30000, requestMs: 10000, storageBytes: 12582912 });
+export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 524288, compressedBytes: 8388608, tarBytes: 33554432, records: 8192, files: 128, directories: 128, fileBytes: 65536, selectedBytes: 2097152, headerBytes: 16384, requests: 2, durationMs: 30000, requestMs: 10000, storageBytes: 12582912 });
 export interface ExpectedSkillFile { path: string; sourcePath: string; sha256: string; bytes: number; mode: 420 }
 export interface NpmAcquisitionRequest {
   package: string; version: string; integrity: string; metadataSha256: string; publisher: string; declaredLicense: SkillLicense;
