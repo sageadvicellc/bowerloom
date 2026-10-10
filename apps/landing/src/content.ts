@@ -10,9 +10,9 @@ export const destinations = {
   ideas: `${repository}/discussions/categories/ideas`,
 };
 export const hero = {
-  "Eyebrow": "Governance for agent workflows",
+  "Eyebrow": "Agent environment manager",
   "H1": "Own your AI skills, agents, and connections",
-  "Body": "Turn the work you already do into defined roles, handoffs, and review points. Bowerloom binds setup files to an exact approved plan and records their installed state, while your team definitions stay in files that follow you. Start with an existing project and your personal agent, then review the team specification before approving its installation.",
+  "Body": "Set up the skills, prompts, and teams that Claude Code and Codex use in your project. Each change shows its exact plan first, and Bowerloom writes nothing until you approve it. Bowerloom records what it installed and does not overwrite a copy that you changed.",
   "Primary CTA": "Build with your agent",
   "Secondary link": "Explore the Labs workflow",
   "Illustration caption": "A maker and a robot helper at the workshop."
