@@ -4,9 +4,15 @@
  * never reads the network.
  *
  * The plan, `bowerloom/skills-sync-plan/v1beta1`, binds every input that a child approval binds: the project and
- * private-state ancestry, the manifest sha256, each pin's request digest and cache operation id, the expected
+ * its own private folders, the manifest sha256, each pin's content key, the hosts the run may contact, the expected
  * material and surfaces per item, the before-pins of every item surface, each previous receipt and the harness set.
  * Its revision is the one approval that stands in for every child approval of the run.
+ *
+ * The skills cache is shared by every project on the machine (Hanna, global skill cache), so another project may fill
+ * it, or create a shared folder, between this plan and its apply. The revision therefore binds what such a run cannot
+ * change (`syncBinding`): each pin's content key, never whether the cache holds it now or under which operation id,
+ * and the shared folders by path only. Each pinned item that installs or updates has an approved fetch from its host
+ * (none with --offline); apply skips it when the machine cache holds a verified copy, and fetches nothing else.
  */
 import fs from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -34,7 +40,7 @@ export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta1' as const;
 export const MIN_FREE_BYTES = 33554432;
 /** At most this many items in one plan: 32 manifest skills and 32 orphans. */
 export const SYNC_ITEM_LIMIT = 64;
-const HOSTS = { npm: 'registry.npmjs.org', git: 'api.github.com' } as const;
+export const HOSTS = { npm: 'registry.npmjs.org', git: 'api.github.com' } as const;
 
 export interface SyncInput {
   project: ProjectContext; stateRoot: string; team: string | null; offline: boolean;
@@ -56,6 +62,7 @@ export interface SyncItem {
   state: ItemState; action: ItemAction;
   /** The child request's harnesses: the installed set plus the skills.json set. A harness is never dropped. */
   harnesses: Harness[];
+  /** The pin's content key (cache-index.ts), bound. `cacheOperationId` and `cache` say where it is now: shown, not bound. */
   requestDigest: string | null; cacheOperationId: string | null; cache: CacheLookup | null;
   /** Paths relative to the project. `files` is the material of every copy: the pinned inventory, or the authored one. */
   expected: { files: InventoryRow[]; surfaces: ItemSurface[] };
@@ -76,6 +83,11 @@ export interface SyncPlan {
   privateState: { root: string; projectId: string; cacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
   managed: { ignore: 'absent' | 'exact' };
   items: SyncItem[];
+  /**
+   * `hosts`: the hosts this run may contact, one per kind of pinned item that installs or updates (none offline). Bound.
+   * `required`: true when a pin is not in the cache now, so the run will read the network unless another project
+   * fills the cache first. Shown, not bound.
+   */
   network: { required: boolean; hosts: string[] };
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
@@ -123,15 +135,19 @@ function nested(project: ProjectContext, stateRoot: string, statePins: readonly 
   return [project.identity, ...project.ancestry.map(a => a.identity)].some(id => below.has(key(id)));
 }
 
-export interface StateLayout { root: string; cacheRoot: string; itemsRoot: string }
+/**
+ * `cacheRoot` is the machine's skills cache, `<stateRoot>/cache`, shared by every project. `legacyCacheRoot` is the
+ * per-project cache of earlier betas, `<stateRoot>/<projectId>/cache`: read only, never created, pinned or written.
+ */
+export interface StateLayout { root: string; cacheRoot: string; itemsRoot: string; legacyCacheRoot: string }
 /** The existing folders of the private state chain, pinned, and the private ones checked 0700. */
 export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): StateLayout & { pins: { path: string; identity: Identity }[]; missing: string[] } {
-  const root = join(input.stateRoot, input.project.projectId), cacheRoot = join(root, 'cache'), itemsRoot = join(root, 'items');
+  const root = join(input.stateRoot, input.project.projectId), cacheRoot = join(input.stateRoot, 'cache'), itemsRoot = join(root, 'items'), legacyCacheRoot = join(root, 'cache');
   try {
-    for (const p of [input.stateRoot, root, cacheRoot, itemsRoot]) managedPath(p);
+    for (const p of [input.stateRoot, root, cacheRoot, itemsRoot, legacyCacheRoot]) managedPath(p);
     const chain: string[] = []; for (let at = input.stateRoot; at !== '/'; at = dirname(at)) chain.unshift(at);
     const privateOnes = new Set([root, cacheRoot, itemsRoot]), pins: { path: string; identity: Identity }[] = [], missing: string[] = [];
-    for (const p of [...chain, root, cacheRoot, itemsRoot]) {
+    for (const p of [...chain, cacheRoot, root, itemsRoot]) {
       if (!exists(p)) { missing.push(p); continue; }
       if (missing.length && !privateOnes.has(p)) throw syncError('SKILLS_STATE_UNSAFE');
       pins.push({ path: p, identity: directory(p, privateOnes.has(p)) });
@@ -141,7 +157,7 @@ export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): St
     // Review M5 finding 1: the private state and the project are never nested, either way. Receipts and cached bytes
     // in the project could be committed, and a project inside the state folder could be swept by it.
     if (nested(input.project, input.stateRoot, pins)) throw syncError('SKILLS_STATE_UNSAFE', 'The private state folder and the project must not be inside one another. Set XDG_STATE_HOME to a folder outside the project.');
-    return { root, cacheRoot, itemsRoot, pins, missing };
+    return { root, cacheRoot, itemsRoot, legacyCacheRoot, pins, missing };
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'SKILLS_STATE_UNSAFE') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
 
@@ -312,6 +328,29 @@ function orphan(project: string, itemsRoot: string, id: string): SyncItem {
   return { id, kind: null, pin: null, state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], requestDigest: null, cacheOperationId: null, cache: null, expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null };
 }
 
+/** True for a folder of this project's own private state: its root and anything below it. Others are shared. */
+const ownFolder = (ps: { root: string }, p: string): boolean => p === ps.root || p.startsWith(ps.root + '/');
+/**
+ * The private state as an approval binds it. The state root, the folders above it and the machine cache are shared
+ * by every project, so another project's run may create one of them between plan and apply: they are bound by path
+ * only (each path follows from `root` and `cacheRoot`). This project's own folders keep their identities and
+ * creation. Apply still pins and checks every folder, shared or not, under its lock before it writes.
+ */
+export function bindPrivateState<T extends { root: string; create: string[]; pins: { path: string }[] }>(ps: T): T {
+  return { ...ps, create: ps.create.filter(p => ownFolder(ps, p)), pins: ps.pins.filter(p => ownFolder(ps, p.path)) };
+}
+/**
+ * What the revision of a sync plan covers: the plan without what another project's run may change. Whether a pin is
+ * cached now, its operation id, its snapshot and the partial attempts are dropped; the content key (`requestDigest`)
+ * stays. `network.required` is dropped and `network.hosts` stays.
+ */
+export function syncBinding(body: Omit<SyncPlan, 'revision'>): unknown {
+  return {
+    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts },
+    items: body.items.map(i => ({ ...i, state: i.state === 'cached' ? 'needs-fetch' : i.state, cacheOperationId: null, cache: null })),
+  };
+}
+
 /** Plans the sync. Reads only. Every refusal here happens before any write anywhere. */
 export async function observeSync(input: SyncInput): Promise<Observed> {
   try {
@@ -345,7 +384,7 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
     // Each pin that a child will read: the completed cache operation to reuse, or the id to fetch into.
     for (const { item, pinned } of classified) {
       if (!pinned || !actionable(item)) continue;
-      try { item.cache = await lookupCache(layout.cacheRoot, pinned); }
+      try { item.cache = await lookupCache(layout, pinned); }
       catch (e) { if (e instanceof Error && 'code' in e && (e.code === 'SKILLS_SYNC_CONTENT_MISMATCH' || e.code === 'SKILLS_CACHE_RECOVERY_REQUIRED')) throw e; throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED'); }
       item.cacheOperationId = item.cache.operationId; if (item.state === 'needs-fetch') item.state = item.cache.status;
     }
@@ -358,7 +397,8 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
       create.push(...layout.missing.filter(p => p !== layout.cacheRoot || fetch.length));
       for (const i of work) { const p = join(layout.itemsRoot, i.id); if (!exists(p)) create.push(p); }
     }
-    const kinds = [...new Set(fetch.map(i => i.kind as 'npm' | 'git'))].map(k => HOSTS[k]).sort();
+    // Each pinned item that installs or updates may be fetched, from its own host only; --offline approves no host.
+    const kinds = input.offline ? [] : [...new Set(classified.filter(c => c.pinned && actionable(c.item)).map(c => c.pinned!.kind))].map(k => HOSTS[k]).sort();
     const body = {
       format: SYNC_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
@@ -368,7 +408,7 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
       managed: { ignore }, items, network: { required: fetch.length > 0, hosts: kinds },
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
-    const plan = freezeSkillData({ ...body, revision: revisionOf(body) }) as SyncPlan;
+    const plan = freezeSkillData({ ...body, revision: revisionOf(syncBinding(body)) }) as SyncPlan;
     return { plan, entries: new Map(manifest.skills.map(e => [e.id, e])), manifest };
   } catch (e) { throw outward(e); }
 }

@@ -136,7 +136,7 @@ Applied plan 2bf293ff8c60a9ea41fa0cfcb25800ad0f20b3f242330f298e88e966d5a2434d.
 
 After the pin moved to a later commit, the same step reported `verification-loop: updated`.
 
-Sync writes three things. In the project, it writes the managed copy in `.bowerloom/managed` and a copy for each harness in `.claude/skills` and `.agents/skills`. Outside the project, it keeps its fetch cache and its records in a private state folder, `~/.local/state/bowerloom/<project id>`. Set `XDG_STATE_HOME` to an absolute path to move that folder to `$XDG_STATE_HOME/bowerloom/<project id>`. Each project has its own folder there, so the cache is not shared between projects. Sync fetches only pins that the cache does not hold yet.
+Sync writes three things. In the project, it writes the managed copy in `.bowerloom/managed` and a copy for each harness in `.claude/skills` and `.agents/skills`. Outside the project, it keeps its records in a private state folder, `~/.local/state/bowerloom/<project id>`, and its fetch cache in `~/.local/state/bowerloom/cache`. Set `XDG_STATE_HOME` to an absolute path to move both under `$XDG_STATE_HOME/bowerloom`. Every project on the machine shares the one cache, so a pin that one project fetched is not fetched again for another. Sync fetches only pins that the cache does not hold yet, and it checks every cached byte against its pin each time it reads it. A cache from an earlier beta, inside a project's own folder, is still read and is never moved or changed.
 
 Use `--offline` on a machine with no network or when you want no fetch. With `--offline`, sync refuses before any change if a pin still needs fetching (`SKILLS_OFFLINE`). Use `--team <team>` to sync only that team's skills.
 

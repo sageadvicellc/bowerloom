@@ -56,12 +56,13 @@ export interface LockSlot { readonly key: string; readonly port: number; readonl
  * such as a case alias on case-insensitive APFS or a symlink, name one inode and so one lock. A path that names no
  * folder has no slot and refuses PROJECT_LOCK_UNAVAILABLE.
  */
-export function lockSlot(project: string): LockSlot {
-  if (typeof project !== 'string' || !isAbsolute(project) || project.includes('\0')) throw refuse('USAGE');
-  let stat; try { stat = statSync(project, { bigint: true }); } catch { throw refuse('PROJECT_LOCK_UNAVAILABLE'); }
+export function lockSlot(project: string): LockSlot { return slotOf(LOCK_FORMAT, project); }
+function slotOf(format: string, folder: string): LockSlot {
+  if (typeof folder !== 'string' || !isAbsolute(folder) || folder.includes('\0')) throw refuse('USAGE');
+  let stat; try { stat = statSync(folder, { bigint: true }); } catch { throw refuse('PROJECT_LOCK_UNAVAILABLE'); }
   if (!stat.isDirectory()) throw refuse('PROJECT_LOCK_UNAVAILABLE');
-  const key = hex(JSON.stringify([LOCK_FORMAT, stat.dev.toString(), stat.ino.toString()]));
-  return Object.freeze({ key, port: 20000 + Number.parseInt(key.slice(0, 8), 16) % 30000, banner: `${LOCK_FORMAT} ${key}\n` });
+  const key = hex(JSON.stringify([format, stat.dev.toString(), stat.ino.toString()]));
+  return Object.freeze({ key, port: 20000 + Number.parseInt(key.slice(0, 8), 16) % 30000, banner: `${format} ${key}\n` });
 }
 /**
  * True while `project` still names the folder `slot` was keyed on. A lock user calls it after it binds, and a held
@@ -184,6 +185,58 @@ export async function withProjectLock<T>(root: string, signal: AbortSignal, work
     result = await work(held);
   } catch (error) { failed = true; failure = error; }
   released = true; own.abort();
+  await closeServer(server);
+  if (failed) throw failure;
+  return result as T;
+}
+
+const CACHE_LOCK_FORMAT = 'bowerloom-cache-lock/v1';
+/**
+ * The one lock slot of a skills cache folder (Hanna, global skill cache). It is keyed like the project lock, on the
+ * folder's device and inode, with its own format, so it never shares a key with a project lock.
+ */
+export function cacheLockSlot(cacheRoot: string): LockSlot { return slotOf(CACHE_LOCK_FORMAT, cacheRoot); }
+/** How often a waiting writer tries the cache lock again. */
+export const CACHE_LOCK_POLL_MS = 50;
+/** Proof that `withCacheLock` holds the lock of one cache folder. Valid only inside its work callback. */
+export interface HeldCacheLock { readonly root: string; readonly key: string; assertHeld(): void }
+const abortError = (): Error => Object.assign(new Error('The wait for the skills cache lock was stopped.'), { name: 'AbortError', code: 'ABORT_ERR' });
+function cacheSlotCollision(port: number): DefinitionError & { readonly port: number } {
+  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock the skills cache. Stop that program, then run the command again.`), { port });
+}
+/**
+ * Holds the lock of one skills cache folder while `work` runs. Unlike the project lock, a slot held by this very
+ * cache lock is waited for, not refused: one writer fills one pin at a time, and the next one reuses it. The wait
+ * polls the port and ends when `signal` aborts (an AbortError) or when `waitMs` runs out (PROJECT_LOCK_UNAVAILABLE).
+ * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
+ */
+export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, work: (held: HeldCacheLock) => Promise<T>, options: { waitMs?: number } = {}): Promise<T> {
+  const slot = cacheLockSlot(cacheRoot), deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
+  const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
+    listener.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
+    listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
+  });
+  const pause = () => new Promise<void>(done => { const timer = setTimeout(() => { signal.removeEventListener('abort', stop); done(); }, CACHE_LOCK_POLL_MS); const stop = () => { clearTimeout(timer); done(); }; signal.addEventListener('abort', stop, { once: true }); });
+  let server: Server;
+  for (;;) {
+    if (signal.aborted) throw abortError();
+    server = lockServer(slot);
+    const outcome = await bind(server);
+    if (outcome.ok) break;
+    if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
+    const holder = await lockHolder(slot);
+    if (holder === 'other') { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
+    if (Date.now() >= deadline) throw new DefinitionError('PROJECT_LOCK_UNAVAILABLE', 'Another Bowerloom command held the skills cache lock for too long. Try again.');
+    if (holder === 'this') await pause();
+  }
+  const stillNames = (): boolean => { try { return cacheLockSlot(cacheRoot).key === slot.key; } catch { return false; } };
+  if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : refuse('PROJECT_LOCK_UNAVAILABLE'); }
+  let released = false, failure: unknown, failed = false, result: T | undefined;
+  try {
+    const held: HeldCacheLock = Object.freeze({ root: cacheRoot, key: slot.key, assertHeld(): void { if (released || !stillNames()) throw refuse('PROJECT_LOCK_UNAVAILABLE'); } });
+    result = await work(held);
+  } catch (error) { failed = true; failure = error; }
+  released = true;
   await closeServer(server);
   if (failed) throw failure;
   return result as T;

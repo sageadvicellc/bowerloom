@@ -213,7 +213,7 @@ bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <r
 
 `skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing.
 
-`skills sync` installs every skill in `skills.json` for Claude Code and Codex into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. It fetches only pins that the private cache does not hold yet, and it checks every byte against its pin first. `--offline` refuses before any change if a pin still needs fetching. `--team` syncs only that team's skills. A skill whose copy you changed is held and shown with its next step, and the others apply. Sync removes nothing. Ctrl-C stops it between two skills, never inside one.
+`skills sync` installs every skill in `skills.json` for Claude Code and Codex into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. It fetches only pins that this machine's skills cache does not hold yet, and it checks every byte against its pin first. `--offline` refuses before any change if a pin still needs fetching. `--team` syncs only that team's skills. A skill whose copy you changed is held and shown with its next step, and the others apply. Sync removes nothing. Ctrl-C stops it between two skills, never inside one.
 
 `skills recover` finishes or undoes the one unfinished change of an item, after a crash or a refusal inside it. `skills migrate` moves a skill that an earlier Bowerloom installed in `.bowerloom-skills` to `.bowerloom/managed`. `skills.json` must pin the same source first. `migrate plan` prints the `skills add` command if it does not.
 
