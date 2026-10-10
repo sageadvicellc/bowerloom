@@ -8,7 +8,7 @@ import { performance } from 'node:perf_hooks';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { Header } from 'tar/header';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { SkillSourceError, captureSkillData, closed, boundedText, relativeSkillPath, hashValue, revisionOf, freezeSkillData, validateSkillSource } from './validation.js';
+import { SkillSourceError, captureSkillData, closed, closedWithOptional, allowedToolsText, boundedText, relativeSkillPath, hashValue, revisionOf, freezeSkillData, validateSkillSource } from './validation.js';
 import type { SkillTextFile, SkillLicense } from './types.js';
 import { validateCacheBinding, openNpmCacheOperation, fixedCode, secondaryCodes, strictUtf8, REFUSAL_CODES, SECONDARY_CODES } from './cache.js';
 import type { SkillCacheBinding, AcquiredSkillCacheReceipt } from './cache.js';
@@ -20,7 +20,7 @@ export const NPM_LIMITS = Object.freeze({ planBytes: 196608, metadataBytes: 5242
 export interface ExpectedSkillFile { path: string; sourcePath: string; sha256: string; bytes: number; mode: 420 }
 export interface NpmAcquisitionRequest {
   package: string; version: string; integrity: string; metadataSha256: string; publisher: string; declaredLicense: SkillLicense;
-  skill: { id: string; name: string; sourceRoot: string };
+  skill: { id: string; name: string; sourceRoot: string; allowedTools?: string };
   files: ExpectedSkillFile[]; references: { from: string; to: string }[];
   license: { spdx: SkillLicense; origin: 'included'; files: string[] };
 }
@@ -44,6 +44,7 @@ export function npmCheck(ok: unknown, code: string): asserts ok { if (!ok) npmRe
 export const sha256 = (bytes: string | Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 // Only a validation refusal becomes NPM_INPUT. A TypeError or another fault reaches the boundary's fixed fallback.
 function exact<T>(value: unknown, keys: string[]): T { try { return closed(value, keys) as T; } catch (error) { if (error instanceof SkillSourceError) return npmRefuse('NPM_INPUT'); throw error; } }
+function exactOptional<T>(value: unknown, keys: string[], optional: string[]): T { try { return closedWithOptional(value, keys, optional) as T; } catch (error) { if (error instanceof SkillSourceError) return npmRefuse('NPM_INPUT'); throw error; } }
 function safe<T>(work: () => T): T { try { return work(); } catch (error) { if (error instanceof SkillSourceError) return npmRefuse('NPM_INPUT'); throw error; } }
 function compare(a: string, b: string): number { return a < b ? -1 : a > b ? 1 : 0; }
 
@@ -60,7 +61,8 @@ function planRequest(requestValue: unknown, bindingValue: unknown): Readonly<Npm
   npmCheck(!pre || pre.split('.').every(p => !/^\d+$/.test(p) || p === '0' || !p.startsWith('0')), 'NPM_INPUT');
   npmCheck(typeof request.integrity === 'string' && /^sha512-[A-Za-z0-9+/]{86}==$/.test(request.integrity) && Buffer.from(request.integrity.slice(7), 'base64').toString('base64') === request.integrity.slice(7), 'NPM_INPUT');
   npmCheck(['MIT', 'Apache-2.0'].includes(request.declaredLicense), 'NPM_INPUT');
-  request.skill = exact(request.skill, ['id', 'name', 'sourceRoot']);
+  request.skill = exactOptional(request.skill, ['id', 'name', 'sourceRoot'], ['allowedTools']);
+  safe(() => { if (Object.hasOwn(request.skill, 'allowedTools')) allowedToolsText(request.skill.allowedTools); });
   safe(() => { for (const value of [request.skill.id, request.skill.name]) { boundedText(value, 64); npmCheck(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value), 'NPM_INPUT'); } relativeSkillPath(request.skill.sourceRoot); });
   request.license = exact(request.license, ['spdx', 'origin', 'files']);
   npmCheck(request.license.spdx === request.declaredLicense && request.license.origin === 'included' && Array.isArray(request.license.files) && request.license.files.length > 0 && request.license.files.length <= 8 && new Set(request.license.files).size === request.license.files.length, 'NPM_INPUT');

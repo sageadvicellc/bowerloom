@@ -61,6 +61,18 @@ export function closed(input: unknown, keys: string[]): Record<string, unknown> 
 export function boundedText(value: unknown, max = 256): asserts value is string {
   requireSkill(typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= max && value === value.normalize('NFC') && !/[\p{Cc}\p{Cf}]/u.test(value), 'SKILL_TEXT');
 }
+/** Agent Skills `allowed-tools`: one non-empty line of at most 1024 bytes with no control or format character (C0 and C1 controls included). */
+export const ALLOWED_TOOLS_MAX = 1024;
+export function allowedToolsText(value: unknown, code = 'SKILL_FRONTMATTER'): asserts value is string {
+  requireSkill(typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= ALLOWED_TOOLS_MAX && value === value.normalize('NFC') && !/[\p{Cc}\p{Cf}]/u.test(value), code);
+}
+/** Like `closed`, with keys that may be absent. */
+export function closedWithOptional(input: unknown, required: string[], optional: string[]): Record<string, unknown> {
+  const value = captureSkillData(input);
+  requireSkill(value !== null && typeof value === 'object' && !Array.isArray(value), 'SKILL_SCHEMA');
+  const record = value as Record<string, unknown>, keys = Object.keys(record);
+  requireSkill(required.every(k => Object.hasOwn(record, k)) && keys.every(k => required.includes(k) || optional.includes(k)), 'SKILL_SCHEMA'); return record;
+}
 export function relativeSkillPath(value: unknown): asserts value is string {
   boundedText(value, 512);
   requireSkill(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value) && value.split('/').every(p => p !== '.' && p !== '..' && p !== '' && !p.startsWith('.')) && !value.includes('//'), 'SKILL_PATH');
@@ -74,7 +86,7 @@ function safeContentText(text: string): void {
   // Preserve bytes; allow ordinary multiline text, not terminal or bidi controls.
   requireSkill(!/[\p{Cc}\p{Cf}]/u.test(text.replace(/\r\n|\n|\t/g, '')), 'SKILL_TEXT_CONTROL');
 }
-function frontmatter(text: string, name: string, declaredLicense: string): void {
+function frontmatter(text: string, name: string, declaredLicense: string, allowedTools: unknown): void {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   requireSkill(match && Buffer.byteLength(match[1]!) <= 8192, 'SKILL_FRONTMATTER');
   try {
@@ -83,7 +95,9 @@ function frontmatter(text: string, name: string, declaredLicense: string): void 
     const parsed = captureSkillData(doc.toJS({ maxAliasCount: 0 }));
     requireSkill(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), 'SKILL_FRONTMATTER');
     const data = parsed as Record<string, unknown>;
-    requireSkill(Object.keys(data).every(k => ['name', 'description', 'license', 'compatibility', 'metadata'].includes(k)), 'SKILL_FRONTMATTER');
+    requireSkill(Object.keys(data).every(k => ['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools'].includes(k)), 'SKILL_FRONTMATTER');
+    // The pin and the text must say the same thing, so a reviewer sees every tool the skill pre-approves.
+    requireSkill(Object.hasOwn(data, 'allowed-tools') ? (allowedToolsText(data['allowed-tools']), data['allowed-tools'] === allowedTools) : allowedTools === undefined, 'SKILL_FRONTMATTER');
     requireSkill(data.name === name && typeof data.description === 'string' && data.description.trim().length > 0 && Buffer.byteLength(data.description) <= 1024, 'SKILL_FRONTMATTER');
     safeContentText(data.description as string);
     for (const key of ['license', 'compatibility']) if (Object.hasOwn(data, key)) boundedText(data[key], 512);
@@ -133,7 +147,8 @@ export function validateSkillSource(value: unknown): SkillSourceValidation {
     requireSkill(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/.test(source.repository) && !source.repository.endsWith('.git'), 'SKILL_SOURCE');
     requireSkill(typeof source.commit === 'string' && /^[a-f0-9]{40}$/.test(source.commit) && typeof source.tree === 'string' && /^[a-f0-9]{40}$/.test(source.tree), 'SKILL_SOURCE');
   }
-  const skill = closed(data.skill, ['id', 'name', 'sourceRoot']);
+  const skill = closedWithOptional(data.skill, ['id', 'name', 'sourceRoot'], ['allowedTools']);
+  if (Object.hasOwn(skill, 'allowedTools')) allowedToolsText(skill.allowedTools);
   for (const key of ['id', 'name']) { boundedText(skill[key], 64); requireSkill(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill[key]), 'SKILL_NAME'); }
   relativeSkillPath(skill.sourceRoot);
   // A Git source pins one tree per source root segment, at most eight.
@@ -159,7 +174,7 @@ export function validateSkillSource(value: unknown): SkillSourceValidation {
     requireSkill(isLicense || file.sourcePath === `${skill.sourceRoot}/${file.path}`, 'SKILL_SOURCE_PATH'); paths.set(file.path, file);
   }
   for (const path of paths.keys()) requireSkill(![...paths.keys()].some(other => other !== path && other.startsWith(path + '/')), 'SKILL_COLLISION');
-  requireSkill(paths.has('SKILL.md'), 'SKILL_ENTRY'); frontmatter(paths.get('SKILL.md')!.text as string, skill.name as string, license.spdx as string);
+  requireSkill(paths.has('SKILL.md'), 'SKILL_ENTRY'); frontmatter(paths.get('SKILL.md')!.text as string, skill.name as string, license.spdx as string, skill.allowedTools);
   for (const path of license.files as string[]) {
     const file = paths.get(path); requireSkill(file, 'SKILL_LICENSE');
     requireSkill((file.text as string).includes(license.spdx === 'MIT' ? 'MIT License' : 'Apache License'), 'SKILL_LICENSE');

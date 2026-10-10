@@ -136,3 +136,18 @@ test('only a parsed npm spec is accepted', async () => {
   }
   assert.deepEqual(transport.urls, []);
 });
+
+test('allowed-tools in SKILL.md is read into the pin; a skill without it has no such key', async () => {
+  const path = 'skills/synthetic-db/collections/SKILL.md', original = NPM_FILES.find(f => f.path === path).text;
+  const text = original.replace('\n---\n', '\nallowed-tools: Bash(npx:*) Bash(npm:*)\n---\n');
+  assert.notEqual(text, original);
+  const resolved = await resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text }) })), signal());
+  assert.equal(resolved.skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
+  const plain = await resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(npmResponses()), signal());
+  assert.equal(Object.hasOwn(plain.skill, 'allowedTools'), false);
+});
+test('a multi-line allowed-tools in SKILL.md is refused as unsafe content', async () => {
+  const path = 'skills/synthetic-db/collections/SKILL.md', original = NPM_FILES.find(f => f.path === path).text;
+  const text = original.replace('\n---\n', '\nallowed-tools: "a\\nb"\n---\n');
+  await assert.rejects(resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text }) })), signal()), code('SKILLS_ADD_UNSAFE_CONTENT'));
+});

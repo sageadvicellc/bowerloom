@@ -13,7 +13,7 @@ export interface SkillTextFile { path: string; sourcePath: string; text: string;
 export interface SkillSourceInput {
   format: 'bowerloom/synthetic-skill-source/v1beta1'; synthetic: true;
   source: NpmSkillSource | GitSkillSource;
-  skill: { id: string; name: string; sourceRoot: string };
+  skill: { id: string; name: string; sourceRoot: string; allowedTools?: string };
   files: SkillTextFile[]; references: { from: string; to: string }[];
   license: { spdx: SkillLicense; origin: 'included'; files: string[] };
 }
