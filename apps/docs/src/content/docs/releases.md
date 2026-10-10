@@ -8,10 +8,19 @@ order: 27
 Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.1
+Open beta · 0.7.0-beta.2
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
+
+## 0.7.0-beta.2
+
+This release changes the package and its checks. It adds no new command.
+
+- The npm package text is public. It holds no private or proof wording.
+- The package homepage link now points at bowerloom.ai.
+- The installed CLI accepts the npm beta-stream release record. The 0.7.0-beta.1 package did not include this check.
+- Dependency pins are unchanged.
 
 ## 0.7.0-beta.1
 

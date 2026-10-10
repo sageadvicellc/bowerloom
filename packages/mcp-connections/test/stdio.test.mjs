@@ -10,7 +10,7 @@ const fixtureSource=new URL('./fixtures/stdio-adapter-server.mjs',import.meta.ur
 const executable=await realpath(process.execPath);
 const digest=async file=>{const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return 'sha256:'+hash.digest('hex');};
 const executableDigest=await digest(executable);
-const initial={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.1'}};
+const initial={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.2'}};
 const refused=error=>error instanceof McpConnectionError&&/^MCP_STDIO_[A-Z_]+$/.test(error.code)&&error.code===error.message&&!error.message.includes('PRIVATE');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function setup(t,mode='normal'){

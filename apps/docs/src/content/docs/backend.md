@@ -8,7 +8,7 @@ order: 14
 First-team setup writes files. It does not install Docker or start a database. Backend installation requires a separate plan and exact approval.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.1
+Open beta · 0.7.0-beta.2
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->

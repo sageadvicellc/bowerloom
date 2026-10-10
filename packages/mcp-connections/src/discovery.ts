@@ -4,7 +4,7 @@ import type { McpBinding, McpPlanInput, ServerIdentity, TransportKind } from './
 
 export interface McpInitializeRequest {
   protocolVersion: typeof MCP_PROTOCOL_VERSION; capabilities: Record<string, never>;
-  clientInfo: { name: 'bowerloom-discovery'; version: '0.7.0-beta.1' };
+  clientInfo: { name: 'bowerloom-discovery'; version: '0.7.0-beta.2' };
 }
 export interface McpDiscoveryTransport {
   initialize(params: Readonly<McpInitializeRequest>): Promise<unknown>;
@@ -112,7 +112,7 @@ export async function discoverMcpCatalog(input: McpPlanInput, supplied: McpDisco
     transport = await perform(() => opened);
     if (!transport || typeof transport.initialize !== 'function' || typeof transport.initialized !== 'function'
       || typeof transport.listTools !== 'function' || typeof transport.close !== 'function') fail('MCP_DISCOVERY_ADAPTER');
-    const init = record(response(await perform(() => transport!.initialize(frozen({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.1' } })))), ['protocolVersion', 'capabilities', 'serverInfo'], ['instructions', '_meta']);
+    const init = record(response(await perform(() => transport!.initialize(frozen({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.2' } })))), ['protocolVersion', 'capabilities', 'serverInfo'], ['instructions', '_meta']);
     if (init.instructions !== undefined && typeof init.instructions !== 'string') fail('MCP_DISCOVERY_RESPONSE');
     if (init.protocolVersion !== MCP_PROTOCOL_VERSION) fail('MCP_DISCOVERY_PROTOCOL');
     const server = record(init.serverInfo, ['name', 'version'], ['title', 'websiteUrl', 'icons']);

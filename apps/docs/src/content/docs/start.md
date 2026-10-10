@@ -16,7 +16,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.1. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
+Read the Bowerloom installation guide for 0.7.0-beta.2. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
 ```
 
 ## Agent procedure
@@ -39,18 +39,18 @@ bowerloom --help
 
 Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install.
 
-A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
+A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`.
 
 npm reports the packages it added and exits 0. In the tests for this release, `bowerloom --version` printed this line:
 
 ```text
-Bowerloom 0.7.0-beta.1
+Bowerloom 0.7.0-beta.2
 ```
 
 `bowerloom --help` starts with these two lines:
 
 ```text
-Bowerloom 0.7.0-beta.1: open beta
+Bowerloom 0.7.0-beta.2: open beta
 Setup does not start workers, grant runtime access, or authorize connected actions.
 ```
 

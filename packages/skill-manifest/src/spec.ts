@@ -1,5 +1,5 @@
 /**
- * The source argument of `bowerloom skills add`. npm takes a path, the same shape as GitHub (Hanna, proof plan 01, answer 1):
+ * The source argument of `bowerloom skills add`. npm takes a path, the same shape as GitHub (owner, proof plan 01, answer 1):
  *
  *   npm:<package>@<version>:<path>              npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections
  *   github:<owner>/<repo>@<commit>:<path>       github:affaan-m/ecc@<40 lower-case hex>:skills/verification-loop

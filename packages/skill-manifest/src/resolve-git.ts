@@ -1,6 +1,6 @@
 /**
  * Resolves `github:<owner>/<repo>@<commit>:<path>` into a pinned skills.json entry. It reads only the selected skill
- * folder (Hanna, 2026-10-07), through the same public api.github.com reads that acquisition makes, in the same order:
+ * folder (owner decision, 2026-10-07), through the same public api.github.com reads that acquisition makes, in the same order:
  *   https://api.github.com/repos/<repo>/git/commits/<commit>
  *   https://api.github.com/repos/<repo>/git/trees/<tree>                one per folder on the path, without recursion
  *   https://api.github.com/repos/<repo>/git/trees/<skill tree>?recursive=1

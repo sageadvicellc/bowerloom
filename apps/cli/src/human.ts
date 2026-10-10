@@ -165,7 +165,7 @@ export function newCommandRefusal(code: GateCode, message: string): DefinitionEr
 }
 const marked = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && raisedByNewCommand.has(error);
 
-// Freeze review finding 3: Ctrl-C or Ctrl-D at a "[y/N]" prompt. Membership is the error object itself, as above.
+// Review finding 3: Ctrl-C or Ctrl-D at a "[y/N]" prompt. Membership is the error object itself, as above.
 const stoppedAtPrompt = new WeakSet<object>();
 /**
  * The stop of a person who pressed Ctrl-C or Ctrl-D at a prompt: exit 130, never the generic failure words.
@@ -218,7 +218,7 @@ export function plainText(value: string, multiline = false): string {
   return value.replace(multiline ? CONTROLS_BUT_NEWLINE : CONTROLS, escapeUnits);
 }
 
-// Freeze review finding 5: a folder with no project starts with up, never with the init plumbing.
+// Review finding 5: a folder with no project starts with up, never with the init plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
 interface Words { readonly sentence: string; readonly next: string }
 const REFUSALS: Readonly<Record<string, Words>> = {
@@ -289,7 +289,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANAGED_SKILL_LOCAL_DRIFT: { sentence: 'Bowerloom never overwrites a copy you changed.', next: 'bowerloom skills sync' },
   MANAGED_SKILL_PATH_OCCUPIED: { sentence: 'Something Bowerloom did not install is where a copy goes.', next: 'bowerloom skills sync' },
   MANAGED_SKILL_HISTORY_FULL: { sentence: 'Bowerloom deletes no history by itself.', next: 'bowerloom skills sync' },
-  // Freeze review finding 14: the managed codes that pass through from managed-skills.
+  // Review finding 14: the managed codes that pass through from managed-skills.
   MANAGED_SKILL_STALE_APPROVAL: { sentence: 'A copy changed after you approved the plan, so Bowerloom stopped before that copy.', next: 'run the same command again, without --approve, to see the new plan' },
   MANAGED_SKILL_LOCKED: { sentence: 'Two commands must not change one project at the same time.', next: 'run the same command again when the other command is done' },
   MANAGED_SKILL_LOCK_NOT_HELD: { sentence: 'Bowerloom stops when it cannot show that it still holds the project lock.', next: 'bowerloom status' },
@@ -342,9 +342,9 @@ export function renderRefusal(code: string, message: string, detail: RefusalDeta
  * JSON envelope, byte for byte, which agents parse. Never exit 0.
  */
 export function reportFailure(error: unknown, tty: boolean): { text: string; exitCode: Exclude<ExitCode, 0> } {
-  // Freeze review finding 3: a stop at a prompt is not a failure. A terminal gets one plain line.
+  // Review finding 3: a stop at a prompt is not a failure. A terminal gets one plain line.
   if (isPromptStopped(error)) return { text: tty ? `${plainText(error.message)}\n` : `${JSON.stringify({ error: { code: error.code, message: error.message } })}\n`, exitCode: 130 };
-  // Freeze review finding 4: in a terminal, workers held is the successful end of up, already printed on stdout.
+  // Review finding 4: in a terminal, workers held is the successful end of up, already printed on stdout.
   // Agents keep the JSON envelope on a pipe.
   if (tty && marked(error) && error.code === 'WORKERS_HELD') return { text: '', exitCode: 4 };
   const code = codeOf(error) ?? 'IO_ERROR';
