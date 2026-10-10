@@ -38,8 +38,8 @@ import { managedCode, outward, syncError } from './refusal.js';
 export const SYNC_PLAN_FORMAT = 'bowerloom/skills-sync-plan/v1beta1' as const;
 /** The free space each child keeps beyond its own bytes, the managed-skills minimum; also the cache reserve. */
 export const MIN_FREE_BYTES = 33554432;
-/** At most this many items in one plan: 32 manifest skills and 32 orphans. */
-export const SYNC_ITEM_LIMIT = 64;
+/** At most this many items in one plan: 128 manifest skills and 128 orphans. */
+export const SYNC_ITEM_LIMIT = 256;
 export const HOSTS = { npm: 'registry.npmjs.org', git: 'api.github.com' } as const;
 
 export interface SyncInput {
