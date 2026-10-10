@@ -271,7 +271,7 @@ test('an unreleased npm-beta-stream record packs as a public release candidate w
  const candidate=collect({repoDir:root,releaseCandidate:true}),manifest=JSON.parse(candidate.files.get('package.json'));
  assert.deepEqual(manifest,candidate.manifest);
  assert.equal(manifest.private,false);assert.equal(manifest.version,pkg.version);assert.equal(manifest.version,r.version);
- assert.equal(manifest.description,'Bowerloom brings governance to agent workflows in files that follow you.');
+ assert.equal(manifest.description,'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.');
  assert.deepEqual(manifest.repository,{type:'git',url:'git+'+r.urls.repository+'.git'});
  assert.equal(manifest.homepage,r.urls.site);
  assert.deepEqual(manifest.bugs,{url:r.urls.repository+'/issues'});

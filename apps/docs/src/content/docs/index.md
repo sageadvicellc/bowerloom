@@ -1,11 +1,11 @@
 ---
 title: "Build with your agent"
-description: "Bring your current workflow into a governed team specification for your existing project."
+description: "Set up the skills, prompts, and teams your agents use, and approve every change."
 section: "Start here"
 order: 0
 ---
 
-Bowerloom brings governance to agent workflows in files that follow you. Start with your existing project and the work you perform manually or with one agent. Your personal agent helps describe roles, handoffs, and review points, then compares them with a fixed team profile. The beta binds setup-file writes to an exact approved plan and records the resulting state. Team declarations remain separate from runtime permissions and execution.
+Bowerloom is an agent environment manager. It sets up the skills, prompts, and teams that Claude Code and Codex use in your project. Each change shows its exact plan first, and Bowerloom writes nothing until you approve that plan. It records what it installed, and it does not overwrite a copy that you changed. Start with your existing project and the work you do by hand or with one agent.
 
 ## Choose your next step
 
