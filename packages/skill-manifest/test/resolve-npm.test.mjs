@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { denyNetwork, fakeTransport, tarball, npmMetadata, hash } from './support/fixtures.mjs';
 import { NPM, npmResponses, npmMetadataBytes, npmArchiveBytes, npmCollections, privateFolder } from './support/expected.mjs';
 import { NPM_FILES } from './fixtures/record.mjs';
-import { resolveNpm } from '../../../dist/packages/skill-manifest/src/resolve-npm.js';
+import { resolveNpm, resolveNpmVerified } from '../../../dist/packages/skill-manifest/src/resolve-npm.js';
 import { parseSkillSpec } from '../../../dist/packages/skill-manifest/src/spec.js';
 import { toNpmRequest } from '../../../dist/packages/skill-manifest/src/requests.js';
 import { parseManifest, serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
@@ -150,4 +150,13 @@ test('a multi-line allowed-tools in SKILL.md is refused as unsafe content', asyn
   const path = 'skills/synthetic-db/collections/SKILL.md', original = NPM_FILES.find(f => f.path === path).text;
   const text = original.replace('\n---\n', '\nallowed-tools: "a\\nb"\n---\n');
   await assert.rejects(resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text }) })), signal()), code('SKILLS_ADD_UNSAFE_CONTENT'));
+});
+
+test('resolveNpmVerified returns the entry and the exact bytes it verified, for the cache to keep', async t => {
+  const transport = fakeTransport(npmResponses());
+  const { content, bytes } = await resolveNpmVerified(spec('skills/synthetic-db/collections'), transport, signal());
+  assert.deepEqual(content, npmCollections()); assert.deepEqual(transport.urls, [NPM.metadataUrl, NPM.archiveUrl]);
+  assert.equal(bytes.kind, 'npm'); assert.ok(bytes.metadata.equals(npmMetadataBytes())); assert.ok(bytes.data.equals(npmArchiveBytes()));
+  const plan = planNpmAcquisition(toNpmRequest({ id: 'collections', ...content }), observeSkillCacheRoot(privateFolder(t), 'e'.repeat(32), 12582912));
+  assert.equal((await verifyNpmPayload(plan, bytes.metadata, bytes.data, signal(), () => {})).files.length, 4);
 });

@@ -2,9 +2,10 @@
  * `skills sync` apply (build plan 01, section 4, M5). Under one held project lock:
  * 1. Plan again; refuse STALE_APPROVAL unless the revision is equal.
  * 2. Create the planned private folders, mode 0700, and check their identities.
- * 3. Phase A, no project write: for each pin that needs fetching, build its acquisition plan in this run, require its
- *    request digest and cache operation id to equal the bound ones, and acquire with that plan's own revision.
- *    A network fault refuses SKILLS_OFFLINE.
+ * 3. Phase A, no project write: for each pin the machine cache does not hold, take the cache lock, look the pin up
+ *    again and reuse it when another project's run completed it meanwhile. Otherwise build its acquisition plan in
+ *    this run, require its content key to equal the bound one and its host to be an approved one, and acquire with
+ *    that plan's own revision. The lock is held for that one pin only. A network fault refuses SKILLS_OFFLINE.
  * 4. Phase B, no project write: build every child plan; require its material, before-pins and previous receipt to
  *    equal the bound ones (SKILLS_SYNC_CONTENT_MISMATCH for material, STALE_APPROVAL for the rest).
  * 5. Phase C: for each child in order, plan it once more in this run, require that plan to equal its phase B plan
@@ -24,18 +25,18 @@ import { planNpmAcquisition } from '../../skill-sources/src/npm.js';
 import type { NpmAcquisitionPlan } from '../../skill-sources/src/npm.js';
 import { planGitAcquisition } from '../../skill-sources/src/git.js';
 import type { GitAcquisitionPlan } from '../../skill-sources/src/git.js';
-import { ManagedSkillError, absent, directory, stablePins } from '../../managed-skills/src/observed.js';
+import { ManagedSkillError, absent, directory, exists, stablePins } from '../../managed-skills/src/observed.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { ownSurface } from '../../managed-skills/src/v2-observed.js';
 import type { ItemSource, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
-import { withProjectLock } from '../../project-context/src/index.js';
+import { withCacheLock, withProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
-import { entryRequest, receiptMatches } from './cache-index.js';
-import type { PinnedRequest } from './cache-index.js';
+import { entryRequest, lookupCache, receiptMatches } from './cache-index.js';
+import type { CacheLookup, CacheRoots, PinnedRequest } from './cache-index.js';
 import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
-import { MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
+import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
 import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
 
@@ -52,12 +53,20 @@ const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b
 const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
 const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The skill is ${id}.`);
 
-/** Creates the planned private folders in order: each one new, mode 0700, owned by this user, its parent fsynced. */
+/**
+ * Creates the planned private folders in order: each one new, mode 0700, owned by this user, its parent fsynced.
+ * A shared folder (the state root, a folder above it, or the machine cache) that another project's run created
+ * meanwhile is taken as it is, once it passes the same check: a real folder of this user, mode 0700.
+ */
 export function createPrivateFolders(plan: Pick<SyncPlan, 'privateState'>, held: HeldProjectLock, dir: string): void {
   try {
+    const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
     for (const p of plan.privateState.create) {
-      held.assertHeld(dir); directory(dirname(p)); absent(p);
-      fs.mkdirSync(p, { mode: 0o700 }); directory(p, true);
+      held.assertHeld(dir); directory(dirname(p));
+      if (!ownFolder(p) && exists(p)) { directory(p, true); continue; }
+      absent(p);
+      try { fs.mkdirSync(p, { mode: 0o700 }); } catch (e) { if (!ownFolder(p) && (e as NodeJS.ErrnoException).code === 'EEXIST') { directory(p, true); continue; } throw e; }
+      directory(p, true);
       const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     }
     const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot]);
@@ -78,29 +87,51 @@ function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string): Er
   return syncError('SKILLS_OFFLINE', `Bowerloom could not fetch it. The skill is ${id}${NETWORK.has(code) ? ` (${code})` : ''}. Check the network, then run bowerloom skills sync again. Pins that are already cached also sync with --offline.`);
 }
 
-/** Phase A for one pin: an acquisition plan made in this run, checked against the bound digest and id, then acquired. */
-export async function fetchPin(item: SyncItem, pinned: PinnedRequest, cacheRoot: string, deps: SyncDeps): Promise<void> {
+/** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */
+export function cacheRoots(privateState: { root: string; cacheRoot: string }): CacheRoots { return { cacheRoot: privateState.cacheRoot, legacyCacheRoot: join(privateState.root, 'cache') }; }
+/**
+ * Phase A for one pin, under the cache lock and for this pin only: look it up again and reuse it when another run
+ * completed it meanwhile; else plan its acquisition in this run, check the bound content key and the approved host,
+ * and acquire into the first unused operation id. Returns where the pin now is, and whether this run fetched it.
+ */
+export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: CacheRoots, approvedHosts: readonly string[], deps: SyncDeps): Promise<{ lookup: CacheLookup; fetched: boolean }> {
   if (pinned.digest !== item.requestDigest || item.cacheOperationId === null) throw stale();
-  let plan: Readonly<NpmAcquisitionPlan> | Readonly<GitAcquisitionPlan>;
+  // The approval names each host the run may contact. A fetch it did not approve never starts.
+  if (!approvedHosts.includes(HOSTS[pinned.kind])) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom skills sync without --offline.`);
   try {
-    const binding = observeSkillCacheRoot(cacheRoot, item.cacheOperationId, MIN_FREE_BYTES);
-    plan = pinned.kind === 'npm' ? planNpmAcquisition(pinned.request, binding) : planGitAcquisition(pinned.request, binding);
-  } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The private cache could not take ${item.id}.`); }
-  if (plan.cache.operationId !== item.cacheOperationId || !same(plan.request, pinned.request)) throw stale();
-  let receipt: Readonly<AcquiredSkillCacheReceipt>;
-  try { receipt = pinned.kind === 'npm' ? await deps.acquirer.npm(plan as NpmAcquisitionPlan, plan.revision, deps.signal) : await deps.acquirer.git(plan as GitAcquisitionPlan, plan.revision, deps.signal); }
-  catch (e) { throw acquisitionRefusal(e, deps.signal, item.id); }
-  if (!receiptMatches(pinned, receipt) || receipt.operationId !== item.cacheOperationId) throw mismatch(item.id);
+    return await withCacheLock(roots.cacheRoot, deps.signal, async held => {
+      const again = await lookupCache(roots, pinned);
+      if (again.status === 'cached') return { lookup: again, fetched: false };
+      held.assertHeld();
+      let plan: Readonly<NpmAcquisitionPlan> | Readonly<GitAcquisitionPlan>;
+      try {
+        const binding = observeSkillCacheRoot(roots.cacheRoot, again.operationId, MIN_FREE_BYTES);
+        plan = pinned.kind === 'npm' ? planNpmAcquisition(pinned.cacheRequest, binding) : planGitAcquisition(pinned.cacheRequest, binding);
+      } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The private cache could not take ${item.id}.`); }
+      if (plan.cache.operationId !== again.operationId || !same(plan.request, pinned.cacheRequest)) throw stale();
+      let receipt: Readonly<AcquiredSkillCacheReceipt>;
+      try { receipt = pinned.kind === 'npm' ? await deps.acquirer.npm(plan as NpmAcquisitionPlan, plan.revision, deps.signal) : await deps.acquirer.git(plan as GitAcquisitionPlan, plan.revision, deps.signal); }
+      catch (e) { throw acquisitionRefusal(e, deps.signal, item.id); }
+      if (!receiptMatches(pinned, receipt) || receipt.operationId !== again.operationId) throw mismatch(item.id);
+      return { lookup: { ...again, status: 'cached', receiptRevision: receipt.revision }, fetched: true };
+    });
+  } catch (e) {
+    if (deps.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${item.id}, before any change to the project. Run bowerloom skills sync again.`);
+    throw e;
+  }
 }
-/** The selector of a completed cache operation, read again now; a bound cached pin must be the very same bytes. */
-export async function selectorFor(item: SyncItem, pinned: PinnedRequest, cacheRoot: string): Promise<AcquiredSkillCacheSelector> {
-  const operationId = item.cacheOperationId!;
+/**
+ * The selector of a completed cache operation, read again now. A pin found cached, or just fetched, must still be
+ * the very same bytes: its snapshot and receipt, when known, are compared.
+ */
+export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup: CacheLookup): Promise<AcquiredSkillCacheSelector> {
+  const { root, operationId } = lookup;
   let inspected;
-  try { inspected = await inspectSkillCache({ root: cacheRoot, operationId }); } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`); }
+  try { inspected = await inspectSkillCache({ root, operationId }); } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`); }
   if (inspected.status !== 'COMPLETED' || inspected.receipt === null || inspected.activeOwner) throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} is not complete.`);
   if (!receiptMatches(pinned, inspected.receipt)) throw mismatch(item.id);
-  if (item.cache?.status === 'cached' && (inspected.snapshotRevision !== item.cache.snapshotRevision || inspected.receipt.revision !== item.cache.receiptRevision)) throw stale();
-  return { root: cacheRoot, operationId, expectedSnapshotRevision: inspected.snapshotRevision, expectedReceiptRevision: inspected.receipt.revision };
+  if ((lookup.snapshotRevision !== null && inspected.snapshotRevision !== lookup.snapshotRevision) || (lookup.receiptRevision !== null && inspected.receipt.revision !== lookup.receiptRevision)) throw stale();
+  return { root, operationId, expectedSnapshotRevision: inspected.snapshotRevision, expectedReceiptRevision: inspected.receipt.revision };
 }
 
 /** The child request of one item. Every field comes from the plan this run computed. */
@@ -182,8 +213,14 @@ export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<
     if (entry.source.kind === 'local') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
     const pinned = entryRequest(entry as PinnedEntry); pins.set(item.id, pinned);
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
-    if (item.cache?.status === 'needs-fetch') { held.assertHeld(dir); await fetchPin(item, pinned, plan.privateState.cacheRoot, deps); fetched.push(item.id); }
-    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, plan.privateState.cacheRoot) });
+    if (item.cache === null) throw stale();
+    let found = item.cache;
+    if (found.status === 'needs-fetch') {
+      held.assertHeld(dir);
+      const done = await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps); found = done.lookup;
+      if (done.fetched) fetched.push(item.id);
+    }
+    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found) });
   }
   // Phase B: every child plan, checked against the bindings. No project write.
   const children: Child[] = [];

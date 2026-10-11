@@ -100,6 +100,8 @@ test('apply refusals: a collision, an uncached pin, and usage errors; nothing is
   assert.equal(tree(p.home), before);
   rmSync(join(p.dir, '.claude'), { recursive: true });
   approve(p, ['skills', 'add', NPM_SPEC], p.serve);
+  // skills add kept its checked bytes in the machine cache. Without them the pin is not cached.
+  rmSync(join(p.home, 'state', 'bowerloom'), { recursive: true, force: true });
   before = tree(p.home);
   const offline = run(p.dir, ['apply'], p.deny); assert.equal(offline.status, 1);
   assert.equal(errorOf(offline.stderr).code, 'SKILLS_OFFLINE'); assert.match(errorOf(offline.stderr).message, /bowerloom skills sync/);

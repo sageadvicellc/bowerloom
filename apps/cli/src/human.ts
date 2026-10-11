@@ -232,7 +232,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PROJECT_UNREADABLE: { sentence: 'A folder on the way to the project could not be read, so Bowerloom cannot tell which project holds this folder.', next: 'ls -ld <folder>' },
   PROJECT_LOCKED: { sentence: 'Two commands must not change one project at the same time, so nothing was changed.', next: 'bowerloom status' },
   PROJECT_LOCK_UNAVAILABLE: { sentence: 'The lock uses a local port, and this computer would not give it out.', next: 'bowerloom status' },
-  PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+  PROJECT_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
   MANIFEST_NOT_FOUND: { sentence: 'There is nothing to check yet.', next: 'bowerloom skills add npm:<package>@<version>:<path>' },
   MANIFEST_INVALID: { sentence: 'Bowerloom reads skills.json strictly, so a hand edit can break it.', next: 'git diff .bowerloom/skills.json' },
   MANIFEST_UNSAFE: { sentence: 'Bowerloom will not trust a skills.json that other people or links can change.', next: 'ls -l .bowerloom/skills.json' },
@@ -240,7 +240,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
-  MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 32 skills and 1 MiB at most.', next: 'bowerloom skills check' },
+  MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already pins this. To move that skill to another version or commit, add --replace.', next: 'bowerloom skills add <source> --id <id> --replace' },
   SKILLS_ADD_SOURCE_CHANGED: { sentence: '--replace keeps the npm package or GitHub repository and moves only its version or commit. To use another source, add it under a new id.', next: 'bowerloom skills check' },
@@ -276,7 +276,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SKILLS_OFFLINE: { sentence: 'Only bowerloom skills sync fetches, and only the pins that are not cached yet.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
-  SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 64 skills at once.', next: 'bowerloom skills check' },
+  SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 256 skills at once.', next: 'bowerloom skills check' },
   SKILLS_CACHE_RECOVERY_REQUIRED: { sentence: 'The private cache needs a look before this pin can be read.', next: 'bowerloom help advanced' },
   SKILLS_STATE_UNSAFE: { sentence: 'Bowerloom keeps receipts and the cache in a private folder that only you can change, outside the project.', next: 'check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom' },
   SKILLS_STATE_STRAY_ENTRY: { sentence: 'Bowerloom keeps only its own operation folders there, and changes nothing it did not make.', next: 'move the named entry out of the private state folder with mv' },
@@ -293,7 +293,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANAGED_SKILL_STALE_APPROVAL: { sentence: 'A copy changed after you approved the plan, so Bowerloom stopped before that copy.', next: 'run the same command again, without --approve, to see the new plan' },
   MANAGED_SKILL_LOCKED: { sentence: 'Two commands must not change one project at the same time.', next: 'run the same command again when the other command is done' },
   MANAGED_SKILL_LOCK_NOT_HELD: { sentence: 'Bowerloom stops when it cannot show that it still holds the project lock.', next: 'bowerloom status' },
-  MANAGED_SKILL_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port, and another program is listening on it.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
+  MANAGED_SKILL_LOCK_SLOT_COLLISION: { sentence: 'The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer.', next: 'lsof -nP -iTCP:<port> -sTCP:LISTEN' },
   MANAGED_SKILL_ABORTED: { sentence: 'The change stopped before it finished. Status shows any item that needs recovery.', next: 'bowerloom status' },
   MANAGED_SKILL_TIMEOUT: { sentence: 'A step ran past its time limit, so Bowerloom stopped it. Status shows any item that needs recovery.', next: 'bowerloom status' },
   MANAGED_SKILL_REFUSED: { sentence: 'A safety check of the copies failed, so Bowerloom changed nothing more.', next: 'bowerloom status' },
@@ -326,7 +326,7 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
   if ((code === 'PROJECT_LOCK_SLOT_COLLISION' || code === 'MANAGED_SKILL_LOCK_SLOT_COLLISION') && validPort(detail.port)) {
-    return { sentence: `The lock uses a local port, and another program is listening on port ${detail.port}.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
+    return { sentence: `The lock uses local port ${detail.port}. Another program listens on it, or another Bowerloom command is too busy to answer.`, next: `lsof -nP -iTCP:${detail.port} -sTCP:LISTEN` };
   }
   return Object.hasOwn(REFUSALS, code) ? REFUSALS[code]! : GENERIC;
 }

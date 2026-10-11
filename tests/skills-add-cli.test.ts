@@ -1,7 +1,7 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -88,6 +88,7 @@ test('without a terminal, skills add plans, prints the review and revision, exit
     '  Files: 4',
     '  Teams: every team',
     '  skills.json: a new file',
+    `  Cache: ${join(p.home, '.local/state/bowerloom/cache')} keeps the bytes checked here, so skills sync need not fetch them again.`,
     'This records the pin only. Nothing is installed or run.',
     `Revision: ${revision}`,
     `Approval required. Run the same command again with --approve ${revision}`, '',
@@ -99,7 +100,7 @@ test('without a terminal, skills add plans, prints the review and revision, exit
   const stale = run(p.dir, ['skills', 'add', NPM_SPEC, '--approve', 'ab'.repeat(32)], p.serve); assert.equal(stale.status, 1); assert.equal(errorCode(stale.stderr), 'STALE_APPROVAL');
   assert.equal(existsSync(p.manifest), false);
   const applied = run(p.dir, ['skills', 'add', NPM_SPEC, '--approve', revision], p.serve);
-  assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\n`);
+  assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\nCache: kept the checked bytes in ${join(p.home, '.local/state/bowerloom/cache')}.\n`);
   const manifest = JSON.parse(readFileSync(p.manifest, 'utf8'));
   assert.deepEqual(manifest.skills.map((s: { id: string }) => s.id), ['synthetic-db-collections']); assert.deepEqual(manifest.harnesses, ['claude', 'codex']);
   assert.equal(readFileSync(p.manifest, 'utf8'), JSON.stringify(manifest, null, 2) + '\n');
@@ -113,7 +114,7 @@ test('a GitHub skill with --id and --team is added next to the npm one, and skil
   const npm = plan([NPM_SPEC]); assert.equal(run(p.dir, ['skills', 'add', NPM_SPEC, '--approve', npm], p.serve).status, 0);
   const args = [GIT_SPEC, '--id', 'verify', '--team', 'first-team'];
   const words = run(p.dir, ['skills', 'add', ...args], p.serve); assert.equal(words.status, 3, words.stderr);
-  assert.match(words.stdout, /^Add skill verify to \.bowerloom\/skills\.json\n  Source: GitHub synthetic-owner\/skills-repo at c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00, folder skills\/verification-loop\n  Skill name: verification-loop\n  License: MIT \(LICENSE\)\n  Files: 3\n  Teams: first-team\n  skills\.json: replaces the file with sha256 [a-f0-9]{64}\n/);
+  assert.match(words.stdout, /^Add skill verify to \.bowerloom\/skills\.json\n  Source: GitHub synthetic-owner\/skills-repo at c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00, folder skills\/verification-loop\n  Skill name: verification-loop\n  License: MIT \(LICENSE\)\n  Files: 3\n  Teams: first-team\n  skills\.json: replaces the file with sha256 [a-f0-9]{64}\n  Cache: .+\/\.local\/state\/bowerloom\/cache keeps the bytes checked here/);
   const git = plan(args);
   const applied = run(p.dir, ['skills', 'add', ...args, '--approve', git], p.serve); assert.equal(applied.status, 0, applied.stderr);
   const manifest = JSON.parse(readFileSync(p.manifest, 'utf8'));
@@ -173,4 +174,51 @@ test('help skills, skills --help, skills add --help and skills check --help prin
   assert.match(topic.stdout, /bowerloom skills add npm:<package>@<version>:<path>/); assert.match(topic.stdout, /bowerloom skills check/);
   for (const args of [['skills', '--help'], ['skills', 'add', '--help'], ['skills', 'check', '--help']]) { const r = run(home, args, env); assert.equal(r.status, 0, args.join(' ')); assert.equal(r.stdout, topic.stdout, args.join(' ')); }
   assert.equal(tree(home), before); assert.deepEqual(deny.net.calls(), []);
+});
+
+/** Plans `skills <args>` without approval (exit 3), then applies it with --approve. Returns the applied run. */
+function approve(p: ReturnType<typeof project>, args: string[], env: Record<string, string>, json = false) {
+  const planned = run(p.dir, [...args, '--json'], env); assert.equal(planned.status, 3, planned.stderr);
+  const body = JSON.parse(planned.stdout) as { revision: string; plan: { cache?: { root: string } } };
+  return { plan: body.plan, applied: run(p.dir, [...args, '--approve', body.revision, ...(json ? ['--json'] : [])], env) };
+}
+const cacheOps = (root: string) => existsSync(root) ? readdirSync(root).filter(n => n.startsWith('op-')).sort() : [];
+
+test('skills add keeps the bytes it checked in the machine cache, so skills sync --offline then makes no network call', t => {
+  const p = project(t), cacheRoot = join(p.home, '.local/state/bowerloom/cache');
+  const npm = approve(p, ['skills', 'add', NPM_SPEC], p.serve);
+  assert.equal(npm.plan.cache?.root, cacheRoot);
+  assert.equal(npm.applied.status, 0, npm.applied.stderr); assert.match(npm.applied.stdout, /^Cache: kept the checked bytes in /m);
+  const git = approve(p, ['skills', 'add', GIT_SPEC, '--id', 'verify'], p.serve, true);
+  assert.equal(git.applied.status, 0, git.applied.stderr);
+  assert.deepEqual((JSON.parse(git.applied.stdout) as { result: { cache: unknown } }).result.cache, { root: cacheRoot, status: 'seeded' });
+  assert.equal(cacheOps(cacheRoot).length, 2); assert.equal(statSync(cacheRoot).mode & 0o7777, 0o700);
+  const sync = approve(p, ['skills', 'sync', '--offline'], p.deny);
+  assert.equal(sync.applied.status, 0, sync.applied.stderr);
+  assert.deepEqual(p.denied.calls(), []);
+  assert.equal(existsSync(join(p.dir, '.claude/skills/synthetic-db-collections/SKILL.md')), true);
+  assert.equal(existsSync(join(p.dir, '.agents/skills/verification-loop/SKILL.md')), true);
+});
+
+test('a failed seed still writes the pin, and reports the failure in words and in JSON', t => {
+  const p = project(t), open = join(p.home, 'open'); mkdirSync(open); chmodSync(open, 0o777);
+  const env = { ...p.serve, XDG_STATE_HOME: open }, cacheRoot = join(open, 'bowerloom/cache');
+  const words = approve(p, ['skills', 'add', NPM_SPEC], env);
+  assert.equal(words.applied.status, 0, words.applied.stderr);
+  assert.match(words.applied.stdout, new RegExp(`^Cache: the checked bytes were not kept in ${cacheRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(SKILLS_STATE_UNSAFE\\)\\. The pin is recorded; skills sync fetches it again\\.$`, 'm'));
+  assert.deepEqual(JSON.parse(readFileSync(p.manifest, 'utf8')).skills.map((s: { id: string }) => s.id), ['synthetic-db-collections']);
+  const json = approve(p, ['skills', 'add', GIT_SPEC, '--id', 'verify'], env, true);
+  assert.equal(json.applied.status, 0, json.applied.stderr);
+  assert.deepEqual((JSON.parse(json.applied.stdout) as { result: { cache: unknown } }).result.cache, { root: cacheRoot, status: 'failed', codes: ['SKILLS_STATE_UNSAFE'] });
+  assert.equal(existsSync(join(open, 'bowerloom')), false);
+});
+
+test('seeded bytes are checked again on every read: a changed byte in the cache refuses sync --offline before any project write', t => {
+  const p = project(t), cacheRoot = join(p.home, '.local/state/bowerloom/cache');
+  assert.equal(approve(p, ['skills', 'add', NPM_SPEC], p.serve).applied.status, 0);
+  const [op] = cacheOps(cacheRoot), file = join(cacheRoot, op!, 'files/SKILL.md'), bytes = readFileSync(file); bytes[bytes.length - 2]! ^= 1; writeFileSync(file, bytes);
+  const before = tree(p.dir);
+  const sync = run(p.dir, ['skills', 'sync', '--offline'], p.deny);
+  assert.equal(sync.status, 1, sync.stdout); assert.equal(errorCode(sync.stderr), 'SKILLS_OFFLINE');
+  assert.equal(tree(p.dir), before); assert.deepEqual(p.denied.calls(), []);
 });

@@ -15,7 +15,8 @@ import { LICENSE_NAME } from './content.js';
 
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
 export const MANIFEST_FILE = 'skills.json' as const;
-export const MANIFEST_LIMITS = Object.freeze({ bytes: 1048576, skills: 32, teams: 32, idLength: 64 });
+/** skills: local and pinned entries share the count (Hanna, global skill cache). teams: per entry. */
+export const MANIFEST_LIMITS = Object.freeze({ bytes: 1048576, skills: 128, teams: 32, idLength: 64 });
 export type Harness = 'claude' | 'codex';
 export const HARNESSES: readonly Harness[] = Object.freeze(['claude', 'codex'] as Harness[]);
 export const NPM_REGISTRY = 'https://registry.npmjs.org' as const;

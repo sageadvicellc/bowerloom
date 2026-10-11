@@ -77,7 +77,7 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
 | `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. A sandbox that blocks local ports gives this refusal. | Run `bowerloom status`. If an agent sandbox runs Bowerloom, read [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes). |
-| `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port, and another program is listening on it. | Run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
+| `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer. | Wait for other Bowerloom commands to finish and run the command again. If it repeats, run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
 | `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. On a clone, `bowerloom up --team` and `team create` refuse this way, because `.bowerloom/brief.json` stays on the first machine. | Run `bowerloom status`. On a clone, follow the [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine). |
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
 
@@ -94,7 +94,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `MANIFEST_PIN_NOT_EXACT` | A pin that can move installs different files on different machines. | Run `bowerloom help skills`. |
 | `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill. |
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
-| `MANIFEST_LIMIT` | `skills.json` holds at most 32 skills and 1 MiB. | Run `bowerloom skills check`. |
+| `MANIFEST_LIMIT` | `skills.json` holds at most 128 skills, local and pinned together, and 1 MiB. | Run `bowerloom skills check`. |
 | `SKILLS_ADD_SPEC_INVALID` | The source names a package or repository, an exact pin, and the skill folder. | Run `bowerloom help skills`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
 | `SKILLS_ADD_SOURCE_CHANGED` | `--replace` keeps the npm package or GitHub repository and moves only its version or commit. | Add the other source under a new id. |
@@ -108,7 +108,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `SKILLS_OFFLINE` | `--offline` found a pin that needs a fetch. Nothing changed in the project. | Run `bowerloom skills sync` without `--offline`. |
 | `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom stopped before any change to the project. | Run `bowerloom skills check`. |
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
-| `SKILLS_SYNC_LIMIT` | A sync handles at most 64 skills at once. | Run `bowerloom skills check`. |
+| `SKILLS_SYNC_LIMIT` | A sync handles at most 256 skills at once. | Run `bowerloom skills check`. |
 | `SKILLS_CACHE_RECOVERY_REQUIRED` | The private cache needs a look before this pin can be read. | Run `bowerloom help advanced`. |
 | `SKILLS_STATE_UNSAFE` | The private state folder is not one that only you can change. | Check `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. |
 | `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. | Move the named entry out with `mv`. |

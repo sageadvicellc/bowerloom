@@ -373,6 +373,29 @@ function openCacheOperation(planValue:unknown,approvalRevision:string,signal:Abo
     return npmRefuse(fixedCode(error, REFUSAL_CODES.open, 'NPM_CACHE_OPEN_REFUSED'), [...(opCreated ? ['NPM_CACHE_OPEN_PARTIAL'] : []), ...(lockAttempted && !confirmed ? ['NPM_CACHE_RELEASE_UNCERTAIN'] : [])]);
   }
 }
+/**
+ * Fills one cache operation from bytes already in memory (`skills add` keeps what it verified; Hanna, global skill
+ * cache). It runs the same steps as an acquisition, without its two GETs: open the operation exclusively, mark it
+ * RECEIVING, stage (verifyPayload checks every byte against the plan again), then complete it, which reads the stored
+ * bytes back and verifies them once more. `approvalRevision` must be the plan's revision. A refusal before the
+ * completion marker leaves the operation HELD; after it, the result is uncertain. The owner lock is always released.
+ * `data` is the npm archive, or the Git payload that verifyGitPayload reads.
+ */
+export async function seedSkillCache(planValue: unknown, approvalRevision: string, metadata: Buffer, data: Buffer, signal: AbortSignal): Promise<Readonly<AcquiredSkillCacheReceipt>> {
+  let operation: ReturnType<typeof openCacheOperation>;
+  try { operation = openCacheOperation(planValue, approvalRevision, signal); }
+  catch (error) { passGit(error); return npmRefuse(fixedCode(error, REFUSAL_CODES.acquire, 'NPM_ACQUISITION_FAILED'), secondaryCodes(error)); }
+  let receipt: Readonly<AcquiredSkillCacheReceipt> | undefined, failure: unknown, failed = false, hold: string | null = null;
+  try { operation.receiving(); await operation.stage(metadata, data, signal); receipt = await operation.complete(signal); }
+  catch (error) { failed = true; failure = error; hold = operation.hold(); }
+  const released = operation.release();
+  if (failed) {
+    passGit(failure);
+    const code = operation.completionBegun() ? 'NPM_CACHE_COMPLETE_UNCERTAIN' : fixedCode(failure, REFUSAL_CODES.acquire, 'NPM_ACQUISITION_FAILED');
+    return npmRefuse(code, [...(hold === null ? [] : [hold]), ...(released ? [] : ['NPM_CACHE_RELEASE_UNCERTAIN'])]);
+  }
+  npmCheck(released && receipt, 'NPM_CACHE_RELEASE_UNCERTAIN'); return receipt;
+}
 async function planRecovery(value: unknown): Promise<Readonly<CacheRecoveryPlan>> {
   const input = schema<{ root: string; operationId: string; action: 'finalize' | 'hold' }>(value, ['root', 'operationId', 'action']);
   npmCheck(input.action === 'finalize' || input.action === 'hold', 'NPM_CACHE_INPUT');
