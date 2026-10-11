@@ -126,18 +126,19 @@ export function reportSlotCollision(slot: LockSlot): number {
 /**
  * After EADDRINUSE: 'locked' when this project's own lock holds the slot, 'collision' for anything else. A collision
  * is reported on the diagnostics channel. Neither verdict lets the caller proceed.
- * With `mayBindAgain`, a holder that let go before the banner read ('gone') gives 'free': the caller binds once more,
+ * With `mayBindAgain`, a holder that let go before the banner read ('gone', or a reset before any byte) gives 'free': the caller binds once more,
  * and that bind alone decides. Without it, 'gone' is a collision, so a caller binds again at most once.
  */
 export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise<'locked' | 'collision' | 'free'> {
-  const holder = await lockHolder(slot);
+  const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
   if (holder === 'this') return 'locked';
-  if (holder === 'gone' && mayBindAgain) return 'free';
+  // A reset before any byte is a holder that exited before it read the connection: it let go, like 'gone'.
+  if ((holder === 'gone' || holder === 'reset') && mayBindAgain) return 'free';
   reportSlotCollision(slot); return 'collision';
 }
 /** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
 function slotCollision(port: number): DefinitionError & { readonly port: number } {
-  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock this project. Stop that program, then run the command again.`), { port });
+  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Local port ${port}, which Bowerloom uses to lock this project, is taken and did not answer as this project's lock. Another Bowerloom command may be too busy to answer, or another program holds the port. Wait for other Bowerloom commands to finish, then run the command again.`), { port });
 }
 
 // A token is real only when withProjectLock made it. Membership here is the runtime brand: a copy, a spread,
@@ -218,7 +219,7 @@ export const CACHE_LOCK_SILENT_LIMIT_MS = 60_000;
 export interface HeldCacheLock { readonly root: string; readonly key: string; assertHeld(): void }
 const abortError = (): Error => Object.assign(new Error('The wait for the skills cache lock was stopped.'), { name: 'AbortError', code: 'ABORT_ERR' });
 function cacheSlotCollision(port: number): DefinitionError & { readonly port: number } {
-  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Another program holds local port ${port}, which Bowerloom uses to lock the skills cache. Stop that program, then run the command again.`), { port });
+  return Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', `Local port ${port}, which Bowerloom uses to lock the skills cache, is taken and did not answer as the cache lock. Another program holds the port, or another Bowerloom command stopped answering. Wait for other Bowerloom commands to finish, then run the command again.`), { port });
 }
 /**
  * Holds the lock of one skills cache folder while `work` runs. Unlike the project lock, a slot held by this very

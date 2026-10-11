@@ -77,7 +77,7 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
 | `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. A sandbox that blocks local ports gives this refusal. | Run `bowerloom status`. If an agent sandbox runs Bowerloom, read [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes). |
-| `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port, and another program is listening on it. | Run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
+| `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer. | Wait for other Bowerloom commands to finish and run the command again. If it repeats, run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
 | `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. On a clone, `bowerloom up --team` and `team create` refuse this way, because `.bowerloom/brief.json` stays on the first machine. | Run `bowerloom status`. On a clone, follow the [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine). |
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
 
