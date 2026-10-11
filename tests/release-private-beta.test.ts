@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { validateReleaseIdentity } from '../apps/cli/src/release.js';
 
-// 0.7.0-beta.1 is published on npm under the beta dist-tag. A private colleague beta, installed from an archive and
-// never an npm publication, stays a valid record form and is built here as a fixture.
+// The release record is packed while unreleased and flips to published after the owner publishes on npm under the
+// beta dist-tag. A private colleague beta, installed from an archive and never an npm publication, stays a valid
+// record form and is built here as a fixture.
 const root = new URL('../../', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
-const VERSION = '0.7.0-beta.1';
 const BETA_INSTALL = 'npm install -g bowerloom@beta';
-const ARCHIVE_INSTALL = `npm install -g ./bowerloom-${VERSION}.tgz`;
 type Record = { version: string; state: string; audience: string; distribution?: { [k: string]: unknown }; npm: { distTag: string; installCommand: string; published: boolean; availabilityNote: string } };
 const release = JSON.parse(read('release/beta.json')) as Record;
 const pkg = JSON.parse(read('package.json')) as { name: string; version: string };
+const VERSION = pkg.version;
+const ARCHIVE_INSTALL = `npm install -g ./bowerloom-${VERSION}.tgz`;
 const privateArchive: Record = {
   ...release, state: 'unreleased', audience: 'private-colleague-beta',
   distribution: { kind: 'private-archive', archive: `bowerloom-${VERSION}.tgz`, npmPublication: false },
@@ -20,16 +21,18 @@ const privateArchive: Record = {
 };
 const refuses = (record: unknown, label: string) => assert.throws(() => validateReleaseIdentity(record, pkg), /installed release record/, label);
 
-test('the release record and package.json name 0.7.0-beta.1, published on npm under the beta dist-tag', () => {
-  assert.equal(pkg.version, VERSION); assert.equal(release.version, VERSION);
+test('the release record and package.json name one version, unreleased, for npm under the beta dist-tag', () => {
+  assert.match(VERSION, /^0\.7\.0-beta\.\d+$/); assert.equal(release.version, VERSION);
   assert.deepEqual(release.distribution, { kind: 'npm-beta-stream', distTag: 'beta' });
   assert.equal(release.npm.distTag, 'beta'); assert.equal(release.npm.installCommand, BETA_INSTALL);
-  assert.equal(release.state, 'published'); assert.equal(release.npm.published, true);
-  assert.equal(release.audience, 'public-beta-stream'); assert.match(release.npm.availabilityNote, /under the beta dist-tag/);
+  assert.equal(release.state, 'unreleased'); assert.equal(release.npm.published, false);
+  assert.equal(release.audience, 'public-beta-stream');
+  assert.equal(release.npm.availabilityNote, 'Install it from npm under the beta dist-tag with npm install -g bowerloom@beta.');
+  assert.doesNotMatch(release.npm.availabilityNote, /private|proof|unreleased|unpublished|candidate/i);
   assert.equal(validateReleaseIdentity(release, pkg).version, VERSION);
 });
 
-test('every surface that pins the version names 0.7.0-beta.1, and the generated install blocks name the record command', () => {
+test('every surface that pins the version names the package version, and the generated install blocks name the record command', () => {
   for (const path of ['packages/harness-portability/package.json', 'packages/mcp-connections/package.json']) assert.equal((JSON.parse(read(path)) as { version: string }).version, VERSION, path);
   const lock = JSON.parse(read('package-lock.json')) as { version: string; packages: { [k: string]: { version?: string } } };
   assert.equal(lock.version, VERSION); assert.equal(lock.packages['']!.version, VERSION);
@@ -60,9 +63,11 @@ test('the release identity binds the install command to the distribution: an arc
 });
 
 test('an npm-beta-stream record installs by its dist-tag only, in one canonical form', () => {
-  const unpublished = { ...release, state: 'unreleased', npm: { ...release.npm, published: false } };
+  const unpublished = release;
   assert.equal(validateReleaseIdentity(unpublished, pkg).state, 'unreleased', 'an unpublished beta stream is governed by the state rule');
-  refuses({ ...release, state: 'unreleased' }, 'published on npm but unreleased');
+  const flipped = { ...release, state: 'published', npm: { ...release.npm, published: true } };
+  assert.equal(validateReleaseIdentity(flipped, pkg).state, 'published', 'the flipped record stays valid');
+  refuses({ ...release, state: 'published' }, 'marked published but not on npm');
   refuses({ ...unpublished, npm: { ...unpublished.npm, published: true } }, 'unreleased but published on npm');
   for (const installCommand of ['npm install --global bowerloom@beta', `npm install -g bowerloom@${VERSION}`, 'npm install -g bowerloom@next', 'npm install -g bowerloom@latest', 'npm install -g bowerloom', `npm install -g ./bowerloom-${VERSION}.tgz`, 'npm install -g bowerloom@beta ']) {
     refuses({ ...release, npm: { ...release.npm, installCommand } }, installCommand);

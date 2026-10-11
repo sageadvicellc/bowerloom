@@ -57,7 +57,7 @@ export interface CreatePlan {
   /** The new item, or null when the request is the pending item this plan finishes or a prompt it restores. */
   item: { kind: ItemKind; id: string; teams: string[]; files: FilePin[] } | null;
   /**
-   * Freeze review finding 1: a registered prompt whose file is gone, written again with its recorded bytes. The receipt
+   * Review finding 1: a registered prompt whose file is gone, written again with its recorded bytes. The receipt
    * already lists it and stays as it is. Present only on a restore plan.
    */
   restore?: AuthoredItem;
@@ -201,7 +201,7 @@ async function plan(input: Normalized): Promise<CreatePlan> {
   const parentFolder = input.kind === 'team' ? 'teams' : input.kind === 'skill' ? 'skills' : 'prompts';
   const parentRead = lstatOrNull(join(project.bowerloom, parentFolder));
   if (parentRead !== null) realFolder(join(project.bowerloom, parentFolder));
-  // Freeze review finding 1: `prompt create <id>` for a registered prompt whose file is gone restores it, with the
+  // Review finding 1: `prompt create <id>` for a registered prompt whose file is gone restores it, with the
   // teams and the exact bytes the receipt records. Anything else about that id refuses, as it did before.
   const registeredPrompt = input.kind === 'prompt' && !isFinish ? receiptItems.find(i => sameItem(i, request)) ?? null : null;
   let restore: AuthoredItem | null = null;

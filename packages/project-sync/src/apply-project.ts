@@ -3,7 +3,7 @@
  * place for the chosen harnesses from what this machine already holds: pinned skills from the private cache, local
  * skills and prompts from `.bowerloom/`. It never fetches; a pin that is not cached refuses SKILLS_OFFLINE and names
  * `skills sync`. It adds copies for the chosen harnesses and never removes one. It never edits AGENTS.md or
- * CLAUDE.md: the plan carries a pointer a person can add there instead (Hanna, answer 5).
+ * CLAUDE.md: the plan carries a pointer a person can add there instead (owner, answer 5).
  *
  * The plan binds the `skills sync` plan of the same skills (computed offline, for the chosen harnesses) and every
  * prompt's inventory, surfaces, before-pins and previous receipt. Apply reuses the M5 locked run: under one held

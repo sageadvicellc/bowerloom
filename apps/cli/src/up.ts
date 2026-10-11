@@ -7,10 +7,10 @@
  *    team name becomes the display name of first-team.
  * 2. team, when the name matches neither first-team (by id or display name) nor a created team: `team create`.
  * 3. sync, when .bowerloom/skills.json has skills of the team to install: `skills sync --team <id>`.
- * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (Hanna, answer 4): `apply`.
+ * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
  * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD). When a
  *    skill, prompt or team of the team is held or gone, it prints `prepared, N items held` with each item's next
- *    command instead, and never says the copies are in place (freeze review finding 2).
+ *    command instead, and never says the copies are in place (review finding 2).
  *
  * With --approve, it applies only the step whose revision matches, then shows the next plan and exits 3. In a
  * terminal without --approve it asks before each step. It never starts claude, codex or any other process.
@@ -198,7 +198,7 @@ const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '
  * An approval gate (exit 3) or workers held (exit 4) passes through unchanged.
  */
 function afterApplied(step: UpStep, error: unknown): unknown {
-  // Freeze review finding 3: a stop at the next prompt keeps exit 130, and its words say the step was applied.
+  // Review finding 3: a stop at the next prompt keeps exit 130, and its words say the step was applied.
   if (isPromptStopped(error)) return promptStopped(step);
   const exit = exitCodeFor(error);
   if (exit === 3 || exit === 4) return error;

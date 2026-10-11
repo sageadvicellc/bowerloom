@@ -25,29 +25,29 @@ test('the beta stream installs from the registry by its dist-tag or its exact ve
   assert.equal(release.npm.installCommand,'npm install -g bowerloom@beta');
   assert.deepEqual(release.distribution,{kind:'npm-beta-stream',distTag:'beta'});
   const withCommand=command=>({...release,npm:{...release.npm,installCommand:command}});
-  for(const command of ['npm install -g bowerloom@beta','npm install --global bowerloom@beta','npm install -g bowerloom@0.7.0-beta.1','npm install --global bowerloom@0.7.0-beta.1'])
+  for(const command of ['npm install -g bowerloom@beta','npm install --global bowerloom@beta','npm install -g bowerloom@0.7.0-beta.2','npm install --global bowerloom@0.7.0-beta.2'])
     assert(installCommandAccepted(withCommand(command)),command);
-  for(const command of ['npm install -g bowerloom','npm install -g bowerloom@latest','npm install -g bowerloom@0.7.0-beta.2','npm install -g bowerloom@^0.7.0','npm install -g other@beta','npm install bowerloom@beta','npm install -g bowerloom@beta && echo','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz'])
+  for(const command of ['npm install -g bowerloom','npm install -g bowerloom@latest','npm install -g bowerloom@0.7.0-beta.3','npm install -g bowerloom@^0.7.0','npm install -g other@beta','npm install bowerloom@beta','npm install -g bowerloom@beta && echo','npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz'])
     assert(!installCommandAccepted(withCommand(command)),command);
   assert(!installCommandAccepted({...withCommand('npm install -g bowerloom@beta'),distribution:{kind:'npm-beta-stream',distTag:'next'}}));
   assert(installCommandAccepted({...withCommand('npm install --global bowerloom@beta'),distribution:undefined}));
   const latest={...release,distribution:{kind:'npm-beta-stream',distTag:'latest'},npm:{...release.npm,distTag:'latest',installCommand:'npm install -g bowerloom@latest'}};
   assert(!installCommandAccepted(latest),'the latest tag is refused even when the record names it');
-  assert(!installCommandAccepted({...latest,npm:{...latest.npm,installCommand:'npm install -g bowerloom@0.7.0-beta.1'}}));
+  assert(!installCommandAccepted({...latest,npm:{...latest.npm,installCommand:'npm install -g bowerloom@0.7.0-beta.2'}}));
 });
 test('the install guard finds a bare or latest global install and passes the beta forms',()=>{
   for(const text of ['Run `npm install -g bowerloom`.','Run npm install -g bowerloom.','`npm i -g bowerloom`','`npm install bowerloom -g`','npm add --global bowerloom','`npm install -g bowerloom@latest`','Install it with npm install -g bowerloom'])
     assert.equal(unsupportedPublicInstalls(text).length,1,text);
-  for(const text of ['`npm install -g bowerloom@beta`','npm install -g bowerloom@beta. Then run bowerloom up.','`npm install --global bowerloom@0.7.0-beta.1`','`npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`','Do not use `npm update -g bowerloom` for this.','`npm install bowerloom@beta`','npm pack --dry-run'])
+  for(const text of ['`npm install -g bowerloom@beta`','npm install -g bowerloom@beta. Then run bowerloom up.','`npm install --global bowerloom@0.7.0-beta.2`','`npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`','Do not use `npm update -g bowerloom` for this.','`npm install bowerloom@beta`','npm pack --dry-run'])
     assert.deepEqual(unsupportedPublicInstalls(text),[],text);
 });
 test('a private archive install command may name the archive by a relative, home or absolute path',async()=>{
   const current=await readRelease();
-  const release={...current,state:'unreleased',npm:{...current.npm,published:false},distribution:{kind:'private-archive',archive:'bowerloom-0.7.0-beta.1.tgz',npmPublication:false}};
+  const release={...current,state:'unreleased',npm:{...current.npm,published:false},distribution:{kind:'private-archive',archive:'bowerloom-0.7.0-beta.2.tgz',npmPublication:false}};
   const withCommand=command=>({...release,npm:{...release.npm,installCommand:command}});
-  for(const command of ['npm install -g ./bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/bowerloom-0.7.0-beta.1.tgz','npm install -g /opt/beta/bowerloom-0.7.0-beta.1.tgz'])
+  for(const command of ['npm install -g ./bowerloom-0.7.0-beta.2.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz','npm install -g ~/bowerloom-0.7.0-beta.2.tgz','npm install -g /opt/beta/bowerloom-0.7.0-beta.2.tgz'])
     assert(installCommandAccepted(withCommand(command)),command);
-  for(const command of ['npm install -g bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Down loads/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/x;y/bowerloom-0.7.0-beta.1.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz','npm install --global bowerloom@0.7.0-beta.1','npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz && echo'])
+  for(const command of ['npm install -g bowerloom-0.7.0-beta.2.tgz','npm install -g ~/Down loads/bowerloom-0.7.0-beta.2.tgz','npm install -g ~/x;y/bowerloom-0.7.0-beta.2.tgz','npm install -g ~/Downloads/bowerloom-0.7.0-beta.3.tgz','npm install --global bowerloom@0.7.0-beta.2','npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz && echo'])
     assert(!installCommandAccepted(withCommand(command)),command);
 });
 test('paired copy keeps prerequisite and refusal context, handles headings inside code, and distinguishes prompt',()=>{

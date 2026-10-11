@@ -7,7 +7,7 @@ import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusa
 import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 
-// Freeze review finding 5: the next step for a folder with no project is the up command, not plumbing.
+// Review finding 5: the next step for a folder with no project is the up command, not plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
 const GENERIC_FAILURE = 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.';
 const text = (code: string, message: string, sentence: string, next: string): string => `Refused (${code}): ${message}\n${sentence}\nNext: ${next}\n`;
@@ -122,7 +122,7 @@ test('reportFailure on a terminal prints plain words, with the right exit code',
   assert.deepEqual(reportFailure(new DefinitionError('USAGE', 'Use it right.'), true), { text: renderRefusal('USAGE', 'Use it right.'), exitCode: 2 });
   const approval = reportFailure(newCommandRefusal('APPROVAL_REQUIRED', 'Approve.'), true);
   assert.equal(approval.exitCode, 3); assert.match(approval.text, /Next: run the same command again with --approve <revision>\n$/);
-  // Freeze review finding 4: in a terminal, exit 4 is the successful end of up. It prints no Refused block.
+  // Review finding 4: in a terminal, exit 4 is the successful end of up. It prints no Refused block.
   assert.deepEqual(reportFailure(newCommandRefusal('WORKERS_HELD', 'Held.'), true), { text: '', exitCode: 4 });
   // The recipe case: exit 1 and never the --approve hint, since `recipe run` takes no such flag.
   for (const error of [new RecipeError('APPROVAL_REQUIRED'), new BrokerError('APPROVAL_REQUIRED', 'm'), new DefinitionError('APPROVAL_REQUIRED', 'm')]) {
@@ -147,7 +147,7 @@ test('newCommandJson escapes C1, format characters and the separators, and parse
   assert.equal(reportFailure(error, false).text, `${JSON.stringify({ error: { code: 'PLUMBING_CODE', message: 'kept \u202e as is' } })}\n`);
 });
 
-// Freeze review finding 14: every refusal code of sync, apply and create has words of its own, never the generic ones.
+// Review finding 14: every refusal code of sync, apply and create has words of its own, never the generic ones.
 test('every sync, apply and create refusal code has its own plain words and next step', () => {
   const generic = 'Nothing more is known about this refusal beyond its code.';
   for (const code of [...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES]) {
@@ -161,7 +161,7 @@ test('every sync, apply and create refusal code has its own plain words and next
   }
 });
 
-// Freeze review finding 13: no refusal says the same thing twice.
+// Review finding 13: no refusal says the same thing twice.
 test('the declined, usage and offline refusals do not repeat themselves', () => {
   const declined = renderRefusal('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
   assert.equal(declined.match(/nothing was changed/gi)?.length, 1, declined);

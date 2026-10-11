@@ -2,11 +2,11 @@
   "schema": "bowerloom/release/v1",
   "product": "Bowerloom",
   "release": "v0.7-beta",
-  "version": "0.7.0-beta.1",
-  "state": "published",
+  "version": "0.7.0-beta.2",
+  "state": "unreleased",
   "audience": "public-beta-stream",
   "launch": "soft",
-  "statusLabel": "Public beta stream \u00b7 published",
+  "statusLabel": "Public beta stream \u00b7 unreleased",
   "distribution": {
     "kind": "npm-beta-stream",
     "distTag": "beta"
@@ -16,10 +16,10 @@
     "registry": "https://registry.npmjs.org",
     "distTag": "beta",
     "installCommand": "npm install -g bowerloom@beta",
-    "published": true,
+    "published": false,
     "ownershipVerified": true,
     "publishingIdentityVerified": true,
-    "availabilityNote": "Published on npm on 2026-10-09 under the beta dist-tag. There is no stable release yet, so the latest tag also points at this beta. Install it with npm install -g bowerloom@beta.",
+    "availabilityNote": "Install it from npm under the beta dist-tag with npm install -g bowerloom@beta.",
     "authenticatedIdentity": "hannasage",
     "identityEvidence": "Authenticated npm whoami observation on 2026-10-06. Package ownership and publication authorization remain separate.",
     "ownershipEvidence": "Public registry read on 2026-10-09: hannasage is the only maintainer of bowerloom, and the 0.7.0-beta.1 integrity equals the prepared archive."
@@ -43,15 +43,7 @@
         "scope": "Isolated package installation, setup, revision, upgrade and removal with cached dependencies"
       }
     ],
-    "releaseQualified": [
-      {
-        "os": "macOS",
-        "architecture": "arm64",
-        "node": "24.11.0",
-        "npm": "11.6.1",
-        "scope": "Registry installation of bowerloom@beta into an empty prefix and cache on 2026-10-09, then bowerloom --version and bowerloom --help, both exit 0"
-      }
-    ],
+    "releaseQualified": [],
     "note": "Additional systems remain under review."
   },
   "capabilities": {
