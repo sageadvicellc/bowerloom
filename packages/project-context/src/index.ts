@@ -90,16 +90,26 @@ export function lockServer(slot: LockSlot): Server {
  * holder let go. Anything else, including silence or extra bytes, is 'other'.
  * It reads at most one banner length plus one byte and never writes.
  */
-export function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other' | 'gone'> {
+export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other' | 'gone'> {
+  const holder = await probeLockHolder(slot, timeoutMs);
+  return holder === 'silent' || holder === 'reset' ? 'other' : holder;
+}
+/**
+ * `lockHolder` with two more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
+ * 'reset' when the connection is reset before any byte. A Bowerloom holder whose event loop is busy, such as one
+ * unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
+ * that squats the port can answer either way. Only `withCacheLock` waits on them, and only up to a limit.
+ */
+function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<'this' | 'other' | 'gone' | 'silent' | 'reset'> {
   return new Promise(resolveHolder => {
     const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false;
     const socket = net.connect({ host: '127.0.0.1', port: slot.port });
-    const finish = (verdict: 'this' | 'other' | 'gone') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
+    const finish = (verdict: 'this' | 'other' | 'gone' | 'silent' | 'reset') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
     const settle = () => finish(Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
-    const timer = setTimeout(() => finish('other'), timeoutMs);
+    const timer = setTimeout(() => finish(size === 0 ? 'silent' : 'other'), timeoutMs);
     socket.on('data', (chunk: Buffer) => { chunks.push(chunk); size += chunk.length; if (size > want.length) finish('other'); });
     socket.on('end', settle); socket.on('close', settle);
-    socket.on('error', (error: NodeJS.ErrnoException) => finish(error.code === 'ECONNREFUSED' && size === 0 ? 'gone' : 'other'));
+    socket.on('error', (error: NodeJS.ErrnoException) => finish(size !== 0 ? 'other' : error.code === 'ECONNREFUSED' ? 'gone' : error.code === 'ECONNRESET' ? 'reset' : 'other'));
   });
 }
 /**
@@ -198,6 +208,12 @@ const CACHE_LOCK_FORMAT = 'bowerloom-cache-lock/v1';
 export function cacheLockSlot(cacheRoot: string): LockSlot { return slotOf(CACHE_LOCK_FORMAT, cacheRoot); }
 /** How often a waiting writer tries the cache lock again. */
 export const CACHE_LOCK_POLL_MS = 50;
+/**
+ * How long a waiting writer accepts a silent cache lock holder before it refuses PROJECT_LOCK_SLOT_COLLISION. A
+ * Bowerloom holder goes silent only while its event loop is busy, which is seconds; a program that squats the port
+ * stays silent for good.
+ */
+export const CACHE_LOCK_SILENT_LIMIT_MS = 60_000;
 /** Proof that `withCacheLock` holds the lock of one cache folder. Valid only inside its work callback. */
 export interface HeldCacheLock { readonly root: string; readonly key: string; assertHeld(): void }
 const abortError = (): Error => Object.assign(new Error('The wait for the skills cache lock was stopped.'), { name: 'AbortError', code: 'ABORT_ERR' });
@@ -208,10 +224,15 @@ function cacheSlotCollision(port: number): DefinitionError & { readonly port: nu
  * Holds the lock of one skills cache folder while `work` runs. Unlike the project lock, a slot held by this very
  * cache lock is waited for, not refused: one writer fills one pin at a time, and the next one reuses it. The wait
  * polls the port and ends when `signal` aborts (an AbortError) or when `waitMs` runs out (PROJECT_LOCK_UNAVAILABLE).
+ * A holder that stays silent, or resets the connection before any byte, is waited for too, because a Bowerloom holder
+ * in another process cannot answer while its event loop is busy, and resets when it exits first. Past `silentMs`
+ * (CACHE_LOCK_SILENT_LIMIT_MS) of nothing else, it counts as another program.
  * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
  */
-export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, work: (held: HeldCacheLock) => Promise<T>, options: { waitMs?: number } = {}): Promise<T> {
+export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, work: (held: HeldCacheLock) => Promise<T>, options: { waitMs?: number; silentMs?: number } = {}): Promise<T> {
   const slot = cacheLockSlot(cacheRoot), deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
+  const silentLimit = options.silentMs ?? CACHE_LOCK_SILENT_LIMIT_MS;
+  let silentSince: number | undefined;
   const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
     listener.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
     listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
@@ -224,8 +245,9 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     const outcome = await bind(server);
     if (outcome.ok) break;
     if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
-    const holder = await lockHolder(slot);
-    if (holder === 'other') { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
+    const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
+    if (holder === 'silent' || holder === 'reset') silentSince ??= Date.now(); else silentSince = undefined;
+    if (holder === 'other' || (silentSince !== undefined && Date.now() - silentSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
     if (Date.now() >= deadline) throw new DefinitionError('PROJECT_LOCK_UNAVAILABLE', 'Another Bowerloom command held the skills cache lock for too long. Try again.');
     if (holder === 'this') await pause();
   }
