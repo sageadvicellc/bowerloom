@@ -5,7 +5,8 @@
  *
  * Plan requires a clean v1 inspection (committed, no marker, no drift) and a skills.json entry with the same source
  * pin and file hashes; without one it refuses and prints the exact `skills add` command. The pinned bytes come from
- * the project's private cache, else from the cache the v1 install read, else they are fetched in phase A, as in sync.
+ * the machine's skills cache (or, read only, this project's cache from an earlier beta), else from the cache the v1
+ * install read, else they are fetched in phase A, as in sync.
  * The v1 private state folder is read, never written.
  */
 import { join } from 'node:path';
@@ -30,7 +31,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
-import { checkChild, createPrivateFolders, fetchPin, selectorFor } from './apply.js';
+import { cacheRoots, checkChild, createPrivateFolders, fetchPin, selectorFor } from './apply.js';
 import { outward, syncError } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
@@ -40,7 +41,7 @@ export interface MigratePlan {
   project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
   manifest: { sha256: string; bytes: number };
   legacy: { stateDir: string; operationKey: string; receiptRevision: string; harness: Harness; catalogSha256: string };
-  /** Where the pinned bytes come from: this project's cache, the cache the v1 install read, or a fetch in phase A. */
+  /** Where the pinned bytes come from: this machine's skills cache ('project-cache', its name from earlier betas), the cache the v1 install read, or a fetch in phase A. */
   bytesFrom: 'project-cache' | 'legacy-cache' | 'fetch';
   legacySelector: AcquiredSkillCacheSelector | null;
   item: SyncItem;
@@ -81,8 +82,8 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
     throw syncError('SKILLS_MIGRATE_NOT_IN_MANIFEST', command ? `Pin it first: ${command}` : 'Pin the same source and version in skills.json with bowerloom skills add, then migrate.');
   }
   const layout = stateLayout(input), id = entry.id;
-  // The pinned bytes: this project's cache, else the cache the v1 install read, else a fetch.
-  const cache = await lookupCache(layout.cacheRoot, pinned);
+  // The pinned bytes: the machine cache, else the cache the v1 install read, else a fetch.
+  const cache = await lookupCache(layout, pinned);
   let bytesFrom: MigratePlan['bytesFrom'] = cache.status === 'cached' ? 'project-cache' : 'fetch', legacySelector: AcquiredSkillCacheSelector | null = null;
   if (cache.status !== 'cached') {
     try {
@@ -133,8 +134,9 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       let source: ItemSource;
       if (plan.bytesFrom === 'legacy-cache') source = { kind: 'cache', selector: plan.legacySelector! };
       else {
-        if (plan.bytesFrom === 'fetch') await fetchPin(item, pinned, plan.privateState.cacheRoot, deps);
-        source = { kind: 'cache', selector: await selectorFor(item, pinned, plan.privateState.cacheRoot) };
+        let found = item.cache!;
+        if (plan.bytesFrom === 'fetch') found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps)).lookup;
+        source = { kind: 'cache', selector: await selectorFor(item, pinned, found) };
       }
       const req: ManagedItemRequest = {
         operation: 'migrate', projectDir: plan.project.dir, stateDir: join(plan.privateState.itemsRoot, item.id), item: { kind: 'skill', id: item.id },

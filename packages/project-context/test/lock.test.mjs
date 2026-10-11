@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { withProjectLock, isHeldProjectLock, lockPort } from '../../../dist/packages/project-context/src/index.js';
@@ -233,4 +234,20 @@ test('the bind is tried once more only once: a second refused banner read is a c
   let ran = false;
   await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
   t.mock.restoreAll(); assert.equal(connects, 2); assert.equal(ran, false);
+});
+
+const INDEX = new URL('../../../dist/packages/project-context/src/index.js', import.meta.url).href;
+test('a holder in another process that exits before it reads the banner connection lets go: the bind is tried once more', async t => {
+  const dir = await freshProject(t);
+  // The child takes the lock, says so, blocks its event loop so it cannot answer, then exits without closing the port.
+  const code = `import { withProjectLock } from ${JSON.stringify(INDEX)};
+await withProjectLock(${JSON.stringify(dir)}, new AbortController().signal, async () => {
+  process.stdout.write('held\\n'); await new Promise(r => setTimeout(r, 50));
+  const end = Date.now() + 600; while (Date.now() < end) {} process.exit(0);
+});`;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', code], { stdio: ['ignore', 'pipe', 'inherit'] });
+  await new Promise((resolve, reject) => { child.stdout.on('data', d => { if (String(d).includes('held')) resolve(); }); child.once('exit', c => reject(new Error(`exited ${c} before it held the lock`))); });
+  // Probe while the child is busy: it cannot answer, and it exits before the 1-second banner read ends.
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(await withProjectLock(dir, new AbortController().signal, async () => 'ok'), 'ok');
 });

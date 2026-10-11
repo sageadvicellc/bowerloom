@@ -12,7 +12,7 @@ const MESSAGES = {
   MANIFEST_PIN_NOT_EXACT: 'A skill pin must be exact: an npm version such as 1.2.3, or a full 40-character lowercase Git commit. Ranges, tags, branches and short commits are refused.',
   MANIFEST_LICENSE_UNSUPPORTED: 'Bowerloom accepts skills under the MIT or Apache-2.0 license only.',
   MANIFEST_DUPLICATE_ID: 'Two skills in the manifest have the same id.',
-  MANIFEST_LIMIT: 'The manifest is too large. It holds at most 32 skills and 1 MiB.',
+  MANIFEST_LIMIT: 'The manifest is too large. It holds at most 128 skills and 1 MiB.',
   SKILLS_ADD_SPEC_INVALID: 'The skill source is not in a form Bowerloom accepts. Use npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>.',
   SKILLS_ADD_EXISTS: 'The manifest already holds a skill with this id or this source. To move that id to another version or commit, add --replace. Otherwise choose another id with --id, or keep the existing entry.',
   SKILLS_ADD_SOURCE_CHANGED: 'The skill with this id comes from another source. --replace changes only the version or commit of the same npm package or GitHub repository, and never a local skill.',

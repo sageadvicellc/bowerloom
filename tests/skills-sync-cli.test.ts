@@ -59,6 +59,8 @@ const revisionIn = (stdout: string): string => { const m = /^Revision: ([a-f0-9]
 test('skills sync: exit 3 shows the plan and writes nothing; --approve installs npm, GitHub and local skills; then nothing to change, offline', t => {
   const p = project(t);
   approve(p, ['skills', 'add', NPM_SPEC], p.serve); approve(p, ['skills', 'add', GIT_SPEC], p.serve); approve(p, ['skill', 'create', 'house-style'], p.deny);
+  // skills add kept its checked bytes in the machine cache. This test covers the fetch path, so it starts without them.
+  rmSync(join(p.state, 'bowerloom'), { recursive: true, force: true });
   const before = tree(p.dir), served = p.served().length;
   const shown = run(p.dir, ['skills', 'sync'], p.serve);
   assert.equal(shown.status, 3, shown.stderr); assert.equal(shown.stderr, '');
@@ -85,6 +87,8 @@ test('skills sync: exit 3 shows the plan and writes nothing; --approve installs 
 
 test('skills sync --offline refuses before any write when a pin is not cached', t => {
   const p = project(t); approve(p, ['skills', 'add', NPM_SPEC], p.serve);
+  // skills add kept its checked bytes in the machine cache. Without them the pin is not cached.
+  rmSync(join(p.state, 'bowerloom'), { recursive: true, force: true });
   const before = tree(p.home), r = run(p.dir, ['skills', 'sync', '--offline'], p.deny);
   assert.equal(r.status, 1); assert.equal(errorOf(r.stderr).code, 'SKILLS_OFFLINE'); assert.match(errorOf(r.stderr).message, /collections/);
   assert.equal(tree(p.home), before); assert.equal(existsSync(join(p.state, 'bowerloom')), false); assert.deepEqual(p.denied(), []);

@@ -68,7 +68,7 @@ Show the plan to the human. Read the license line and the file count. After appr
 bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --id collections --approve REVISION_FROM_THE_PLAN
 ```
 
-The command reads the same two files again, records the pin in `.bowerloom/skills.json`, and exits 0.
+The command reads the same two files again, records the pin in `.bowerloom/skills.json`, and exits 0. It then keeps the bytes it checked in this machine's skills cache, which the plan names on its `Cache:` line, so `skills sync` need not fetch them again and works with `--offline`. If it cannot keep them, it says why on a `Cache:` line. The pin is still recorded, and `skills sync` fetches the bytes.
 
 Add the Git skill the same way. The repository name is lower case. The commit is 40 lower-case hex characters:
 
@@ -136,7 +136,7 @@ Applied plan 2bf293ff8c60a9ea41fa0cfcb25800ad0f20b3f242330f298e88e966d5a2434d.
 
 After the pin moved to a later commit, the same step reported `verification-loop: updated`.
 
-Sync writes three things. In the project, it writes the managed copy in `.bowerloom/managed` and a copy for each harness in `.claude/skills` and `.agents/skills`. Outside the project, it keeps its fetch cache and its records in a private state folder, `~/.local/state/bowerloom/<project id>`. Set `XDG_STATE_HOME` to an absolute path to move that folder to `$XDG_STATE_HOME/bowerloom/<project id>`. Each project has its own folder there, so the cache is not shared between projects. Sync fetches only pins that the cache does not hold yet.
+Sync writes three things. In the project, it writes the managed copy in `.bowerloom/managed` and a copy for each harness in `.claude/skills` and `.agents/skills`. Outside the project, it keeps its records in a private state folder, `~/.local/state/bowerloom/<project id>`, and its fetch cache in `~/.local/state/bowerloom/cache`. Set `XDG_STATE_HOME` to an absolute path to move both under `$XDG_STATE_HOME/bowerloom`. Every project on the machine shares the one cache, so a pin that one project fetched is not fetched again for another. Sync fetches only pins that the cache does not hold yet, and it checks every cached byte against its pin each time it reads it. A cache from an earlier beta, inside a project's own folder, is still read and is never moved or changed.
 
 Use `--offline` on a machine with no network or when you want no fetch. With `--offline`, sync refuses before any change if a pin still needs fetching (`SKILLS_OFFLINE`). Use `--team <team>` to sync only that team's skills.
 
@@ -318,7 +318,7 @@ To keep a skill inside one project, use `bowerloom skill create <name>` instead.
 - Name the skill with lowercase letters, digits, and single hyphens, up to 64 characters.
 - Keep the package working folder out of iCloud Drive.
 
-A selection holds at most 128 files. Each file is at most 65,536 bytes. The whole selection is at most 2,097,152 bytes. `skills.json` holds at most 32 skills and 1 MiB, and one sync handles at most 64.
+A selection holds at most 128 files. Each file is at most 65,536 bytes. The whole selection is at most 2,097,152 bytes. `skills.json` holds at most 128 skills, local and pinned together, and 1 MiB. One sync handles at most 256, counting the skills that `skills.json` no longer names.
 
 ### Ask your agent to package the skills
 
