@@ -124,9 +124,23 @@ function nested(project: ProjectContext, stateRoot: string, statePins: readonly 
 }
 
 export interface StateLayout { root: string; cacheRoot: string; itemsRoot: string }
+/**
+ * Every folder from the project up to `/` must pass the guard that the managed copies are written under: a real
+ * folder, owned by this user or root, with no group or world write and no special mode bits. A folder such as /tmp
+ * fails it. Checked at plan time, before any fetch, so the refusal names the folder instead of failing at the write.
+ */
+export function projectFolders(project: string): void {
+  let at: string; try { at = fs.realpathSync(project); } catch { throw syncError('SKILLS_PROJECT_UNSAFE'); }
+  for (;;) {
+    try { directory(at); } catch { throw syncError('SKILLS_PROJECT_UNSAFE', `The folder is ${at}.`); }
+    if (at === '/') return;
+    at = dirname(at);
+  }
+}
 /** The existing folders of the private state chain, pinned, and the private ones checked 0700. */
 export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): StateLayout & { pins: { path: string; identity: Identity }[]; missing: string[] } {
   const root = join(input.stateRoot, input.project.projectId), cacheRoot = join(root, 'cache'), itemsRoot = join(root, 'items');
+  projectFolders(input.project.dir);
   try {
     for (const p of [input.stateRoot, root, cacheRoot, itemsRoot]) managedPath(p);
     const chain: string[] = []; for (let at = input.stateRoot; at !== '/'; at = dirname(at)) chain.unshift(at);

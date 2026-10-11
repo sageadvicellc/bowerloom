@@ -20,6 +20,7 @@ const MESSAGES = {
   SKILLS_ADD_NOT_FOUND: 'The registry or GitHub has no such package version, commit or path.',
   SKILLS_ADD_SKILL_MISSING: 'The selected folder has no SKILL.md, so it is not a skill.',
   SKILLS_ADD_LICENSE_UNKNOWN: 'Bowerloom could not find an MIT or Apache-2.0 license for this skill, in the skill folder or in a folder above it.',
+  SKILLS_ADD_FRONTMATTER: 'The SKILL.md frontmatter has a key or a value Bowerloom does not accept. It accepts name, description, license, compatibility, metadata, allowed-tools and argument-hint, each as short plain text. Keys that change what an agent does, such as hooks or model, are refused.',
   SKILLS_ADD_UNSAFE_CONTENT: 'The fetched skill holds content Bowerloom does not install: a link, a submodule, a script or other unlisted file type, an oversize file, or text it cannot read safely.',
   SKILLS_ADD_NETWORK: 'Bowerloom could not read the public source. Check the network connection and try again. Nothing was changed.',
   SKILLS_ADD_HOST_REFUSED: 'Bowerloom reads only registry.npmjs.org and api.github.com, at public addresses.',
