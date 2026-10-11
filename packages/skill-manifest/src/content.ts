@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { parseDocument } from 'yaml';
-import { SkillSourceError, captureSkillData, allowedToolsText, relativeSkillPath } from '../../skill-sources/src/validation.js';
+import { SkillSourceError, captureSkillData, allowedToolsText, checkSkillFrontmatter, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
@@ -120,7 +120,10 @@ export function pinnedContent<S>(source: S, sourceRoot: string, files: readonly 
   const skill = texts.get('SKILL.md'); requireManifest(skill !== undefined, 'SKILLS_ADD_SKILL_MISSING');
   requireManifest(licenseFiles.length > 0 && licenseFiles.length <= CONTENT_LIMITS.licenseFiles, 'SKILLS_ADD_LICENSE_UNKNOWN');
   const pins: ManifestFile[] = files.map(f => ({ path: f.path, sourcePath: f.sourcePath, sha256: sha256(f.bytes), bytes: f.bytes.length })).sort((a, b) => compare(a.path, b.path));
-  return { source, skill: { ...(({ name, allowedTools }) => ({ name, sourceRoot, ...(allowedTools !== undefined ? { allowedTools } : {}) }))(skillHead(skill)) }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
+  const head = skillHead(skill);
+  // The validator's frontmatter rules, run here so a key it does not accept gets its own refusal, not unsafe content.
+  try { checkSkillFrontmatter(skill, head.name, spdx, head.allowedTools); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_FRONTMATTER'); throw error; }
+  return { source, skill: { ...(({ name, allowedTools }) => ({ name, sourceRoot, ...(allowedTools !== undefined ? { allowedTools } : {}) }))(head) }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
 }
 export const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 

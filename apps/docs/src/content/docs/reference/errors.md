@@ -102,6 +102,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `SKILLS_ADD_NOT_FOUND` | The package name, version, commit, or folder was not found. | Check each. |
 | `SKILLS_ADD_SKILL_MISSING` | A skill folder holds a `SKILL.md` file at its top. | Check the folder. |
 | `SKILLS_ADD_LICENSE_UNKNOWN` | This beta installs a skill only when its MIT or Apache-2.0 license ships with it. | Choose another skill. |
+| `SKILLS_ADD_FRONTMATTER` | The SKILL.md frontmatter has a key or a value Bowerloom does not accept. It accepts `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` and `argument-hint`. | Choose another skill. |
 | `SKILLS_ADD_UNSAFE_CONTENT` | Skills here are text files only, and nothing in them is run. | Choose another skill. |
 | `SKILLS_ADD_NETWORK` | The fetch failed. Nothing changed. | Run the same command again. |
 | `SKILLS_ADD_HOST_REFUSED` | Bowerloom asked no other host than `registry.npmjs.org` or `api.github.com`. Nothing changed. | Run `bowerloom help skills`. |
@@ -110,6 +111,7 @@ Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_I
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
 | `SKILLS_SYNC_LIMIT` | A sync handles at most 256 skills at once. | Run `bowerloom skills check`. |
 | `SKILLS_CACHE_RECOVERY_REQUIRED` | The private cache needs a look before this pin can be read. | Run `bowerloom help advanced`. |
+| `SKILLS_PROJECT_UNSAFE` | The project folder, or a folder above it, can be changed by other users or has special mode bits. A shared folder such as `/tmp` is refused. The message names the folder. | Move the project into your home folder, then run the command again. |
 | `SKILLS_STATE_UNSAFE` | The private state folder is not one that only you can change. | Check `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, else `~/.local/state/bowerloom`. |
 | `SKILLS_STATE_STRAY_ENTRY` | The private state folder holds an entry Bowerloom did not make. | Move the named entry out with `mv`. |
 | `SKILLS_RECOVER_NOTHING` | Nothing of this item is unfinished. | Run `bowerloom status`. |

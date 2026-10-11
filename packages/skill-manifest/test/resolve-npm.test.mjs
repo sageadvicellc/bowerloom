@@ -151,6 +151,15 @@ test('a multi-line allowed-tools in SKILL.md is refused as unsafe content', asyn
   const text = original.replace('\n---\n', '\nallowed-tools: "a\\nb"\n---\n');
   await assert.rejects(resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text }) })), signal()), code('SKILLS_ADD_UNSAFE_CONTENT'));
 });
+test('argument-hint in SKILL.md resolves; a frontmatter key Bowerloom does not accept refuses as SKILLS_ADD_FRONTMATTER', async () => {
+  const path = 'skills/synthetic-db/collections/SKILL.md', original = NPM_FILES.find(f => f.path === path).text;
+  const hinted = original.replace('\n---\n', '\nargument-hint: <path/to/*.plan.md>\n---\n');
+  assert.notEqual(hinted, original);
+  const resolved = await resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text: hinted }) })), signal());
+  assert.equal(resolved.skill.name, 'synthetic-db-collections');
+  const unknown = original.replace('\n---\n', '\nmodel: opus\n---\n');
+  await assert.rejects(resolveNpm(spec('skills/synthetic-db/collections'), fakeTransport(variant({ files: replaced(path, { text: unknown }) })), signal()), code('SKILLS_ADD_FRONTMATTER'));
+});
 
 test('resolveNpmVerified returns the entry and the exact bytes it verified, for the cache to keep', async t => {
   const transport = fakeTransport(npmResponses());

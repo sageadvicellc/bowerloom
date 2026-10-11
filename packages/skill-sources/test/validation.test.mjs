@@ -137,3 +137,11 @@ test('allowed-tools refuses an over-long, multi-line, non-string, empty or contr
   refused(mk('""', ''), 'SKILL_FRONTMATTER');
   const bad = fixture(); bad.skill.allowedTools = 7; refused(bad);
 });
+test('argument-hint is accepted as one short line of text, and Claude Code keys that change behavior still refuse', () => {
+  const mk = header => { const x = fixture(); x.files[0] = file('SKILL.md', `---\nname: example\ndescription: fixture\n${header}\n---\n# Body\n`); return x; };
+  // The value ecc-universal 2.2.1's tdd-workflow ships. Claude Code shows it during autocomplete and does nothing else with it.
+  assert.ok(validateSkillSource(mk('argument-hint: <path/to/*.plan.md>')).revision);
+  assert.ok(validateSkillSource(mk(`argument-hint: "${'x'.repeat(256)}"`)).revision);
+  for (const bad of [`argument-hint: "${'x'.repeat(257)}"`, 'argument-hint: "a\\nb"', 'argument-hint: ""', 'argument-hint: [a, b]', 'argument-hint: "a\\u0007b"']) refused(mk(bad), 'SKILL_FRONTMATTER');
+  for (const key of ['model: opus', 'hooks: {}', 'context: fork', 'agent: general-purpose', 'disable-model-invocation: true', 'shell: bash', 'when_to_use: always']) refused(mk(key), 'SKILL_FRONTMATTER');
+});
