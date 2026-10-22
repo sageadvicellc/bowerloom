@@ -399,6 +399,10 @@ Search open and closed reports before you write a new one. Use synthetic inputs 
 
 A report or proposal does not guarantee a fix, a response time, or a release date.
 
+## Share a project
+
+Commit `bowerloom.json` and `bowerloom.lock.json`. A teammate runs `bowerloom apply --frozen` to get the same store items. The page about where items come from explains what the lock records and what a teammate needs.
+
 ## Pin a skill in your store
 
 Add `--global` to pin the skill in your store, `~/.bowerloom/skills.json`, and not in a project:
