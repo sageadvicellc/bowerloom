@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { canonicalJson, DefinitionError } from '../../contracts/src/index.js';
-import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, leftoverBlocked, leftoverFix, leftoverTreeFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
+import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, leftoverBlocked, leftoverFix, leftoverTreeFix, NO_COMMAND, RUN_FIX, removeCacheEntry } from '../../skill-sources/src/cache.js';
 import type { CacheInspection } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { inspectStore, projectRefusal, storeRootOf, withCacheLock } from '../../project-context/src/index.js';
@@ -185,7 +185,7 @@ async function operationEntry(input: CacheAdminInput, root: string, scope: Cache
 /** A `.prune-*` or `.tmp-*` leftover: partial, never active, nothing bound, its name as its id. */
 function leftoverEntry(scope: CacheScope, projectId: string | null, name: string, root: string): Listed {
   const blocked = name.startsWith('.prune-') && leftoverBlocked(join(root, name)) !== null;
-  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover', next: blocked ? leftoverTreeFix(join(root, name)) : null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
+  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover', next: blocked ? leftoverTreeFix(join(root, name)) ?? NO_COMMAND : null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
 }
 /** One `<kind>-<id>-<hash>` folder of the store cache (3.3, step 3). */
 function storeEntry(root: string, name: string, kind: 'skill' | 'prompt' | 'team', id: string, hash: string): Listed | null {
@@ -426,7 +426,9 @@ function planBody(input: CachePruneInput, seen: Observed): Omit<CachePrunePlan, 
   }
   // Round 3, M-A: a .prune- leftover goes after every other pick, so one that cannot be deleted never blocks the rest.
   const sorted = sortListed([...picked.values()]), isPrune = (l: Listed): boolean => l.entry.name.startsWith('.prune-');
-  const order = [...sorted.filter(l => !isPrune(l)), ...sorted.filter(isPrune)].map(pickedOf);
+  // Round 5, L-2: a leftover that cannot be deleted as it is (it has a fix) goes after every other leftover.
+  const blocked = (l: Listed): boolean => l.entry.next !== null;
+  const order = [...sorted.filter(l => !isPrune(l)), ...sorted.filter(l => isPrune(l) && !blocked(l)), ...sorted.filter(l => isPrune(l) && blocked(l))].map(pickedOf);
   return {
     format: CACHE_PRUNE_PLAN_FORMAT, stateRoot: input.stateRoot,
     selectors: { unreferenced: s.unreferenced, partial: s.partial, legacy: s.legacy, all: s.all, entries: [...s.entries] },
@@ -511,8 +513,8 @@ export async function applyCachePrune(input: CachePruneInput, revision: string, 
         const count = `Deleted ${deleted.length} of ${of} entries. It stopped at ${lineName(p)}.`;
         if (codeOf(error) === 'PROJECT_LOCK_UNAVAILABLE') throw withCause(new DefinitionError('PROJECT_LOCK_UNAVAILABLE', `${(error as Error).message} ${count}`), error);
         if (error instanceof CachePruneRefusal) {
-          const refusal = withCause(syncError('CACHE_PRUNE_FAILED', `Could not delete ${error.where}${error.reason.startsWith('at the ') ? ' ' : ': '}${error.reason}. ${count}`), error.cause);
-          throw error.next === undefined ? refusal : Object.assign(refusal, { next: error.next });
+          const refusal = withCause(syncError('CACHE_PRUNE_FAILED', `Could not delete ${error.where}${error.reason.startsWith('at the ') ? ' ' : ': '}${error.reason}. ${count}${error.fix ? RUN_FIX : ''}`), error.cause);
+          throw error.next === undefined ? refusal : Object.assign(refusal, { next: error.next, ...(error.fix ? { fix: error.fix } : {}) });
         }
         // L-c: a fault with no code is the code's own fault, and passes through as itself.
         const code = (error as { code?: unknown } | null)?.code;

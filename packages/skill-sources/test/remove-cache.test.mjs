@@ -238,8 +238,8 @@ test('11. a folder that cannot be deleted refuses at the delete step, names the 
   let leftover = '';
   await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, 'op-' + OP, held()), e => {
     leftover = path.join(w.cacheRoot, fs.readdirSync(w.cacheRoot).find(n => n.startsWith('.prune-')));
-    refused(e); assert.equal(e.message, `${FIXED} Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}).`);
-    assert.equal(e.cause, 'EACCES'); assert.equal(e.next, `chmod -R -- u+rwx '${leftover}', then run the command again without --approve`); assert.equal(e.fix, `chmod -R -- u+rwx '${leftover}'`); return true;
+    refused(e); assert.equal(e.message, `${FIXED} Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}). Run the command in Next, then run this command again.`);
+    assert.equal(e.cause, 'EACCES'); assert.equal(e.next, `chmod -R -- u+rwx '${leftover}'`, 'round 5, L-1: next is the bare command'); assert.equal(e.fix, e.next); return true;
   });
   fs.chmodSync(path.join(leftover, 'locked'), 0o700);
   await removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, path.basename(leftover), held());
@@ -346,4 +346,15 @@ test('M2 (round 4). printed commands quote each path for a POSIX shell and put -
     assert.equal(shellPath(raw), quoted, raw);
   }
   assert.equal(leftoverFix('/no/such/.tmp-x y'), "rm -- '/no/such/.tmp-x y'");
+});
+
+// Round 5 of the reviews of PR 99, L-3: a name with a control character gets plain guidance, never a command that names
+// the escaped text.
+test('14. a leftover whose name holds a control character gets guidance, not a command', async t => {
+  const w = stateWorld(t), name = 'op-' + OP, odd = path.join(w.cacheRoot, '.prune-x\u0007y');
+  assert.equal(leftoverFix(odd), 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
+  const dir = entry(w.cacheRoot, name), sub = path.join(dir, 'locked'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } });
+  // A leftover name of the delete step is always plain; the guidance applies to names that someone else made.
+  await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, name, held()), e => typeof e.fix === 'string' && !/[\u0000-\u001f]/.test(e.fix));
 });

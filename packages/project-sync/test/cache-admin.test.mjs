@@ -657,8 +657,8 @@ test('M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes
   await assert.rejects(applyCachePrune(input, plan.revision, signal()), e => {
     leftover = path.join(w.cacheRoot, fs.readdirSync(w.cacheRoot).find(n => n.startsWith('.prune-')));
     code('CACHE_PRUNE_FAILED')(e);
-    assert.equal(e.message, `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}). Deleted 1 of 3 entries. It stopped at cache 22222222.`);
-    assert.equal(e.next, `chmod -R -- u+rwx '${leftover}', then run the command again without --approve`); assert.equal(e.cause, 'EACCES'); return true;
+    assert.equal(e.message, `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}). Deleted 1 of 3 entries. It stopped at cache 22222222. Run the command in Next, then run this command again.`);
+    assert.equal(e.next, `chmod -R -- u+rwx '${leftover}'`); assert.equal(e.fix, e.next); assert.equal(e.cause, 'EACCES'); return true;
   });
   const listed = byName(await listCache(w.input()))[path.basename(leftover)];
   assert.deepEqual([listed.partialReason, listed.next], ['prune-leftover', `chmod -R -- u+rwx '${leftover}'`]);
@@ -773,4 +773,25 @@ test('L4 (round 4). selectorFor: a linked cache folder, or one the plan did not 
   fs.unlinkSync(w.cacheRoot); fs.renameSync(away, w.cacheRoot);
   const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal());
   await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, { ...context, cacheIdentity: null }), e => code('SKILLS_STATE_UNSAFE')(e) && /did not pin/.test(e.message));
+});
+
+// --- Round 5 of the reviews of PR 99 ---
+
+test('L-2 (round 5). a blocked .prune- leftover goes after every leftover that can be deleted', async t => {
+  const w = world(t); stateFolders(w);
+  const blocked = folder(path.join(w.cacheRoot, '.prune-op-' + '0'.repeat(32) + '-00000000')), free = folder(path.join(w.cacheRoot, '.prune-op-' + '9'.repeat(32) + '-99999999'));
+  fs.writeFileSync(path.join(free, 'a.md'), 'x\n');
+  const sub = path.join(blocked, 'locked'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  try {
+    const input = { ...w.input(), selectors: sel({ partial: true }) }, plan = await planCachePrune(input);
+    assert.deepEqual(plan.picked.map(p => p.name), [path.basename(free), path.basename(blocked)], 'the blocked leftover sorts first by name but goes last');
+    await assert.rejects(applyCachePrune(input, plan.revision, signal()), e => code('CACHE_PRUNE_FAILED')(e) && e.message.includes(' Deleted 1 of 2 entries. '));
+    assert.deepEqual(fs.readdirSync(w.cacheRoot), [path.basename(blocked)], 'the free leftover was deleted first');
+  } finally { fs.chmodSync(sub, 0o700); }
+});
+
+test('L-3 (round 5). an unlisted leftover whose name holds a control character gets guidance, not a command', async t => {
+  const w = world(t); stateFolders(w); const odd = path.join(w.cacheRoot, '.prune-x\u0007y'); fs.mkdirSync(odd, { mode: 0o750 }); fs.chmodSync(odd, 0o750);
+  const list = await listCache(w.input());
+  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
 });

@@ -649,10 +649,12 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
+  // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
+  const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? (error as { fix: string }).fix : undefined;
   const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
-  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
 }
 
 /** A path as one shell word: plain characters stay, anything else is single-quoted. */

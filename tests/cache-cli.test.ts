@@ -10,7 +10,8 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { world, run, approve, mustApprove, errorCode, errorMessage, network, NETWORK, project } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
-import { TOPICS } from '../apps/cli/src/human.js';
+import { TOPICS, reportFailure } from '../apps/cli/src/human.js';
+import { DefinitionError } from '../packages/contracts/src/index.js';
 import { renderCacheList, renderCachePrune, renderNothingToPrune, renderPruneResult, renderStopped } from '../apps/cli/src/cache.js';
 import { cacheLockSlot, lockHolder } from '../packages/project-context/src/index.js';
 import { spawn, spawnSync } from 'node:child_process';
@@ -348,4 +349,25 @@ test('M2 (round 4). each printed next step, run in a shell, changes only its own
   assert.deepEqual(readdirSync(sandbox), ['keep.md'], 'nothing ran outside the leftovers: no PWNED, no glob, no ~');
   // The leftover folders are private now, so they are entries; the files are gone.
   assert.match(run(w.work, ['cache', 'list'], env).stdout, /^Skills cache: .*\n(?: {2}\.prune-.*\n)+Total: 3 entries, size unknown\n$/);
+});
+
+test('L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover', t => {
+  const w = world(t), cache = manyEntries(w, 1), op = join(cache, `op-${'0'.repeat(32)}`), sub = join(op, 'locked');
+  mkdirSync(sub, { mode: 0o700 }); writeFileSync(join(sub, 'f.md'), 'x\n'); chmodSync(sub, 0o500);
+  t.after(() => { for (const n of existsSync(cache) ? readdirSync(cache) : []) try { chmodSync(join(cache, n, 'locked'), 0o700); } catch { /* gone */ } });
+  const planned = run(w.work, ['cache', 'prune', '--partial', '--json'], w.env); assert.equal(planned.status, 3, planned.stderr);
+  const failed = run(w.work, ['cache', 'prune', '--partial', '--approve', (JSON.parse(planned.stdout) as { revision: string }).revision], w.env);
+  assert.equal(failed.status, 1); const error = (JSON.parse(failed.stderr) as { error: { code: string; message: string; next: string; fix: string } }).error;
+  const leftover = join(cache, readdirSync(cache).find(n => n.startsWith('.prune-'))!);
+  assert.equal(error.code, 'CACHE_PRUNE_FAILED'); assert.equal(error.fix, `chmod -R -- u+rwx '${leftover}'`); assert.equal(error.next, error.fix);
+  assert.match(error.message, / Run the command in Next, then run this command again\.$/);
+  const sandbox = join(w.base, 'sandbox'); mkdirSync(sandbox, { mode: 0o700 }); writeFileSync(join(sandbox, 'keep.md'), 'keep\n');
+  for (const command of [error.next, error.fix]) { const r = spawnSync('/bin/sh', ['-c', command], { cwd: sandbox, encoding: 'utf8' }); assert.equal(r.status, 0, command + r.stderr); }
+  assert.deepEqual(readdirSync(sandbox), ['keep.md']); assert.equal(lstatSync(join(leftover, 'locked')).mode & 0o700, 0o700);
+  const again = run(w.work, ['cache', 'prune', '--partial', '--json'], w.env); assert.equal(again.status, 3);
+  assert.equal(run(w.work, ['cache', 'prune', '--partial', '--approve', (JSON.parse(again.stdout) as { revision: string }).revision], w.env).status, 0);
+  assert.deepEqual(readdirSync(cache), []);
+  // In a terminal the command is the whole Next line, and the rerun sentence is in the message above it.
+  const words = reportFailure(Object.assign(new DefinitionError('CACHE_PRUNE_FAILED', error.message), { next: error.next, fix: error.fix }), true).text;
+  assert.ok(words.endsWith(`\nNext: ${error.fix}\n`), words);
 });

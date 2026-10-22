@@ -513,19 +513,25 @@ export function shellPath(path: string): string {
   const visible = path.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
   return `'${visible.replaceAll("'", "'\\''")}'`;
 }
-/** The command that lets a stuck leftover tree be deleted (round 3, M-A). */
-export const leftoverTreeFix = (path: string): string => `chmod -R -- u+rwx ${shellPath(path)}`;
-export function leftoverFix(path: string): string { let dir = false; try { const s = fs.lstatSync(path); dir = s.isDirectory() && !s.isSymbolicLink(); } catch { dir = false; } return dir ? `chmod -- 700 ${shellPath(path)}` : `rm -- ${shellPath(path)}`; }
+/** Round 5 of the reviews of PR 99, L-3: a path with a control character gets this guidance in place of a command. */
+export const NO_COMMAND = 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
+const CONTROL = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+/** The command that lets a stuck leftover tree be deleted (round 3, M-A), or null for a name that no command can name. */
+export const leftoverTreeFix = (path: string): string | null => CONTROL.test(path) ? null : `chmod -R -- u+rwx ${shellPath(path)}`;
+/** The command that clears a leftover name, or the guidance for a name with a control character. */
+export function leftoverFix(path: string): string { if (CONTROL.test(path)) return NO_COMMAND; let dir = false; try { const s = fs.lstatSync(path); dir = s.isDirectory() && !s.isSymbolicLink(); } catch { dir = false; } return dir ? `chmod -- 700 ${shellPath(path)}` : `rm -- ${shellPath(path)}`; }
 const PRUNE_FAILED = 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.';
 export type CachePlace = { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null };
 /** A refusal of removeCacheEntry: why it stopped, in words, and the system code, if any, as the cause. */
 /** `Could not delete <where>: <reason>.`, or `Could not delete <where> at the <step> step (...)`. */
+/** Round 5, L-1: the rerun sentence that goes with a fix command. The command itself is the whole Next line. */
+export const RUN_FIX = ' Run the command in Next, then run this command again.';
 export const couldNot = (where: string, reason: string): string => `Could not delete ${where}${reason.startsWith('at the ') ? ' ' : ': '}${reason}.`;
 export class CachePruneRefusal extends DefinitionError {
   /** The bare command that fixes the cause, when there is one. `next` adds the rerun. */
   readonly fix: string | undefined;
   constructor(readonly where: string, readonly reason: string, cause?: string, readonly next?: string, fix?: string) {
-    super('CACHE_PRUNE_FAILED', `${PRUNE_FAILED} ${couldNot(where, reason)}`);
+    super('CACHE_PRUNE_FAILED', `${PRUNE_FAILED} ${couldNot(where, reason)}${fix ? RUN_FIX : ''}`);
     if (cause !== undefined) Object.defineProperty(this, 'cause', { value: cause, enumerable: false });
     if (next === undefined) Object.defineProperty(this, 'next', { value: undefined, enumerable: false });
     this.fix = fix;
@@ -596,9 +602,15 @@ function removePinned(doomed: string): void {
   try { fs.rmSync(doomed, { recursive: true, force: false }); }
   catch (error) {
     const code = (error as { code?: unknown }).code;
-    if (code === 'ENOTEMPTY' || code === 'EACCES' || code === 'EPERM') {
+    // The inner path is named only while the entry is still the pinned folder, and a child only when lstat finds it there.
+    if ((code === 'ENOTEMPTY' || code === 'EACCES' || code === 'EPERM') && samePinned(doomed, pin!)) {
       const blocked = leftoverBlocked(doomed);
-      if (blocked !== null) { let first: string | undefined; try { first = fs.readdirSync(blocked)[0]; } catch { first = undefined; } throw Object.assign(new Error('blocked'), { code: 'EACCES', path: first === undefined ? blocked : join(blocked, first) }); }
+      if (blocked !== null) {
+        let first: string | undefined; try { first = fs.readdirSync(blocked)[0]; } catch { first = undefined; }
+        if (first !== undefined) { try { fs.lstatSync(join(blocked, first)); } catch { first = undefined; } }
+        if (!samePinned(doomed, pin!)) throw error;
+        throw Object.assign(new Error('blocked'), { code: 'EACCES', path: first === undefined ? blocked : join(blocked, first) });
+      }
     }
     throw error;
   }
@@ -634,8 +646,9 @@ export async function removeCacheEntry(stateRoot: string, place: CachePlace, nam
   catch (error) {
     const code = errnoOf(error), at = (error as { path?: unknown }).path;
     if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(doomed, 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
+    // Round 5, L-1: next is the bare command (or, for a name no command can name, plain guidance), never both.
     const fix = leftoverTreeFix(doomed);
-    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, `${fix}, then run the command again without --approve`, fix));
+    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
   }
 }
 function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }
