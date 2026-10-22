@@ -55,7 +55,7 @@ export interface V2StartupReceipt extends ReceiptBody {
 }
 export type StartupReceipt = LegacyStartupReceipt | V2StartupReceipt;
 /** `owner-refused` (with its `code`) appears only when `inspectStartup` was given owners. */
-export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' | 'owner-refused' | 'config-invalid'; code?: string }
+export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' | 'owner-refused' | 'config-invalid' | 'lock-invalid' | 'lock-orphan' | 'resolve-error'; code?: string }
 /** An entry a registered owner verified. `edited` is authored content a person or agent changed; it is not drift. */
 export interface OwnedEntry { path: string; owner: OwnerName; state: 'verified' | 'edited' }
 export interface InspectStartupOptions { owners?: readonly OwnerVerifier[] }

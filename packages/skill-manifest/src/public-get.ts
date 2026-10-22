@@ -27,7 +27,7 @@ import { performance } from 'node:perf_hooks';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { guardedResponseHeaders } from '../../skill-sources/src/response-headers.js';
 import { publicIPv4 } from '../../skill-sources/src/public-address.js';
-import { isManifestRefusal, manifestRefusal, requireManifest } from './refusal.js';
+import { githubRequestFailed, isManifestRefusal, manifestRefusal, requireManifest } from './refusal.js';
 import type { ManifestRefusalCode } from './refusal.js';
 
 export const PUBLIC_HOSTS: readonly string[] = Object.freeze(['registry.npmjs.org', 'api.github.com']);
@@ -131,7 +131,13 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
           try {
             guard();
             const headers = guardedResponseHeaders(incoming.rawHeaders); requireManifest(headers !== null, 'SKILLS_ADD_NETWORK');
+            // Spec 06, 3.10: GitHub's request limit keeps its own code. Both headers are read from incoming.headers, because
+            // guardedResponseHeaders returns only the guarded names. Every other status keeps its result.
+            if (host === 'api.github.com' && (incoming.statusCode === 429 || (incoming.statusCode === 403 && (incoming.headers?.['x-ratelimit-remaining'] === '0' || incoming.headers?.['retry-after'] !== undefined)))) { settle('GITHUB_RATE_LIMITED'); return; }
             if (incoming.statusCode === 404 || incoming.statusCode === 410 || incoming.statusCode === 422 && host === 'api.github.com') { settle('SKILLS_ADD_NOT_FOUND'); return; }
+            // Review F3: any other refusal of GitHub (401, 403, 5xx) names its status instead of passing as a network failure.
+            const status = incoming.statusCode ?? 0;
+            if (host === 'api.github.com' && (status === 401 || status === 403 || status >= 500)) { settle(githubRequestFailed(status)); return; }
             const length = headers.get('content-length');
             requireManifest(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'SKILLS_ADD_NETWORK');
             requireManifest(length === undefined || Number(length) <= maxBytes, 'SKILLS_ADD_UNSAFE_CONTENT');

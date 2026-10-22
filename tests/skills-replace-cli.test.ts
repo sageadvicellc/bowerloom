@@ -111,7 +111,7 @@ test('--replace moves an npm skill to a new version: the plan shows the old and 
   assert.deepEqual(skills(p.manifest).map(s => [s.id, s.source.version]), [['synthetic-db-collections', '0.0.2']]);
   // skills add kept the new pin's bytes, so the update reads them from the machine cache.
   const sync = run(p.dir, ['skills', 'sync'], p.serve); assert.equal(sync.status, 3, sync.stderr);
-  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, from this machine's cache$/m);
+  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, from this machine's cache {2}\[project\]$/m);
   approve(p, ['skills', 'sync'], p.serve);
   assert.match(readFileSync(installed, 'utf8'), /Version two\./);
   const again = run(p.dir, ['skills', 'sync', '--offline'], p.deny); assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /Nothing to change\.\n$/);

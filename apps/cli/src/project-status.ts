@@ -6,7 +6,10 @@ import type { OwnerVerifier, ProjectContext } from '../../../packages/project-co
 import { inspectOwnedOnly, inspectStartup } from '../../../packages/startup/src/index.js';
 import type { Drift, OwnedEntry } from '../../../packages/startup/src/index.js';
 import { readConfig } from '../../../packages/project-config/src/index.js';
-import { configLine, configObject } from './config-status.js';
+import { configAdditions, configLine, configObject } from './config-status.js';
+import { resolveProject } from '../../../packages/project-sync/src/index.js';
+import type { Resolved } from '../../../packages/project-sync/src/index.js';
+import { isSharedProject, LOCK_FILE, readLock } from '../../../packages/project-config/src/index.js';
 import { authoringVerifier, manifestVerifier } from '../../../packages/project-authoring/src/index.js';
 import { managedVerifier } from '../../../packages/managed-skills/src/v2-verifier.js';
 import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
@@ -76,6 +79,23 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     drift = inspection.drift; owned = inspection.owned ?? []; revision = inspection.revision; specReady = inspection.specReady;
   }
   if (config.state === 'invalid') { drift = [...drift, { path: 'bowerloom.json', kind: 'config-invalid', code: config.code }]; if (status === 'ready') status = 'drifted'; }
+  // Spec 06, 3.20 and 4.6: the store and the lock of a config project. A lock with no config is drift when .bowerloom exists.
+  let resolved: Resolved | null = null, lockError: string | null = null;
+  if (config.state === 'valid') {
+    try { resolved = resolveProject({ project, home, frozen: false, tolerateStore: true }); }
+    catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (typeof code === 'string' && code.startsWith('LOCK_')) lockError = code;
+      // Review F4: any other refusal of the resolver is drift with its code, never a status that looks clean.
+      else { drift = [...drift, { path: 'bowerloom.json', kind: 'resolve-error', code: typeof code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : 'IO_ERROR' }]; if (status === 'ready') status = 'drifted'; }
+    }
+  }
+  if (resolved?.lock.state === 'invalid' || lockError !== null) { drift = [...drift, { path: LOCK_FILE, kind: 'lock-invalid', code: resolved?.lock.code ?? lockError ?? 'LOCK_INVALID' }]; if (status === 'ready') status = 'drifted'; }
+  // Review F4: with an invalid config the lock file is still reported: not used when absent, invalid when it cannot be read.
+  let lockFile: { state: string; code: string | null } | null = null;
+  if (config.state === 'invalid') { try { lockFile = readLock(project).state === 'absent' ? { state: 'not-used', code: null } : { state: 'mismatch', code: 'CONFIG_INVALID' }; } catch (error) { const code = (error as { code?: unknown } | null)?.code; lockFile = { state: 'invalid', code: typeof code === 'string' ? code : 'LOCK_INVALID' }; } }
+  if (config.state === 'absent' && project.bowerloomIdentity !== null) { let present = false; try { lstatSync(join(project.dir, LOCK_FILE)); present = true; } catch { present = false; } if (present) { drift = [...drift, { path: LOCK_FILE, kind: 'lock-orphan' }]; if (status === 'ready') status = 'drifted'; } }
+  const shared = config.state === 'valid' ? isSharedProject(project).shared : false;
   // Build plan 01, section 6: a skill installed by the earlier format is named, with the command that migrates it.
   let legacy = false; try { legacy = legacyPresent(project.dir); } catch { legacy = true; }
   const MIGRATE = 'bowerloom skills migrate plan --state <earlier-state-folder>';
@@ -83,7 +103,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     return newCommandJson({
       format: 'bowerloom/project-status/v1beta2', project: project.dir, projectId: project.projectId,
       markers: { folder: project.bowerloomIdentity !== null, config: project.configPresent }, setup, status, specReady, runtimeReady: false, executionAuthorized: false,
-      revision, drift, owned, ...(legacy ? { legacy: { present: true, next: MIGRATE } } : {}), config: configObject(config),
+      revision, drift, owned, ...(legacy ? { legacy: { present: true, next: MIGRATE } } : {}), config: config.state === 'absent' ? null : { ...configObject(config), ...configAdditions(resolved, config, shared, lockError, lockFile) },
     });
   }
   // Review finding 16: name the files and items, not only their folders. An edited prompts folder names its edited
@@ -91,7 +111,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // cannot be made, the folder line stays.
   const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts' && path !== '.bowerloom/slices') return [path]; const files = editedPrompts(project, path === '.bowerloom/slices' ? 'slice' : 'prompt'); return files === null || files.length === 0 ? [path] : files; };
   let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [], stale: string[] = [];
-  const base = { project, stateRoot: privateStateRoot(env, home), harnesses: ['claude' as const, 'codex' as const], team: null };
+  const base = { project, stateRoot: privateStateRoot(env, home), home, harnesses: ['claude' as const, 'codex' as const], team: null };
   if (project.bowerloomIdentity !== null) try {
     const plan = await planProjectApply(base);
     agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents, plan.slices)]);
@@ -108,6 +128,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   return [
     `Project: ${plainText(project.dir)}`,
     ...configLine(config),
+    ...(resolved !== null ? [`Lock: ${resolved.lock.state}${resolved.lock.code ? ` (${plainText(resolved.lock.code)})` : ''}`, ...resolved.notes.map(n => `  ${plainText(n.replace(/^ {2}/, ''))}`), ...(resolved.storeCode ? [`  The store cannot be used (${plainText(resolved.storeCode)}). Run bowerloom store status.`] : [])] : lockFile !== null ? [`Lock: ${lockFile.state}${lockFile.code ? ` (${plainText(lockFile.code)})` : ''}`] : []),
     `Setup: ${plainText(drifted ? 'drifted' : status)}${setup === 'none' ? ' (no startup setup, this project uses bowerloom.json)' : ''}`,
     ...(revision ? [`Revision: ${plainText(revision)}`] : []),
     ...drift.map(item => `  ${plainText(item.kind)}: ${plainText(item.path)}${item.code ? ` (${plainText(item.code)})` : ''}`),

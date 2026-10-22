@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { readConfigBytes } from '../../project-context/src/index.js';
 import type { ProjectContext } from '../../project-context/src/index.js';
 import { isConfigRefusal } from './refusal.js';
-import type { ConfigRefusalCode } from './refusal.js';
 import { parseConfig } from './schema.js';
 import type { ProjectConfig } from './schema.js';
 
@@ -23,7 +22,7 @@ export function readConfig(project: ProjectContext): ConfigRead {
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   try { return { state: 'valid', config: parseConfig(bytes), sha256, bytes: bytes.length }; }
   catch (error) {
-    if (isConfigRefusal(error)) return { state: 'invalid', code: error.code satisfies ConfigRefusalCode, sha256, bytes: bytes.length };
+    if (isConfigRefusal(error) && (error.code === 'CONFIG_INVALID' || error.code === 'CONFIG_LIMIT' || error.code === 'CONFIG_DUPLICATE_ID')) return { state: 'invalid', code: error.code, sha256, bytes: bytes.length };
     throw error;
   }
 }

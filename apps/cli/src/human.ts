@@ -56,7 +56,45 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'that sits in an iCloud folder, or that other users can change, and a home folder that other users can write in.',
     'It does not check the folders above your home folder.',
     '--global on skill create, prompt create, team create, skills add, skills check and ls works on the store. See bowerloom help skill.',
+    'A project picks store items with bowerloom use and stops with bowerloom unuse. bowerloom.lock.json records where a',
+    'teammate gets them, with bowerloom lock verify and bowerloom lock update. See bowerloom help use and bowerloom help lock.',
+    'A store that is a git repository with a github.com remote can be shared. store status shows the Git: line and the commands to set it up.',
+    'A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.',
     'Add --json for one machine-readable object.', '',
+  ].join('\n'),
+  use: [
+    'Usage:',
+    '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]', '',
+    'Picks an item for this project. By default the item comes from your store, ~/.bowerloom.',
+    '--project picks an item that this project defines in .bowerloom and that bowerloom.json does not list yet.',
+    'bowerloom.json lists everything this project installs. If it is missing, use creates it and lists the items',
+    'this project defines now, with the source project.',
+    'use team <id> also picks the store skills and prompts that name that team.',
+    'In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.',
+    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    'It changes bowerloom.json and bowerloom.lock.json only. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
+  ].join('\n'),
+  unuse: [
+    'Usage:',
+    '  bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]', '',
+    'Removes an item from bowerloom.json and from bowerloom.lock.json. It removes no copy that sync or apply already made.',
+    'unuse team <id> also removes the items that were picked only through that team.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
+  ].join('\n'),
+  lock: [
+    'Usage:',
+    '  bowerloom lock verify [--json]',
+    '  bowerloom lock update [--item <kind>:<id>]... [--commit <sha>] [--approve <revision>] [--json]', '',
+    'bowerloom.lock.json records where each store item of this project comes from and a hash that proves its bytes.',
+    'Commit it with bowerloom.json. A teammate then runs bowerloom apply --frozen to get the same items.',
+    'Project items are not in the lock. Git versions them.',
+    'lock verify reads only. It checks the file, its hashes, and that it agrees with bowerloom.json. It uses no network.',
+    'lock update looks at your store again and rewrites the lock items. Use --item to refresh some. <kind> is skill, prompt, or team.',
+    'A pinned skill needs no network. A skill, prompt, or team written in the store is checked against its pushed copy on github.com.',
+    'Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file.',
+    'To raise the limit, set BOWERLOOM_GITHUB_TOKEN (see bowerloom help store).',
+    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.', '',
   ].join('\n'),
   ls: [
     'Usage:', '  bowerloom ls [teams|skills|prompts|slices] [--global] [--json]', '',
@@ -65,6 +103,11 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'It reads only and writes nothing.',
     'The project is the nearest parent folder that holds .bowerloom or bowerloom.json, found the way git finds .git.',
     'It stops at your home folder and refuses cloud-synced folders.',
+    'When bowerloom.json lists what the project installs, ls lists its entries in id order, from the project or the store.',
+    'An entry with no definition shows (missing). A line after the sections names the items Defined here but not listed in bowerloom.json.',
+    'With --json each item has source, via (the teams it was picked through), state, locked (whether bowerloom.lock.json',
+    'holds it, or null), and resolvedFrom: store, lock, or project.',
+    'If the store refuses, its items show as missing and ls prints The store cannot be used (<code>). Run bowerloom store status.',
     'Add --json for one machine-readable object.', '',
   ].join('\n'),
   status: [
@@ -74,6 +117,10 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'It reads only and writes nothing, and it starts no workers.',
     'A project with a bowerloom.json also shows its config: the counts, and a config-invalid drift if the file is wrong.',
     'A project that has only bowerloom.json shows Setup: ready (no startup setup, this project uses bowerloom.json).',
+    'With bowerloom.json it also prints Lock: and the state of bowerloom.lock.json: not-used, absent, valid, stale, invalid, mismatch, or orphan.',
+    'A lock that cannot be read is drift lock-invalid; a lock with no bowerloom.json is drift lock-orphan.',
+    'With --json, config.store says whether the store items can be read (not-needed, ok, absent, or refused),',
+    'config.items lists each entry with its source and state, and config.lock has the lock state and whether the project is shared.',
     'Add --json for one machine-readable object.',
     'bowerloom status --installation <private.json> still reads a prepared session. See bowerloom help advanced.', '',
   ].join('\n'),
@@ -97,11 +144,14 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'The store holds up to 256 skills. A project holds up to 128.', '',
     'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
     'skills check --global checks the pins in the store.', '',
-    '  bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]',
+    '  bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]',
     'skills sync installs every skill in skills.json for Claude Code and Codex (the harnesses skills.json names):',
     'into .bowerloom/managed, .claude/skills and .agents/skills. Those copies stay on this machine; commit skills.json.',
     'It fetches only pins that are not in the private cache yet, and checks every byte against its pin first.',
     '--offline refuses before any change if a pin still needs fetching. --team syncs only that team\'s skills.',
+    '--frozen installs only what bowerloom.lock.json records. It ignores your store and refuses if the lock and bowerloom.json',
+    'disagree. It cannot be combined with --offline unless every item is already on this machine.',
+    '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
     'A skill whose copy you changed is held and shown with its next step; the others apply. Sync removes nothing.',
     'Ctrl-C stops it between two skills, never inside one.', '',
     '  bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon] [--approve <revision>] [--json]',
@@ -131,7 +181,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'bowerloom up --demo --pro|--5x|--20x --installation <private.json> still runs the demo session. See bowerloom help advanced.', '',
   ].join('\n'),
   apply: [
-    'Usage:', '  bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--approve <revision>] [--json]', '',
+    'Usage:', '  bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]', '',
     'Puts the skills in .bowerloom/skills.json and the prompts in .bowerloom/prompts in place for Claude Code, Codex,',
     'or both (the default), from what this machine already holds.',
     'Skills go to .claude/skills and .agents/skills. A prompt becomes the Claude Code command .claude/commands/<name>.md',
@@ -147,6 +197,10 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'of paths. An agent whose skills list names slice-<name> loads it at start and reads the files where they are.',
     'Such an agent also gets a read guard in its copy. See bowerloom help context.',
     'It never edits AGENTS.md or CLAUDE.md: it prints a line you can add there yourself.',
+    '--frozen installs only what bowerloom.lock.json records, as npm ci does. It refuses if the lock file and bowerloom.json',
+    'disagree. It ignores your store. It fetches what this machine does not hold yet, from the hosts the plan names.',
+    'Plain apply never fetches.',
+    '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
     'It shows the plan first. Agents pass --approve <revision> or --json. It starts no workers and runs nothing.', '',
   ].join('\n'),
   context: [
@@ -173,15 +227,19 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'The commands that change something show the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   team: [
-    'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--global] [--approve <revision>] [--json]', '',
+    'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--global] [--approve <revision>] [--json]',
+    '  bowerloom team adopt <id> [--approve <revision>] [--json]', '',
     "Creates a team in .bowerloom/teams/<name>, from the project brief, with a lead, a maker and a reviewer.",
     'The name is the team id: lower-case words joined by hyphens, such as research-desk. first-team is taken by setup.',
     'The profile defaults to the one in the project brief.',
     '--global creates the team in your store, ~/.bowerloom, and not in this project. The store holds definitions only.',
     'A project picks store items with bowerloom use. The first --global write makes the store.',
     'With --global a team is built from a fixed store brief and the profile you choose. It does not read a project brief.',
+    'team adopt copies a team from your store into this project, at .bowerloom/teams/<id>, and switches bowerloom.json to the project copy.',
+    'The project then owns the copy. Later changes in the store do not reach it. Edit the copy to fit the project.',
+    'team adopt also changes bowerloom.json and bowerloom.lock.json.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the files it makes.',
-    'It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.', '',
+    'It writes inside .bowerloom only, or inside your store with --global, except for team adopt. It starts no workers and runs nothing.', '',
   ].join('\n'),
   skill: [
     'Usage:', '  bowerloom skill create <name> [--team <team>]... [--global] [--approve <revision>] [--json]', '',
@@ -305,6 +363,31 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_NOT_A_PROJECT: { sentence: 'Run this command in a project folder outside ~/.bowerloom.', next: 'cd <project-folder>' },
   CONFIG_INVALID: { sentence: 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', next: 'git diff bowerloom.json' },
   CONFIG_UNREADABLE: { sentence: 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -l bowerloom.json' },
+  // Spec 06, section 5.
+  STORE_ITEM_NOT_FOUND: { sentence: 'Bowerloom picks only items that your store defines.', next: 'bowerloom ls --global' },
+  STORE_ITEM_MISSING: { sentence: 'A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.', next: 'Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.' },
+  STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.' },
+  STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It may be private or may not exist.', next: 'Check the repository name and that the repository is public.' },
+  CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
+  CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
+  CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
+  CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },
+  TEAM_NOT_SELECTED: { sentence: 'up installs for a team only if bowerloom.json lists it.', next: 'bowerloom use team <id>' },
+  LOCK_MISSING: { sentence: 'A frozen install needs bowerloom.lock.json, and there is none.', next: 'bowerloom lock update on a machine with the store.' },
+  LOCK_INVALID: { sentence: 'Bowerloom reads the lock strictly, so a hand edit or a merge conflict can break it.', next: 'bowerloom lock verify. For a merge conflict, take one side for each item, then run it.' },
+  LOCK_UNSAFE: { sentence: 'Bowerloom will not trust a lock file that links or other users can change.', next: 'ls -l bowerloom.lock.json' },
+  LOCK_LIMIT: { sentence: 'This beta keeps the lock small: 128 skills, 128 prompts, 32 teams, and 4 MiB at most.', next: 'bowerloom lock verify' },
+  LOCK_CONFIG_MISSING: { sentence: 'A lock and a config go together, and one of them is missing.', next: 'bowerloom use skill <id>, or restore bowerloom.json from version control.' },
+  LOCK_CONFIG_MISMATCH: { sentence: 'A frozen install must match bowerloom.json exactly, as npm ci does.', next: 'bowerloom lock update' },
+  LOCK_HASH_MISMATCH: { sentence: 'Bowerloom installs only bytes that match the lock, so it stopped before any change to the project.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
+  LOCK_STORE_NOT_PUSHED: { sentence: 'A teammate can fetch only what you pushed, and your store differs from the pushed copy.', next: 'Commit and push the store, then run the command again.' },
+  LOCK_COMMIT_UNREACHABLE: { sentence: 'The lock needs a commit that GitHub has, and GitHub does not have this one.', next: 'Push the store, or pass --commit <sha> of a pushed commit.' },
+  LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.lock.json' },
+  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public.' },
+  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'bowerloom lock verify' },
+  STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
+  GITHUB_RATE_LIMITED: { sentence: 'GitHub allows about 60 requests an hour without a token and about 5,000 with one.', next: 'Wait until the limit resets, at most an hour. Without a token, set BOWERLOOM_GITHUB_TOKEN to raise the limit (see bowerloom help store).' },
+  ITEM_REVIEW_REQUIRED: { sentence: 'Bowerloom shows what an item can do before it installs it.', next: 'Run bowerloom apply --frozen again to review it.' },
   CONFIG_UNSAFE: { sentence: 'Bowerloom will not trust a bowerloom.json that other people or links can change.', next: 'ls -l bowerloom.json' },
   CONFIG_LIMIT: { sentence: 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', next: 'bowerloom status' },
   CONFIG_DUPLICATE_ID: { sentence: 'Each item is listed once, from one source.', next: 'git diff bowerloom.json' },
@@ -425,6 +508,8 @@ export interface RefusalDetail {
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
   readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
+  /** Review C5: the error's own next step, which replaces the generic one of its code. */
+  readonly next?: string;
 }
 /** The hint of a MANIFEST_UNSAFE whose second link is a leftover `.skills.json.*.tmp` (skill-manifest/src/add.ts). */
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
@@ -433,6 +518,7 @@ const STORE_LIMIT = 'store-limit';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
+  if (typeof detail.next === 'string' && detail.next.length > 0 && Object.hasOwn(REFUSALS, code)) return { sentence: REFUSALS[code]!.sentence, next: detail.next };
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
   if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
@@ -464,7 +550,9 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}) };
+  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
-  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
+  // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}) } })}\n`, exitCode };
 }

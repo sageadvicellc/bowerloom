@@ -82,7 +82,7 @@ test('10. a deleted registration plans slice kept', async t => {
   fs.writeFileSync(receiptFile, recordText(receiptOf(receipt.items.filter(i => i.kind !== 'slice')))); fs.rmSync(sliceFile(f, 'wiki'));
   const p = await plan(f, ['claude']); assert.deepEqual([slice(p).state, slice(p).action], ['orphaned', 'none']);
   assert.match(review(p), /^ {2}wiki +slice kept: no longer a slice of this project, and apply removes nothing$/m);
-  const r = await applied(f, ['claude']); assert.deepEqual(r.result.orphaned, [{ kind: 'slice', id: 'wiki' }]); assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), true);
+  const r = await applied(f, ['claude']); assert.deepEqual(r.result.orphaned, [{ kind: 'slice', id: 'wiki', origin: null, resolvedFrom: 'project' }]); assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), true);
 });
 test('11. 65 registered slices refuse SLICE_LIMIT', async t => {
   const f = await wikiProject(t, { slice: false });

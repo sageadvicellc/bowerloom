@@ -53,9 +53,10 @@ test('3. a valid store prints its counts, and the counts ignore a link and a str
   const r = run(w.home, ['store', 'status'], w.env);
   assert.equal(r.status, 0, r.stderr);
   // Silent-failure F1 and F2: what the count skipped is shown, and so is whether a count was capped.
-  assert.equal(r.stdout, `Store: ready\n  Path: ${w.store}\n  Skill folders: 2 (3 entries ignored)\n  Pinned skills: 2\n  Prompts: 1 (2 entries ignored)\n  Teams: 1 (1 entry ignored)\n`);
+  // Spec 06, 3.21: a Git: block follows the counts. A store with no .git names the commands that give it a remote.
+  assert.equal(r.stdout, `Store: ready\n  Path: ${w.store}\n  Skill folders: 2 (3 entries ignored)\n  Pinned skills: 2\n  Prompts: 1 (2 entries ignored)\n  Teams: 1 (1 entry ignored)\n  Git: none\n  To fix this, run these commands yourself:\n    cd ~/.bowerloom\n    git init\n    git add -A\n    git commit -m "Store"\n    git remote add origin https://github.com/<owner>/<repo>.git\n    git push -u origin <branch>\n  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.\n`);
   const j = JSON.parse(run(w.home, ['store', 'status', '--json'], w.env).stdout);
-  assert.deepEqual(j.counts, { skillFolders: 2, pinnedSkills: 2, pinnedSkillsProblem: null, prompts: 1, teams: 1, ignored: { skillFolders: 3, prompts: 2, teams: 1 }, capped: { skillFolders: false, prompts: false, teams: false } }); assert.equal(j.state, 'store'); assert.equal(j.code, null); assert.equal(j.git, null);
+  assert.deepEqual(j.counts, { skillFolders: 2, pinnedSkills: 2, pinnedSkillsProblem: null, prompts: 1, teams: 1, ignored: { skillFolders: 3, prompts: 2, teams: 1 }, capped: { skillFolders: false, prompts: false, teams: false } }); assert.equal(j.state, 'store'); assert.equal(j.code, null); assert.deepEqual(j.git, { present: false, problem: 'none', remote: null, branch: null, head: null, pushed: null, ahead: 'unknown' });
 });
 
 test('3b. a skills.json that cannot be used says why; no skills.json counts 0; 256 names print as 256 or more and say capped', t => {
@@ -144,20 +145,26 @@ test('10. status --json in a config-only project', t => {
   const j = JSON.parse(run1.stdout);
   assert.equal(j.format, 'bowerloom/project-status/v1beta2'); assert.deepEqual(j.markers, { folder: false, config: true }); assert.equal(j.setup, 'none'); assert.equal(j.status, 'ready');
   assert.equal(j.specReady, false); assert.equal(j.revision, null); assert.deepEqual(j.drift, []); assert.deepEqual(j.owned, []); assert.equal(j.runtimeReady, false); assert.equal(j.executionAuthorized, false);
-  assert.deepEqual(Object.keys(j.config), ['bytes', 'code', 'counts', 'harnesses', 'path', 'sha256', 'state']);
-  assert.deepEqual({ ...j.config, sha256: 'x' }, { path: 'bowerloom.json', sha256: 'x', bytes: readFileSync(join(dir, 'bowerloom.json')).length, state: 'valid', code: null, harnesses: ['claude', 'codex'], counts: { skills: 1, prompts: 0, teams: 1 } });
+  assert.deepEqual(Object.keys(j.config), ['bytes', 'code', 'counts', 'harnesses', 'items', 'lock', 'path', 'sha256', 'state', 'store', 'storeCode', 'unselected']);
+  const { store, storeCode, items, unselected, lock, ...base } = j.config;
+  assert.deepEqual({ ...base, sha256: 'x' }, { path: 'bowerloom.json', sha256: 'x', bytes: readFileSync(join(dir, 'bowerloom.json')).length, state: 'valid', code: null, harnesses: ['claude', 'codex'], counts: { skills: 1, prompts: 0, teams: 1 } });
+  // Spec 06, 3.20 and 4.6: no store yet, both store items missing, and no lock in a project that is not shared.
+  assert.deepEqual({ store, storeCode, unselected }, { store: 'absent', storeCode: null, unselected: { skills: [], prompts: [], teams: [] } });
+  assert.deepEqual(items, [{ kind: 'skill', id: 'house-style', source: 'store', via: [], state: 'missing' }, { kind: 'team', id: 'research', source: 'store', via: [], state: 'missing' }]);
+  assert.deepEqual(lock, { state: 'not-used', code: null, sha256: null, bytes: null, items: 0, shared: false });
   assert.match(j.config.sha256, /^[a-f0-9]{64}$/);
   const text = run(dir, ['status'], w.env);
-  assert.equal(text.stdout, `Project: ${dir}\nConfig: bowerloom.json (1 skills, 0 prompts, 1 teams)\nSetup: ready (no startup setup, this project uses bowerloom.json)\nWorkers: none started (this beta starts none)\n`);
+  assert.equal(text.stdout, `Project: ${dir}\nConfig: bowerloom.json (1 skills, 0 prompts, 1 teams)\nLock: not-used\nSetup: ready (no startup setup, this project uses bowerloom.json)\nWorkers: none started (this beta starts none)\n`);
 });
 
 test('11. status in a config-only project with an invalid config prints drift config-invalid and exits 0', t => {
   const w = world(t), dir = configProject(w, '{"format":"nope"}\n');
   const j = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
   assert.equal(j.status, 'drifted'); assert.deepEqual(j.drift, [{ path: 'bowerloom.json', kind: 'config-invalid', code: 'CONFIG_INVALID' }]);
-  assert.deepEqual({ ...j.config, sha256: 'x', bytes: 0 }, { path: 'bowerloom.json', sha256: 'x', bytes: 0, state: 'invalid', code: 'CONFIG_INVALID', harnesses: [], counts: { skills: 0, prompts: 0, teams: 0 } });
+  const { store: _s, storeCode: _c, items: _i, unselected: _u, lock: _l, ...invalidBase } = j.config;
+  assert.deepEqual({ ...invalidBase, sha256: 'x', bytes: 0 }, { path: 'bowerloom.json', sha256: 'x', bytes: 0, state: 'invalid', code: 'CONFIG_INVALID', harnesses: [], counts: { skills: 0, prompts: 0, teams: 0 } });
   const r = run(dir, ['status'], w.env);
-  assert.equal(r.status, 0); assert.match(r.stdout, /Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\nSetup: drifted \(no startup setup/); assert.match(r.stdout, /\n  config-invalid: bowerloom\.json \(CONFIG_INVALID\)\n/);
+  assert.equal(r.status, 0); assert.match(r.stdout, /Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\nLock: not-used\nSetup: drifted \(no startup setup/); assert.match(r.stdout, /\n  config-invalid: bowerloom\.json \(CONFIG_INVALID\)\n/);
   const big = configProject(w, { ...CONFIG, skills: Array.from({ length: 129 }, (_, i) => ({ id: `s-${String(i).padStart(4, '0')}`, source: 'project' })) }, 'big');
   assert.equal(JSON.parse(run(big, ['status', '--json'], w.env).stdout).config.code, 'CONFIG_LIMIT');
 });
@@ -177,7 +184,7 @@ test('12. status --json in a project with .bowerloom, a config, and a receipt ke
   writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(CONFIG, null, 2)}\n`, { mode: 0o600 });
   const j = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
   assert.equal(j.setup, 'startup'); assert.deepEqual(j.markers, { folder: true, config: true }); assert.equal(j.status, 'ready'); assert.equal(j.specReady, true); assert.match(j.revision, /^[a-f0-9]{64}$/); assert.equal(j.config.state, 'valid');
-  assert.match(run(dir, ['status'], w.env).stdout, /^Project: .*\nConfig: bowerloom\.json \(1 skills, 0 prompts, 1 teams\)\nSetup: ready\nRevision: [a-f0-9]{64}\n/);
+  assert.match(run(dir, ['status'], w.env).stdout, /^Project: .*\nConfig: bowerloom\.json \(1 skills, 0 prompts, 1 teams\)\nLock: not-used\nSetup: ready\nRevision: [a-f0-9]{64}\n/);
 });
 
 test('12b. a project with .bowerloom and no config keeps the old behavior, with the new format', t => {
@@ -203,9 +210,13 @@ test('13. status in a project with .bowerloom, a config, and no receipt reports 
 
 test('14. ls in a config-only project lists four empty sections, and ls --json has pinned []', t => {
   const w = world(t), dir = configProject(w), r = run(dir, ['ls'], w.env);
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  none yet\n\nSkills\n  none yet\n\nPrompts\n  none yet\n\nSlices\n  none yet\n');
+  // Spec 06, 3.20: in config mode the lists come from bowerloom.json; an item with no definition is missing.
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  research  store  (missing)\n\nSkills\n  house-style  store  (missing)\n\nPrompts\n  none yet\n\nSlices\n  none yet\n\nLock: not-used\n');
   const bad = configProject(w, '{}\n', 'bad'); assert.match(run(bad, ['ls'], w.env).stdout, /^Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\n\nTeams\n/);
-  assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'folders', teams: [], skills: [], prompts: [], slices: [], pinsReadable: true, pinsError: null, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0 });
+  assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'config',
+    teams: [{ id: 'research', source: 'store', via: [], locked: null, resolvedFrom: 'store', state: 'missing', displayName: null }],
+    skills: [{ id: 'house-style', source: 'store', via: [], locked: null, resolvedFrom: 'store', state: 'missing', kind: 'local', pin: null }],
+    prompts: [], slices: [], pinsReadable: true, pinsError: null, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0, lock: { state: 'not-used', code: null } });
 });
 
 test('15. help store and store --help print the store topic, and the first screen names it', t => {
@@ -223,17 +234,13 @@ test('16. store status with the home folder at mode 0 prints Store: refused (STO
   } finally { chmodSync(w.home, 0o700); }
 });
 
-test('17. the interim codes in a config-only folder: each command refuses with its code and changes nothing', t => {
+// Spec 06 replaces the interim codes of spec 03: a config-only project works with every command
+// (tests/config-only-cli.test.ts). These still refuse, and change nothing.
+test('17. the codes that remain in a config-only folder: each command refuses with its code and changes nothing', t => {
   const w = world(t), dir = configProject(w), before = snapshot(w.base);
   const cases: [string[], string][] = [
-    [['skills', 'add', 'npm:@scope/pkg@1.0.0:skills/x', '--json'], 'MANIFEST_UNSAFE'],
-    [['skills', 'check'], 'MANIFEST_UNSAFE'],
-    [['skills', 'sync', '--json'], 'MANIFEST_UNSAFE'],
-    [['apply', '--json'], 'MANIFEST_UNSAFE'],
-    [['skill', 'create', 'house-style', '--json'], 'AUTHORING_UNSAFE_PATH'],
-    [['prompt', 'create', 'weekly-update', '--json'], 'AUTHORING_UNSAFE_PATH'],
-    [['team', 'create', 'research', '--json'], 'AUTHORING_UNSAFE_PATH'],
-    [['up', '--team', 'first-team', '--json'], 'PROJECT_BRIEF_INVALID'],
+    [['team', 'create', 'research', '--json'], 'CONFIG_DUPLICATE_ID'],
+    [['up', '--team', 'first-team', '--json'], 'TEAM_ID_RESERVED'],
     [['skills', 'migrate', 'plan', '--state', join(w.base, 'earlier')], 'SKILLS_MIGRATE_NOTHING'],
   ];
   for (const [args, code] of cases) {

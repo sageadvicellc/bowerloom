@@ -63,7 +63,21 @@ bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--allow-agen
 bowerloom ls [teams|skills|prompts|slices] [--global] [--json]
 bowerloom status [--json]
 bowerloom store status [--json]
+bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]
+bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]
+bowerloom lock verify [--json]
+bowerloom lock update [--item <kind>:<id>]... [--commit <sha>] [--approve <revision>] [--json]
 ```
+
+A project is marked by `.bowerloom`, by `bowerloom.json`, or by both. A project with only `bowerloom.json` works with every command; its first install makes a `.bowerloom` whose engine files git ignores.
+
+`use` picks an item for this project. By default the item comes from your store, `~/.bowerloom`; `--project` picks an item this project defines in `.bowerloom` that `bowerloom.json` does not list yet. If `bowerloom.json` is missing, `use` creates it and lists the items this project defines now, with the source project. `use team <id>` also picks the store skills and prompts that name that team. In a shared project the item must be fetchable by your team, and `bowerloom.lock.json` records where. `--commit <sha>` records that commit of the store remote instead of the pushed commit of the current branch. `use` changes `bowerloom.json` and `bowerloom.lock.json` only; run `bowerloom skills sync` and `bowerloom apply` to put the copies in place.
+
+`unuse` removes an item from `bowerloom.json` and from `bowerloom.lock.json`. It removes no copy that sync or apply already made, and the plan names where the copies stay. `unuse team <id>` also removes the items that were picked only through that team.
+
+`lock verify` reads only. It checks `bowerloom.lock.json`, its hashes, and that it agrees with `bowerloom.json`, and it uses no network. `lock update` looks at your store again and rewrites the lock items; `--item <kind>:<id>` refreshes some. A pinned skill needs no network. A skill, prompt, or team written in the store is checked against its pushed copy on github.com. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file. A git-ignored file or a `.DS_Store` in a store item makes the check fail, and so can `core.autocrlf` or a git filter, because they change the bytes the check compares.
+
+In plan output each item line ends with its source tag: `[project]`, `[store]`, or `[store, from the lock: ...]`.
 
 `up` prepares the project one step at a time and starts no workers. See [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command). With `--json`, each line is one JSON object, and each step plan names its `step` and `team`. `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program. `up` ends at `prepared, workers held`. When a skill, prompt, agent, or team is held or gone, it ends at `prepared, N items held` and prints a next command for each item.
 
@@ -85,8 +99,11 @@ With `--json`, `ls` prints one object in the format `bowerloom/ls/v1beta2`. The 
 bowerloom team create <name> [--profile engineer|founder|research] [--global] [--approve <revision>] [--json]
 bowerloom skill create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
 bowerloom prompt create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
+bowerloom team adopt <id> [--approve <revision>] [--json]
 bowerloom slice create <name> [--root <folder>] [--include <pattern>]... [--approve <revision>] [--json]
 ```
+
+`team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and switches `bowerloom.json` to the project copy. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
 
 Agents use these commands most. They write inside `.bowerloom` only, or inside your store with `--global`. You and your agents own the files they make.
 
@@ -107,10 +124,12 @@ bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] 
 ## Apply
 
 ```text
-bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--approve <revision>] [--json]
+bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]
 ```
 
-`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it places any skill copy that is still missing. It also copies the agents of every team, `first-team` included, from `.bowerloom/teams/<team>/agents/<role>.md` to `.claude/agents/<role>.md` for Claude Code. A context slice in `.bowerloom/slices/<name>.yaml` becomes the skill `.claude/skills/slice-<name>/SKILL.md`, a list of paths that an agent whose `skills` list names `slice-<name>` loads at start. Such an agent also gets a read guard in its copy. Codex agents and context slices are not projected in this beta. Claude Code and Codex are the harnesses, the agent applications that read these copies. Codex agents are not projected in this beta. Run `apply` when the project has prompts or agents. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed or a copy that Bowerloom did not install. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`, and a bad agent file holds only that agent. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands, and for an agent that sets hooks or lists shell tools. Read that prompt or agent before you approve. An agent that sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers` is held with `AGENT_GRANT_REVIEW_REQUIRED` until you read it and pass `--allow-agent <role>:<hash>`. The hash is the full sha256 of the agent file, 64 hex characters. The flag works only in a terminal and not with `--json`. For each allowed agent, Bowerloom prints the plan notes and then asks you to type its role name. The plan itself never carries the flag, so a terminal and a pipe see one revision. At a terminal, the text output names the exact flag. `--approve` alone never installs such an agent. The terminal gate is a guardrail, not a security boundary. It stops a pipe, `--json`, and a CI job from allowing an agent by accident. An agent that has a shell or can write files can drive a pseudo-terminal, or write `.claude/agents` itself, so the gate does not stop it. The flag repeats, and `up` takes it too. See [Project agents for Claude Code](/docs/guides/agents/). See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
+`--frozen` installs only what `bowerloom.lock.json` records, as `npm ci` does. It refuses if the lock file and `bowerloom.json` disagree. It ignores your store. It fetches what this machine does not hold yet, from the hosts the plan names. Plain apply never fetches. A store skill or prompt fetched from the lock that sets `allowed-tools`, registers hooks, or runs `!` shell lines is held with `ITEM_REVIEW_REQUIRED`, unless the approved plan showed it. Run `bowerloom apply --frozen` again to review it. `--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000.
+
+`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it places any skill copy that is still missing. It also copies the agents of every team, `first-team` included, from `.bowerloom/teams/<team>/agents/<role>.md` to `.claude/agents/<role>.md` for Claude Code. A context slice in `.bowerloom/slices/<name>.yaml` becomes the skill `.claude/skills/slice-<name>/SKILL.md`, a list of paths that an agent whose `skills` list names `slice-<name>` loads at start. Such an agent also gets a read guard in its copy. Codex agents and context slices are not projected in this beta. Claude Code and Codex are the harnesses, the agent applications that read these copies. Run `apply` when the project has prompts or agents. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed or a copy that Bowerloom did not install. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`, and a bad agent file holds only that agent. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands, and for an agent that sets hooks or lists shell tools. Read that prompt or agent before you approve. An agent that sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers` is held with `AGENT_GRANT_REVIEW_REQUIRED` until you read it and pass `--allow-agent <role>:<hash>`. The hash is the full sha256 of the agent file, 64 hex characters. The flag works only in a terminal and not with `--json`. For each allowed agent, Bowerloom prints the plan notes and then asks you to type its role name. The plan itself never carries the flag, so a terminal and a pipe see one revision. At a terminal, the text output names the exact flag. `--approve` alone never installs such an agent. The terminal gate is a guardrail, not a security boundary. It stops a pipe, `--json`, and a CI job from allowing an agent by accident. An agent that has a shell or can write files can drive a pseudo-terminal, or write `.claude/agents` itself, so the gate does not stop it. The flag repeats, and `up` takes it too. See [Project agents for Claude Code](/docs/guides/agents/). See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 
@@ -224,7 +243,7 @@ The macOS Docker context, ARM64 daemon, Compose v2, storage, and approval requir
 bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]
 bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]
 bowerloom skills check [--global] [--json]
-bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]
+bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>] [--approve <revision>] [--json]
 bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon] [--approve <revision>] [--json]
 bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <revision>] [--json]
 ```

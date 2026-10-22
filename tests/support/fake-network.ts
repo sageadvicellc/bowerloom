@@ -14,23 +14,29 @@ import dnsPromises from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import { syncBuiltinESMExports } from 'node:module';
 
-interface Plan { log: string; routes?: Record<string, string> }
+// Spec 06: a route value can also be { "status": <n>, "headers": { "<name>": "<value>" }, "file": <path or null> }.
+// Each https.request line of the log says whether an Authorization header was set, never its value.
+type Route = string | { status: number; headers?: Record<string, string>; file: string | null };
+interface Plan { log: string; routes?: Record<string, Route> }
 const planPath = process.env.TEST_FAKE_NETWORK_PLAN;
 if (!planPath) throw new Error('fake-network: TEST_FAKE_NETWORK_PLAN is not set');
 const plan = JSON.parse(fs.readFileSync(planPath, 'utf8')) as Plan;
 const routes = plan.routes ?? null;
-const record = (name: string, target: unknown): void => { fs.appendFileSync(plan.log, `${JSON.stringify({ name, target: String(target) })}\n`); };
+const record = (name: string, target: unknown, extra: Record<string, unknown> = {}): void => { fs.appendFileSync(plan.log, `${JSON.stringify({ name, target: String(target), ...extra })}\n`); };
 const deny = (name: string) => (...args: unknown[]): never => { record(name, args[0]); throw new Error('TEST_NETWORK_DENIED'); };
 
 type Callback = (response: EventEmitter) => void;
-function serve(url: unknown, _options: unknown, callback: Callback): EventEmitter {
-  record('https.request', url);
+function serve(url: unknown, options: unknown, callback: Callback): EventEmitter {
+  const headers = (options as { headers?: Record<string, unknown> } | null)?.headers ?? {};
+  record('https.request', url, { authorization: Object.keys(headers).some(h => h.toLowerCase() === 'authorization') });
   const req = Object.assign(new EventEmitter(), { destroyed: false, destroy() { req.destroyed = true; return req; }, end() {
     queueMicrotask(() => {
       if (req.destroyed) return;
-      const file = routes![String(url)];
-      const body = file === undefined ? Buffer.from('{"message":"Not Found"}') : fs.readFileSync(file);
-      const res = Object.assign(new EventEmitter(), { destroyed: false, destroy() { res.destroyed = true; return res; }, statusCode: file === undefined ? 404 : 200, complete: true, rawHeaders: ['Content-Length', String(body.length)] });
+      const route = routes![String(url)];
+      const spec = route === undefined ? { status: 404, headers: {}, file: null } : typeof route === 'string' ? { status: 200, headers: {}, file: route } : { status: route.status, headers: route.headers ?? {}, file: route.file };
+      const body = spec.file === null ? Buffer.from('{"message":"Not Found"}') : fs.readFileSync(spec.file);
+      const extra = Object.entries(spec.headers);
+      const res = Object.assign(new EventEmitter(), { destroyed: false, destroy() { res.destroyed = true; return res; }, statusCode: spec.status, complete: true, rawHeaders: ['Content-Length', String(body.length), ...extra.flat()], headers: Object.fromEntries([['content-length', String(body.length)], ...extra.map(([k, v]) => [k.toLowerCase(), v])]) });
       callback(res);
       if (!res.destroyed) res.emit('data', body);
       if (!res.destroyed) res.emit('end');

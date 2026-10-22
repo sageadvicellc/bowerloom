@@ -126,6 +126,12 @@ bowerloom prompt create weekly-update --global
 
 Each command shows the plan and its revision. Run it again with `--approve <revision>` to write. A team in the store is built from a fixed store brief and the profile you choose, and it does not read a project brief. `--team <team>` on a skill or prompt names a team in the store. `bowerloom ls --global` lists what the store holds. A store that Bowerloom did not make refuses with `STORE_INVALID`.
 
+## Pick an item from your store
+
+A project lists what it installs in `bowerloom.json`. `bowerloom use skill <id>` picks a store skill, and `bowerloom use team <id>` picks a store team with the store skills and prompts that name it. `bowerloom unuse` drops an item and keeps any copy in place. `bowerloom team adopt <id>` copies a store team into the project, so you can change it there.
+
+In a shared project, `use` checks that a teammate can fetch the item: the store must be a git repository with a github.com remote, and the item must be pushed. `bowerloom store status` shows the commands that set this up. Without a token, GitHub allows about 60 requests an hour, and each item takes about 4 plus one per file. A git-ignored file, a `.DS_Store`, `core.autocrlf`, or a git filter can change the bytes and make that check fail.
+
 ## Limits in this beta
 
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.

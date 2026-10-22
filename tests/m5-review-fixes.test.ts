@@ -6,8 +6,8 @@ import { renderRefusal } from '../apps/cli/src/human.js';
 import { interruptHandler, resultWords } from '../apps/cli/src/sync.js';
 
 test('finding 7: hold text prints through plainText, and SKILLS_STATE_UNSAFE names the private state folder, not one path', () => {
-  const words = resultWords({ format: 'bowerloom/skills-sync-result/v1beta1', planRevision: 'a'.repeat(64), applied: [{ id: 'alpha', action: 'install', receiptRevision: 'b'.repeat(64) }],
-    held: [{ id: 'bravo', code: 'MANAGED_SKILL_LOCAL_DRIFT', next: 'Undo \u001b[31mred\u001b[0m and ‮gnp.exe' }], upToDate: [], orphaned: [], fetched: [], executionAuthorized: false });
+  const words = resultWords({ format: 'bowerloom/skills-sync-result/v1beta2', planRevision: 'a'.repeat(64), applied: [{ id: 'alpha', action: 'install', receiptRevision: 'b'.repeat(64), origin: 'project', resolvedFrom: 'project' }],
+    held: [{ id: 'bravo', code: 'MANAGED_SKILL_LOCAL_DRIFT', next: 'Undo \u001b[31mred\u001b[0m and ‮gnp.exe', origin: 'project', resolvedFrom: 'project' }], upToDate: [], orphaned: [], fetched: [], executionAuthorized: false });
   assert.doesNotMatch(words, /[\u001b‮]/); assert.match(words, /\\u001b\[31mred/); assert.match(words, /^ {2}alpha: installed$/m);
   const text = renderRefusal('SKILLS_STATE_UNSAFE', 'Unsafe.');
   assert.match(text, /^Next: .*the private state folder/m); assert.doesNotMatch(text, /Next: ls -ld ~\/\.local\/state\/bowerloom$/m);

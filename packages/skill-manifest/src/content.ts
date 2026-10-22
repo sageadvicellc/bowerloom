@@ -35,6 +35,22 @@ export function skillFilePath(path: string): void {
   try { relativeSkillPath(path); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; }
   requireManifest(TEXT_FILE.test(path) || LICENSE_PATH.test(path), 'SKILLS_ADD_UNSAFE_CONTENT');
 }
+/**
+ * The file rules of an item a lock can record (spec 06, 3.11 step 4), shared by the store sources of the managed engine,
+ * `localItemRows` and the fetch of an authored store item: at most 126 files, 65536 bytes each, 2097152 bytes in all.
+ */
+export const STORE_FILE_LIMITS = Object.freeze({ files: 126, fileBytes: 65536, totalBytes: 2097152 });
+/**
+ * The fault of one file of a store item, or null: `unsafe` for a path `skillFilePath` refuses, an empty file, a byte order
+ * mark, bytes that are not UTF-8, or an execute bit in `mode`; `large` for a file over 65536 bytes.
+ */
+export function storeFileFault(path: string, bytes: Buffer, mode: number): 'unsafe' | 'large' | null {
+  try { skillFilePath(path); } catch { return 'unsafe'; }
+  if (bytes.length === 0 || (mode & 0o111) !== 0) return 'unsafe';
+  if (bytes.length > STORE_FILE_LIMITS.fileBytes) return 'large';
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'unsafe';
+  return strictUtf8(bytes) === null ? 'unsafe' : null;
+}
 /** Bounds on the selected files: count, size of each, and total. */
 export function checkBounds(files: readonly { bytes: number }[]): void {
   let total = 0;
