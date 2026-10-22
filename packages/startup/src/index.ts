@@ -55,7 +55,7 @@ export interface V2StartupReceipt extends ReceiptBody {
 }
 export type StartupReceipt = LegacyStartupReceipt | V2StartupReceipt;
 /** `owner-refused` (with its `code`) appears only when `inspectStartup` was given owners. */
-export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' | 'owner-refused'; code?: string }
+export interface Drift { path: string; kind: 'missing' | 'changed' | 'unsafe' | 'unexpected' | 'invalid-receipt' | 'installation-binding-changed' | 'compiler-failed' | 'revision-pending' | 'owner-refused' | 'config-invalid'; code?: string }
 /** An entry a registered owner verified. `edited` is authored content a person or agent changed; it is not drift. */
 export interface OwnedEntry { path: string; owner: OwnerName; state: 'verified' | 'edited' }
 export interface InspectStartupOptions { owners?: readonly OwnerVerifier[] }
@@ -295,6 +295,35 @@ function inspectionOwners(options: unknown): readonly OwnerVerifier[] | null {
   // No verifiers: exactly the cc117ac result.
   return owners.length ? owners : null;
 }
+/**
+ * Inspects the owned entries of a `.bowerloom` folder that has no startup receipt, as a project with `bowerloom.json`
+ * and an authored `.bowerloom` has. Every entry is unaccounted for, so each goes to the owners: one that no owner claims
+ * is `unexpected`, one an owner refuses is `owner-refused`, and a link or other special entry is `unsafe`. A claimed
+ * folder is verified whole and not walked. More than 256 entries, or a folder that cannot be read, gives `unsafe` for
+ * `.bowerloom`, as `inspectStartup` does. It reads no startup receipt.
+ */
+export async function inspectOwnedOnly(targetDir: string, owners: readonly OwnerVerifier[]): Promise<{ drift: Drift[]; owned: OwnedEntry[] }> {
+  if (!validOwners(owners)) fail('STARTUP_INPUT');
+  const target = canonicalTarget(targetDir); ancestors(target); ownedDirectory(identity(target));
+  const directory = join(target, '.bowerloom'), drift: Drift[] = [], owned: OwnedEntry[] = [], signal = new AbortController().signal;
+  try { ownedDirectory(identity(directory)); } catch { return { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned }; }
+  try {
+    const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    if (entries.length > 256) fail('INSPECTION_LIMIT');
+    for (const entry of entries) {
+      const path = `.bowerloom/${entry.name}`, link = entry.isSymbolicLink();
+      const kind: OwnedEntryKind | null = link ? null : entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : null;
+      if (kind === null) { drift.push({ path, kind: 'unsafe' }); continue; }
+      const outcome = await askOwners(owners, entry.name, kind, signal);
+      if (outcome.result === 'unclaimed') drift.push({ path, kind: 'unexpected' });
+      else if (outcome.result === 'refused') drift.push({ path, kind: 'owner-refused', code: outcome.code });
+      else owned.push({ path, owner: outcome.owner, state: outcome.result });
+    }
+  } catch { return { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned: [] }; }
+  owned.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  return { drift, owned };
+}
+
 /**
  * Inspects an installed project. With `options.owners`, an entry inside `.bowerloom/` that the startup receipt does
  * not account for passes only when exactly one owner claims it and verifies it (build plan 01, M2); a claimed folder is
