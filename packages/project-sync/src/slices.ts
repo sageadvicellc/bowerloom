@@ -152,7 +152,7 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
   const source: SliceCatalogSource | null = def === null ? null : { kind: 'slice', path: `slices/${id}.yaml`, root: def.root, guard: def.guard };
   const previous = installedState(project, itemsRoot, ref);
   const base: Partial<SliceItem> = {
-    definition: tree.file === null ? null : { path: fileOf(id), ...tree.file }, root: rootItem, guard: def?.guard ?? null, members: res.members.map(m => m.path), covered: [...res.covered], notes, installed: previous !== null,
+    definition: tree.file === null ? null : { path: fileOf(id), ...tree.file }, root: rootItem, guard: def?.guard ?? null, members: res.members.map(m => m.path), covered: [...res.covered], notes, installed: previous.installed,
   };
   if (tree.hold !== null) return heldItem(project, id, base, holdOf(id, tree.hold));
 
@@ -177,6 +177,8 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
     if (heldCode === 'MANAGED_SKILL_PATH_OCCUPIED') { hold = hold ?? occupiedCatalog; heldCode = null; }
     if (current !== null) {
       const view = readCatalog(catalog), was = view.source as unknown as SliceCatalogSource, refs = (view as unknown as { references?: string[] }).references ?? rawReferences(catalog);
+      if (refs === null) { hold = hold ?? { code: 'MANAGED_SKILL_LOCAL_DRIFT', next: driftNext([`.bowerloom/managed/catalog/${itemId}.json`], fileOf(id)).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') }; state = 'drift'; }
+      else {
       const oldMembers = refs.filter(r => !r.endsWith('/')), oldCovered = refs.filter(r => r.endsWith('/'));
       const wasRoot = was?.root?.path ?? '.', nowRoot = def!.root.path;
       const oldSet = new Set(oldMembers.map(m => qualified(wasRoot, m))), newSet = new Set(base.members!.map(m => qualified(nowRoot, m)));
@@ -189,6 +191,7 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
       };
       const differs = !same(view.inventory, files) || !same(oldMembers, base.members) || !same(oldCovered, base.covered) || changes.rootChanged || changes.guardChanged;
       if (differs) { state = 'edited'; action = 'update'; } else { state = 'up-to-date'; action = 'none'; }
+      }
     }
   }
   if (heldCode !== null && hold === null) {
@@ -208,12 +211,18 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
 
 import { createHash } from 'node:crypto';
 const createHashHex = (text: string): string => createHash('sha256').update(text).digest('hex');
-function rawReferences(catalog: string): string[] {
-  try { const v = JSON.parse(raw(catalog, 262144, false).bytes.toString('utf8')) as { references?: unknown }; return Array.isArray(v.references) ? v.references.filter((r): r is string => typeof r === 'string') : []; } catch { return []; }
+/** The `references` of a catalog file, or null when the file cannot be read or holds no list of text. Null is a hold, never "every member is new". */
+export function rawReferences(catalog: string): string[] | null {
+  try {
+    const v = JSON.parse(raw(catalog, 262144, false).bytes.toString('utf8')) as { references?: unknown };
+    return Array.isArray(v.references) && v.references.every((r): r is string => typeof r === 'string') ? v.references : null;
+  } catch { return null; }
 }
 /** The verified current receipt of an installed slice, or null. */
-function installedState(project: string, itemsRoot: string, ref: ItemRef): ManagedItemReceipt | null {
-  try { return exists(catalogPath(project, ref)) ? currentV2(project, join(itemsRoot, 'slice_' + ref.id), ref) : null; } catch { return null; }
+function installedState(project: string, itemsRoot: string, ref: ItemRef): { installed: boolean; receipt: ManagedItemReceipt | null; error: string | null } {
+  if (!exists(catalogPath(project, ref))) return { installed: false, receipt: null, error: null };
+  // A copy is on disk. When its record cannot be verified, the slice is still installed, and the reason stays with it.
+  try { return { installed: true, receipt: currentV2(project, join(itemsRoot, 'slice_' + ref.id), ref), error: null }; } catch (e) { return { installed: true, receipt: null, error: managedCode(e) }; }
 }
 function readInstalledIndex(project: string, id: string): string | null {
   try { return raw(join(project, '.claude/skills', 'slice-' + id, 'SKILL.md'), 65536, false).bytes.toString('utf8'); } catch { return null; }

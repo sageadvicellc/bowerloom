@@ -191,3 +191,11 @@ test('S1. a reader error with another code holds the slice and names that code, 
   const bug = () => { throw new TypeError('a bug'); };
   await assert.rejects(plan(f, ['claude'], { sliceTree: bug }), Error);
 });
+test('S9. rawReferences gives null, not an empty list, for a catalog it cannot read as a list of text', async t => {
+  const { rawReferences } = await import('../../../dist/packages/project-sync/src/slices.js');
+  const f = await wikiProject(t); await applied(f, ['claude']); const file = path.join(f.projectDir, '.bowerloom/managed/catalog/slice_wiki.json');
+  assert.deepEqual(rawReferences(file), ['a.md', 'sub/b.md', './', 'sub/']);
+  const write = text => { fs.writeFileSync(file, text); return rawReferences(file); };
+  assert.equal(write('{not json'), null); assert.equal(write('{"a":1}'), null); assert.equal(write('{"references":[1]}'), null);
+  assert.deepEqual(write('{"references":["a.md","sub/"]}'), ['a.md', 'sub/']); assert.equal(rawReferences(file + '.missing'), null);
+});

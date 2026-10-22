@@ -79,7 +79,7 @@ const andList = (list: readonly string[]): string => list.length <= 1 ? (list[0]
 const someOf = (list: readonly string[]): string => `${andList(list.slice(0, 3))}${list.length > 3 ? `, and ${list.length - 3} more` : ''}`;
 const sliceWhere = (item: SliceItem): string => item.root === null || item.root.path === '.' ? 'the project folder' : item.root.path;
 /** The notes of a slice the plan installs or updates (spec 05, section 3.7.3), in their fixed order. */
-function sliceNoteLines(item: SliceItem): string[] {
+export function sliceNoteLines(item: SliceItem): string[] {
   const n = item.notes, id = item.id, out: string[] = [];
   if (n.unparsed.length) out.push(`  Note: slice ${id} left out ${n.unparsed.length} files whose frontmatter does not parse: ${someOf(n.unparsed)}.`);
   if (n.unresolvedLinks > 0 || n.ambiguousLinks > 0) out.push(`  Note: slice ${id} has ${n.unresolvedLinks} links that point to no file and ${n.ambiguousLinks} links that point to more than one file.`);

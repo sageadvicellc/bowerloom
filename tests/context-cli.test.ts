@@ -2,7 +2,8 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, statSync, symlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { readInstalledRelease } from '../apps/cli/src/release.js';
 import { TOPICS } from '../apps/cli/src/human.js';
@@ -90,4 +91,13 @@ test('S5 and S6. the text output names held agents, and says when imports or bas
   assert.match(r.stdout, /^Skipped: 1 imports that name no readable file, and 1 hidden entries, 0 links and 0 special entries in the baseline\.$/m);
   const json = JSON.parse(run(p.dir, ['context', 'measure', '--json'], p.home).stdout); assert.equal(json.held[0].role, 'broken'); assert.equal(json.agents.length, 1);
   const quiet = sliceProject(t); assert.doesNotMatch(run(quiet.dir, ['context', 'measure'], quiet.home).stdout, /^Skipped:|^Held:/m);
+});
+
+test('S7. context show and the apply plan say how many odd entries a slice skipped', t => {
+  const p = sliceProject(t, { apply: false }); execFileSync('mkfifo', [join(p.dir, 'wiki/pipe')]); symlinkSync('a.md', join(p.dir, 'wiki/ln'));
+  const plan = run(p.dir, ['apply', '--harness', 'claude'], p.home).stdout; assert.match(plan, /Note: slice wiki skipped 2 entries that are not files or folders, or are links that no pattern selects\./);
+  assert.equal(run(p.dir, ['apply', '--harness', 'claude', '--approve', plan.match(/Revision: ([a-f0-9]{64})/)![1]!], p.home).status, 0);
+  const show = run(p.dir, ['context', 'show', 'wiki'], p.home); assert.equal(show.status, 0, show.stderr);
+  assert.match(show.stdout, /skipped 2 entries that are not files or folders, or are links that no pattern selects\./);
+  const status = run(p.dir, ['status'], p.home).stdout; assert.match(status, /^slice wiki: 1 notes, run bowerloom context show wiki$/m);
 });

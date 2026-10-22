@@ -1,12 +1,12 @@
 // Spec 05, section 10.21: apply, status, ls, up, and help with slices, through the real command line.
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOPICS } from '../apps/cli/src/human.js';
 import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/index.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
-import { approve, folder, put, run, sliceProject, revisionIn } from './support/slice-project.js';
+import { approve, folder, put, run, sliceProject, revisionIn, tamperCatalog } from './support/slice-project.js';
 
 const lines = (text: string): string[] => text.split('\n');
 const errors = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
@@ -71,4 +71,20 @@ test('7. help apply shows the slice sentences', t => {
 test('8. every code of section 5 has words in human.ts and a row in errors.md', () => {
   const codes = ['SLICE_INVALID', 'SLICE_KEY_UNKNOWN', 'SLICE_NAME_INVALID', 'SLICE_EXISTS', 'SLICE_LIMIT', 'SLICE_PATH_MISSING', 'SLICE_ROOT_MISSING', 'SLICE_ROOT_UNSAFE', 'SLICE_SOURCE_UNSAFE', 'SLICE_EMPTY', 'SLICE_TOO_LARGE', 'SLICE_TARGET_OCCUPIED', 'AGENT_GUARD_CONFLICT', 'AGENT_GUARD_WORKTREE', 'CONTEXT_SLICE_NOT_FOUND', 'CONTEXT_AGENT_NOT_FOUND', 'CONTEXT_BASELINE_INVALID', 'CONTEXT_MEASURE_LIMIT', 'GUARD_OUTSIDE_SLICE', 'GUARD_SLICE_NOT_INSTALLED', 'GUARD_ROOT_MISSING', 'GUARD_PROJECT_MISMATCH', 'GUARD_INPUT_INVALID', 'GUARD_INTERNAL_ERROR'];
   for (const c of codes) { assert.ok((SYNC_REFUSAL_CODES as readonly string[]).includes(c) || (AUTHORING_REFUSAL_CODES as readonly string[]).includes(c), c); assert.match(errors, new RegExp('\\| `' + c + '` \\|'), `errors.md has a row for ${c}`); }
+});
+
+test('S9. an installed slice whose record cannot be trusted is still installed, and the plan holds it with a reason', async t => {
+  const p = sliceProject(t);
+  await tamperCatalog(p, 'slice_wiki', c => { delete c.references; });
+  const plan = run(p.dir, ['apply', '--harness', 'claude', '--json'], p.home); assert.equal(plan.status, 0, plan.stdout + plan.stderr); const out = (JSON.parse(plan.stdout) as { plan: { slices: unknown } }).plan as unknown as { slices: { id: string; installed: boolean; state: string; hold: { code: string } | null; changes: { added: number } }[] };
+  assert.deepEqual((JSON.parse(plan.stdout) as { plan: { agents: { context: { heldNeverInstalled: string[]; heldAfterInstalled: string[] } }[] } }).plan.agents[0]!.context, { ...(JSON.parse(plan.stdout) as { plan: { agents: { context: object }[] } }).plan.agents[0]!.context, heldNeverInstalled: [], heldAfterInstalled: ['wiki'] });
+  assert.equal(out.slices[0]!.installed, true, 'the copy is on disk');
+  assert.equal(out.slices[0]!.hold !== null, true); assert.equal(out.slices[0]!.changes.added, 0, 'no member is reported as added');
+});
+
+test('S9. status does not hide a slice problem when the whole plan refuses', t => {
+  const p = sliceProject(t); const slices = join(p.dir, '.bowerloom/slices');
+  renameSync(slices, join(p.dir, '.bowerloom/slices-real')); symlinkSync('slices-real', slices);
+  const r = run(p.dir, ['status'], p.home); assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^ {2}unsafe: \.bowerloom\/slices$/m); assert.match(r.stdout, /^ {2}plan unavailable \(AUTHORING_UNSAFE_PATH\)$/m); assert.match(r.stdout, /^Setup: drifted$/m);
 });
