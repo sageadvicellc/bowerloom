@@ -20,7 +20,7 @@ import { dirname } from 'node:path';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
+import { discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite, STORE_CREATE_LINE } from '../../../packages/project-context/src/index.js';
 import type { StoreContext } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { parseSkillSpec } from '../../../packages/skill-manifest/src/spec.js';
@@ -153,7 +153,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
   const replace = 'replace' in plan.change ? plan.change.replace : null;
   const entry = (replace ? replace.to : (plan.change as { add: Entry }).add) as Pinned;
   return [
-    ...(plan.storeCreate ? ['Create the store at ~/.bowerloom (store.json). It holds definitions only.'] : []),
+    ...(plan.storeCreate ? [STORE_CREATE_LINE] : []),
     ...((plan as { bowerloomFolder?: string }).bowerloomFolder === 'create' ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
     ...(replace
       ? [`Replace the pin of skill ${entry.id} in ${plan.manifest}`, `  Old pin: ${pinWords(replace.from as Pinned)}`, `  New pin: ${pinWords(entry)}`]

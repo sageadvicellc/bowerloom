@@ -29,6 +29,9 @@ async function linkedStore(t, area) {
   return { w, repo };
 }
 const notShareable = e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The item holds a file that a lock cannot record.');
+// Round 2 of the reviews of PR 100, S1: the store definitions check each area once, so every reader of the live store refuses
+// STORE_UNSAFE, and the message names the area. localItemRows keeps its own check for a store cache folder.
+const areaUnsafe = area => e => e.code === 'STORE_UNSAFE' && e.message.includes(`The store folder ${area} is a link or is not inside the store.`);
 
 test('localItemRows refuses a linked skills, teams or prompts folder', async t => {
   for (const [area, kind, id] of [['skills', 'skill', 'house-style'], ['teams', 'team', 'research']]) {
@@ -40,10 +43,10 @@ test('localItemRows refuses a linked skills, teams or prompts folder', async t =
   assert.throws(() => localItemRows(w.store, 'prompt', 'brief'), notShareable, 'prompts');
 });
 
-test('use refuses a store item behind a linked area in a shared project', async t => {
+test('use refuses a store item behind a linked area in a shared project (STORE_UNSAFE since round 2 of PR 100)', async t => {
   for (const [area, kind, id] of [['skills', 'skill', 'house-style'], ['teams', 'team', 'research']]) {
     const { w, repo } = await linkedStore(t, area); writeConfig(w, {}); writeLock(w, {});
-    await assert.rejects(planConfigChange({ project: ctx(w), home: w.home, op: 'use', kind, id, storeTransport: storeTransport(repo), signal: signal() }), notShareable, area);
+    await assert.rejects(planConfigChange({ project: ctx(w), home: w.home, op: 'use', kind, id, storeTransport: storeTransport(repo), signal: signal() }), areaUnsafe(area), area);
   }
 });
 
@@ -55,7 +58,7 @@ test('lock update and the resolver (ls, status, sync, apply) refuse a locked ite
     writeConfig(w, kind === 'skill' ? { skills: [{ id, source: 'store' }] } : { teams: [{ id, source: 'store' }] });
     writeLock(w, kind === 'skill' ? { skills: [lockOfRepo(w, repo, kind, id)] } : { teams: [lockOfRepo(w, repo, kind, id)] });
     const copy = path.join(w.base, `copy-${area}`); fs.cpSync(path.join(w.store, area), copy, { recursive: true }); fs.rmSync(path.join(w.store, area), { recursive: true }); fs.symlinkSync(copy, path.join(w.store, area));
-    await assert.rejects(planLockUpdate({ project: ctx(w), home: w.home, items: null, commit: null, storeTransport: storeTransport(repo), signal: signal() }), notShareable, `lock update ${area}`);
-    assert.throws(() => resolveProject({ project: ctx(w), home: w.home, frozen: false }), notShareable, `resolver ${area}`);
+    await assert.rejects(planLockUpdate({ project: ctx(w), home: w.home, items: null, commit: null, storeTransport: storeTransport(repo), signal: signal() }), areaUnsafe(area), `lock update ${area}`);
+    assert.throws(() => resolveProject({ project: ctx(w), home: w.home, frozen: false }), areaUnsafe(area), `resolver ${area}`);
   }
 });

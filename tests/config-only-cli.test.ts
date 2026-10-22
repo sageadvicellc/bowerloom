@@ -40,7 +40,7 @@ test('part 3: skill create, prompt create, team create, use, unuse, team adopt, 
     [['team', 'create', 'research', '--json'], 3, null],
     [['use', 'skill', 'house-style', '--json'], 1, 'STORE_NOT_FOUND'],
     [['unuse', 'skill', 'house-style', '--json'], 1, 'CONFIG_ITEM_NOT_SELECTED'],
-    [['team', 'adopt', 'research', '--json'], 1, 'CONFIG_ITEM_NOT_SELECTED'],
+    [['team', 'adopt', 'research', '--json'], 1, 'STORE_NOT_FOUND'],
     [['lock', 'verify', '--json'], 1, 'LOCK_MISSING'],
     [['up', '--team', 'research', '--json'], 3, null],
   ];

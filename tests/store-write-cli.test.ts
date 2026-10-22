@@ -70,7 +70,7 @@ test('1. skill create --global in a folder that is not a project prints the plan
   const w = world(t), r = run(w.work, ['skill', 'create', 'x', '--global'], w.env);
   assert.equal(r.status, 3, r.stderr);
   const lines = r.stdout.split('\n');
-  assert.equal(lines[0], 'Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  assert.equal(lines[0], 'Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.');
   assert.equal(lines[1], 'Create skill x in the store at ~/.bowerloom/skills/x');
   assert.deepEqual(lines.slice(2, 8), ['  Teams: every team', '  Files: 1', '  skills.json: adds a local entry for x', 'You and your agents own these files and can edit them.', 'This writes the store only. It changes no project, and it installs nothing.', `Revision: ${/Revision: ([a-f0-9]{64})/.exec(r.stdout)![1]}`]);
   assert.equal(existsSync(w.store), false, 'a plan writes nothing');
@@ -128,7 +128,7 @@ test('7. skills add --global writes the store skills.json and the cache under XD
   const w = world(t), env = { ...w.env, ...network(w.base) };
   const planned = run(w.work, ['skills', 'add', NPM_SPEC, '--global'], env, ['--import', preload]);
   assert.equal(planned.status, 3, planned.stderr);
-  assert.match(planned.stdout, /^Create the store at ~\/\.bowerloom \(store\.json\)\. It holds definitions only\.\nAdd skill [a-z0-9-]+ to ~\/\.bowerloom\/skills\.json\n/);
+  assert.match(planned.stdout, /^Create the store at ~\/\.bowerloom \(store\.json, and a \.gitignore that leaves out the files of this machine\)\. It holds definitions only\.\nAdd skill [a-z0-9-]+ to ~\/\.bowerloom\/skills\.json\n/);
   assert.match(planned.stdout, /\n {2}Scope: store\. A project picks this skill with bowerloom use\.\n/);
   const r = approve(w, ['skills', 'add', NPM_SPEC, '--global'], w.work, ['--import', preload], env);
   assert.equal(r.applied.status, 0, r.applied.stderr);
@@ -137,7 +137,7 @@ test('7. skills add --global writes the store skills.json and the cache under XD
   assert.equal(manifest.skills.length, 1); assert.equal(manifest.skills[0].source.kind, 'npm');
   assert.ok(existsSync(join(w.state, 'bowerloom', 'cache')));
   assert.equal(readdirSync(join(w.state, 'bowerloom', 'cache')).length > 0, true);
-  assert.deepEqual(readdirSync(w.store).sort(), ['skills.json', 'store.json']);
+  assert.deepEqual(readdirSync(w.store).sort(), ['.gitignore', 'skills.json', 'store.json']);
 });
 
 test('8. skills add --global with XDG_STATE_HOME inside the store refuses STORE_STATE_NESTED at plan time', t => {

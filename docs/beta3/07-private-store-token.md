@@ -121,7 +121,7 @@ JSON `git.token`: `"set"`, `"not-set"`, or `"invalid"`. The command never prints
 | 200 | Normal. |
 | 401, token sent | `STORE_REMOTE_AUTH_FAILED` |
 | 403 or 429, token sent | `GITHUB_RATE_LIMITED`, with the text of spec 06. With a token, GitHub allows about 5,000 requests an hour. |
-| 404 on the commit request, token sent | `LOCK_COMMIT_UNREACHABLE` for a commit from `--commit`. Otherwise `STORE_REMOTE_AUTH_FAILED`. |
+| 404 on the commit request, token sent | `LOCK_COMMIT_UNREACHABLE` for a commit from `--commit`. Otherwise `STORE_REMOTE_AUTH_FAILED`. Amendment, 2026-10-22, sageadvicellc/bowerloom#100: in a frozen fetch, `LOCK_COMMIT_GONE` when the repository request answers 200. A 401 or 403 on the commit request makes no repository request. |
 | 404 on a later request after the commit worked | Proving gives `LOCK_STORE_NOT_PUSHED`. Fetching gives `LOCK_HASH_MISMATCH`. |
 | 404, no token | As spec 06: `STORE_REMOTE_PRIVATE`, or `LOCK_COMMIT_UNREACHABLE` for `--commit` |
 | 403 or 429, no token | `GITHUB_RATE_LIMITED`, as in spec 06. Without a token, GitHub allows about 60 requests an hour. |
@@ -223,6 +223,7 @@ Change:
   - `PublicGetOptions` (line 38): add `githubAuth`.
   - Line 56 (the closed key list in `createPublicTransport`): add `'githubAuth'` and check it as in 4.2.
   - `headersFor(host, url)` (lines 93-97): when `host === 'api.github.com'` and `githubAuth` is set and the URL path starts with `/repos/<o>/<r>/` for an approved repository, add `Authorization: githubAuth.token.authorization()`. Add `Authorization` only for a URL that matches `^https://api\.github\.com/repos/([^/]+)/([^/]+)/git/(commits|trees|blobs)/[0-9a-f]{40}(\?recursive=1)?$` The lower-cased `$1/$2` must be in `githubAuth.repositories`. For every other case the header set is unchanged.
+  - **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** the header rule also covers the bare repository URL `^https://api\.github\.com/repos/([^/]+)/([^/]+)$` of an approved repository, on the same terms. A frozen fetch whose commit request answers 404 makes one request there, through the same transport and with the token exactly when the commit request had it, to tell a commit that is gone from a repository that cannot be read (spec 06, 3.10 amendment).
   - Status handling (line 134), before the 404 branch and after the rate-limit rule of spec 06: for a request that carried the header, a status of 401 settles `STORE_REMOTE_AUTH_FAILED`. So does a 403 that the rate-limit rule of spec 06 did not match. Without the header, those statuses keep the result of spec 06. The existing 404 branch is unchanged.
   - The token object must not appear in `settle` failures or in any thrown object. Do not log it.
 - `packages/skill-manifest/src/refusal.ts:26`: add the two messages inside the `MESSAGES` object. Add the codes to `ManifestRefusalCode` and to the code list that `fixedRefusal`/`isManifestRefusal` use.

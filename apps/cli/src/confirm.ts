@@ -1,5 +1,6 @@
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
+import { takeStoreGitignoreFailure } from '../../../packages/project-context/src/store-gitignore.js';
 import { newCommandJson, plainText } from './human.js';
 
 export interface ApprovalIo { readonly interactive: boolean; ask(question: string): Promise<string> }
@@ -52,8 +53,12 @@ export async function runWithApproval<P>(change: PlannedChange<P>, flags: Approv
   const plan = await change.plan(), revision = change.revision(plan);
   if (!REVISION.test(revision)) throw new DefinitionError('IO_ERROR', 'The plan has no valid revision, so nothing was applied.');
   const applied = async (value: string): Promise<{ output: string; exitCode: 0 }> => {
+    takeStoreGitignoreFailure();
     const result = await change.apply(value);
-    return { output: flags.json ? newCommandJson({ applied: true, revision: value, result }) : `Applied plan ${value}.\n`, exitCode: 0 };
+    // Round 2 of the reviews of PR 100, M3: a store write that could not add its .gitignore lines says so, once.
+    const failure = takeStoreGitignoreFailure();
+    const warning = failure === null ? null : `Note: the store was written, but ~/.bowerloom/.gitignore was not (${failure.code}). Run bowerloom store status.`;
+    return { output: flags.json ? newCommandJson({ applied: true, revision: value, result, ...(warning !== null ? { warnings: [warning] } : {}) }) : `Applied plan ${value}.\n${warning !== null ? `${warning}\n` : ''}`, exitCode: 0 };
   };
   if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(change.staleNote?.(plan)); return applied(revision); }
   if (io.interactive && !flags.json) {

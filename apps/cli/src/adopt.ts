@@ -11,16 +11,24 @@ import { runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { terminalIo } from './manifest.js';
 
+/** `a`, `a and b`, `a, b and c`. */
+const joinAnd = (items: readonly string[]): string => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 /** The adopt plan in plain words (3.17). */
 export function renderAdopt(plan: AdoptPlan): string {
   const id = plan.config.change.id, lines: string[] = [];
   if (plan.finishing) lines.push(`Finish adopting team ${id}.`);
   if (plan.create?.bowerloomFolder === 'create') lines.push('Create .bowerloom (records of the copies). Its contents are git-ignored.');
+  if (plan.config.created) lines.push(`Create bowerloom.json and list ${plan.config.listed} items this project defines now, with the source project.`);
   if (plan.create) {
     const files = plan.create.files.filter(f => f.path.startsWith(`teams/${id}/`)).length;
     lines.push(`Adopt team ${id} from the store`, `  Copies teams/${id} (${files} files) to .bowerloom/teams/${id}`, '  Registers it in .bowerloom/authoring/receipt.json');
   }
-  lines.push(`bowerloom.json: team ${id} changes from store to project`);
+  // Decision 1 on #80 (variant A): a team that bowerloom.json does not list yet is added from the project.
+  if (plan.config.adds.some(a => a.kind === 'team' && a.id === id)) lines.push(`bowerloom.json adds: team ${id} (project)`);
+  else lines.push(`bowerloom.json: team ${id} changes from store to project`);
+  if (plan.storeOnly.length) lines.push(`Tagged to team ${id} and not copied: ${joinAnd(plan.storeOnly)}. They stay store items, and a shared project needs a pushed store to pick them.`);
+  if (plan.storeUnusable.length) lines.push(`Tagged to team ${id} and not usable in the store: ${joinAnd(plan.storeUnusable)}.`);
+  lines.push(...plan.notes);
   for (const d of plan.config.direct) lines.push(`bowerloom.json: ${d.kind} ${d.id} is now picked directly`);
   if (plan.config.lock?.removes.includes(`team ${id}`)) lines.push(`bowerloom.lock.json: removes team ${id}`);
   lines.push('The project now owns this copy. Later store changes do not reach it.');
