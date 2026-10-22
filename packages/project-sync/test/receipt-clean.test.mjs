@@ -157,7 +157,7 @@ test('9. crash points: a throw after the config write and after the skills.json 
   for (const point of ['afterConfig', 'afterManifest']) {
     const w = await fullProject(t); goneAll(w);
     const boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
-    await assert.rejects(cleanProject(w, { [point]: () => { throw boom; } }), code('TEST_CRASH'));
+    await assert.rejects(cleanProject(w, { [point]: () => { throw boom; } }), (e => e?.code === 'TEST_CRASH' || e?.cause === 'TEST_CRASH'));
     assert.equal(receiptIds(bl(w)).length, 5, `${point}: the receipt is still unchanged`);
     const again = planReceiptClean(projectScope(w));
     assert.equal(again.items.length, 4, `${point}: the same gone items`);

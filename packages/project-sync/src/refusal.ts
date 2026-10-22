@@ -88,12 +88,26 @@ export function staleAfterApplied(done: readonly string[], id: string, rerun: st
  * Before any write the error is returned as it is.
  */
 export function partialRefusal(error: unknown, done: readonly string[], rerun: string): unknown {
-  if (!(error instanceof DefinitionError) || done.length === 0) return error;
-  const base = error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim();
-  const partial = new DefinitionError(error.code, `${base} The run stopped part way. Already written: ${done.join('; ')}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
-  for (const key of ['next', 'cause', 'hint'] as const) if (key in error) Object.defineProperty(partial, key, { value: (error as unknown as Record<string, unknown>)[key], enumerable: false });
+  if (done.length === 0) return error;
+  let code: string, base: string, cause: unknown;
+  if (error instanceof DefinitionError) {
+    code = error.code; cause = (error as { cause?: unknown }).cause;
+    base = error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim();
+  } else {
+    // Second security review L2: a system error after a write (EIO, EPERM, EXDEV) is a partial refusal too, with its code as the cause.
+    const system = (error as { code?: unknown } | null)?.code;
+    cause = typeof system === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(system) ? system : 'UNKNOWN';
+    code = 'IO_ERROR'; base = `A step failed with the system error ${cause as string}.`;
+  }
+  const partial = new DefinitionError(code, `${base} The run stopped part way. Already written: ${done.join('; ')}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
+  // Second security review M1: the words of a partial refusal, and its Next line, which is the command that finishes it.
+  Object.defineProperty(partial, 'hint', { value: PARTIAL_HINT, enumerable: false });
+  Object.defineProperty(partial, 'next', { value: rerun, enumerable: false });
+  if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }
+/** The hint of a refusal after a partial write. apps/cli/src/human.ts gives it its own words. */
+export const PARTIAL_HINT = 'partial' as const;
 /**
  * Review M3 of PR 98: STALE_APPROVAL for a plan made again at apply that refused. The code it refused with is kept in
  * `cause` and named in the message, so the person sees what changed.
