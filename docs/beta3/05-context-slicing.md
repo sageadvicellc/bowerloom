@@ -267,12 +267,12 @@ Registered folder (`root` is a map, section 4.1):
 
 `resolveSlice(def, reader)` is a pure function of the definition and a read-only view of the tree. It returns the members, the covered folders, the notes, the holds, and the rendered index. The same function runs at plan time and inside the managed planner, so the two runs agree or the run refuses.
 
-1. **Walk.** The walk starts at the root. It visits names in byte order. It never enters or matches an entry whose name starts with `.`, so `.bowerloom`, `.claude`, `.git`, and `.obsidian` are never members. It enters a folder only when some `include` pattern can match below it (`canMatchBelow`). When `links` is set, it lists every non-hidden folder under the root once, to build the stem index of step 6. Limits: 8192 entries, 16 levels below the root, and 1024 names per folder (`names`, `packages/managed-skills/src/observed.ts:56`). Over a limit, the slice is held with `SLICE_TOO_LARGE`. Two names in one folder that differ only in case make `names` throw, and the slice is held with `SLICE_SOURCE_UNSAFE`.
+1. **Walk.** The walk starts at the root. It visits names in byte order. It never enters or matches an entry whose name starts with `.`, so `.bowerloom`, `.claude`, `.git`, and `.obsidian` are never members. It enters a folder only when some `include` pattern can match below it (`canMatchBelow`). When `links` is set, it lists every non-hidden folder under the root once, to build the stem index of step 6. Limits: 8192 entries, 16 levels below the root, and 1024 names per folder (`names`, `packages/managed-skills/src/observed.ts:56`). Over a limit, the slice is held with `SLICE_TOO_LARGE`. Two names in one folder that differ only in case make `names` throw, and the slice is held with `SLICE_SOURCE_UNSAFE`. The walk classifies each entry with `lstat` and never enters a link. A link that a pattern or a link target selects holds `SLICE_SOURCE_UNSAFE`. Any other link, FIFO, or socket is skipped and makes its folder not covered. Every folder the walk lists, the stem-index walk included, and every folder from the project to the root, joins the closing pass of step 10.
 2. **Guards.** Every folder on the path from the root to every member, whether the walk reached it or a wikilink or markdown link did, and every member, must be a real entry checked with `lstat`, owned by the user, with no group or world write. A symbolic link anywhere on that path holds the slice with `SLICE_SOURCE_UNSAFE`, and the next step names the path. A member must have one hard link. The read rules of `authored` (`packages/managed-skills/src/local-source.ts:23-32`) apply to member files. A wikilink or markdown link whose target has a segment that starts with `.` is unresolved.
 3. **Include, then exclude.** A path is a candidate when an `include` pattern matches it and no `exclude` pattern matches it. Patterns follow section 4.2. A pattern with no wildcard is a **literal**. A literal that matches no file holds the slice with `SLICE_PATH_MISSING`, and the next step names the literal. A pattern with a wildcard that matches nothing gives a note.
-4. **Text only.** A candidate must decode as UTF-8 with `new TextDecoder('utf-8', { fatal: true })`. Its path must hold no backtick, line break, or control character, and have at most 512 bytes. A candidate that fails is left out, with a note that counts it.
+4. **Text only.** A candidate must decode as UTF-8 with `new TextDecoder('utf-8', { fatal: true })`. Its path must hold no backtick, line break, or control character, and have at most 512 bytes. A candidate that fails is left out, with a note that counts it. A candidate over 1 MiB is checked with `lstat` only. It is not read and not checked for UTF-8. It counts toward no 32 MiB limit.
 5. **Frontmatter filter.** When `where` is set, a `.md` candidate must start with a `---` line and a closing `---` line, as 01a section 4.1 defines. The block parses with `parseDocument(block, { uniqueKeys: true })` and `toJS({ maxAliasCount: 0 })` and must give a map. Every key of `where` must match (AND). A key matches when the frontmatter value, as `String(value)` for a string, number, or boolean, equals one of the listed strings (OR). A frontmatter list matches when any element matches. A missing key does not match. A file whose frontmatter does not parse, or that has none, does not match, and the plan names it in a note. A candidate that is not `.md` never matches a `where` filter.
-6. **Links.** When `links` is set, each member that is a `.md` file is scanned outside fenced code blocks and inline code spans. The forms are `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `![[target]]`, and `[text](relative/path.md#anchor)`. A wikilink target that holds `/` is a path relative to the root, with `.md` added when it has no extension. A wikilink target without `/` is a stem. It resolves when exactly one non-hidden `.md` file under the root has that stem, compared after NFC normalization and case folding. More than one match is ambiguous. No match is unresolved. A markdown link resolves relative to the linking file. It must have no scheme, must not start with `/` or `#`, and must stay under the root. Its `#` and `?` parts are dropped, and it is percent-decoded. A linked file must pass `exclude`, step 2, the text rule of step 4, and `where`. Depth 1 adds the files linked from included files. Depth 2 adds the files linked from those. The search runs breadth first, in byte order. Ambiguous and unresolved links are counted in notes.
+6. **Links.** When `links` is set, each member that is a `.md` file is scanned outside fenced code blocks and inline code spans. The forms are `[[target]]`, `[[target|alias]]`, `[[target#heading]]`, `![[target]]`, and `[text](relative/path.md#anchor)`. A wikilink target that starts with `/`, or that holds `\` or an empty segment, is unresolved. A target that holds `/` is joined to the root as text, never with `resolve`, with `.md` added when it has no extension. A wikilink target without `/` is a stem. It resolves when exactly one non-hidden `.md` file under the root has that stem, compared after NFC normalization and case folding. More than one match is ambiguous. No match is unresolved. A markdown link must have no scheme and must not start with `/` or `#`. Drop the `#` and `?` parts. Percent-decode. An invalid escape, a decoded `\`, a NUL, or a control character leaves the link unresolved. Resolve the result as text against the linking file's folder. The root-relative result must stay under the root, must have no empty segment, and must have no segment that starts with `.`. Otherwise the link is unresolved. A linked file must pass `exclude`, step 2, the text rule of step 4, and `where`. Depth 1 adds the files linked from included files. Depth 2 adds the files linked from those. The search runs breadth first, in byte order. Ambiguous and unresolved links are counted in notes.
 7. **Bounds.** A member over 1 MiB is listed with no summary, and its links are not followed. It gets a note. The walk reads at most 32 MiB of member text. The slice is held with `SLICE_TOO_LARGE` for any of these: more than `maxFiles` members, more than 32 MiB read, a rendered index over 65536 bytes (`LIMITS.file`, `observed.ts:14`, enforced at `packages/managed-skills/src/v2-observed.ts:121`), or members plus covered paths whose JSON is over 196608 bytes. The last bound keeps the catalog under its 262144-byte cap (`v2-observed.ts:115`). Zero members hold the slice with `SLICE_EMPTY`.
 8. **Summaries.** `summary: heading` takes the first line that starts with `# ` after the frontmatter, within the first 64 lines. `summary: frontmatter:<key>` takes that key's string value. `summary: none` takes nothing. The text loses control and format characters, its white space collapses to single spaces, and it is cut at 160 characters. An empty result means no summary.
 9. **Covered folders.** A folder under the root, or the root itself, is covered when all of these hold: the walk entered it and every folder below it, it holds at least one member, every regular file below it is a member, and it holds no hidden entry and no link.
@@ -310,7 +310,7 @@ Apply runs these checks after the agent checks of 01a section 3.6 steps 1 to 4, 
    6. The target and the managed state: hold `SLICE_TARGET_OCCUPIED`, `MANAGED_SKILL_LOCAL_DRIFT`, `MANAGED_SKILL_RECOVERY_REQUIRED`, `MANAGED_SKILL_HISTORY_FULL`, or `SKILLS_STATE_STRAY_ENTRY`, as `classifyPrompt` does (`packages/project-sync/src/prompts.ts:135-170`).
 4. A file in `.bowerloom/slices` that the receipt does not list is skipped, and gets a note.
 5. Orphans: a catalog `slice_<id>.json` whose slice the receipt does not list is `kept`.
-6. Agents. For each agent, apply reads its `skills` list (01a section 4.1) and fills its context fields (section 4.7). Then `guardConflict` runs (section 3.8). It holds the agent with `AGENT_GUARD_CONFLICT` after the holds of 01a steps 3 and 4, and before the target tests of 01a step 5, so before `AGENT_TARGET_OCCUPIED`. Then apply computes the agent copy.
+6. Agents. For each agent, apply reads its `skills` list (01a section 4.1) and fills its context fields (section 4.7). Then `guardConflict` runs (section 3.8). It holds the agent with `AGENT_GUARD_CONFLICT` after the holds of 01a steps 3 and 4, and before the target tests of 01a step 5, so before `AGENT_TARGET_OCCUPIED`. Next, an agent whose guard list is not empty and whose frontmatter has `isolation: worktree` is held with `AGENT_GUARD_WORKTREE`, at the same point. That is build choice A of pending decision 3 (section 13). Then apply computes the agent copy.
 
 `--team <t>` plans only the slices that team `t`'s agents name. The orphan scan uses every slice, so a filter never shows a slice as kept. Without `--team`, every registered slice is planned.
 
@@ -393,13 +393,15 @@ These notes print after the 01a notice, only for the actions `install`, `update`
 
 ```
   Note: agent <role> names slices and also loads the CLAUDE.md or AGENTS.md files at start. Set omitClaudeMd: true to start it with its slices only. bowerloom context measure shows the difference.
-  Note: agent <role> gets the Bowerloom read guard for slices <ids>. Claude Code runs it only in a folder you trusted, never in a claude -p run, and only when bowerloom is on your PATH. It needs Claude Code 2.1.295 or later.
+  Note: agent <role> gets the Bowerloom read guard for slices <ids>. Claude Code runs it only in a folder you trusted, never in a claude -p run, and only when bowerloom-guard is on your PATH. It needs Claude Code 2.1.295 or later.
   Note: agent <role> can still read files with <ways>. The guard checks Read, Grep, and Glob only.
+  Note: agent <role> must pass a path to Grep and Glob. A search of the whole project reaches the guarded folder <root>.
 ```
 
 - The first note prints when the agent names at least one registered slice and `omitClaudeMd` is not `true`.
 - The second note prints when the agent copy holds the guard. `<ids>` joins the guarded slice ids with `, ` and a final ` and `.
-- The third note prints when the copy holds the guard and `<ways>` is not empty. `<ways>` lists, in this order: `shell tools` (when `tools` is absent or names `Bash`, `PowerShell`, or `Monitor`), `LSP` (when `tools` is absent or names `LSP`), `nested agents` (when `tools` is absent or names `Agent`), and `MCP tools` (when `tools` is absent, names a tool that starts with `mcp__`, or `mcpServers` is set). It joins them with `, ` and a final ` and `.
+- The third note prints when the copy holds the guard and `<ways>` is not empty. `<ways>` lists, in this order: `shell tools` (when `tools` is absent or names a tool whose name before any `(` is `Bash`, `PowerShell`, or `Monitor`), `LSP` (when `tools` is absent or names `LSP`), `nested agents` (when `tools` is absent or names `Agent` or `Task`, with or without `(...)`), and `MCP tools` (when `tools` is absent, names a tool that starts with `mcp__` or the tool `ReadMcpResourceTool`, or `mcpServers` is set). It joins them with `, ` and a final ` and `.
+- The fourth note prints when the copy holds the guard, a guarded root is a strict subfolder of the project folder, and `tools` is absent or names `Grep` or `Glob`. `<root>` is that root's path relative to the project folder. It prints once per guarded root.
 
 Pending decision 2, default B. When at least one agent copy with a guard is planned for `install`, `update`, or `adopt`, and `.claude/agents` may not be git-ignored (section 3.8), this note prints once, after all agent lines:
 
@@ -444,16 +446,16 @@ The **guard list** of an agent is the sorted list of its slice entries, guarded 
 `packages/managed-skills/src/agent-copy.ts` (01a section 6.1) gains two exports:
 
 - `guardConflict(source)`: true when the frontmatter has `hooks` and it is not a map, or has `hooks.PreToolUse` and it is not a sequence. It is false otherwise, and false when the frontmatter does not parse.
-- `claudeCopyBytes(source, extras)`, where `extras` is `{ guard: { role, slices, projectDir, projectId } | null }`. It replaces 01a's one-argument form.
+- `claudeCopyBytes(source, extras)`, where `extras` is `{ guard: { role, slices, roots, projectDir, projectId } | null }`. `roots` is the sorted list of `<slice id>:<32 hex>` strings of section 4.6, one for each listed slice whose root resolves. It replaces 01a's one-argument form.
   - With `guard: null`, it returns `source`. That is the 01a behavior.
   - When `guardConflict(source)` is true, it throws `ManagedSkillError('MANAGED_SKILL_REFUSED')`. The plan already held that agent, so this throw is a backstop.
-  - Otherwise it splits the source at the frontmatter fences as `parseAgent` does. It parses the block with `parseDocument(block, { uniqueKeys: true })` from `yaml` 2.9.1, the version that `package-lock.json` pins. It takes the map `hooks`, or adds it at the end. Under it, it takes the sequence `PreToolUse`, or adds it at the end. It appends the guard entry of section 4.6. The new block is `doc.toString({ lineWidth: 0 })`. The output is the first fence line of the source, the new block, the closing fence line of the source, and every byte after it, unchanged.
+  - Otherwise it splits the source at the frontmatter fences as `parseAgent` does. It parses the block with `parseDocument(block, { uniqueKeys: true })` from `yaml` 2.9.1, the version that `package-lock.json` pins. It takes the map `hooks`, or adds it at the end. Under it, it takes the sequence `PreToolUse`, or adds it at the end. It appends the guard entry of section 4.6. Every `args` element is written as a double-quoted scalar. The new block is `doc.toString({ lineWidth: 0 })`. The output is the first fence line of the source, the new block, the closing fence line of the source, and every byte after it, unchanged.
 
 `project-sync/src/agents.ts` calls `guardConflict` at the point of section 3.7.1 step 6, and holds the agent with `AGENT_GUARD_CONFLICT`. Nothing about that agent is written.
 
-`adopt`, `AGENT_TARGET_OCCUPIED`, and drift compare against the output of `claudeCopyBytes`, as 01a requires. A change of the guard list, the project folder, or the project id changes the copy bytes, so the agent plans `update`.
+`adopt`, `AGENT_TARGET_OCCUPIED`, and drift compare against the output of `claudeCopyBytes`, as 01a requires. A change of the guard list, the project folder, or the project id changes the copy bytes, so the agent plans `update`. `extras.guard` also holds `roots`. A change of a root's identity changes the copy bytes, so the agent plans `update`.
 
-The agent request source of 01a section 4.4 gains the key `guard`. It is the guard list or `null`. Its key list becomes `['kind', 'team', 'name', 'guard']`. `readLocalAgent` passes the list, `projectDir` from the request, and the project id to `claudeCopyBytes`. The project id is `projectId(projectDir, identity)` (`packages/project-context/src/discovery.ts:128-130`), with the identity from `lstat(projectDir)`. So the plan and the managed planner compute the same bytes.
+The agent request source of 01a section 4.4 gains the key `guard`. It is `null` or `{ slices, roots }`, with the guard list and its root strings. Its key list becomes `['kind', 'team', 'name', 'guard']`. `readLocalAgent` passes them, `projectDir` from the request, and the project id to `claudeCopyBytes`. The agent closure source, and so the agent catalog `source`, gains `guard`: the guard list or `null`. The guard checks it (section 3.9.1 step 4). The project id is `projectId(projectDir, identity)` (`packages/project-context/src/discovery.ts:128-130`), with the identity from `lstat(projectDir)`. So the plan and the managed planner compute the same bytes.
 
 Pending decision 2, default B: the guard arguments hold the project's real path and its project id. The copy is then specific to this machine. Apply checks whether `.claude/agents` may be committed, without starting git:
 
@@ -469,14 +471,17 @@ Spec 01b later adds a generated `disallowedTools` list through the same function
 
 ### 3.9 `bowerloom context guard`
 
-Claude Code runs this command. A person can run its `--explain` form.
+Claude Code runs the hook form through `bowerloom-guard`, a second entry of the Bowerloom package that runs only the hook form. `bowerloom context guard` with the same arguments runs the same code, for tests and for a person. A person can also run the `--explain` form.
 
 Usage, verbatim:
 
 ```
-bowerloom context guard --agent <role> --project <folder> --project-id <id> --slice <id> [--slice <id>]...
+bowerloom-guard --agent <role> --project <folder> --project-id <id> --slice <id> [--slice <id>]... [--root <id>:<hex>]...
+bowerloom context guard --agent <role> --project <folder> --project-id <id> --slice <id> [--slice <id>]... [--root <id>:<hex>]...
 bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] [--slice <id>]...
 ```
+
+Run with no arguments, or with arguments it cannot parse, `bowerloom-guard` writes the `GUARD_INPUT_INVALID` text of step 1 to stderr and exits 2.
 
 #### 3.9.1 Hook form
 
@@ -484,24 +489,30 @@ The hook form reads the hook input from stdin and decides. It never prints `allo
 
 1. **Input.** Read stdin to the end, at most 1 MiB, for at most 5 seconds. Parse it with `strictJson`. It must be an object with a string `tool_name`, an object `tool_input`, and an absolute string `cwd`. Otherwise write `Bowerloom guard: the hook input could not be read, so the call is blocked.` to stderr and exit 2. Claude Code shows that text as the reason (`GUARD_INPUT_INVALID`). This is the only output on stderr.
 2. **Tool.** A `tool_name` other than `Read`, `Grep`, or `Glob` gets no output and exit 0.
-3. **Target.** In every case below, a value that starts with `~/` resolves against the home folder. Any other shape is `GUARD_INPUT_INVALID`, as in step 1.
-   - Read: `tool_input.file_path`, which must be a string.
-   - Grep: `tool_input.path` when it is a string, else `cwd`. A relative value resolves against `cwd`.
-   - Glob: the base is `tool_input.path` when it is a string, else `cwd`, resolved against `cwd`. If `pattern` starts with `/`, the base is `/`. If it starts with `~/`, the base is the home folder. The literal prefix is the segments before the first segment that holds an unescaped `*`, `?`, `[`, or `{`. The target is `resolve(base, prefix)`. If the rest of the pattern holds the text `..` or `~`, or holds a `/` right after a `{` or a `,`, deny with `GUARD_OUTSIDE_SLICE` whenever the agent has at least one guarded area.
-4. **Project.** `--project` must be an absolute path to a real folder, not a link, that holds `.bowerloom`. `projectId(project, identity)` (`packages/project-context/src/discovery.ts:128-130`), with the identity from `lstat`, must equal `--project-id`. Then `currentV2(project, join(stateRoot, projectId, 'items', 'agent_<role>'), { kind: 'agent', id: role })` must not be null. `stateRoot` is `privateStateRoot(process.env, homedir())`, as `apps/cli/src/sync.ts:121` takes it. Any failure, including a throw, denies with `GUARD_PROJECT_MISMATCH`.
-5. **Slices.** For each `--slice` id, read the catalog through `currentV2(project, join(stateRoot, projectId, 'items', 'slice_<id>'), { kind: 'slice', id })` (`packages/managed-skills/src/v2-observed.ts:164-173`). This checks the catalog against its committed receipt. The guard creates no folder. If any slice is absent, has no state folder, is not committed, or drifted, deny every call with `GUARD_SLICE_NOT_INSTALLED`, whatever the target.
-6. **Roots.** Resolve each slice root from its catalog source (section 4.8). A project root is `join(project, path)`. A registered folder resolves through the store as section 3.4 says. A root that does not resolve to a real folder denies every call with `GUARD_ROOT_MISSING`. `realRoot` is `realpathSync(root)`.
+3. **Target.** A path value is `tool_input.file_path` (Read), `tool_input.path` (Grep, Glob), or `tool_input.pattern` (Glob). A missing path means `cwd`. A value that is not a string is `GUARD_INPUT_INVALID`, as in step 1.
+   - When the agent has at least one guarded area, deny with `GUARD_OUTSIDE_SLICE` any value that starts or ends with white space, holds a control or format character, holds a `.` or `..` segment, or starts with `~` and is neither `~` nor starts with `~/`.
+   - Then `~` and a leading `~/` resolve against the home folder. Any other relative value resolves against `cwd`, never against the guard's own working folder.
+   - Read: the target is the resolved `file_path`.
+   - Grep: the target is the resolved `path`. `glob` and `type` only narrow a search, so the guard does not read them.
+   - Glob: the base is the resolved `path`. When the agent has a guarded area, deny a pattern that holds an unescaped `(`, `)`, `|`, or `!`. Expand every unescaped brace group, nested, in the comma form and the `{a..b}` range form. More than 256 results deny. Check each result on its own. A result that starts with `/` has base `/`. A result that starts with `~/` has the home folder as base. A result with a `.` or `..` segment, or a `~` anywhere else, denies. The literal prefix is the segments before the first segment that holds an unescaped `*`, `?`, or `[`, with each `\x` replaced by `x`. The result's target is `resolve(base, prefix)`. The call is silent only when every result is silent.
+4. **Project.** `--project` must be an absolute path to a real folder, not a link, that holds `.bowerloom`. `projectId(project, identity)` (`packages/project-context/src/discovery.ts:128-130`), with the identity from `lstat`, must equal `--project-id`. Then `currentV2(project, join(stateRoot, projectId, 'items', 'agent_<role>'), { kind: 'agent', id: role })` must not be null. `stateRoot` is `privateStateRoot(process.env, homedir())`, as `apps/cli/src/sync.ts:121` takes it. The agent catalog's `source.guard` must equal the `--slice` list. Any failure, including a throw, denies with `GUARD_PROJECT_MISMATCH`.
+5. **Slices.** For each `--slice` id, run `currentV2(project, join(stateRoot, projectId, 'items', 'slice_<id>'), { kind: 'slice', id })` (`packages/managed-skills/src/v2-observed.ts:164-173`). This checks the catalog against its committed receipt. The guard parses the catalog from the bytes whose sha256 equals the catalog pin of the current receipt. Each reference must pass `relativeSkillPath`. The guard creates no folder. If any slice is absent, has no state folder, is not committed, drifted, or fails these checks, deny every call with `GUARD_SLICE_NOT_INSTALLED`, whatever the target.
+6. **Roots.** Resolve each slice root from its catalog source (section 4.8). A project root is `join(project, path)`. Every folder from the project folder down to a project root must pass `lstat` as a real folder. A registered folder resolves through the store as section 3.4 says. `realRoot` is `realpathSync(root)`. The root's id is `projectId(realRoot, identity)`, with the identity from `lstat(realRoot)`. A root that does not resolve to a real folder, a root whose id differs from its `--root` value, or a slice with no `--root` value, denies every call with `GUARD_ROOT_MISSING`.
 7. **Classify.** Every comparison uses device and inode, never path text. Resolve the target:
    - When it exists, `real = realpathSync(target)`.
    - When it does not exist, take the real path of its deepest existing ancestor and append the remaining segments. A `..` in the remainder denies with `GUARD_OUTSIDE_SLICE`.
+   - For Grep and Glob, when the target does not exist, the guard decides on its deepest existing ancestor, taken as a folder. It denies when that folder is inside an area or holds an area.
    - Build two chains. The lexical chain is the target and each parent, with `lstat` on each existing entry. The real chain is `real` and each parent, with `stat`.
+   - When `/System/Volumes/Data` joined with `realRoot` exists and has the root's identity, that path and each of its parents join the real chain of the root.
+   - When the agent has a guarded area, deny any target whose first segment starts with `.`, such as `/.vol`.
    - The target is **inside** an area when any folder on either chain has the identity of a guarded root.
    - The target **holds** an area when `stat(target)` is a folder whose identity equals a guarded root, or a folder on the real chain of a guarded root.
-   - A member's identity is `stat(join(realRoot, member))`. It counts only when every folder from `realRoot` to the member's parent passes `lstat` as a real folder. A covered folder's identity is computed the same way.
-   - These comparisons stop a relative spelling, a case alias, and a link outside the root that points in. They do not stop the cases of section 3.9.4 items 11 to 13.
+   - A member's identity is `lstat(join(realRoot, member))`. It counts only when it is a regular file with one link and every folder from `realRoot` to its parent passes `lstat` as a real folder. A covered folder's identity is computed the same way, as a real folder.
+   - These comparisons stop a relative spelling, a case alias, and a link outside the root that points in. They do not stop the cases of section 3.9.4, items 11 to 13 and 15 to 16.
 8. **Decide.**
    - A Read inside one or more areas is silent when `stat(target)` has the identity of a member of any listed slice, whatever its root or guard mode. Otherwise deny with `GUARD_OUTSIDE_SLICE`.
-   - A Grep or Glob inside one or more areas is silent when the target has the identity of a member of any listed slice. When the match is a covered folder, the guard lists that folder recursively, at most `maxFiles` files of that slice and 16 levels. It is silent only if every entry is a real folder or a regular file whose path is a member, with no hidden entry. Otherwise deny with `GUARD_OUTSIDE_SLICE`.
+   - A Read of a regular file with more than one link, on the device of a guarded root, that is not a member, is denied with `GUARD_OUTSIDE_SLICE`, wherever its path is.
+   - A Grep or Glob inside one or more areas is silent when the target has the identity of a member of any listed slice. When the match is a covered folder, the guard lists that folder recursively, at most `maxFiles` files and 16 levels. It is silent only if every entry is a real folder, or a regular file with one link whose NFC path equals a member's NFC path, with no hidden entry. Otherwise deny with `GUARD_OUTSIDE_SLICE`.
    - A Grep or Glob whose target holds an area is denied with `GUARD_OUTSIDE_SLICE`.
    - Anything else is silent.
 9. **Output.** A deny prints one line to stdout and exits 0:
@@ -510,14 +521,15 @@ The hook form reads the hook input from stdin and decides. It never prints `allo
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<reason>"}}
 ```
 
-Silence prints nothing and exits 0. Every internal error after step 1 is a deny with the reason of its code. A crash, a timeout, or a missing `bowerloom` blocks the call through `onFailure: "block"`.
+The line is `JSON.stringify` of the object, never a template. The route sets `process.exitCode` and never calls `process.exit`, so stdout drains to a pipe on macOS. The route catches every error, a failed dynamic import included, and prints the deny line. If it cannot print, it exits 2. No path of the route exits with any code other than 0 or 2. Silence prints nothing and exits 0. A crash, a timeout, or a missing `bowerloom-guard` blocks the call through `onFailure: "block"`.
 
 Reasons, verbatim. Paths pass through `plainText` (`apps/cli/src/human.ts:217`). `<ids>` joins the listed slice ids with `, `.
 
 - `GUARD_OUTSIDE_SLICE`, Read: `Bowerloom guard: <path> is under <root display>, and no context slice of agent <role> (<ids>) lists it. Read the files that your slice skills list. To widen a slice, ask the main session to edit .bowerloom/slices/<id>.yaml and run bowerloom apply.`
 - `GUARD_OUTSIDE_SLICE`, Grep or Glob: `Bowerloom guard: a search of <path> would reach files that no context slice of agent <role> (<ids>) lists. Search one listed file, or a folder whose files are all listed: <folders>.` `<folders>` names up to five covered folders, or says `none` when there are none.
+- `GUARD_OUTSIDE_SLICE`, a path the guard refuses to read as written (step 3, or a first segment that starts with `.`): `Bowerloom guard: the path <path> is written in a form the guard does not accept for agent <role>. Use a plain absolute path without ., .., or a leading ~ other than ~/.`
 - `GUARD_SLICE_NOT_INSTALLED`: `Bowerloom guard: slice <id> of agent <role> is not installed, or its copy changed. Every read, search, and file listing of this agent is blocked. Run bowerloom apply in <project>.`
-- `GUARD_ROOT_MISSING`: `Bowerloom guard: the folder of slice <id> cannot be found, so every read, search, and file listing of agent <role> is blocked. Run bowerloom apply in <project> to see why.`
+- `GUARD_ROOT_MISSING`: `Bowerloom guard: the folder of slice <id> cannot be found, or it changed since apply, so every read, search, and file listing of agent <role> is blocked. Run bowerloom apply in <project> to see why.`
 - `GUARD_PROJECT_MISMATCH`: `Bowerloom guard: the project at <project> does not manage agent <role>, or it is not the folder that apply wrote this copy for. Run bowerloom apply in the project that holds .claude/agents/<role>.md.`
 
 #### 3.9.2 Explain form
@@ -535,6 +547,8 @@ denied (<CODE>): <reason>
 The guard runs before every Read, Grep, and Glob of a guarded agent, so it must be fast.
 
 - It reads the project identity, one agent catalog, one catalog and its receipts per slice, at most one store record per registered folder, and at most 64 `stat` and `lstat` calls per chain. It walks a tree only to check a covered folder, bounded by `maxFiles` and 16 levels.
+- Member identities are computed only for slices whose area holds the target, with each folder's `lstat` reused.
+- `bowerloom-guard` loads only the guard modules. That keeps its start fast.
 - Target: 300 ms or less at the 95th percentile on the reference machine (Apple silicon, Node 24), for a project with four slices of 200 members each.
 - Move the imports of `apps/cli/src/main.ts` lines 8, 9, 11, and 12 into the branches that use them, with dynamic `import()`. This is not conditional. Test 10.19.7 prints the 50th and 95th percentile, and the pull request records them.
 
@@ -548,14 +562,20 @@ The guard limits the context that Read, Grep, and Glob reach. It is not a securi
 4. An untrusted folder skips the hook. A `claude -p` run skips it too. So do Routines and CI runs that use `claude -p`.
 5. An agent with `Edit` or `Write` can edit its own copy or the managed catalogs. The guard checks a catalog against its receipt, so a casual edit fails closed. A determined edit of the private receipts is not stopped.
 6. A file that the agent writes under a guarded area cannot be read back unless a slice lists it.
-7. A `bowerloom` on `PATH` from another version reads the same catalog format in beta.3. A failure there blocks the call.
+7. A `bowerloom-guard` on `PATH` from another version reads the same catalog format in beta.3. A failure there blocks the call.
 8. Claude Code before 2.1.295 ignores `onFailure`. A guard that cannot start then lets the call through.
 9. A Claude Code process with a different `XDG_STATE_HOME` from the shell that ran apply finds no receipts. Every call is then denied.
 10. MCP tools read files without the guard. The plan notes them.
-11. A hard link made after apply, outside the root, to a non-member reads that file. The guard sees a path outside every area.
-12. A link swapped between the guard's check and the tool's read is not seen.
+11. A hard link outside the root to a file under the root reads that file, whether it was made before or after apply. Step 8 denies such a Read only when the file has more than one link, sits on a guarded root's device, and is not a member.
+12. Any change between the guard's check and the tool's run, such as a swapped link or a file added to a covered folder, is not seen.
 13. Glob may follow links below its target.
 14. The Skill tool can load another agent's slice index.
+15. A copy of a guarded file elsewhere is outside every area and is read freely. That includes a git worktree, a clone, a backup, a snapshot, or a search index such as `.qmd/index.sqlite`.
+16. Another mount of the same folder, such as a bind mount or a network share, is not seen.
+17. A CLAUDE.md or AGENTS.md in a folder at or above a member, under or outside a guarded area, loads when the agent reads that member, even when no slice lists it. `omitClaudeMd` does not stop it (section 2, item 2).
+18. Another `PreToolUse` hook that returns `updatedInput` can change the path after the guard checked it.
+19. `disableAllHooks` in any settings file, and `allowManagedHooksOnly` in managed settings, stop the guard.
+20. An agent run as the main session (`claude --agent <role>`) may not run its frontmatter hooks.
 
 #### 3.9.5 Committed copies
 
@@ -755,7 +775,7 @@ They follow the existing commands:
 
 - `slice create`, `folder add`, `folder remove`, `apply`: 0 done or nothing to change, 3 approval required, 2 usage. A refusal throws.
 - `context show`, `context measure`, `folder list`, `context guard --explain`: 0, or 2 for usage. A refusal throws.
-- `context guard` hook form: 0, with deny output on stdout or no output. 2 only for unreadable input, with the text on stderr.
+- `bowerloom-guard` and the `context guard` hook form: 0, with deny output on stdout or no output. 2 only for unreadable input or arguments, with the text on stderr.
 - A hold is not a refusal. A plan with only holds prints `Nothing to change.` and exits 0.
 
 ### 3.15 Codex
@@ -904,8 +924,8 @@ Files: <n>
   "hooks": [
     {
       "type": "command",
-      "command": "bowerloom",
-      "args": ["context", "guard", "--agent", "<role>", "--project", "<real project path>", "--project-id", "<32 hex>", "--slice", "<id 1>", "--slice", "<id 2>"],
+      "command": "bowerloom-guard",
+      "args": ["--agent", "<role>", "--project", "<real project path>", "--project-id", "<32 hex>", "--slice", "<id 1>", "--slice", "<id 2>", "--root", "<id 1>:<32 hex>", "--root", "<id 2>:<32 hex>"],
       "timeout": 10,
       "onFailure": "block"
     }
@@ -913,7 +933,7 @@ Files: <n>
 }
 ```
 
-The `--slice` pairs follow the sorted guard list. A golden test pins the YAML text that `yaml` 2.9.1 writes for an agent with no `hooks` key, and for one with an existing `hooks.PreToolUse` list.
+The `--slice` pairs follow the sorted guard list. One `--root` pair follows for each listed slice whose root resolves, in the same order. Its hex is `projectId(realRoot, identity)`, with the identity from `lstat(realRoot)`. Every `args` element is written as a double-quoted scalar. A golden test pins the YAML text that `yaml` 2.9.1 writes for an agent with no `hooks` key, and for one with an existing `hooks.PreToolUse` list.
 
 ### 4.7 Plan and result shapes
 
@@ -961,6 +981,7 @@ interface SliceItem {
 context: {
   slices: string[]                 // slice entries, sorted
   guard: string[] | null           // the guard list of section 3.8
+  guardRoots: string[]             // the <slice id>:<32 hex> strings of section 4.6
   unknown: string[]                // unknown slice- names
   beyondPreloadLimit: string[]     // slice entries after position 32
   plainSkills: string[]            // slice- names that resolve to a plain skill
@@ -978,7 +999,8 @@ The plan revision binds every field above. It does not bind the hash or size of 
 - Item reference: `{ kind: 'slice', id: '<id>' }`. Private folder and catalog name: `slice_<id>`. Skill ids cannot hold an underscore (`packages/managed-skills/src/local-source.ts:14`), so a skill named `slice-x` and the catalog `slice_x` never meet.
 - Surfaces: `projection-claude`, a folder at `.claude/skills/slice-<id>`, and `catalog`, a file at `.bowerloom/managed/catalog/slice_<id>.json`. There is no `canonical` and no `projection-codex` surface.
 - Request source: `{ kind: 'slice', name, root }`, key list `['kind', 'name', 'root']`. `name` equals the item id. `root` is `{ kind: 'project' }`, or `{ kind: 'registered', name, dir, identity }` with `dir` an absolute real path and `identity` its device, inode, and birth time.
-- Agent request source (01a section 4.4): `{ kind: 'agent', team, name, guard }`, key list `['kind', 'team', 'name', 'guard']`. `guard` is null or a sorted list of 1 to 64 slice ids with no repeats.
+- Agent request source (01a section 4.4): `{ kind: 'agent', team, name, guard }`, key list `['kind', 'team', 'name', 'guard']`. `guard` is null or `{ slices, roots }`. `slices` is a sorted list of 1 to 64 slice ids with no repeats. `roots` is a sorted list of `<slice id>:<32 hex>` strings, at most one per listed slice.
+- Agent closure source and catalog `source` (01a section 4.4): `{ kind: 'agent', path, guard }`, where `guard` is the slice list or null.
 - Closure source, the catalog `source`: `SliceCatalogSource = { kind: 'slice', path: 'slices/<id>.yaml', root: SliceRoot, guard: 'root' | 'none' }`. It holds no absolute path.
 - Closure files: one file, `SKILL.md`, the rendered index. `closure.skill` is null. `closure.name` is the id.
 - Closure references: the members, then the covered folders, each sorted. The catalog writes them as `references` (`packages/managed-skills/src/v2-observed.ts:114`).
@@ -1025,7 +1047,7 @@ Each code gets a `MESSAGES` entry, a `REFUSALS` entry in `apps/cli/src/human.ts:
 Where each code lives:
 
 - `packages/project-authoring/src/refusal.ts:7-31`: `SLICE_INVALID`, `SLICE_KEY_UNKNOWN`, `SLICE_NAME_INVALID`, `SLICE_EXISTS`. Create and the status owner raise them. `AUTHORING_REFUSAL_CODES` then holds them.
-- `packages/project-sync/src/refusal.ts:11-40`: `SLICE_LIMIT`, `SLICE_PATH_MISSING`, `SLICE_ROOT_MISSING`, `SLICE_ROOT_UNSAFE`, `SLICE_SOURCE_UNSAFE`, `SLICE_EMPTY`, `SLICE_TOO_LARGE`, `SLICE_TARGET_OCCUPIED`, `AGENT_GUARD_CONFLICT`, `CONTEXT_SLICE_NOT_FOUND`, `CONTEXT_AGENT_NOT_FOUND`, `CONTEXT_BASELINE_INVALID`, `CONTEXT_MEASURE_LIMIT`, `GUARD_OUTSIDE_SLICE`, `GUARD_SLICE_NOT_INSTALLED`, `GUARD_ROOT_MISSING`, `GUARD_PROJECT_MISMATCH`, `GUARD_INPUT_INVALID`. `SYNC_REFUSAL_CODES` then holds them.
+- `packages/project-sync/src/refusal.ts:11-40`: `SLICE_LIMIT`, `SLICE_PATH_MISSING`, `SLICE_ROOT_MISSING`, `SLICE_ROOT_UNSAFE`, `SLICE_SOURCE_UNSAFE`, `SLICE_EMPTY`, `SLICE_TOO_LARGE`, `SLICE_TARGET_OCCUPIED`, `AGENT_GUARD_CONFLICT`, `AGENT_GUARD_WORKTREE`, `CONTEXT_SLICE_NOT_FOUND`, `CONTEXT_AGENT_NOT_FOUND`, `CONTEXT_BASELINE_INVALID`, `CONTEXT_MEASURE_LIMIT`, `GUARD_OUTSIDE_SLICE`, `GUARD_SLICE_NOT_INSTALLED`, `GUARD_ROOT_MISSING`, `GUARD_PROJECT_MISMATCH`, `GUARD_INPUT_INVALID`. `SYNC_REFUSAL_CODES` then holds them.
 - `packages/project-context/src/refusal.ts:7-17` (Part B): `FOLDER_NAME_INVALID`, `FOLDER_EXISTS`, `FOLDER_NOT_FOUND`, `FOLDER_UNSAFE`, `FOLDER_IN_CLOUD`, `FOLDER_INVALID`.
 
 | Code | Kind | Cause | Next step | Message (`MESSAGES`) | Sentence (`human.ts`) |
@@ -1043,6 +1065,7 @@ Where each code lives:
 | `SLICE_TOO_LARGE` | hold | The slice selects more than maxFiles files, reads more than 32 MiB, walks more than 8192 entries or 16 levels, its index is over 64 KiB, or its paths are over 192 KiB. | `Narrow the slice, or set summary: none, then run bowerloom apply.` | `A slice is larger than this beta allows.` | `A slice index stays small so that an agent can load it at start.` |
 | `SLICE_TARGET_OCCUPIED` | hold | `.claude/skills/slice-<id>` exists and Bowerloom did not install it. | `Move .claude/skills/slice-<id> aside, then run bowerloom apply.` | `Something Bowerloom did not install is where a slice index goes.` | `Bowerloom never overwrites what it did not install.` |
 | `AGENT_GUARD_CONFLICT` | hold | The agent's `hooks` is not a map, or its `hooks.PreToolUse` is not a list, so the guard cannot be added. | `Make hooks a map and hooks.PreToolUse a list in <path>, then run bowerloom apply.` | `An agent's hooks cannot take the read guard.` | `Bowerloom adds the guard only to hooks it can read as a map of lists.` |
+| `AGENT_GUARD_WORKTREE` | hold | The agent has a guard list and sets `isolation: worktree`. | `Remove isolation: worktree or the agent's slices, then run bowerloom apply.` | `This agent runs in a git worktree, where its read guard cannot fence the copies of slice files.` | `A worktree holds its own copies of every tracked file, outside the guarded folders.` |
 | `CONTEXT_SLICE_NOT_FOUND` | refusal | `context show` names a slice that is not registered. | `bowerloom ls slices` | `This project registers no slice with that id.` | `Only a registered slice can be shown.` |
 | `CONTEXT_AGENT_NOT_FOUND` | refusal | `--agent` names a role that no team holds. | `bowerloom ls teams` | `No team of this project holds an agent with that name.` | `Bowerloom measures the agents in .bowerloom/teams/*/agents.` |
 | `CONTEXT_BASELINE_INVALID` | refusal | The `--baseline` folder does not exist or is not safe to read. | `bowerloom help context` | `The baseline folder cannot be read safely.` | `The baseline must be a folder you own.` |
@@ -1107,7 +1130,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
   - It renders the index only when there is no hold.
   - It never throws for a hold. A change found by the closing pass throws `ManagedSkillError('MANAGED_SKILL_STALE_APPROVAL')`.
 - `local-source.ts`: add `readLocalSlice(projectDir, name, root, live)`. It calls `readSliceTree` and returns the local closure. A hold throws `MANAGED_SKILL_REFUSED`, because the plan already held that slice.
-- `local-source.ts`, 01a's `readLocalAgent`: pass the request's `guard`, the request's `projectDir`, and its project id to `claudeCopyBytes`.
+- `local-source.ts`, 01a's `readLocalAgent`: pass the request's `guard` slices and roots, the request's `projectDir`, and its project id to `claudeCopyBytes`. The closure source gains `guard`, the slice list or null.
 - `packages/managed-skills/src/agent-copy.ts` (01a section 6.1): `guardConflict(source)` and `claudeCopyBytes(source, extras)`, as section 3.8 says.
 
 ### 6.3 project-authoring
@@ -1140,12 +1163,12 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 ### 6.5 project-sync
 
 - New file `packages/project-sync/src/slices.ts`: `registeredSlices`, `scanSlices`, `classifySlice`, `orphanSlice`, `sliceRequest`, `checkSliceChild`, `sliceNotes`, `agentContext`, `agentsMayBeTracked`, and the types of section 4.7. Copy the structure of `packages/project-sync/src/prompts.ts` (`registeredPrompts` at 89, `classifyPrompt` at 121, `orphanPrompt` at 179, `promptRequest` at 186, `checkPromptChild` at 196). Differences:
-  - `scanSlices` calls `input.sliceTree ?? readSliceTree` once per slice. It maps `MANAGED_SKILL_STALE_APPROVAL` to `syncError('STALE_APPROVAL', 'A file of slice <id> changed while Bowerloom read it. Run bowerloom apply again.')`. Any other error holds the slice with `SLICE_SOURCE_UNSAFE`.
+  - `scanSlices` calls `input.sliceTree ?? readSliceTree` once per slice. It maps `MANAGED_SKILL_STALE_APPROVAL` to `syncError('STALE_APPROVAL', 'A file of slice <id> changed while Bowerloom read it. Run bowerloom apply again.')`. `MANAGED_SKILL_ABORTED` and `MANAGED_SKILL_TIMEOUT` pass through. Any other error holds the slice with `SLICE_SOURCE_UNSAFE`.
   - The harness list is always `['claude']`.
   - An occupied target is a hold, `SLICE_TARGET_OCCUPIED`, not the throw at `prompts.ts:163-166`.
   - A catalog without a state folder is the hold of section 3.7.1 step 3.5, not the collision throw at `prompts.ts:147`.
   - `checkSliceChild` requires `closure.source`, `closure.references`, and `closure.inventory` to equal the plan, then the surface and before-pin checks of `checkPromptChild`.
-- `packages/project-sync/src/agents.ts` (01a section 6.2): fill `context` with `agentContext`. Compute the guard list. Call `guardConflict` and hold `AGENT_GUARD_CONFLICT` at the point of section 3.7.1 step 6. Pass `guard` in `agentRequest`. `checkAgentChild` compares the closure text with `claudeCopyBytes(source, extras)`.
+- `packages/project-sync/src/agents.ts` (01a section 6.2): fill `context` with `agentContext`. Compute the guard list. Compute each listed slice's root string. Call `guardConflict` and hold `AGENT_GUARD_CONFLICT`, then hold `AGENT_GUARD_WORKTREE`, at the point of section 3.7.1 step 6. Pass `guard` in `agentRequest`. `checkAgentChild` compares the closure text with `claudeCopyBytes(source, extras)`.
 - New file `packages/project-sync/src/context-measure.ts`: `measureContext(input)` and `showSlice(input)`. Both read only. They reuse `scanSlices`, `readSliceTree`, 01a's `scanAgents`, and `instructionFiles`.
 - `packages/project-sync/src/apply-project.ts:44-58` (`applyPointer`): the slice sentence of section 3.7.3.
 - `apply-project.ts:62-68` (`ApplyInput`): the optional `sliceTree` hook.
@@ -1155,7 +1178,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 - `apply-project.ts:181-218` (`applyProjectApply`): build slice children with `sliceRequest` and `checkSliceChild` after the prompt loop (lines 194-203) and before the agent children. Extend `refOf` (line 206) and the result lists (lines 211-213).
 - `packages/project-sync/src/recover.ts:19`: `ITEM_ID` becomes `/^(?:prompt-|agent_|slice_)?[a-z0-9]+(?:-[a-z0-9]+)*$/`. The length check at line 24 stays valid.
 - `recover.ts:31`: the `owner` expression gains kind `slice`.
-- `packages/project-sync/src/refusal.ts:11-40`: the eighteen codes of section 5.
+- `packages/project-sync/src/refusal.ts:11-40`: the nineteen codes of section 5.
 - `packages/project-sync/src/index.ts:15-17`: export `SliceItem`, `SliceState`, `measureContext`, and `showSlice`.
 
 ### 6.6 CLI
@@ -1167,6 +1190,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 - `create.ts:30-53` (`parseCreateArgs`): the flags `--root`, `--registered`, and `--include` for the noun `slice`.
 - `create.ts:56-82` (`renderCreateReview`): the slice lines of section 3.2.
 - `create.ts:85-92` (`runCreateCommand`): build the slice input. In Part B, `--registered` is checked with `resolveRegisteredFolder` at plan time.
+- `package.json` `bin` gains `bowerloom-guard`, a small entry, `apps/cli/src/guard-main.ts`, that runs only the hook form of section 3.9.1. It imports only the guard modules. Run with no arguments, or with arguments it cannot parse, it writes the `GUARD_INPUT_INVALID` text to stderr and exits 2. `tools/cli-distribution` packs it with the main entry.
 - New file `apps/cli/src/context.ts`: `runContextCommand(args, cwd, home, write, env, stdin, stderr)` for `show`, `measure`, and `guard`. Its renderers follow sections 3.9 to 3.11.
 - New file `apps/cli/src/folder.ts` (Part B): `runFolderCommand(args, cwd, home, write, io)` for `add`, `list`, and `remove`, through `runApprovalCommand` (`apps/cli/src/confirm.ts:74`).
 - `apps/cli/src/main.ts:8-12`: move the imports of lines 8, 9, 11, and 12 into the branches that use them, with dynamic `import()`, as `ls` and `apply` already do (`main.ts:145,174`). This is required, not conditional.
@@ -1223,7 +1247,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 34. `[[missing-page]]`. Result: not followed, and the unresolved count is 1.
 35. `[[.hidden/page]]`. Result: unresolved.
 36. A wikilink inside a fenced code block. Result: ignored.
-37. `[x](../../outside.md)` that leaves the root. Result: not followed.
+37. `[x](../../outside.md)` that leaves the root. Result: unresolved, and counted in the note.
 38. A linked file that `exclude` matches. Result: not added.
 39. `links.depth: 2` with a cycle `a` to `b` to `a`. Result: each file once.
 40. The root holds `.obsidian` and `.bowerloom`. Result: never walked, never members.
@@ -1277,7 +1301,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 88. Guard: Claude Code runs with another `XDG_STATE_HOME`. Result: no state folder, deny every call with `GUARD_PROJECT_MISMATCH` or `GUARD_SLICE_NOT_INSTALLED`.
 89. Guard: stdin is not JSON. Result: exit 2 with the `GUARD_INPUT_INVALID` text on stderr.
 90. Guard: `tool_name` is `Bash`. Result: no output. The read-gap note covers it.
-91. Guard: `bowerloom` is not on `PATH`. Result: Claude Code blocks the call through `onFailure: "block"`.
+91. Guard: `bowerloom-guard` is not on `PATH`. Result: Claude Code blocks the call through `onFailure: "block"`.
 92. Guard: the folder is not trusted, or the run uses `claude -p`. Result: Claude Code skips the hook. The plan note says so.
 93. `context measure` with `--from` above the project. Result: the discovery note for each agent.
 94. `context measure` for an agent with `omitClaudeMd: true`. Result: Instructions is 0 for the project files, and Baseline still counts them.
@@ -1307,6 +1331,20 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 118. (Part B) A registered folder holds the project. Result: allowed. Hidden folders, `.bowerloom` included, are skipped.
 119. (Part B) A registered folder is outside the session's working folders. Result: the plan note about `--add-dir` and `permissions.additionalDirectories`.
 120. (Part B) A crash during `folder add` after the temporary file. Result: `folder list` ignores the temporary file. The next `folder add` removes it.
+121. An agent with a guard list and `isolation: worktree`. Result: hold `AGENT_GUARD_WORKTREE`.
+122. Guard: Glob `{x,}/abs/**`. Result: the empty branch gives `/abs/**`, which has base `/`. It is checked on its own and denied when it reaches an area.
+123. Guard: Glob `.{.,}/wiki/**`. Result: a result has a `.` or `..` segment, so deny.
+124. Guard: Glob `w\\iki/**`. Result: the prefix becomes `w\iki` after one escape is removed, and the target decides.
+125. Guard: Glob `@(wiki)/**` or `+(wiki)/secret.md`. Result: an unescaped `(` denies.
+126. Guard: a Read path `~`. Result: it resolves to the home folder, and the target decides.
+127. Guard: a relative Read path. Result: it resolves against the hook input's `cwd`.
+128. Guard: a Read path through `.claude/skills/../../`. Result: a `..` segment denies.
+129. Guard: a Grep of a missing folder inside an area. Result: the deepest existing ancestor decides, and the call is denied.
+130. Guard: a Read through `/System/Volumes/Data/...` of a non-member on macOS. Result: deny, because that path joins the real chain of the root.
+131. Guard: a Read of `/.vol/<device>/<inode>`. Result: deny.
+132. Guard: a Read of a hard link outside the root to a non-member file under the root. Result: deny, because the file has two links on a guarded device.
+133. Guard: the root folder is replaced by a new folder at the same path. Result: its id differs from `--root`, so deny every call with `GUARD_ROOT_MISSING`. The next apply plans `update agent`.
+134. `bowerloom-guard` run with no arguments. Result: the `GUARD_INPUT_INVALID` text on stderr and exit 2.
 
 ## 8. Migration from beta.2
 
@@ -1345,7 +1383,7 @@ All paths are under `apps/docs/src/content/docs/`.
 - `status.md`: one bullet that `status` names edited, held, and out-of-date slices.
 - `releases.md`, under `## 0.7.0-beta.3`, add:
   - `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.
-  - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell or MCP tools. The copy names this machine's project folder.
+  - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
   - `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
   - `bowerloom context show` previews a slice.
   - `bowerloom folder add` registers a folder outside the project for slices. (Part B)
@@ -1463,6 +1501,24 @@ Write the tests first. Each line below is one test case.
 22. A file added to a covered folder after apply makes a Grep of that folder denied.
 23. A `..` in the missing part of a target is denied.
 24. A `~/` path resolves against the home folder for Read, Grep, and Glob.
+25. Glob `{x,}/abs/**` reaching an area is denied.
+26. Glob `.{.,}/wiki/**` is denied.
+27. Glob `w\\iki/**` uses the unescaped prefix.
+28. Glob `@(wiki)/**` and `+(wiki)/secret.md` are denied.
+29. A bare `~` resolves to the home folder.
+30. A relative Read path resolves against the input `cwd`, not the guard's working folder.
+31. A path with a `.claude/skills/../../` part is denied.
+32. A Grep of a missing folder decides on the deepest existing ancestor.
+33. A brace pattern with 257 results is denied.
+34. A `{1..3}` range expands to three results, each checked.
+35. A value with leading white space, or a control or format character, is denied.
+36. A path under `/System/Volumes/Data` that reaches a root is inside the area.
+37. A target whose first segment starts with `.` is denied.
+38. A non-member file with two links on a guarded root's device is denied for Read.
+39. A root whose id differs from `--root` denies every call with `GUARD_ROOT_MISSING`.
+40. A slice with no `--root` value denies every call with `GUARD_ROOT_MISSING`.
+41. An agent catalog whose `source.guard` differs from `--slice` denies with `GUARD_PROJECT_MISMATCH`.
+42. A catalog reference that fails `relativeSkillPath` denies with `GUARD_SLICE_NOT_INSTALLED`.
 
 ### 10.6 `packages/context-slices/test/instructions.test.mjs`
 
@@ -1514,6 +1570,7 @@ Write the tests first. Each line below is one test case.
 7. `guardConflict` is true for `hooks: []`, and `claudeCopyBytes` then throws `MANAGED_SKILL_REFUSED`.
 8. The args list the project path, the project id, and the slices in sorted order.
 9. Golden text for the two cases of section 4.6.
+10. Every `args` element is a double-quoted scalar, including a path with a space and a `'`.
 
 ### 10.10 `packages/project-authoring/test/slice-create.test.mjs`
 
@@ -1589,6 +1646,9 @@ Write the tests first. Each line below is one test case.
 17. `STALE_APPROVAL` when a slice's guard mode changes after the plan.
 18. The tracked-copy note prints once with no `.gitignore` line, and not with `/.claude/`.
 19. The copy holds the project's real path and `projectId`.
+20. A guarded agent with `isolation: worktree` holds `AGENT_GUARD_WORKTREE`.
+21. The whole-project search note prints for a guarded root `wiki` and `tools: Read, Grep`.
+22. `tools: Task(x)` and `tools: ReadMcpResourceTool` name nested agents and MCP tools in the read-gap note.
 
 ### 10.14 `packages/project-sync/test/slices-apply.test.mjs`
 
@@ -1671,6 +1731,9 @@ Write the tests first. Each line below is one test case.
 7. Twenty calls each finish within 2000 ms, and the test prints the 50th and 95th percentile.
 8. The guard writes nothing and creates no folder (a snapshot of the project and the state folder before and after).
 9. An `XDG_STATE_HOME` that differs from the one apply used denies every call.
+10. A non-member Read whose path holds `"`, `\`, and U+2028 gives deny JSON that parses.
+11. `bowerloom-guard` with no arguments writes the `GUARD_INPUT_INVALID` text to stderr and exits 2.
+12. A guard route whose dynamic import fails still prints the deny line and exits 0.
 
 ### 10.20 `tests/folder-cli.test.ts` (Part B)
 
@@ -1738,24 +1801,30 @@ Part B, branch `beta3/05-context-slicing-roots`:
 
 Each item names the check and the fallback. The builder runs the check first.
 
-1. **Exec form (`args`) and `onFailure` in agent frontmatter.** The hooks page documents both, and says that subagents use the same format in frontmatter. No page shows them in a subagent file. Check: a trusted scratch project, a guarded agent, and `bowerloom` removed from `PATH`. The Read must be blocked. Fallback for `args`: shell form, `command: bowerloom context guard --agent <role> --project "<path>" --project-id <id> --slice <id>`, with the path quoted. Fallback for `onFailure`: the guard turns every internal error into a deny. Only a guard that cannot start lets a call through. The docs page says so.
+1. **Exec form (`args`) and `onFailure` in agent frontmatter.** The hooks page documents both, and says that subagents use the same format in frontmatter. No page shows them in a subagent file. Check: a trusted scratch project, a guarded agent, and `bowerloom-guard` removed from `PATH`. The Read must be blocked. Fallback for `args`: shell form, `command: bowerloom-guard --agent ... --root ...`, with each argument in single quotes and each `'` written as `'\''`. A project path that holds a control character holds the agent. Fallback for `onFailure`: the guard turns every internal error into a deny. Only a guard that cannot start lets a call through. The docs page says so.
 2. **Nested subagents.** Whether a subagent's frontmatter hooks fire for the tool calls of a subagent that it starts is not documented. Section 3.9.4 treats it as not guarded. Check: the scratch run with a guarded agent that starts a general-purpose subagent. If the hook fires, remove `nested agents` from the read-gap note.
 3. **A trusted folder under `claude -p`.** The hooks page says a `-p` session does not count as accepting the trust dialog. It does not say whether a folder trusted earlier in an interactive session lets frontmatter hooks run under `-p`. Check: trust a scratch folder interactively, then run the guarded agent with `claude -p`. Fallback: the docs say that the guard does not run in `-p`, Routines, or CI.
 4. **Comments and key order survive `yaml` 2.9.1 `Document` round trips.** Check: test 10.9.4. Fallback: when the source has no `hooks` key, append the guard block as text before the closing fence. When it has one, use the `Document` path and accept the formatting change. Tell Hanna in the pull request.
 5. **Grep and Glob on hidden files.** The docs do not say whether the Grep and Glob tools search hidden files. The covered rule excludes folders with hidden entries, so either answer is safe. No fallback is needed.
 6. **Preloading a `user-invocable: false` skill.** The skills page says the field hides a skill from the menu and that Claude can still use it. The sub-agents page says preloading draws from the skills Claude can invoke. Check: the scratch run, asking the agent to quote its index. Fallback: drop `user-invocable: false` from the index. Each slice then also shows in the `/` menu.
 7. **Whether preloaded skill text includes its frontmatter.** Not documented. The measure counts the whole file, an upper bound, and says so in `assumptions`. No fallback is needed.
-8. **Guard latency after the import change.** Check: test 10.19.7. If the 95th percentile is still above 300 ms, record the numbers in the pull request and open an issue for a smaller guard entry point. The guard still ships.
+8. **Guard latency after the import change.** `bowerloom-guard` loads only the guard modules, which also serves latency. Check: test 10.19.7. If the 95th percentile is still above 300 ms, record the numbers in the pull request and open an issue. The guard still ships.
 9. **Reads outside the working folders.** The permissions page says that files in the launch folder and in added folders are readable, and that other reads can ask. The behavior in each permission mode for a subagent is not tested. The plan note names `--add-dir` and `permissions.additionalDirectories`. No fallback is needed.
 10. **The spec 03 and 04 function names.** `inspectStoreWith`, `openStoreWith`, `verifyStorePins`, `pathInsideStore`, and `withStoreForWrite` are names from specs that are not merged. Check: read the merged code before Part B. Fallback: use the merged names. Keep the behavior of section 3.3.
 11. **Rules files and AGENTS.md under `omitClaudeMd`.** The sub-agents page names the user, project, and local CLAUDE.md files. The measure assumes that AGENTS.md files and rules files drop with them, and lists the assumption. Check: the scratch run with `/context`. Fallback: count them at start for every agent, and change the assumption text.
 12. **The `/context` output format for calibration.** The docs say `/context` shows a breakdown by category. The guide tells the person to divide a known file's bytes by its tokens there. If the breakdown does not name single files, the guide says to compare the totals with and without one file.
 13. **The 30-second managed planning limit** (`LIMITS.duration`, `packages/managed-skills/src/observed.ts:14`). `readLocalSlice` runs inside it. Check: a test over 8192 entries with links. Fallback: if it exceeds the limit, the run refuses `MANAGED_SKILL_TIMEOUT`, and the walk limit in section 4.1 drops until the test passes.
 14. **The tracked-copy check.** It reads `.gitignore` files and `.git/info/exclude`, not the global excludes file, and it matches a fixed set of lines. Check: a repository with each line form of section 3.8. Fallback: none. A false note is harmless, and the docs say why it can appear.
+15. **Older Claude Code.** Check: on a version before 2.1.295, a guarded agent's Read of a non-member is denied, and a Read with `bowerloom-guard` removed from `PATH` is reported. Fallback: section 3.9.4 item 8 states the observed behavior, and the guide names the lowest version that ran the guard.
+16. **What the Glob and Grep tools match.** Check: in the scratch run, Glob `secret.md`, `{x,}/abs/**`, `.{.,}/x/**`, `@(x)/**`, and `w\\iki/**`, and Grep over a folder that holds a link into the area. Note whether a pattern with no `/` matches at depth, whether Grep follows links, and whether Read, Grep, and Glob collapse `..` as text and expand bare `~`. Fallback: treat a pattern with no `/` as `**/<pattern>`, and add 'Grep may follow links below its target' to section 3.9.4 item 13.
+17. **A hook that returns `updatedInput` after the guard.** Check: a scratch settings hook that rewrites a Read path after the guard's silent pass. Fallback: document the observed behavior in section 3.9.4 item 18.
+18. **`disableAllHooks` and `allowManagedHooksOnly`.** Check: set each in a scratch run and read a non-member. Fallback: document the observed behavior in section 3.9.4 item 19.
+19. **An agent run as the main session.** Check: `claude --agent <role>` in a trusted scratch folder, then a Read of a non-member. Fallback: document the observed behavior in section 3.9.4 item 20.
+20. **The YAML parser Claude Code uses for agent frontmatter.** Not documented. Every `args` element is a double-quoted scalar so that a strict or a loose parser reads the same strings. Check: the scratch run with a project path that holds a space, a `'`, and a `#`. Fallback: hold an agent whose project path holds a character the check shows is read wrongly, with `AGENT_GUARD_CONFLICT`.
 
 ## 13. New decision for Hanna
 
-Both decisions are posted on #86 and pending. The build uses each default. The Part A pull request records both as lettered decisions.
+All three decisions are posted on #86 and pending. The build uses the default of decisions 1 and 2, and choice A of decision 3. The Part A pull request records all three as lettered decisions.
 
 ### Decision 1: what the guard fences
 
@@ -1771,3 +1840,10 @@ https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6334298823
 
 - A: The guard arguments name `${CLAUDE_PROJECT_DIR}`, the folder where the session started. The copy is the same on every machine. The guard fails when a session starts outside the project.
 - B (default, built): Apply writes the project's real path and its project id into the guard arguments. The guard finds its project wherever the session starts. The copy is specific to one machine, so the plan prints a note when `.claude/agents` may not be git-ignored.
+
+### Decision 3: a guarded agent in a git worktree
+
+A worktree holds its own copies of every tracked file, outside the guarded folders, so the guard cannot fence them. This decision has no default. The build uses A until Hanna answers.
+
+- A (built): Hold an agent that has a guard list and sets `isolation: worktree`, with `AGENT_GUARD_WORKTREE`.
+- B: Install the agent, and print a plan note that its guard does not fence the worktree's copies.

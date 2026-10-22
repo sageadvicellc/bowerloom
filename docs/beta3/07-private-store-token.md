@@ -5,7 +5,7 @@
 - Source: sageadvicellc/bowerloom#80, decision 21. Decision record: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333364163. It reverses the rule "no credentials from the environment" in `packages/skill-manifest/src/public-get.ts:15`. Decision 19 and the lock design: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333018480.
 - Lane: 2.
 - Branch: `beta3/07-private-store-token`.
-- Depends on: spec 06 (the store git fetch, `proveAuthored`, `fetchStoreGit`, the lock, and the `githubAuth` hook).
+- Depends on: spec 06 (the store git fetch, `proveAuthored`, `fetchStoreGit`, and the lock). Spec 06 passes no `githubAuth` key and does not change `public-get.ts`. This spec adds the option.
 - This spec is a security change. It needs a security review before it merges (see `docs/beta3/README.md`). The diff is kept small so the reviewer reads one thing. It touches no file that spec 06 does not already touch, apart from the listed ones.
 - Line numbers below are from commit c9730d3. If a line moved, find the place by its function name.
 
@@ -32,9 +32,8 @@ Only these commands read it. Each reads it only for a call to a store remote:
 
 1. `use`, `use team`, and `lock update`, for the proof of an authored store item (spec 06, 3.10).
 2. `apply --frozen`, `skills sync` (with or without `--frozen`), and the sync step of `up`. These read it for an authored lock item that the store cache lacks.
-3. `team adopt`, for the fetch of the team into the store cache.
-4. `store migrate` in a shared project (spec 08), for the proof of an authored item.
-5. `store status`, to report whether the variable is set (3.6). It sends nothing.
+3. `store migrate` in a shared project (spec 08), for the proof of an authored item.
+4. `store status`, to report whether the variable is set (3.6). It sends nothing.
 
 No other command reads it. These never read it and never send it: `skills add`, `skills check`, `ls`, `status`, plain `apply`, the npm fetch, and the fetch of pinned GitHub skills. Pinned GitHub skills stay anonymous.
 
@@ -45,7 +44,7 @@ The CLI functions read `env.BOWERLOOM_GITHUB_TOKEN` from the `env` argument they
 The token goes in the header `Authorization: Bearer <token>`. Bowerloom sends it in one case only. All of these must be true:
 
 1. The request is an HTTPS GET to the host `api.github.com`.
-2. The request path starts with `/repos/<owner>/<repo>/`. The `<owner>/<repo>` part, in lower case, is one of the repositories in `network.credentials.repositories` of the approved plan.
+2. The request path matches the pattern of section 6 for the `git/commits`, `git/trees`, and `git/blobs` endpoints, under `/repos/<owner>/<repo>/`. The `<owner>/<repo>` part, in lower case, is one of the repositories in `network.credentials.repositories` of the approved plan.
 3. The transport was created with a token.
 
 No other request carries the header. Not the npm registry. Not another GitHub repository. Not a request that the plan did not approve.
@@ -55,13 +54,13 @@ Redirects are still refused. The transport already refuses any response with a `
 ### 3.4 Which repositories the plan names
 
 - For `use`, `use team`, `lock update`, and `store migrate`: the store remote from `readStoreRepo` (spec 06, 3.10).
-- For `apply --frozen`, `skills sync`, `up`, and `team adopt`: the distinct `remote` values of the authored lock items that need fetching. There is usually one.
+- For `apply --frozen`, `skills sync`, and `up`: the distinct `remote` values of the authored lock items that need fetching. There is usually one.
 
-Each repository is shown in the plan. The list has at most 8 entries. If the lock names more than 8 distinct remotes for items that need fetching, the plan refuses `LOCK_INVALID`. The message adds the sentence `The lock names more than 8 remotes.`
+Each repository is shown in the plan. The list has at most 8 entries. Spec 06 (4.1) enforces the cap: a lock with more than 8 distinct `authored.remote` values gives `LOCK_LIMIT`.
 
 ### 3.5 What the plan shows and binds
 
-When a token is set and at least one repository needs it, the plan carries the field `network.credentials`:
+When a token is set and at least one repository needs it, the plan carries the field `network.credentials`. It lists the remotes of every item with `resolvedFrom: 'lock'` and authored that installs or updates, whether or not the store cache holds it now. The field looks like this:
 
 ```json
 { "variable": "BOWERLOOM_GITHUB_TOKEN", "host": "api.github.com", "repositories": ["owner/repo"] }
@@ -77,11 +76,17 @@ Credentials: BOWERLOOM_GITHUB_TOKEN is set. It is sent to api.github.com for git
 
 One such line for the whole plan, with the repositories joined by `, ` and `and` before the last: `github.com/a/b and github.com/c/d`.
 
-The `Network:` line of spec 06 changes only in its tail. Where it says `without credentials` it says `with your GitHub token for the repositories above` for the authored items, and still says `without credentials` for pinned items. When a plan fetches both kinds, the line reads:
+The `Network:` line of spec 06 changes only in its tail. These are all the variants with a token, word for word:
 
 ```text
-Network: reads api.github.com and registry.npmjs.org for <n> items. Pins are fetched without credentials. Store items use your GitHub token.
+Network: reads api.github.com for <n> items. Store items use your GitHub token for the repositories above.
+Network: reads api.github.com and registry.npmjs.org for <n> items. Pins are fetched without credentials. Store items use your GitHub token for the repositories above.
+Network: reads api.github.com for <n> items. Store items use your GitHub token for the repositories above. Bytes must match bowerloom.lock.json.
+Network: reads api.github.com and registry.npmjs.org for <n> items. Pins are fetched without credentials. Store items use your GitHub token for the repositories above. Bytes must match their pins or bowerloom.lock.json.
+Network: reads api.github.com, to check the pushed copy of <n> items, about <r> requests to api.github.com. Store items use your GitHub token for the repositories above.
 ```
+
+The first two lines are for a sync. The next two are for a frozen apply. The last is for `use` and `lock update`. With no token, the lines of spec 06 stay.
 
 The plan JSON and the result JSON never contain the token. Neither do error messages, the lock, the config, the cache, the receipts, the catalogs, or `--json` output.
 
@@ -114,11 +119,13 @@ JSON `git.token`: `"set"`, `"not-set"`, or `"invalid"`. The command never prints
 | What GitHub answers | Result |
 |---|---|
 | 200 | Normal. |
-| 401 or 403, token sent | `STORE_REMOTE_AUTH_FAILED` |
-| 404 on the commit request, token sent | `STORE_REMOTE_AUTH_FAILED` (the token lacks access, or the repository does not exist) |
-| 404 on a later request after the commit worked | Proving gives `LOCK_STORE_NOT_PUSHED`. Fetching gives `LOCK_COMMIT_UNREACHABLE`. |
+| 401, token sent | `STORE_REMOTE_AUTH_FAILED` |
+| 403 or 429, token sent | `GITHUB_RATE_LIMITED`, with the text of spec 06. With a token, GitHub allows about 5,000 requests an hour. |
+| 404 on the commit request, token sent | `LOCK_COMMIT_UNREACHABLE` for a commit from `--commit`. Otherwise `STORE_REMOTE_AUTH_FAILED`. |
+| 404 on a later request after the commit worked | Proving gives `LOCK_STORE_NOT_PUSHED`. Fetching gives `LOCK_HASH_MISMATCH`. |
 | 404, no token | As spec 06: `STORE_REMOTE_PRIVATE`, or `LOCK_COMMIT_UNREACHABLE` for `--commit` |
-| 401 or 403, no token | `SKILLS_ADD_NETWORK` mapped as in spec 06 (a network failure) |
+| 403 or 429, no token | `GITHUB_RATE_LIMITED`, as in spec 06. Without a token, GitHub allows about 60 requests an hour. |
+| 401, no token | `SKILLS_ADD_NETWORK` mapped as in spec 06 (a network failure) |
 | Any other status | `SKILLS_ADD_NETWORK` mapped as in spec 06 |
 
 `STORE_REMOTE_PRIVATE` now has the next step `Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.` (Spec 06 gave it a shorter text. This spec replaces it.)
@@ -180,7 +187,7 @@ Each repository is `owner/repo` in lower case. `createPublicTransport` checks it
 | `host` | string | The exact text `api.github.com` |
 | `repositories` | array | 1 to 8 strings `owner/repo`, lower case, sorted, no repeats |
 
-With no token, the whole field is `null`.
+With no token, the whole field is `null`. `ApplyPlan.network.credentials` lists the repositories of its skills sub-plan and of each locked authored prompt that installs or updates. It equals the union of the two. `apply-project.ts` passes the token to `prepareSkillChildren` and to the prompt fetch.
 
 ### 4.4 `store status` JSON
 
@@ -191,7 +198,7 @@ With no token, the whole field is `null`.
 | Code | Cause | Next step |
 |---|---|---|
 | `GITHUB_TOKEN_INVALID` | `BOWERLOOM_GITHUB_TOKEN` is set to a value that is not a valid GitHub token. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
-| `STORE_REMOTE_AUTH_FAILED` | GitHub refused the token for the store repository, or the repository does not exist. | Check that the token can read the repository, and that the repository name is right. |
+| `STORE_REMOTE_AUTH_FAILED` | GitHub refused the token for the store repository, or the repository or commit does not exist. | Check that the token can read the repository, and that the repository name is right. |
 | `STORE_REMOTE_PRIVATE` (text changed) | The repository answered 404 and no token was set. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
 | `STALE_APPROVAL` | The token was set or removed between plan and apply. | Run the command again without `--approve`. |
 
@@ -200,7 +207,7 @@ In `REFUSALS` the `sentence` of each code is its fixed message, and the `next` t
 Add `GITHUB_TOKEN_INVALID` and `STORE_REMOTE_AUTH_FAILED` to the `MESSAGES` of `packages/skill-manifest/src/refusal.ts` (they are thrown by the transport and the token reader) and to `REFUSALS` in `apps/cli/src/human.ts`. Messages are fixed text:
 
 - `GITHUB_TOKEN_INVALID`: `The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.`
-- `STORE_REMOTE_AUTH_FAILED`: `GitHub did not accept the token for the store repository, or the repository does not exist.`
+- `STORE_REMOTE_AUTH_FAILED`: `GitHub did not accept the token for the store repository, or the repository or commit does not exist.`
 
 ## 6. Where to change
 
@@ -215,14 +222,15 @@ Change:
   - Header comment (lines 1-31): replace the sentence `no Authorization or cookie header, no credentials from the environment` with `no cookie header. The Authorization header is sent only for a GitHub repository that the caller names, with a token that the caller passes in (githubAuth). Nothing reads the environment here.`
   - `PublicGetOptions` (line 38): add `githubAuth`.
   - Line 56 (the closed key list in `createPublicTransport`): add `'githubAuth'` and check it as in 4.2.
-  - `headersFor(host, url)` (lines 94-98): when `host === 'api.github.com'` and `githubAuth` is set and the URL path starts with `/repos/<o>/<r>/` for an approved repository, add `Authorization: githubAuth.token.authorization()`. For every other case the header set is unchanged.
-  - Status handling (line 134): before the 404 branch, add: if the request carried the header and the status is 401 or 403, `settle('STORE_REMOTE_AUTH_FAILED')`. The existing 404 branch is unchanged.
+  - `headersFor(host, url)` (lines 93-97): when `host === 'api.github.com'` and `githubAuth` is set and the URL path starts with `/repos/<o>/<r>/` for an approved repository, add `Authorization: githubAuth.token.authorization()`. Add `Authorization` only for a URL that matches `^https://api\.github\.com/repos/([^/]+)/([^/]+)/git/(commits|trees|blobs)/[0-9a-f]{40}(\?recursive=1)?$` The lower-cased `$1/$2` must be in `githubAuth.repositories`. For every other case the header set is unchanged.
+  - Status handling (line 134), before the 404 branch and after the rate-limit rule of spec 06: for a request that carried the header, a status of 401 settles `STORE_REMOTE_AUTH_FAILED`. So does a 403 that the rate-limit rule of spec 06 did not match. Without the header, those statuses keep the result of spec 06. The existing 404 branch is unchanged.
   - The token object must not appear in `settle` failures or in any thrown object. Do not log it.
-- `packages/skill-manifest/src/refusal.ts:26`: add the two messages. Add the codes to `ManifestRefusalCode` and to the code list that `fixedRefusal`/`isManifestRefusal` use.
+- `packages/skill-manifest/src/refusal.ts:26`: add the two messages inside the `MESSAGES` object. Add the codes to `ManifestRefusalCode` and to the code list that `fixedRefusal`/`isManifestRefusal` use.
 - `packages/skill-manifest/src/index.ts:2`: export `GithubToken`, `GITHUB_TOKEN_VARIABLE`.
-- `packages/skill-manifest/src/resolve-store-git.ts` (spec 06): `fetchAuthored` and `proveAuthored` receive the transport. They need no change except for the error mapping of 3.7: with a token, a 404 on the commit request becomes `STORE_REMOTE_AUTH_FAILED`. Add a parameter `authed: boolean`.
+- `apps/cli/src/main.ts` passes `process.env` to `runUseCommand` and `runLockCommand`.
+- `packages/skill-manifest/src/resolve-store-git.ts`: no change. For a plan with `network.credentials` and a commit from the ref, `change.ts` maps `commit-missing` to `STORE_REMOTE_AUTH_FAILED`. `store-git.ts` maps a commit 404 the same way.
 - `packages/project-sync/src/store-git.ts` (spec 06): `fetchStoreGit` creates its transport with `githubAuth` from `deps.githubToken` and the repositories of the plan. It refuses `STALE_APPROVAL` in two cases. In the first, the plan has `network.credentials` and `deps.githubToken` is null. In the second, the plan has none and a token is set. Map the 404 as `proveAuthored` does.
-- `packages/project-sync/src/deps.ts` (`SyncDeps`, line ~28): add `githubToken?: GithubToken | null`.
+- `packages/project-sync/src/deps.ts`: `storeTransport?: (options: PublicGetOptions) => PublicTransport & { close(): void }`, default `createPublicTransport`, and `githubToken?: GithubToken | null`. For a plan with credentials, `fetchStoreGit` and the `change.ts` proof call `storeTransport` with `{ githubAuth: { token, repositories: [<this item's remote as owner/repo>] } }`. For any other plan they pass `{}`.
 - `packages/project-sync/src/plan.ts` (`SyncInput`, line 45): add `githubToken?: GithubToken | null`. In `observeSync`, compute `network.credentials` (4.3) from the token and the authored items that need fetching. Add it to the body at line 422. `syncBinding` (line 361) keeps it, because it is part of `network`: change the line that sets `network: { hosts: body.network.hosts }` to `network: { hosts: body.network.hosts, credentials: body.network.credentials }`.
 - `packages/project-sync/src/apply-project.ts`: `ApplyInput` gets `githubToken`. Pass it to `observeSync` and `prepareSkillChildren`.
 - `packages/project-sync/src/change.ts` (spec 06): the config-change and lock-update planners accept `githubToken` and set `network.credentials`.
@@ -236,7 +244,7 @@ A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN
 the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.
 ```
 
-- `tests/support/fake-network.ts:~30-40` (`serve`): record whether the request had an `Authorization` header, as a boolean field `authorization` in the logged line. Never log the value. The function receives the request options as its second argument (`_options`).
+- `tests/support/fake-network.ts:~30-40` (`serve`): record whether the request had an `Authorization` header, as a boolean field `authorization` in the logged line. Never log the value. The function `serve(url, _options, callback)` receives the request options as its second argument (`fake-network.ts:26`).
 
 ## 7. Edge cases
 
@@ -266,7 +274,7 @@ None. No file format changes. The variable is optional. A machine without it beh
 
 ## 9. Docs changes for this track
 
-- `apps/docs/src/content/docs/security.md`: a new section "The GitHub token for a private store". The section says four things. It says what the variable is. It names the one host and the one repository that get the token. It says Bowerloom never stores or prints the token and refuses redirects. It says what scope to give the token: read access to the store repository only. A fine-grained token with read-only `Contents` permission on one repository is enough. State this as advice. Bowerloom does not check the scope.
+- `apps/docs/src/content/docs/security.md`: a new section "The GitHub token for a private store". The section says four things. It says what the variable is. It names the one host and the one repository that get the token. It says Bowerloom never stores or prints the token and refuses redirects. It says what scope to give the token: read access to the store repository only. Recommend a fine-grained token. A classic token needs the `repo` scope, which grants write access to every private repository. A fine-grained token with read-only `Contents` permission on one repository is the advice, and it is unverified (section 12). State this as advice. Bowerloom does not check the scope.
 - `apps/docs/src/content/docs/cli.md`: one paragraph under `## Apply` and under `store status` about the variable and the `Credentials:` line.
 - `apps/docs/src/content/docs/reference/errors.md`: rows for `GITHUB_TOKEN_INVALID` and `STORE_REMOTE_AUTH_FAILED`. Update the `STORE_REMOTE_PRIVATE` row.
 - `apps/docs/src/content/docs/troubleshooting.md`: an entry "My store is private" with the steps.
@@ -295,26 +303,32 @@ None. No file format changes. The variable is optional. A machine without it beh
 4. A request to `https://api.github.com/repos/Owner/Repo/git/trees/<sha>` has the header (case-insensitive).
 5. A request to `https://registry.npmjs.org/<package>` has no header.
 6. A request to `https://api.github.com/repos/owner/repo-two/git/commits/<sha>` has no header (the prefix check includes the slash).
-7. A 401 and a 403 response to a request with the header give `STORE_REMOTE_AUTH_FAILED`. The same statuses without the header keep their old result.
+6a. A request to `https://api.github.com/repos/owner/repo/contents/x` gets no header.
+7. A 401 response to a request with the header gives `STORE_REMOTE_AUTH_FAILED`. A 401 without the header gives `STORE_REMOTE_PRIVATE` in the commands of spec 06.
+7a. A 403 with `x-ratelimit-remaining: 4999` and the header gives `STORE_REMOTE_AUTH_FAILED`. A 403 with `x-ratelimit-remaining: 0` gives `GITHUB_RATE_LIMITED`.
 8. A response with a `Location` header is refused, and no second request is made.
 9. A 404 gives `SKILLS_ADD_NOT_FOUND` in both cases.
 10. `createPublicTransport` refuses a `githubAuth` that is not a `GithubToken`, has zero or more than eight repositories, or has a malformed repository.
 11. The thrown error of any failed request carries no part of the token (canary).
 12. All the old guards still hold: a non-public address, an IPv6 answer, a non-200 status, a content encoding other than identity, an oversized body. Run the cases of `public-get.test.mjs` unchanged.
 
-`packages/skill-manifest/test/resolve-store-git.test.mjs` (add cases to spec 06's file):
+`packages/skill-manifest/test/resolve-store-git.test.mjs` (add one case to spec 06's file):
 
-1. With a token, a 404 on the commit request gives `STORE_REMOTE_AUTH_FAILED`.
-2. Without a token, it gives `STORE_REMOTE_PRIVATE`.
-3. For an approved repository, the fake transport sees the header on every request of one walk. For any other repository it sees the header on none.
+1. For an approved repository, the fake transport sees the header on every request of one walk. For any other repository it sees the header on none.
+
+`packages/project-sync/test/config-change.test.mjs` (add cases):
+
+1. With a token, `commit-missing` for a commit from the ref gives `STORE_REMOTE_AUTH_FAILED`. For a commit from `--commit` it gives `LOCK_COMMIT_UNREACHABLE`.
+2. Without a token, `commit-missing` for a commit from the ref gives `STORE_REMOTE_PRIVATE`.
 
 `packages/project-sync/test/store-git.test.mjs` and `sync-config.test.mjs` (add cases):
 
-1. With a token and an authored item to fetch, the plan has `network.credentials` with the sorted repositories. With no item to fetch, or no token, the field is null.
+0. In `store-git.test.mjs`, with a token a 404 on the commit request gives `STORE_REMOTE_AUTH_FAILED`. Without a token it gives `STORE_REMOTE_PRIVATE`.
+
+1. With a token and an authored item that installs or updates, the plan has `network.credentials` with the sorted repositories. With no such item, or no token, the field is null.
 2. A new repository list gives a new revision. A new token value gives the same revision.
-3. The plan JSON has no part of a canary token.
+3. The plan JSON has no part of a canary token and contains no `[redacted]`.
 4. Apply refuses `STALE_APPROVAL` in two cases. In the first, the token is missing and the plan has credentials. In the second, a token is present and the plan has none but needed repositories.
-5. Eight distinct remotes are accepted. Nine refuse `LOCK_INVALID`.
 6. A pinned npm skill fetch in the same run has no header (use the stub).
 
 `tests/token-cli.test.ts` (spawn the CLI with the fake GitHub repo and the fake network):
@@ -322,10 +336,10 @@ None. No file format changes. The variable is optional. A machine without it beh
 1. `apply --frozen` in a clone with `BOWERLOOM_GITHUB_TOKEN` set to a canary shows the `Credentials:` line and the changed `Network:` line, exits 3. With `--approve` it installs. The fake network log shows `authorization: true` for each `api.github.com/repos/<o>/<r>/` request and `authorization: false` for each `registry.npmjs.org` request.
 2. The same without the variable: the lines are absent, and the log shows `authorization: false` everywhere. A private fake repository (404) gives `STORE_REMOTE_PRIVATE`.
 3. An invalid value refuses `GITHUB_TOKEN_INVALID` with no network call (the log is empty).
-4. A 401 from the fake gives `STORE_REMOTE_AUTH_FAILED`.
+4. A route object `{ "status": 401 }` (spec 06, `fake-network.ts`) gives `STORE_REMOTE_AUTH_FAILED`.
 5. `use skill x` in a shared project with the variable set proves the item with the header.
 6. `store status` prints each of the three token lines and the JSON `git.token` values.
-7. The leak scan. Run a full flow with a canary token: use, lock update, apply --frozen, team adopt, and up. Then read every file under the project, the store, the state root, and the temporary HOME. None contains the canary. Standard output and standard error of every command (text and `--json`) do not contain the canary or any 8-character part of it.
+7. The leak scan. Run a full flow with a canary token (`ghp_` plus 36 characters drawn from `g` to `z` only, so no hex digit): use, lock update, apply --frozen, team adopt, and up. `team adopt` makes no request, so the fake network log is unchanged by it. Then read every file under the project, the store, the state root, and the temporary HOME. None contains the canary. Standard output and standard error of every command (text and `--json`) do not contain the canary or any 8-character part of it. The test runs each command a second time with `NODE_DEBUG=http,https,net,tls` and scans the output again.
 8. `skills add` and `skills sync` of a pinned GitHub skill with the variable set send no header (the log).
 9. `tests/no-spawn.test.ts` still passes.
 
@@ -346,7 +360,6 @@ Update `tests/human-refusal.test.ts` for the two new codes and the changed `STOR
 ## 12. Unverified items
 
 1. GitHub accepts `Authorization: Bearer <token>` for both classic and fine-grained tokens on `api.github.com`. This is GitHub's documented form, but no test here can prove it against the live service. Check it by hand once with a real token on a private repository before the pull request. Suppose GitHub answers 401 to `Bearer`. Then change `authorization()` to return `token ` plus the value (the older form), and change test case 8 of `github-token.test.mjs`.
-2. The statuses GitHub uses for a missing token on a private repository. Documentation says 404. Check by hand once. If it answers 403 for rate limits and 404 for private repositories, the table in 3.7 already covers both. If it answers something else, map that status to `STORE_REMOTE_AUTH_FAILED` with a token and `STORE_REMOTE_PRIVATE` without one.
 3. `util.inspect.custom` redaction under Node 22 and later. The symbol is `Symbol.for('nodejs.util.inspect.custom')`. Test case 5 proves it in this repository's Node version. If a test fails, also define `get [Symbol.toStringTag]()` returning `GithubToken`, and keep the private field.
-4. The `fake-network.ts` hook gets the request options as its second argument (`serve(url, _options, callback)`). I read the function header, not the whole file. Suppose the options are not available. Then record the header flag in the stub request object of the unit tests. The CLI-level tests keep only the plan text and the leak scan.
 5. Whether `createPublicTransport` is created once per command or once per request in the fetch code of spec 06. The header rule works for both. Suppose the code makes one transport for npm and git pins together. Then give the authored items their own transport, so the npm requests never see a token.
+6. The claim that a fine-grained token with read-only `Contents` permission on one repository reads `git/commits`, `git/trees`, and `git/blobs`. No GitHub page was cited for it. Test it by hand with a real token. Fallback: the docs say `read access to the repository` and name no permission.

@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import config, * as metadataModule from '../vite.config.ts';
 import {hero} from '../src/content.ts';
 
+const TAGLINE = 'Set up the skills, prompts, and teams your agents use, and approve every change.';
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const preview = async () => JSON.parse(await read('../../../release/social-preview.json'));
 const meta = html => new Map([...html.matchAll(/<meta\s+(?:property|name)="([^"]+)"\s+content="([^"]*)"\s*\/?>/g)].map(match => [match[1], match[2]]));
@@ -11,7 +12,7 @@ const meta = html => new Map([...html.matchAll(/<meta\s+(?:property|name)="([^"]
 test('one preview record uses the approved landing message and public image', async () => {
   const social = await preview();
   assert.equal(social.title, `Bowerloom · ${hero.H1}`);
-  assert.equal(social.description, hero.Body.split('. ')[0] + '.');
+  assert.equal(social.description, TAGLINE);
   assert.equal(social.siteName, 'Bowerloom');
   assert.equal(social.type, 'website');
   assert.equal(social.image.url, 'https://bowerloom.ai/social/bowerloom.png');
@@ -19,6 +20,11 @@ test('one preview record uses the approved landing message and public image', as
   assert.equal(social.image.height, 630);
   assert.equal(social.image.type, 'image/png');
   assert.match(social.image.alt, /Bowerloom.*S4-G3.*plant chamber/i);
+});
+
+test('the docs home page uses the same tagline as the preview', async () => {
+  const index = await read('../../docs/src/content/docs/index.md');
+  assert.equal(index.match(/^description:\s*"([^"]*)"\s*$/m)?.[1], TAGLINE);
 });
 
 test('landing HTML contains complete social metadata before JavaScript runs', async () => {
