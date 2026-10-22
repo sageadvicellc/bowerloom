@@ -21,6 +21,8 @@ const MESSAGES = {
   SKILLS_MIGRATE_NOTHING: 'This project has no skill installed by an earlier Bowerloom (.bowerloom-skills), so there is nothing to migrate.',
   SKILLS_MIGRATE_STATE_INVALID: 'The folder given with --state does not hold the committed earlier install of this project.',
   SKILLS_MIGRATE_NOT_IN_MANIFEST: '.bowerloom/skills.json does not pin the installed skill with the same source and file hashes.',
+  // Beta.3 docs review, fix 2: a frozen fetch whose locked commit GitHub no longer has, in a repository it can read.
+  LOCK_COMMIT_GONE: 'The locked commit is no longer on GitHub.',
   SKILLS_STATE_STRAY_ENTRY: 'An item\'s private folder holds an entry that is not one of Bowerloom\'s operations.',
   APPLY_NAME_COLLISION: 'Two items, or an item and something Bowerloom did not install, would take the same place in the project. Nothing was changed.',
   PROMPT_INVALID: 'A prompt in .bowerloom/prompts cannot be read safely: it must be a plain text file you own, with one link, no write access for others, at most 64 KiB. Nothing was changed.',

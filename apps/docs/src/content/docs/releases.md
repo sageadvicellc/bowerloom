@@ -46,6 +46,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - Installing from a downloaded .tgz file now gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
 - `bowerloom store migrate` copies skills, prompts, and teams from a project to your store and lists them in `bowerloom.json`. It deletes nothing. `bowerloom receipt clean` removes the records of items whose files you deleted.
 - A store in a private GitHub repository works after you set `BOWERLOOM_GITHUB_TOKEN`. Bowerloom sends the token only to `api.github.com`, for that repository. It never stores or prints the token. A token that an organization's single sign-on has not authorized refuses with `GITHUB_TOKEN_SSO_REQUIRED`.
+- `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. One extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
 - `bowerloom cache list` shows the skill bytes that Bowerloom keeps on your machine. `bowerloom cache prune` deletes them after you approve a plan. Bowerloom never deletes the cache by itself.
 
 ## 0.7.0-beta.2

@@ -469,6 +469,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.lock.json' },
   GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public. If this is your store repository, set BOWERLOOM_GITHUB_TOKEN.' },
   GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'bowerloom lock verify' },
+  // Beta.3 docs review, fix 2.
+  LOCK_COMMIT_GONE: { sentence: 'A force-push or a deleted branch removes a commit that a lock still names.', next: 'Ask the author to run bowerloom lock update and push the store, then pull the project.' },
   STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
   GITHUB_RATE_LIMITED: { sentence: 'GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so.', next: 'Wait until the limit resets, at most an hour. Without a token, set BOWERLOOM_GITHUB_TOKEN to raise the limit (see bowerloom help store).' },
   ITEM_REVIEW_REQUIRED: { sentence: 'Bowerloom shows what an item can do before it installs it.', next: 'Run bowerloom apply --frozen again to review it.' },

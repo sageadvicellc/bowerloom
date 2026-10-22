@@ -249,3 +249,23 @@ test('7c. a 403 with the header and a body that names a rate limit gives GITHUB_
   const n = network(t, () => body('secondary rate limit')), transport = createPublicTransport({});
   await assert.rejects(transport.get(url, 1024, signal()), code('GITHUB_REQUEST_FAILED')); assert.equal(n.calls.length, 1); transport.close();
 });
+
+// Fix 2 of the beta.3 docs review: a commit request that fails is followed by one request for the repository itself, sent
+// with the token exactly when the commit request was. Only the bare repository URL of an approved repository is added.
+test('fix 2. the repository URL of an approved repository carries the header; no other repository URL does', async t => {
+  const n = network(t), transport = createPublicTransport(auth(['owner/repo'])); t.after(() => transport.close());
+  const cases = [
+    ['https://api.github.com/repos/owner/repo', true],
+    ['https://api.github.com/repos/Owner/Repo', true],
+    ['https://api.github.com/repos/other/repo', false],
+    ['https://api.github.com/repos/owner/repo-two', false],
+    ['https://api.github.com/repos/owner/repo/', false],
+    ['https://api.github.com/repos/owner/repo/contents', false],
+    ['https://api.github.com/repos/owner/repo/collaborators', false],
+  ];
+  for (const [url] of cases) await transport.get(url, 4096, signal());
+  cases.forEach(([url, carries], i) => { assert.equal(header(n.calls[i]) !== undefined, carries, url); assert.equal(inOptions(n.calls[i]), undefined, url); });
+  const plain = createPublicTransport(); t.after(() => plain.close());
+  await plain.get('https://api.github.com/repos/owner/repo', 4096, signal());
+  assert.equal(header(n.calls[cases.length]), undefined);
+});
