@@ -17,7 +17,7 @@ First, a project needs a file that lists what it installs. This is `bowerloom.js
 
 Second, the store lives on one machine. A teammate who clones the project has no store. So a second file, `bowerloom.lock.json`, records exactly where each store item's bytes come from and a hash that proves them (decision 19). A pinned skill locks to its existing pin. A skill, prompt, or team that someone wrote in the store locks to a commit of the store's git remote. `apply --frozen` installs only what the lock records, as `npm ci` does.
 
-Third, Bowerloom must tell a person when a project cannot be shared. In a shared project, `use` refuses a store item that nobody else can fetch, and says how to make it fetchable (decisions 19 and 22).
+Third, Bowerloom must tell a person that a project cannot be shared. In a shared project, `use` refuses a store item that nobody else can fetch. It says how to make the item fetchable (decisions 19 and 22).
 
 This spec also adds `use`, `unuse`, `lock verify`, `lock update`, and `team adopt`. It makes every command work in a project that has only `bowerloom.json`.
 
@@ -45,13 +45,13 @@ For each config entry with `source: "project"`, look up the project definition: 
 
 For each config entry with `source: "store"`, in a normal run (not frozen):
 
-1. If the store is a valid store and holds the item, install from the live store. If a lock exists and its item for this id differs from the live item, the plan carries the note `The lock is out of date for <ids>. Run bowerloom lock update.` The run is not refused.
-2. Otherwise, if a lock item exists for this id, install from the lock. A pinned item uses the machine cache. An authored item uses the store cache (3.11).
+1. If the store is a valid store and holds the item, install from the live store. Suppose a lock item for this id differs from the live item. Then the plan carries this note: `The lock is out of date for <ids>. Run bowerloom lock update.` The run is not refused.
+2. If a lock item exists for this id, install from the lock. A pinned item uses the machine cache. An authored item uses the store cache (3.11).
 3. Otherwise, the item is held with the code `STORE_ITEM_MISSING`. The next step is `Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.`
 
 In a frozen run, only step 2 applies. The live store is not read.
 
-The store is read only when the config lists at least one store entry. A store that is `foreign`, unsafe, unreadable, or invalid then refuses the whole plan with its `STORE_*` code in a normal run. A store that is absent is not an error. In a frozen run the store is not read at all.
+A config with no store entry never reads the store. A config with a store entry reads it. A store that is `foreign`, unsafe, unreadable, or invalid then refuses the whole plan with its `STORE_*` code in a normal run. A store that is absent is not an error. In a frozen run the store is not read at all.
 
 ### 3.4 Config-only projects (decisions 12 and 16)
 
@@ -63,7 +63,7 @@ The plan shows this as the first line of the review:
 Create .bowerloom (records of the copies). Its contents are git-ignored.
 ```
 
-The plan field is `bowerloomFolder: "create"`. It is `"present"` when the folder exists. Apply creates the folder under the project lock, before any other write, with `mkdir` mode 0755, then checks it is owned by the user and has no group or world write permission, then flushes the project folder. If the folder exists by then, apply refuses `STALE_APPROVAL`.
+The plan field is `bowerloomFolder: "create"`. For an existing folder it is `"present"`. Apply creates the folder under the project lock, before any other write. It calls `mkdir` with mode 0755. It checks that the user owns the folder and that it has no group or world write permission. It flushes the project folder. If the folder exists by then, apply refuses `STALE_APPROVAL`.
 
 ### 3.5 `bowerloom use`
 
@@ -90,8 +90,8 @@ It shows the plan first. Agents pass --approve <revision> or --json.
 
 Steps:
 
-1. Find the project (`discoverProject`). Refuse `PROJECT_NOT_FOUND` if none.
-2. If `bowerloom.json` is missing, the plan creates it (`created: true`). The new file holds `harnesses` from the project `skills.json`, or `["claude","codex"]` when there is none, and every item the project defines now with `source: "project"`: each entry of `skills.json`, each registered prompt, `first-team` when its folder exists, and each registered team. If any list would pass its limit, refuse `CONFIG_LIMIT`.
+1. Find the project (`discoverProject`). With no project, refuse `PROJECT_NOT_FOUND`.
+2. If `bowerloom.json` is missing, the plan creates it (`created: true`). The new file holds three things. It holds `harnesses` from the project `skills.json`, or `["claude","codex"]` for a project with no `skills.json`. It holds every item the project defines now, with `source: "project"`. Those items are each entry of `skills.json`, each registered prompt, each registered team, and `first-team` with its folder. A list over its limit refuses `CONFIG_LIMIT`.
 3. Without `--project`, the source is the store.
    - Read the store definitions (3.12). If the store is absent, refuse `STORE_NOT_FOUND`. If the item is not defined in the store, refuse `STORE_ITEM_NOT_FOUND`.
    - If the config already lists the id and kind from the store without `via`, refuse `CONFIG_ITEM_SELECTED`.
@@ -102,7 +102,7 @@ Steps:
    - If the config already lists it from the project, refuse `CONFIG_ITEM_SELECTED`.
    - If the config lists it from the store, refuse `CONFIG_DUPLICATE_ID`.
 5. `use team <id>` (store) also expands (3.6).
-6. In a shared project (3.9), or when a lock exists, compute the lock items for every added store item (3.8). For an authored item this reads the network and needs the store remote (3.10).
+6. In a shared project (3.9), or in a project with a lock, compute the lock items for every added store item (3.8). For an authored item this reads the network and needs the store remote (3.10).
 7. The plan shows. After approval, apply writes (3.14).
 
 Plan lines, verbatim. Use the first line that fits. `<kind>` is `skill`, `prompt`, or `team`.
@@ -141,7 +141,7 @@ Each added entry is `source: "store"` with `via: ["<id>"]`. Items with no team t
 - Listed from the store with `via`: add `<id>` to its `via` list, sorted.
 - Listed from the project: refuse `CONFIG_DUPLICATE_ID` for the whole plan. The message names both copies.
 
-`via` names a team id in the `teams` list. The team may be store-sourced or project-sourced.
+`via` names a team id in the `teams` list. The team can be store-sourced or project-sourced.
 
 ### 3.7 `bowerloom unuse`
 
@@ -179,9 +179,9 @@ Copies stay in <place list>. Bowerloom removes no copy. Delete them yourself if 
 This changes bowerloom.json and bowerloom.lock.json only.
 ```
 
-The `Copies stay` line appears only when a copy exists on this machine (a catalog file exists under `.bowerloom/managed/catalog`). For a team it is left out, because a team installs nothing.
+The `Copies stay` line appears only for an item with a copy on this machine. A catalog file under `.bowerloom/managed/catalog` marks such a copy. A team never has the line, because a team installs nothing.
 
-After `unuse`, the next sync or apply plan lists the item as `kept` (state `orphaned`), as it does today (`plan.ts:339`, `apps/cli/src/apply.ts:55`).
+After `unuse`, the next sync or apply plan lists the item as `kept` (state `orphaned`). This is today's behavior (`plan.ts:339`, `apps/cli/src/apply.ts:55`).
 
 ### 3.8 Create commands in a project with a config
 
@@ -189,16 +189,16 @@ After `unuse`, the next sync or apply plan lists the item as `kept` (state `orph
 
 1. The plan adds the new item to `bowerloom.json` with `source: "project"`. The plan field is `config`, section 4.9. The plan line is `bowerloom.json adds: <kind> <id> (project)`.
 2. If the config already lists the same kind and id from the store, refuse `CONFIG_DUPLICATE_ID` at plan time.
-3. If the config would pass a limit, refuse `CONFIG_LIMIT`.
+3. A config over a limit refuses `CONFIG_LIMIT`.
 4. If `.bowerloom/` is missing, the plan creates it (3.4). The plan field `bowerloomFolder` is `"create"` and `CreatePlan.bowerloom` is null.
 5. `team create` in a project with no `brief.json` uses `storeBrief(profile)` (spec 04, 3.5). If `brief.json` exists but is invalid, it still refuses `PROJECT_BRIEF_INVALID`.
-6. The apply order is: the item, the `skills.json` entry (skills), `bowerloom.json`, the receipt, then the removal of the pending record. The finish path of an interrupted create repeats the config step when the entry is missing (the same rule that `manifestStep` follows at `packages/project-authoring/src/create.ts:159-170`).
+6. The apply order is: the item, the `skills.json` entry (skills), `bowerloom.json`, the receipt, then the removal of the pending record. An interrupted create finishes through the finish path. That path repeats the config step for a missing entry. `manifestStep` follows the same rule (`packages/project-authoring/src/create.ts:159-170`).
 7. A project with no `bowerloom.json` is unchanged. Creating an item never creates `bowerloom.json`.
 8. The lock is not touched. The lock holds store items only.
 
 ### 3.9 Shared project rule (decision 22)
 
-A project is shared when either test is true:
+Two tests decide whether a project is shared. Either test is enough:
 
 1. `bowerloom.lock.json` exists in the project folder.
 2. The project folder is inside a git work tree whose `.git/config` has a section `[remote "origin"]` with a `url` key.
@@ -206,9 +206,9 @@ A project is shared when either test is true:
 Detection reads files only and starts no process. Algorithm for test 2:
 
 1. Start at the project folder. Look for an entry named `.git` with `lstat`. Move up one folder at a time. Stop at the home folder or the disk root (the same stops as discovery, `packages/project-context/src/discovery.ts:152`).
-2. If the entry is a folder, it is the git folder. If it is a file whose first line is `gitdir: <path>`, treat the path as the git folder only when it is an absolute path or a path relative to the file's folder, and the result is a real folder owned by the user. Otherwise the project is not shared by this test.
-3. Read `<git folder>/config` with a limit of 65536 bytes. Refuse nothing when it is unreadable. A project is then not shared by this test.
-4. The project is shared if the file has a line `[remote "origin"]` and, before the next section header, a line with the key `url` and a non-empty value. Match the header with `^\s*\[remote\s+"origin"\]\s*$` and the key with `^\s*url\s*=\s*\S+`.
+2. A folder named `.git` is the git folder. A file named `.git` has the first line `gitdir: <path>`. Resolve the path against the file's folder. The result must be a real folder owned by the user. Then it is the git folder. Any other result makes this test fail.
+3. Read `<git folder>/config` with a limit of 65536 bytes. An unreadable file does not refuse anything. This test then fails.
+4. The test passes for a file with a line `[remote "origin"]`. A line with the key `url` and a non-empty value must follow it, before the next section header. Match the header with `^\s*\[remote\s+"origin"\]\s*$` and the key with `^\s*url\s*=\s*\S+`.
 
 The function is `isSharedProject(project): { shared: boolean; reason: 'lock' | 'origin' | null }` in `packages/project-config/src/shared.ts`.
 
@@ -223,7 +223,7 @@ A pinned npm or GitHub skill is always fetchable. A project item needs no check.
 
 ### 3.10 The git-backed store
 
-The store may be a git repository. Bowerloom never runs git. It reads a few files in `~/.bowerloom/.git` and talks to `api.github.com`.
+The store can be a git repository. Bowerloom never runs git. It reads a few files in `~/.bowerloom/.git` and talks to `api.github.com`.
 
 Reading the store repository (`packages/project-config/src/git.ts`, function `readStoreRepo(storeDir): StoreRepo`):
 
@@ -240,7 +240,7 @@ Reading the store repository (`packages/project-config/src/git.ts`, function `re
 6. The head commit is the 40-hex value in `.git/refs/heads/<branch>`, or in `packed-refs` as `refs/heads/<branch>`. If it is missing, it is null.
 7. The result is `{ problem: null, remote, branch, head, pushed }`.
 
-`StoreRepo` fields: `problem` (`none`, `no-origin`, `unsupported-remote`, `unreadable`, `unpushed`, or null), `remote`, `branch`, `head` (null possible), and `pushed` (null when the problem is `unpushed` and there is no `--commit`).
+`StoreRepo` fields: `problem`, `remote`, `branch`, `head`, and `pushed`. `problem` is `none`, `no-origin`, `unsupported-remote`, `unreadable`, `unpushed`, or null. `head` can be null. `pushed` is null for the problem `unpushed` with no `--commit`.
 
 The commit a lock records (decision: pushed commit):
 
@@ -253,13 +253,13 @@ Proof (the rule for dirty or unpushed changes). Before Bowerloom writes an autho
 1. Fetch the commit and the tree of the item path from `api.github.com`, with the shared public transport (3.11). Compute the item's file list and `hash`.
 2. Read the live store item with the guards and compute its file list and `hash` the same way.
 3. If the two `hash` values differ, refuse `LOCK_STORE_NOT_PUSHED`. If the item path does not exist in the tree at the commit, refuse `LOCK_STORE_NOT_PUSHED` too.
-4. If the commit request answers HTTP 404, the commit may be unknown or the repository may be private. When the commit came from `--commit`, refuse `LOCK_COMMIT_UNREACHABLE`. When it came from the local `origin/<branch>` ref, refuse `STORE_REMOTE_PRIVATE`, because the ref proves the commit was pushed once.
+4. Suppose the commit request answers HTTP 404. The commit can be unknown, or the repository can be private. If the commit came from `--commit`, refuse `LOCK_COMMIT_UNREACHABLE`. If it came from the local `origin/<branch>` ref, refuse `STORE_REMOTE_PRIVATE`. The ref proves the commit was pushed once.
 
 This one check covers uncommitted edits, committed but unpushed edits, and the wrong branch. Bowerloom does not run `git status`. Unpushed commits that do not change this item do not matter.
 
-Warning (never a refusal): if `repo.head` is not null and differs from `repo.pushed`, the plan carries the line `Your store has commits that are not pushed (HEAD differs from origin/<branch>). The lock records the pushed commit <commit8>.`
+Warning (never a refusal). Take a `repo.head` that is not null and differs from `repo.pushed`. Then the plan carries this line: `Your store has commits that are not pushed (HEAD differs from origin/<branch>). The lock records the pushed commit <commit8>.`
 
-If a problem is `none`, `no-origin`, `unsupported-remote`, `unreadable`, or `unpushed` when an authored item must be locked, refuse `STORE_ITEM_NOT_SHAREABLE`. The message adds one sentence:
+An authored item must be locked, and the problem is `none`, `no-origin`, `unsupported-remote`, `unreadable`, or `unpushed`. Then refuse `STORE_ITEM_NOT_SHAREABLE`. The message adds one sentence:
 
 | Problem | Added sentence |
 |---|---|
@@ -290,7 +290,7 @@ Reason (for the pull request, not for the code): `git.ts` accepts only skills wi
 `fetchAuthored(transport, { remote, commit, kind, id }, signal): Promise<AuthoredFetch>` where `AuthoredFetch = { tree: string; files: { path: string; bytes: Buffer }[] }`:
 
 1. `GET https://api.github.com/repos/<o>/<r>/git/commits/<commit>`. At most 524288 bytes (`GIT_LIMITS.metadataBytes`, `git.ts:21`). The JSON `sha` must equal `commit`. Read `tree.sha` as the root tree.
-2. The item path is `skills/<id>`, `prompts/<id>.md`, or `teams/<id>`. Split it into segments. For each segment except the last, `GET .../git/trees/<current>` (at most 524288 bytes), parse it with `listing(bytes, current, false)`, prove it with `treeId`, find the entry with that name, require a tree entry with mode `040000`, and move to its sha.
+2. The item path is `skills/<id>`, `prompts/<id>.md`, or `teams/<id>`. Split it into segments. Walk every segment except the last like this. `GET .../git/trees/<current>` (at most 524288 bytes). Parse it with `listing(bytes, current, false)`. Prove it with `treeId`. Find the entry with that name. It must be a tree entry with mode `040000`. Move to its sha.
 3. For `skills/<id>` and `teams/<id>`, `GET .../git/trees/<current>?recursive=1` and parse with `listing(bytes, current, true)` and `proveRecursive(rows, current)`. For `prompts/<id>.md`, the last segment is a blob entry (mode `100644`) in the `prompts` tree. The item `tree` value is that blob sha.
 4. Every row must pass `unsafeKind` (no symlink `120000`, no submodule `160000`, no `commit` type). Every blob must be mode `100644`. Every path must pass `skillFilePath` (extension `md`, `txt`, `json`, `yaml`, `yml`, or `csv`, or a license name). At most 128 files, 65536 bytes each, 2097152 bytes in all (`CONTENT_LIMITS`, `packages/skill-manifest/src/content.ts:~20`). A team also passes this limit.
 5. A skill needs `SKILL.md`. A team needs `team.yaml`. A prompt is exactly one file.
@@ -310,9 +310,9 @@ The store cache. Fetched authored bytes go to a content-addressed folder `<state
 
 1. Take the cache lock, `withCacheLock(cacheRoot, signal, ...)`, where `cacheRoot` is `<stateRoot>/cache` (`packages/project-context/src/index.ts:233`). The lock covers the `store-cache` folder too.
 2. If `<store-cache>/<hash>` exists and re-verifies (3 below), return `present`.
-3. Verify an existing folder by reading its files with the guards of `readTree` and comparing `revisionOf(rows)` to `<hash>`. A folder that fails the check is moved to `.prune-<hash>-<8 hex>` and replaced.
-4. Write the files into a new folder `.tmp-<hash>-<8 hex>` next to the target, flush each file and each folder, then `rename` the folder to `<hash>`, and flush the parent. A crash leaves a `.tmp-` folder. The next write removes any `.tmp-<hash>-*` folder it finds under the lock.
-5. Create `<stateRoot>/store-cache` (mode 0700) first if it is missing. Check the folders on the way as `cacheLayout` does (`plan.ts:157`, spec 04).
+3. Check an existing folder by reading its files with the guards of `readTree` and comparing `revisionOf(rows)` to `<hash>`. A folder that fails the check is moved to `.prune-<hash>-<8 hex>` and replaced.
+4. Write the files into a new folder `.tmp-<hash>-<8 hex>` next to the target. Flush each file and each folder. Then `rename` the folder to `<hash>` and flush the parent. A crash leaves a `.tmp-` folder. The next write removes any `.tmp-<hash>-*` folder it finds under the lock.
+5. If `<stateRoot>/store-cache` is missing, create it first with mode 0700. Check the folders on the way as `cacheLayout` does (`plan.ts:157`, spec 04).
 
 Reading from it: the managed engine reads an authored item from the store cache through the `store` and `store-prompt` sources (3.12). The `storeDir` value is `<store-cache>/<hash>`.
 
@@ -328,7 +328,7 @@ Changes (exact):
 - `packages/managed-skills/src/v2-observed.ts:47-62` (`requestV2`): accept the two sources. For `store`: `item.kind === 'skill'`, `path === 'skills/' + item.id`, `storeDir` an absolute path. For `store-prompt`: `item.kind === 'prompt'`, `name === item.id`. The key sets are `['kind','path','storeDir']` and `['kind','name','storeDir']`. Add `storeDir` to the `roots` list of the non-nesting check (lines 51 and 60).
 - `v2-observed.ts:105-109` (`readClosure`): call `readLocalSkill` or `readLocalPrompt` with the store root for the two new sources.
 - `v2-observed.ts:110` (`wrapper`): add a parameter `origin`. For a store prompt the Codex wrapper description reads `Bowerloom prompt <name>, wrapped as a skill for Codex. Edit ~/.bowerloom/prompts/<name>.md, not this file.` For a project prompt it does not change.
-- `v2-observed.ts:235-238` (the update check `sameSource`): treat `local` and `store` as one family, and `prompt` and `store-prompt` as one family, when `path` (or `name`) is equal. Every other branch stays.
+- `v2-observed.ts:235-238` (the update check `sameSource`): treat `local` and `store` as one family. Treat `prompt` and `store-prompt` as one family. Equal `path` (or `name`) values make two members of a family the same source. Every other branch stays.
 - `packages/project-sync/src/plan.ts:195-200` (`sameOrigin`): the same family rule for the catalog comparison.
 - `packages/project-sync/src/apply.ts:157` (`checkChild`) and `apply.ts:213` (`prepareSkillChildren`): for an item whose origin is store, the source is `{ kind: 'store', path: 'skills/' + id, storeDir }` and the expected closure source is `{ kind: 'store', path }`.
 - `packages/project-sync/src/prompts.ts:186-192` (`promptRequest`) and `prompts.ts:196-205` (`checkPromptChild`): the same for prompts.
@@ -349,32 +349,32 @@ Agreement with the config: the set of `(kind, id)` pairs in the lock equals the 
 
 When the lock changes:
 
-- `use` and `unuse` (and `use team`, with its expansion) add and remove lock items when a lock exists, or when the project is shared. They keep every other lock item as it is, so they need no network for items already locked.
+- `use` and `unuse` (and `use team`, with its expansion) add and remove lock items. They do so in a project with a lock and in a shared project. They keep every other lock item as it is, so they need no network for items already locked.
 - `team adopt` removes the team's lock item.
 - `bowerloom lock update` re-resolves items from the live store (3.15).
 - `store migrate` (spec 08) adds lock items for items it switches to the store in a shared project.
 - `receipt clean` (spec 08) does not touch the lock.
 - `skills sync`, `apply`, `up`, `ls`, `status`, `skills check`, and `lock verify` never write the lock.
 
-Self-healing: when `use` or `unuse` runs and a store entry of the config has no lock item (for example after a crash between the two writes, or after a merge), the plan resolves and adds that item too. If it cannot (no network, no store), it refuses and names the item.
+Self-healing. Take a store entry of the config that has no lock item, for example after a crash between the two writes or after a merge. A later `use` or `unuse` resolves that item and adds it. If the plan cannot resolve it (no network, no store), it refuses and names the item.
 
 The lock without a config: the lock alone marks nothing. If `.bowerloom` exists, `status` reports drift `lock-orphan` (4.6). A frozen run refuses `LOCK_CONFIG_MISSING`. A normal run ignores the lock.
 
-A config without a lock: a normal run works. `status` reports `lock: absent` when the project is shared and the config lists store items, and `lock: not-used` otherwise. A frozen run refuses `LOCK_MISSING`.
+A config without a lock: a normal run works. For a shared project whose config lists store items, `status` reports `lock: absent`. Any other project gets `lock: not-used`. A frozen run refuses `LOCK_MISSING`.
 
-Merge conflicts: the file is serialized the same way every time, with one item per id spread over many lines, so branches that change different ids merge cleanly. A real conflict leaves markers (`<<<<<<<`) in the file. It is then not valid JSON, so every reader refuses `LOCK_INVALID` and the next step is the text in 5. The way to settle a conflict: choose one side for each conflicting item, then run `bowerloom lock verify`. If the store is on the machine, `bowerloom lock update` recomputes the items instead.
+Merge conflicts. The file is serialized the same way every time. It has one item per id, spread over many lines. Branches that change different ids merge cleanly. A real conflict leaves markers (`<<<<<<<`) in the file. The file is then not valid JSON, so every reader refuses `LOCK_INVALID`, and the next step is the text in 5. To settle a conflict, choose one side for each conflicting item, then run `bowerloom lock verify`. A machine with the store can run `bowerloom lock update` instead. It recomputes the items.
 
 ### 3.14 Write order and crash recovery for `use`, `unuse`, `team adopt`
 
 All three run under `withProjectLock(project.dir)`. The order is:
 
 1. Remove leftover scratch files named `.bowerloom.json.<16 hex>.tmp` and `.bowerloom.lock.json.<16 hex>.tmp` in the project folder (regular files owned by the user). The plan lists them in `scratch`.
-2. Create `.bowerloom/` when the plan says so (3.4).
+2. If the plan says so, create `.bowerloom/` (3.4).
 3. (`team adopt` only) copy the team files (3.17).
 4. Write `bowerloom.json`.
 5. Write `bowerloom.lock.json` (when the plan has a lock change).
 
-Each file is written with the pattern of `applyManifestChange` (`packages/skill-manifest/src/add.ts:170-201`): a temporary file with `O_EXCL | O_NOFOLLOW` mode 0644, flushed, a check that the target still has the planned `before` hash, then `link` for a new file or `rename` for an existing one, then a flush of the folder, then a read back. A read back that does not match gives `CONFIG_WRITE_UNCONFIRMED` for the config or `LOCK_WRITE_UNCONFIRMED` for the lock. A `before` hash that changed gives `STALE_APPROVAL`.
+Write each file with the pattern of `applyManifestChange` (`packages/skill-manifest/src/add.ts:170-201`). Write a temporary file with `O_EXCL | O_NOFOLLOW` mode 0644 and flush it. Check that the target still has the planned `before` hash. Use `link` for a new file and `rename` for an existing file. Flush the folder. Read the file back. A read back that does not match gives `CONFIG_WRITE_UNCONFIRMED` for the config or `LOCK_WRITE_UNCONFIRMED` for the lock. A `before` hash that changed gives `STALE_APPROVAL`.
 
 Crash recovery:
 
@@ -434,7 +434,7 @@ This changes bowerloom.lock.json only.
 
 If nothing changes, print the plan with `Nothing to change.` and exit 0 without asking. The result format is `bowerloom/lock-update-result/v1beta1`.
 
-Apply: under the project lock, write the lock (3.14 steps 1 and 5). `lock update` creates the lock when it is missing. It is also the way to bring a project that became shared later up to date.
+Apply: under the project lock, write the lock (3.14 steps 1 and 5). A missing lock does not stop `lock update`. It creates the lock. It also brings a project that became shared later up to date.
 
 ### 3.16 `apply --frozen` and `skills sync --frozen`
 
@@ -471,11 +471,11 @@ Frozen run, step by step:
 How the code changes. `apply` stays network-free without `--frozen`:
 
 - `packages/project-sync/src/apply-project.ts:132`: `offline: true` becomes `offline: !frozen`. `ApplyInput` gets `frozen?: boolean`.
-- `apply-project.ts:172-175` and `:193`: use the real acquirer (`productionAcquirer`, `packages/project-sync/src/deps.ts`) when `frozen` is true. `NO_FETCH` stays for the other case.
+- `apply-project.ts:172-175` and `:193`: for `frozen: true`, use the real acquirer (`productionAcquirer`, `packages/project-sync/src/deps.ts`). `NO_FETCH` stays for every other run.
 - `ApplyPlan` and `SyncPlan` gain `frozen: boolean` (4.4).
-- `apps/cli/src/apply.ts:71`: the line `Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.` stays for a plain apply. For a frozen apply it reads `Network: reads <hosts> for <n> items, without credentials. Frozen apply fetches only what bowerloom.lock.json records.` when something needs fetching, and `Network: none now. Every item is on this machine.` otherwise. Spec 07 changes `without credentials` when a token is used.
+- `apps/cli/src/apply.ts:71`: a plain apply keeps this line: `Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.`. A frozen apply that fetches reads this line: `Network: reads <hosts> for <n> items, without credentials. Frozen apply fetches only what bowerloom.lock.json records.`. A frozen apply with nothing to fetch reads this line: `Network: none now. Every item is on this machine.`. Spec 07 changes `without credentials` for a run that uses a token.
 - `apps/cli/src/apply.ts:21,88` (`APPLY_USAGE`, `parseHarness`): accept `--frozen` once. Giving it twice refuses `USAGE`.
-- `apps/cli/src/sync.ts:~30` (`takeFlags`, `SYNC_USAGE`): accept `--frozen`. `--frozen` with `--offline` is allowed. It refuses with `SKILLS_OFFLINE` at plan time when something needs fetching.
+- `apps/cli/src/sync.ts:~30` (`takeFlags`, `SYNC_USAGE`): accept `--frozen`. The pair `--frozen --offline` is allowed. If something needs fetching, the plan refuses `SKILLS_OFFLINE`.
 - Plain `apply` and `up` never use `--frozen`. `tests/no-spawn.test.ts` must stay green.
 
 Plain `apply` for an item resolved from the lock but not cached: the item is held with `SKILLS_OFFLINE`, next step `Run bowerloom apply --frozen, or bowerloom skills sync.`
@@ -501,14 +501,14 @@ Rules:
 
 1. Needs a config that lists the team `<id>` with `source: "store"`. Else `CONFIG_ITEM_NOT_SELECTED`.
 2. `.bowerloom/teams/<id>` must not exist. Else `TEAM_EXISTS`. `first-team` refuses `TEAM_ID_RESERVED`.
-3. Source of the bytes: the live store folder `teams/<id>` when the store is valid and holds the team. Otherwise the lock item and the store cache. If the cache lacks it, apply fetches it (hosts bound, as 3.16 step 5). Else `STORE_ITEM_MISSING`.
+3. Source of the bytes. First choice: the live store folder `teams/<id>`, for a valid store that holds the team. Second choice: the lock item and the store cache. If the cache lacks the team, apply fetches it (hosts bound, as 3.16 step 5). With neither source, refuse `STORE_ITEM_MISSING`.
 4. Plan: read the source tree with `readTree` (`packages/project-authoring/src/files.ts:64`). The paths relative to the team folder become the planned files `teams/<id>/<path>`. Compile the source `team.yaml` with `compileCrew(file)` (`packages/crew/src/index.ts:94`) to get `compiledCandidate`.
 5. Apply uses the create path with a new input: `CreateInput` `{ kind: 'team', project, name, copyFrom: { root } }`. The plan reads the tree from `copyFrom.root` instead of calling `scaffoldTeam` (`create.ts:245`). `normalizeInput` (`create.ts:83-99`) allows the key `copyFrom` for teams only. The staged copy is compiled again and must give the same `compiledCandidate`, as `applyCreate` already requires.
 6. The receipt entry has `teams: []` and the file pins of the copied bytes.
 7. Config change: the team entry changes from `source: "store"` to `source: "project"` and loses `via` (a team has none). Entries with `via` that names this team keep it.
 8. Lock change: the team's lock item is removed.
 
-Write order: `.bowerloom` if needed, the pending record, the staged files, the move into `.bowerloom/teams/<id>`, `bowerloom.json`, `bowerloom.lock.json`, the receipt, removal of the pending record. A crash after the files move and before the receipt leaves the pending record. The next `team adopt <id>` finds it and finishes it, as `create` does. The finish path repeats the config and lock steps when they are missing. Any other create command refuses `AUTHORING_PENDING` until then.
+Write order. First, a missing `.bowerloom`. Then the pending record, the staged files, and the move into `.bowerloom/teams/<id>`. Then `bowerloom.json`, `bowerloom.lock.json`, the receipt, and the removal of the pending record. A crash after the files move and before the receipt leaves the pending record. The next `team adopt <id>` finds it and finishes it, as `create` does. The finish path repeats any missing config step and any missing lock step. Any other create command refuses `AUTHORING_PENDING` until then.
 
 Plan lines:
 
@@ -551,9 +551,9 @@ Other lines:
 
 - `resolveTeam` (`apps/cli/src/up.ts:110-115`) and `firstTeamName` (`:102-108`): with no `.bowerloom/brief.json`, do not call `firstTeamName`. Teams come from the config and the authoring receipt.
 - In config mode a team must be listed in the config. If `--team <name>` names a team that is not listed but is defined in the store, refuse `TEAM_NOT_SELECTED` with the next step `bowerloom use team <name>`. If it names a project team that is not listed, refuse `TEAM_NOT_SELECTED` with `bowerloom use team <name> --project`. If it names no team, the `team` step creates a project team (`team create`), which uses `storeBrief` when `brief.json` is missing.
-- `up.ts:130` (`readManifestState(project.dir).file !== null`): replace with "the effective skill list is not empty", from the resolver. In config mode the sync step is planned when any selected skill exists.
+- `up.ts:130` (`readManifestState(project.dir).file !== null`): replace it with "the effective skill list is not empty", from the resolver. In config mode, any selected skill makes `up` plan the sync step.
 - `planSync` and `planProjectApply` inputs get `home`.
-- On a fresh clone with a lock and no store, the sync step fetches lock-resolved items (it is a sync plan, with hosts bound). `up` prints one note when the lock is missing or disagrees: `bowerloom.lock.json is missing` or `bowerloom.lock.json does not match bowerloom.json`.
+- On a fresh clone with a lock and no store, the sync step fetches lock-resolved items. It is a sync plan, with hosts bound. For a missing or disagreeing lock, `up` prints one note: `bowerloom.lock.json is missing` or `bowerloom.lock.json does not match bowerloom.json`.
 - `up` never uses `--frozen`.
 
 ### 3.20 `ls`, `status`, and `skills check` in config mode
@@ -561,10 +561,10 @@ Other lines:
 `ls` (format `bowerloom/ls/v1beta2`, defined in spec 04):
 
 - In config mode, `listedBy` is `config`. The lists come from the config entries, in id order. Each item has `source`, `via`, and `state`: `ok`, `missing` (the definition is not found), or `duplicate` (not produced by a valid config, reserved for the pair named by `CONFIG_DUPLICATE_ID`).
-- Add to skills, prompts, and teams: `locked` (boolean or null: null for project items and when there is no lock) and `resolvedFrom` (`store`, `lock`, or `project`).
+- Add two fields to skills, prompts, and teams. `locked` is a boolean or null. It is null for project items and for a project with no lock. `resolvedFrom` is `store`, `lock`, or `project`.
 - `unselected` lists ids that the project defines and the config does not list.
 - If the config lists store entries and the store is refused (a `STORE_*` code), `ls` does not refuse. Every store item gets state `missing`, and `ls` prints `The store cannot be used (<CODE>). Run bowerloom store status.` after the sections. The exit code is 0.
-- Text output keeps the shape of spec 04. Add `  (missing)` after the source for a missing item. After the sections, when `unselected` is not empty, add `Defined here but not listed in bowerloom.json: <ids>`.
+- Text output keeps the shape of spec 04. Add `  (missing)` after the source of a missing item. After the sections, add a line for a non-empty `unselected`: `Defined here but not listed in bowerloom.json: <ids>`.
 - In legacy mode nothing changes from spec 04, except that `locked` is null and `resolvedFrom` is `project` for every item.
 
 `status` (format `bowerloom/project-status/v1beta2`, spec 03): the `config` object gains:
@@ -572,7 +572,7 @@ Other lines:
 | Field | Type | Meaning |
 |---|---|---|
 | `store` | string | `not-needed` (no store entries), `ok` (valid store), `absent`, or `refused` |
-| `storeCode` | string or null | The `STORE_*` code when `store` is `refused`. Otherwise null. |
+| `storeCode` | string or null | The `STORE_*` code for `store: refused`. Otherwise null. |
 | `items` | array | `{ kind, id, source, via, state }`, state `ok`, `missing`, or `duplicate` |
 | `unselected` | object | `{ skills, prompts, teams }`, lists of ids |
 | `lock` | object | `{ state, code, sha256, bytes, items, shared }` (4.6) |
@@ -615,7 +615,7 @@ When there is a problem or no repository, add the lines:
     git push -u origin main
 ```
 
-JSON `git`: `null` only when the store state is not `store`. Otherwise `{ present: boolean, problem: string|null, remote: string|null, branch: string|null, head: string|null, pushed: string|null, ahead: "unknown"|"yes"|"no" }`. `ahead` is `no` when `head === pushed`, `yes` when both are set and differ, `unknown` otherwise.
+JSON `git`: `null` for a store state other than `store`. Otherwise `{ present: boolean, problem: string|null, remote: string|null, branch: string|null, head: string|null, pushed: string|null, ahead: "unknown"|"yes"|"no" }`. `ahead` has three values. `no` means `head === pushed`. `yes` means both are set and differ. `unknown` is every other case.
 
 ### 3.22 Concurrency and locks
 
@@ -671,7 +671,7 @@ Field rules:
 - Item keys: `id`, `from`, and exactly one of `pin` or `authored`. No other key. `pin` is allowed in `skills` only.
 - `id`: the same id rules as the config for a store entry (spec 03, 4.2).
 - `from`: the exact string `store`.
-- `pin`: a complete `skills.json` entry of kind `npm` or `git`. It is validated by `validateEntry` (`packages/skill-manifest/src/schema.ts:~92`), and its `id` equals the item `id`. It carries its own `teams` tag and its own integrity: `integrity` (npm) or `tree` and `pathTrees` (git), `metadataSha256`, and the `sha256` of each file (`schema.ts:26-28`). The cache key derives from it with `entryRequest(entry).digest` (`packages/project-sync/src/cache-index.ts:55`). The lock stores no key.
+- `pin`: a complete `skills.json` entry of kind `npm` or `git`. `validateEntry` checks it (`packages/skill-manifest/src/schema.ts:~92`), and its `id` equals the item `id`. It carries its own `teams` tag and its own integrity: `integrity` (npm) or `tree` and `pathTrees` (git), `metadataSha256`, and the `sha256` of each file (`schema.ts:26-28`). The cache key derives from it with `entryRequest(entry).digest` (`packages/project-sync/src/cache-index.ts:55`). The lock stores no key.
 - `authored.remote`: `https://github.com/<owner>/<repo>`, the normal form of 3.10. No `.git`, no credentials, no port.
 - `authored.commit`: 40 lower-case hex characters.
 - `authored.path`: `skills/<id>`, `prompts/<id>.md`, or `teams/<id>`, with the same `<id>` as the item. It is relative to the repository root. The store folder is the repository root.
@@ -683,7 +683,7 @@ Field rules:
 
 Parsing uses `strictJson(text, 4194304)` (`packages/codex-adapter/src/safe.ts:19`), then `captureSkillData`, as `parseManifest` does (`schema.ts:158-165`). No byte order mark, valid UTF-8, no duplicate keys, no unknown keys. Any failure is `LOCK_INVALID`, except size, which is `LOCK_LIMIT`, and an unsafe file, which is `LOCK_UNSAFE`.
 
-Reading the file uses the same guards as the config reader (spec 03, 4.2): a regular file, not a link, one hard link, owned by the user, no group or world write, at most 4 MiB, opened with `O_NOFOLLOW`, size checked after the read. Any guard failure is `LOCK_UNSAFE`.
+Reading the file uses the same guards as the config reader (spec 03, 4.2). The file must be a regular file, not a link. It has one hard link and the user owns it. It has no group or world write permission. It is at most 4 MiB. Open it with `O_NOFOLLOW` and check the size after the read. Any guard failure is `LOCK_UNSAFE`.
 
 Writing: `JSON.stringify(value, null, 2) + '\n'`, keys in the order shown, lists sorted. The writer parses its own output before it writes.
 
@@ -705,7 +705,7 @@ export function lockAgrees(lock: ProjectLock, config: ProjectConfig): { agrees: 
 
 ### 4.2 Relation to `skills.json` and the cache
 
-- A lock `pin` is a `skills.json` entry. The same validation and the same cache key apply. A project that installs a store pin from the lock gets the same cache entry as a project that pinned it in its own `skills.json`.
+- A lock `pin` is a `skills.json` entry. The same validation and the same cache key apply. Two projects that hold one pin share one cache entry. It does not matter which project took the pin from a lock.
 - An authored item has its own cache, `store-cache`, keyed by `authored.hash`.
 - The lock never changes `skills.json`.
 
@@ -725,7 +725,7 @@ export interface Resolved { mode: 'config' | 'legacy'; frozen: boolean; config: 
 export function resolveProject(input: { project: ProjectContext; home: string; frozen: boolean }): Resolved
 ```
 
-- `mode` is `legacy` when `configPresent` is false.
+- `mode` is `legacy` for `configPresent: false`.
 - `manifest` is the effective manifest for the planner: `{ format: MANIFEST_FORMAT, harnesses, skills: [selected entries] }`, entries sorted by id. For a store local skill the entry is `{ id, teams?, source: { kind: 'local', path: 'skills/<id>' } }`. An entry's `teams` tag is the tag it has in its own definition.
 - `LockState` is `not-used`, `absent`, `valid`, `stale`, `invalid`, `mismatch`, or `orphan`.
 - `notes` holds the lines of 3.18 about a stale or missing lock.
@@ -740,12 +740,12 @@ Add these to `SyncPlan` (`packages/project-sync/src/plan.ts:78-93`) and `ApplyPl
 - `frozen`: boolean.
 - `config`: `{ sha256: string; bytes: number } | null`.
 - `lock`: `{ sha256: string; bytes: number } | null`.
-- `store`: `{ dir: string; identity: DirectoryIdentity; skills: { sha256: string; bytes: number } | null; authoring: { sha256: string; bytes: number } | null } | null`. Null in legacy mode, in frozen mode, and when no selected item comes from the live store.
+- `store`: `{ dir: string; identity: DirectoryIdentity; skills: { sha256: string; bytes: number } | null; authoring: { sha256: string; bytes: number } | null } | null`. Null in legacy mode and in frozen mode. Null for a plan whose selected items all come from elsewhere.
 - `privateState.storeCacheRoot`: string.
 - `SyncItem` gains `origin: 'store' | 'project' | null` (null for an orphan), `via: string[]`, `resolvedFrom: 'store' | 'lock' | 'project'`, and `lockPin: AuthoredPin | null`. For an authored item, `requestDigest` is its `hash`.
-- `StateLayout` (`plan.ts:142`) gains `storeCacheRoot = join(stateRoot, 'store-cache')`. It is created like `cacheRoot` (`plan.ts:411`), only when an authored item needs fetching. It is a shared folder, bound by path only (`bindPrivateState`, `plan.ts:353-355`).
+- `StateLayout` (`plan.ts:142`) gains `storeCacheRoot = join(stateRoot, 'store-cache')`. Create it like `cacheRoot` (`plan.ts:411`), and only for an authored item that needs fetching. It is a shared folder, bound by path only (`bindPrivateState`, `plan.ts:353-355`).
 - `PromptItem` (`prompts.ts:64-82`) gains `origin`, `via`, `resolvedFrom`, `lockPin`.
-- The revision binds every field above. `syncBinding` (`plan.ts:361-366`) keeps dropping what another run may change: `state: cached`, `cacheOperationId`, `cache`, `network.required`. It also drops whether the store cache holds an authored item now. It keeps the `hash`.
+- The revision binds every field above. `syncBinding` (`plan.ts:361-366`) keeps dropping what another run can change: `state: cached`, `cacheOperationId`, `cache`, `network.required`. It also drops whether the store cache holds an authored item now. It keeps the `hash`.
 - `network.hosts` is computed from the kinds of items that install or update (`plan.ts:415`) plus `api.github.com` for authored items that need fetching. `--offline` approves no host.
 - `SYNC_ITEM_LIMIT` stays 256 (`plan.ts:42`).
 
@@ -783,7 +783,7 @@ The revision is `sha256(canonicalJson(body))` where body is the plan without `re
 | Field | Type | Meaning |
 |---|---|---|
 | `state` | string | `not-used`, `absent`, `valid`, `stale`, `invalid`, `mismatch`, `orphan` |
-| `code` | string or null | The `LOCK_*` code when `invalid` or `mismatch` |
+| `code` | string or null | The `LOCK_*` code for `invalid` or `mismatch` |
 | `sha256`, `bytes` | string or null, number or null | Of the lock file |
 | `items` | number | Number of lock items |
 | `shared` | boolean | The result of `isSharedProject` |
@@ -816,14 +816,14 @@ See 3.12 for the exact types.
 `CreatePlan` (`packages/project-authoring/src/create.ts:40-73`) gains:
 
 - `bowerloomFolder: 'present' | 'create'`,
-- `config: { before: Read | null; after: Read; text: string } | null` (null when the project has no config),
+- `config: { before: Read | null; after: Read; text: string } | null` (null for a project with no config),
 - `reads.config: Read | null`.
 
-`CreatePlan.bowerloom` is `{ device, inode } | null` (null when `bowerloomFolder` is `create` or the scope is the store).
+`CreatePlan.bowerloom` is `{ device, inode } | null` (null for `bowerloomFolder: create` and for the store scope).
 
 ## 5. Refusal codes
 
-All messages are fixed and carry no path or name. A message may add the checked ids named in the table.
+All messages are fixed and carry no path or name. A message can add the checked ids named in the table.
 
 | Code | Cause | Next step |
 |---|---|---|
@@ -846,9 +846,38 @@ All messages are fixed and carry no path or name. A message may add the checked 
 | `LOCK_STORE_NOT_PUSHED` | The pushed copy of an item differs from the item in your store. | Commit and push the store, then run the command again. |
 | `LOCK_COMMIT_UNREACHABLE` | The commit is not on the store remote. | Push the store, or pass `--commit <sha>` of a pushed commit. |
 | `LOCK_WRITE_UNCONFIRMED` | The lock was written but changed before it was read back. | `git diff bowerloom.lock.json` |
-| `SKILLS_OFFLINE` | A step needs the network and cannot reach it. Frozen apply uses it for a fetch that fails. | `bowerloom apply --frozen` when online. |
+| `SKILLS_OFFLINE` | A step needs the network and cannot reach it. Frozen apply uses it for a fetch that fails. | When online, run `bowerloom apply --frozen`. |
 
-Existing codes used here keep their meaning: `PROJECT_NOT_FOUND`, `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `AUTHORING_PENDING`, `STALE_APPROVAL`, `USAGE`, `SKILLS_SYNC_CONTENT_MISMATCH`, `MANIFEST_NOT_FOUND`, `PROJECT_BRIEF_INVALID`, `STORE_*` of spec 03, and `CONFIG_*` of spec 03.
+Message rule. The fixed message of a code is its Cause cell, written as plain sentences. It names no path. It names an id only where the table says so. In `REFUSALS` (`apps/cli/src/human.ts:224`) the `next` text is the Next step cell. The `sentence` of each code is in the list below.
+
+Fixed messages that differ from the Cause cell:
+
+- `STORE_ITEM_NOT_SHAREABLE`: `This project is shared, and a teammate cannot fetch this store item.` Then one sentence from the table in 3.10.
+- `LOCK_CONFIG_MISMATCH`: `bowerloom.lock.json and bowerloom.json list different store items.` Then up to 8 `kind id` pairs. A longer list ends with `and <n> more`.
+
+The `sentence` of each new code in `REFUSALS`:
+
+- `STORE_ITEM_NOT_FOUND`: `Bowerloom picks only items that your store defines.`
+- `STORE_ITEM_MISSING`: `A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.`
+- `STORE_ITEM_NOT_SHAREABLE`: `A shared project needs every store item to be fetchable by your team.`
+- `STORE_REMOTE_PRIVATE`: `GitHub does not show this repository without a token. It may be private or may not exist.`
+- `CONFIG_ITEM_SELECTED`: `This project already picks that item from that source.`
+- `CONFIG_ITEM_NOT_SELECTED`: `Bowerloom changes only items that bowerloom.json lists.`
+- `CONFIG_ITEM_MISSING`: `bowerloom.json lists a project item that the project does not define.`
+- `CONFIG_WRITE_UNCONFIRMED`: `bowerloom.json was written, but it changed again before Bowerloom could read it back.`
+- `TEAM_NOT_SELECTED`: `up installs for a team only if bowerloom.json lists it.`
+- `LOCK_MISSING`: `A frozen install needs bowerloom.lock.json, and there is none.`
+- `LOCK_INVALID`: `Bowerloom reads the lock strictly, so a hand edit or a merge conflict can break it.`
+- `LOCK_UNSAFE`: `Bowerloom will not trust a lock file that links or other users can change.`
+- `LOCK_LIMIT`: `This beta keeps the lock small: 128 skills, 128 prompts, 32 teams, and 4 MiB at most.`
+- `LOCK_CONFIG_MISSING`: `A lock and a config go together, and one of them is missing.`
+- `LOCK_CONFIG_MISMATCH`: `A frozen install must match bowerloom.json exactly, as npm ci does.`
+- `LOCK_HASH_MISMATCH`: `Bowerloom installs only bytes that match the lock, so it stopped before any change to the project.`
+- `LOCK_STORE_NOT_PUSHED`: `A teammate can fetch only what you pushed, and your store differs from the pushed copy.`
+- `LOCK_COMMIT_UNREACHABLE`: `The lock needs a commit that GitHub has, and GitHub does not have this one.`
+- `LOCK_WRITE_UNCONFIRMED`: `bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.`
+
+Existing codes keep their meaning. These are the ones used here: `PROJECT_NOT_FOUND`, `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `AUTHORING_PENDING`, `STALE_APPROVAL`, `USAGE`, `SKILLS_SYNC_CONTENT_MISMATCH`, `MANIFEST_NOT_FOUND`, and `PROJECT_BRIEF_INVALID`. The `STORE_*` and `CONFIG_*` codes of spec 03 keep their meaning too.
 
 ## 6. Where to change
 
@@ -866,13 +895,13 @@ Create:
 - `packages/project-config/src/shared.ts`: `isSharedProject` (3.9).
 - `packages/project-config/src/git.ts`: `readStoreRepo` (3.10) and `normalizeRemote(url)`.
 - `packages/project-config/src/write.ts`: `writeGuardedFile(folder, name, text, beforeSha256, held, tempPrefix)`. It is the pattern of `applyManifestChange` (`packages/skill-manifest/src/add.ts:170-201`) generalized. It writes a temporary file with `O_EXCL | O_NOFOLLOW` mode 0644, flushes it, rechecks the target's hash, links or renames, flushes the folder, and reads back.
-- `packages/project-sync/src/resolve.ts`: `resolveProject` and the types (4.3). It also holds `readStoreDefinitions(store)`: the store skills (from the store `skills.json`, read with `readManifestState(storeTarget(dir))` and `STORE_MANIFEST_LIMITS`, spec 04), the store prompts and teams (from the store authoring receipt, read with `readAuthoringState(storeDir)`, `packages/project-authoring/src/state.ts:~112`). An item exists only when its folder or file is present.
-- `packages/project-sync/src/change.ts`: `planConfigChange`, `applyConfigChange`, `planLockUpdate`, `applyLockUpdate`, `localItemRows(storeDir, kind, id)`. The last reads a store item with `readTree` (`packages/project-authoring/src/files.ts:64`), removes the item path prefix from each path (for a prompt the one path becomes `<id>.md`), and returns the rows. It refuses `STORE_ITEM_NOT_SHAREABLE` with the sentence `The item is larger than a lock can record.` when a file is over 65536 bytes, the total is over 2097152 bytes, or there are more than 128 files.
+- `packages/project-sync/src/resolve.ts`: `resolveProject` and the types (4.3). It also holds `readStoreDefinitions(store)`. That function reads the store skills from the store `skills.json`, with `readManifestState(storeTarget(dir))` and `STORE_MANIFEST_LIMITS` (spec 04). It reads the store prompts and teams from the store authoring receipt, with `readAuthoringState(storeDir)` (`packages/project-authoring/src/state.ts:~112`). An item exists only with its folder or file present.
+- `packages/project-sync/src/change.ts`: `planConfigChange`, `applyConfigChange`, `planLockUpdate`, `applyLockUpdate`, and `localItemRows(storeDir, kind, id)`. The last function reads a store item with `readTree` (`packages/project-authoring/src/files.ts:64`). It removes the item path prefix from each path. For a prompt the one path becomes `<id>.md`. It returns the rows. It refuses `STORE_ITEM_NOT_SHAREABLE` with the sentence `The item is larger than a lock can record.`. Three cases trigger it: a file over 65536 bytes, a total over 2097152 bytes, or more than 128 files.
 - `packages/skill-manifest/src/resolve-store-git.ts`: `AuthoredPin` (the type of 4.1), `fetchAuthored(transport, { remote, commit, kind, id }, signal)` (3.11), and `proveAuthored(transport, { remote, commit, kind, id, commitFromLocalRef }, localHash, signal)`. It returns the `AuthoredPin` or throws `LOCK_STORE_NOT_PUSHED`, `LOCK_COMMIT_UNREACHABLE`, or `STORE_REMOTE_PRIVATE`. It does not read the store. The caller passes `localHash`.
 - `packages/project-sync/src/store-git.ts`: `fetchStoreGit(item, roots, approvedHosts, deps)`, `writeStoreCache`, `readStoreCache`, and the `.prune-` helper for spec 09.
 - `apps/cli/src/use.ts`: `runUseCommand(args, cwd, home, write, io, env)` for `use` and `unuse`. It also prints the `Copies stay in ...` line of 3.7. The CLI computes the places with `itemSurfaces` and `promptSurfaces`. They are not part of the plan JSON.
 - `apps/cli/src/lock.ts`: `runLockCommand(args, cwd, home, write, io, env)` for `lock verify` and `lock update`.
-- `tests/support/fake-github-repo.ts`: a helper for tests. `buildFakeRepo(files: Record<string, string>, commitMessage)` computes real git object ids for blobs and trees (SHA-1 of `blob <len>\0<bytes>` and of the tree encoding, as `resolve-git.ts:36-39` does), and returns `{ commit, tree, routes }`, where `routes` maps each `https://api.github.com/repos/<o>/<r>/git/...` URL to a fixture file. CLI tests pass it to `tests/support/fake-network.ts` through `TEST_FAKE_NETWORK_PLAN`.
+- `tests/support/fake-github-repo.ts`: a helper for tests. `buildFakeRepo(files: Record<string, string>, commitMessage)` computes real git object ids for blobs and trees, as `resolve-git.ts:36-39` does. The blob id is SHA-1 of `blob <len>\0<bytes>`. It returns `{ commit, tree, routes }`. `routes` maps each `https://api.github.com/repos/<o>/<r>/git/...` URL to a fixture file. CLI tests pass it to `tests/support/fake-network.ts` through `TEST_FAKE_NETWORK_PLAN`.
 - Test files in section 10.
 
 Change:
@@ -884,21 +913,21 @@ Change:
   - `requireTeam` (line 111): in config mode check the config team list.
   - `StateLayout` and `stateLayout` (lines 142 and 157): add `storeCacheRoot`.
   - `sameOrigin` (line 195): the family rule of 3.12.
-  - `classify` (line 244): accept the resolved item. Line 253: `readLocalSkill(dir, 'skills/' + id, ...)` uses the store root when the origin is store and the item resolves from the live store. When it resolves from the lock, the expected files come from `lockPin.files`. A held item (no entry) is built without calling `classify`. The drift hint at line 288 names `~/.bowerloom/skills/<id>` for a store item.
+  - `classify` (line 244): accept the resolved item. At line 253, `readLocalSkill(dir, 'skills/' + id, ...)` uses the store root for an item that resolves from the live store. For an item that resolves from the lock, the expected files come from `lockPin.files`. A held item (no entry) is built without calling `classify`. The drift hint at line 288 names `~/.bowerloom/skills/<id>` for a store item.
   - `observeSync` (line 369): replace lines 374-376 with `resolveProject`. Keep the `MANIFEST_NOT_FOUND` refusal only for legacy mode with no `skills.json`. In config mode with no skills, return a plan with no items. Line 385 filters the effective manifest by team. Line 390 finds orphans from the effective manifest. Lines 409-425 build the body with the new fields and the bound hosts.
 - `packages/project-sync/src/apply.ts`:
   - `fetchPin` (line 97) is unchanged. Add `fetchStoreGit` beside it in `store-git.ts` with the same checks (bound content key, approved host, cache lock for that item only).
   - `childRequest` (line 138) and `checkChild` (line 149): the store sources of 3.12.
   - `prepareSkillChildren` (line 206): line 213 handles `local`. Add the store origin and the authored-from-lock fetch before phase B.
-  - `applySync` (line 263): create `.bowerloom` first when the plan says `create` (3.4).
+  - `applySync` (line 263): if the plan says `create`, create `.bowerloom` first (3.4).
 - `packages/project-sync/src/apply-project.ts`: as in 3.16 (lines 118-218). Also change line 131, where `readManifestState(dir).file !== null` becomes "the effective skill list is not empty". Lines 136-138 use the resolver's prompts. Add the `ApplyPlan` fields of 4.4 and the formats of 3.18.
 - `packages/project-sync/src/prompts.ts`: `registeredPrompts` (line 89) stays for legacy mode. `classifyPrompt` (line 121) takes the origin. Line 123 `readLocalPrompt(project, id, ...)` uses the store root. `promptMissing` (line 106) checks the origin's folder. `promptRequest` (line 186) and `checkPromptChild` (line 196): the store sources.
 - `packages/project-sync/src/index.ts`: export `fetchStoreGit`, the new types, and the new format names.
 - `packages/project-sync/src/deps.ts:18-30`: leave `Acquirer` as it is. Authored fetches use the public transport directly through `fetchStoreGit`. Add the optional field `storeTransport?: () => PublicTransport & { close(): void }` to `SyncDeps` (`deps.ts:~28`). Tests set it to a fake. The default is `createPublicTransport`.
 - `packages/project-config/src/refusal.ts` (spec 03 created it): add every new code of section 5 that begins with `LOCK_`, `CONFIG_ITEM_`, `CONFIG_WRITE_`, `STORE_ITEM_`, or `STORE_REMOTE_`, and `TEAM_NOT_SELECTED`. `packages/project-sync/src/refusal.ts` does not change.
 - `packages/managed-skills/src/v2-types.ts`, `local-source.ts`, `v2-observed.ts`: 3.12.
-- `packages/project-authoring/src/create.ts`: `CreateInput` (line 34) gains `copyFrom?: { root: string }` for teams. `normalizeInput` (line 83) allows it. `plan()` (line 181): the config step, `bowerloomFolder`, the `copyFrom` branch at line 245. `applyCreate` (line 274): create `.bowerloom` first, write the config and lock steps after `writeManifest` and before `writeReceipt` (line ~358), and repeat them in the finish path (line ~321). `openScope` (spec 04) allows a missing `.bowerloom` when the project has a config.
-- `packages/skill-manifest/src/add.ts`: `readManifestState` with `allowAbsent` (spec 04) is used by `resolveProject` when `.bowerloom` is missing.
+- `packages/project-authoring/src/create.ts`: `CreateInput` (line 34) gains `copyFrom?: { root: string }` for teams. `normalizeInput` (line 83) allows it. `plan()` (line 181) gains the config step, `bowerloomFolder`, and the `copyFrom` branch at line 245. `applyCreate` (line 274) creates `.bowerloom` first. It writes the config and lock steps after `writeManifest` and before `writeReceipt` (line ~358). The finish path (line ~321) repeats them. `openScope` (spec 04) allows a missing `.bowerloom` for a project with a config.
+- `packages/skill-manifest/src/add.ts`: `resolveProject` uses `readManifestState` with `allowAbsent` (spec 04) for a project with no `.bowerloom`.
 - `packages/startup/src/index.ts:58`: add `lock-invalid` and `lock-orphan` to `Drift.kind`.
 - `apps/cli/src/project-status.ts:26-57`: the `config` additions (4.6, 3.20).
 - `apps/cli/src/ls.ts:58-90`: config mode (3.20).
@@ -934,12 +963,12 @@ Change:
 | The origin repository is private and no token is set | `STORE_REMOTE_PRIVATE`. |
 | `use skill x` for a pinned npm skill in the store, shared project | Works with no network. The lock gets the full entry. |
 | `use` in a project that is not shared and has no lock | No lock is written. No network. |
-| `use` after the lock exists | The lock is updated even if the project is not shared. |
+| `use` in a project with a lock | The lock is updated, even for a project that is not shared. |
 | A store item file larger than 65536 bytes | `STORE_ITEM_NOT_SHAREABLE`, sentence `The item is larger than a lock can record.` |
 | A store item with more than 128 files | The same refusal. |
 | `lock update` with the store missing | `STORE_NOT_FOUND`. |
 | `lock update --item skill:nope` | `CONFIG_ITEM_NOT_SELECTED`. |
-| `lock update` when nothing changed | Prints the plan with `Nothing to change.` and exits 0. |
+| `lock update` with nothing to change | Prints the plan with `Nothing to change.` and exits 0. |
 | `lock verify` on a file with merge markers | `LOCK_INVALID`. |
 | `lock verify` where an `authored.hash` is wrong | `LOCK_INVALID`. |
 | `lock verify` where the config lists a store skill the lock lacks | `LOCK_CONFIG_MISMATCH`. The message names `skill <id>`. |
@@ -953,12 +982,12 @@ Change:
 | `skills sync` in config-only project | Creates `.bowerloom/` first. The first plan line says so. |
 | A config-only project and `skill create x` | Creates `.bowerloom/`, the skill, the `skills.json` entry, and the config entry. |
 | A config lists a project skill with no definition | The item is held `CONFIG_ITEM_MISSING`. Other items install. |
-| A config lists a store item and the store is absent | In a normal run, the item resolves from the lock when there is one. Else held `STORE_ITEM_MISSING`. |
+| A config lists a store item and the store is absent | A normal run resolves the item from the lock. With no lock item, it holds `STORE_ITEM_MISSING`. |
 | A config lists a store item and the store is unsafe | The plan refuses with the `STORE_*` code in a normal run. A frozen run does not read the store. |
 | The lock lists an item the live store changed | The run installs the live item and the plan notes the stale lock. |
-| Store skill and project skill share an id and both are in the config | `CONFIG_DUPLICATE_ID` when the config is read. |
+| Store skill and project skill share an id and both are in the config | `CONFIG_DUPLICATE_ID` at the read of the config. |
 | A store skill and a project prompt share an id | Valid. |
-| A store item and a project item would install to one place | `APPLY_NAME_COLLISION` (`apply-project.ts:103-114`). |
+| A store item and a project item with one install place | `APPLY_NAME_COLLISION` (`apply-project.ts:103-114`). |
 | `team adopt x` and the store is absent but the lock holds the team | Fetches the team into the store cache, then copies. |
 | `team adopt x` and `.bowerloom/teams/x` exists | `TEAM_EXISTS`. |
 | `team adopt x` crashes after files move | The next `team adopt x` finishes it. |
@@ -966,13 +995,13 @@ Change:
 | A clone with `bowerloom.json`, a lock, no store: `up --team x` | The sync step fetches lock-resolved items. The apply step installs. |
 | `bowerloom.json` is edited by hand and no longer sorted | `CONFIG_INVALID`. |
 | Two `use` commands at once | The second waits on the project lock or refuses `PROJECT_LOCKED`, then its plan is stale: `STALE_APPROVAL`. |
-| The lock is hand-edited to another `remote` | `lock verify` passes if the hash matches. Fetch fails or mismatches: `LOCK_HASH_MISMATCH` or `LOCK_COMMIT_UNREACHABLE`. |
+| The lock is hand-edited to another `remote` | `lock verify` passes for a matching hash. A fetch then fails or mismatches: `LOCK_HASH_MISMATCH` or `LOCK_COMMIT_UNREACHABLE`. |
 | The remote name has capital letters | Kept as given. The API accepts them. |
 | `--commit` with a short sha | `USAGE`. |
 
 ## 8. Migration from beta.2 projects
 
-- A project with no `bowerloom.json` is in legacy mode. `ls`, `status`, `skills check`, `skills sync`, `apply`, `up`, and the create commands act as in beta.2, except for the new formats and the source tags. The store and the lock are never read.
+- A project with no `bowerloom.json` is in legacy mode. These commands act as in beta.2: `ls`, `status`, `skills check`, `skills sync`, `apply`, `up`, and the create commands. The new formats and the source tags are the only changes. The store and the lock are never read.
 - A project gets `bowerloom.json` only through `use`, `unuse` (which needs a config), `team adopt` (which needs a config), or `store migrate` (spec 08). No other command creates it.
 - The first `use` writes a config that lists every item the project defines now, with `source: "project"`, so nothing changes for installed items. The plan shows the count.
 - A project with `.bowerloom` keeps it. A project with a config and no `.bowerloom` gets one at the first install.
@@ -993,7 +1022,7 @@ Change:
 - `apps/docs/src/content/docs/guides/create-items.md`: a section "Pick an item from your store" with `bowerloom use`, `bowerloom unuse`, and `team adopt`.
 - `apps/docs/src/content/docs/guides/add-skills.md`: a short section "Share a project" that links to the spec 10 page.
 - `apps/docs/src/content/docs/reference/errors.md`: a row for each code in section 5, in the table `## Store and config refusals` (created by spec 03), plus a new table `## Lock refusals`.
-- `apps/docs/src/content/docs/releases.md`, `## 0.7.0-beta.3`: lines for `bowerloom.json`, `use` and `unuse`, `bowerloom.lock.json`, `lock verify` and `lock update`, `apply --frozen` and `skills sync --frozen`, `team adopt`, the config-only project with its git-ignored `.bowerloom/`, and the new plan and result formats.
+- `apps/docs/src/content/docs/releases.md`, `## 0.7.0-beta.3`: add one line for each of these: `bowerloom.json`, `use` and `unuse`, `bowerloom.lock.json`, `lock verify` and `lock update`, `apply --frozen` and `skills sync --frozen`, and `team adopt`. Add a line for the config-only project with its git-ignored `.bowerloom/`. Add a line for the new plan and result formats.
 - Spec 10 writes the page "Where your items come from".
 
 ## 10. Acceptance tests
@@ -1008,22 +1037,22 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 4. A `pin` whose `id` differs from the item `id` gives `LOCK_INVALID`.
 5. A `pin` that fails `validateEntry` gives `LOCK_INVALID`.
 6. An `authored.hash` that is not `revisionOf(files)` gives `LOCK_INVALID`.
-7. `authored` with a short commit, an upper-case commit, a path that does not match the kind and id, `.git` in the remote, a port in the remote, or user information in the remote each give `LOCK_INVALID`.
+7. Six `authored` cases give `LOCK_INVALID`. Case one: a short commit. Case two: an upper-case commit. Case three: a path that does not match the kind and id. Case four: `.git` in the remote. Case five: a port in the remote. Case six: user information in the remote.
 8. `authored.files` empty, unsorted, over 128 rows, a file over 65536 bytes, or a total over 2097152 bytes each give `LOCK_INVALID` or `LOCK_LIMIT` as 4.1 says.
 9. `teams` on a team item gives `LOCK_INVALID`.
 10. 129 skills, 129 prompts, 33 teams give `LOCK_LIMIT`. A file of 4194304 bytes passes. One byte more gives `LOCK_LIMIT`.
 11. Merge conflict markers give `LOCK_INVALID`. A byte order mark gives `LOCK_INVALID`. A duplicate key gives `LOCK_INVALID`.
-12. `readLock` returns `absent` when missing. A link, a folder, two hard links, group write, and another owner each give `LOCK_UNSAFE`.
-13. `lockAgrees` is true when the pairs match. It reports `added` and `removed` lists with `kind id` text when they differ. It ignores `via`, project entries, and `harnesses`.
+12. For a missing file, `readLock` returns `absent`. A link, a folder, two hard links, group write, and another owner each give `LOCK_UNSAFE`.
+13. `lockAgrees` is true for matching pairs. For pairs that differ, it reports `added` and `removed` lists with `kind id` text. It ignores `via`, project entries, and `harnesses`.
 14. For a `pin` item, `entryRequest(pin).digest` equals the digest of the store entry it came from.
 
 `packages/project-config/test/shared.test.mjs`:
 
 1. A lock file makes the project shared with reason `lock`.
-2. A `.git/config` with `[remote "origin"]` and a `url` makes it shared with reason `origin`, found from a sub folder of the project and from the project folder itself.
+2. A `.git/config` with `[remote "origin"]` and a `url` makes the project shared, with reason `origin`. The test runs from a sub folder of the project and from the project folder itself.
 3. A `.git/config` with only `[remote "upstream"]` is not shared.
 4. A `.git/config` with `[remote "origin"]` and no `url` is not shared.
-5. A `.git` file with `gitdir: <path>` is followed when the path is a real folder owned by the user, and ignored otherwise.
+5. Bowerloom follows a `.git` file with `gitdir: <path>` only for a real folder owned by the user. It ignores any other path.
 6. No `.git` up to home is not shared. The search stops at home.
 7. An unreadable `config` is not shared and does not throw.
 8. A `config` over 65536 bytes is not shared and does not throw.
@@ -1031,12 +1060,12 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 `packages/project-config/test/git.test.mjs`:
 
 1. `normalizeRemote` accepts the seven forms of 3.10 and returns `https://github.com/<o>/<r>`. A capital letter in the owner is kept.
-2. It rejects `https://gitlab.com/o/r`, `http://github.com/o/r`, a URL with `user:pass@`, a port, a query, a fragment, a repository name `..`, and an owner longer than 39 characters.
-3. `readStoreRepo` returns `none` with no `.git`, `unreadable` when `.git` is a file, a link, or has `reftable`, `no-origin` with no origin, `unsupported-remote` for a bad URL.
+2. It rejects other hosts: `https://gitlab.com/o/r`. It rejects `http://github.com/o/r`. It rejects a URL with `user:pass@`, a port, a query, or a fragment. It rejects the repository name `..` and an owner longer than 39 characters.
+3. `readStoreRepo` returns `none` with no `.git`. It returns `unreadable` for a `.git` file, a link, or a `reftable` folder. It returns `no-origin` with no origin and `unsupported-remote` for a bad URL.
 4. It reads the branch from `HEAD`, the pushed commit from a loose ref, and from `packed-refs`. It ignores comment lines and `^` lines in `packed-refs`.
 5. A detached `HEAD` gives `unpushed`. With a commit override the result carries that commit.
 6. A missing remote ref gives `unpushed`.
-7. `head` is read from `refs/heads/<branch>` or `packed-refs`, and is null when missing.
+7. `head` comes from `refs/heads/<branch>` or `packed-refs`. A missing value is null.
 8. A branch name with `..` is rejected as `unreadable`.
 9. Files over their limits are `unreadable`.
 
@@ -1044,13 +1073,13 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 
 1. `fetchAuthored` returns the files of a skill, a prompt, and a team, sorted, with the right `tree`.
 2. The `hash` equals `revisionOf` of the rows.
-3. A symlink row, a submodule row, a mode `100755` row, a `.png` file, a file over 65536 bytes, 129 files, and a total over 2 MiB each refuse (`SKILLS_ADD_UNSAFE_CONTENT`).
-4. A skill without `SKILL.md`, a team without `team.yaml`, and a folder where a prompt should be a file each refuse.
+3. Seven cases each refuse (`SKILLS_ADD_UNSAFE_CONTENT`). The first four: a symlink row, a submodule row, a mode `100755` row, and a `.png` file. The last three: a file over 65536 bytes, 129 files, and a total over 2 MiB.
+4. Three cases refuse: a skill without `SKILL.md`, a team without `team.yaml`, and a folder in place of a prompt file.
 5. A tree listing whose id does not rebuild to its sha refuses.
 6. A truncated listing refuses.
 7. A blob whose bytes do not match its sha refuses.
-8. A 404 on the commit request gives `STORE_REMOTE_PRIVATE` when `commitFromLocalRef` is true, and `LOCK_COMMIT_UNREACHABLE` when it is false.
-9. `proveAuthored` returns `LOCK_STORE_NOT_PUSHED` when `localHash` differs by one byte, and when the item path is missing from the tree. It returns the pin when the hashes are equal.
+8. A 404 on the commit request gives `STORE_REMOTE_PRIVATE` for `commitFromLocalRef: true`. It gives `LOCK_COMMIT_UNREACHABLE` for `commitFromLocalRef: false`.
+9. `proveAuthored` refuses `LOCK_STORE_NOT_PUSHED` in two cases: `localHash` differs by one byte, or the item path is missing from the tree. For equal hashes it returns the pin.
 10. Requests use only `api.github.com` URLs, and no `Authorization` header is set.
 11. At most 130 requests, and the request count for a team of ten files is the number the walk implies.
 
@@ -1060,33 +1089,33 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 2. A cache folder with a changed file is moved to `.prune-<hash>-*` and rewritten.
 3. A leftover `.tmp-<hash>-*` folder is removed on the next write.
 4. `readStoreCache` returns the rows and refuses a link, a foreign owner, and group write.
-5. `fetchStoreGit` refuses a host that is not in `approvedHosts`, a changed `hash`, and a fetch whose rows differ from the lock (`LOCK_HASH_MISMATCH`).
+5. `fetchStoreGit` refuses three cases: a host outside `approvedHosts`, a changed `hash`, and rows that differ from the lock (`LOCK_HASH_MISMATCH`).
 6. It takes the cache lock for the one item and releases it.
 
 `packages/project-sync/test/resolve-config.test.mjs`:
 
 1. Legacy mode returns exactly the beta.2 sets (copy the cases of `tests/skills-sync-cli.test.ts` for expected items).
 2. Config mode: project entries resolve to their definitions. A missing definition is held `CONFIG_ITEM_MISSING`.
-3. Store entries resolve from the live store when it holds the item.
-4. Store entries resolve from the lock when the store is absent. A pinned item becomes an ordinary entry.
+3. A live store that holds the item supplies the store entry.
+4. With no store, store entries resolve from the lock. A pinned item becomes an ordinary entry.
 5. Neither: held `STORE_ITEM_MISSING`.
-6. Frozen mode never reads the store (a store that would refuse does not matter).
+6. Frozen mode never reads the store. A store that refuses has no effect.
 7. A refused store in a normal run throws its `STORE_*` code.
-8. The store is not read when the config lists no store entry.
+8. A config with no store entry never reads the store.
 9. `unselected` lists project definitions the config lacks.
-10. The effective manifest holds only selected skills, sorted, with the config harnesses.
-11. `notes` holds the stale-lock line when a live item differs from its lock item.
+10. The effective manifest holds only selected skills, sorted, with the `harnesses` list of the config.
+11. For a live item that differs from its lock item, `notes` holds the stale-lock line.
 12. A store local skill becomes a `local` entry with path `skills/<id>`.
 13. The `teams` tag of an entry comes from its own definition.
 
 `packages/project-sync/test/config-change.test.mjs`:
 
 1. `use` and `unuse` for each kind produce the exact config text of 4.2 and the plan lines of 3.5 and 3.7.
-2. The first `use` lists every project item with `source: "project"` and sets `harnesses` from `skills.json`, or `["claude","codex"]` when there is none.
+2. The first `use` lists every project item with `source: "project"`. It sets `harnesses` from `skills.json`. With no `skills.json`, it sets `["claude","codex"]`.
 3. Team expansion adds the right items with `via`, merges `via`, promotes a direct pick, and refuses a duplicate with a project item.
 4. `unuse team` removes the right entries.
 5. Limits give `CONFIG_LIMIT`.
-6. The lock is written when a lock exists or the project is shared, and not otherwise.
+6. A project with a lock, or a shared project, gets a written lock. Any other project gets none.
 7. A pinned store skill adds a `pin` item with no network call.
 8. An authored item adds an `authored` item after a proof, and the plan names `api.github.com`.
 9. Self-healing: a config entry with no lock item gets one.
@@ -1094,14 +1123,14 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 11. Scratch files are listed and removed.
 12. A changed config between plan and apply gives `STALE_APPROVAL`.
 13. A read back that differs gives `CONFIG_WRITE_UNCONFIRMED` or `LOCK_WRITE_UNCONFIRMED`.
-14. Apply creates `.bowerloom` when the plan says `create`, and refuses `STALE_APPROVAL` if it exists by then.
+14. For a plan that says `create`, apply creates `.bowerloom`. If the folder exists by then, apply refuses `STALE_APPROVAL`.
 
 `packages/project-sync/test/lock-update.test.mjs`:
 
 1. `planLockUpdate` for all items and for `--item` lists `unchanged`, `pin changed`, `commit changed`, and `added`.
-2. It creates the lock when none exists.
+2. With no lock, it creates one.
 3. An item missing from the store refuses `STORE_ITEM_MISSING`.
-4. It makes no network call when only pinned items are selected.
+4. For pinned items only, it makes no network call.
 5. Nothing to change returns a plan with no revision change and `applyLockUpdate` writes nothing.
 6. `--commit` records that commit.
 
@@ -1109,7 +1138,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 
 1. A skill installs from a store folder, with a catalog source `{ kind: 'store', path }` and no directory in it.
 2. A prompt installs from a store folder: the Claude command is the file bytes, the Codex wrapper description names `~/.bowerloom/prompts/<name>.md`.
-3. The same bytes from the live store and from a store cache folder give identical catalogs and receipts apart from the operation key (compare catalog text).
+3. The same bytes give identical catalogs and receipts from the live store and from a store cache folder. Only the operation key differs. Compare the catalog text.
 4. A local skill moved from the project to the store with equal bytes is `up-to-date`. With changed bytes it updates and the catalog source becomes `store`.
 5. A store folder inside the project folder, or inside the state folder, is refused by the non-nesting check.
 6. A symlink, a second hard link, a foreign owner, group write, and a change during the read are refused.
@@ -1118,7 +1147,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 
 1. The plan binds `config`, `lock`, `store`, each item's `requestDigest` (and `hash` for authored), `lockPin`, and `network.hosts`. A change to any of them changes the revision.
 2. A pinned store skill already in the cache needs no fetch. The plan names `registry.npmjs.org` only as a possible host (as in `sync-global-cache.test.mjs`).
-3. An authored item from the lock not in the store cache is fetched in phase A with a fake transport, and the host is `api.github.com`.
+3. A fake transport fetches an authored lock item that the store cache lacks, in phase A. The host is `api.github.com`.
 4. A fetch of an unapproved host never starts.
 5. A config-only project: the plan has `bowerloomFolder: "create"` and its first review line is the `Create .bowerloom` line. Apply creates the folder with mode 0755 and installs.
 6. A store local skill installs from the live store. Changing a store file after the plan gives `STALE_APPROVAL`.
@@ -1131,7 +1160,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 
 `packages/project-sync/test/frozen.test.mjs`:
 
-1. Each of `LOCK_MISSING`, `LOCK_INVALID`, `LOCK_UNSAFE`, `LOCK_LIMIT`, `LOCK_CONFIG_MISSING`, and `LOCK_CONFIG_MISMATCH` refuses at plan time with zero calls to the fake acquirer and zero network calls.
+1. Six lock codes refuse at plan time: `LOCK_MISSING`, `LOCK_INVALID`, `LOCK_UNSAFE`, `LOCK_LIMIT`, `LOCK_CONFIG_MISSING`, and `LOCK_CONFIG_MISMATCH`. The fake acquirer gets zero calls and the network gets zero calls.
 2. Frozen installs a lock-resolved pin and a lock-resolved authored item on a machine with no store.
 3. Frozen ignores a live store that differs.
 4. A fetched authored item with another hash gives `LOCK_HASH_MISMATCH` and installs nothing from it.
@@ -1169,7 +1198,7 @@ CLI tests:
 
 `tests/lock-cli.test.ts`:
 
-1. In a project with a `.git/config` origin (the test writes the file) and a store with `.git` files, `use skill x` locks an authored skill using the fake GitHub repo. The lock file has the exact bytes expected.
+1. The test writes a `.git/config` origin in the project and `.git` files in the store. Then `use skill x` locks an authored skill through the fake GitHub repo. The lock file has the exact bytes expected.
 2. The same project with no store `.git`: `STORE_ITEM_NOT_SHAREABLE` with the sentence, and the exact `Next:` text.
 3. Editing a store file after the fake repo is built: `LOCK_STORE_NOT_PUSHED`.
 4. A project that is not shared writes no lock.
@@ -1177,7 +1206,7 @@ CLI tests:
 6. `lock update` adds, changes, and removes items as the test changes the store.
 7. `status --json` shows `config.lock` states: `not-used`, `absent`, `valid`, `stale`, `invalid`, `mismatch`, `orphan`.
 8. A private fake repo (404) gives `STORE_REMOTE_PRIVATE`.
-9. `store status` shows the `Git:` line and the commands when there is no remote, and `git.ahead` values.
+9. For a store with no remote, `store status` shows the `Git:` line and the commands. It also shows the `git.ahead` values.
 
 `tests/frozen-cli.test.ts`:
 
@@ -1188,7 +1217,7 @@ CLI tests:
 5. `up --team x` in the clone fetches and installs through its sync and apply steps.
 6. The fake network log shows only `api.github.com` and `registry.npmjs.org`.
 
-`tests/config-only-cli.test.ts`: every command in a folder that holds only `bowerloom.json`: `ls`, `status`, `skills check`, `skills sync`, `apply`, `up --team`, `skill create`, `prompt create`, `team create`, `use`, `unuse`, `team adopt`, `lock verify`. Each works or refuses with the code this spec names. `.bowerloom/managed/.gitignore` holds `*` after an install. `git status --porcelain` (the test runs `git init` itself with a spawn) shows only the files the person wrote.
+`tests/config-only-cli.test.ts`: run every command in a folder that holds only `bowerloom.json`. The first group: `ls`, `status`, `skills check`, `skills sync`, `apply`, and `up --team`. The second group: `skill create`, `prompt create`, `team create`, `use`, `unuse`, `team adopt`, and `lock verify`. Each works, or refuses with the code this spec names. After an install, the file `.bowerloom/managed/.gitignore` holds `*`. The test runs `git init` itself, with a spawn. Then `git status --porcelain` shows only the files the person wrote.
 
 `tests/team-adopt-cli.test.ts`: the CLI path of `team adopt`, the plan lines, and the result.
 
@@ -1210,12 +1239,12 @@ Update existing tests: `tests/ls-status-cli.test.ts`, `tests/skills-sync-cli.tes
 
 ## 12. Unverified items
 
-1. The managed engine may close the allowed `source.kind` values in a place I did not read (the receipt and plan validators beyond `validatePlanV2`, `packages/managed-skills/src/v2-observed.ts:190-200`). First, run `store-source.test.mjs` cases 1 and 4. For each refusal, search `packages/managed-skills/src` for `'local'`, `closure.source`, and `catalogKeys`, and add the new kinds at that place. If a validator cannot take them without a format change, use the fallback: keep the engine source kind `local` and `prompt` for store items, and pass the store root in a new optional request key `rootDir` that is bound in the request. The catalog then does not tell the origin, so add the origin to the plan item only.
+1. The managed engine can close the allowed `source.kind` values in a place I did not read. I read the receipt and plan validators only as far as `validatePlanV2` (`packages/managed-skills/src/v2-observed.ts:190-200`). First, run `store-source.test.mjs` cases 1 and 4. For each refusal, search `packages/managed-skills/src` for `'local'`, `closure.source`, and `catalogKeys`. Add the new kinds at each place. Suppose a validator cannot take them without a format change. Then keep the engine source kinds `local` and `prompt` for store items. Pass the store root in a new optional request key `rootDir`, bound in the request. The catalog then does not tell the origin, so add the origin to the plan item only.
 2. `compileCrew` on a team folder outside a project (`packages/crew/src/index.ts:94`). Run the `team adopt` plan case first. If it refuses, call `compileCrew(file, { root: <team folder> })`. If it still refuses, copy the team to a temporary folder inside `<stateRoot>` and compile there.
 3. `createPublicTransport` against store URLs. Its URL check is `URL_SHAPE` at `packages/skill-manifest/src/public-get.ts:~40`. It allows letters, digits, and the characters `. _ ~ @ % / -`, which covers every URL in 3.11. Run `resolve-store-git.test.mjs` case 1 first. If the transport refuses a valid store URL with `SKILLS_ADD_HOST_REFUSED`, compare the URL with `URL_SHAPE` and fix the URL builder. Do not widen `URL_SHAPE`.
 4. `packed-refs` format. Peeled lines start with `^`. Comment lines start with `#`. Test with a real `git pack-refs` output that the test creates by hand. If the test finds another line shape, ignore it and keep the parser strict on the lines it needs.
 5. `tests/support/fake-network.ts` serves a file per exact URL (`fake-network.ts:~40`). It does not log request headers. Extend it to log whether an `Authorization` header was set (never the value). Spec 07 needs this too. If spec 07 merged first, it exists already.
 6. The static walk in `tests/no-spawn.test.ts` covers modules reachable from `up.js` and `apply.js`. The new modules are reachable from them. Run that test right after step 6 of the build order. If it finds `child_process`, the import came from a helper. Remove that import. Do not weaken the test.
-7. Lock size. The figure of about 42 KB per pinned entry comes from the issue, not a measurement. After step 3 of the build order, measure a real maximum entry (128 files of 65536 bytes each is not possible, since the total cap is 2 MiB). If a 128-entry lock passes 4 MiB in a test, raise `LOCK_LIMITS.bytes` to the smallest power of two that fits and update the docs.
+7. Lock size. The figure of about 42 KB per pinned entry comes from the issue, not from a measurement. After step 3 of the build order, measure a real maximum entry. A full 128 files of 65536 bytes is not possible, because the total cap is 2 MiB. Suppose a 128-entry lock passes 4 MiB in a test. Then raise `LOCK_LIMITS.bytes` to the smallest power of two that fits, and update the docs.
 8. The `.git` directory inside the store and `readTree`/authoring verifiers. The store has no startup walk, so `.git` does no harm there. Run `store status` counts against a store that has `.git` and `.gitignore`. If the folder counts are wrong, make the counter ignore names that start with a dot.
 9. Whether `skills check` in a config project with no `skills.json` can print `0 skills` without breaking `tests/skills-cli.test.ts`. Run it. If a test expects `MANIFEST_NOT_FOUND` in config mode, update the test, because the new behavior is the spec.

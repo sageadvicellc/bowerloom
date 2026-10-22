@@ -6,13 +6,13 @@
 - Lane: 2.
 - Branch: `beta3/08-store-migrate`.
 - Depends on: spec 06 (config, resolver, lock, shared rule, git-backed store) and spec 04 (store writes). Spec 07 adds the token. This spec reads the token only through the code of spec 06.
-- Line numbers below are from commit c9730d3. Find each place by its function name if it moved.
+- Line numbers below are from commit c9730d3. If a line moved, find the place by its function name.
 
 ## 2. Problem
 
-A project that already defines skills, prompts, and teams in its own `.bowerloom` folder cannot move them to the store. A person would copy files by hand and edit three records. Two commands fix this.
+A project that already defines skills, prompts, and teams in its own `.bowerloom` folder cannot move them to the store. Today a person copies files by hand and edits three records. Two commands fix this.
 
-`bowerloom store migrate` copies chosen items from the project to the store, switches them to `source: "store"` in `bowerloom.json`, and prints the lines that remove the old files from git. It deletes nothing (decision 6).
+`bowerloom store migrate` copies chosen items from the project to the store. It switches them to `source: "store"` in `bowerloom.json`. It prints the lines that remove the old files from git. It deletes nothing (decision 6).
 
 After the person deletes the old files, `bowerloom status` names each one as missing, because the project's authoring receipt still lists it. `bowerloom receipt clean` removes those entries after a plan and an approval (decision 18).
 
@@ -44,7 +44,7 @@ Rules:
 
 1. It needs a project (`discoverProject`). Without one, refuse `PROJECT_NOT_FOUND`.
 2. It needs at least one of `--skill`, `--prompt`, `--team`, or `--all`. Else `USAGE`. `--all` together with any other selector is `USAGE`. A selector given twice for the same id is `USAGE`.
-3. The names `first-team` and `personal-assistant` refuse `MIGRATE_RESERVED` when named. `--all` skips them without a message.
+3. If you name `first-team` or `personal-assistant`, the command refuses `MIGRATE_RESERVED`. `--all` skips them without a message.
 4. The project must have a `.bowerloom` folder. If it has none, every selector refuses `MIGRATE_ITEM_NOT_FOUND`, and `--all` prints `Nothing to move.` and exits 0.
 5. Find each item in the project.
    - A skill: an entry of `.bowerloom/skills.json`. A pinned entry (npm or git) is copied as an entry. A `local` entry needs the folder `.bowerloom/skills/<id>` to exist.
@@ -52,14 +52,14 @@ Rules:
    - A team: an item of kind team in the receipt whose folder `.bowerloom/teams/<id>` exists.
    - Anything else refuses `MIGRATE_ITEM_NOT_FOUND`. With `--all`, an item whose files are gone is skipped.
 6. If `bowerloom.json` exists and lists the item with `source: "store"`, an explicit selector refuses `CONFIG_ITEM_SELECTED`, and `--all` skips the item.
-7. Tags. A skill or prompt may be limited to teams (a `teams` tag). The store keeps the tag, so every tagged team must exist in the store after the move. For each tag, the team must be in the store already or be in this run's selection. Else refuse `MIGRATE_TEAM_MISSING`. The message names the team. With `--all` every project team moves, so the tags hold. `first-team` is never in the store, so a tag that names it refuses `MIGRATE_TEAM_MISSING`.
+7. Tags. A team tag (`teams`) can limit a skill or prompt to some teams. The store keeps the tag, so every tagged team must exist in the store after the move. For each tag, the team must be in the store already or be in this run's selection. Else refuse `MIGRATE_TEAM_MISSING`. The message names the team. With `--all` every project team moves, so the tags hold. `first-team` is never in the store, so a tag that names it refuses `MIGRATE_TEAM_MISSING`.
 8. For each selected item, compare with the store.
    - Not in the store: state `copy`.
-   - In the store with the same bytes: state `present`. For a pinned skill, the store entry equals the project entry when `canonicalJson` of both is equal. For a local skill, a prompt, and a team, the file lists (path, sha256, bytes) are equal. If the item is also registered in the store receipt, nothing needs doing for the copy. If it is not registered, the state is `register` (a leftover from a crash).
+   - In the store with the same bytes: state `present`. For a pinned skill, `canonicalJson` of the store entry and of the project entry must be equal. For a local skill, a prompt, and a team, the file lists (path, sha256, bytes) are equal. If the item is also registered in the store receipt, nothing needs doing for the copy. If it is not registered, the state is `register` (a leftover from a crash).
    - In the store with other bytes: refuse `MIGRATE_ID_EXISTS`. Bowerloom never overwrites a store item.
 9. Decide for each item whether it switches in this run.
    - Not a shared project (spec 06, 3.9): every item switches.
-   - Shared project: a pinned skill switches. A skill, prompt, or team written in the project switches only if it is shareable now. It is shareable when `readStoreRepo` has no problem, and the proof of spec 06 (3.10) succeeds for the store item at the pushed commit (or at `--commit`). If it is not shareable, the item is `copy-only`. Its config entry stays as it is. The plan says why.
+   - Shared project: a pinned skill switches. A skill, prompt, or team written in the project switches only after the sharing check passes. The check needs two results. `readStoreRepo` reports no problem. The proof of spec 06 (3.10) succeeds for the store item. The proof uses the pushed commit, or the commit that `--commit` names. An item that fails the check is `copy-only`. Its config entry stays as it is. The plan says why.
 10. The config change is the one `use` makes (spec 06, 3.5 step 2). If `bowerloom.json` is missing, create it with every project item as `source: "project"`, then flip the switched items to `store`. If it exists, flip those items, and add an item that the config did not list. Team tags in `via` do not change.
 11. The lock: when a lock exists or the project is shared, add a lock item for each switched store item (spec 06, 3.13). A pinned item copies the entry. A written item uses the proof.
 12. Nothing is deleted. No project file changes except `bowerloom.json` and `bowerloom.lock.json`.
@@ -94,7 +94,7 @@ After you delete the old files, run bowerloom receipt clean.
 
 The remove lines list only items that switched. An item that is `copy-only` has no line.
 
-The result text: `Moved <n> items to the store.`, then `Copied but not switched: <ids>.` when there are any, then the remove lines again, then `Next: bowerloom receipt clean`. The JSON result format is `bowerloom/store-migrate-result/v1beta1` (4.2).
+The result text has four parts. First: `Moved <n> items to the store.` Second, for any copy-only items: `Copied but not switched: <ids>.` Third: the remove lines again. Fourth: `Next: bowerloom receipt clean`. The JSON result format is `bowerloom/store-migrate-result/v1beta1` (4.2).
 
 Exit codes: 0 done or nothing to do, 1 refusal, 2 `USAGE`, 3 plan awaiting approval, 130 interrupt.
 
@@ -105,7 +105,7 @@ The command takes two locks. The store lock comes first (`withStoreForWrite`, sp
 Under both locks, after the plan revision matches:
 
 1. Remove the store's scratch (`authoring/.stage-*` and `authoring/.tmp-*`) that the plan lists.
-2. Create the store (spec 04, 3.3) when the plan says so. `withStoreForWrite` does this before the work function runs.
+2. If the plan says so, create the store (spec 04, 3.3). `withStoreForWrite` does this before the work function runs.
 3. For each item in state `copy`, in this order: skills, prompts, teams, each sorted by id:
    1. Stage the files in `<store>/authoring/.stage-<revision>/<item path>`. Use `makeFolder` and `writeNewFile` (`packages/project-authoring/src/files.ts:81-90`): folders have mode 0700 and files mode 0600. Check each file's bytes against the planned sha256 before and after writing.
    2. For a team, compile the staged `team.yaml` with `compileCrew` and require the same `candidateRevision` as the source.
@@ -114,7 +114,7 @@ Under both locks, after the plan revision matches:
 5. Write the store authoring receipt once. Add every item in state `copy` or `register`. Each record has the file pins of the copied bytes, the project tag list, and `planRevision` set to this plan's revision. Use `writeReceiptRecord` (4.4).
 6. Remove the staging folder.
 7. Write `bowerloom.json` (spec 06, 3.14, with `writeGuardedFile`).
-8. Write `bowerloom.lock.json` when the plan has lock changes.
+8. If the plan has lock changes, write `bowerloom.lock.json`.
 
 Crash recovery. Every step is safe to repeat.
 
@@ -153,10 +153,10 @@ It shows the plan first. Agents pass --approve <revision> or --json.
 Rules:
 
 1. Scope: the project (default) or the store (`--global`). The project scope needs a project. The store scope needs a valid store, else `STORE_NOT_FOUND`.
-2. Read the authoring state (`readAuthoringState`, `packages/project-authoring/src/state.ts:~112`). If a pending record or scratch exists, refuse `AUTHORING_PENDING`. For the project, if `.bowerloom-revision.json` exists, refuse `REVISION_PENDING`.
+2. Read the authoring state (`readAuthoringState`, `packages/project-authoring/src/state.ts:~112`). If a pending record or scratch exists, refuse `AUTHORING_PENDING`. For the project, a `.bowerloom-revision.json` file makes the command refuse `REVISION_PENDING`.
 3. Select every receipt item whose path is gone. The path is `itemPath(kind, id)` under the scope's base folder (`.bowerloom` or the store). "Gone" means `lstat` fails with `ENOENT`, the test of `gone` in `apps/cli/src/held.ts:20`. An item whose path exists is never selected, whether it is edited or not. Any other `lstat` failure refuses `AUTHORING_UNSAFE_PATH`.
-4. For each selected skill, also remove its `local` entry from `skills.json` (project: `.bowerloom/skills.json`, store: `skills.json`), if that entry exists. A pinned entry (npm or git) with the same id is never removed.
-5. For the project scope with a `bowerloom.json`, also remove the config entry for each selected item when it has `source: "project"`. Remove the id of a gone team from the `via` lists of other entries. Entries whose `via` list becomes empty are removed too.
+4. For each selected skill, also remove its `local` entry from `skills.json` (project: `.bowerloom/skills.json`, store: `skills.json`). Skip this step for a skill with no such entry. A pinned entry (npm or git) with the same id is never removed.
+5. For the project scope with a `bowerloom.json`, also remove the config entry of each selected item that has `source: "project"`. Remove the id of a gone team from the `via` lists of other entries. Entries whose `via` list becomes empty are removed too.
 6. The store scope changes no config and no lock.
 7. Neither scope touches the lock.
 8. If nothing is selected, print `Nothing to clean.` and exit 0. No approval is asked.
@@ -259,14 +259,14 @@ export function writeReceiptRecord(auth: string, planRevision: string, before: R
   live: () => void, readNow: () => Read | null): Read
 ```
 
-It does what the `writeReceipt` closure of `applyCreate` does (`packages/project-authoring/src/create.ts:~286-298`). It writes a temporary record named by `tempName(planRevision, 'receipt')`, runs `live()`, rechecks that the receipt's hash still equals `before` (`STALE_APPROVAL` if not), links the temporary file when `before` is null or renames it when not, flushes the folder, and returns the new `Read`. `applyCreate` calls it in place of its closure. The create tests must pass unchanged.
+It does what the `writeReceipt` closure of `applyCreate` does (`packages/project-authoring/src/create.ts:~286-298`). It writes a temporary record named by `tempName(planRevision, 'receipt')`. It runs `live()`. It rechecks that the receipt's hash still equals `before`, and a change gives `STALE_APPROVAL`. A null `before` makes it link the temporary file. Any other `before` makes it rename the file. It flushes the folder and returns the new `Read`. `applyCreate` calls it in place of its closure. The create tests must pass unchanged.
 
 ### 4.5 Manifest change kind `remove`
 
 In `packages/skill-manifest/src/add.ts`:
 
 - `ManifestChange` (line 42) becomes `{ add: Entry } | { replace: Entry } | { remove: string }`. The string is the entry id.
-- `planManifestChange` (line 122): accept the key `remove` in the check at line 126. For `remove`, the entry must exist (`SKILLS_ADD_REPLACE_MISSING` if not) and must be of kind `local` (`MANIFEST_INVALID` if not). The new manifest drops it. The plan's `change` is `{ remove: <the removed entry> }`.
+- `planManifestChange` (line 122): accept the key `remove` in the check at line 126. For `remove`, the entry must exist, and a missing entry gives `SKILLS_ADD_REPLACE_MISSING`. The entry must be of kind `local`, and another kind gives `MANIFEST_INVALID`. The new manifest drops it. The plan's `change` is `{ remove: <the removed entry> }`.
 - `ManifestChangePlan.change` (line 21-40) gains `{ remove: Entry }`.
 - `changeOf(plan)` (line 154) returns `{ remove: entry.id }` for a `remove` plan.
 - `applyManifestChange` (line 170): the result key for a remove is `removed: <id>`. `ManifestChangeReceipt` (line 43) gains `{ removed: string }`.
@@ -286,6 +286,8 @@ In `packages/skill-manifest/src/add.ts`:
 | `REVISION_PENDING` | A revise of this project is unfinished. | `bowerloom help advanced` |
 | `AUTHORING_UNSAFE_PATH` | `receipt clean` found an item path it cannot read. | `ls -la .bowerloom` |
 | `STORE_NOT_FOUND` | `receipt clean --global` needs a store and there is none. | `bowerloom skill create <name> --global` |
+
+Message rule. The fixed message of a code is its Cause cell, written as plain sentences. It names no path. It names an id only where the table says so. In `REFUSALS` (`apps/cli/src/human.ts:224`) the `sentence` is the Cause cell and the `next` text is the Next step cell.
 
 Add the four `MIGRATE_*` codes to `packages/project-config/src/refusal.ts` with fixed messages, and to `REFUSALS` in `apps/cli/src/human.ts:224`. The other codes exist already.
 
@@ -402,7 +404,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 5. Nothing is deleted from disk (snapshot).
 6. A pending record or scratch refuses `AUTHORING_PENDING`. A revision file refuses `REVISION_PENDING`.
 7. Store scope: the store receipt and store `skills.json` change. No config and no lock change.
-8. `Nothing to clean.` when nothing is gone, for both scopes.
+8. When nothing is gone, both scopes print `Nothing to clean.`
 9. Crash points: a hook throws after the config write and after the `skills.json` write. Each rerun finishes and a third run says nothing to clean.
 10. A stale plan refuses `STALE_APPROVAL`.
 11. Running twice with approval leaves the second run at `Nothing to clean.`
@@ -427,7 +429,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 1. A beta.2 style project (made with `up`) plus a pinned skill (fake npm), a local skill, a prompt, and a team: `store migrate --all` shows the plan and exits 3. With `--approve` it exits 0 and prints the remove lines and `Next: bowerloom receipt clean`.
 2. `ls` and `ls --global` show the items with the right sources.
 3. `skills sync` and `apply` after the migrate show every item `up to date`, because the bytes are equal.
-4. The test then deletes the old files with a real git repository (the test runs `git init` itself and runs the printed lines), edits `skills.json`, and runs `status`. Each removed item is `held (AUTHORING_ITEM_MISSING)`.
+4. The test runs `git init` itself and runs the printed lines to delete the old files. It edits `skills.json` and runs `status`. Each removed item is `held (AUTHORING_ITEM_MISSING)`.
 5. `receipt clean` shows its plan and exits 3, applies with `--approve`, and `status` no longer names the items.
 6. Shared project flow with the fake repo: the first run copies written items and prints `Not switched`. After the test adds `.git` files and routes for the store and runs again, items switch and `bowerloom.lock.json` has the expected bytes.
 7. `help store` and `help receipt` print the topics.
@@ -454,4 +456,15 @@ Update `tests/help-human.test.ts` (first screen), `tests/human-refusal.test.ts` 
 3. File sizes. `readTree` allows 256 KiB per file (`LIMITS.fileBytes`), and the lock allows 64 KiB. A local skill with a larger file migrates but cannot be locked. In a shared project it is `copy-only` with the sentence `The item is larger than a lock can record.` In a project that is not shared it migrates and switches.
 4. `link` for a prompt across the staging and target folders. Both are on the store's device, so `link` works. If a test machine puts `HOME` on a device that refuses hard links, use `copyFile` with `COPYFILE_EXCL` for the prompt and remove the staged file. Keep the byte check.
 5. `changeOf` and the plan type in `add.ts` are read at lines 154-161 and 21-44. Hidden callers of `plan.change` (the CLI review at `apps/cli/src/manifest.ts:~105`) assume `add` or `replace`. Search for each use of `.change`. Make each handle `remove` by showing `Remove skill <id> from <manifest>`.
-6. Whether `status` shows one line per item after the old files are deleted and the `skills.json` local entry remains. The sync planner may hold the local skill first (`plan.ts:253`). Run case 4 of `store-migrate-cli.test.ts` early. `uniqueHolds` (`held.ts:50`) collapses lines by kind and id, so expect one line.
+6. Whether `status` shows one line per item after the old files are deleted and the `skills.json` local entry remains. The sync planner can hold the local skill first (`plan.ts:253`). Run case 4 of `store-migrate-cli.test.ts` early. `uniqueHolds` (`held.ts:50`) collapses lines by kind and id, so expect one line.
+
+## New decision for Hanna
+
+Topic: a tag that names a team missing from the store.
+
+A skill or prompt can be limited to a team. A move to the store keeps that tag, so the team must exist in the store.
+
+- A. (Default) Refuse with `MIGRATE_TEAM_MISSING`. The person adds `--team <name>` to move the team too. Rule 7 of section 3.1 assumes option A.
+- B. Drop the tag from the stored copy and print a line that says so. The skill then belongs to every team in the store.
+
+This decision blocks build step 4 of this spec (the migrate plan).

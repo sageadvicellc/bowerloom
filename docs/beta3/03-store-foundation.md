@@ -6,7 +6,7 @@
 - Lane: 2.
 - Branch: `beta3/03-store-foundation`.
 - Depends on: spec 02 (install pins). It changes no file that spec 02 changes.
-- Line numbers below are from commit c9730d3. Specs 01 and 02 may move them. Find each place by its function name.
+- Line numbers below are from commit c9730d3. Specs 01 and 02 can move them. If a line moved, find the place by its function name.
 
 ## 2. Problem
 
@@ -35,11 +35,11 @@ Every store command and every discovery check applies these rules in this order.
 
 1. If `home` is not an absolute path or holds a NUL character, refuse `USAGE`.
 2. Run `lstat` on the store path. If the entry is missing (`ENOENT` or `ENOTDIR`), the state is `absent`. If `lstat` fails for another reason, refuse `STORE_UNREADABLE`.
-3. If the entry is a symbolic link, is not a folder, is owned by another user, or has group or world write permission, refuse `STORE_UNSAFE`. A store folder with mode 0700 passes. A store folder with mode 0755 also passes.
+3. Refuse `STORE_UNSAFE` for any of these: a symbolic link, a non-folder, an owner other than the user, or group or world write permission. A store folder with mode 0700 passes. A store folder with mode 0755 also passes.
 4. Run `checkProjectPathWith(storeRoot, home, hooks)`. Map the codes. `PROJECT_IN_CLOUD_FOLDER` becomes `STORE_IN_CLOUD_FOLDER`. `PROJECT_UNREADABLE` becomes `STORE_UNREADABLE`. Any other `PROJECT_*` code becomes `STORE_UNSAFE`. This catches iCloud folders and links into them.
 5. If `realpath(storeRoot)` differs from `storeRoot`, refuse `STORE_UNSAFE`. A link anywhere on the path fails here.
 6. List the names in the store folder. If the folder is empty, or holds only names that match `^\.store\.json\.[a-f0-9]{16}\.tmp$`, the state is `absent` and the result carries `leftover: true`. Spec 04 creates the store in two steps, so a crash can leave such a folder. A leftover folder is not a store, so discovery treats it like any `.bowerloom` without `store.json`.
-7. Look for `store.json` in the store. If it is missing, the state is `foreign`. The folder exists but is not a store. If it is present but is a link, has more than one hard link, is owned by another user, has group or world write permission, or is larger than 4096 bytes, refuse `STORE_UNSAFE`. If its content is wrong, refuse `STORE_INVALID`. Section 4.1 defines the content.
+7. Look for `store.json` in the store. If it is missing, the state is `foreign`. The folder exists but is not a store. A `store.json` that is present but breaks one of these rules refuses `STORE_UNSAFE`: a link, more than one hard link, another owner, group or world write permission, or a size over 4096 bytes. If its content is wrong, refuse `STORE_INVALID`. Section 4.1 defines the content.
 8. Pin the store folder and every parent folder with their device, inode, and birth time. This is the same pinning that `build()` does for a project.
 
 Two home folders can exist. `HOME` is one. The account home from the user database is the other. The store lives only at `join(realpath(home), '.bowerloom')`. The other home matters only to discovery. See 3.4.
@@ -61,10 +61,10 @@ Discovery walks from the working folder up. At each folder it lists the names. I
 | A folder with both | A project with both |
 | An inner folder with only `bowerloom.json` inside an outer folder with `.bowerloom` | The inner folder is the project. The nearest marker wins. |
 | `Bowerloom.json` or any other case alias, or two names that fold to the same name | `PROJECT_UNSAFE` |
-| `bowerloom.json` that is a folder, a link, has more than one hard link, belongs to another user, has group or world write permission, or is larger than 1 MiB | `CONFIG_UNSAFE` |
+| `bowerloom.json` that is not a plain file, is shared, or is over 1 MiB | `CONFIG_UNSAFE` |
 | The working folder is inside the store | `PROJECT_NOT_FOUND` (the walk reaches home and the store is valid) |
 
-At a home folder, the store check uses that home folder. The account home may differ from `HOME`. A `.bowerloom` at the account home counts as a store only when `inspectStoreWith(thatHome)` returns `store`. Otherwise discovery refuses `PROJECT_ROOT_REFUSED`.
+A plain file has one hard link and belongs to the user. It has no group or world write permission. A shared file lacks one of these. At a home folder, the store check uses that home folder. The account home can differ from `HOME`. For a `.bowerloom` at the account home, call `inspectStoreWith(thatHome)`. A result of `store` makes it a store. Any other result makes discovery refuse `PROJECT_ROOT_REFUSED`.
 
 The home check never throws a `STORE_*` code. A bad store at home is a `PROJECT_ROOT_REFUSED`. Only the store commands report `STORE_*` codes.
 
@@ -88,7 +88,7 @@ or that other users can change.
 Add --json for one machine-readable object.
 ```
 
-Output when the store is absent:
+Output for an absent store:
 
 ```text
 Store: none yet
@@ -97,7 +97,7 @@ Store: none yet
 
 A leftover folder (rule 6 of 3.3) also prints `Store: none yet`, and its JSON state is `absent`.
 
-Output when the store is valid:
+Output for a valid store:
 
 ```text
 Store: ready
@@ -107,7 +107,7 @@ Store: ready
   Teams: <n>
 ```
 
-Output when the folder exists without `store.json`:
+Output for a folder without `store.json`:
 
 ```text
 Store: not a store
@@ -115,7 +115,7 @@ Store: not a store
   Move it somewhere else first. Then run bowerloom skill create <name> --global.
 ```
 
-Output when a safety rule refuses:
+Output for a refused safety rule:
 
 ```text
 Store: refused (<CODE>)
@@ -129,13 +129,13 @@ Spec 06 adds a `Git:` line and a `git` object. In this spec the JSON key `git` i
 ### 3.7 `bowerloom status` and `bowerloom ls` in a config-only project
 
 - `status` works. Section 4.4 defines the output.
-- `ls` works. A missing `.bowerloom/teams`, `.bowerloom/skills`, or `.bowerloom/prompts` folder lists as `none yet`, which is what `entries()` does today when `lstat` fails. Spec 04 changes the `ls` format.
+- `ls` works. A missing `.bowerloom/teams`, `.bowerloom/skills`, or `.bowerloom/prompts` folder lists as `none yet`. `entries()` already does this for a folder that `lstat` cannot find. Spec 04 changes the `ls` format.
 - `up` finds the project, so it never runs the `init` step there. Spec 06 completes the other steps.
-- Every other command (`apply`, `skills sync`, `skills check`, `skills add`, the `create` commands) keeps its current behavior. In a config-only project they refuse with the code they already use when `.bowerloom` is missing. Spec 06 completes them. Do not add a stopgap code for this.
+- Every other command (`apply`, `skills sync`, `skills check`, `skills add`, the `create` commands) keeps its current behavior. In a config-only project, each refuses with the code it already uses for a missing `.bowerloom`. Spec 06 completes them. Do not add a stopgap code for this.
 
 ### 3.8 `up` inside the store
 
-`bowerloom up --team <name> --goal <goal>` run inside the store or in a folder below it refuses `STORE_NOT_A_PROJECT`. Without this check, `up` would create `~/.bowerloom/.bowerloom`.
+`bowerloom up --team <name> --goal <goal>` run inside the store or in a folder below it refuses `STORE_NOT_A_PROJECT`. This check stops `up` from creating `~/.bowerloom/.bowerloom`.
 
 ### 3.9 What is written
 
@@ -179,13 +179,13 @@ The file holds exactly one key. It ends with one newline.
 Field rules:
 
 - `format`: the exact string `bowerloom/project/v1beta1`.
-- `harnesses`: a list of one or two values. Each value is `claude` or `codex`. The list is sorted in ascending order and has no repeats. It is the set of harnesses that `skills sync` targets when a config exists. `apply --harness` still overrides it for one run. The `harnesses` key in `skills.json` is ignored for targets when a config exists. It must still parse.
-- `skills`, `prompts`, `teams`: lists of entries. Each list may be empty. Each list is sorted by `id` in byte order.
+- `harnesses`: a list of one or two values. Each value is `claude` or `codex`. The list is sorted in ascending order and has no repeats. When a config exists, it is the set of targets for `skills sync`. `apply --harness` still overrides it for one run. When a config exists, `skills sync` ignores the `harnesses` key in `skills.json` for targets. It must still parse.
+- `skills`, `prompts`, `teams`: lists of entries. A list can be empty. Each list is sorted by `id` in byte order.
 - Entry keys: `id`, `source`, and optionally `via`. No other key is allowed.
-- `id`: lower-case letters and digits in words joined by single hyphens, at most 64 characters. The pattern is `^[a-z0-9]+(?:-[a-z0-9]+)*$`. For `source: "store"` the id must also pass the stricter test of its kind. The tests are `isStoreSkillId` (not `personal-assistant`, and no `prompt-` prefix), `isStorePromptId` (at most 57 characters), and `isStoreTeamId` (not `first-team`). They are copies of `isSkillId`, `isPromptId`, and `isTeamId` in `packages/project-authoring/src/state.ts:30-33`. Copy them into `packages/project-config/src/schema.ts` so that `project-config` does not import `project-authoring`. That package imports `project-config` in spec 06, and a cycle would break the build. A project-sourced entry may use `personal-assistant` or `first-team`.
+- `id`: lower-case letters and digits in words joined by single hyphens, at most 64 characters. The pattern is `^[a-z0-9]+(?:-[a-z0-9]+)*$`. For `source: "store"` the id must also pass the stricter test of its kind. The tests are `isStoreSkillId` (not `personal-assistant`, and no `prompt-` prefix), `isStorePromptId` (at most 57 characters), and `isStoreTeamId` (not `first-team`). They are copies of `isSkillId`, `isPromptId`, and `isTeamId` in `packages/project-authoring/src/state.ts:30-33`. Copy them into `packages/project-config/src/schema.ts` so that `project-config` does not import `project-authoring`. In spec 06 that package imports `project-config`. A cycle breaks the build. A project-sourced entry can use `personal-assistant` or `first-team`.
 - `source`: `store` or `project`.
-- `via`: allowed only when `source` is `store`. A non-empty list of team ids, sorted, no repeats, each an id that appears in `teams`. It means the entry is selected only because of those teams. An entry with no `via` is selected directly.
-- No id repeats inside one list. The same id with two sources inside one list refuses `CONFIG_DUPLICATE_ID`. A skill and a prompt may share an id.
+- `via`: only an entry with `source: "store"` has this key. A non-empty list of team ids, sorted, no repeats, each an id that appears in `teams`. It means the entry is selected only because of those teams. An entry with no `via` is selected directly.
+- No id repeats inside one list. The same id with two sources inside one list refuses `CONFIG_DUPLICATE_ID`. A skill and a prompt can share an id.
 - Limits: at most 128 skills, 128 prompts, 32 teams. The file is at most 1 MiB (1048576 bytes). Over a limit, refuse `CONFIG_LIMIT`.
 - Reading accepts any whitespace. The parser is strict: no byte order mark, valid UTF-8 only, no duplicate keys, no unknown keys. Use `strictJson(text, 1048576)` from `packages/codex-adapter/src/safe.ts:19`, then `captureSkillData` as `packages/skill-manifest/src/schema.ts:164` does.
 - Writing (spec 06) always emits `JSON.stringify(value, null, 2) + '\n'` with the key order above. The writer parses its own output before it writes.
@@ -229,16 +229,16 @@ Field by field:
 | `project` | string | The project folder path |
 | `projectId` | string | 32 hex characters |
 | `markers` | object | `{ "folder": boolean, "config": boolean }` |
-| `setup` | string | `startup` when `.bowerloom/installation-receipt.json` exists, `none` otherwise |
+| `setup` | string | `startup` for a project with `.bowerloom/installation-receipt.json`. `none` for any other project. |
 | `status` | string | `ready`, `drifted`, or `revision-pending` |
-| `specReady` | boolean | As in v1beta1. False when `setup` is `none`. |
+| `specReady` | boolean | As in v1beta1. False for `setup: none`. |
 | `runtimeReady` | boolean | Always false |
 | `executionAuthorized` | boolean | Always false |
-| `revision` | string or null | As in v1beta1. Null when `setup` is `none`. |
+| `revision` | string or null | As in v1beta1. Null for `setup: none`. |
 | `drift` | array | As in v1beta1, plus the kinds below |
 | `owned` | array | As in v1beta1 |
 | `legacy` | object | Optional, as in v1beta1 |
-| `config` | object or null | Null when there is no `bowerloom.json`. Otherwise the object below. |
+| `config` | object or null | Null for a project with no `bowerloom.json`. Otherwise the object below. |
 
 The `config` object in this spec:
 
@@ -248,9 +248,9 @@ The `config` object in this spec:
 | `sha256` | string | sha256 of the file bytes, 64 hex characters |
 | `bytes` | number | File size |
 | `state` | string | `valid` or `invalid` |
-| `code` | string or null | `null` when valid. Otherwise `CONFIG_INVALID`, `CONFIG_LIMIT`, or `CONFIG_DUPLICATE_ID`. |
-| `harnesses` | array | The harnesses. Empty when invalid. |
-| `counts` | object | `{ "skills": n, "prompts": n, "teams": n }`. All zero when invalid. |
+| `code` | string or null | `null` for a valid config. Otherwise `CONFIG_INVALID`, `CONFIG_LIMIT`, or `CONFIG_DUPLICATE_ID`. |
+| `harnesses` | array | The targets. Empty for an invalid config. |
+| `counts` | object | `{ "skills": n, "prompts": n, "teams": n }`. All zero for an invalid config. |
 
 Spec 06 adds the fields `store`, `items`, `unselected`, and `lock` to this object. In this spec they are absent.
 
@@ -259,7 +259,7 @@ New drift kinds. Add them to `Drift.kind` in `packages/startup/src/index.ts:58`:
 - `config-invalid`: the config is present and its `state` is `invalid`. The drift entry is `{ "path": "bowerloom.json", "kind": "config-invalid", "code": "<CODE>" }`.
 - `config-unsafe`: not used. An unsafe config stops discovery, so `status` never sees it.
 
-The `status` value is `drifted` when any drift entry exists. A config-only project with a valid config and no drift is `ready`.
+Any drift entry makes `status` `drifted`. A config-only project with a valid config and no drift is `ready`.
 
 Text output, in this order:
 
@@ -283,8 +283,8 @@ When the config is invalid, the `Config:` line reads `Config: bowerloom.json (in
 | `format` | string | `bowerloom/store-status/v1beta1` |
 | `state` | string | `absent`, `store`, `foreign`, or `refused` |
 | `path` | string | The store path |
-| `code` | string or null | The `STORE_*` code when `state` is `refused`. Otherwise null. |
-| `counts` | object or null | `{ "skills": n, "prompts": n, "teams": n }` when `state` is `store`. Otherwise null. |
+| `code` | string or null | The `STORE_*` code for `state: refused`. Otherwise null. |
+| `counts` | object or null | `{ "skills": n, "prompts": n, "teams": n }` for `state: store`. Otherwise null. |
 | `git` | null | Always null in this spec |
 
 ### 4.6 `inspectOwnedOnly`
@@ -314,6 +314,8 @@ Add each code to the `MESSAGES` object of its package and to `REFUSALS` in `apps
 | `CONFIG_LIMIT` | `bowerloom.json` lists more than 128 skills, 128 prompts, or 32 teams, or is over 1 MiB. | `bowerloom status` |
 | `CONFIG_DUPLICATE_ID` | One id is listed twice in one list, or with two sources. The message names both entries. | `git diff bowerloom.json` |
 
+Message rule. The fixed message of a code is its Cause cell, written as plain sentences. It names no path. It names an id only where the table says so. In `REFUSALS` (`apps/cli/src/human.ts:224`) the `sentence` is the Cause cell and the `next` text is the Next step cell.
+
 Existing codes keep their meaning: `PROJECT_NOT_FOUND`, `PROJECT_ROOT_REFUSED`, `PROJECT_UNSAFE`, `USAGE`.
 
 `CONFIG_INVALID`, `CONFIG_LIMIT`, and `CONFIG_DUPLICATE_ID` raised by `status` become the `code` field of the `config` object. They do not stop `status`. `CONFIG_UNSAFE` stops discovery and so stops every command.
@@ -322,7 +324,7 @@ Existing codes keep their meaning: `PROJECT_NOT_FOUND`, `PROJECT_ROOT_REFUSED`, 
 
 Create:
 
-- `packages/project-context/src/store.ts`: `STORE_DIRNAME`, `STORE_FILE`, `STORE_FORMAT`, `StoreContext`, `storeRootOf(home)`, `inspectStoreWith(home, hooks)` (returns `{ state: 'absent', leftover: boolean }`, `{ state: 'foreign' }`, or `{ state: 'store', context }`), `openStoreWith(home, hooks)`, `verifyStorePins(store)`, `pathInsideStore(path, home)`, `isValidStore(home, hooks)`. It imports `checkProjectPathWith` and `DiscoveryHooks` from `discovery.ts` and `pinAncestry` (below). `inspectStoreWith` follows 3.3. `openStoreWith` throws `STORE_NOT_FOUND` when absent and `STORE_INVALID` when `foreign`. `pathInsideStore` compares device and inode up the chain, so a link or alias counts.
+- `packages/project-context/src/store.ts`. It exports the constants `STORE_DIRNAME`, `STORE_FILE`, and `STORE_FORMAT`, the type `StoreContext`, and these functions: `storeRootOf(home)`, `openStoreWith(home, hooks)`, `verifyStorePins(store)`, `pathInsideStore(path, home)`, and `isValidStore(home, hooks)`. It also exports `inspectStoreWith(home, hooks)`. That function returns `{ state: 'absent', leftover: boolean }`, `{ state: 'foreign' }`, or `{ state: 'store', context }`. It imports `checkProjectPathWith` and `DiscoveryHooks` from `discovery.ts` and `pinAncestry` (below). `inspectStoreWith` follows 3.3. For an absent store `openStoreWith` throws `STORE_NOT_FOUND`. For a `foreign` folder it throws `STORE_INVALID`. `pathInsideStore` compares device and inode up the chain, so a link or alias counts.
 - `packages/project-config/src/schema.ts`, `packages/project-config/src/config.ts`, `packages/project-config/src/refusal.ts`, `packages/project-config/src/index.ts`. `config.ts` exports `readConfig(project)`, `parseConfig(bytes)`, and `serializeConfig(config)`. `refusal.ts` holds the `CONFIG_*` messages in the style of `packages/project-context/src/refusal.ts:7-17`.
 - `apps/cli/src/store.ts`: `runStoreCommand(args, home, write)`. In this spec it handles `status` only. Any other word refuses `USAGE` with `Use bowerloom store status [--json].`
 - Test files in section 10.
@@ -330,15 +332,15 @@ Create:
 Change:
 
 - `packages/project-context/src/discovery.ts:147-169` (`discoverProjectWith`). At line 162, list `configs = names.filter(n => fold(n) === 'bowerloom.json')` beside `aliases`. Replace the stop check at line 163 and the marker check at line 164 with the rules in 3.4. At a home stop call `isValidStore(thatHome, hooks)`.
-- `discovery.ts:171-181` (`build`). Accept `configs`. Refuse `PROJECT_UNSAFE` when `configs.length > 1` or the one name is not exactly `bowerloom.json`. When `aliases` is empty, set `bowerloomIdentity` to null and skip the `.bowerloom` pin. When a config exists, run `lstat` on it and refuse `CONFIG_UNSAFE` unless it is a regular file with one hard link, owned by the user, without group or world write permission, and at most 1 MiB. Return the new `configPresent` key.
+- `discovery.ts:171-181` (`build`). Accept `configs`. Refuse `PROJECT_UNSAFE` for `configs.length > 1`, or for one name that is not exactly `bowerloom.json`. If `aliases` is empty, set `bowerloomIdentity` to null and skip the `.bowerloom` pin. If a config exists, run `lstat` on it. It must be a plain file: a regular file, one hard link, owned by the user, no group or world write permission, and at most 1 MiB. Else refuse `CONFIG_UNSAFE`. Return the new `configPresent` key.
 - Factor `pinAncestry(dir)` out of `build` (lines 177-179) and export it for `store.ts`.
-- `discovery.ts:187-192` (`verifyProjectPins`). Pin `.bowerloom` only when `project.bowerloomIdentity !== null`. When it is null, `.bowerloom` must still be absent. A folder created by a Bowerloom command in the same process is not this spec's concern, spec 06 handles it. Check the config by `lstat` only: it must be a regular file, not a link, owned by the user, when `configPresent`, and absent when not. Do not pin its inode, because spec 06 rewrites it by rename.
+- `discovery.ts:187-192` (`verifyProjectPins`). If `project.bowerloomIdentity` is not null, pin `.bowerloom`. If it is null, `.bowerloom` must still be absent. A folder created by a Bowerloom command in the same process is not this spec's concern, spec 06 handles it. Check the config by `lstat` only. If `configPresent` is true, it must be a regular file, not a link, owned by the user. If `configPresent` is false, it must be absent. Do not pin its inode, because spec 06 rewrites it by rename.
 - `packages/project-context/src/types.ts:21-30`. The new `ProjectContext`.
 - `packages/project-context/src/index.ts:19-20`. Export `inspectStore`, `openStore`, `verifyStorePins`, `pathInsideStore`, `storeRootOf`, and the types.
 - `packages/project-context/src/refusal.ts:7-17`. Add the `STORE_*` messages here. Keep `STORE_NOT_A_PROJECT` here too.
-- Nullable `bowerloomIdentity` ripples to: `packages/project-sync/src/plan.ts:80,418`, `packages/project-sync/src/apply-project.ts:71,155`, and `packages/project-sync/src/migrate.ts:41,107`. Change each type to `DirectoryIdentity | null` and let the type checker find the rest. `skills migrate` already refuses with `SKILLS_MIGRATE_NOTHING` when there is no `.bowerloom-skills` folder, which is always true without `.bowerloom`.
+- Nullable `bowerloomIdentity` ripples to: `packages/project-sync/src/plan.ts:80,418`, `packages/project-sync/src/apply-project.ts:71,155`, and `packages/project-sync/src/migrate.ts:41,107`. Change each type to `DirectoryIdentity | null` and let the type checker find the rest. `skills migrate` already refuses with `SKILLS_MIGRATE_NOTHING` for a project with no `.bowerloom-skills` folder. Every project without `.bowerloom` is such a project.
 - `packages/startup/src/index.ts:58`. Add the drift kind `config-invalid`. Add `inspectOwnedOnly` after `inspectStartup`.
-- `apps/cli/src/project-status.ts:19-23, 26-57`. `runProjectStatus` reads the config with `readConfig`. It builds the `config` object and the drift entry. It chooses the inspection: when `project.bowerloomIdentity === null` skip every startup inspection and report `setup: none`. When `.bowerloom` exists, `configPresent` is true, and `.bowerloom/installation-receipt.json` is missing (`lstat` returns `ENOENT`), call `inspectOwnedOnly` and report `setup: none`. In every other case call `inspectStartup` as today. A project with `.bowerloom` and no config keeps today's behavior, including drift `invalid-receipt` for a missing receipt. The `planProjectApply` call at line 44 stays in its `try` block.
+- `apps/cli/src/project-status.ts:19-23, 26-57`. `runProjectStatus` reads the config with `readConfig`. It builds the `config` object and the drift entry. It chooses the inspection. If `project.bowerloomIdentity === null`, skip every startup inspection and report `setup: none`. If `.bowerloom` exists, `configPresent` is true, and `.bowerloom/installation-receipt.json` is missing (`lstat` returns `ENOENT`), call `inspectOwnedOnly` and report `setup: none`. In every other case call `inspectStartup` as today. A project with `.bowerloom` and no config keeps today's behavior, including drift `invalid-receipt` for a missing receipt. The `planProjectApply` call at line 44 stays in its `try` block.
 - `apps/cli/src/up.ts:79-80` (`initStep`). After `realpathSync(ctx.cwd)`, call `pathInsideStore(target, ctx.home)` and throw `STORE_NOT_A_PROJECT`.
 - `apps/cli/src/main.ts:132` (`COMMANDS`). Add `'store'`. After the `ls` branch at line 145, add a branch for `store` that imports `./store.js` and calls `runStoreCommand`. Handle `help store` and `store --help` through `TOPICS.store`.
 - `apps/cli/src/human.ts:13-30` (`SECTIONS`). Add the line `bowerloom store status               Show your store, ~/.bowerloom.` under `Start here`. Add `TOPICS.store` near line 45. Add the refusal words in `REFUSALS` at line 224. `tests/help-human.test.ts:20-45` holds the first-screen text and must change with it.
@@ -380,7 +382,7 @@ Change:
 
 - `apps/docs/src/content/docs/cli.md`, section `## Project commands`: add `bowerloom store status [--json]` to the code block. Add one paragraph that explains the store and `store status`. Describe the `status` fields `markers`, `setup`, and `config`. Say that the project is the nearest folder with `.bowerloom` or `bowerloom.json`.
 - `apps/docs/src/content/docs/reference/errors.md`: add one row for each code in section 5, in a new table `## Store and config refusals`. Use the same three columns as the other tables.
-- The text in `errors.md` that says "the nearest parent folder that holds `.bowerloom`" (and the same words in `cli.md`) must now mention `bowerloom.json`.
+- Change the words "the nearest parent folder that holds `.bowerloom`" in `errors.md` and `cli.md`. They must now mention `bowerloom.json`.
 - `apps/docs/src/content/docs/releases.md`, under `## 0.7.0-beta.3`: "A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`."
 - Spec 10 owns the page "Where your items come from". Do not write it here.
 
@@ -393,7 +395,7 @@ Write each test first. Every file that makes folders under HOME imports `tests/s
 1. An absent store returns state `absent`.
 2. A valid store returns state `store` with a pinned context.
 3. A folder with no `store.json` returns `foreign`, and `openStore` throws `STORE_INVALID`.
-4. A `store.json` with invalid JSON, an unknown key, a duplicate key, a wrong format, a byte order mark, or more than 4096 bytes throws `STORE_INVALID`.
+4. Each of these `store.json` files throws `STORE_INVALID`. The files: invalid JSON, an unknown key, a duplicate key, a wrong format, a byte order mark, and a size over 4096 bytes.
 5. A `store.json` that is a link, has two hard links, or is owned by another user (use the `uid` hook) throws `STORE_UNSAFE`.
 6. A store that is a link throws `STORE_UNSAFE`.
 7. A store with group write permission throws `STORE_UNSAFE`.
@@ -411,7 +413,7 @@ Write each test first. Every file that makes folders under HOME imports `tests/s
 2. A home with a `.bowerloom` that has no `store.json` still gives `PROJECT_ROOT_REFUSED` (the existing case at lines 88-91 stays).
 3. A home with a store whose `store.json` is invalid gives `PROJECT_ROOT_REFUSED`.
 4. A `bowerloom.json` at home gives `PROJECT_ROOT_REFUSED`.
-5. A folder with only `bowerloom.json` is a project with `bowerloomIdentity` null and `configPresent` true.
+5. A folder with only `bowerloom.json` is a project. Its `bowerloomIdentity` is null and its `configPresent` is true.
 6. A folder with both has both.
 7. The nearest marker wins, in both orders of inner and outer.
 8. `Bowerloom.json` gives `PROJECT_UNSAFE`.
@@ -422,7 +424,7 @@ Write each test first. Every file that makes folders under HOME imports `tests/s
 
 `packages/project-authoring/test/id-parity.test.mjs`:
 
-1. `isStoreSkillId`, `isStorePromptId`, and `isStoreTeamId` give the same answer as `isSkillId`, `isPromptId`, and `isTeamId` for each id of a list that holds a valid id, `personal-assistant`, `first-team`, `prompt-x`, a 64-character id, a 65-character id, a 57-character id, a 58-character id, an id with an upper-case letter, a leading hyphen, a double hyphen, and the empty string.
+1. `isStoreSkillId`, `isStorePromptId`, and `isStoreTeamId` give the same answer as `isSkillId`, `isPromptId`, and `isTeamId`. The test uses these ids: a valid id, `personal-assistant`, `first-team`, `prompt-x`, ids of 57, 58, 64, and 65 characters, and four bad ids. The bad ids have an upper-case letter, a leading hyphen, a double hyphen, or no characters.
 
 `tests/project-context-contracts.test.ts` (update line 15-20): the sample project object includes `configPresent` and the key order matches.
 
@@ -437,12 +439,12 @@ Write each test first. Every file that makes folders under HOME imports `tests/s
 7. A repeated id in one list gives `CONFIG_DUPLICATE_ID` and the message names both entries.
 8. The same id with `store` and `project` in one list gives `CONFIG_DUPLICATE_ID`.
 9. A skill and a prompt with the same id is valid.
-10. `via` on a project entry, an empty `via`, an unsorted `via`, and a `via` team that is not in `teams` each give `CONFIG_INVALID`.
+10. Four cases give `CONFIG_INVALID`: `via` on a project entry, an empty `via`, an unsorted `via`, and a `via` team that is not in `teams`.
 11. A store skill with the id `personal-assistant` gives `CONFIG_INVALID`. A project skill with that id is valid.
 12. A store prompt id of 58 characters gives `CONFIG_INVALID`. 57 characters is valid.
 13. 128 skills is valid. 129 gives `CONFIG_LIMIT`. The same for prompts at 128 and teams at 32.
 14. A file of 1048576 bytes passes the size check. 1048577 gives `CONFIG_LIMIT`.
-15. `readConfig` returns `absent` when the file is missing, and the guard failures of 3.4 give `CONFIG_UNSAFE`.
+15. For a missing file, `readConfig` returns `absent`. The guard failures of 3.4 give `CONFIG_UNSAFE`.
 
 `packages/startup/test/owned-only.test.mjs`:
 
@@ -450,7 +452,7 @@ Write each test first. Every file that makes folders under HOME imports `tests/s
 2. An entry no owner claims becomes drift `unexpected`.
 3. A link becomes drift `unsafe`.
 4. More than 256 entries throws `INSPECTION_LIMIT`.
-5. It succeeds when `installation-receipt.json` is absent.
+5. It succeeds for a project with no `installation-receipt.json`.
 
 `tests/store-foundation-cli.test.ts` (spawn the CLI with `HOME` set to a temporary folder):
 

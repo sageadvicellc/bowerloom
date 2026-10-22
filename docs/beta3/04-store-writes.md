@@ -6,7 +6,7 @@
 - Lane: 2.
 - Branch: `beta3/04-store-writes`.
 - Depends on: spec 03 (store rules, `StoreContext`, `inspectStoreWith`, `openStoreWith`, `verifyStorePins`).
-- Line numbers below are from commit c9730d3. Find each place by its function name if it moved.
+- Line numbers below are from commit c9730d3. If a line moved, find the place by its function name.
 
 ## 2. Problem
 
@@ -101,7 +101,7 @@ Crash recovery: a crash after step 1 leaves an empty folder. A crash during step
 
 ### 3.4 `skill create`, `prompt create`, `team create` with `--global`
 
-The command parses its words, then plans, then asks for approval, then applies. The sequence in apply is the same as for a project (see `applyCreate`, `packages/project-authoring/src/create.ts:274-372`): remove scratch, clear or finish a pending record, make folders, write the pending record, stage the files, move them in place, write `skills.json` for a skill, write the receipt, remove the pending record. The folder that holds all of this is the store folder itself. In the store, `skills/`, `prompts/`, `teams/`, `authoring/`, and `skills.json` sit directly in the store folder. They do not sit in a `.bowerloom` folder.
+The command parses its words, then plans, then asks for approval, then applies. The sequence in apply is the same as for a project (see `applyCreate`, `packages/project-authoring/src/create.ts:274-372`). The steps are: remove scratch, clear or finish a pending record, and make folders. Then write the pending record, stage the files, and move them in place. Last, write `skills.json` for a skill, write the receipt, and remove the pending record. The folder that holds all of this is the store folder itself. In the store, `skills/`, `prompts/`, `teams/`, `authoring/`, and `skills.json` sit directly in the store folder. They do not sit in a `.bowerloom` folder.
 
 Differences from a project create:
 
@@ -131,7 +131,7 @@ You and your agents own these files and can edit them.
 This writes the store only. It changes no project, and it installs nothing.
 ```
 
-The lines for restore, finish, discard, and scratch keep the wording of `renderCreateReview` (`apps/cli/src/create.ts:56-82`), with the store paths in place of the project paths. The last two lines of a project create (`You and your agents ...` and `This writes inside .bowerloom only ...`) become the two lines above.
+Keep the wording of `renderCreateReview` (`apps/cli/src/create.ts:56-82`) for the lines about restore, finish, discard, and scratch. Use the store paths. The last two lines of a project create (`You and your agents ...` and `This writes inside .bowerloom only ...`) become the two lines above.
 
 The result of a store create is the same `AuthoringReceipt` JSON as a project create.
 
@@ -163,13 +163,13 @@ The sequence is the one in `runAdd` (`apps/cli/src/manifest.ts:137-180`), with t
 1. Line 140 (`discoverProject`) becomes: open the store with `inspectStore(home)`. If the store is `foreign` or refused, refuse with the `STORE_*` code. If it is absent, the plan carries `storeCreate: true`.
 2. Line 141 (`requireTeams`) checks the store teams, as in 3.4 rule 3.
 3. Line 142 (`readManifestState`) reads the store `skills.json` with the store limits (256 skills, 4 MiB). If the store is absent it returns no file.
-4. Line 146 (`verifyProjectPins`) becomes `verifyStorePins(store)` when the store exists.
+4. If the store exists, line 146 (`verifyProjectPins`) becomes `verifyStorePins(store)`.
 5. Line 148 keeps the cache at `join(privateStateRoot(env, home), 'cache')`. The cache is never inside the store.
 6. The plan is `planManifestChange(target, add, { cacheRoot })` with the store target (4.3).
-7. Apply: run the store creation steps of 3.3 first when `storeCreate` is true. Then `applyManifestChange`. Then seed the cache (line 175) with `seedPin({ project: null, stateRoot }, written, bytes, signal)`.
-8. If the state root is inside the store, or the store is inside the state root, refuse `STORE_STATE_NESTED` at plan time. The check uses paths when the store is absent. It also compares device and inode when the store exists. Copy the algorithm of `nested` (`packages/project-sync/src/plan.ts:128-136`) and use the store's identity and ancestry in place of the project's.
+7. Apply: if `storeCreate` is true, run the store creation steps of 3.3 first. Then `applyManifestChange`. Then seed the cache (line 175) with `seedPin({ project: null, stateRoot }, written, bytes, signal)`.
+8. If the state root is inside the store, or the store is inside the state root, refuse `STORE_STATE_NESTED` at plan time. With no store, the check compares paths. With a store, it also compares device and inode. Copy the algorithm of `nested` (`packages/project-sync/src/plan.ts:128-136`) and use the store's identity and ancestry in place of the project's.
 
-Plan lines. The existing review (`renderAddReview`, `manifest.ts:~105-130`) prints `Add skill <id> to <plan.manifest>`. For the store scope, `plan.manifest` is the text `~/.bowerloom/skills.json`. Add one line before `Add skill`: `Create the store at ~/.bowerloom (store.json). It holds definitions only.` when `storeCreate` is true. Add this line after the `Cache:` line:
+Plan lines. The existing review (`renderAddReview`, `manifest.ts:~105-130`) prints `Add skill <id> to <plan.manifest>`. For the store scope, `plan.manifest` is the text `~/.bowerloom/skills.json`. If `storeCreate` is true, add one line before `Add skill`: `Create the store at ~/.bowerloom (store.json). It holds definitions only.` Add this line after the `Cache:` line:
 
 ```text
   Scope: store. A project picks this skill with bowerloom use.
@@ -183,7 +183,7 @@ It reads the store `skills.json` with the store limits and prints the same repor
 
 ### 3.8 Machine cache without a project
 
-`seedPin` (`packages/project-sync/src/seed.ts:49-66`) calls `stateLayout(input)`, which needs a project (`plan.ts:157-176`). Add `cacheLayout(stateRoot)` to `plan.ts`. It returns `{ cacheRoot, pins, missing }`. It checks the state chain and `<stateRoot>/cache` exactly as `stateLayout` does (the chain from `stateRoot` up, the private-folder check on `cacheRoot` only, the limit of 8 missing folders), and it does not touch a project. `stateLayout` calls `cacheLayout` for that part and keeps its own signature. `seedPin` takes `input: { project: ProjectContext | null; stateRoot: string }`. With a project it behaves as today. With `null` it calls `cacheLayout` and skips `projectFolders` and the nesting check.
+`seedPin` (`packages/project-sync/src/seed.ts:49-66`) calls `stateLayout(input)`, which needs a project (`plan.ts:157-176`). Add `cacheLayout(stateRoot)` to `plan.ts`. It returns `{ cacheRoot, pins, missing }`. It checks the state chain and `<stateRoot>/cache` exactly as `stateLayout` does It follows these rules: the chain from `stateRoot` up, the private-folder check on `cacheRoot` only, and the limit of 8 missing folders. It does not touch a project. `stateLayout` calls `cacheLayout` for that part and keeps its own signature. `seedPin` takes `input: { project: ProjectContext | null; stateRoot: string }`. With a project it behaves as today. With `null` it calls `cacheLayout` and skips `projectFolders` and the nesting check.
 
 ### 3.9 `ls` and `ls --global`
 
@@ -223,18 +223,18 @@ JSON, field by field:
 | `teams` | array | Present unless a section was named. Each item: `{ "id": string, "source": "project"\|"store", "via": [], "displayName": string\|null, "state": "ok" }`. |
 | `skills` | array | Each item: `{ "id": string, "source": "project"\|"store", "via": [], "kind": "local"\|"npm"\|"git", "pin": string\|null, "state": "ok" }`. `pin` is null for `local`. |
 | `prompts` | array | Each item: `{ "id": string, "source": "project"\|"store", "via": [], "state": "ok" }`. |
-| `pinsReadable` | boolean | Present when skills are shown. False when `skills.json` cannot be read. |
+| `pinsReadable` | boolean | Present for skills. False means `skills.json` cannot be read. |
 | `unselected` | object | `{ "skills": [], "prompts": [], "teams": [] }`. Always empty lists in this spec. |
 | `unlisted` | number | The count of entries with an unusual name or type, as today. |
-| `storeState` | string | Present only when `scope` is `store`. `ready` or `absent`. |
+| `storeState` | string | Present only for `scope: store`. Its value is `ready` or `absent`. |
 
-Item order: sorted by `id` in byte order. When one section is named (`ls skills`), only that array appears, with `format`, `scope`, `listedBy`, `unselected`, `unlisted`, and for skills `pinsReadable`. The names `via` and `state` are fixed here so spec 06 adds values, not fields.
+Item order: sorted by `id` in byte order. When one section is named (`ls skills`), only that array appears. The other fields stay: `format`, `scope`, `listedBy`, `unselected`, `unlisted`, and for skills `pinsReadable`. The names `via` and `state` are fixed here so spec 06 adds values, not fields.
 
 `displayName` is the team name from `.bowerloom/brief.json` for `first-team` only. It is null for every other team and for every store team.
 
 ### 3.10 Exit codes
 
-All commands in this spec use the existing codes: 0 for done or nothing to do, 1 for a refusal, 2 for `USAGE`, 3 when a plan waits for approval, 130 for an interrupt.
+All commands in this spec use the existing exit codes. 0 means done or nothing to do. 1 means a refusal. 2 means `USAGE`. 3 means a plan waits for approval. 130 means an interrupt.
 
 ## 4. Schemas
 
@@ -278,9 +278,9 @@ export const storeTarget = (storeDir: string): ManifestTarget => ({ folder: stor
 
 `readManifestState(target)` (line 76): use `target.folder` in place of `join(project, '.bowerloom')` at line 78. Use `target.limits.bytes` in place of `MANIFEST_LIMITS.bytes` at lines 86, 91, and 92. Add the option `allowAbsent`. When the folder is missing and `allowAbsent` is true, return `{ bowerloom: null, file: null }`. Without the option a missing folder still refuses `MANIFEST_UNSAFE`. The return type `bowerloom` becomes `{ device: string; inode: string } | null`.
 
-`planManifestChange(target, change, options)` (line 122): use `target.limits.skills` at lines 51 and 139. The plan format becomes `bowerloom/skills-manifest-change/v1beta2`. Add the fields `scope`, `storeCreate` (boolean), and make `bowerloom` `{ device, inode } | null`. The value is null when `scope` is `store`. The field `manifest` is `.bowerloom/skills.json` for a project and `~/.bowerloom/skills.json` for the store. The field `project` is the lock folder (`target.lockDir`). The store's identity is bound by `verifyStorePins`, not by this field.
+`planManifestChange(target, change, options)` (line 122): use `target.limits.skills` at lines 51 and 139. The plan format becomes `bowerloom/skills-manifest-change/v1beta2`. Add the fields `scope`, `storeCreate` (boolean), and make `bowerloom` `{ device, inode } | null`. For `scope: store` the value is null. The field `manifest` is `.bowerloom/skills.json` for a project and `~/.bowerloom/skills.json` for the store. The field `project` is the lock folder (`target.lockDir`). The store's identity is bound by `verifyStorePins`, not by this field.
 
-`applyManifestChange(plan, revision, held)` (line 170): build the target from `plan.scope` and `plan.project`. Use `target.folder` for `folder` at line 180. Skip the identity comparison at lines 184-186 when `plan.bowerloom` is null. Keep everything else.
+`applyManifestChange(plan, revision, held)` (line 170): build the target from `plan.scope` and `plan.project`. Use `target.folder` for `folder` at line 180. If `plan.bowerloom` is null, skip the identity comparison at lines 184-186. Keep everything else.
 
 `checkManifest(project)` in `check.ts` takes a string or a target and adds `scope` to the result. Its format becomes `bowerloom/skills-manifest-check/v1beta2`. `MANIFEST_PATH` (`add.ts:18`) stays for the project.
 
@@ -296,7 +296,7 @@ In `packages/project-authoring/src/create.ts`:
 interface Scope { kind: 'project' | 'store'; dir: string; bowerloom: string; identity: { device: string; inode: string } | null; exists: boolean }
 ```
 
-For a project, `openScope` does what `openProject` does. For a store, `bowerloom` equals `dir`. `exists` is false when the store folder is absent or a leftover. Then `identity` is null.
+For a project, `openScope` does what `openProject` does. For a store, `bowerloom` equals `dir`. For an absent or leftover store folder, `exists` is false. Then `identity` is null.
 - In `plan()` (lines 181-266): when the scope is a store that does not exist, use an empty state in place of `readAuthoringState`: `{ folder: false, receipt: null, pending: null, scratch: [] }` (the shape is `AuthoringState`, `state.ts:~112`). Skip the revision-pending check for a store. Use `readManifestState(storeTarget(dir), { allowAbsent: true })` for the store manifest (`currentManifest`, line 159). Set `storeCreate` in the plan and push the folder names `authoring` and the parent folder as `folders`.
 - `CreatePlan` (lines 40-73) gains `scope` and `storeCreate`. `bowerloom` becomes nullable. The plan format becomes `bowerloom/authoring-plan/v1beta2`.
 - `requireTeams` (lines 171-179) works from `scope.bowerloom` and the registered items. For a store it does not accept `first-team` as a special case. Add a parameter `allowFirstTeam` that is true for a project and false for the store.
@@ -313,13 +313,15 @@ The plan JSON keeps its shape. The review function prints the lines in 3.4 using
 | Code | Cause | Next step |
 |---|---|---|
 | `STORE_STATE_NESTED` | The private state folder is the store or inside it, or the store is inside the state folder. | Set `XDG_STATE_HOME` to a folder outside `~/.bowerloom`. |
-| `STORE_LOCKED` | Another command is changing the store. | Run the same command again when the other one is done. |
+| `STORE_LOCKED` | Another command is changing the store. | When the other command is done, run this one again. |
 | `STORE_INVALID` | `~/.bowerloom` exists but is not a store, at the first write. | `bowerloom store status` |
 | `TEAM_NOT_FOUND` | `--team` names a team that is not in the store. | `bowerloom ls teams --global` |
 | `MANIFEST_LIMIT` | The store `skills.json` is over 256 skills or 4 MiB, or a project one is over 128 or 1 MiB. | `bowerloom skills check` |
 | `MANIFEST_NOT_FOUND` | `skills check --global` found no store `skills.json`. | `bowerloom skills add npm:<package>@<version>:<path> --global` |
 
-The other `STORE_*` codes come from spec 03. The sentence for `MANIFEST_LIMIT` in `apps/cli/src/human.ts` reads today `This beta keeps skills.json small: 128 skills and 1 MiB at most.` Change it to `This beta keeps a project skills.json small: 128 skills and 1 MiB at most. The store holds 256 skills and 4 MiB.`
+Message rule. The fixed message of a code is its Cause cell, written as plain sentences. It names no path. It names an id only where the table says so. In `REFUSALS` (`apps/cli/src/human.ts:224`) the `sentence` is the Cause cell and the `next` text is the Next step cell.
+
+The other `STORE_*` codes come from spec 03. In `apps/cli/src/human.ts`, change the `MANIFEST_LIMIT` sentence. Today it reads `This beta keeps skills.json small: 128 skills and 1 MiB at most.` The new text is `This beta keeps a project skills.json small: 128 skills and 1 MiB at most. The store holds 256 skills and 4 MiB.`
 
 `STORE_STATE_NESTED` and `STORE_LOCKED` need a sentence and a next step in `REFUSALS` (`human.ts:224`). Their fixed messages live in `packages/project-context/src/refusal.ts:7-17`. `STORE_LOCKED` is the store's form of `PROJECT_LOCKED`. Map it where the store lock is taken.
 
@@ -332,7 +334,7 @@ Create:
 
 Change:
 
-- `packages/project-context/src/store.ts` (from spec 03): add `withStoreForWrite(home, signal, work)`. It runs steps 1 to 4 of 3.3 and then calls `work(store, held)` while it still holds the store lock. It releases the lock when `work` ends. It is the only function that creates the store. Every store write runs inside it.
+- `packages/project-context/src/store.ts` (from spec 03): add `withStoreForWrite(home, signal, work)`. It runs steps 1 to 4 of 3.3 and then calls `work(store, held)` while it still holds the store lock. The lock ends with `work`. It is the only function that creates the store. Every store write runs inside it.
 - `packages/skill-manifest/src/schema.ts:19, 53, 69, 140-165`: limits (4.2).
 - `packages/skill-manifest/src/add.ts:17-18, 21-40, 51, 76-102, 122-160, 170-201`: target, plan fields (4.3).
 - `packages/skill-manifest/src/check.ts`: target, scope field, format.
@@ -341,14 +343,14 @@ Change:
 - `packages/project-authoring/src/index.ts:5-6`: export the changed types.
 - `packages/project-sync/src/plan.ts:157`: add `cacheLayout`, have `stateLayout` call it.
 - `packages/project-sync/src/seed.ts:49-66`: accept a null project.
-- `packages/project-sync/src/index.ts`: export `cacheLayout` if a test needs it.
+- `packages/project-sync/src/index.ts`: export `cacheLayout` for the tests.
 - `apps/cli/src/create.ts:21-25, 30-53, 56-82, 85-92, 95-105`: the flag, the usage text, the review, the store branch in `runCreateCommand`, and `createChange` for the store scope.
 - `apps/cli/src/manifest.ts:~20-50, 105-131, 137-207`: the flag, `requireTeams` for the store, `runAdd`, `runCheck`.
 - `apps/cli/src/ls.ts:16-90`: format, `--global`, source tags, per-item pins. Replace `Listing.pinned` with per-skill `pin` and `kind`. `runLsCommand` (line 83) accepts `--global`.
 - `apps/cli/src/main.ts:145`: pass `--global` through to `runLsCommand` (it receives all `args`). Lines 152-164 already pass `args` to the create and manifest runners. No new dispatch is needed.
 - `apps/cli/src/human.ts:45-160`: the help topics. `human.ts:224`: the refusal words.
 - Other callers that pass a string to `readManifestState` stay as they are: `plan.ts:374`, `apply-project.ts:131`, `up.ts:130`, `ls.ts:34`, `held.ts`, `verifiers.ts:~85`. Do not change them in this spec.
-- `package.json:30`: add the new test files if they sit in a folder not yet listed. `packages/skill-manifest/test/*.test.mjs`, `packages/project-authoring/test/*.test.mjs`, and `packages/project-sync/test/*.test.mjs` are already listed.
+- `package.json:30`: no change. The folders `packages/skill-manifest/test`, `packages/project-authoring/test`, and `packages/project-sync/test` are already in the glob.
 
 ## 7. Edge cases
 
@@ -389,7 +391,7 @@ Change:
 ## 9. Docs changes for this track
 
 - `apps/docs/src/content/docs/cli.md`, `## Create commands`: add `[--global]` to the three usage lines and one paragraph on the store. In `## Third-party skills`: add `--global` to `skills add` and `skills check`. In `## Project commands`: change the `ls` usage line and its paragraph to the text in 3.9. Describe the source column and the new JSON.
-- `apps/docs/src/content/docs/guides/create-items.md`: add a section "Create an item in your store" with one example for each of the three commands and the sentence "A project picks store items with `bowerloom use`." Spec 06 defines `use`. Both specs ship in beta.3.
+- `apps/docs/src/content/docs/guides/create-items.md`: add a section "Create an item in your store". Give one example for each of the three commands. Add the sentence "A project picks store items with `bowerloom use`." Spec 06 defines `use`. Both specs ship in beta.3.
 - `apps/docs/src/content/docs/guides/add-skills.md`: add a short section "Pin a skill in your store" for `skills add --global` and the limits 128 and 256.
 - `apps/docs/src/content/docs/reference/errors.md`: rows for `STORE_STATE_NESTED` and `STORE_LOCKED`, and an updated `MANIFEST_LIMIT` row.
 - `apps/docs/src/content/docs/releases.md`, `## 0.7.0-beta.3`: "`--global` on `team create`, `skill create`, `prompt create`, `skills add`, `skills check`, and `ls` works on your store, `~/.bowerloom`. `ls` shows where each item comes from. `ls --json` has a new format, `bowerloom/ls/v1beta2`. The store holds up to 256 skills and a project up to 128."
@@ -408,13 +410,13 @@ Every CLI test spawns the CLI with `HOME` set to a temporary folder and `XDG_STA
 5. A 1 MiB file passes with the default limits. 1 MiB plus one byte gives `MANIFEST_LIMIT`.
 6. `readManifestState` with `storeTarget` reads `<store>/skills.json` and refuses a link, a second hard link, a foreign owner, and group write with `MANIFEST_UNSAFE`.
 7. `readManifestState` with `allowAbsent` and a missing folder returns `{ bowerloom: null, file: null }`. Without the option it refuses `MANIFEST_UNSAFE`.
-8. `planManifestChange` with the store target gives `scope: "store"`, `bowerloom: null`, and `manifest: "~/.bowerloom/skills.json"`. Its revision does not change when the store folder is created between two plans.
+8. `planManifestChange` with the store target gives `scope: "store"`, `bowerloom: null`, and `manifest: "~/.bowerloom/skills.json"`. Creating the store folder between two plans does not change its revision.
 9. `applyManifestChange` writes `<store>/skills.json` and keeps the plan's hash checks.
 10. The existing `schema.test.mjs` and `add.test.mjs` cases still pass with string callers.
 
 `packages/project-authoring/test/create-store.test.mjs`:
 
-1. `planCreate` with `scope: "store"` for a skill, a prompt, and a team against an absent store gives `storeCreate: true`, `bowerloom: null`, and the folder list `authoring` and the parent folder.
+1. Run `planCreate` with `scope: "store"` for a skill, a prompt, and a team against an absent store. The plan has `storeCreate: true` and `bowerloom: null`. Its folder list holds `authoring` and the parent folder.
 2. The team plan does not read `brief.json` and uses `STORE_BRIEF`. Its `compiledCandidate` is equal across two runs.
 3. `applyCreate` for each kind writes the expected files, the `skills.json` entry for a skill, and the receipt, in the store folder.
 4. `--team` against a store team passes. Against `first-team` it gives `TEAM_NOT_FOUND`.
@@ -436,7 +438,7 @@ Every CLI test spawns the CLI with `HOME` set to a temporary folder and `XDG_STA
 1. `seedPin` with `project: null` seeds an empty cache and returns `seeded`.
 2. A second call returns `present`.
 3. `cacheLayout` reports the missing folders `stateRoot` and `cache` for a fresh state root and pins the existing ones.
-4. `cacheLayout` refuses `SKILLS_STATE_UNSAFE` when `<stateRoot>/cache` has mode 0755.
+4. If `<stateRoot>/cache` has mode 0755, `cacheLayout` refuses `SKILLS_STATE_UNSAFE`.
 5. `seedPin` with a project keeps its old result (reuse the cases of `sync-global-cache.test.mjs`).
 
 `tests/store-write-cli.test.ts`:
@@ -459,7 +461,7 @@ Every CLI test spawns the CLI with `HOME` set to a temporary folder and `XDG_STA
 16. `--global` twice exits 2.
 17. A project `skill create` still works and writes a v1beta2 plan.
 
-Update `tests/create-cli.test.ts` and `tests/authoring.test.ts` for the new plan format name. Update `tests/skills-add-cli.test.ts` and `tests/skills-replace-cli.test.ts` for the new plan format name. Update `tests/help-human.test.ts` if the first screen changes (it does not in this spec). Update `tests/human-refusal.test.ts` for the two new codes.
+Update `tests/create-cli.test.ts` and `tests/authoring.test.ts` for the new plan format name. Update `tests/skills-add-cli.test.ts` and `tests/skills-replace-cli.test.ts` for the new plan format name. The first screen does not change in this spec, so `tests/help-human.test.ts` stays as it is. Update `tests/human-refusal.test.ts` for the two new codes.
 
 ## 11. Build order
 

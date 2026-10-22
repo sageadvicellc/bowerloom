@@ -81,7 +81,7 @@ Algorithm:
 
 Entry fields:
 
-- A machine or legacy entry: `status` is `completed` when the inspection is `COMPLETED`, has a receipt, and has no active owner. Otherwise `partial`. If the inspection throws, the entry is `partial` with no label. `active` is `inspection.activeOwner`.
+- A machine or legacy entry: if the inspection is `COMPLETED`, has a receipt, and has no active owner, `status` is `completed`. Otherwise `status` is `partial`. If the inspection throws, the entry is `partial` with no label. `active` is `inspection.activeOwner`.
 - `kind`: `npm` or `git` from `receipt.source.kind` (`cache.ts:29`). `store-git` for a store entry. Null for an unknown entry.
 - `label`: for npm, `<package>@<version>:<sourceRoot>`. For git, `<repository>@<commit first 8>:<sourceRoot>`. For a store entry, `<item kind> <item id>` (for example `skill house-style`), read from the folder layout. Null for an unreadable partial entry.
 - `skillName`: `receipt.skill.name`, or null.
@@ -149,7 +149,7 @@ One cache lock covers all three places. `cacheLockSlot(cacheRoot)` keys the lock
 
 Crash recovery. `removeCacheEntry` renames the entry to `.prune-<name>-<8 hex>` before it deletes anything. A crash during the delete leaves a `.prune-*` folder. `cache list` shows it as `partial` and not active. `cache prune --partial` deletes it. A crash before the rename changes nothing.
 
-Result text: `Deleted <n> entries, about <size>.` If some entries were skipped, add `Skipped <n> entries that another command is using.` JSON result format `bowerloom/cache-prune-result/v1beta1` (4.3).
+Result text: `Deleted <n> entries, about <size>.` Skipped entries add a second line: `Skipped <n> entries that another command is using.` The JSON result format is `bowerloom/cache-prune-result/v1beta1` (4.3).
 
 Exit codes: 0 done or nothing to prune, 1 refusal, 2 `USAGE`, 3 plan awaiting approval, 130 interrupt.
 
@@ -336,7 +336,7 @@ Unit tests build a state folder with real cache entries. Use the fixtures of `pa
 
 1. `removeCacheEntry` removes a seeded entry. The folder is gone, no `.prune-*` is left, and the root is unchanged otherwise.
 2. A link entry refuses `CACHE_PRUNE_FAILED` and the link target is untouched.
-3. An entry with group write permission, or one with mode 0755, refuses `CACHE_PRUNE_FAILED`. An entry owned by another user also refuses. The test skips that last case when it cannot make a foreign owner, and says so.
+3. An entry with group write permission, or one with mode 0755, refuses `CACHE_PRUNE_FAILED`. An entry owned by another user also refuses. The last case needs a foreign owner. Without one, the test skips that case and says so.
 4. A link inside the entry is unlinked and its target survives.
 5. A name with `/` or `..` refuses.
 6. After a simulated crash between rename and remove (a hook throws after the rename), a `.prune-*` folder remains. A second call on that name removes it.
@@ -396,8 +396,19 @@ Update `tests/help-human.test.ts` (first screen) and `tests/human-refusal.test.t
 ## 12. Unverified items
 
 1. `inspectSkillCache` on a partial entry. I read its signature (`cache.ts:281`) and the `CacheInspection` type (`cache.ts:37`), not its behavior on a half-written operation. Run test case 7 of `cache-admin.test.mjs` first. If the call throws for a partial entry, the entry is `partial` with no label. This spec already says so, and `scan` does the same (`cache-index.ts:98-101`). If the call hangs, race it against a 10-second timer and treat a timeout as `partial`.
-2. `activeOwner` meaning. The field comes from the `owner.lock` file inside an operation (`cache.ts:308`). After a crash it can stay true. Test with a crashed fetch (a hook that exits after `owner.lock` is made). If `activeOwner` stays true forever, a person cannot prune that entry. Then add the selector rule: an entry that is `active` and older than 24 hours (by the folder's birth time in the inspection) counts as not active for `--partial` and `--all`. Name the rule in the plan: `(its owner lock is older than a day)`.
+2. `activeOwner` meaning. The field comes from the `owner.lock` file inside an operation (`cache.ts:308`). After a crash it can stay true. Test with a crashed fetch (a hook that exits after `owner.lock` is made). If `activeOwner` stays true forever, a person cannot prune that entry. Then add a selector rule. An active entry older than 24 hours counts as not active for `--partial` and `--all`. The folder's birth time in the inspection gives the age. Name the rule in the plan: `(its owner lock is older than a day)`.
 3. The mode check of the entry folder (0700). `directory(path, true)` in `cache.ts:~150` requires mode 0700 for private folders. Entries made by Bowerloom have mode 0700. If a real entry has another mode, accept any mode with no group or world write in `removeCacheEntry`. Keep the owner check.
 4. Whether `fs.rmSync` with `recursive` unlinks a link without following it on the Node version the repository targets. The Node documentation says it does. Test case 4 of `remove-cache.test.mjs` proves it. If it fails, walk the folder with `lstat` and unlink each entry yourself.
 5. `readStoreCache` and `writeStoreCache` come from spec 06. If their names changed there, use the names in that spec's `store-git.ts`.
 6. The cost of reading every live store item for hashes in `referenceSets`. A store has at most 256 skills and 512 items in the receipt (`LIMITS.items`, `files.ts:12`). Reading them is fast. If `cache list` takes more than a second in a test with a full store, compute store item hashes only when a store-cache entry exists.
+
+## New decision for Hanna
+
+Topic: `cache prune --unreferenced` outside a project.
+
+Outside a project, Bowerloom checks only the store. Other projects on the machine are not checked. A pin that another project needs can be deleted. That project fetches the pin again at its next sync, so no data is lost.
+
+- A. (Default) Allow it. The plan says `Other projects on this machine are not checked.`
+- B. Refuse it outside a project, with `USAGE` and the text `Run cache prune --unreferenced inside a project, or name entries with --entry.`
+
+This decision blocks build step 3 of this spec (the prune plan). The plan lines of section 3.4 assume option A.
