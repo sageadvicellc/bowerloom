@@ -141,8 +141,15 @@ const pinWords = (entry: Pinned): string => {
 };
 /** Shown before approval: this list is pre-approved in Claude Code while the skill is active. */
 export const allowedToolsLine = (tools: string): string => `  Allowed tools: ${tools} (pre-approved in Claude Code while this skill is active)`;
+/** The entry a `skills add` wrote. `skills add` never plans a removal, so a remove plan here is stale. */
+function writtenEntry(change: ManifestChangePlan['change']): PinnedEntry {
+  if ('remove' in change) throw manifestRefusal('STALE_APPROVAL');
+  return ('replace' in change ? change.replace.to : change.add) as PinnedEntry;
+}
 /** The plan in plain words. Values are checked ids, paths, hashes and pins; confirm.ts escapes control characters again. */
 export function renderAddReview(plan: ManifestChangePlan): string {
+  // Spec 08, 12.2: a remove plan (receipt clean) has no pin to show.
+  if ('remove' in plan.change) return `Remove skill ${plan.change.remove.id} from ${plan.manifest}`;
   const replace = 'replace' in plan.change ? plan.change.replace : null;
   const entry = (replace ? replace.to : (plan.change as { add: Entry }).add) as Pinned;
   return [
@@ -272,7 +279,7 @@ async function runAddGlobal(args: AddArgs, spec: SkillSpec, home: string, io: Ap
         checkStateNesting(store, store.dir, stateRoot);
         const again = planManifestChange(storeTarget(store.dir), add, { cacheRoot, storeCreate: created });
         if (again.revision !== revision) throw manifestRefusal('STALE_APPROVAL');
-        return { receipt: applyManifestChange(again, revision, held), written: ('replace' in again.change ? again.change.replace.to : again.change.add) as PinnedEntry };
+        return { receipt: applyManifestChange(again, revision, held), written: writtenEntry(again.change) };
       });
       // The pin is written. The seed only adds to the cache, outside the store lock, and reports a failure.
       seed = await seedPin({ project: null, stateRoot, store: kept }, written, (await resolved!).bytes, controller.signal);
@@ -386,7 +393,7 @@ export function writeProjectAdd(project: ProjectContext, change: ManifestChange,
   if (inner.after.sha256 !== again.after.sha256 || (inner.before?.sha256 ?? null) !== (again.before?.sha256 ?? null)) throw manifestRefusal('STALE_APPROVAL');
   const receipt = applyManifestChange(inner, inner.revision, held);
   if (again.config) writeGuardedFile(project.dir, 'bowerloom.json', again.config.text, again.config.before.sha256, held, '.bowerloom.json');
-  return { receipt, written: ('replace' in inner.change ? inner.change.replace.to : inner.change.add) as PinnedEntry, project: context };
+  return { receipt, written: writtenEntry(inner.change), project: context };
 }
 
 /** Runs `skills add` or `skills check` and returns the exit code: 0 done, 3 approval required. A refusal throws. */

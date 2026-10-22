@@ -38,6 +38,7 @@ import type { Entry, Manifest, ManifestLimits } from '../../skill-manifest/src/s
 import { LIMITS, folderNames, lstatOrNull, makeFolder, readGuarded, readTree, realFolder, removeScratch, sha256, syncFolder, writeNewFile } from './files.js';
 import type { FilePin } from './files.js';
 import { ensure, refuse } from './refusal.js';
+import { writeReceiptRecord } from './receipt-write.js';
 import { AUTHORING_FOLDER, FIRST_TEAM, PENDING, RECEIPT, isId, isPromptId, isRevision, isSkillId, isTeamId, itemPath, pendingOf, readAuthoringState, receiptOf, recordText, sameItem, stageName, tempName } from './state.js';
 import type { AuthoredItem, AuthoringReceipt, AuthoringState, ItemKind, Read } from './state.js';
 
@@ -237,7 +238,7 @@ const SKILL_TEXT = (id: string): string => `---\nname: ${id}\ndescription: Descr
 const PROMPT_TEXT = (id: string): string => `---\ndescription: Describe what this prompt asks for.\n---\n\n# ${id}\n\nWrite the reusable prompt here. You and your agents own this file, so edit it freely.\n`;
 const DEFAULT_ROOT: SliceRoot = { kind: 'project', path: '.' }, DEFAULT_INCLUDES = ['**/*.md'];
 const planned = (path: string, text: string): PlannedFile => ({ path, text, sha256: sha256(text), bytes: Buffer.byteLength(text) });
-const pinsOf = (files: readonly PlannedFile[]): FilePin[] => files.map(({ path, sha256: digest, bytes }) => ({ path, sha256: digest, bytes }));
+export const pinsOf = (files: readonly PlannedFile[]): FilePin[] => files.map(({ path, sha256: digest, bytes }) => ({ path, sha256: digest, bytes }));
 const samePins = (a: readonly FilePin[], b: readonly FilePin[]): boolean => canonicalJson(a) === canonicalJson(b);
 
 /** Where an interrupted prompt's stage copy sits: the one path whose second link to the prompt is expected. */
@@ -447,18 +448,10 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
   };
   let receiptRead = p.reads.receipt, items = readAuthoringState(project.bowerloom).receipt?.value.items ?? [];
 
+  // Spec 08, 4.4: the shared receipt writer.
   const writeReceipt = (next: readonly AuthoredItem[]): void => {
-    const receipt = receiptOf(next), temp = join(auth, tempName(p.revision, 'receipt')), target = join(auth, RECEIPT);
-    writeNewFile(temp, recordText(receipt));
-    try {
-      live();
-      const now = readAuthoringState(project.bowerloom).receipt?.read ?? null;
-      ensure((now?.sha256 ?? null) === (receiptRead?.sha256 ?? null), 'STALE_APPROVAL');
-      if (receiptRead === null) { try { fs.linkSync(temp, target); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'EEXIST') refuse('STALE_APPROVAL'); throw e; } fs.unlinkSync(temp); }
-      else fs.renameSync(temp, target);
-    } finally { if (lstatOrNull(temp) !== null) fs.unlinkSync(temp); }
-    syncFolder(auth);
-    const text = recordText(receipt); receiptRead = { sha256: sha256(text), bytes: Buffer.byteLength(text) }; items = receipt.items;
+    receiptRead = writeReceiptRecord(auth, p.revision, receiptRead, next, live, () => readAuthoringState(project.bowerloom).receipt?.read ?? null);
+    items = receiptOf(next).items;
   };
   const removePending = (expected: string): void => {
     live();

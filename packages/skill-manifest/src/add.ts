@@ -37,8 +37,11 @@ export interface ManifestChangePlan {
   bowerloom: { device: string; inode: string } | null;
   before: { sha256: string; bytes: number } | null;
   after: { sha256: string; bytes: number };
-  /** An add, or a replace of one pinned entry's pin: `from` is the entry as it stands, `to` the entry it becomes. */
-  change: { add: Entry } | { replace: { from: Entry; to: Entry } };
+  /**
+   * An add, a replace of one pinned entry's pin (`from` is the entry as it stands, `to` the entry it becomes), or the
+   * removal of one local entry (spec 08, 4.5): `remove` is the entry as it stands.
+   */
+  change: { add: Entry } | { replace: { from: Entry; to: Entry } } | { remove: Entry };
   /** The exact new bytes of skills.json. */
   text: string;
   /**
@@ -49,9 +52,12 @@ export interface ManifestChangePlan {
   writesAuthorized: false; executionAuthorized: false;
   revision: string;
 }
-/** What planManifestChange takes: one entry to add, or one pinned entry whose id already exists, with its new pin. */
-export type ManifestChange = { add: Entry } | { replace: Entry };
-export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: number } & ({ added: string } | { replaced: string });
+/**
+ * What planManifestChange takes: one entry to add, one pinned entry whose id already exists with its new pin, or the id of
+ * one local entry to remove (spec 08, 4.5).
+ */
+export type ManifestChange = { add: Entry } | { replace: Entry } | { remove: string };
+export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: number } & ({ added: string } | { replaced: string } | { removed: string });
 
 /** Adds a local skill entry to a manifest, or starts one for both harnesses. Pure: the input is not changed. */
 export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits): Manifest {
@@ -129,21 +135,24 @@ export function replaceTarget(skills: readonly Entry[], entry: Entry): Entry {
 }
 
 /**
- * A plan to add one entry, or to replace the pin of one entry. It reads skills.json and writes nothing.
- * A replace keeps the id, the kind and the package or repository; the version or commit, the folder and the teams
- * come from the new entry. Like an add, it binds the sha256 of skills.json as it stands.
+ * The manifest after one change, in memory: the checks of planManifestChange without any read. `current` is the manifest
+ * as it stands, or null when there is no skills.json. Returns the new manifest, its exact bytes, and the plan's `change`.
+ * Spec 08 (store migrate) chains adds through it, one step per entry, before anything is written.
  */
-export function planManifestChange(location: string | ManifestTarget, change: ManifestChange, options: { cacheRoot?: string; storeCreate?: boolean; allowAbsentFolder?: boolean } = {}): ManifestChangePlan {
-  const target = targetOf(location), project = target.lockDir, limits = target.limits;
-  // Spec 06, 3.8 rule 9: a config-only project has no `.bowerloom` yet; its caller creates the folder before the write.
-  const state = readManifestState(target, { allowAbsent: target.scope === 'store' || options.allowAbsentFolder === true });
-  const storeCreate = options?.storeCreate === true && target.scope === 'store';
-  const cacheRoot = options?.cacheRoot;
-  requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
-  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace')), 'MANIFEST_INVALID');
+export function manifestAfter(current: Manifest | null, change: ManifestChange, limits: ManifestLimits): { manifest: Manifest; text: string; change: ManifestChangePlan['change'] } {
+  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace') || Object.hasOwn(change, 'remove')), 'MANIFEST_INVALID');
+  if ('remove' in change) {
+    // Spec 08, 4.5: only a local entry is removed. A pinned entry with that id is never removed.
+    const id = change.remove;
+    requireManifest(typeof id === 'string', 'MANIFEST_INVALID');
+    const from = current?.skills.find(s => s.id === id);
+    requireManifest(from, 'SKILLS_ADD_REPLACE_MISSING');
+    requireManifest(from.source.kind === 'local', 'MANIFEST_INVALID');
+    const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...current!.harnesses], skills: current!.skills.filter(s => s.id !== id) }, limits);
+    return { manifest, text: serializeManifest(manifest, limits), change: { remove: from } };
+  }
   const replacing = 'replace' in change;
   const entry = validateEntry(replacing ? change.replace : change.add);
-  const current = state.file ? parseManifest(state.file.bytes, limits) : null;
   let skills: Entry[], from: Entry | null = null;
   if (replacing) {
     requireManifest(entry.source.kind !== 'local', 'MANIFEST_INVALID');
@@ -158,24 +167,45 @@ export function planManifestChange(location: string | ManifestTarget, change: Ma
     requireLimit((current?.skills.length ?? 0) < limits.skills, limits);
     skills = [...(current?.skills ?? []), entry];
   }
-  const next = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills }, limits);
-  const text = serializeManifest(next, limits);
-  const written = next.skills.find(s => s.id === entry.id)!;
+  const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills }, limits);
+  const written = manifest.skills.find(s => s.id === entry.id)!;
+  return { manifest, text: serializeManifest(manifest, limits), change: from ? { replace: { from, to: written } } : { add: written } };
+}
+
+/**
+ * A plan to add one entry, to replace the pin of one entry, or to remove one local entry. It reads skills.json and
+ * writes nothing. A replace keeps the id, the kind and the package or repository; the version or commit, the folder and
+ * the teams come from the new entry. Each binds the sha256 of skills.json as it stands. A removal that leaves no skill
+ * keeps the file, with `skills: []`.
+ */
+export function planManifestChange(location: string | ManifestTarget, change: ManifestChange, options: { cacheRoot?: string; storeCreate?: boolean; allowAbsentFolder?: boolean } = {}): ManifestChangePlan {
+  const target = targetOf(location), project = target.lockDir, limits = target.limits;
+  // Spec 06, 3.8 rule 9: a config-only project has no `.bowerloom` yet; its caller creates the folder before the write.
+  const state = readManifestState(target, { allowAbsent: target.scope === 'store' || options.allowAbsentFolder === true });
+  const storeCreate = options?.storeCreate === true && target.scope === 'store';
+  const cacheRoot = options?.cacheRoot;
+  requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
+  // The shape of the change and its entry are checked before skills.json is parsed, as they always were.
+  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace') || Object.hasOwn(change, 'remove')), 'MANIFEST_INVALID');
+  if (!('remove' in change)) validateEntry('replace' in change ? change.replace : change.add);
+  const current = state.file ? parseManifest(state.file.bytes, limits) : null;
+  const { text, change: planned } = manifestAfter(current, change, limits);
   const body: Omit<ManifestChangePlan, 'revision'> = {
     format: MANIFEST_CHANGE_FORMAT, project, manifest: target.scope === 'store' ? STORE_MANIFEST_PATH : MANIFEST_PATH, scope: target.scope, storeCreate,
     bowerloom: target.scope === 'store' ? null : state.bowerloom,
     before: state.file ? { sha256: state.file.sha256, bytes: state.file.bytes.length } : null,
     after: { sha256: sha256(text), bytes: Buffer.byteLength(text) },
-    change: from ? { replace: { from, to: written } } : { add: written }, text, ...(cacheRoot !== undefined ? { cache: { root: cacheRoot } } : {}), writesAuthorized: false, executionAuthorized: false,
+    change: planned, text, ...(cacheRoot !== undefined ? { cache: { root: cacheRoot } } : {}), writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: revisionOf(body) };
 }
-/** The input that makes `plan` again. */
-const changeOf = (plan: ManifestChangePlan): ManifestChange => {
-  const c = plan.change as Partial<{ add: Entry; replace: { to: Entry } }> | null;
-  requireManifest(c !== null && typeof c === 'object', 'STALE_APPROVAL');
-  if (c.replace !== undefined && c.add === undefined) { requireManifest(c.replace !== null && typeof c.replace === 'object', 'STALE_APPROVAL'); return { replace: c.replace.to }; }
-  requireManifest(c.add !== undefined && c.replace === undefined, 'STALE_APPROVAL');
+/** The input that makes `plan` again. A remove plan gives `{ remove: <id> }` (spec 08, 4.5). */
+export const changeOf = (plan: ManifestChangePlan): ManifestChange => {
+  const c = plan.change as Partial<{ add: Entry; replace: { to: Entry }; remove: Entry }> | null;
+  requireManifest(c !== null && typeof c === 'object' && Object.keys(c).length === 1, 'STALE_APPROVAL');
+  if (c.remove !== undefined) { requireManifest(c.remove !== null && typeof c.remove === 'object' && typeof c.remove.id === 'string', 'STALE_APPROVAL'); return { remove: c.remove.id }; }
+  if (c.replace !== undefined) { requireManifest(c.replace !== null && typeof c.replace === 'object', 'STALE_APPROVAL'); return { replace: c.replace.to }; }
+  requireManifest(c.add !== undefined, 'STALE_APPROVAL');
   return { add: c.add };
 };
 
@@ -219,6 +249,6 @@ export function applyManifestChange(plan: ManifestChangePlan, revision: string, 
   // The file was written. A mismatch now is not a stale plan: it gets its own code and words (review M3 finding 5).
   const written = readManifestState(where);
   requireManifest(written.file?.sha256 === again.after.sha256, 'MANIFEST_WRITE_UNCONFIRMED');
-  const done = 'replace' in again.change ? { replaced: again.change.replace.to.id } : { added: again.change.add.id };
+  const done = 'replace' in again.change ? { replaced: again.change.replace.to.id } : 'remove' in again.change ? { removed: again.change.remove.id } : { added: again.change.add.id };
   return { manifest: plan.manifest, ...done, sha256: again.after.sha256, bytes: again.after.bytes };
 }
