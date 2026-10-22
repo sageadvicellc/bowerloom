@@ -9,11 +9,12 @@
  * folded, so a path that does not exist yet is still checked.
  */
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { refuse } from './refusal.js';
+import { inspectStoreWith, pathInsideStore } from './store.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from './types.js';
 
 /** Test hooks. Product code never passes them. */
@@ -29,7 +30,7 @@ export interface DiscoveryHooks {
 interface Id { readonly dev: bigint; readonly ino: bigint }
 const same = (a: Id, b: Id): boolean => a.dev === b.dev && a.ino === b.ino;
 // Case-insensitive APFS also folds `ſ` to `s`, which toLowerCase alone does not; upper then lower case does.
-const fold = (value: string): string => value.normalize('NFC').toUpperCase().toLowerCase();
+export const fold = (value: string): string => value.normalize('NFC').toUpperCase().toLowerCase();
 const parts = (path: string): string[] => path.split(sep).filter(Boolean);
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const absent = (error: unknown): boolean => errno(error) === 'ENOENT' || errno(error) === 'ENOTDIR';
@@ -43,7 +44,7 @@ function folderId(path: string): Id | null {
 /** As folderId, for a reference folder such as HOME/Library/CloudStorage: any failure means "no folder to compare with". */
 function referenceId(path: string): Id | null { try { return folderId(path); } catch { return null; } }
 
-function homesOf(home: string, hooks: DiscoveryHooks): string[] {
+export function homesOf(home: string, hooks: DiscoveryHooks): string[] {
   let account: string | null | undefined = hooks.accountHome;
   if (account === undefined) { try { account = userInfo().homedir; } catch { account = null; } }
   return [...new Set([resolve(home), ...(usable(account) ? [resolve(account)] : [])])];
@@ -129,27 +130,57 @@ export function projectId(root: string, identity: DirectoryIdentity): string {
   return createHash('sha256').update(JSON.stringify([root, identity.device, identity.inode])).digest('hex').slice(0, 32);
 }
 
-const identityFrom = (stat: BigIntStats): DirectoryIdentity =>
+export const identityFrom = (stat: BigIntStats): DirectoryIdentity =>
   ({ device: stat.dev.toString(), inode: stat.ino.toString(), birthtimeNs: stat.birthtimeNs.toString(), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 });
 /** One lstat of a folder: a real folder (not a link) or PROJECT_UNSAFE; PROJECT_UNREADABLE when lstat fails. */
-function pin(path: string): DirectoryIdentity {
+export function pin(path: string): DirectoryIdentity {
   let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNREADABLE'); }
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw refuse('PROJECT_UNSAFE');
   return identityFrom(stat);
 }
 
+/** Every folder from `/` down to the parent of `dir`, each pinned by one lstat (device, inode, birth time). */
+export function pinAncestry(dir: string): readonly PinnedDirectory[] {
+  const names = parts(dirname(dir)), ancestry: PinnedDirectory[] = [{ path: sep, identity: pin(sep) }];
+  for (let i = 0; i < names.length; i++) { const path = sep + names.slice(0, i + 1).join(sep); ancestry.push({ path, identity: pin(path) }); }
+  return Object.freeze(ancestry);
+}
+
+export const CONFIG_FILENAME = 'bowerloom.json';
+const CONFIG_MAX_BYTES = 1048576;
+
 /**
- * Finds the project the way git finds `.git`: the nearest parent folder that holds a real, owned, non-symlinked,
- * not group- or world-writable `.bowerloom`, with no case alias. The nearest hit decides; an unsafe one is never
- * skipped, and neither is a folder that cannot be read (PROJECT_UNREADABLE). The search stops at a device change and
- * at `/` and each home folder, compared by device and inode, and refuses them as projects.
+ * One lstat of `<dir>/bowerloom.json`. `null` when the file is not there. Anything else must be a plain file: a regular
+ * file, not a link, with one hard link, owned by `uid` (default: this user), with no group or world write permission,
+ * and at most 1 MiB. Otherwise CONFIG_UNSAFE. The inode is not pinned, because a writer replaces the file by rename.
+ */
+export function checkConfigFile(dir: string, uid: number = process.getuid?.() ?? -1): BigIntStats | null {
+  // Exactly one name may fold to bowerloom.json, and it must be spelled so, whatever the disk does with case.
+  let listed: string[]; try { listed = readdirSync(dir); } catch (error) { if (absent(error)) return null; throw refuse('CONFIG_UNREADABLE'); }
+  const hits = listed.filter(name => fold(name) === CONFIG_FILENAME);
+  if (hits.length === 0) return null;
+  if (hits.length > 1 || hits[0] !== CONFIG_FILENAME) throw refuse('PROJECT_UNSAFE');
+  let stat: BigIntStats;
+  try { stat = lstatSync(join(dir, CONFIG_FILENAME), { bigint: true }); } catch (error) { if (errno(error) === 'ENOENT') return null; throw refuse('CONFIG_UNREADABLE'); }
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0 || stat.size > BigInt(CONFIG_MAX_BYTES)) throw refuse('CONFIG_UNSAFE');
+  return stat;
+}
+
+/**
+ * Finds the project the way git finds `.git`: the nearest parent folder that holds a `.bowerloom` folder or a
+ * `bowerloom.json` file, each with no case alias. A `.bowerloom` must be a real, owned, non-symlinked, not group- or
+ * world-writable folder, and a `bowerloom.json` a plain file (see checkConfigFile). The nearest hit decides; an unsafe
+ * one is never skipped, and neither is a folder that cannot be read (PROJECT_UNREADABLE). The search stops at a device
+ * change and at `/` and each home folder, compared by device and inode. A home folder with a store at `.bowerloom` is
+ * not a project and not a refusal: the search ends with PROJECT_NOT_FOUND. A folder inside the store is never a project.
  */
 export function discoverProjectWith(cwd: string, home: string, hooks: DiscoveryHooks = {}): ProjectContext {
   if (!usable(cwd) || !usable(home)) throw refuse('USAGE');
   let start: string;
   try { start = realpathSync(cwd); } catch (error) { throw refuse(absent(error) ? 'PROJECT_NOT_FOUND' : 'PROJECT_UNREADABLE'); }
   checkProjectPathWith(start, home, hooks);
-  const stops = [folderId(sep), ...homesOf(home, hooks).map(folderId)].filter((id): id is Id => id !== null);
+  const homes = homesOf(home, hooks), root = folderId(sep);
+  const stops = [root, ...homes.map(folderId)].filter((id): id is Id => id !== null);
   const uid = hooks.uid ?? process.getuid?.() ?? -1;
   const deviceOf = (directory: string): string => {
     if (hooks.deviceOf) return hooks.deviceOf(directory);
@@ -159,34 +190,152 @@ export function discoverProjectWith(cwd: string, home: string, hooks: DiscoveryH
   for (let current = start; ;) {
     if (deviceOf(current) !== startDevice) throw refuse('PROJECT_NOT_FOUND');
     let names: string[]; try { names = readdirSync(current); } catch { throw refuse('PROJECT_UNREADABLE'); }
-    const aliases = names.filter(name => fold(name) === '.bowerloom'), id = folderId(current);
-    if (current === sep || (id !== null && stops.some(stop => same(stop, id)))) throw refuse(aliases.length ? 'PROJECT_ROOT_REFUSED' : 'PROJECT_NOT_FOUND');
-    if (aliases.length) return build(current, aliases, uid, home, hooks);
+    const aliases = names.filter(name => fold(name) === '.bowerloom'), configs = names.filter(name => fold(name) === CONFIG_FILENAME), id = folderId(current);
+    if (current === sep || (root !== null && id !== null && same(root, id))) throw refuse(aliases.length || configs.length ? 'PROJECT_ROOT_REFUSED' : 'PROJECT_NOT_FOUND');
+    const stopHome = id === null ? undefined : homes.find(h => { const homeId = folderId(h); return homeId !== null && same(homeId, id); });
+    if (stopHome !== undefined || (id !== null && stops.some(stop => same(stop, id)))) throw refuse(atHome(aliases, configs, stopHome ?? current, hooks));
+    if (aliases.length || configs.length) return build(current, aliases, configs, uid, home, hooks);
     const parent = dirname(current);
     if (parent === current) throw refuse('PROJECT_NOT_FOUND');
     current = parent;
   }
 }
 
-function build(dir: string, aliases: string[], uid: number, home: string, hooks: DiscoveryHooks): ProjectContext {
+/**
+ * The refusal at a home folder: a store at `.bowerloom` ends the search quietly; anything else there is too broad to be a
+ * project. A store that fails its safety rules names its STORE_* code instead of hiding behind PROJECT_ROOT_REFUSED.
+ */
+function atHome(aliases: readonly string[], configs: readonly string[], home: string, hooks: DiscoveryHooks): 'PROJECT_NOT_FOUND' | 'PROJECT_ROOT_REFUSED' {
+  if (configs.length > 0) return 'PROJECT_ROOT_REFUSED';
+  if (aliases.length === 0) return 'PROJECT_NOT_FOUND';
+  if (aliases.length !== 1 || aliases[0] !== '.bowerloom') return 'PROJECT_ROOT_REFUSED';
+  const found = inspectStoreWith(home, hooks);
+  return found.state === 'store' || (found.state === 'absent' && found.leftover) ? 'PROJECT_NOT_FOUND' : 'PROJECT_ROOT_REFUSED';
+}
+
+function build(dir: string, aliases: string[], configs: string[], uid: number, home: string, hooks: DiscoveryHooks): ProjectContext {
   checkProjectPathWith(dir, home, hooks);
-  if (aliases.length !== 1 || aliases[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
+  let inStore: boolean;
+  try { inStore = pathInsideStore(dir, home, hooks); } catch (error) { throw refuse(errno(error) === 'STORE_UNREADABLE' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
+  if (inStore) throw refuse('STORE_NOT_A_PROJECT');
+  if (aliases.length > 1 || (aliases.length === 1 && aliases[0] !== '.bowerloom')) throw refuse('PROJECT_UNSAFE');
+  if (configs.length > 1 || (configs.length === 1 && configs[0] !== CONFIG_FILENAME)) throw refuse('PROJECT_UNSAFE');
   // One lstat both checks .bowerloom and pins its identity, so nothing can swap it between the two.
-  let stat: BigIntStats; try { stat = lstatSync(join(dir, '.bowerloom'), { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
+  let bowerloomIdentity: DirectoryIdentity | null = null;
+  if (aliases.length === 1) bowerloomIdentity = folderMarker(dir, uid);
+  let configPresent = false;
+  if (configs.length === 1) {
+    if (checkConfigFile(dir, uid) === null) throw refuse('PROJECT_UNSAFE');
+    configPresent = true;
+  }
+  const identity = pin(dir);
+  // The project folder itself must be the user's and closed to others, whatever marker it holds.
+  if (identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('PROJECT_FOLDER_UNSAFE');
+  return Object.freeze({ dir, identity, ancestry: pinAncestry(dir), bowerloomIdentity, configPresent, projectId: projectId(dir, identity) });
+}
+
+/** One lstat of `<dir>/.bowerloom`: a real folder that `uid` owns with no group or world write permission, else PROJECT_UNSAFE. */
+function folderMarker(dir: string, uid: number): DirectoryIdentity {
+  let stat: BigIntStats; try { stat = lstatSync(join(dir, '.bowerloom'), { bigint: true }); } catch (error) { throw refuse(errno(error) === 'EACCES' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
   if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
-  const bowerloomIdentity = identityFrom(stat), identity = pin(dir);
-  const names = parts(dirname(dir)), ancestry: PinnedDirectory[] = [{ path: sep, identity: pin(sep) }];
-  for (let i = 0; i < names.length; i++) { const path = sep + names.slice(0, i + 1).join(sep); ancestry.push({ path, identity: pin(path) }); }
-  return Object.freeze({ dir, identity, ancestry: Object.freeze(ancestry), bowerloomIdentity, projectId: projectId(dir, identity) });
+  return identityFrom(stat);
+}
+
+/** True when `<dir>` holds no `.bowerloom`. Exactly one name may fold to it, and it must be spelled so; else PROJECT_UNSAFE. */
+function folderAbsent(dir: string): boolean {
+  let listed: string[]; try { listed = readdirSync(dir); } catch (error) { throw refuse(errno(error) === 'EACCES' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
+  const hits = listed.filter(name => fold(name) === '.bowerloom');
+  if (hits.length === 0) return true;
+  if (hits.length > 1 || hits[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
+  return false;
+}
+
+function verifyPins(project: ProjectContext, skip?: 'folder' | 'config'): void {
+  const uid = process.getuid?.() ?? -1;
+  const pins: (readonly [string, DirectoryIdentity])[] = [[project.dir, project.identity]];
+  if (project.bowerloomIdentity !== null) pins.push([join(project.dir, '.bowerloom'), project.bowerloomIdentity]);
+  for (const [path, pinned] of pins) {
+    let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
+    if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('PROJECT_UNSAFE');
+    if (path === project.dir && (Number(stat.uid) !== (process.getuid?.() ?? -1) || (Number(stat.mode) & 0o022) !== 0)) throw refuse('PROJECT_FOLDER_UNSAFE');
+  }
+  if (project.bowerloomIdentity === null && skip !== 'folder' && !folderAbsent(project.dir)) throw refuse('PROJECT_UNSAFE');
+  // With a folder pinned, no second name may fold to `.bowerloom` beside it.
+  if (project.bowerloomIdentity !== null && folderAbsent(project.dir)) throw refuse('PROJECT_UNSAFE');
+  if (skip !== 'config') {
+    const config = checkConfigFile(project.dir, uid);
+    if (project.configPresent ? config === null : config !== null) throw refuse('PROJECT_UNSAFE');
+  }
 }
 
 /**
  * Refuses PROJECT_UNSAFE unless the project folder and its `.bowerloom` are still the folders discovery pinned (device,
- * inode and birth time), real and not links. A reader calls it before and after it reads, so a swap in between is caught.
+ * inode and birth time), real and not links. A project found without a `.bowerloom` must still have none. The config is
+ * checked by checkConfigFile and not pinned by inode: it must still be there when discovery saw it, and still absent
+ * when it did not. A bowerloom.json that turned unsafe refuses CONFIG_UNSAFE. A reader calls this before and after it
+ * reads, so a swap in between is caught.
  */
-export function verifyProjectPins(project: ProjectContext): void {
-  for (const [path, pinned] of [[project.dir, project.identity], [join(project.dir, '.bowerloom'), project.bowerloomIdentity]] as const) {
-    let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
-    if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('PROJECT_UNSAFE');
+export function verifyProjectPins(project: ProjectContext): void { verifyPins(project); }
+
+/**
+ * The identity of the marker the writer made: device and inode of the file for `'config'`; device, inode, and birth time of the folder for `'folder'` (required).
+ * Take it from the creation itself: open the new folder with O_DIRECTORY and O_NOFOLLOW and fstat the handle, or fstat the file the writer created. A later lstat by path can see a different entry.
+ */
+export interface AdoptExpected { readonly device: string; readonly inode: string; readonly birthtimeNs?: string }
+
+/**
+ * Right after a writer creates `.bowerloom` (`'folder'`) or `bowerloom.json` (`'config'`), returns the context with that
+ * marker adopted. The marker must be missing from `project` (else USAGE), must be the one the writer made (`expected`; else PROJECT_UNSAFE), and everything else must still match the pins. `hooks.uid` is a test hook.
+ */
+export function adoptCreatedMarker(project: ProjectContext, marker: 'folder' | 'config', expected: AdoptExpected, hooks: { readonly uid?: number } = {}): ProjectContext {
+  if (marker !== 'folder' && marker !== 'config') throw refuse('USAGE');
+  if (expected === null || typeof expected !== 'object' || typeof expected.device !== 'string' || typeof expected.inode !== 'string') throw refuse('USAGE');
+  if (marker === 'folder' && typeof expected.birthtimeNs !== 'string') throw refuse('USAGE');
+  if (marker === 'folder' ? project.bowerloomIdentity !== null : project.configPresent) throw refuse('USAGE');
+  const uid = hooks.uid ?? process.getuid?.() ?? -1;
+  verifyPins(project, marker);
+  let bowerloomIdentity = project.bowerloomIdentity, configPresent = project.configPresent;
+  if (marker === 'folder') {
+    const found = folderMarker(project.dir, uid);
+    if (found.device !== expected.device || found.inode !== expected.inode || found.birthtimeNs !== expected.birthtimeNs) throw refuse('PROJECT_UNSAFE');
+    bowerloomIdentity = found;
+  } else {
+    const found = checkConfigFile(project.dir, uid);
+    if (found === null || found.dev.toString() !== expected.device || found.ino.toString() !== expected.inode) throw refuse('PROJECT_UNSAFE');
+    configPresent = true;
   }
+  return Object.freeze({ dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity, configPresent, projectId: project.projectId });
+}
+
+/**
+ * The bytes of `bowerloom.json`, read with the guards of checkConfigFile and with the project pins checked before and
+ * after. `null` when the file is not there. A file that changed while it was opened, or grew past 1 MiB, refuses
+ * CONFIG_UNSAFE.
+ */
+export function readConfigBytes(project: ProjectContext): Buffer | null {
+  verifyPins(project);
+  const stat = checkConfigFile(project.dir);
+  if (stat === null) return null;
+  const file = join(project.dir, CONFIG_FILENAME);
+  let fd: number;
+  try { fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW); }
+  catch (error) { throw refuse(errno(error) === 'ELOOP' || errno(error) === 'ENOENT' ? 'CONFIG_UNSAFE' : 'CONFIG_UNREADABLE'); }
+  let bytes: Buffer;
+  try {
+    const open = fstatSync(fd, { bigint: true });
+    if (open.dev !== stat.dev || open.ino !== stat.ino) throw refuse('CONFIG_UNSAFE');
+    const buffer = Buffer.alloc(CONFIG_MAX_BYTES + 1);
+    let length = 0;
+    for (;;) {
+      const n = readSync(fd, buffer, length, buffer.length - length, null);
+      if (n === 0 || (length += n) === buffer.length) break;
+    }
+    if (length > CONFIG_MAX_BYTES) throw refuse('CONFIG_UNSAFE');
+    bytes = Buffer.from(buffer.subarray(0, length));
+  } catch (error) {
+    if (errno(error) === 'CONFIG_UNSAFE') throw error;
+    throw refuse('CONFIG_UNREADABLE');
+  } finally { closeSync(fd); }
+  verifyPins(project);
+  return bytes;
 }

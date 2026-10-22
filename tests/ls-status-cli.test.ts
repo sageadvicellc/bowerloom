@@ -53,7 +53,7 @@ test('status reports ready for a fresh project, in words and as JSON', t => {
   const r = run(p.dir, ['status'], env); assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^Project: /); assert.match(r.stdout, /Setup: ready/); assert.match(r.stdout, /Workers: none started/);
   const j = JSON.parse(run(p.sub, ['status', '--json'], env).stdout);
-  assert.equal(j.format, 'bowerloom/project-status/v1beta1'); assert.equal(j.project, p.dir); assert.equal(j.status, 'ready'); assert.equal(j.specReady, true);
+  assert.equal(j.format, 'bowerloom/project-status/v1beta2'); assert.deepEqual(j.markers, { folder: true, config: false }); assert.equal(j.setup, 'startup'); assert.equal(j.config, null); assert.equal(j.project, p.dir); assert.equal(j.status, 'ready'); assert.equal(j.specReady, true);
   assert.equal(j.runtimeReady, false); assert.equal(j.executionAuthorized, false); assert.deepEqual(j.drift, []); assert.match(j.projectId, /^[a-f0-9]{32}$/); assert.match(j.revision, /^[a-f0-9]{64}$/);
 });
 

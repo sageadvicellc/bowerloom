@@ -25,6 +25,19 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['PROJECT_LOCKED', 'Two commands must not change one project at the same time, so nothing was changed.', 'bowerloom status'],
   ['PROJECT_LOCK_UNAVAILABLE', 'The lock uses a local port, and this computer would not give it out.', 'bowerloom status'],
   ['PROJECT_LOCK_SLOT_COLLISION', 'The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer.', 'lsof -nP -iTCP:<port> -sTCP:LISTEN'],
+  // Spec 03, the store foundation: the store and the project config.
+  ['STORE_NOT_FOUND', 'The first --global create or skills add makes the store.', 'bowerloom skill create <name> --global'],
+  ['STORE_INVALID', 'If ~/.bowerloom holds no store.json that Bowerloom wrote, Bowerloom does not use it and never takes over the folder.', 'bowerloom store status'],
+  ['STORE_UNSAFE', 'Bowerloom will not trust a store that other people or links can change.', 'ls -ld ~/.bowerloom'],
+  ['STORE_UNREADABLE', 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -ld ~ ~/.bowerloom'],
+  ['STORE_IN_CLOUD_FOLDER', 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.'],
+  ['STORE_NOT_A_PROJECT', 'Run this command in a project folder outside ~/.bowerloom.', 'cd <project-folder>'],
+  ['CONFIG_INVALID', 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', 'git diff bowerloom.json'],
+  ['CONFIG_UNSAFE', 'Bowerloom will not trust a bowerloom.json that other people or links can change.', 'ls -l bowerloom.json'],
+  ['PROJECT_FOLDER_UNSAFE', 'Bowerloom will not trust a project folder that other people can change.', 'ls -ld .'],
+  ['CONFIG_UNREADABLE', 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -l bowerloom.json'],
+  ['CONFIG_LIMIT', 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', 'bowerloom status'],
+  ['CONFIG_DUPLICATE_ID', 'Each item is listed once, from one source.', 'git diff bowerloom.json'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {

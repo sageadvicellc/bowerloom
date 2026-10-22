@@ -24,7 +24,7 @@ Keep your project out of iCloud Drive folders. Project commands such as `bowerlo
 | `contextImported` | False in the setup results documented here |
 | `hostedAgentCreated` | False in the setup results documented here |
 
-`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it also reports `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. Read [CLI reference](/docs/cli/#project-commands).
+`bowerloom status` in a project folder reports `ready`, `drifted`, or `revision-pending` in `Setup:`. With `--json` it prints format `bowerloom/project-status/v1beta2` and reports `format`, `markers`, `setup`, `config`, `specReady`, `runtimeReady`, `executionAuthorized`, `revision`, `drift`, and `owned`. `runtimeReady` and `executionAuthorized` are false. A `bowerloom.json` that does not match its format adds the drift kind `config-invalid`, with the refusal code. Read [CLI reference](/docs/cli/#project-commands).
 
 `ready-for-review` requires human review. It does not mean that a team runs or has execution permission.
 
@@ -71,8 +71,9 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `STALE_APPROVAL` | The plan changed after you saw it. Nothing was applied. | Run the command again without `--approve` to see the new plan. |
 | `WORKERS_HELD` | The project is prepared. No worker was started. Exit 4. | Run `bowerloom status`. |
 | `PROJECT_NOT_FOUND` | Bowerloom looked in this folder and every parent up to your home folder. | Run `bowerloom up --team <name> --goal <goal>` in the project folder. |
-| `PROJECT_ROOT_REFUSED` | A whole disk or home folder is too broad to be a project. | Change into the project folder. |
+| `PROJECT_ROOT_REFUSED` | A whole disk or home folder is too broad to be a project. It also covers a non-empty `~/.bowerloom` with no `store.json`, and a `bowerloom.json` in your home folder. A `~/.bowerloom` that is unsafe, a link, or has an invalid `store.json` refuses with its `STORE_*` code instead. | Change into the project folder. |
 | `PROJECT_IN_CLOUD_FOLDER` | The project is under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder. Cloud sync changes file times and moves files, which breaks the checks that keep a project safe. | Move the project, for example `mv <project-folder> ~/Projects/`. |
+| `PROJECT_FOLDER_UNSAFE` | The project folder is not yours, or other people can write in it. Bowerloom will not trust a project folder that other people can change. | Run `ls -ld .`. |
 | `PROJECT_UNSAFE` | Bowerloom does not trust a `.bowerloom` folder that other people or links can change. | Run `ls -ld .bowerloom`. |
 | `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
@@ -82,6 +83,26 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
 
 Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_INVALID`, `TEAM_NOT_FOUND`, `SKILL_EXISTS`, `SKILL_NAME_RESERVED`, `SKILL_NAME_INVALID`, `PROMPT_EXISTS`, `PROMPT_NAME_INVALID`, `REVISION_PENDING`, `AUTHORING_PENDING`, `AUTHORING_RECEIPT_INVALID`, `AUTHORING_UNSAFE_PATH`, `AUTHORING_UNREGISTERED`, `AUTHORING_WRITE_INTERRUPTED`, and `AUTHORING_ITEM_MISSING`. [Create teams, skills, and prompts](/docs/guides/create-items/#if-a-command-refuses) explains them. `AUTHORING_RECEIPT_INVALID` means Bowerloom reads its record of created items strictly, so a hand edit can break it. Run `git diff .bowerloom/authoring/receipt.json`. `AUTHORING_UNSAFE_PATH` means Bowerloom does not read or write through links, shared files, or files others can change. Run `ls -la .bowerloom`. `AUTHORING_ITEM_MISSING` means a created item is gone. Run `git status .bowerloom`.
+
+## Store and config refusals
+
+The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store refusal as `Store: refused (<CODE>)` and exits 0. Every other command exits 1.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `STORE_NOT_FOUND` | There is no store yet. The first `--global` create or `skills add` makes the store. | Run `bowerloom skill create <name> --global`. |
+| `STORE_INVALID` | The store folder has no usable `store.json`. If `~/.bowerloom` holds no `store.json` that Bowerloom wrote, Bowerloom does not use it and never takes over the folder. | Run `bowerloom store status`. |
+| `STORE_UNSAFE` | The store must be a real folder that you own, with no write access for others and no link on its path. Your home folder must be yours or root's, and others must not be able to write in it unless it is sticky. Bowerloom does not check the folders above your home folder. | Run `ls -ld ~/.bowerloom`. |
+| `STORE_UNREADABLE` | Bowerloom cannot read the store or a folder on the way to it. A folder that cannot be read cannot be checked. | Run `ls -ld ~ ~/.bowerloom`. |
+| `STORE_IN_CLOUD_FOLDER` | The store is in a cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep the store safe. | Move the home folder setup out of iCloud. The store must stay at `~/.bowerloom`. |
+| `STORE_NOT_A_PROJECT` | The store holds definitions only, so a folder inside it cannot be a project. | Run the command in a project folder outside `~/.bowerloom`. |
+| `CONFIG_INVALID` | `bowerloom.json` does not match the project config format. Bowerloom reads it strictly, so a hand edit can break it. | Run `git diff bowerloom.json`. |
+| `CONFIG_UNREADABLE` | Bowerloom cannot read `bowerloom.json`. A file that cannot be read cannot be checked, so Bowerloom does not use it. | Run `ls -l bowerloom.json`. |
+| `CONFIG_UNSAFE` | `bowerloom.json` must be a plain file that you own, with one link, no write access for others, and at most 1 MiB. This refusal stops every project command. | Run `ls -l bowerloom.json`. |
+| `CONFIG_LIMIT` | `bowerloom.json` lists too many items. This beta allows 128 skills, 128 prompts, and 32 teams at most. | Run `bowerloom status`. |
+| `CONFIG_DUPLICATE_ID` | `bowerloom.json` lists a skill, prompt, or team twice. Each item is listed once, from one source. | Run `git diff bowerloom.json`. |
+
+`CONFIG_INVALID`, `CONFIG_LIMIT`, and `CONFIG_DUPLICATE_ID` do not stop `bowerloom status`. They show in its `config` object and as the drift kind `config-invalid`.
 
 ## Skills and sync refusals
 
