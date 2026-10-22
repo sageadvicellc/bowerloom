@@ -25,13 +25,13 @@ test('2. --approve <revision> writes the file and exits 0', t => {
   const done = run(p.dir, ['slice', 'create', 'other', '--root', 'wiki', '--include', 'a.md', '--include', 'sub/*.md', '--approve', revision], p.home);
   assert.equal(done.status, 0, done.stderr); assert.equal(done.stdout, `Applied plan ${revision}.\n`);
   assert.equal(readFileSync(join(p.dir, '.bowerloom/slices/other.yaml'), 'utf8'), sliceTemplate({ root: { kind: 'project', path: 'wiki' }, includes: ['a.md', 'sub/*.md'] }));
-  const ls = JSON.parse(run(p.dir, ['ls', 'slices', '--json'], p.home).stdout) as { slices: string[] }; assert.deepEqual(ls.slices, ['other', 'wiki']);
+  const ls = JSON.parse(run(p.dir, ['ls', 'slices', '--json'], p.home).stdout) as { slices: { id: string }[] }; assert.deepEqual(ls.slices.map(x => x.id), ['other', 'wiki']);
   const again = run(p.dir, ['slice', 'create', 'other', '--approve', revision], p.home); assert.equal(again.status, 1); assert.equal(errorOf(again.stderr).code, 'SLICE_EXISTS');
 });
 test('3. --json prints the plan JSON', t => {
   const p = sliceProject(t, { apply: false }), r = run(p.dir, ['slice', 'create', 'other', '--json'], p.home);
   assert.equal(r.status, 3, r.stderr); const body = JSON.parse(r.stdout);
-  assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.plan.format, 'bowerloom/authoring-plan/v1beta1'); assert.equal(body.plan.item.kind, 'slice'); assert.deepEqual(body.plan.slice, { root: { kind: 'project', path: '.' }, includes: ['**/*.md'] });
+  assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.plan.format, 'bowerloom/authoring-plan/v1beta2'); assert.equal(body.plan.item.kind, 'slice'); assert.deepEqual(body.plan.slice, { root: { kind: 'project', path: '.' }, includes: ['**/*.md'] });
 });
 test('4. slice create with no name exits 2 with the usage text', t => {
   const p = sliceProject(t, { apply: false }), r = run(p.dir, ['slice', 'create'], p.home);

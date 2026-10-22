@@ -10,6 +10,7 @@ import { withProjectLock } from '../../../dist/packages/project-context/src/inde
 import { planCreate, applyCreate, authoringVerifier, manifestVerifier, AUTHORING_REFUSAL_CODES } from '../../../dist/packages/project-authoring/src/index.js';
 import { sliceTemplate } from '../../../dist/packages/context-slices/src/render.js';
 import { addLocalEntry } from '../../../dist/packages/skill-manifest/src/add.js';
+import { MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { planManifestChange } from '../../../dist/packages/skill-manifest/src/add.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
@@ -138,8 +139,8 @@ test('14. an old receipt with a skill slice-old still parses', async t => {
 });
 test('15. skills add whose derived id is slice-x refuses MANIFEST_INVALID', async t => {
   const p = await project(t);
-  assert.throws(() => addLocalEntry(null, 'slice-x', []), code('MANIFEST_INVALID'));
-  assert.equal(addLocalEntry(null, 'slicer', []).skills[0].id, 'slicer');
+  assert.throws(() => addLocalEntry(null, 'slice-x', [], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.equal(addLocalEntry(null, 'slicer', [], MANIFEST_LIMITS).skills[0].id, 'slicer');
   const pinned = { id: 'slice-x', source: { kind: 'npm', registry: 'https://registry.npmjs.org', package: '@x/y', version: '1.0.0', integrity: 'sha512-' + 'a'.repeat(86) + '==', metadataSha256: 'a'.repeat(64), publisher: 'x' }, skill: { name: 'n', sourceRoot: 'skills/n' }, license: { spdx: 'MIT', files: ['LICENSE'] }, files: [{ path: 'SKILL.md', sourcePath: 'skills/n/SKILL.md', sha256: 'a'.repeat(64), bytes: 1 }, { path: 'LICENSE', sourcePath: 'LICENSE', sha256: 'b'.repeat(64), bytes: 1 }], references: [] };
   assert.throws(() => planManifestChange(p.dir, { add: pinned }), e => e.code === 'MANIFEST_INVALID' || e.code === 'SKILLS_ADD_SPEC_INVALID' || e.code?.startsWith('MANIFEST_'));
 });

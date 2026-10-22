@@ -36,7 +36,7 @@ test('ls teams, ls skills and ls prompts show one section; --json is one canonic
   const p = project(t), env = { HOME: p.home };
   assert.equal(run(p.dir, ['ls', 'teams'], env).stdout, 'Teams\n  first-team (First team)  project\n');
   assert.equal(run(p.dir, ['ls', 'skills'], env).stdout, 'Skills\n  personal-assistant  project\n');
-  assert.equal(run(p.dir, ['ls', 'prompts'], env).stdout, 'Prompts\n  none yet\n\nSlices\n  none yet\n');
+  assert.equal(run(p.dir, ['ls', 'prompts'], env).stdout, 'Prompts\n  none yet\n');
   const j = run(p.dir, ['ls', '--json'], env); assert.equal(j.status, 0);
   const team = { id: 'first-team', source: 'project', via: [], locked: null, resolvedFrom: 'project', displayName: 'First team', state: 'ok' };
   const assistant = { id: 'personal-assistant', source: 'project', via: [], locked: null, resolvedFrom: 'project', kind: 'local', pin: null, state: 'ok' };

@@ -53,10 +53,10 @@ test('4. status prints the edited, held, and stale-index slice lines, and the ow
 });
 test('5. ls slices lists the slice files, and ls --json holds slices', t => {
   const p = sliceProject(t, { apply: false });
-  assert.equal(run(p.dir, ['ls', 'slices'], p.home).stdout, 'Slices\n  wiki\n');
+  assert.equal(run(p.dir, ['ls', 'slices'], p.home).stdout, 'Slices\n  wiki  project\n');
   const all = run(p.dir, ['ls'], p.home).stdout; assert.ok(all.indexOf('Prompts') < all.indexOf('Slices'), all);
-  assert.deepEqual((JSON.parse(run(p.dir, ['ls', '--json'], p.home).stdout) as { slices: string[] }).slices, ['wiki']);
-  const bad = run(p.dir, ['ls', 'nothing'], p.home); assert.equal(bad.status, 2); assert.match(bad.stderr, /Use bowerloom ls \[teams\|skills\|prompts\|slices\] \[--json\]\./);
+  assert.deepEqual((JSON.parse(run(p.dir, ['ls', '--json'], p.home).stdout) as { slices: { id: string }[] }).slices.map(x => x.id), ['wiki']);
+  const bad = run(p.dir, ['ls', 'nothing'], p.home); assert.equal(bad.status, 2); assert.match(bad.stderr, /Use bowerloom ls \[teams\|skills\|prompts\|slices\] \[--global\] \[--json\]\./);
 });
 test('6. up --team stops at the apply step with the new step text when a slice is the only work', t => {
   const p = sliceProject(t); put(p.dir, 'wiki/a.md', '# Alpha, new title\n');
