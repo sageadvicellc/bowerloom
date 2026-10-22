@@ -24,12 +24,20 @@ const MESSAGES = {
   STORE_WRITE_FAILED: 'Bowerloom could not write to the store.',
   STORE_LOCKED: 'Another Bowerloom command is changing the store.',
   STORE_STATE_NESTED: 'The private state folder and the store must not be inside one another.',
+  STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
+  FOLDER_NAME_INVALID: 'A folder name is lower-case letters and digits in words joined by single hyphens, at most 64 characters.',
+  FOLDER_EXISTS: 'Your store already has a folder with that name.',
+  FOLDER_NOT_FOUND: 'Your store has no folder with that name.',
+  FOLDER_UNSAFE: 'This folder cannot be registered. It must exist below your home folder, belong to you, and be safe from other users.',
+  FOLDER_IN_CLOUD: 'This folder syncs to a cloud service, so it cannot be registered.',
+  FOLDER_INVALID: 'A folder record in your store is not valid.',
   CONFIG_UNREADABLE: 'Bowerloom cannot read bowerloom.json.',
   CONFIG_UNSAFE: 'bowerloom.json is not safe to read. It must be a plain file that you own, with one link, no write access for others, and at most 1 MiB.',
 } as const;
 
 export type ProjectRefusalCode = keyof typeof MESSAGES;
-export const refuse = (code: ProjectRefusalCode): DefinitionError => new DefinitionError(code, MESSAGES[code]);
+/** The fixed refusal for `code`. `extra` is a fixed sentence of the caller's; it never carries a path. */
+export const refuse = (code: ProjectRefusalCode, extra?: string): DefinitionError => new DefinitionError(code, extra === undefined ? MESSAGES[code] : `${MESSAGES[code]} ${extra}`);
 
 /** STORE_WRITE_FAILED with the system error named in the message. Only an upper-case system name is kept. */
 export function storeWriteFailed(error: unknown): DefinitionError {
