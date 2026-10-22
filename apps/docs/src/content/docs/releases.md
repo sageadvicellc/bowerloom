@@ -13,6 +13,10 @@ Open beta · 0.7.0-beta.2
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+## 0.7.0-beta.3
+
+- A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`.
+
 ## 0.7.0-beta.2
 
 This release changes the package text and how Bowerloom reads skills. It adds no new command.
