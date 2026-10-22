@@ -49,6 +49,7 @@ The flag `--harness claude|codex|both` works like this:
 - `codex` plans and lists no agent. Discovery, validation, `AGENT_LIMIT`, and the duplicate check still run, so a refusal still stops the plan. Per-agent holds are not listed. No catalog record of an installed agent shows as `kept`. If at least one agent file exists, the plan prints the Codex line of section 3.2.
 - With `both`, the Codex line also prints when at least one agent file exists.
 - The flag `--team <id>` (through `up --team`) filters only which agents are planned and listed. Validation, `AGENT_LIMIT`, and duplicates run over every team. The orphan scan uses the unfiltered set, so another team's installed agent is never shown as kept because of the filter.
+- The check of `.claude` and `.claude/agents` (section 6.2) runs only when the harness list holds `claude`.
 - An agent item always has the harness list `['claude']`. The managed-item request check refuses any other list (section 6.1).
 
 ### 3.2 Plan lines, verbatim
@@ -83,6 +84,8 @@ State rules:
 - `up to date`: a catalog record exists and nothing differs.
 - `kept` (state `orphaned`): a catalog record exists and no team folder, `first-team` included, holds a file named `<role>.md`, across all teams, whatever `--team` says. A deleted source file is this case. The copy and the catalog stay.
 - `held`: see section 5.
+
+Agent lines follow prompt lines, in role then team byte order.
 
 The warning line, only for the actions `install`, `update`, and `adopt`:
 
@@ -149,7 +152,7 @@ If the file exists in any form that fails these tests, the agent is held with `A
 - Line 100: `    '  apply   when skills, prompts, or agents of the team need copies for Claude Code and Codex: apply.',`
 - Line 101 ends `When a skill, prompt` today. Make it end `When a skill, prompt,`.
 - Line 102: `    'agent, or team is held or gone, it prints "prepared, N items held" instead, with the next command for each item.',`
-- Line 113: `    'Puts the skills in .bowerloom/skills.json, the prompts in .bowerloom/prompts, and the team agents in place for Claude Code, Codex,',`
+- Line 113 stays as it is. Agents appear only in the new line 116.
 - Line 116: `    'and the Codex skill .agents/skills/prompt-<name>. An agent becomes .claude/agents/<role>.md. Codex agents are not projected in this beta. These copies stay on this machine.',`
 - After line 118, add two lines:
   - `    'Agents come from .bowerloom/teams/<team>/agents/<role>.md. A file at the target that Bowerloom did not install is adopted when it equals the copy.',`
@@ -168,11 +171,11 @@ They do not change (`apps/cli/src/apply.ts:99`):
 - `3`: approval is required.
 - A refusal throws. The code is printed with its sentence and next step.
 
-A hold is not a refusal. A plan with only holds prints `Nothing to change.` and exits 0. The six codes that this spec adds split like this:
+A hold is not a refusal. A plan with only holds prints `Nothing to change.` and exits 0. The seven codes that this spec adds split like this:
 
 - Holds (one agent): `AGENT_INVALID`, `AGENT_KEY_UNKNOWN`, `AGENT_NAME_MISMATCH`, `APPLY_AGENT_DUPLICATE` (both agents), and `AGENT_TARGET_OCCUPIED`.
 - Refusal (whole plan): `AGENT_LIMIT`. An unsafe agents folder refuses with the existing code `AUTHORING_UNSAFE_PATH`.
-- Also a refusal: `SKILLS_PROJECT_UNSAFE`, when `.claude` or `.claude/agents` is a link or is writable by the group or others (section 6.2).
+- Also a refusal: `APPLY_AGENTS_FOLDER_UNSAFE`, when `.claude` or `.claude/agents` is a link or is writable by the group or others (section 6.2). The guard runs only when the harness list holds `claude`.
 
 A concurrent `apply` gets `MANAGED_SKILL_LOCKED`, as today.
 
@@ -180,10 +183,10 @@ A concurrent `apply` gets `MANAGED_SKILL_LOCKED`, as today.
 
 Apply checks in this order. The first refusal wins. Holds are collected, not thrown.
 
-1. Listing. For each team folder, in team id byte order: `agents/` absent means no agents. If it exists, it must be a real folder owned by the user with no group or world write (`realFolder`, `packages/project-authoring/src/files.ts:22`), and its names must be safe (`folderNames`, `files.ts:28`). A failure refuses the whole plan with `AUTHORING_UNSAFE_PATH`.
+1. Listing. First run `realFolder` on `teams` and on `teams/<team>`. Then, for each team folder, in team id byte order: `agents/` absent means no agents. If it exists, it must be a real folder owned by the user with no group or world write (`realFolder`, `packages/project-authoring/src/files.ts:22`), and its names must be safe (`folderNames`, `files.ts:28`). A failure refuses the whole plan with `AUTHORING_UNSAFE_PATH`.
 2. `AGENT_LIMIT`: more than 128 entries in all agents folders together refuses the whole plan.
 3. Per-file checks, in team-then-role byte order. A failure holds that agent: `AGENT_NAME_MISMATCH` for a bad file name or a `name` key that differs, `AGENT_KEY_UNKNOWN` for an unknown key, and `AGENT_INVALID` for every other read or parse failure.
-4. Duplicates. Two valid agents with the same role in two teams hold both with `APPLY_AGENT_DUPLICATE`.
+4. Duplicates. Two entries with the same valid stem in two teams hold both with `APPLY_AGENT_DUPLICATE`, whether or not each file parses. For those entries this hold replaces a step 3 hold.
 5. Target checks and state, per agent (section 3.3 and 3.2).
 
 ### 3.7 Write order and crash recovery
@@ -252,8 +255,8 @@ A bad value is `AGENT_INVALID`, and the detail names the key.
 
 ### 4.2 Names
 
-- One role name belongs to one team in a layer. Two valid agents with the same role in two teams hold both with `APPLY_AGENT_DUPLICATE`. The next step names both file paths. A role previously installed stays installed. Its copy is untouched.
-- The built-in Claude Code subagents are `Explore`, `Plan`, `general-purpose`, `statusline-setup`, `claude-code-guide`, and `claude` (code.claude.com/docs/en/sub-agents, verified 2026-10-22). They live in one constant, `BUILTIN_AGENT_NAMES`, in `packages/project-sync/src/agents.ts`. A role that matches one case-insensitively gets the warning of section 3.2. The plan still applies it.
+- One role name belongs to one team in a layer. Two entries with the same valid stem in two teams hold both with `APPLY_AGENT_DUPLICATE`, whether or not each file parses. The next step names both file paths. A role previously installed stays installed. Its copy is untouched.
+- The built-in Claude Code subagents are `Explore`, `Plan`, `general-purpose`, `statusline-setup`, `claude-code-guide`, and `claude` (code.claude.com/docs/en/sub-agents, verified 2026-10-22). They live in one constant, `BUILTIN_AGENT_NAMES`, in `packages/project-sync/src/agents.ts`. A role that matches one case-insensitively (for example `plan` or `explore`) gets the warning of section 3.2. The plan still applies it.
 
 ### 4.3 Tool names (for notices)
 
@@ -278,6 +281,9 @@ The verified Claude Code tool names (code.claude.com/docs/en/tools-reference, fe
 
 ```
 type AgentState = 'new' | 'adopt' | 'edited' | 'up-to-date' | 'drift' | 'orphaned' | 'held'
+type AgentNotice = 'hooks' | 'mcpServers' | 'permissionMode:acceptEdits' | 'permissionMode:auto'
+  | 'permissionMode:dontAsk' | 'permissionMode:bypassPermissions' | 'permissionMode:manual'
+  | 'shell-tools' | 'all-tools'      // in the order of the notice items of section 3.2
 interface AgentItem {
   id: string                       // the role, or the entry name of an invalid entry
   team: string | null              // null for an orphan
@@ -290,13 +296,14 @@ interface AgentItem {
   previousReceiptRevision: string | null
   history: number
   hold: { code: string, next: string } | null
-  notices: string[]                // the five items of section 3.2, as keys
+  notices: AgentNotice[]
   builtin: boolean
   capabilities: null               // reserved for spec 01b
   enforcement: []                  // reserved for spec 01b
 }
 ```
 
+- For an entry held in step 3 of section 3.6, `expected.surfaces` is `[]` and `itemId` is not used for a request.
 - State to action: `new` and `adopt` give `install`. `edited` gives `update`. `up-to-date` and `orphaned` give `none`. `drift` and `held` give `hold`.
 - The plan gains `agents: AgentItem[]` and `codexAgentsSkipped: boolean`. `codexAgentsSkipped` is true when the harness list includes `codex` and at least one agent file exists.
 - Format bump: the apply plan format changes from `bowerloom/project-apply-plan/v1beta1` to `v1beta2`, and the result format from `bowerloom/project-apply-result/v1beta1` to `v1beta2` (`packages/project-sync/src/apply-project.ts:38-39`). The bump stays in the Claude-only design. The plan gains `agents` and `codexAgentsSkipped`, and the result item kind gains `agent`. A reader that knows only v1beta1 would silently skip them. A new format string makes it fail loudly. Spec 01b fills `capabilities` and `enforcement` without another bump.
@@ -309,16 +316,17 @@ interface AgentItem {
 
 - The team verifier removes the subtree `teams/<id>/agents/` from both sides of the comparison: from `readTree` (the `skip` argument) and from `item.files` (`verifiers.ts:70`), with the same prefix.
 - The verifier then checks each file in that subtree. It reads with `readGuarded(path, 65536)` and decodes as section 4.1 says. It calls `parseAgentOrRefuse` and catches the three parse codes. A failure returns `refused('AGENT_INVALID')` for the team folder. (The catch at `verifiers.ts:77` otherwise maps a non-authoring error to `AUTHORING_UNSAFE_PATH`.) `status` then prints `  owner-refused: .bowerloom/teams/<team> (AGENT_INVALID)` (`packages/startup/src/index.ts:330`), and a test pins that line.
+- The verifier calls `folderNames` on `teams/<id>/agents` (a link or an unsafe folder returns `refused('AUTHORING_UNSAFE_PATH')`). Any entry that the plan would hold under the file rules of section 4.1 (a folder, a hidden name, another extension, a link, a bad stem) returns `refused('AGENT_INVALID')`.
 - A duplicate role across teams is not a status finding. It is a plan hold.
 
 First-team (decision 8). The startup receipt lists the files of `teams/first-team`, so the startup walk descends into that folder and reaches `teams/first-team/agents` as a directory that no receipt path starts with. `unaccounted` (`packages/startup/src/index.ts:322-331`) then reports `unexpected` drift, or asks the owners (`packages/startup/src/owners.ts:34-45`, one claimant only). The change:
 
-- `packages/startup/src/index.ts`, in `walk` at lines 334-341, directory branch: add a constant `USER_AREAS = ['teams/first-team/agents']`. For a real directory (not a link) whose path is in `USER_AREAS`:
+- `packages/startup/src/index.ts`, in `walk` at lines 333-344, directory branch: add a constant `USER_AREAS = ['teams/first-team/agents']`. For a real directory (not a link) whose path is in `USER_AREAS`:
   - With owners: call `unaccounted(path, 'directory')`, so an owner can verify it.
   - Without owners: record nothing and do not descend. The startup record claims no content of a user area.
 - `packages/project-authoring/src/verifiers.ts:37-38` (`claims`): the authoring owner also claims the directory path `teams/first-team/agents`. Its `check` branch for that path validates every file as for a team and returns `verified` or `refused('AGENT_INVALID')`.
-- Callers of `inspectStartup` without owners are `apps/cli/src/startup.ts:51`, `packages/connections/src/index.ts:62`, `packages/startup/src/demo.ts:60,105`, and `packages/startup/src/revision.ts:102,234,287`. With the exemption, none of them reports the folder as drift, so `revise` does not stop with `REVISION_DRIFT` (`revision.ts:102`).
-- The entry counter (`count > 256`, `index.ts:333`) counts the folder as one entry.
+- Callers of `inspectStartup` without owners are `apps/cli/src/startup.ts:51`, `packages/connections/src/index.ts:62`, `packages/startup/src/demo.ts:60,105`, and `packages/startup/src/revision.ts:102,234,287`. With the exemption, none of them reports the folder as drift. `revise plan` still refuses with `REVISION_DRIFT`, because its own inventory walk (`packages/startup/src/revision.ts:114-136`) refuses any folder the receipt does not list, as it does for created content today (`tests/create-cli.test.ts:81`). This spec does not change `revision.ts`. Moving `.bowerloom` to history (`revision.ts:273`) would drop the agent sources, so `revise` must keep refusing.
+- The entry counter (`count > 256`, `index.ts:337`) counts the folder as one entry.
 
 ## 5. Refusal codes
 
@@ -331,12 +339,13 @@ Texts, exact. "Message" is the `MESSAGES` entry. "Sentence" and "Next" are the `
 | `AGENT_NAME_MISMATCH` | hold | same | `An agent's name key differs from its file name, or the file name is not a valid role name.` | `The name becomes the file name in .claude/agents.` | `bowerloom help apply` |
 | `AGENT_LIMIT` | refusal | `packages/project-sync/src/refusal.ts` | `This project holds more than 128 agents. Nothing was changed.` | `This beta applies at most 128 agents.` | `bowerloom help apply` |
 | `APPLY_AGENT_DUPLICATE` | hold | same | `Two teams hold an agent with the same name.` | `Each agent name goes to one file in .claude/agents.` | `bowerloom help apply` |
+| `APPLY_AGENTS_FOLDER_UNSAFE` | refusal | same | `.claude or .claude/agents is a link, or others can write to it. Nothing was changed.` | `Bowerloom writes agents only into a real folder that only you can change.` | `ls -ld .claude .claude/agents` |
 | `AGENT_TARGET_OCCUPIED` | hold | same | `A file Bowerloom did not install is at an agent's place and differs from the source.` | `Bowerloom never overwrites what it did not install.` | `bowerloom apply` |
 
 Where each lives:
 
 - The three parse codes go in `MESSAGES` of `packages/project-authoring/src/refusal.ts:7-31`, because `parseAgent` throws through `refuse(code)`. They are then in `AUTHORING_REFUSAL_CODES`, which `tests/human-refusal.test.ts:151` checks against `human.ts`. `outward` passes them (`packages/project-sync/src/refusal.ts:70`, a `DefinitionError` is kept).
-- The other three go in `MESSAGES` of `packages/project-sync/src/refusal.ts:25-26` and are in `SYNC_REFUSAL_CODES`.
+- The other four go in `MESSAGES` of `packages/project-sync/src/refusal.ts:25-26` and are in `SYNC_REFUSAL_CODES`.
 - Words: `apps/cli/src/human.ts:275-276` area. Docs: `apps/docs/src/content/docs/reference/errors.md:127-128`, and the list in `guides/add-skills.md:282`.
 
 Hold `next` texts (the per-item detail):
@@ -347,7 +356,7 @@ Hold `next` texts (the per-item detail):
 - `APPLY_AGENT_DUPLICATE`: `<path A> and <path B> both define <role>. Rename or remove one, then run bowerloom apply.`
 - `AGENT_TARGET_OCCUPIED`: `.claude/agents/<role>.md was not installed by Bowerloom and differs from <source path>. Move it aside, then run bowerloom apply.` For a form that cannot be read as a plain file you own, the text says `cannot be read as a plain file that you own` in place of `differs from <source path>`. For a case alias, it names the alias.
 
-Existing codes this spec reuses: `AUTHORING_UNSAFE_PATH` (unsafe agents folder, a refusal), `SKILLS_PROJECT_UNSAFE`, `STALE_APPROVAL`, `MANAGED_SKILL_LOCAL_DRIFT` (the copy was edited after install, a hold), `MANAGED_SKILL_RECOVERY_REQUIRED`, `MANAGED_SKILL_LOCKED`, and `SKILLS_SYNC_INTERRUPTED`.
+Existing codes this spec reuses: `AUTHORING_UNSAFE_PATH` (unsafe agents folder, a refusal), `STALE_APPROVAL`, `MANAGED_SKILL_LOCAL_DRIFT` (the copy was edited after install, a hold), `MANAGED_SKILL_RECOVERY_REQUIRED`, `MANAGED_SKILL_LOCKED`, and `SKILLS_SYNC_INTERRUPTED`.
 
 ## 6. Where to change
 
@@ -363,7 +372,7 @@ Paths are checked against the beta.3 tree.
 - `packages/managed-skills/src/v2-observed.ts:40`: `itemId` returns `'agent_' + item.id` for kind `agent`.
 - `packages/managed-skills/src/v2-observed.ts:41-44`: `itemRef` accepts kind `agent`. The existing id rules apply. No `agent_` rule is added, because skill ids cannot hold an underscore.
 - `packages/managed-skills/src/v2-observed.ts:55`: the request check accepts the source `{ kind: 'agent', team, name }` (key list `['kind', 'team', 'name']`) only with `item.kind === 'agent'`, `source.name === item.id`, a `team` that passes `ITEM_ID` (`local-source.ts:14`) and has at most 64 characters, and the harness list exactly `['claude']`.
-- `packages/managed-skills/src/v2-observed.ts:79-91`: `locateV2` for kind `agent` emits no `canonical` and no `projection-*` surface. It emits `agent-claude` at `.claude/agents/<name>.md`, then the catalog. Line 85 adds `projection-codex` for every item whose harness list holds Codex, so add the guard `item.kind !== 'agent'`.
+- `packages/managed-skills/src/v2-observed.ts:79-91`: `locateV2` for kind `agent` emits no `canonical` and no `projection-*` surface. It emits `agent-claude` at `.claude/agents/<name>.md` only when `v.harnesses` includes `claude`, then the catalog. Line 85 adds `projection-codex` for every item whose harness list holds Codex, so add the guard `item.kind !== 'agent'`.
 - `packages/managed-skills/src/v2-observed.ts:104-109` (`readClosure`): for `s.kind === 'agent'`, call `readLocalAgent(v.projectDir, s.team, s.name, () => life.check())`. Today line 107 picks `readLocalSkill` or `readLocalPrompt` and would read an agent as a prompt.
 - `packages/managed-skills/src/v2-observed.ts:118-132` (`materialV2`): write `agent-claude` as `fileOf(c.name + '.md', text)`, where `text` is the closure file text.
 - `packages/managed-skills/src/v2-observed.ts:225`: for kind `agent`, the install check passes when every own surface has `pins === null`, except `agent-claude`, which may have exactly one file pin whose sha256 equals the sha256 of `closure.files[0]`. Every other surface of the request keeps the old rule.
@@ -380,7 +389,8 @@ Paths are checked against the beta.3 tree.
   - The harness list is always `['claude']`.
   - A differing or unreadable existing file is a per-item hold (`prompts.ts:163-166` throws a collision instead).
   - Before any request, `classifyAgent` runs the target tests of section 3.3. It lists `.claude/agents` and compares names. It reads the target with `surfaceV2` inside a try. Any failure holds with `AGENT_TARGET_OCCUPIED`.
-  - `.claude` and `.claude/agents`, when they exist, must not be links and must have no group or world write bit. Otherwise it throws `syncError('SKILLS_PROJECT_UNSAFE')` before any write, once, for the whole plan.
+  - When the harness list holds `claude`, `.claude` and `.claude/agents`, when they exist, must not be links and must have no group or world write bit. Otherwise it throws `syncError('APPLY_AGENTS_FOLDER_UNSAFE')` before any write, once, for the whole plan.
+  - A catalog with no private state folder, or a catalog that `currentV2` refuses with `MANAGED_SKILL_PATH_OCCUPIED`, holds that agent with `MANAGED_SKILL_PATH_OCCUPIED` and the next step `Move .bowerloom/managed/catalog/agent_<role>.json aside, then run bowerloom apply.` It never refuses the plan.
   - State `edited` and action `update` when the catalog inventory differs from the closure inventory, or the catalog source path differs from the closure source path.
   - `checkAgentChild` requires `closure.source` equal to `{ kind: 'agent', path: 'teams/<team>/agents/<role>.md' }` and `closure.skill === null`, then the same checks as `checkPromptChild` (`prompts.ts:196-206`).
 - `packages/project-sync/src/prompts.ts:17` is where `readAuthoringState` is imported. `agents.ts` imports the team list the same way.
@@ -390,13 +400,13 @@ Paths are checked against the beta.3 tree.
 - `packages/project-sync/src/apply-project.ts:83`: `ApplyItemRef.kind` gains `'agent'`.
 - `packages/project-sync/src/apply-project.ts:95`: add `agentActionable`.
 - `packages/project-sync/src/apply-project.ts:103-115`: `checkNames` takes agents. Agent rows use the agent surfaces, so a skill or prompt that would take `.claude/agents/<role>.md` or the catalog `agent_<role>.json` refuses with `APPLY_NAME_COLLISION`. The duplicate-role check is not here. It is a hold (section 3.6).
-- `packages/project-sync/src/apply-project.ts:118-178`: `observeApply`. After the prompt block (line 143), call `scanAgents` for every run (listing, `AGENT_LIMIT`, per-file checks, duplicates). Then plan agents only when the harness list holds `claude`, filtered by `input.team`. Run the orphan scan over the unfiltered set. Include agents in `checkNames` (line 144), the `create` list (lines 148-152), `body` (line 153), `binding` (line 163), and `actionable` (line 158).
+- `packages/project-sync/src/apply-project.ts:118-166`: `observeApply` (lines 118-166). After the prompt block (line 143), call `scanAgents` for every run (listing, `AGENT_LIMIT`, per-file checks, duplicates). Then plan agents only when the harness list holds `claude`, filtered by `input.team`. Run the orphan scan over the unfiltered set. Include agents in `checkNames` (line 144), the `create` list (lines 148-152), `body` (line 153), `binding` (line 163), and `actionable` (line 158). The ignore carrier of line 147 also considers up-to-date agents, after prompts, and only when the harness list holds `claude`.
 - `packages/project-sync/src/apply-project.ts:181-215`: `applyProjectApply`. After the prompt loop (lines 194-203), build agent children with `agentRequest` and `checkAgentChild`. Extend `refOf` (line 206) and the `held`, `upToDate`, and `orphaned` lists (lines 211-213).
 - `packages/project-sync/src/index.ts:15-17`: export `AgentItem` and `AgentState`.
 - `packages/project-sync/src/recover.ts:19`: `ITEM_ID` becomes `/^(?:prompt-|agent_)?[a-z0-9]+(?:-[a-z0-9]+)*$/`. The length check below it stays valid (`agent_` plus 64 is 70).
 - `packages/project-sync/src/recover.ts:31`: the `owner` expression gains the kind `agent`.
 - `packages/project-sync/src/plan.ts:119`: the pending-operation message uses `itemId(m.item)` for all kinds.
-- `packages/project-sync/src/refusal.ts:25-26`: add the three project-sync `MESSAGES` entries.
+- `packages/project-sync/src/refusal.ts:25-26`: add the four project-sync `MESSAGES` entries.
 
 ### 6.3 authoring (status)
 
@@ -408,7 +418,8 @@ Paths are checked against the beta.3 tree.
 
 ### 6.4 startup
 
-- `packages/startup/src/index.ts:334-341`: the `USER_AREAS` exemption of section 4.5.
+- `packages/startup/src/index.ts:333-344`: the `USER_AREAS` exemption of section 4.5.
+- Doc comments: add `except the user areas in USER_AREAS` to the comment at `packages/startup/src/index.ts:298-303`, to the comment at `:324`, and to the header comment at `packages/startup/src/owners.ts:4`.
 
 ### 6.5 CLI
 
@@ -417,7 +428,7 @@ Paths are checked against the beta.3 tree.
 - `apps/cli/src/apply.ts:45-58`: add `agentLine` and `agentState`, modeled on `promptLine` and `promptState`, with the wording of section 3.2.
 - `apps/cli/src/apply.ts:65-76`: `renderApplyReview` adds agent ids to `width`, adds the agent lines, the Codex line, and the new title and empty text.
 - `apps/cli/src/apply.ts:77-85`: `resultWords`.
-- `apps/cli/src/held.ts:15`: `HeldItem.kind` gains `'agent'`, with the optional `harness`. `planHolds` (`held.ts:40-46`) takes a third argument `agents` and adds agent holds.
+- `apps/cli/src/held.ts:15`: `HeldItem.kind` gains `'agent'`, with the optional `harness`. `planHolds` (`held.ts:42-47`) takes a third argument `agents` and adds agent holds.
 - `apps/cli/src/project-status.ts:45` and `apps/cli/src/up.ts:150`: pass `plan.agents` and `applyPlan.agents` to `planHolds`.
 - `apps/cli/src/up.ts:148,173`: the text of section 3.4.
 - `apps/cli/src/sync.ts:106`: use `itemId` for the running item name.
@@ -435,7 +446,7 @@ New modules must not name `child_process`, `worker_threads`, or `cluster`, even 
 3. The file is `Scribe.md`. Result: hold `AGENT_NAME_MISMATCH` for the entry `Scribe`. Other agents apply.
 4. The file is `scribe.md` with `name: Scribe`. Result: hold `AGENT_NAME_MISMATCH`.
 5. A file `notes.txt` is in `agents/`. Result: hold `AGENT_INVALID` for the entry `notes.txt`.
-6. Two teams hold `scribe.md`, both valid. Result: both held with `APPLY_AGENT_DUPLICATE`. If `scribe` was installed before, its copy stays.
+6. Two teams hold `scribe.md`, valid or not. Result: both held with `APPLY_AGENT_DUPLICATE`. If `scribe` was installed before, its copy stays.
 7. A key `tool:` (a typo). Result: hold `AGENT_KEY_UNKNOWN`.
 8. `tools: Read, Grep`. Result: installs. No tool notice.
 9. `tools: Read, Bash(npm run *), Edit(/src/**)`. Result: installs. The notice reads `lists shell tools in tools`.
@@ -453,19 +464,19 @@ New modules must not name `child_process`, `worker_threads`, or `cluster`, even 
 21. An agent moves from team `a` to team `b` with the same bytes. Result: state `edited`, action `update`, line `update agent`. The catalog source path names team `b` afterward.
 22. A user edits `.claude/agents/scribe.md` after install. Result: hold `MANAGED_SKILL_LOCAL_DRIFT` with the prompt-style `Next:` text, naming the agent source path. Nothing is overwritten.
 23. A skill is named `agent-scribe` and an agent is named `scribe`. Result: both install, with no collision.
-24. A role is named `plan` or `Explore`. Result: the built-in warning, and the agent installs.
+24. A role is named `plan` or `explore`. Result: the built-in warning, and the agent installs.
 25. `--team a`. Result: only team `a`'s agents are planned. Team `b`'s installed agents are not shown as kept.
 26. A source file is a link. Result: hold `AGENT_INVALID`.
 27. 129 agents in all teams together. Result: refusal `AGENT_LIMIT`.
 28. An `agents` folder that is a link, or writable by others. Result: refusal `AUTHORING_UNSAFE_PATH`. This outranks `AGENT_LIMIT`.
-29. `.claude` or `.claude/agents` is a link or has a group or world write bit. Result: refusal `SKILLS_PROJECT_UNSAFE`, before any write.
+29. `.claude` or `.claude/agents` is a link or has a group or world write bit. Result: refusal `APPLY_AGENTS_FOLDER_UNSAFE`, before any write. Under `--harness codex` the guard does not run.
 30. A target file exists with mode 0600 or 0664, a foreign owner, two links, or as a link or folder. Result: hold `AGENT_TARGET_OCCUPIED`, never adopt.
 31. `.claude/agents/Scribe.md` exists and the role is `scribe`. Result: hold `AGENT_TARGET_OCCUPIED`, naming the alias.
 32. A file with a leading byte order mark (`EF BB BF`), invalid UTF-8 (`ED A0 80`), a null byte, or a carriage return. Result: hold `AGENT_INVALID`.
 33. Interrupt between two agents. Result: `SKILLS_SYNC_INTERRUPTED`, and a rerun finishes.
 34. The user is offline. Result: no change. Apply never fetches.
 35. `.claude/agents` does not exist. Result: the transaction creates it. Other files in it are left alone.
-36. First-team holds `agents/helper.md`. Result: projected like any team's agent. `status` shows no drift for the folder.
+36. First-team holds `agents/helper.md`. Result: projected like any team's agent. `status` shows no drift for the folder. `bowerloom revise` refuses with `REVISION_DRIFT` while the folder exists (a known limit).
 37. `up --team <name>` where the only work is a new agent. Result: the chain stops at the `apply` step with `Next step: apply.`
 
 ## 8. Migration from beta.2
@@ -495,7 +506,7 @@ Bowerloom never edits `.gitignore` outside `.bowerloom/managed/.gitignore`. The 
 All paths are under `apps/docs/src/content/docs/`.
 
 - `cli.md:88-91`: the `apply` paragraph. Add agents, the adopt rule, first-team, and the sentence that Codex agents are not projected in this beta. Keep `It never overwrites a copy you changed.` and extend it with `or a copy that Bowerloom did not install`.
-- `reference/errors.md:127-128`: six new rows. Use the sentence column of section 5.
+- `reference/errors.md:127-128`: seven new rows. Use the sentence column of section 5.
 - `guides/add-skills.md:282`: add the agent codes to the list.
 - New page `guides/agents.md`. Its frontmatter is:
 
@@ -506,17 +517,23 @@ All paths are under `apps/docs/src/content/docs/`.
   order: 7.8
   ```
 
-  The docs build reads the group from `section` and the sort from `order` (`apps/docs/src/lib/content.mjs:90`), so no sidebar file needs an edit. The page holds: where to put the source file, first-team, the allowed keys, the validation rules, what each notice means, the built-in names, how adopt works and how to release a held file, the git note, and the sentence that Codex agents are not projected in this beta.
+  The docs build reads the group from `section` and the sort from `order` (`apps/docs/src/lib/content.mjs:90`), so no sidebar file needs an edit. The page holds: where to put the source file, first-team, the allowed keys, the validation rules, what each notice means, the built-in names, how adopt works and how to release a held file, the git note, the sentence that Codex agents are not projected in this beta, and this limit: `bowerloom revise refuses while .bowerloom/teams/first-team/agents exists. Move the folder out, revise, then move it back.`
 - `guides/create-items.md`: one paragraph that a team folder can hold an `agents/` folder.
 - `harnesses.md`: one sentence that Claude Code agents are projected and Codex agents are not.
 - `status.md:40`: `` - `bowerloom skills sync` puts the pinned skills in place for Claude Code and Codex. `bowerloom apply` puts the prompts in place, and any skill copy that is still missing, and copies the agents of a team to `.claude/agents` for Claude Code. ``
 - `status.md:47`: `- Native discovery of the skill, prompt and agent copies by Claude Code and Codex is not observed.` Add a bullet below it: `- Codex agents are not projected in this beta.`
 - `status.md:37-55`: agent sources are not reported as `edited`.
+- `guides/add-skills.md:157`: `` Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. An agent becomes `.claude/agents/<role>.md` for Claude Code. These copies stay on this machine. ``
+- `guides/add-skills.md:169`: `  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents.`
+- `start.md:134`: `  Team: Studio crew (first-team), with skills, prompts, and agents in place for Claude Code and Codex.`
+- `cli.md:67`: replace `When a skill, prompt, or team is held or gone` with `When a skill, prompt, agent, or team is held or gone`.
+- `apps/cli/src/up.ts:10` (a comment): ` * 4. apply, when skills, prompts, or agents of the team need copies for Claude Code and Codex (owner, answer 4): ``apply``.`
 - `releases.md:16`: under a new heading `## 0.7.0-beta.3`, above the beta.2 heading, add:
   - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
   - A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
   - `bowerloom status` no longer reports a team's `agents/` files as edited.
   - Codex agents are not projected in this beta.
+  - Known limit: `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
   - A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
 
 ## 10. Acceptance tests
@@ -566,9 +583,9 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 
 1. `inspectStartup` without owners, on a project with `teams/first-team/agents/helper.md`, reports no drift for the folder and `specReady` stays true.
 2. With owners, the folder is verified. A bad file gives `owner-refused` with `AGENT_INVALID`.
-3. A link at `teams/first-team/agents` is `unsafe`.
+3. With owners, a link at `teams/first-team/agents` is `unsafe`. Without owners it is `unexpected`.
 4. A neighbor folder `teams/first-team/extra` is still `unexpected`.
-5. `revise plan` on such a project does not stop with `REVISION_DRIFT`.
+5. `revise plan` on such a project refuses with `REVISION_DRIFT` and writes nothing.
 
 ### 10.5 `packages/project-sync/test/agents-plan.test.mjs`
 
@@ -579,7 +596,7 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 5. `STALE_APPROVAL` happens if the source changes after the plan.
 6. `--team` plans only that team's agents, and it does not mark other teams' installed agents as kept.
 7. The source file is deleted. The agent is `kept: no longer an agent of this project, and apply removes nothing`, and the copy and catalog stay.
-8. Two valid agents named `scribe` in two teams: both held with `APPLY_AGENT_DUPLICATE`, nothing written, and the next step names both paths. Other items apply.
+8. Two agents named `scribe` in two teams: both held with `APPLY_AGENT_DUPLICATE`, nothing written, and the next step names both paths. Other items apply. With one twin invalid, both are still held with `APPLY_AGENT_DUPLICATE`.
 9. An agent file that is invalid holds only that agent. A skill and a prompt in the same plan still install.
 10. A differing hand-made copy is held with `AGENT_TARGET_OCCUPIED` and is not refused. `Nothing to change.` follows when nothing else is actionable.
 11. The built-in warning prints for `plan`, `claude`, `statusline-setup`, and `claude-code-guide`, and not for `scribe`. It does not print for `up to date`.
@@ -593,8 +610,10 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 19. A team move (`a` to `b`, same bytes) plans `update agent`. After apply, the catalog source path names `b`.
 20. First-team agents are planned like any team's.
 21. JSON output has the format `bowerloom/project-apply-plan/v1beta2`, the field `agents` with `capabilities: null` and `enforcement: []` per item, and `codexAgentsSkipped`.
-22. `.claude` as a link, and `.claude/agents` writable by the group: refusal `SKILLS_PROJECT_UNSAFE`, with nothing written.
+22. `.claude` as a link, and `.claude/agents` writable by the group: refusal `APPLY_AGENTS_FOLDER_UNSAFE`, with nothing written. Under `--harness codex` the same project plans without this refusal.
 23. `claudeCopyBytes` returns its input for any string.
+24. A catalog `agent_scribe.json` with no private state folder holds the agent with `MANAGED_SKILL_PATH_OCCUPIED` and the next step `Move .bowerloom/managed/catalog/agent_scribe.json aside, then run bowerloom apply.` The plan is not refused. The same holds for a catalog that `currentV2` refuses with `MANAGED_SKILL_PATH_OCCUPIED`.
+25. In a project with agents only, delete `.bowerloom/managed/.gitignore`. The next plan restores it through an up-to-date agent, after prompts, and only when the harness list holds `claude`.
 
 ### 10.6 `packages/project-sync/test/agents-apply.test.mjs`
 
@@ -614,7 +633,7 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 
 1. A byte-identical, mode-0644, one-link file owned by the user is `adopt`. After apply, it is managed, and the catalog and receipt exist. The result counts it as installed.
 2. A differing file holds with `AGENT_TARGET_OCCUPIED`. Nothing is written for that agent.
-3. Each of these holds with `AGENT_TARGET_OCCUPIED` and is never adopted, even with equal bytes: a link, mode 0600, mode 0664, a foreign owner (use a file the test cannot chown by checking only when running as root), two hard links, and a case alias `Scribe.md`.
+3. Each of these holds with `AGENT_TARGET_OCCUPIED` and is never adopted, even with equal bytes: a link, mode 0600, mode 0664, a foreign owner (only when `process.getuid() === 0`, otherwise skip with a reason), two hard links, and a case alias `Scribe.md`.
 4. After the user moves the file aside, the next plan says `install agent`.
 5. The other agents in the same plan still apply when one is held.
 6. A hand-made `.codex/agents/<role>.toml` is not read, changed, or reported.
@@ -629,14 +648,15 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 6. `bowerloom up --team <name>` stops at the `apply` step with the changed step text when agents are the only work, and prints `Team: ..., with skills, prompts, and agents in place` at the end.
 7. `bowerloom help apply` shows the new sentences.
 8. Exit codes: 0 for nothing to change, 3 for approval required.
-9. `tests/no-spawn.test.ts:119`: add `.bowerloom/teams/<team>/agents/scribe.md` to the project of the `up` and `apply` run. Assert `.claude/agents/scribe.md` exists, with zero spawn and zero network calls.
-10. Every code that this spec adds (six) has a row in `reference/errors.md`. `tests/human-refusal.test.ts:151` already checks the `human.ts` words of every code in `SYNC_REFUSAL_CODES` and `AUTHORING_REFUSAL_CODES`, so only the `errors.md` check is new.
+9. `tests/no-spawn.test.ts:119`: after the init step, write `.bowerloom/teams/first-team/agents/scribe.md` with mode 0644 in the project of the `up` and `apply` run. Assert `.claude/agents/scribe.md` exists, with zero spawn and zero network calls.
+10. Every code that this spec adds (seven) has a row in `reference/errors.md`. `tests/human-refusal.test.ts:151` already checks the `human.ts` words of every code in `SYNC_REFUSAL_CODES` and `AUTHORING_REFUSAL_CODES`, so only the `errors.md` check is new. Add it to `tests/human-refusal.test.ts`.
 
 ### 10.9 Existing tests that change
 
 - `tests/apply-cli.test.ts:59`: the title regex becomes `Apply skills, prompts, and agents for Claude Code and Codex`.
 - `tests/apply-cli.test.ts:83`: the Claude-only title becomes `Apply skills, prompts, and agents for Claude Code`.
 - `tests/apply-cli.test.ts:67`: the assertion of `bowerloom/project-apply-plan/v1beta1` becomes `v1beta2`. Search the file for every `v1beta1` of the apply plan and result formats.
+- `tests/freeze-up-cli.test.ts:175,177`: `with skills and prompts in place` becomes `with skills, prompts, and agents in place`.
 - `tests/freeze-cli-words.test.ts:86`: the pointer regex for Claude gains the sentence ` Agents are in .claude/agents.` The `doesNotMatch(/\.agents|Codex/)` at line 87 still passes, because `.claude/agents` has no dot before `agents`. Search the file for other `Project skills are in` assertions (both and Codex).
 
 ## 11. Build order
@@ -652,7 +672,7 @@ Write the tests first. All new files sit inside the existing globs in `package.j
 
 ## 12. Unverified items
 
-Verified from sources named in this spec: the frontmatter key list, the built-in subagent names, the tool names, and the tool classes (Claude Code docs, fetched 2026-10-22 by the owner). Still unverified, with a check and a fallback:
+Settled: `package.json:30` lists `packages/startup/test/*.test.mjs`, so the new startup test file runs. Verified from sources named in this spec: the frontmatter key list, the built-in subagent names, the tool names, and the tool classes (Claude Code docs, fetched 2026-10-22 by the owner). Still unverified, with a check and a fallback:
 
 1. **The value sets of some keys.** `permissionMode` values, `effort` values, `color` values, `memory` values, and `experimental.cacheTtl` come from the owner's relayed fact sheet of 2026-10-22, not from my own fetch. The limits `maxTurns` 1 to 10000, `description` 2048, and `initialPrompt` 8192 are Bowerloom's own. Fallback: a value Claude Code later accepts and we refuse is a hold with `AGENT_INVALID`. Widen the set in a later patch.
 2. **Omitted `tools` means every tool, and `tools: []` means no tool.** I did not confirm either in the docs. The notice wording follows the first meaning. Fallback: if `tools: []` means every tool, make `tools: []` give the `inherits` notice.
@@ -660,17 +680,15 @@ Verified from sources named in this spec: the frontmatter key list, the built-in
 4. **Whether Claude Code needs a restart or reload to see a new `.claude/agents` file.** Not checked, and the spec asserts nothing about it.
 5. **The adopt path in the transaction.** I read that `moves` backs up any pinned surface (`v2-transaction.ts:301`) and that the install check is the only gate (`v2-observed.ts:225`), but I did not run an install over an existing file. Tests 10.1.7, 10.6.7, and 10.7.1 prove it. Fallback if the transaction cannot publish over a backed-up file: hold identical files too with `AGENT_TARGET_OCCUPIED`, and tell the user to move them aside. Say so to Hanna, because it changes decision 4.
 6. **Creating `.claude/agents` when absent.** The engine creates parents for `.claude/commands` for prompts. I assume the same for `.claude/agents`. Test 10.5.22 and 10.6.1 settle it.
-7. **The startup exemption.** I read the walk and the callers. I did not run `revise` on a project with first-team agents. Test 10.4.5 settles it. Fallback: keep the exemption and add `teams/first-team/agents` to the paths that `revise` leaves alone.
-8. **The `packages/startup/test` glob.** I did not check that `package.json` line 30 lists that folder. Check and add the glob if it is missing.
-9. **The workbench copies.** I did not find hand-made copies in the checkout I looked at. The example in section 2 is an example.
-10. **Where `claudeCopyBytes` lives.** I put it in managed-skills so that `readLocalAgent` and project-sync share one definition. If the builder finds a cleaner place that keeps exactly one definition, use it.
+7. **The workbench copies.** I did not find hand-made copies in the checkout I looked at. The example in section 2 is an example.
+8. **Where `claudeCopyBytes` lives.** I put it in managed-skills so that `readLocalAgent` and project-sync share one definition. If the builder finds a cleaner place that keeps exactly one definition, use it.
 
 ## 13. Forward compatibility with 01b
 
 Spec 01b designs a harness-neutral capability model and Codex agents. This spec keeps the door open:
 
 1. **The source format does not change when Codex arrives.** The file stays `.bowerloom/teams/<team>/agents/<role>.md` in the Claude Code subagent format, with the same allowed keys. If 01b needs a harness-neutral key such as `capabilities`, adding it relaxes the `AGENT_KEY_UNKNOWN` hold. That is not a breaking change for existing files.
-2. **One function makes the Claude copy.** `claudeCopyBytes(source)` returns the source today. `adopt`, `AGENT_TARGET_OCCUPIED`, drift, and the closure text all use it. 01b changes only this function. Because the closure inventory holds the copy bytes, a change of the function plans as `update`.
+2. **One function makes the Claude copy.** `claudeCopyBytes(source)` returns the source today. `adopt`, `AGENT_TARGET_OCCUPIED`, drift, and the closure text all use it. 01b changes only this function. Because the closure inventory holds the copy bytes, a change of the function plans as `update`. This replaces 01b section 6 item 3. No generator field is added, because `catalogKeys` is strict and the inventory already changes when the output of the function changes.
 3. **The managed-item kind allows a second surface.** The kind is `agent`, the id is `agent_<role>`, and the receipt and catalog hold a `harnesses` list and a `surfaces` list. 01b adds surfaces by extending `ItemSurfaceId`, `ITEM_SURFACES`, `locateV2`, `materialV2`, and `STAGE_NAME`, and by loosening the harness check in `requestV2`. `locateV2` for kind `agent` takes its surface list from the item, so a role may have no `.claude/agents` file later. An installed agent then moves through the existing `harnesses-changed` path (`apps/cli/src/apply.ts:54`).
 4. **Reserved plan fields.** Each `AgentItem` carries `capabilities: null` and `enforcement: []`, and `HeldItem` carries an optional `harness`. 01b fills them without another format bump.
 5. **The Codex line is the one place to change.** When 01b lands, the line `Codex agents are not projected in this beta. See the capability model design.` is removed, and the planner starts to accept the Codex harness. `codexAgentsSkipped` is the switch.
@@ -680,4 +698,4 @@ Spec 01b designs a harness-neutral capability model and Codex agents. This spec 
 
 ## 14. New decision for Hanna
 
-None. Decisions 8 and 9 settled the questions that the independent review raised.
+None. Decisions 8 and 9 settled the questions that the independent review raised. The tech lead settled one more point (variant A): a separate code `APPLY_AGENTS_FOLDER_UNSAFE` refuses the plan when `.claude` or `.claude/agents` is unsafe, in place of `SKILLS_PROJECT_UNSAFE`.
