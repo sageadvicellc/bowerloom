@@ -28,3 +28,6 @@ export type { StoreFetch, StorePlanBinding } from './plan.js';
 export type { SliceItem, SliceState } from './slices.js';
 export { measureContext, showSlice, MEASURE_FORMAT, SHOW_FORMAT } from './context-measure.js';
 export type { MeasureAgent, MeasureInput, MeasureResult, ShowInput, ShowResult } from './context-measure.js';
+// Spec 08: receipt clean.
+export { planReceiptClean, applyReceiptClean, RECEIPT_CLEAN_PLAN_FORMAT, RECEIPT_CLEAN_RESULT_FORMAT } from './receipt-clean.js';
+export type { ReceiptCleanPlan, ReceiptCleanResult, ReceiptCleanInput, ReceiptCleanHooks } from './receipt-clean.js';

@@ -10,6 +10,8 @@ import { readStoreRepo } from '../../../packages/project-config/src/git.js';
 import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
+import type { ApprovalIo } from './confirm.js';
+import { terminalIo } from './manifest.js';
 
 const STORE_STATUS_FORMAT = 'bowerloom/store-status/v1beta1';
 const USAGE = 'Use bowerloom store status [--json].';
@@ -148,7 +150,7 @@ function gitLines(git: StoreRepo, token: TokenState): string[] {
  * `bowerloom store status [--json]`. Reads only. Every STORE_* refusal is reported as state `refused` and exits 0; USAGE
  * passes through. `home` is the HOME folder, and the store is always `<home>/.bowerloom`.
  */
-export async function runStoreCommand(args: readonly string[], home: string, write: (text: string) => unknown, env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function runStoreCommand(args: readonly string[], _cwd: string, home: string, write: (text: string) => unknown, _io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const words = args.slice(1);
   if (words[0] !== 'status' || words.length > 2 || (words.length === 2 && words[1] !== '--json')) throw new DefinitionError('USAGE', USAGE);
   const r = report(home), token = GithubToken.status(env);

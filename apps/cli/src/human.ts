@@ -63,6 +63,17 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.',
     'Add --json for one machine-readable object.', '',
   ].join('\n'),
+  // Spec 08, 3.4.
+  receipt: [
+    'Usage:',
+    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]', '',
+    'Removes entries from the record of created items when the files of those items are gone. Run it after you delete',
+    'old files, for example after bowerloom store migrate. Then bowerloom status no longer names them as missing.',
+    '--global cleans the record of your store, ~/.bowerloom.',
+    'It also removes the local entry of a gone skill from skills.json, and the project entry from bowerloom.json.',
+    'It deletes no file and no installed copy. Copies that sync or apply made stay where they are.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
+  ].join('\n'),
   use: [
     'Usage:',
     '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]', '',
@@ -389,6 +400,13 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Review F1 of PR 97.
   GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
+  // Spec 08, section 5: the sentence is the Cause cell and the next step the table's.
+  MIGRATE_ITEM_NOT_FOUND: { sentence: 'A selected item is not defined in the project, or its files are gone.', next: 'bowerloom ls' },
+  MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A selected skill or prompt cannot be a store item. The message adds the reason.', next: 'bowerloom help store' },
+  MIGRATE_ID_EXISTS: { sentence: 'The store already holds an item with that kind and id but other bytes.', next: 'Rename the project item, or remove the store item yourself.' },
+  MIGRATE_RESERVED: { sentence: 'first-team or personal-assistant was named. Setup owns them.', next: 'bowerloom store migrate --all skips them.' },
+  MIGRATE_TEAM_MISSING: { sentence: 'A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team.', next: 'Add --team <name> to move that team too.' },
+  MIGRATE_LIMIT: { sentence: 'The store record of created items holds 512 items at most.', next: 'Remove items from the store, or move fewer items.' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
   CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },
