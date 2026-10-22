@@ -62,7 +62,8 @@ function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot:
 }
 
 /** Steps 4 to 6 of the hook form. Never throws: a failure is `projectOk: false` or a slice state. */
-export function loadGuardView(args: GuardArgs, stateRoot: string): GuardView {
+/** `explain` skips the check that the agent copy lists these slices, because `--explain --slice` may name any installed slice. */
+export function loadGuardView(args: GuardArgs, stateRoot: string, options: { explain?: boolean } = {}): GuardView {
   const fsView = nodeGuardFs();
   try {
     const s = fs.lstatSync(args.project, { bigint: true });
@@ -70,7 +71,7 @@ export function loadGuardView(args: GuardArgs, stateRoot: string): GuardView {
     realFolder(join(args.project, '.bowerloom'));
     if (projectId(args.project, identityFrom(s)) !== args.projectId) return { projectOk: false, slices: [], fs: fsView };
     const itemsRoot = join(stateRoot, args.projectId, 'items'), agent = installedCatalog(args.project, itemsRoot, { kind: 'agent', id: args.role });
-    if (agent === null || !Array.isArray(agent.source?.guard) || !same(agent.source.guard, args.slices)) return { projectOk: false, slices: [], fs: fsView };
+    if (agent === null || (options.explain !== true && (!Array.isArray(agent.source?.guard) || !same(agent.source.guard, args.slices)))) return { projectOk: false, slices: [], fs: fsView };
     const roots = new Map(args.roots.map(r => [r.slice(0, r.lastIndexOf(':')), r.slice(r.lastIndexOf(':') + 1)] as const));
     return { projectOk: true, slices: args.slices.map(id => sliceView(args, itemsRoot, id, roots.get(id))), fs: fsView };
   } catch (error) { unexpected(error); return { projectOk: false, slices: [], fs: fsView }; }

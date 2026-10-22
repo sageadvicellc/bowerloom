@@ -108,7 +108,7 @@ export interface SliceTreeResult {
   file: { sha256: string; bytes: number } | null;
   resolution: SliceResolution;
   index: string | null;
-  hold: { code: string; detail: string } | null;
+  hold: { code: string; detail: string; errno?: string } | null;
   /** The absolute path of the root folder once it passed the folder checks, else null. */
   rootDir: string | null;
 }
@@ -118,23 +118,29 @@ const EMPTY: SliceResolution = Object.freeze({ members: [], covered: [], notes: 
 /** A tree reader over the real root folder. It pins what it reads, and `close` checks the pins again. */
 class RootTree implements TreeReader {
   constructor(private root: string, private pins: Pin[], private live: () => void) {}
+  /** A path that vanished or changed kind is a stale plan. Any other operating system error is a hold that names the path and the errno. */
+  private fail(error: unknown, path: string): never {
+    const errno = (error as NodeJS.ErrnoException | null)?.code;
+    if (typeof errno !== 'string' || !/^E[A-Z0-9]+$/.test(errno) || errno === 'ENOENT' || errno === 'ENOTDIR') return staleFile();
+    throw new SliceTreeError('SLICE_SOURCE_UNSAFE', path === '' ? '.' : path, errno);
+  }
   list(dir: string): string[] {
     this.live(); const abs = dir === '' ? this.root : join(this.root, dir);
-    let s: fs.BigIntStats; try { s = fs.lstatSync(abs, { bigint: true }); } catch { return staleFile(); }
+    let s: fs.BigIntStats; try { s = fs.lstatSync(abs, { bigint: true }); } catch (e) { return this.fail(e, dir); }
     if (s.isSymbolicLink() || !s.isDirectory() || !owned(s)) throw new SliceTreeError('SLICE_SOURCE_UNSAFE', dir === '' ? '.' : dir);
-    let names: string[]; try { names = fs.readdirSync(abs); } catch { return staleFile(); }
+    let names: string[]; try { names = fs.readdirSync(abs); } catch (e) { return this.fail(e, dir); }
     if (names.length > LIMITS.names) throw new SliceTreeError('SLICE_TOO_LARGE', dir === '' ? '.' : dir);
     this.pins.push(pinOf(abs, s)); return names;
   }
   stat(path: string): EntryInfo | null {
     this.live(); const abs = path === '' ? this.root : join(this.root, path);
-    let s: fs.BigIntStats; try { s = fs.lstatSync(abs, { bigint: true }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; return staleFile(); }
+    let s: fs.BigIntStats; try { s = fs.lstatSync(abs, { bigint: true }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; return this.fail(e, path); }
     const type = s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : s.isFile() ? 'file' : 'other';
     return { type, size: Number(s.size), nlink: Number(s.nlink), safe: owned(s), id: `${s.dev}:${s.ino}` };
   }
   read(path: string): Uint8Array {
     this.live();
-    try { const got = authoredBytes(join(this.root, path), SLICE_LIMITS.memberBytes); this.pins.push(got.pin); return got.bytes; } catch { return staleFile(); }
+    try { const got = authoredBytes(join(this.root, path), SLICE_LIMITS.memberBytes); this.pins.push(got.pin); return got.bytes; } catch (e) { return this.fail(e, path); }
   }
   close(): void { closingStale(this.pins, this.live); }
 }
@@ -183,7 +189,7 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
     const qualify = (detail: string): string => rootPath === '.' ? (detail === '.' ? rootPath : detail) : detail === '.' ? rootPath : `${rootPath}/${detail}`;
     if (resolution.hold !== null) {
       const h = resolution.hold, named = h.code === 'SLICE_PATH_MISSING' || h.code === 'SLICE_SOURCE_UNSAFE';
-      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail) } : h, rootDir: at };
+      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail), ...(h.errno === undefined ? {} : { errno: h.errno }) } : h, rootDir: at };
     }
     const display = rootPath === '.' ? { source: 'the project folder', prefix: '' } : { source: rootPath, prefix: rootPath };
     const index = renderSliceIndex(name, def, resolution, display);

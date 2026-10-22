@@ -87,7 +87,7 @@ export function sliceSurfaces(project: string, id: string): { id: ItemSurface['i
 }
 
 /** The words of a hold from the reading of a slice: its code and the next step. */
-export function holdOf(id: string, hold: { code: string; detail: string }): { code: string; next: string } {
+export function holdOf(id: string, hold: { code: string; detail: string; errno?: string }): { code: string; next: string } {
   const path = fileOf(id);
   switch (hold.code) {
     case 'SLICE_INVALID': return { code: hold.code, next: `Fix ${path}: ${hold.detail}. Then run bowerloom apply.` };
@@ -95,7 +95,7 @@ export function holdOf(id: string, hold: { code: string; detail: string }): { co
     case 'SLICE_PATH_MISSING': return { code: hold.code, next: `${hold.detail} is gone. Fix the path in ${path}, or restore the file, then run bowerloom apply.` };
     case 'SLICE_ROOT_MISSING': return { code: hold.code, next: 'This build has no registered folders yet. Use a root inside the project.' };
     case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: `ls -ld ${hold.detail}` };
-    case 'SLICE_SOURCE_UNSAFE': return { code: hold.code, next: `ls -l ${hold.detail}` };
+    case 'SLICE_SOURCE_UNSAFE': return { code: hold.code, next: hold.errno === undefined ? `ls -l ${hold.detail}` : `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -l ${hold.detail}, let your user read it, then run bowerloom apply.` };
     case 'SLICE_EMPTY': return { code: hold.code, next: `Widen include in ${path}, then run bowerloom apply.` };
     default: return { code: 'SLICE_TOO_LARGE', next: 'Narrow the slice, or set summary: none, then run bowerloom apply.' };
   }
@@ -117,7 +117,9 @@ function readTree(read: SliceTreeHook, project: string, id: string): SliceTreeRe
     const code = (e as { code?: string } | null)?.code;
     if (code === 'MANAGED_SKILL_STALE_APPROVAL') throw stale(`A file of slice ${id} changed while Bowerloom read it. Run bowerloom apply again.`);
     if (code === 'MANAGED_SKILL_ABORTED' || code === 'MANAGED_SKILL_TIMEOUT') throw syncError(code);
-    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id) }, rootDir: null };
+    // An error with no string code is a bug in Bowerloom: it must not look like a fault in the person's files.
+    if (typeof code !== 'string') throw e;
+    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id), errno: code }, rootDir: null };
   }
 }
 
@@ -274,6 +276,8 @@ export function scanSlices(project: string, itemsRoot: string, read: SliceTreeHo
 /** What an agent's `skills` list says about slices (spec 05, section 3.8). */
 export interface AgentContext {
   slices: string[]; guard: string[] | null; guardRoots: string[]; unknown: string[]; beyondPreloadLimit: string[]; plainSkills: string[]; heldNeverInstalled: string[]; omitClaudeMd: boolean;
+  /** Departure from the frozen type: guarded slices that are held but were installed before, so the copy stays and the guard blocks. */
+  heldAfterInstalled: string[];
   /** Departure from the frozen type: the position (from 1) of each entry of `beyondPreloadLimit`, so the plan can print it. */
   beyondPreloadPositions: number[];
   /** Departure: the tool names (before any parenthesis) the agent lists, or null when it inherits every tool. */
@@ -281,13 +285,13 @@ export interface AgentContext {
   /** Departure: the agent sets mcpServers. */
   mcpServers: boolean;
 }
-export const EMPTY_CONTEXT: AgentContext = Object.freeze({ slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }) as AgentContext;
+export const EMPTY_CONTEXT: AgentContext = Object.freeze({ slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }) as AgentContext;
 
 export function agentContext(agent: ParsedAgent, slices: readonly SliceItem[], plainIds: ReadonlySet<string>): AgentContext {
   const byId = new Map(slices.filter(s => s.state !== 'orphaned').map(s => [s.id, s]));
   const entries = [...new Set(agent.skills ?? [])];
   const everyTool = agent.tools === null || agent.tools.length === 0 || agent.tools.some(e => e.split('(')[0]!.includes('*'));
-  const out: AgentContext = { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], omitClaudeMd: agent.omitClaudeMd, beyondPreloadPositions: [], tools: everyTool ? null : agent.tools!.map(e => e.split('(')[0]!), mcpServers: agent.keys.includes('mcpServers') };
+  const out: AgentContext = { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: agent.omitClaudeMd, beyondPreloadPositions: [], tools: everyTool ? null : agent.tools!.map(e => e.split('(')[0]!), mcpServers: agent.keys.includes('mcpServers') };
   entries.forEach((entry, i) => {
     if (!entry.startsWith('slice-')) return;
     const x = entry.slice('slice-'.length);
@@ -301,9 +305,11 @@ export function agentContext(agent: ParsedAgent, slices: readonly SliceItem[], p
     out.guard = [...out.slices];
     out.guardRoots = out.guard.flatMap(id => {
       const root = byId.get(id)!.root; if (root === null) return [];
-      try { const real = realpathSync(root.dir); return [`${id}:${projectId(real, identityFrom(lstatSync(real, { bigint: true })))}`]; } catch { return []; }
+      try { const real = realpathSync(root.dir); return [`${id}:${projectId(real, identityFrom(lstatSync(real, { bigint: true })))}`]; }
+      catch (error) { const errno = (error as NodeJS.ErrnoException).code; if (errno === 'ENOENT' || errno === 'ENOTDIR') return []; throw error; }
     });
     out.heldNeverInstalled = out.guard.filter(id => { const s = byId.get(id)!; return s.action === 'hold' && !s.installed; });
+    out.heldAfterInstalled = out.guard.filter(id => { const s = byId.get(id)!; return s.action === 'hold' && s.installed; });
   }
   return out;
 }

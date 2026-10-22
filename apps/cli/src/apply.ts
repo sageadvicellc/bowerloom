@@ -117,6 +117,7 @@ function agentContextWarnings(item: AgentItem, pad: string): string[] {
     ...c.unknown.map(x => `  ${pad} Warning: agent ${item.id} names slice-${x}, and no slice ${x} is registered. Claude Code skips a preloaded skill it cannot find.`),
     ...c.beyondPreloadLimit.map((x, i) => `  ${pad} Warning: slice-${x} is skill ${c.beyondPreloadPositions[i]} in the skills list of agent ${item.id}. Claude Code preloads the first 32 only.`),
     ...c.heldNeverInstalled.map(x => `  ${pad} Warning: agent ${item.id} names slice ${x}, which is held and was never installed. Its read guard blocks every Read, Grep, and Glob until the slice installs.`),
+    ...c.heldAfterInstalled.map(x => `  ${pad} Warning: agent ${item.id} names slice ${x}, which is held, so its read guard blocks every Read, Grep, and Glob until the slice installs.`),
   ];
 }
 function agentContextNotes(item: AgentItem, slices: readonly SliceItem[]): string[] {

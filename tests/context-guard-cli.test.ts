@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { INPUT_INVALID_TEXT } from '../apps/cli/src/guard-run.js';
-import { denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
+import { approve, denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
 import { safeReference } from '../apps/cli/src/guard-view.js';
 
 const tree = (dir: string): string => JSON.stringify(readdirSync(dir, { recursive: true }).map(String).sort().map(rel => { const s = lstatSync(join(dir, rel)); return [rel, s.isFile() ? createHash('sha256').update(readFileSync(join(dir, rel))).digest('hex') : 'dir']; }));
@@ -164,4 +164,11 @@ test('G4. a huge path or a huge pattern is denied fast through the real binary',
   assert.equal(guard(p, args, read(join(deep, 'n.md'), p.dir)).stdout, '', 'outside the root, even 70 levels deep, is left to Claude Code');
   put(p.dir, 'wiki/' + Array.from({ length: 70 }, () => 'd').join('/') + '/n.md', 'x');
   assert.match(guard(p, args, read(join(p.dir, 'wiki', ...Array.from({ length: 70 }, () => 'd'), 'n.md'), p.dir)).stdout, /no context slice of agent lead \(wiki\) lists it/);
+});
+
+test('C4. --explain with --slice for an installed slice the agent does not list still explains', t => {
+  const p = sliceProject(t); put(p.dir, 'notes/n.md', '# N\n');
+  approve(p.dir, ['slice', 'create', 'other', '--root', 'notes', '--include', '**/*.md'], p.home); approve(p.dir, ['apply', '--harness', 'claude'], p.home);
+  const r = run(p.dir, ['context', 'guard', '--agent', 'lead', '--slice', 'other', '--explain', join(p.dir, 'notes/n.md')], p.home);
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'allowed: ' + join(p.dir, 'notes/n.md') + ' is in slice other\n');
 });

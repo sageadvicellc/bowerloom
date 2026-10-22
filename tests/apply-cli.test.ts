@@ -120,7 +120,7 @@ const agentItem = (id: string, extra: Partial<AgentItem>): AgentItem => ({
   id, team: 'first-team', itemId: `agent_${id}`, state: 'new', action: 'install', harnesses: ['claude'],
   expected: { files: [], surfaces: [{ id: 'agent-claude', path: `.claude/agents/${id}.md` }, { id: 'catalog', path: `.bowerloom/managed/catalog/agent_${id}.json` }], source: { kind: 'agent', path: `teams/first-team/agents/${id}.md`, guard: null } },
   before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], newNotices: [], installed: null, sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [],
-  context: { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }, ...extra,
+  context: { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false }, ...extra,
 });
 const planOf = (agents: AgentItem[], harnesses: ('claude' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
   format: 'bowerloom/project-apply-plan/v1beta2', harnesses, team: null, skills: null, prompts: [], slices: [], agents, codexSlicesSkipped: false, unregisteredSlices: [], agentsMayBeTracked: false, codexAgentsSkipped: false, actionable: true,

@@ -14,7 +14,7 @@ import type { SliceDefinition } from './slice-file.js';
 export type HoldCode = 'SLICE_SOURCE_UNSAFE' | 'SLICE_PATH_MISSING' | 'SLICE_EMPTY' | 'SLICE_TOO_LARGE';
 /** A reason the slice is held. The reader throws it too, for a folder it cannot list safely. */
 export class SliceTreeError extends Error {
-  constructor(readonly code: HoldCode, readonly detail: string) { super(code); this.name = 'SliceTreeError'; }
+  constructor(readonly code: HoldCode, readonly detail: string, readonly errno?: string) { super(code); this.name = 'SliceTreeError'; }
 }
 export type EntryType = 'file' | 'dir' | 'link' | 'other';
 /** What `lstat` says. `safe` is true when the user owns the entry and the group and others cannot write it. */
@@ -37,7 +37,8 @@ export interface SliceNotes {
   /** Files with more than 512 links, whose later links were not followed. */
   truncatedLinks: number;
 }
-export interface SliceHold { code: HoldCode; detail: string }
+/** `errno` is set when the hold comes from an operating system error that is not a change of the tree, such as EACCES. */
+export interface SliceHold { code: HoldCode; detail: string; errno?: string }
 export interface SliceResolution { members: Member[]; covered: string[]; notes: SliceNotes; hold: SliceHold | null; readBytes: number }
 
 const cmp = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
@@ -88,7 +89,7 @@ export function resolveSlice(def: SliceDefinition, reader: TreeReader): SliceRes
   try { result = run(def, reader, notes); }
   catch (error) {
     if (!(error instanceof SliceTreeError)) throw error;
-    result = { members: [], covered: [], notes, hold: { code: error.code, detail: error.detail }, readBytes: 0 };
+    result = { members: [], covered: [], notes, hold: { code: error.code, detail: error.detail, ...(error.errno === undefined ? {} : { errno: error.errno }) }, readBytes: 0 };
   }
   reader.close?.();
   return result;

@@ -153,3 +153,35 @@ test('a slice index and its catalog carry no member text', async t => {
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
   for (const file of [...walk(f.stateRoot)]) assert.equal(fs.readFileSync(file, 'utf8').includes('SECRET-BODY-SENTENCE'), false, file);
 });
+
+// Review fixes S2 and C5, through the real tree reader.
+const asRoot = process.getuid?.() === 0;
+const tree = f => readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live);
+test('S2. a folder or member that cannot be read holds SLICE_SOURCE_UNSAFE with the path and the errno, and is not stale', { skip: asRoot ? 'root can read a mode 000 folder' : false }, t => {
+  const f = wiki(t); wikiFile(f, 'locked/c.md', '# C\n'); const locked = path.join(f.projectDir, 'wiki/locked'), file = path.join(f.projectDir, 'wiki/a.md');
+  try {
+    fs.chmodSync(locked, 0o000);
+    const r = tree(f); assert.equal(r.hold.code, 'SLICE_SOURCE_UNSAFE'); assert.equal(r.hold.detail, 'wiki/locked'); assert.equal(r.hold.errno, 'EACCES'); assert.equal(r.index, null);
+    fs.chmodSync(locked, 0o755); fs.chmodSync(file, 0o000);
+    const m = tree(f); assert.equal(m.hold.code, 'SLICE_SOURCE_UNSAFE'); assert.equal(m.hold.detail, 'wiki/a.md'); assert.equal(m.hold.errno, 'EACCES');
+  } finally { fs.chmodSync(locked, 0o755); fs.chmodSync(file, 0o644); }
+});
+test('S2. a member that vanishes during the read is still stale', t => {
+  const f = wiki(t); const original = fs.openSync; let hit = false;
+  t.mock.method(fs, 'openSync', (p, ...rest) => { if (!hit && String(p).endsWith('wiki/a.md')) { hit = true; fs.unlinkSync(p); } return original.call(fs, p, ...rest); }); syncBuiltinESMExports();
+  assert.throws(() => tree(f), code('MANAGED_SKILL_STALE_APPROVAL')); restore(t);
+});
+test('C5. a folder with 1024 names is read, and one with 1025 holds SLICE_TOO_LARGE', t => {
+  const f = project(t); sliceFile(f); const dir = path.join(f.projectDir, 'wiki'); fs.mkdirSync(dir, { mode: 0o755 }); fs.chmodSync(dir, 0o755);
+  for (let i = 0; i < 1024; i++) fs.writeFileSync(path.join(dir, `n${i}.txt`), 'x', { mode: 0o644 });
+  assert.equal(tree(f).hold.code, 'SLICE_EMPTY', 'no name is refused at the limit');
+  fs.writeFileSync(path.join(dir, 'one-more.txt'), 'x', { mode: 0o644 });
+  const r = tree(f); assert.equal(r.hold.code, 'SLICE_TOO_LARGE'); assert.equal(r.index, null);
+});
+test('C5. an index over 64 KiB holds SLICE_TOO_LARGE, and summary: none fits the same files', t => {
+  const f = project(t); sliceFile(f);
+  for (let i = 0; i < 250; i++) wikiFile(f, `${'d'.repeat(100)}/${String(i).padStart(3, '0')}${'x'.repeat(80)}.md`, `# ${'h'.repeat(200)}\n`);
+  const big = tree(f); assert.equal(big.hold.code, 'SLICE_TOO_LARGE'); assert.equal(big.hold.detail, 'the index'); assert.equal(big.index, null);
+  sliceFile(f, 'wiki', SLICE.replace('summary: heading', 'summary: none'));
+  const small = tree(f); assert.equal(small.hold, null); assert.ok(Buffer.byteLength(small.index) <= 65536 && Buffer.byteLength(small.index) > 40000);
+});

@@ -177,3 +177,17 @@ test('a user edit of the installed index holds MANAGED_SKILL_LOCAL_DRIFT and not
   const p = await plan(f, ['claude']); assert.deepEqual([slice(p).state, slice(p).action, slice(p).hold.code], ['drift', 'hold', 'MANAGED_SKILL_LOCAL_DRIFT']);
   const before = read(f, '.claude/skills/slice-wiki/SKILL.md'); await applied(f, ['claude']); assert.equal(read(f, '.claude/skills/slice-wiki/SKILL.md'), before);
 });
+test('C5. a change of the covered folders alone plans an update', async t => {
+  const f = await wikiProject(t); await applied(f, ['claude']); const before = await plan(f, ['claude']);
+  put(f, 'wiki/sub/note.txt', 'not a member\n'); const p = await plan(f, ['claude']);
+  assert.deepEqual(slice(before).covered, ['./', 'sub/']); assert.deepEqual(slice(p).covered, []);
+  assert.deepEqual([slice(p).state, slice(p).action], ['edited', 'update']); assert.deepEqual(slice(p).changes, { added: 0, gone: 0, summaries: 0, rootChanged: false, guardChanged: false });
+});
+test('S1. a reader error with another code holds the slice and names that code, and an error with no code is not hidden', async t => {
+  const f = await wikiProject(t);
+  const odd = () => { throw Object.assign(new Error('x'), { code: 'MANAGED_SKILL_REFUSED' }); };
+  const p = await plan(f, ['claude'], { sliceTree: odd });
+  assert.equal(slice(p).state, 'held'); assert.equal(slice(p).hold.code, 'SLICE_SOURCE_UNSAFE'); assert.match(slice(p).hold.next, /\(MANAGED_SKILL_REFUSED\)/);
+  const bug = () => { throw new TypeError('a bug'); };
+  await assert.rejects(plan(f, ['claude'], { sliceTree: bug }), Error);
+});

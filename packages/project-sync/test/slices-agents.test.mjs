@@ -131,7 +131,7 @@ test('22. tools: Task(x) and tools: ReadMcpResourceTool name nested agents and M
 });
 test('an agent that names no slice is unchanged and has an empty context', async t => {
   const f = await wikiProject(t); agentSource(f, 'first-team', 'plain.md', agentText('plain')); const a = byId((await plan(f, ['claude'])).agents).plain;
-  assert.deepEqual(a.context, { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false });
+  assert.deepEqual(a.context, { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], heldAfterInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false });
 });
 
 test('C1. an agent with the slices wiki and wiki-eng applies end to end (the root strings are in slice order, not string order)', async t => {
@@ -140,4 +140,23 @@ test('C1. an agent with the slices wiki and wiki-eng applies end to end (the roo
   const args = guardArgs(f); const roots = args.filter((x, i) => args[i - 1] === '--root'); assert.deepEqual(roots.map(x => x.split(':')[0]), ['wiki', 'wiki-eng']);
   assert.ok(roots[0] > roots[1], 'string order would put wiki-eng first');
   assert.equal((await plan(f, ['claude'])).agents[0].action, 'none');
+});
+test('S3. a guarded slice that is held after it was installed prints the held warning', async t => {
+  const f = await wikiProject(t); sliceAgent(f, 'lead', ['slice-wiki']); await applied(f, ['claude']);
+  rewriteSlice(f, 'wiki', s => s + 'bogus: 1\n');
+  const p = await plan(f, ['claude']); assert.deepEqual(lead(p).context.heldAfterInstalled, ['wiki']); assert.deepEqual(lead(p).context.heldNeverInstalled, []);
+  assert.match(review(p), /^ {2} +Warning: agent lead names slice wiki, which is held, so its read guard blocks every Read, Grep, and Glob until the slice installs\.$/m);
+  const ok = await wikiProject(t); sliceAgent(ok, 'lead', ['slice-wiki']); await applied(ok, ['claude']);
+  assert.doesNotMatch(review(await plan(ok, ['claude'])), /which is held/);
+});
+test('S3. agentContext does not swallow a root path error other than a missing folder', { skip: process.getuid?.() === 0 ? 'root can read a mode 000 folder' : false }, async t => {
+  const { agentContext } = await import('../../../dist/packages/project-sync/src/slices.js');
+  const f = await wikiProject(t); const locked = path.join(f.projectDir, 'locked'); fs.mkdirSync(path.join(locked, 'inner'), { recursive: true });
+  const item = dir => ({ id: 'wiki', state: 'ok', action: 'none', installed: true, guard: 'root', root: { kind: 'project', path: 'x', dir } });
+  const agent = { skills: ['slice-wiki'], tools: null, keys: [], omitClaudeMd: false };
+  try {
+    fs.chmodSync(locked, 0o000);
+    assert.throws(() => agentContext(agent, [item(path.join(locked, 'inner'))], new Set()), e => e.code === 'EACCES');
+    assert.deepEqual(agentContext(agent, [item(path.join(f.projectDir, 'gone'))], new Set()).guardRoots, [], 'a folder that is gone is not an error');
+  } finally { fs.chmodSync(locked, 0o755); }
 });

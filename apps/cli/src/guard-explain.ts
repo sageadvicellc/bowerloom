@@ -20,7 +20,7 @@ export async function runExplain(parsed: Extract<ParsedGuard, { form: 'explain' 
   const roots = slices.flatMap(id => { const s = plan.slices.find(x => x.id === id); if (!s?.root) return []; try { const real = fs.realpathSync(s.root.dir); return [`${id}:${projectId(real, identityFrom(fs.lstatSync(real, { bigint: true })))}`]; } catch { return []; } });
   const target = parsed.path.startsWith('/') ? parsed.path : posix.resolve(io.cwd, parsed.path);
   const toolInput = parsed.tool === 'Read' ? { file_path: parsed.path } : parsed.tool === 'Grep' ? { pattern: 'x', path: parsed.path } : { pattern: parsed.path };
-  const view = () => loadGuardView({ role: parsed.role, project: project.dir, projectId: project.projectId, slices, roots }, stateRoot);
+  const view = () => loadGuardView({ role: parsed.role, project: project.dir, projectId: project.projectId, slices, roots }, stateRoot, { explain: true });
   const decision = decideGuard({ role: parsed.role, project: project.dir, ids: slices, tool: parsed.tool, toolInput, cwd: io.cwd, home: io.home }, view);
   const shown = plain(parsed.path);
   if (decision.kind === 'deny') io.out(`denied (${decision.code}): ${decision.reason}\n`);
