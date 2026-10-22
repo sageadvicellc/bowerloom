@@ -9,20 +9,25 @@
  * --team it keeps the entry's teams. A change of kind, package or repository, or a local entry, refuses with
  * SKILLS_ADD_SOURCE_CHANGED; an id skills.json does not hold refuses with SKILLS_ADD_REPLACE_MISSING.
  *
+ * With `--global` both commands work on the store, `~/.bowerloom`, from any folder (spec 04, 3.6 and 3.7). The write runs
+ * inside `withStoreForWrite`, which makes the store when it is absent. The cache stays in the private state folder.
+ *
  * After the approved write, skills add keeps the bytes it verified in the machine's skills cache, which the plan
  * names (Hanna, global skill cache). A seed that fails leaves the pin written and is reported, in words and in JSON.
  */
-import { lstatSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, privateStateRoot, verifyProjectPins, withProjectLock } from '../../../packages/project-context/src/index.js';
+import { discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
+import type { StoreContext } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { parseSkillSpec } from '../../../packages/skill-manifest/src/spec.js';
 import type { SkillSpec } from '../../../packages/skill-manifest/src/spec.js';
-import { isEntryId, isId, parseManifest } from '../../../packages/skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest } from '../../../packages/skill-manifest/src/schema.js';
 import type { Entry, GitSource, NpmSource, PinnedContent, PinnedEntry } from '../../../packages/skill-manifest/src/schema.js';
-import { applyManifestChange, planManifestChange, readManifestState, replaceTarget } from '../../../packages/skill-manifest/src/add.js';
+import { applyManifestChange, planManifestChange, readManifestState, replaceTarget, storeTarget } from '../../../packages/skill-manifest/src/add.js';
 import type { ManifestChange, ManifestChangePlan, ManifestChangeReceipt } from '../../../packages/skill-manifest/src/add.js';
 import { checkManifest } from '../../../packages/skill-manifest/src/check.js';
 import { createPublicTransport } from '../../../packages/skill-manifest/src/public-get.js';
@@ -30,6 +35,9 @@ import { resolveNpmVerified } from '../../../packages/skill-manifest/src/resolve
 import { resolveGitVerified } from '../../../packages/skill-manifest/src/resolve-git.js';
 import type { VerifiedPin } from '../../../packages/skill-manifest/src/content.js';
 import { seedPin } from '../../../packages/project-sync/src/seed.js';
+import { cacheLayout, storeStateNested } from '../../../packages/project-sync/src/plan.js';
+import { syncError } from '../../../packages/project-sync/src/refusal.js';
+import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
@@ -37,17 +45,18 @@ import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText, promptStopped } from './human.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
-const ADD_USAGE = 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --approve <revision> and --json.';
+const ADD_USAGE = 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --global, --approve <revision> and --json.';
 
-export interface AddArgs { spec: string; id: string | null; teams: string[]; replace: boolean; approval: string[] }
-/** Splits `skills add` words into the source, --id, --team, --replace, and the approval flags for the wrapper. */
+export interface AddArgs { spec: string; id: string | null; teams: string[]; replace: boolean; global: boolean; approval: string[] }
+/** Splits `skills add` words into the source, --id, --team, --replace, --global, and the approval flags for the wrapper. */
 export function parseAddArgs(words: readonly string[]): AddArgs {
-  let spec: string | null = null, id: string | null = null, replace = false; const teams: string[] = [], approval: string[] = [];
+  let spec: string | null = null, id: string | null = null, replace = false, global = false; const teams: string[] = [], approval: string[] = [];
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
     if (word === '--approve') { approval.push(word); if (i + 1 < words.length) approval.push(words[++i]!); }
     else if (word === '--json') approval.push(word);
     else if (word === '--replace') { if (replace) usage('Use --replace once.'); replace = true; }
+    else if (word === '--global') { if (global) usage('Use --global once.'); global = true; }
     else if (word === '--id' || word === '--team') {
       const value = words[++i];
       if (value === undefined || value.startsWith('-') || !isId(value)) usage(`${word} takes a lower-case id, such as first-team.`);
@@ -57,7 +66,7 @@ export function parseAddArgs(words: readonly string[]): AddArgs {
     else spec = word;
   }
   if (spec === null) usage(ADD_USAGE);
-  return { spec: spec!, id, teams, replace, approval };
+  return { spec: spec!, id, teams, replace, global, approval };
 }
 
 const aborted = (error: unknown): boolean => error instanceof Error && (error.name === 'AbortError' || (error as { code?: unknown }).code === 'ABORT_ERR');
@@ -81,12 +90,44 @@ export function terminalIo(input: NodeJS.ReadableStream & { isTTY?: boolean } = 
   };
 }
 
+/** Only a missing folder means "not found". Any other failure is an unreadable folder, not a missing team. */
+const isNotFound = (error: unknown): boolean => ['ENOENT', 'ENOTDIR'].includes(String((error as NodeJS.ErrnoException | null)?.code));
 function requireTeams(project: ProjectContext, teams: readonly string[]): void {
   for (const team of teams) {
     let ok = false;
-    try { const s = lstatSync(join(project.dir, '.bowerloom', 'teams', team)); ok = s.isDirectory() && !s.isSymbolicLink(); } catch { ok = false; }
+    try { const s = lstatSync(join(project.dir, '.bowerloom', 'teams', team)); ok = s.isDirectory() && !s.isSymbolicLink(); } catch (error) { if (!isNotFound(error)) throw projectRefusal('PROJECT_UNREADABLE'); }
     if (!ok) throw manifestRefusal('TEAM_NOT_FOUND');
   }
+}
+
+/** Teams of the store: a team the store's authoring record lists, whose folder `teams/<id>` is a real folder. */
+function requireStoreTeams(store: StoreContext | null, teams: readonly string[]): void {
+  if (!teams.length) return;
+  if (store === null) throw manifestRefusal('TEAM_NOT_FOUND');
+  const registered = readAuthoringState(store.dir).receipt?.value.items ?? [];
+  for (const team of teams) {
+    let ok = false;
+    try { const s = lstatSync(join(store.dir, 'teams', team)); ok = s.isDirectory() && !s.isSymbolicLink() && registered.some(i => i.kind === 'team' && i.id === team); } catch (error) { if (!isNotFound(error)) throw projectRefusal('STORE_UNREADABLE'); }
+    if (!ok) throw manifestRefusal('TEAM_NOT_FOUND');
+  }
+}
+/**
+ * Refuses STORE_STATE_NESTED when the private state folder and the store lie inside one another. It fails closed: a state
+ * folder that cannot be checked (a link in its chain, for one) is refused, as STORE_STATE_NESTED when the deepest folder
+ * of it that exists is inside the store, and as SKILLS_STATE_UNSAFE otherwise.
+ */
+function checkStateNesting(store: StoreContext | null, storeDir: string, stateRoot: string): void {
+  let pins: ReturnType<typeof cacheLayout>['pins'];
+  try { pins = cacheLayout(stateRoot).pins; }
+  catch {
+    let at = stateRoot;
+    for (;;) {
+      try { const real = realpathSync(at); if (real === storeDir || real.startsWith(`${storeDir}/`)) throw projectRefusal('STORE_STATE_NESTED'); break; }
+      catch (error) { if ((error as { code?: unknown }).code === 'STORE_STATE_NESTED') throw error; if (dirname(at) === at) break; at = dirname(at); }
+    }
+    throw syncError('SKILLS_STATE_UNSAFE');
+  }
+  if (storeStateNested(store, storeDir, stateRoot, pins)) throw projectRefusal('STORE_STATE_NESTED');
 }
 
 type Pinned = Entry & PinnedContent<NpmSource | GitSource>;
@@ -101,6 +142,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
   const replace = 'replace' in plan.change ? plan.change.replace : null;
   const entry = (replace ? replace.to : (plan.change as { add: Entry }).add) as Pinned;
   return [
+    ...(plan.storeCreate ? ['Create the store at ~/.bowerloom (store.json). It holds definitions only.'] : []),
     ...(replace
       ? [`Replace the pin of skill ${entry.id} in ${plan.manifest}`, `  Old pin: ${pinWords(replace.from as Pinned)}`, `  New pin: ${pinWords(entry)}`]
       : [`Add skill ${entry.id} to ${plan.manifest}`, `  Source: ${pinWords(entry)}`]),
@@ -111,6 +153,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
     `  Teams: ${entry.teams ? entry.teams.join(', ') : 'every team'}`,
     `  skills.json: ${plan.before === null ? 'a new file' : `replaces the file with sha256 ${plan.before.sha256}`}`,
     ...(plan.cache ? [`  Cache: ${plan.cache.root} keeps the bytes checked here, so skills sync need not fetch them again.`] : []),
+    ...(plan.scope === 'store' ? ['  Scope: store. A project picks this skill with bowerloom use.'] : []),
     replace ? 'This records the new pin only. Nothing is installed or run. Run bowerloom skills sync to update the installed copies.' : 'This records the pin only. Nothing is installed or run.',
   ].join('\n');
 }
@@ -129,18 +172,19 @@ async function resolveSpec(spec: SkillSpec, signal: AbortSignal): Promise<Verifi
   finally { transport.close(); }
 }
 /** What a seed did, in plain words, after `Applied plan`. */
-export function seedWords(seed: SeedResult): string {
-  if (seed.status === 'failed') return `Cache: the checked bytes were not kept in ${seed.root}${seed.codes.length ? ` (${seed.codes.join(', ')})` : ''}. The pin is recorded; skills sync fetches it again.\n`;
+export function seedWords(seed: SeedResult, global = false): string {
+  if (seed.status === 'failed') return `Cache: the checked bytes were not kept in ${seed.root}${seed.codes.length ? ` (${seed.codes.join(', ')})` : ''}. The pin is recorded; ${global ? 'a project that selects this skill fetches it' : 'skills sync fetches it again'}.\n`;
   return seed.status === 'seeded' ? `Cache: kept the checked bytes in ${seed.root}.\n` : `Cache: ${seed.root} already held this pin.\n`;
 }
 
 async function runAdd(words: readonly string[], cwd: string, home: string, io: ApprovalIo, write: (text: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
   const args = parseAddArgs(words);
   const spec = parseSkillSpec(args.spec);
+  if (args.global) return runAddGlobal(args, spec, home, io, write, env);
   const project = discoverProject(cwd, home);
   requireTeams(project, args.teams);
   const state = readManifestState(project.dir);
-  const current = state.file !== null ? parseManifest(state.file.bytes).skills : [];
+  const current = state.file !== null ? parseManifest(state.file.bytes, MANIFEST_LIMITS).skills : [];
   if (args.replace) { if (args.id !== null) checkReplaceBeforeFetch(current, args.id, spec); else if (state.file === null) throw manifestRefusal('SKILLS_ADD_REPLACE_MISSING'); }
   else if (args.id !== null && current.some(s => s.id === args.id)) throw manifestRefusal('SKILLS_ADD_EXISTS');
   verifyProjectPins(project);
@@ -155,7 +199,7 @@ async function runAdd(words: readonly string[], cwd: string, home: string, io: A
     resolved ??= resolveSpec(spec, controller.signal);
     const content = (await resolved).content, id = args.id ?? content.skill.name;
     let teams: readonly string[] = args.teams;
-    if (args.replace && !teams.length) { const now = readManifestState(project.dir); teams = (now.file ? parseManifest(now.file.bytes).skills.find(s => s.id === id)?.teams : undefined) ?? []; }
+    if (args.replace && !teams.length) { const now = readManifestState(project.dir); teams = (now.file ? parseManifest(now.file.bytes, MANIFEST_LIMITS).skills.find(s => s.id === id)?.teams : undefined) ?? []; }
     const next = { id, ...(teams.length ? { teams: [...teams] } : {}), ...content } as Entry;
     return args.replace ? { replace: next } : { add: next };
   };
@@ -181,17 +225,88 @@ async function runAdd(words: readonly string[], cwd: string, home: string, io: A
   return outcome.exitCode;
 }
 
+/** `skills add --global`: the same steps as `runAdd`, on the store. Nothing here reads a project. */
+async function runAddGlobal(args: AddArgs, spec: SkillSpec, home: string, io: ApprovalIo, write: (text: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  const storeDir = storeRootOf(home), target = storeTarget(storeDir);
+  const found = inspectStore(home);
+  if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
+  const context = found.state === 'store' ? found.context : null, storeCreate = found.state === 'absent';
+  const stateRoot = privateStateRoot(env, home), cacheRoot = join(stateRoot, 'cache');
+  checkStateNesting(context, storeDir, stateRoot);
+  requireStoreTeams(context, args.teams);
+  const state = readManifestState(target, { allowAbsent: true });
+  const current = state.file !== null ? parseManifest(state.file.bytes, STORE_MANIFEST_LIMITS).skills : [];
+  if (args.replace) { if (args.id !== null) checkReplaceBeforeFetch(current, args.id, spec); else if (state.file === null) throw manifestRefusal('SKILLS_ADD_REPLACE_MISSING'); }
+  else if (args.id !== null && current.some(s => s.id === args.id)) throw manifestRefusal('SKILLS_ADD_EXISTS');
+  if (context !== null) verifyStorePins(context);
+  const flags = parseApprovalFlags(args.approval); if (flags.rest.length) usage('This command takes only --approve <revision> and --json.');
+
+  const controller = new AbortController();
+  let resolved: Promise<VerifiedPin<PinnedContent<NpmSource | GitSource>>> | null = null, seed: SeedResult | null = null;
+  const entry = async (): Promise<ManifestChange> => {
+    resolved ??= resolveSpec(spec, controller.signal);
+    const content = (await resolved).content, id = args.id ?? content.skill.name;
+    let teams: readonly string[] = args.teams;
+    if (args.replace && !teams.length) { const now = readManifestState(target, { allowAbsent: true }); teams = (now.file ? parseManifest(now.file.bytes, STORE_MANIFEST_LIMITS).skills.find(s => s.id === id)?.teams : undefined) ?? []; }
+    const next = { id, ...(teams.length ? { teams: [...teams] } : {}), ...content } as Entry;
+    return args.replace ? { replace: next } : { add: next };
+  };
+  const change: PlannedChange<ManifestChangePlan> = {
+    async plan() {
+      const add = await entry();
+      if (context !== null) verifyStorePins(context);
+      const plan = planManifestChange(target, add, { cacheRoot, storeCreate });
+      if (context !== null) verifyStorePins(context);
+      return plan;
+    },
+    revision: plan => plan.revision,
+    review: renderAddReview,
+    async apply(revision: string): Promise<ManifestChangeReceipt & { cache: SeedResult }> {
+      const add = await entry();
+      let kept: StoreContext | null = null;
+      const { receipt, written } = await withStoreForWrite(home, controller.signal, async (store, held, created) => {
+        kept = store;
+        verifyStorePins(store);
+        checkStateNesting(store, store.dir, stateRoot);
+        const again = planManifestChange(storeTarget(store.dir), add, { cacheRoot, storeCreate: created });
+        if (again.revision !== revision) throw manifestRefusal('STALE_APPROVAL');
+        return { receipt: applyManifestChange(again, revision, held), written: ('replace' in again.change ? again.change.replace.to : again.change.add) as PinnedEntry };
+      });
+      // The pin is written. The seed only adds to the cache, outside the store lock, and reports a failure.
+      seed = await seedPin({ project: null, stateRoot, store: kept }, written, (await resolved!).bytes, controller.signal);
+      return { ...receipt, cache: seed };
+    },
+  };
+  const outcome = await runWithApproval(change, { ...(flags.approve !== undefined ? { approve: flags.approve } : {}), json: flags.json }, io);
+  write(outcome.output + (outcome.exitCode === 0 && !flags.json && seed !== null ? plainText(seedWords(seed, true), true) : ''));
+  return outcome.exitCode;
+}
+
 function runCheck(words: readonly string[], cwd: string, home: string, write: (text: string) => void): number {
-  if (words.length > 1 || words.some(w => w !== '--json')) usage('Use bowerloom skills check [--json].');
-  const project = discoverProject(cwd, home);
-  const check = checkManifest(project.dir);
-  verifyProjectPins(project);
-  if (words[0] === '--json') { write(newCommandJson(check)); return 0; }
+  const USAGE = 'Use bowerloom skills check [--global] [--json].';
+  if (words.filter(w => w === '--global').length > 1) usage('Use --global once.');
+  const global = words.includes('--global'), rest = words.filter(w => w !== '--global');
+  if (rest.length > 1 || rest.some(w => w !== '--json')) usage(USAGE);
+  const json = rest[0] === '--json';
+  let check: ReturnType<typeof checkManifest>;
+  if (global) {
+    const found = inspectStore(home);
+    if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
+    if (found.state === 'absent') throw manifestRefusal('MANIFEST_NOT_FOUND');
+    verifyStorePins(found.context);
+    check = checkManifest(storeTarget(found.context.dir));
+    verifyStorePins(found.context);
+  } else {
+    const project = discoverProject(cwd, home);
+    check = checkManifest(project.dir);
+    verifyProjectPins(project);
+  }
+  if (json) { write(newCommandJson(check)); return 0; }
   // Review freeze finding 10: the harness names every other command uses, and one column for the ids.
   const count = check.skills.length, width = Math.max(0, ...check.skills.map(s => s.id.length));
   const harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
   write([
-    `skills.json is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.map(h => harness[h] ?? h).join(' and ')}.`,
+    `skills.json${global ? ' (store)' : ''} is valid: ${count} ${count === 1 ? 'skill' : 'skills'}, for ${check.harnesses.map(h => harness[h] ?? h).join(' and ')}.`,
     ...check.skills.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}`),
     '',
   ].join('\n'));

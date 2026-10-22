@@ -12,37 +12,44 @@
  * anything else with AUTHORING_PENDING.
  */
 import fs from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
-import { isHeldProjectLock } from '../../project-context/src/index.js';
+import { isHeldProjectLock, verifyStorePins } from '../../project-context/src/index.js';
+import type { StoreContext } from '../../project-context/src/index.js';
+import { storeBrief } from '../../project-config/src/brief.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { startupInternals, startupProfiles } from '../../startup/src/index.js';
 import type { StartupProfile } from '../../startup/src/index.js';
 import { scaffoldTeam } from '../../startup/src/scaffold.js';
-import { addLocalEntry, applyManifestChange, planManifestChange, readManifestState } from '../../skill-manifest/src/add.js';
-import { parseManifest, serializeManifest } from '../../skill-manifest/src/schema.js';
-import type { Entry, Manifest } from '../../skill-manifest/src/schema.js';
+import { addLocalEntry, applyManifestChange, planManifestChange, projectTarget, readManifestState, storeTarget } from '../../skill-manifest/src/add.js';
+import type { ManifestTarget } from '../../skill-manifest/src/add.js';
+import { MANIFEST_LIMITS, parseManifest, serializeManifest } from '../../skill-manifest/src/schema.js';
+import type { Entry, Manifest, ManifestLimits } from '../../skill-manifest/src/schema.js';
 import { LIMITS, folderNames, lstatOrNull, makeFolder, readGuarded, readTree, realFolder, removeScratch, sha256, syncFolder, writeNewFile } from './files.js';
 import type { FilePin } from './files.js';
 import { ensure, refuse } from './refusal.js';
 import { AUTHORING_FOLDER, FIRST_TEAM, PENDING, RECEIPT, isId, isPromptId, isRevision, isSkillId, isTeamId, itemPath, pendingOf, readAuthoringState, receiptOf, recordText, sameItem, stageName, tempName } from './state.js';
 import type { AuthoredItem, AuthoringReceipt, AuthoringState, ItemKind, Read } from './state.js';
 
-export const AUTHORING_PLAN_FORMAT = 'bowerloom/authoring-plan/v1beta1' as const;
+export const AUTHORING_PLAN_FORMAT = 'bowerloom/authoring-plan/v1beta2' as const;
 
+/** `scope` is `project` when absent. For `store`, `project` holds the path of the store folder itself. */
 export type CreateInput =
-  | { kind: 'team'; project: string; name: string; profile?: StartupProfile }
-  | { kind: 'skill' | 'prompt'; project: string; name: string; teams: string[] };
+  | { kind: 'team'; project: string; name: string; profile?: StartupProfile; scope?: 'project' | 'store' }
+  | { kind: 'skill' | 'prompt'; project: string; name: string; teams: string[]; scope?: 'project' | 'store' };
 
 export interface ManifestStep { id: string; teams: string[]; before: Read | null; after: Read }
 export interface PlannedFile { path: string; text: string; sha256: string; bytes: number }
 export interface CreatePlan {
   format: typeof AUTHORING_PLAN_FORMAT;
-  /** Real absolute path of the project folder. */
+  /** Real absolute path of the project folder, or of the store folder for the store scope. */
   project: string;
-  /** The device and inode of `.bowerloom`, as decimal strings. */
-  bowerloom: { device: string; inode: string };
+  scope: 'project' | 'store';
+  /** True when the store does not exist yet and this create makes it, or has just made it. Always false for a project. */
+  storeCreate: boolean;
+  /** The device and inode of `.bowerloom`, as decimal strings. Null for the store: `verifyStorePins` binds its identity. */
+  bowerloom: { device: string; inode: string } | null;
   input: { kind: ItemKind; name: string; teams: string[]; profile: StartupProfile | null };
   /** The sha256 and size of every record this plan read, or null when it was absent or not read. */
   reads: { brief: Read | null; receipt: Read | null; pending: Read | null; manifest: Read | null };
@@ -76,7 +83,7 @@ export interface CreatePlan {
   revision: string;
 }
 
-interface Normalized { kind: ItemKind; project: string; name: string; teams: string[]; profile: StartupProfile | null }
+interface Normalized { kind: ItemKind; scope: 'project' | 'store'; project: string; name: string; teams: string[]; profile: StartupProfile | null }
 const usage = (): never => refuse('USAGE');
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
@@ -85,8 +92,10 @@ function normalizeInput(input: unknown): Normalized {
   const v = input as Record<string, unknown>, keys = Object.keys(v);
   const kind = v.kind;
   if (kind !== 'team' && kind !== 'skill' && kind !== 'prompt') return usage();
-  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile'] : ['kind', 'project', 'name', 'teams'];
+  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile', 'scope'] : ['kind', 'project', 'name', 'teams', 'scope'];
   if (!keys.every(k => allowed.includes(k)) || !['kind', 'project', 'name', ...(kind === 'team' ? [] : ['teams'])].every(k => Object.hasOwn(v, k))) return usage();
+  if (v.scope !== undefined && v.scope !== 'project' && v.scope !== 'store') return usage();
+  const scope: 'project' | 'store' = v.scope === 'store' ? 'store' : 'project';
   const project = v.project;
   if (typeof project !== 'string' || !isAbsolute(project) || resolve(project) !== project || project.includes('\0') || typeof v.name !== 'string') return usage();
   let profile: StartupProfile | null = null;
@@ -96,7 +105,7 @@ function normalizeInput(input: unknown): Normalized {
     if (!Array.isArray(v.teams) || v.teams.length > 32 || !v.teams.every(t => typeof t === 'string') || new Set(v.teams).size !== v.teams.length) return usage();
     teams = [...v.teams as string[]].sort(compare);
   }
-  return { kind, project, name: v.name, teams, profile };
+  return { kind, scope, project, name: v.name, teams, profile };
 }
 function checkName(input: Normalized): void {
   const { kind, name } = input;
@@ -105,21 +114,35 @@ function checkName(input: Normalized): void {
   else ensure(isPromptId(name), 'PROMPT_NAME_INVALID');
 }
 
-interface Project { dir: string; bowerloom: string; identity: { device: string; inode: string } }
-function openProject(dir: string): Project {
+interface Scope { kind: 'project' | 'store'; dir: string; bowerloom: string; identity: { device: string; inode: string } | null; exists: boolean }
+/** The scope's limits and manifest target. The store keeps `skills.json` directly in its folder. */
+const targetOf = (scope: Scope): ManifestTarget => scope.kind === 'store' ? storeTarget(scope.dir) : projectTarget(scope.dir);
+const LEFTOVER_TEMP = /^\.store\.json\.[a-f0-9]{16}\.tmp$/;
+function openScope(input: Normalized): Scope {
+  const dir = input.project;
+  if (input.scope === 'store') {
+    // The store folder may not exist yet: its parent is the real home folder. An empty folder is a leftover.
+    let parent: string; try { parent = fs.realpathSync(dirname(dir)); } catch { return refuse('AUTHORING_UNSAFE_PATH'); }
+    ensure(parent === dirname(dir), 'AUTHORING_UNSAFE_PATH');
+    const found = lstatOrNull(dir);
+    if (found === null) return { kind: 'store', dir, bowerloom: dir, identity: null, exists: false };
+    realFolder(dir);
+    const exists = fs.readdirSync(dir).some(name => !LEFTOVER_TEMP.test(name) && name !== '.DS_Store');
+    return { kind: 'store', dir, bowerloom: dir, identity: null, exists };
+  }
   let real: string; try { real = fs.realpathSync(dir); } catch { return refuse('AUTHORING_UNSAFE_PATH'); }
   ensure(real === dir, 'AUTHORING_UNSAFE_PATH');
   const bowerloom = join(dir, '.bowerloom'), s = realFolder(bowerloom);
-  return { dir, bowerloom, identity: { device: String(s.dev), inode: String(s.ino) } };
+  return { kind: 'project', dir, bowerloom, identity: { device: String(s.dev), inode: String(s.ino) }, exists: true };
 }
-function sameBowerloom(project: Project): void {
+function sameBowerloom(project: Scope): void {
   const s = realFolder(project.bowerloom);
-  if (String(s.dev) !== project.identity.device || String(s.ino) !== project.identity.inode) refuse('STALE_APPROVAL');
+  if (project.identity === null || String(s.dev) !== project.identity.device || String(s.ino) !== project.identity.inode) refuse('STALE_APPROVAL');
 }
 
 // The brief record that scaffold() writes to brief.json. Team create reads it directly, with the guards.
 const BRIEF_KEYS = ['format', 'projectName', 'goal', 'assistantName', 'teamName', 'reviewMode', 'profile', 'origin', 'generation', 'reviewRequired', 'executionAuthorized'];
-function readBrief(project: Project): { brief: ReturnType<typeof startupInternals.normalize>['brief']; read: Read } {
+function readBrief(project: Scope): { brief: ReturnType<typeof startupInternals.normalize>['brief']; read: Read } {
   let bytes: Buffer;
   try { bytes = readGuarded(join(project.bowerloom, 'brief.json'), LIMITS.briefBytes); } catch { return refuse('PROJECT_BRIEF_INVALID'); }
   try {
@@ -143,7 +166,7 @@ const samePins = (a: readonly FilePin[], b: readonly FilePin[]): boolean => cano
 /** Where an interrupted prompt's stage copy sits: the one path whose second link to the prompt is expected. */
 const stagedPrompt = (bowerloom: string, item: { id: string; planRevision: string }): string => join(bowerloom, AUTHORING_FOLDER, stageName(item.planRevision), 'prompts', `${item.id}.md`);
 /** 'landed' when the pending item is in place with exactly its recorded bytes, 'absent' when nothing is there. */
-function pendingState(project: Project, item: AuthoredItem): 'landed' | 'absent' | 'mismatch' {
+function pendingState(project: Scope, item: AuthoredItem): 'landed' | 'absent' | 'mismatch' {
   const at = join(project.bowerloom, itemPath(item.kind, item.id));
   if (lstatOrNull(at) === null) return 'absent';
   try {
@@ -156,32 +179,32 @@ function pendingState(project: Project, item: AuthoredItem): 'landed' | 'absent'
 }
 
 function localEntry(id: string, teams: readonly string[]): Entry { return { id, ...(teams.length ? { teams: [...teams] } : {}), source: { kind: 'local', path: `skills/${id}` } } as Entry; }
-function currentManifest(project: Project): { manifest: Manifest | null; read: Read | null } {
-  const state = readManifestState(project.dir);
-  return state.file ? { manifest: parseManifest(state.file.bytes), read: { sha256: state.file.sha256, bytes: state.file.bytes.length } } : { manifest: null, read: null };
+function currentManifest(project: Scope): { manifest: Manifest | null; read: Read | null } {
+  const target = targetOf(project), state = readManifestState(target, { allowAbsent: project.kind === 'store' });
+  return state.file ? { manifest: parseManifest(state.file.bytes, target.limits), read: { sha256: state.file.sha256, bytes: state.file.bytes.length } } : { manifest: null, read: null };
 }
 /** One skills.json step: M3's addLocalEntry on the bytes before it. Pure: it reads and writes nothing. */
-function manifestStep(current: { manifest: Manifest | null; read: Read | null }, id: string, teams: readonly string[]): { step: ManifestStep; next: { manifest: Manifest; read: Read } } {
-  const manifest = addLocalEntry(current.manifest, id, [...teams]), text = serializeManifest(manifest);
+function manifestStep(current: { manifest: Manifest | null; read: Read | null }, id: string, teams: readonly string[], limits: ManifestLimits): { step: ManifestStep; next: { manifest: Manifest; read: Read } } {
+  const manifest = addLocalEntry(current.manifest, id, [...teams], limits), text = serializeManifest(manifest, limits);
   const after = { sha256: sha256(text), bytes: Buffer.byteLength(text) };
   return { step: { id, teams: [...teams], before: current.read, after }, next: { manifest, read: after } };
 }
 
-/** Teams that exist: first-team when its folder is real, or a registered team whose folder is real. */
-function requireTeams(project: Project, teams: readonly string[], registered: readonly AuthoredItem[]): void {
+/** Teams that exist: first-team when its folder is real (a project only), or a registered team whose folder is real. */
+function requireTeams(project: Scope, teams: readonly string[], registered: readonly AuthoredItem[], allowFirstTeam: boolean): void {
   for (const team of teams) {
     ensure(isId(team), 'TEAM_NOT_FOUND');
-    ensure(team === FIRST_TEAM || registered.some(i => i.kind === 'team' && i.id === team), 'TEAM_NOT_FOUND');
+    ensure((allowFirstTeam && team === FIRST_TEAM) || registered.some(i => i.kind === 'team' && i.id === team), 'TEAM_NOT_FOUND');
     const s = lstatOrNull(join(project.bowerloom, 'teams', team));
     ensure(s !== null && s.isDirectory() && !s.isSymbolicLink(), 'TEAM_NOT_FOUND');
   }
 }
 
-async function plan(input: Normalized): Promise<CreatePlan> {
+async function plan(input: Normalized, created = false): Promise<CreatePlan> {
   checkName(input);
-  const project = openProject(input.project);
-  ensure(lstatOrNull(join(project.dir, '.bowerloom-revision.json')) === null, 'REVISION_PENDING');
-  const state: AuthoringState = readAuthoringState(project.bowerloom);
+  const project = openScope(input), isStore = project.kind === 'store';
+  if (!isStore) ensure(lstatOrNull(join(project.dir, '.bowerloom-revision.json')) === null, 'REVISION_PENDING');
+  const state: AuthoringState = isStore && !project.exists ? { folder: false, receipt: null, pending: null, scratch: [] } : readAuthoringState(project.bowerloom);
   const receiptItems = state.receipt?.value.items ?? [];
   let discard: AuthoredItem | null = null, finish: AuthoredItem | null = null, settled: AuthoredItem | null = null;
   if (state.pending) {
@@ -224,7 +247,7 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     if (finish?.kind === 'skill') {
       const entry = current.manifest?.skills.find(s => s.id === finish!.id);
       if (entry) ensure(canonicalJson(entry) === canonicalJson(localEntry(finish.id, finish.teams)), 'AUTHORING_PENDING');
-      else { const next = manifestStep(current, finish.id, finish.teams); steps.push(next.step); current = next.next; }
+      else { const next = manifestStep(current, finish.id, finish.teams, targetOf(project).limits); steps.push(next.step); current = next.next; }
     }
     if (input.kind === 'skill' && !isFinish) ensure(!current.manifest?.skills.some(s => s.id === input.name), 'SKILL_EXISTS');
   }
@@ -236,25 +259,29 @@ async function plan(input: Normalized): Promise<CreatePlan> {
     ensure(!registered.some(i => sameItem(i, request)), exists);
     if (input.kind === 'prompt') { if (parentStat !== null) ensure(!folderNames(join(project.bowerloom, 'prompts')).some(n => n.normalize('NFC').toLowerCase() === `${input.name}.md`), exists); }
     else ensure(lstatOrNull(join(project.bowerloom, itemPath(input.kind, input.name))) === null, exists);
-    requireTeams(project, input.teams, registered);
+    requireTeams(project, input.teams, registered, !isStore);
     if (!state.folder) folders.push(AUTHORING_FOLDER);
     if (parentStat === null) folders.push(parent);
     if (input.kind === 'team') {
-      const read = readBrief(project); brief = read.read;
-      // Review M6 finding 3: up --team matches first-team by id or display name, so a team with that name could never
-      // be prepared. Refused here, where the name is chosen.
-      ensure(read.brief.teamName !== input.name, 'TEAM_NAME_TAKEN');
-      const team = scaffoldTeam({ ...read.brief, profile: input.profile ?? read.brief.profile ?? 'engineer' }, input.name, input.name);
+      let team: ReturnType<typeof scaffoldTeam>;
+      if (isStore) team = scaffoldTeam(storeBrief(input.profile ?? undefined), input.name, input.name);
+      else {
+        const read = readBrief(project); brief = read.read;
+        // Review M6 finding 3: up --team matches first-team by id or display name, so a team with that name could never
+        // be prepared. Refused here, where the name is chosen.
+        ensure(read.brief.teamName !== input.name, 'TEAM_NAME_TAKEN');
+        team = scaffoldTeam({ ...read.brief, profile: input.profile ?? read.brief.profile ?? 'engineer' }, input.name, input.name);
+      }
       files = team.files.map(f => planned(f.path, f.text)); compiledCandidate = team.compiled.candidateRevision;
     } else if (input.kind === 'skill') {
       files = [planned(`skills/${input.name}/SKILL.md`, SKILL_TEXT(input.name))];
-      steps.push(manifestStep(current, input.name, input.teams).step);
+      steps.push(manifestStep(current, input.name, input.teams, targetOf(project).limits).step);
     } else files = [planned(`prompts/${input.name}.md`, PROMPT_TEXT(input.name))];
   }
   if (steps.length) manifest = { before: steps[0]!.before, after: steps[steps.length - 1]!.after, steps };
   const body: Omit<CreatePlan, 'revision'> = {
-    format: AUTHORING_PLAN_FORMAT, project: project.dir, bowerloom: project.identity,
-    input: { kind: input.kind, name: input.name, teams: input.teams, profile: input.profile },
+    format: AUTHORING_PLAN_FORMAT, project: project.dir, scope: project.kind, storeCreate: isStore && (!project.exists || created), bowerloom: project.identity,
+    input: { kind: input.kind, name: input.name, teams: input.teams, profile: isStore ? (input.profile ?? 'engineer') : input.profile },
     reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead },
     scratch: state.scratch, discard, settled, finish,
     item: isFinish || restore ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
@@ -271,16 +298,22 @@ export async function planCreate(input: CreateInput): Promise<CreatePlan> { retu
  * Applies the approved plan. `held` must be the live lock of this project (withProjectLock). Plans again first and
  * refuses with STALE_APPROVAL unless the revision is the approved one. Returns the authoring receipt it wrote.
  */
-export async function applyCreate(input: CreateInput, revision: string, held: HeldProjectLock): Promise<AuthoringReceipt> {
+export async function applyCreate(input: CreateInput, revision: string, held: HeldProjectLock, store?: { context: StoreContext; created: boolean }): Promise<AuthoringReceipt> {
   if (!isHeldProjectLock(held)) refuse('PROJECT_LOCKED');
   const normalized = normalizeInput(input);
+  // The store scope never creates the store: its caller (withStoreForWrite) did, and says so in `store.created`.
+  ensure((normalized.scope === 'store') === (store !== undefined), 'USAGE');
+  ensure(store === undefined || store.context.dir === normalized.project, 'USAGE');
   try { held.assertHeld(normalized.project); } catch { refuse('PROJECT_LOCKED'); }
   ensure(isRevision(revision), 'STALE_APPROVAL');
-  const p = await plan(normalized);
+  const p = await plan(normalized, store?.created ?? false);
   ensure(p.revision === revision, 'STALE_APPROVAL');
-  const project: Project = { dir: p.project, bowerloom: join(p.project, '.bowerloom'), identity: p.bowerloom };
+  const project: Scope = { kind: p.scope, dir: p.project, bowerloom: p.scope === 'store' ? p.project : join(p.project, '.bowerloom'), identity: p.bowerloom, exists: true };
   const auth = join(project.bowerloom, AUTHORING_FOLDER);
-  const live = (): void => { try { held.assertHeld(project.dir); } catch { refuse('PROJECT_LOCKED'); } sameBowerloom(project); };
+  const live = (): void => {
+    try { held.assertHeld(project.dir); } catch { refuse('PROJECT_LOCKED'); }
+    if (store !== undefined) verifyStorePins(store.context); else sameBowerloom(project);
+  };
   let receiptRead = p.reads.receipt, items = readAuthoringState(project.bowerloom).receipt?.value.items ?? [];
 
   const writeReceipt = (next: readonly AuthoredItem[]): void => {
@@ -314,7 +347,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     live();
     const step = p.manifest?.steps.find(s => s.id === id);
     ensure(step !== undefined, 'STALE_APPROVAL');
-    const change = planManifestChange(project.dir, { add: localEntry(step.id, step.teams) });
+    const change = planManifestChange(targetOf(project), { add: localEntry(step.id, step.teams) }, { storeCreate: false });
     ensure((change.before?.sha256 ?? null) === (step.before?.sha256 ?? null) && change.after.sha256 === step.after.sha256 && change.after.bytes === step.after.bytes, 'STALE_APPROVAL');
     applyManifestChange(change, change.revision, held);
   };
@@ -366,7 +399,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     if (p.item) writeReceipt([...items, item]);
     removePending(pendingSha);
   }
-  } catch (error) { if (wrote && (error as { code?: unknown })?.code === 'STALE_APPROVAL') refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }
+  } catch (error) { const failed = (error as { code?: unknown })?.code; if (wrote && (failed === 'STALE_APPROVAL' || failed === 'PROJECT_LOCKED')) refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }
   live();
   return receiptOf(items);
 }

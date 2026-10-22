@@ -20,7 +20,7 @@ import { MARKER_V2 } from '../../managed-skills/src/v2-observed.js';
 import { LEGACY_NAMESPACE, legacyPresent } from '../../managed-skills/src/migrate.js';
 import type { Harness, ItemSource, ManagedItemReceipt, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { parseManifest } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
 import type { PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -73,7 +73,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
   if (seen.status !== 'committed' || seen.receipt === null || seen.operationKey === null) throw syncError('SKILLS_MIGRATE_STATE_INVALID');
   const catalogBytes = raw(join(dir, LEGACY_NAMESPACE, 'catalog.json'), 262144, false).bytes;
   const catalog = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(catalogBytes), 262144) as { source: Record<string, unknown>; skill: { id: string; name: string; sourceRoot: string }; inventory: unknown; license: unknown; references: unknown; harness: Harness };
-  const state = readManifestState(dir), manifest = state.file ? parseManifest(state.file.bytes) : null;
+  const state = readManifestState(dir), manifest = state.file ? parseManifest(state.file.bytes, MANIFEST_LIMITS) : null;
   const entry = manifest?.skills.find(e => e.id === catalog.skill.id && e.source.kind !== 'local') as PinnedEntry | undefined;
   const pinned = entry ? entryRequest(entry) : null;
   const pretend = { source: catalog.source, skill: catalog.skill, inventory: catalog.inventory, license: catalog.license, references: catalog.references } as unknown as AcquiredSkillCacheReceipt;

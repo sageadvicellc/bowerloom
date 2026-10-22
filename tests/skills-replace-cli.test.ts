@@ -177,8 +177,8 @@ test('a --replace approval is stale after a concurrent edit of skills.json; noth
 test('help skills names --replace, and the plain words of SKILLS_ADD_EXISTS point to it', t => {
   const home = folder(t), deny = network(home, false), env = { HOME: home, ...deny.env };
   const topic = run(home, ['help', 'skills'], env); assert.equal(topic.status, 0, topic.stderr);
-  assert.match(topic.stdout, /^ {2}bowerloom skills add npm:<package>@<version>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--approve <revision>\] \[--json\]$/m);
-  assert.match(topic.stdout, /^ {2}bowerloom skills add github:<owner>\/<repo>@<40-char-commit>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--approve <revision>\] \[--json\]$/m);
+  assert.match(topic.stdout, /^ {2}bowerloom skills add npm:<package>@<version>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--global\] \[--approve <revision>\] \[--json\]$/m);
+  assert.match(topic.stdout, /^ {2}bowerloom skills add github:<owner>\/<repo>@<40-char-commit>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--global\] \[--approve <revision>\] \[--json\]$/m);
   assert.match(topic.stdout, /^--replace moves an existing id to another version or commit of the same package or repository\./m);
   const words = renderRefusal('SKILLS_ADD_EXISTS', 'message');
   assert.match(words, /\nNext: bowerloom skills add <source> --id <id> --replace\n$/);

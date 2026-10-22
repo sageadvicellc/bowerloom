@@ -52,11 +52,14 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'The store is always at ~/.bowerloom, and ~ is your HOME folder. Bowerloom refuses a store that is a link,',
     'that sits in an iCloud folder, or that other users can change, and a home folder that other users can write in.',
     'It does not check the folders above your home folder.',
+    '--global on skill create, prompt create, team create, skills add, skills check and ls works on the store. See bowerloom help skill.',
     'Add --json for one machine-readable object.', '',
   ].join('\n'),
   ls: [
-    'Usage:', '  bowerloom ls [teams|skills|prompts] [--json]', '',
-    "Lists the teams, skills, and prompts in this project's .bowerloom folder. It reads only and writes nothing.",
+    'Usage:', '  bowerloom ls [teams|skills|prompts] [--global] [--json]', '',
+    'Lists the teams, skills, and prompts of this project. Each item shows where it comes from: project or store.',
+    '--global lists your store, ~/.bowerloom, from any folder.',
+    'It reads only and writes nothing.',
     'The project is the nearest parent folder that holds .bowerloom or bowerloom.json, found the way git finds .git.',
     'It stops at your home folder and refuses cloud-synced folders.',
     'Add --json for one machine-readable object.', '',
@@ -73,9 +76,9 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
   skills: [
     'Usage:',
-    '  bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]',
-    '  bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]',
-    '  bowerloom skills check [--json]', '',
+    '  bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]',
+    '  bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]',
+    '  bowerloom skills check [--global] [--json]', '',
     'skills add pins one skill in .bowerloom/skills.json, the file you commit so every machine gets the same skills.',
     'The pin must be exact: an npm version such as 1.2.3, or a full 40-character lower-case Git commit.',
     'Ranges, tags, branches and short commits are refused before anything is fetched.',
@@ -86,8 +89,11 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '--id sets the entry id; the default is the skill name. --team limits the skill to a team; without it, every team gets it.',
     '--replace moves an existing id to another version or commit of the same package or repository. The plan shows the',
     'old pin and the new pin, and the entry keeps its teams unless you pass --team. Then skills sync updates the copies:',
-    '  bowerloom skills add npm:@tanstack/db-skills@0.0.2:skills/tanstack-db/collections --id <id> --replace', '',
-    'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.', '',
+    '  bowerloom skills add npm:@tanstack/db-skills@0.0.2:skills/tanstack-db/collections --id <id> --replace',
+    '--global pins the skill in ~/.bowerloom/skills.json, your store, and keeps the checked bytes in the machine cache.',
+    'The store holds up to 256 skills. A project holds up to 128.', '',
+    'skills check reads .bowerloom/skills.json and checks every pin, offline. It writes nothing.',
+    'skills check --global checks the pins in the store.', '',
     '  bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]',
     'skills sync installs every skill in skills.json for Claude Code and Codex (the harnesses skills.json names):',
     'into .bowerloom/managed, .claude/skills and .agents/skills. Those copies stay on this machine; commit skills.json.',
@@ -138,30 +144,37 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'It shows the plan first. Agents pass --approve <revision> or --json. It starts no workers and runs nothing.', '',
   ].join('\n'),
   team: [
-    'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--approve <revision>] [--json]', '',
+    'Usage:', '  bowerloom team create <name> [--profile engineer|founder|research] [--global] [--approve <revision>] [--json]', '',
     "Creates a team in .bowerloom/teams/<name>, from the project brief, with a lead, a maker and a reviewer.",
     'The name is the team id: lower-case words joined by hyphens, such as research-desk. first-team is taken by setup.',
     'The profile defaults to the one in the project brief.',
+    '--global creates the team in your store, ~/.bowerloom, and not in this project. The store holds definitions only.',
+    'A project picks store items with bowerloom use. The first --global write makes the store.',
+    'With --global a team is built from a fixed store brief and the profile you choose. It does not read a project brief.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the files it makes.',
-    'It writes inside .bowerloom only. It starts no workers and runs nothing.', '',
+    'It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.', '',
   ].join('\n'),
   skill: [
-    'Usage:', '  bowerloom skill create <name> [--team <team>]... [--approve <revision>] [--json]', '',
+    'Usage:', '  bowerloom skill create <name> [--team <team>]... [--global] [--approve <revision>] [--json]', '',
     'Creates a skill of your own in .bowerloom/skills/<name>/SKILL.md, and lists it in .bowerloom/skills.json as a local skill.',
     'The name is the skill id, such as house-style. personal-assistant and ids that start with prompt- are reserved.',
     '--team limits the skill to a team that exists; without it, every team gets it.',
+    '--global creates the skill in your store, ~/.bowerloom, and not in this project. The store holds definitions only.',
+    'A project picks store items with bowerloom use. The first --global write makes the store.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.',
-    'It writes inside .bowerloom only. It starts no workers and runs nothing.',
+    'It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.',
     'To pin a skill from npm or GitHub instead, see bowerloom help skills.', '',
   ].join('\n'),
   prompt: [
-    'Usage:', '  bowerloom prompt create <name> [--team <team>]... [--approve <revision>] [--json]', '',
+    'Usage:', '  bowerloom prompt create <name> [--team <team>]... [--global] [--approve <revision>] [--json]', '',
     'Creates a reusable prompt in .bowerloom/prompts/<name>.md.',
     'When the file of a prompt you created is gone, the same command puts it back with the text it was created with.',
     'The name is the prompt id, such as weekly-update, at most 57 characters.',
     '--team limits the prompt to a team that exists; without it, every team gets it.',
+    '--global creates the prompt in your store, ~/.bowerloom, and not in this project. The store holds definitions only.',
+    'A project picks store items with bowerloom use. The first --global write makes the store.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.',
-    'It writes inside .bowerloom only. It starts no workers and runs nothing.', '',
+    'It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.', '',
   ].join('\n'),
 };
 
@@ -257,6 +270,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_UNSAFE: { sentence: 'Bowerloom will not trust a store that other people or links can change.', next: 'ls -ld ~/.bowerloom' },
   STORE_UNREADABLE: { sentence: 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -ld ~ ~/.bowerloom' },
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
+  STORE_STATE_NESTED: { sentence: 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', next: 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.' },
+  STORE_WRITE_FAILED: { sentence: 'The disk refused the write. The message names the system error.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
+  STORE_LOCKED: { sentence: 'Two commands must not change the store at the same time, so nothing was changed.', next: 'When the other command is done, run this one again.' },
   STORE_NOT_A_PROJECT: { sentence: 'Run this command in a project folder outside ~/.bowerloom.', next: 'cd <project-folder>' },
   CONFIG_INVALID: { sentence: 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', next: 'git diff bowerloom.json' },
   CONFIG_UNREADABLE: { sentence: 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -l bowerloom.json' },
@@ -355,14 +371,17 @@ export interface RefusalDetail {
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
-  readonly hint?: typeof LEFTOVER_TEMP_LINK;
+  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
 }
 /** The hint of a MANIFEST_UNSAFE whose second link is a leftover `.skills.json.*.tmp` (skill-manifest/src/add.ts). */
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
+/** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
+const STORE_LIMIT = 'store-limit';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
+  if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
@@ -392,7 +411,7 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK ? { hint } : {}) };
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
 }
