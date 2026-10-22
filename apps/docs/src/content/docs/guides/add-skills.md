@@ -415,6 +415,10 @@ bowerloom skills check --global
 
 It works from any folder. The plan, the exact pin, and the approval work as for a project. The checked bytes go to this machine's skills cache, which is never inside the store. The store holds up to 256 skills, and a project holds up to 128. If the private state folder and the store lie inside one another, the command refuses with `STORE_STATE_NESTED`.
 
+## See and clear the cache
+
+Bowerloom keeps the skill bytes it checked in a cache on this machine, so the next sync need not fetch them again. The cache only grows until you clear it. Run `bowerloom cache list` to see what it holds. Run `bowerloom cache prune --unreferenced` to delete the entries that your store and this project do not list. It shows the plan first and deletes nothing until you approve it. It deletes no project file and no installed copy. A pin that a project still needs is fetched again at its next sync. The [CLI reference](/docs/cli/#cache) lists every selector.
+
 ## Current beta limits
 
 - Public skills only. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, without credentials. Private registries and private repositories are not supported.
