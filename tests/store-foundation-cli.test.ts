@@ -239,7 +239,6 @@ test('16. store status with the home folder at mode 0 prints Store: refused (STO
 test('17. the codes that remain in a config-only folder: each command refuses with its code and changes nothing', t => {
   const w = world(t), dir = configProject(w), before = snapshot(w.base);
   const cases: [string[], string][] = [
-    [['skills', 'add', 'npm:@scope/pkg@1.0.0:skills/x', '--json'], 'MANIFEST_UNSAFE'],
     [['team', 'create', 'research', '--json'], 'CONFIG_DUPLICATE_ID'],
     [['up', '--team', 'first-team', '--json'], 'TEAM_ID_RESERVED'],
     [['skills', 'migrate', 'plan', '--state', join(w.base, 'earlier')], 'SKILLS_MIGRATE_NOTHING'],

@@ -3,7 +3,7 @@
 import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { world, run, approve, mustApprove, errorCode, project, pushStore, network, NETWORK, loggedHosts, shared, EMPTY_CONFIG } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
@@ -52,7 +52,9 @@ test('5. up --team in the clone fetches and installs through its sync and apply 
   const step = JSON.parse(first.stdout.split('\n').filter(Boolean)[0]!) as { plan: { step: string }; revision: string };
   assert.equal(step.plan.step, 'sync');
   const done = run(dir, ['up', '--team', 'research', '--approve', step.revision], net.env, NETWORK);
-  assert.ok([3, 4].includes(done.status ?? -1), done.stderr + done.stdout);
-  assert.ok(existsSync(join(mate.state, 'bowerloom', 'store-cache')) || existsSync(join(dir, '.claude/skills/house-style')));
+  // The sync step fetched the locked skill into the store cache and put its copies in place; nothing is left to apply.
+  assert.equal(done.status, 4, done.stderr + done.stdout); assert.match(done.stdout, /^prepared, workers held$/m);
+  assert.equal(readdirSync(join(mate.state, 'bowerloom', 'store-cache')).filter(n => n.startsWith('skill-house-style-')).length, 1);
+  assert.ok(existsSync(join(dir, '.claude/skills/house-style/SKILL.md')));
   void readFileSync; void renameSync;
 });

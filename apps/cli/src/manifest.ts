@@ -41,6 +41,8 @@ import { readAuthoringState } from '../../../packages/project-authoring/src/stat
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
 import { configRefusal, readConfig, serializeConfig, writeGuardedFile } from '../../../packages/project-config/src/index.js';
+import { createBowerloomFolder } from '../../../packages/project-config/src/folder.js';
+import type { HeldProjectLock } from '../../../packages/project-context/src/types.js';
 import { createHash } from 'node:crypto';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
@@ -145,6 +147,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
   const entry = (replace ? replace.to : (plan.change as { add: Entry }).add) as Pinned;
   return [
     ...(plan.storeCreate ? ['Create the store at ~/.bowerloom (store.json). It holds definitions only.'] : []),
+    ...((plan as { bowerloomFolder?: string }).bowerloomFolder === 'create' ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
     ...(replace
       ? [`Replace the pin of skill ${entry.id} in ${plan.manifest}`, `  Old pin: ${pinWords(replace.from as Pinned)}`, `  New pin: ${pinWords(entry)}`]
       : [`Add skill ${entry.id} to ${plan.manifest}`, `  Source: ${pinWords(entry)}`]),
@@ -184,9 +187,9 @@ async function runAdd(words: readonly string[], cwd: string, home: string, io: A
   const args = parseAddArgs(words);
   const spec = parseSkillSpec(args.spec);
   if (args.global) return runAddGlobal(args, spec, home, io, write, env);
-  const project = discoverProject(cwd, home);
+  let project = discoverProject(cwd, home);
   requireTeams(project, args.teams);
-  const state = readManifestState(project.dir);
+  const state = readManifestState(project.dir, { allowAbsent: project.configPresent && project.bowerloomIdentity === null });
   const current = state.file !== null ? parseManifest(state.file.bytes, MANIFEST_LIMITS).skills : [];
   if (args.replace) { if (args.id !== null) checkReplaceBeforeFetch(current, args.id, spec); else if (state.file === null) throw manifestRefusal('SKILLS_ADD_REPLACE_MISSING'); }
   else if (args.id !== null && current.some(s => s.id === args.id)) throw manifestRefusal('SKILLS_ADD_EXISTS');
@@ -206,27 +209,14 @@ async function runAdd(words: readonly string[], cwd: string, home: string, io: A
     const next = { id, ...(teams.length ? { teams: [...teams] } : {}), ...content } as Entry;
     return args.replace ? { replace: next } : { add: next };
   };
-  // Spec 06, 3.8 item 9: in a project with bowerloom.json, the new id is added to it in the same plan. --replace leaves it.
-  const withConfig = (plan: ManifestChangePlan): ManifestChangePlan & { config?: ConfigStep } => {
-    if (args.replace || !project.configPresent || !('add' in plan.change)) return plan;
-    const config = configAddStep(project, plan.change.add.id);
-    return config === null ? plan : { ...plan, config, revision: sha256Hex(`${plan.revision}\n${config.after.sha256}`) };
-  };
   const change: PlannedChange<ManifestChangePlan> = {
-    async plan() { const add = await entry(); verifyProjectPins(project); return withConfig(planManifestChange(project.dir, add, { cacheRoot })); },
+    async plan() { const add = await entry(); verifyProjectPins(project); return planProjectAdd(project, add, cacheRoot); },
     revision: plan => plan.revision,
     review: renderAddReview,
     async apply(revision: string): Promise<ManifestChangeReceipt & { cache: SeedResult }> {
       const add = await entry();
-      const { receipt, written } = await withProjectLock(project.dir, controller.signal, async held => {
-        verifyProjectPins(project);
-        const inner = planManifestChange(project.dir, add, { cacheRoot }), again = withConfig(inner);
-        if (again.revision !== revision) throw manifestRefusal('STALE_APPROVAL');
-        const receipt = applyManifestChange(inner, inner.revision, held);
-        const cfg = (again as { config?: ConfigStep }).config;
-        if (cfg) writeGuardedFile(project.dir, 'bowerloom.json', cfg.text, cfg.before.sha256, held, '.bowerloom.json');
-        return { receipt, written: ('replace' in again.change ? again.change.replace.to : again.change.add) as PinnedEntry };
-      });
+      const { receipt, written, project: after } = await withProjectLock(project.dir, controller.signal, async held => writeProjectAdd(project, add, cacheRoot, revision, held));
+      project = after;
       // The pin is written. The seed only adds to the cache, outside the project lock, and reports a failure.
       seed = await seedPin({ project, stateRoot }, written, (await resolved!).bytes, controller.signal);
       return { ...receipt, cache: seed };
@@ -370,6 +360,33 @@ function configAddStep(project: ProjectContext, id: string): ConfigStep | null {
   if (now) return null;
   const text = serializeConfig({ ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
   return { before: { sha256: read.sha256, bytes: read.bytes }, after: { sha256: sha256Hex(text), bytes: Buffer.byteLength(text) }, text };
+}
+
+/** A project `skills add` plan: the skills.json change and, in a project with bowerloom.json, the config entry and a missing `.bowerloom` (3.8 rule 9). */
+export type ProjectAddPlan = ManifestChangePlan & { config?: ConfigStep; bowerloomFolder: 'present' | 'create' };
+export function planProjectAdd(project: ProjectContext, change: ManifestChange, cacheRoot: string): ProjectAddPlan {
+  const create = project.configPresent && project.bowerloomIdentity === null;
+  const inner = planManifestChange(project.dir, change, { cacheRoot, ...(create ? { allowAbsentFolder: true } : {}) });
+  const folder = { bowerloomFolder: create ? 'create' as const : 'present' as const };
+  if (!project.configPresent || !('add' in inner.change)) return { ...inner, ...folder };
+  const config = configAddStep(project, inner.change.add.id);
+  return config === null ? { ...inner, ...folder } : { ...inner, ...folder, config, revision: sha256Hex(`${inner.revision}\n${config.after.sha256}\n${folder.bowerloomFolder}`) };
+}
+/**
+ * Writes an approved project `skills add` under the held project lock: `.bowerloom` first when the plan creates it (its
+ * creation adopts the folder as the project marker), then skills.json, then bowerloom.json. Returns the context to use after.
+ */
+export function writeProjectAdd(project: ProjectContext, change: ManifestChange, cacheRoot: string, revision: string, held: HeldProjectLock): { receipt: ManifestChangeReceipt; written: PinnedEntry; project: ProjectContext } {
+  verifyProjectPins(project);
+  const again = planProjectAdd(project, change, cacheRoot);
+  if (again.revision !== revision) throw manifestRefusal('STALE_APPROVAL');
+  let context = project;
+  if (again.bowerloomFolder === 'create') context = createBowerloomFolder(project, held);
+  const inner = planManifestChange(project.dir, change, { cacheRoot });
+  if (inner.after.sha256 !== again.after.sha256 || (inner.before?.sha256 ?? null) !== (again.before?.sha256 ?? null)) throw manifestRefusal('STALE_APPROVAL');
+  const receipt = applyManifestChange(inner, inner.revision, held);
+  if (again.config) writeGuardedFile(project.dir, 'bowerloom.json', again.config.text, again.config.before.sha256, held, '.bowerloom.json');
+  return { receipt, written: ('replace' in inner.change ? inner.change.replace.to : inner.change.add) as PinnedEntry, project: context };
 }
 
 /** Runs `skills add` or `skills check` and returns the exit code: 0 done, 3 approval required. A refusal throws. */

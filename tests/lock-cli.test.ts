@@ -64,7 +64,7 @@ test('6. lock update adds, changes, and removes items as the store changes', t =
   appendFileSync(join(w.store, 'skills/house-style/SKILL.md'), 'More.\n');
   const later = pushStore(w), net = network(w, later.routes);
   const plan = run(dir, ['lock', 'update'], net.env, NETWORK);
-  assert.equal(plan.status, 3, plan.stderr); assert.match(plan.stdout, /^ {2}skill house-style {2}(commit changed|unchanged)/m);
+  assert.equal(plan.status, 3, plan.stderr); assert.match(plan.stdout, /^ {2}skill house-style {2}commit changed: 01234567 to 01234567$/m);
   mustApprove(dir, ['lock', 'update'], network(w, later.routes).env, NETWORK);
   writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(EMPTY_CONFIG, null, 2)}\n`);
   const removed = run(dir, ['lock', 'update'], w.env); assert.match(removed.stdout, /^ {2}skill house-style {2}removed$/m);

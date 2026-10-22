@@ -56,7 +56,7 @@ test('6. the finish path repeats the config step for a missing entry', async t =
     const fsMod = await import('node:fs'); const original = fsMod.default.renameSync;
     fsMod.default.renameSync = (from, to) => { if (String(to).endsWith('bowerloom.json')) throw new Error('crash'); return original(from, to); };
     try { await applyCreate(input, plan.revision, held, undefined, discoverProject(w.projectDir, w.home)); } finally { fsMod.default.renameSync = original; }
-  }), /crash|AUTHORING_WRITE_INTERRUPTED/);
+  }), /crash/);
   assert.deepEqual(readJson(w, 'bowerloom.json').prompts, []);
   const finish = await planCreate({ kind: 'prompt', project: w.projectDir, name: 'other', teams: [] });
   assert.equal(finish.finish.id, 'weekly-update');

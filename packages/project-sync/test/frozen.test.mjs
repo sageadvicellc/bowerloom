@@ -100,7 +100,7 @@ test('4 and 6 and 14. a fetched authored item with another hash, a failed fetch,
 test('5. a fetched pin that differs gives SKILLS_SYNC_CONTENT_MISMATCH', async t => {
   const { w, repo } = await clone(t), forged = npmPackage('tanstack-db', { guide: 'Other bytes' });
   const plan = await planProjectApply(input(w));
-  await assert.rejects(applyProjectApply(input(w), plan.revision, signal(), { acquirer: fakeAcquirer([forged]), storeTransport: storeTransport(repo) }), e => ['SKILLS_SYNC_CONTENT_MISMATCH', 'SKILLS_OFFLINE'].includes(e.code));
+  await assert.rejects(applyProjectApply(input(w), plan.revision, signal(), { acquirer: fakeAcquirer([forged]), storeTransport: storeTransport(repo) }), code('SKILLS_SYNC_CONTENT_MISMATCH'));
   assert.equal(exists(w, '.claude/skills/synthetic-tanstack-db'), false);
 });
 

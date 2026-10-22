@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readInstalledRelease } from '../apps/cli/src/release.js';
+import { TOPICS } from '../apps/cli/src/human.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 // The help text of commit cc117ac, without its two-line release heading. It is the contract of `help advanced`.
@@ -88,4 +89,14 @@ test('help <command> and <command> --help agree, and an unknown topic is a usage
   assert.equal(JSON.parse(unknown.stderr).error.code, 'USAGE');
   assert.equal(run(root, ['help', 'advanced', 'extra']).status, 2);
   assert.equal(run(root, ['help', 'ls', 'extra']).status, 2);
+});
+
+test('spec 06: help ls names config mode, the item fields and the unselected line', () => {
+  const ls = TOPICS.ls!;
+  for (const words of [/bowerloom\.json lists/, /\(missing\)/, /resolvedFrom/, /locked/, /Defined here but not listed in bowerloom\.json/, /The store cannot be used/]) assert.match(ls, words);
+});
+
+test('spec 06: help status names the lock states, the store state and the store items', () => {
+  const status = TOPICS.status!;
+  for (const words of [/Lock: /, /not-used, absent, valid, stale, invalid, mismatch, or orphan/, /lock-invalid/, /lock-orphan/, /store items/, /config\.store/]) assert.match(status, words);
 });
