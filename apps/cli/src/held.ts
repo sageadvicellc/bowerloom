@@ -10,9 +10,11 @@ import { LIMITS, readGuarded, sha256 } from '../../../packages/project-authoring
 import { itemPath, readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { AuthoredItem } from '../../../packages/project-authoring/src/state.js';
 import { missingPromptHold } from '../../../packages/project-sync/src/prompts.js';
-import type { PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
+import type { AgentItem, PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
+import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 
-export interface HeldItem { kind: 'team' | 'skill' | 'prompt'; id: string; code: string; next: string }
+/** `harness` is reserved for spec 01b, which holds an agent for one harness only. */
+export interface HeldItem { kind: 'team' | 'skill' | 'prompt' | 'agent'; id: string; code: string; next: string; harness?: Harness }
 
 function receiptItems(project: ProjectContext): readonly AuthoredItem[] {
   try { return readAuthoringState(join(project.dir, '.bowerloom')).receipt?.value.items ?? []; } catch { return []; }
@@ -38,11 +40,12 @@ export function missingItems(project: ProjectContext, team: string | null): Held
   return out;
 }
 
-/** The skills and prompts a sync or apply plan holds. */
-export function planHolds(skills: readonly SyncItem[], prompts: readonly PromptItem[] = []): HeldItem[] {
+/** The skills, prompts and agents a sync or apply plan holds. */
+export function planHolds(skills: readonly SyncItem[], prompts: readonly PromptItem[] = [], agents: readonly AgentItem[] = []): HeldItem[] {
   return [
     ...skills.filter(i => i.action === 'hold' && i.hold !== null).map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next })),
     ...prompts.filter(p => p.action === 'hold' && p.hold !== null).map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next })),
+    ...agents.filter(a => a.action === 'hold' && a.hold !== null).map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next })),
   ];
 }
 

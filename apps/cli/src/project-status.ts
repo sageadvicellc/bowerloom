@@ -42,7 +42,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   let held: HeldItem[] = missingItems(project, null);
   try {
     const plan = await planProjectApply({ project, stateRoot: privateStateRoot(env, home), harnesses: ['claude', 'codex'], team: null });
-    held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts)]);
+    held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents)]);
   } catch { /* The drift lines above still name the folder. */ }
   return [
     `Project: ${plainText(project.dir)}`,

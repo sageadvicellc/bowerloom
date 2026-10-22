@@ -7,7 +7,7 @@
  *    team name becomes the display name of first-team.
  * 2. team, when the name matches neither first-team (by id or display name) nor a created team: `team create`.
  * 3. sync, when .bowerloom/skills.json has skills of the team to install: `skills sync --team <id>`.
- * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
+ * 4. apply, when skills, prompts, or agents of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
  * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD). When a
  *    skill, prompt or team of the team is held or gone, it prints `prepared, N items held` with each item's next
  *    command instead, and never says the copies are in place (review finding 2).
@@ -145,9 +145,9 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
-    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills and prompts of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
+    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, and agents of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
   }
-  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts));
+  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents));
   return { step: 'held', team, change: null, held: uniqueHolds(held) };
 }
 
@@ -170,7 +170,7 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',
-      `  Team: ${teamWords(team)}, with skills and prompts in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills, prompts, and agents in place for ${harnessWords(ctx.harnesses)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);

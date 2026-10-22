@@ -9,7 +9,7 @@ import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply } from '../../../packages/project-sync/src/index.js';
-import type { ApplyInput, ApplyPlan, ApplyResult, PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
+import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
@@ -22,7 +22,7 @@ const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both], with opt
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
 const HARNESSES: Readonly<Record<string, Harness[]>> = { claude: ['claude'], codex: ['codex'], both: ['claude', 'codex'] };
 const NULL_PINS = revisionOf(null);
-const SURFACE_HARNESS: Readonly<Record<string, Harness>> = { 'projection-claude': 'claude', 'command-claude': 'claude', 'projection-codex': 'codex' };
+const SURFACE_HARNESS: Readonly<Record<string, Harness>> = { 'projection-claude': 'claude', 'command-claude': 'claude', 'agent-claude': 'claude', 'projection-codex': 'codex' };
 
 /** The harnesses an update adds: those whose copy is not there yet. */
 function added(before: readonly { id: string; stablePinsDigest: string | null }[]): Harness[] {
@@ -56,6 +56,33 @@ function promptState(item: PromptItem, width: number): string[] {
     default: return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
   }
 }
+/**
+ * A team agent's Claude Code file can grant tools, register hooks and start servers when the agent runs (spec 01a,
+ * section 3.2). The notice names them; it never quotes the file.
+ */
+function agentNoticeLine(item: AgentItem): string[] {
+  const copies = item.action === 'install' || item.action === 'update';
+  if (!copies || !item.notices.length) return [];
+  const mode = item.notices.find(n => n.startsWith('permissionMode:'));
+  const what = [item.notices.includes('hooks') ? 'sets hooks' : null, item.notices.includes('mcpServers') ? 'sets mcpServers' : null,
+    mode ? `sets permissionMode ${mode.slice('permissionMode:'.length)}` : null,
+    item.notices.includes('shell-tools') ? 'lists shell tools in tools' : null,
+    item.notices.includes('all-tools') ? 'inherits every tool, including shell tools' : null].filter((w): w is string => w !== null)
+    .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
+  return [`  Note: agent ${item.id} ${what}. Claude Code applies them when the agent runs. Review .bowerloom/teams/${item.team}/agents/${item.id}.md.`];
+}
+function agentLine(item: AgentItem, width: number): string[] {
+  const id = item.id.padEnd(width), pad = ''.padEnd(width), where = item.expected.surfaces.filter(s => s.id === 'agent-claude').map(s => s.path).join(' and ');
+  if (item.action === 'hold') return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
+  const warning = item.builtin && item.action !== 'none' ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : [];
+  switch (item.state) {
+    case 'new': return [`  ${id} install agent: ${where}`, ...warning, ...agentNoticeLine(item)];
+    case 'adopt': return [`  ${id} adopt agent: ${where}`, ...warning, ...agentNoticeLine(item)];
+    case 'edited': return [`  ${id} update agent: ${where}`, ...warning, ...agentNoticeLine(item)];
+    case 'orphaned': return [`  ${id} agent kept: no longer an agent of this project, and apply removes nothing`];
+    default: return [`  ${id} agent up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
+  }
+}
 /** Where copies go, for the chosen harnesses only (review freeze finding 9). */
 function places(harnesses: readonly Harness[]): string {
   const all = ['.bowerloom/managed', ...harnesses.map(h => h === 'claude' ? '.claude' : '.agents')];
@@ -63,11 +90,13 @@ function places(harnesses: readonly Harness[]): string {
 }
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderApplyReview(plan: ApplyPlan): string {
-  const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length)) + 1;
-  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width))];
+  const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.agents.map(a => a.id.length)) + 1;
+  const claude = plan.harnesses.includes('claude');
+  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width))];
   return [
-    `Apply skills and prompts for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
-    ...(lines.length ? lines : ['  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    `${claude ? 'Apply skills, prompts, and agents for' : 'Apply skills and prompts for'} ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
+    ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    ...(plan.codexAgentsSkipped ? ['Codex agents are not projected in this beta. See the capability model design.'] : []),
     'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.',
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     'This copies text files only. It starts no workers and runs nothing.',
@@ -75,7 +104,7 @@ export function renderApplyReview(plan: ApplyPlan): string {
   ].join('\n');
 }
 function resultWords(result: ApplyResult): string {
-  const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.id;
+  const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.kind === 'agent' ? `agent ${r.id}` : r.id;
   return plainText([
     ...result.applied.map(a => `  ${name(a)}: ${a.action === 'install' ? 'installed' : 'updated'}`),
     ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${h.next}`),
