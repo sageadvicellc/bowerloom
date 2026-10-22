@@ -233,8 +233,11 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   const read = readConfig(project);
   if (read.state === 'invalid') throw configRefusal(read.code);
   if (read.state === 'absent' && project.configPresent) throw projectRefusal('PROJECT_UNSAFE');
-  if (read.state === 'absent' && op !== 'use') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
+  // Decision 1 on #80 (variant A): `team adopt` of a team that is not listed creates bowerloom.json too, as `use` does.
+  if (read.state === 'absent' && op !== 'use' && op !== 'adopt') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
   const initial = read.state === 'absent' ? initialConfig(project) : null;
+  // The adopted team is added below. Apply plans again after the copy registers it, so the first list leaves it out.
+  if (initial !== null && op === 'adopt') { initial.config.teams = initial.config.teams.filter(e => e.id !== id); initial.listed = initial.config.skills.length + initial.config.prompts.length + initial.config.teams.length; }
   const before: ProjectConfig = read.state === 'valid' ? read.config : initial!.config, next = clone(before);
   const adds: ConfigChangePlan['adds'] = [], removes: ConfigChangePlan['removes'] = [], direct: ConfigChangePlan['direct'] = [], notes: string[] = [];
   let defs: StoreDefinitions | null = null, detail: ConfigChangePlan['detail'] = null;
@@ -277,8 +280,10 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     }
   } else {
     const now = find('team', id);
-    if (!now || now.source !== 'store') throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
-    now.source = 'project'; delete now.via;
+    // Decision 1 on #80 (variant A): a team that is not listed is added from the project. One listed from the project
+    // stays as it is: apply plans again after the create path, whose finish of a pending record may have listed it.
+    if (!now) { put(next, 'team', { id, source: 'project' }); adds.push({ kind: 'team', id, source: 'project', via: [] }); }
+    else if (now.source === 'store') { now.source = 'project'; delete now.via; }
     for (const k of ['skill', 'prompt', 'team'] as Kind[]) for (const e of listOf(next, k)) {
       if (!e.via?.includes(id)) continue;
       e.via = e.via.filter(v => v !== id);

@@ -56,10 +56,11 @@ test('7 and 7a. adopt copies from the store cache when there is no store; with n
   void files;
 });
 
-test('9. TEAM_EXISTS, TEAM_ID_RESERVED, and CONFIG_ITEM_NOT_SELECTED refuse', async t => {
+test('9. TEAM_EXISTS, TEAM_ID_RESERVED, and STORE_ITEM_NOT_FOUND refuse', async t => {
   const w = await world(t, { folder: true });
   await assert.rejects(planAdopt({ ...input(w), id: 'first-team' }), code('TEAM_ID_RESERVED'));
-  await assert.rejects(planAdopt({ ...input(w), id: 'ops' }), code('CONFIG_ITEM_NOT_SELECTED'));
+  // Decision 1 on #80 (variant A): an unlisted id is looked up in the store, which does not define it.
+  await assert.rejects(planAdopt({ ...input(w), id: 'ops' }), code('STORE_ITEM_NOT_FOUND'));
   fs.mkdirSync(path.join(w.projectDir, '.bowerloom/teams/research'), { recursive: true });
   await assert.rejects(planAdopt(input(w)), code('TEAM_EXISTS'));
 });

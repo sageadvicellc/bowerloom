@@ -297,7 +297,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '--global creates the team in your store, ~/.bowerloom, and not in this project. The store holds definitions only.',
     'A project picks store items with bowerloom use. The first --global write makes the store.',
     'With --global a team is built from a fixed store brief and the profile you choose. It does not read a project brief.',
-    'team adopt copies a team from your store into this project, at .bowerloom/teams/<id>, and switches bowerloom.json to the project copy.',
+    'team adopt copies a team from your store into this project, at .bowerloom/teams/<id>, and lists it in bowerloom.json as a project item.',
     'The project then owns the copy. Later changes in the store do not reach it. Edit the copy to fit the project.',
     'team adopt also changes bowerloom.json and bowerloom.lock.json.',
     'It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the files it makes.',

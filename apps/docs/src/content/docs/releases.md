@@ -21,6 +21,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom lock verify` checks the lock with no network. `bowerloom lock update` rewrites it from your store.
 - `apply --frozen` and `skills sync --frozen` install only what the lock records, as `npm ci` does.
 - `bowerloom team adopt` copies a store team into the project, and the project owns the copy.
+- `bowerloom team adopt` also takes a store team that `bowerloom.json` does not list yet. One plan copies the team and lists it as a project item, so it works in a shared project whose store is not pushed. Store skills and prompts tagged to the team stay store items, and the plan names them.
 - A project with only `bowerloom.json` works with every command. Its first install makes `.bowerloom`, whose engine files git ignores.
 - New plan and result formats: `bowerloom/skills-sync-plan/v1beta2`, `bowerloom/skills-sync-result/v1beta2`, `bowerloom/config-change-plan/v1beta1`, `bowerloom/lock-verify/v1beta1`, `bowerloom/lock-update-result/v1beta1`, and `bowerloom/team-adopt-result/v1beta1`. Plan items name their source.
 - `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.

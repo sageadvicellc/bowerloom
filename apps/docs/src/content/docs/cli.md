@@ -134,7 +134,7 @@ bowerloom team adopt <id> [--approve <revision>] [--json]
 bowerloom slice create <name> [--root <folder>] [--registered <folder-name>] [--include <pattern>]... [--approve <revision>] [--json]
 ```
 
-`team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and switches `bowerloom.json` to the project copy. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
+`team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and lists it in `bowerloom.json` as a project item. A team that `bowerloom.json` lists from the store switches to the project copy. A team it does not list yet is added, and store skills and prompts tagged to the team stay store items. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
 
 Agents use these commands most. They write inside `.bowerloom` only, or inside your store with `--global`. You and your agents own the files they make.
 
