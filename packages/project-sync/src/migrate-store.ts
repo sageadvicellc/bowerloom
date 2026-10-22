@@ -22,7 +22,7 @@ import type { StoreContext } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { LIMITS, lstatOrNull, makeFolder, readGuarded, readTree, realFolder, removeScratch, syncFolder, writeNewFile } from '../../project-authoring/src/files.js';
 import type { FilePin } from '../../project-authoring/src/files.js';
-import { refuse as authoringRefuse } from '../../project-authoring/src/refusal.js';
+import { authoringRefusal, refuse as authoringRefuse } from '../../project-authoring/src/refusal.js';
 import { AUTHORING_FOLDER, itemPath, readAuthoringState, receiptOf, recordText, stageName } from '../../project-authoring/src/state.js';
 import type { AuthoredItem, AuthoringState } from '../../project-authoring/src/state.js';
 import { writeReceiptRecord } from '../../project-authoring/src/receipt-write.js';
@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { partialRefusal, staleBecause, syncError } from './refusal.js';
+import { PARTIAL_HINT, partialRefusal, staleBecause, syncError } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -192,6 +192,25 @@ function pinsUnder(base: string, kind: Kind, id: string): FilePin[] {
   return readTree(base, itemPath(kind, id));
 }
 const samePins = (a: readonly FilePin[], b: readonly FilePin[]): boolean => canonicalJson(a) === canonicalJson(b);
+/**
+ * The pins of a store item. Second security review L1: a stop between a prompt's link and its stage unlink leaves the
+ * stage copy as the prompt's second link, so that one path is allowed, as `create` allows it, and the next run finishes
+ * the item. Any other unsafe path refuses AUTHORING_UNSAFE_PATH naming it, with a next step that looks at the store.
+ */
+function storePins(storeDir: string, scratch: readonly string[], kind: Kind, id: string): FilePin[] {
+  try {
+    if (kind !== 'prompt') return readTree(storeDir, itemPath(kind, id));
+    const at = join(storeDir, itemPath('prompt', id));
+    const stage = scratch.filter(n => n.startsWith('.stage-')).map(n => join(storeDir, AUTHORING_FOLDER, n, itemPath('prompt', id))).find(p => lstatOrNull(p) !== null) ?? null;
+    const bytes = readGuarded(at, LIMITS.fileBytes, stage);
+    return [{ path: itemPath('prompt', id), sha256: sha(bytes), bytes: bytes.length }];
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== 'AUTHORING_UNSAFE_PATH') throw error;
+    const named = authoringRefusal('AUTHORING_UNSAFE_PATH', `The path is ~/.bowerloom/${itemPath(kind, id)}.`);
+    Object.defineProperty(named, 'next', { value: 'ls -la ~/.bowerloom', enumerable: false });
+    throw named;
+  }
+}
 const AREAS = ['skills', 'prompts', 'teams'] as const;
 /** Review S1 of PR 98: an area folder that is there must be a real folder (not a link, dangling or not) inside `base`. */
 function checkArea(base: string, shown: string, area: string): void {
@@ -293,6 +312,16 @@ function boundProofs(plan: StoreMigratePlan, store: StoreState): Proofs {
   return { byPair, notes: [...plan.notes], hosts: [...plan.network.hosts], credentials: plan.network.credentials, commit: plan.commit };
 }
 
+/** The command, without --approve, that makes the plan of these selectors again (second security review M1). */
+export function rerunOf(s: StoreMigratePlan['selectors']): string {
+  const words = ['bowerloom', 'store', 'migrate'];
+  if (s.all) words.push('--all');
+  for (const id of s.skills) words.push('--skill', id);
+  for (const id of s.prompts) words.push('--prompt', id);
+  for (const id of s.teams) words.push('--team', id);
+  if (s.commit !== null) words.push('--commit', s.commit);
+  return words.join(' ');
+}
 const REMOVE_REMINDER = (id: string): string => `Bowerloom does not edit .bowerloom/skills.json. Remove the line for skill ${id} yourself.`;
 
 /** Builds the plan. At apply (`mode.kind === 'apply'`) it reads the same files under the locks, with the proofs the plan bound. */
@@ -458,7 +487,7 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
       if (current !== null && canonicalJson(current) !== canonicalJson(localEntry(f.id, f.teams))) exists();
     }
     if (!there) { if (record !== null) recordGone(); states.set(pairOf(f), 'copy'); continue; }
-    if (!samePins(pinsUnder(storeDir, f.kind, f.id), f.files)) exists();
+    if (!samePins(storePins(storeDir, store.auth.scratch, f.kind, f.id), f.files)) exists();
     if (record !== null && canonicalJson(record.teams) !== canonicalJson(f.teams)) exists();
     const entryThere = f.kind !== 'skill' || store.manifest?.skills.some(s => s.id === f.id) === true;
     states.set(pairOf(f), record !== null && entryThere ? 'present' : 'register');
@@ -586,7 +615,13 @@ export async function applyStoreMigrate(plan: StoreMigratePlan, revision: string
     } catch (error) {
       if ((error as { code?: unknown } | null)?.code !== 'PROJECT_LOCKED') throw error;
       // Review L3: the store lock came first and made the store; the old plan saw none, so the next plan is needed.
-      if (!entered && created) return { projectLocked: projectRefusal('PROJECT_LOCKED', 'Bowerloom made the store at ~/.bowerloom before it waited for the project. Run the command again without --approve to see the next plan.') };
+      if (!entered && created) {
+        const refused = projectRefusal('PROJECT_LOCKED', 'Bowerloom made the store at ~/.bowerloom before it waited for the project. Run the command again without --approve to see the next plan.');
+        // Second security review M1: the store was written, so this refusal is partial, and its Next line is that command.
+        Object.defineProperty(refused, 'hint', { value: PARTIAL_HINT, enumerable: false });
+        Object.defineProperty(refused, 'next', { value: rerunOf(plan.selectors), enumerable: false });
+        return { projectLocked: refused };
+      }
       return { projectLocked: error };
     }
   });
@@ -618,7 +653,7 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
     }
     if (again.revision !== plan.revision) throw stale();
     return await steps(plan, store, heldStore, heldProject, deps, live, storeHeld, done);
-  } catch (error) { throw partialRefusal(error, done, 'bowerloom store migrate'); }
+  } catch (error) { throw partialRefusal(error, done, rerunOf(plan.selectors)); }
 }
 
 /** Steps 0 to 8 of 3.2. Each write is added to `done` once it is made. */

@@ -601,7 +601,7 @@ export interface RefusalDetail {
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
-  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
+  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT | typeof PARTIAL;
   /** Review C5: the error's own next step, which replaces the generic one of its code. */
   readonly next?: string;
 }
@@ -609,9 +609,13 @@ export interface RefusalDetail {
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
 /** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
 const STORE_LIMIT = 'store-limit';
+/** The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is the command that finishes the run. */
+const PARTIAL = 'partial';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
+  // Second security review of PR 98, M1: a partial refusal never says that nothing was applied.
+  if (detail.hint === PARTIAL && typeof detail.next === 'string' && detail.next.length > 0) return { sentence: 'The run stopped part way; the message lists what was written.', next: detail.next };
   if (typeof detail.next === 'string' && detail.next.length > 0 && Object.hasOwn(REFUSALS, code)) return { sentence: REFUSALS[code]!.sentence, next: detail.next };
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
   if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
@@ -645,10 +649,10 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
-  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}) } })}\n`, exitCode };
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
 }
 
 /** A path as one shell word: plain characters stay, anything else is single-quoted. */

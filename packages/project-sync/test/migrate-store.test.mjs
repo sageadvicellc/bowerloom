@@ -21,6 +21,8 @@ import { compileCrew } from '../../../dist/packages/crew/src/index.js';
 const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'every network read goes to a fake'));
 const signal = () => new AbortController().signal;
+/** A test crash: as it is before any write, or as the cause of a partial refusal after one (second security review L2). */
+const crashed = e => e?.code === 'TEST_CRASH' || (e?.cause === 'TEST_CRASH' && /The run stopped part way\./.test(e.message));
 const ctx = w => discoverProject(w.projectDir, w.home);
 const bl = (w, rel = '') => path.join(w.projectDir, '.bowerloom', rel);
 const TOKEN = () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: `ghp_${'t'.repeat(36)}` });
@@ -372,7 +374,7 @@ test('13 and 18. crash points after steps 3, 4 and 5: a rerun reaches the final 
   const strip = s => Object.fromEntries(Object.entries(s.store).filter(([k]) => k !== 'authoring/receipt.json'));
   for (const step of [3, 4, 5]) {
     const w = await fourItems(t), boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
-    await assert.rejects(migrate(w, { all: true, hooks: { afterStep: n => { if (n === step) throw boom; } } }), code('TEST_CRASH'));
+    await assert.rejects(migrate(w, { all: true, hooks: { afterStep: n => { if (n === step) throw boom; } } }), crashed);
     const again = await plan(w, { all: true });
     if (step === 3) assert.deepEqual(again.items.map(i => i.state), ['copy', 'register', 'register', 'register']);
     if (step === 4) assert.deepEqual(again.items.map(i => i.state), ['present', 'register', 'register', 'register']);
@@ -385,7 +387,7 @@ test('13 and 18. crash points after steps 3, 4 and 5: a rerun reaches the final 
   }
   // A crash while copying the second item: the first is register, the second is copied.
   const w = await fourItems(t), boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
-  await assert.rejects(migrate(w, { prompts: ['brief'], teams: ['research'], hooks: { afterItem: kind => { if (kind === 'prompt') throw boom; } } }), code('TEST_CRASH'));
+  await assert.rejects(migrate(w, { prompts: ['brief'], teams: ['research'], hooks: { afterItem: kind => { if (kind === 'prompt') throw boom; } } }), crashed);
   assert.deepEqual((await plan(w, { prompts: ['brief'], teams: ['research'] })).items.map(i => i.state), ['register', 'copy']);
 });
 
@@ -394,7 +396,7 @@ test('13b. a crash after the config write in a shared project: --all prints the 
   await apply(w, await plan(w, { all: true }));
   const repo = push(w), boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
   const lockBefore = fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8');
-  await assert.rejects(migrate(w, { all: true, transport: storeTransport(repo), hooks: { afterStep: n => { if (n === 7) throw boom; } } }), code('TEST_CRASH'));
+  await assert.rejects(migrate(w, { all: true, transport: storeTransport(repo), hooks: { afterStep: n => { if (n === 7) throw boom; } } }), crashed);
   assert.equal(fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8'), lockBefore, 'the lock was not written');
   const rerun = await plan(w, { all: true, transport: storeTransport(repo) });
   assert.deepEqual(rerun.items, []);
@@ -407,7 +409,7 @@ test('13b. a crash after the config write in a shared project: --all prints the 
 
 test('13c. a crash after step 7 in a project that is not shared: the config is written and a rerun has nothing to move', async t => {
   const w = await fourItems(t), boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
-  await assert.rejects(migrate(w, { all: true, hooks: { afterStep: n => { if (n === 7) throw boom; } } }), code('TEST_CRASH'));
+  await assert.rejects(migrate(w, { all: true, hooks: { afterStep: n => { if (n === 7) throw boom; } } }), crashed);
   assert.equal(configOf(w).teams[0].source, 'store');
   const rerun = await plan(w, { all: true });
   assert.deepEqual(rerun.items, []);
@@ -593,4 +595,33 @@ test('L1. a team past the entry limit of a store item is larger than a store ite
   const w = await fourItems(t);
   for (let i = 0; i < 90; i++) { const dir = bl(w, `teams/research/extra/f${i}/g`); fs.mkdirSync(dir, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(dir, 'n.md'), `${i}\n`); }
   await assert.rejects(plan(w, { teams: ['research'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It is larger than a store item can be.'));
+});
+
+test('round 3 L1 and L2. a stop between the link and the unlink of a prompt: the next migrate finishes it', async t => {
+  const w = await fourItems(t), p = await plan(w, { prompts: ['brief'] });
+  const original = fs.unlinkSync;
+  fs.unlinkSync = target => { if (String(target).includes('/.stage-') && String(target).endsWith('/prompts/brief.md')) throw Object.assign(new Error('i/o'), { code: 'EIO' }); return original(target); };
+  try { await assert.rejects(apply(w, p), e => e.code === 'IO_ERROR' && e.cause === 'EIO' && e.hint === 'partial' && e.next === 'bowerloom store migrate --prompt brief'); }
+  finally { fs.unlinkSync = original; }
+  assert.equal(fs.statSync(path.join(w.store, 'prompts/brief.md')).nlink, 2, 'the store prompt has its stage link');
+  const again = await plan(w, { prompts: ['brief'] });
+  assert.deepEqual(again.items.map(i => `${i.id} ${i.state}`), ['brief register']);
+  await apply(w, again);
+  assert.equal(fs.statSync(path.join(w.store, 'prompts/brief.md')).nlink, 1);
+  assert.deepEqual(fs.readdirSync(path.join(w.store, 'authoring')), ['receipt.json']);
+  assert.deepEqual(storeReceipt(w).map(i => i.id), ['brief']);
+  // An unsafe file in the store is named, and the next step looks at the store.
+  const u = await fourItems(t); await storeItem(u, 'prompt', 'brief');
+  fs.linkSync(path.join(u.store, 'prompts/brief.md'), path.join(u.base, 'second-link.md'));
+  await assert.rejects(plan(u, { prompts: ['brief'] }), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('~/.bowerloom/prompts/brief.md') && e.next === 'ls -la ~/.bowerloom');
+});
+
+test('round 3 L3. an item folder that is a link refuses at plan time; an area swapped to a link during apply refuses before its reads', async t => {
+  const w = await fourItems(t), outside = path.join(w.base, 'outside-house-style');
+  fs.renameSync(bl(w, 'skills/house-style'), outside); fs.symlinkSync(outside, bl(w, 'skills/house-style'));
+  for (const o of [{ skills: ['house-style'] }, { all: true }]) await assert.rejects(plan(w, o), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('.bowerloom/skills'), JSON.stringify(o));
+  const v = await fourItems(t), p = await plan(v, { prompts: ['brief'], teams: ['research'] });
+  const swap = () => { const copy = path.join(v.base, 'teams-copy'); fs.cpSync(bl(v, 'teams'), copy, { recursive: true }); fs.rmSync(bl(v, 'teams'), { recursive: true }); fs.symlinkSync(copy, bl(v, 'teams')); };
+  await assert.rejects(apply(v, p, { hooks: { afterItem: kind => { if (kind === 'prompt') swap(); } } }), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('.bowerloom/teams') && e.hint === 'partial');
+  assert.equal(fs.existsSync(path.join(v.store, 'teams/research')), false, 'nothing was read through the link');
 });

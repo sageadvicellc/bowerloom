@@ -125,7 +125,7 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | `TEAM_NOT_SELECTED` | `up` installs for a team only if `bowerloom.json` lists it. | `bowerloom use team <id>` |
 | `ITEM_REVIEW_REQUIRED` | Bowerloom shows what an item can do before it installs it. | Run `bowerloom apply --frozen` again to review it. |
 
-These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above. A refusal after the run wrote part of its work says what it wrote. Run the same command again, and its plan finishes the rest. If another command holds the project lock, `store migrate` may already have made an empty store. Then its old plan no longer applies: run the command again without `--approve` to see the next plan.
+These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above. A refusal after the run wrote part of its work says what it wrote. Its `Next:` line is the command that finishes the run, and its JSON envelope has `partial: true` and that command as `next`. Run it, and its plan finishes the rest. If another command holds the project lock, `store migrate` may already have made an empty store. Then its old plan no longer applies: run the command again without `--approve` to see the next plan.
 
 | Code | Meaning | Next action |
 | --- | --- | --- |

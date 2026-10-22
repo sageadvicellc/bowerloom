@@ -4,7 +4,7 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { SYNC_REFUSAL_CODES, syncError } from '../packages/project-sync/src/refusal.js';
+import { SYNC_REFUSAL_CODES, partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
 import type { SyncCode } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 import { readFileSync } from 'node:fs';
@@ -275,4 +275,33 @@ test('spec 09: the CACHE_* codes have their words, their fixed messages, and a r
   assert.equal(syncError('CACHE_PRUNE_FAILED', 'Deleted 2 of 5 entries.').message, 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Deleted 2 of 5 entries.');
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
   for (const [code] of rows) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+});
+
+// Second security review of PR 98, M1 and L2: a refusal after a partial write never says that nothing was applied or
+// changed. Its words say the run stopped part way, its Next line is the exact command that finishes it, and the JSON
+// envelope carries partial: true and that command as next.
+test('a partial refusal: its own sentence, the rerun command as Next, and partial: true in JSON', () => {
+  const rerun = 'bowerloom store migrate --prompt brief';
+  const cases: Array<readonly [unknown, string]> = [
+    [new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.'), 'STALE_APPROVAL'],
+    [new DefinitionError('PROJECT_LOCKED', 'Another Bowerloom command is changing this project.'), 'PROJECT_LOCKED'],
+    [new DefinitionError('STORE_LOCKED', 'Another Bowerloom command is changing the store.'), 'STORE_LOCKED'],
+    [Object.assign(new Error('i/o error'), { code: 'EIO' }), 'IO_ERROR'],
+  ];
+  for (const [error, code] of cases) {
+    const partial = partialRefusal(error, ['prompt brief, copied to the store'], rerun) as DefinitionError;
+    assert.equal(partial.code, code);
+    const text = reportFailure(partial, true).text;
+    assert.doesNotMatch(text, /nothing was (?:applied|changed)/i, code);
+    assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: bowerloom store migrate --prompt brief\\n$`), code);
+    const json = JSON.parse(reportFailure(partial, false).text) as { error: { code: string; next?: string; partial?: boolean } };
+    assert.equal(json.error.code, code); assert.equal(json.error.next, rerun); assert.equal(json.error.partial, true);
+    assert.equal(reportFailure(partial, false).exitCode, 1);
+  }
+  // L2: the system code of an error that is not a refusal is kept as the cause.
+  assert.equal((partialRefusal(Object.assign(new Error('x'), { code: 'EXDEV' }), ['bowerloom.json'], rerun) as { cause?: unknown }).cause, 'EXDEV');
+  // Before any write, the error is returned as it is, and its envelope has no partial key.
+  const untouched = new DefinitionError('STALE_APPROVAL', 'm.');
+  assert.equal(partialRefusal(untouched, [], rerun), untouched);
+  assert.equal('partial' in (JSON.parse(reportFailure(untouched, false).text) as { error: object }).error, false);
 });

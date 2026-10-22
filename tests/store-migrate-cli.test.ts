@@ -274,6 +274,9 @@ test('11. while another command holds the project lock, store migrate --approve 
   assert.equal(r.status, 1, r.stderr); assert.equal(errorCode(r.stderr), 'PROJECT_LOCKED');
   // Review L3: the store lock came first and made the store, and the words say so.
   assert.match(errorMessage(r.stderr), /Bowerloom made the store at ~\/\.bowerloom before it waited for the project\. Run the command again without --approve to see the next plan\.$/);
+  // Second security review M1: the Next step is that command, and the envelope says the run was partial.
+  const envelope = (JSON.parse(r.stderr) as { error: { next?: string; partial?: boolean } }).error;
+  assert.equal(envelope.next, 'bowerloom store migrate --prompt brief'); assert.equal(envelope.partial, true);
   assert.deepEqual(snapshot(dir), before, 'nothing in the project changed: no bowerloom.json, no lock, and .bowerloom as it was');
   // The store lock came first, so the store was made; with the lock free again, a new plan applies.
   mustApprove(dir, ['store', 'migrate', '--prompt', 'brief'], w.env);
