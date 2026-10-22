@@ -50,7 +50,10 @@ export const TOPICS: Readonly<Record<string, string>> = {
   store: [
     'Usage:', '  bowerloom store status [--json]',
     '  bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]',
-    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]', '',
+    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]',
+    // Spec 09.
+    '  bowerloom cache list [--json]',
+    '  bowerloom cache prune [--unreferenced] [--partial] [--legacy] [--all] [--entry <id-prefix>]... [--approve <revision>] [--json]', '',
     'Shows the state of your store, ~/.bowerloom. The store holds definitions of skills, prompts, and teams.',
     'It holds no cache and no installed copy.',
     'store status reads only and writes nothing. No store command starts workers.',
@@ -77,6 +80,24 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'pushed to its git remote. Until then it is copied and nothing else changes. Run the command again after you push.',
     '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
     'After you delete the old files, run bowerloom receipt clean.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
+    // Spec 09, section 6.
+    'cache list shows the bytes that Bowerloom downloaded and kept on this machine. cache prune deletes them after you approve a plan.', '',
+  ].join('\n'),
+  // Spec 09, 3.3.
+  cache: [
+    'Usage:',
+    '  bowerloom cache list [--json]',
+    '  bowerloom cache prune [--unreferenced] [--partial] [--legacy] [--all] [--entry <id-prefix>]... [--approve <revision>] [--json]', '',
+    'Bowerloom keeps the skill bytes it downloads in a cache on this machine, outside your projects and your store.',
+    'cache list shows what is there. It reads only.',
+    'cache prune deletes entries after you approve a plan. Nothing is deleted by itself.',
+    '--unreferenced picks entries that your store and this project do not list. Other projects are not checked.',
+    '--partial picks unfinished fetches. --legacy picks the per-project caches of earlier betas. --all picks everything.',
+    '--entry <id-prefix> picks one entry by the first 8 or more characters of its id from cache list, or by its full store folder name.',
+    'An entry whose owner lock is older than a day counts as not in use.',
+    'A deleted pin is fetched again when bowerloom skills sync or apply --frozen needs it.',
+    'It deletes no project file and no installed copy.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   // Spec 08, 3.4.
@@ -366,6 +387,11 @@ const JSON_HIDDEN = /[\u007f-\u009f\p{Cf}\u2028\u2029]/gu;
  */
 export function newCommandJson(value: unknown): string {
   return `${canonicalJson(value).replace(JSON_HIDDEN, escapeUnits)}\n`;
+}
+/** As newCommandJson, with the keys in the order the value holds them (spec 09, 4.1: `cache list --json`). */
+export function orderedJson(value: unknown): string {
+  canonicalJson(value);
+  return `${JSON.stringify(value).replace(JSON_HIDDEN, escapeUnits)}\n`;
 }
 
 /**

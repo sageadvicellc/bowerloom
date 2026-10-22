@@ -4,7 +4,8 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
+import { SYNC_REFUSAL_CODES, syncError } from '../packages/project-sync/src/refusal.js';
+import type { SyncCode } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 import { readFileSync } from 'node:fs';
 import { CONFIG_REFUSAL_CODES } from '../packages/project-config/src/index.js';
@@ -257,4 +258,20 @@ test('spec 08: the MIGRATE_* codes have their words and a row in the errors refe
   for (const code of rows.map(r => r[0])) assert.ok((CONFIG_REFUSAL_CODES as readonly string[]).includes(code), code);
   // A refusal that carries its own next step names it: the store record whose files are gone.
   assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
+});
+
+// Spec 09, section 5: the three cache prune codes. The sentence is the fixed message and the next step the Next step cell.
+test('spec 09: the CACHE_* codes have their words, their fixed messages, and a row in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    ['CACHE_ENTRY_NOT_FOUND', 'No cache entry starts with that text.', 'bowerloom cache list'],
+    ['CACHE_ENTRY_BUSY', 'Another Bowerloom command is using that cache entry.', 'When the other command is done, run this one again.'],
+    ['CACHE_PRUNE_FAILED', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.', 'bowerloom cache list, then run the command again.'],
+  ];
+  for (const [code, sentence, next] of rows) {
+    assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+    assert.equal(syncError(code as SyncCode).message, sentence, code);
+  }
+  assert.equal(syncError('CACHE_PRUNE_FAILED', 'Deleted 2 of 5 entries.').message, 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Deleted 2 of 5 entries.');
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const [code] of rows) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
 });

@@ -128,7 +128,7 @@ function helpText(words: readonly string[]): string | null {
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'receipt', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'cache', 'store', 'receipt', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -142,6 +142,13 @@ async function main(args: string[]): Promise<void> {
   }
   if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  // Spec 09: cache list and cache prune.
+  if (args[0] === 'cache') {
+    if (args.length === 3 && (args[1] === 'list' || args[1] === 'prune') && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.cache!}`); return; }
+    const { runCacheCommand } = await import('./cache.js');
+    process.exitCode = await runCacheCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
+    return;
+  }
   if (args[0] === 'store') {
     // Spec 08: store migrate --help prints the store topic.
     if (args.length === 3 && args[1] === 'migrate' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.store!}`); return; }
