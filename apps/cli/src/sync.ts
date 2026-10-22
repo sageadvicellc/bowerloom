@@ -62,7 +62,9 @@ export function renderSyncReview(plan: SyncPlan): string {
   return [
     `Sync skills from .bowerloom/skills.json for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
     ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, Math.max(...plan.items.map(x => x.id.length)) + 1)) : ['  skills.json names no skill for this sync.']),
-    fetch.length ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetch.length} ${fetch.length === 1 ? 'skill' : 'skills'}, public and without credentials. Bytes must match their pins.` : 'Network: none.',
+    fetch.length ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetch.length} ${fetch.length === 1 ? 'skill' : 'skills'}, public and without credentials. Bytes must match their pins.`
+      : plan.network.hosts.length ? `Network: none now. Every pinned skill is in this machine's cache. Only if one is gone when this applies does sync read ${plan.network.hosts.join(' and ')} for it.` : 'Network: none.',
+    `Skills cache: ${plan.privateState.cacheRoot}, shared by every project on this machine.`,
     `Private state: ${plan.privateState.root}${plan.privateState.create.length ? ' (new folders get mode 0700)' : ''}`,
     'Copies go to .bowerloom/managed, .claude/skills and .agents/skills, and stay on this machine. Commit .bowerloom/skills.json and your own skills.',
     'This copies text files only. It starts no workers and runs nothing.',
@@ -166,7 +168,7 @@ function renderMigrateReview(plan: MigratePlan): string {
     `Migrate skill ${plan.item.id} from the earlier install in .bowerloom-skills to .bowerloom/managed`,
     `  Pin: ${plan.item.pin}`,
     `  Copies for: ${harnessWords(plan.item.harnesses)}`,
-    `  Bytes from: ${plan.bytesFrom === 'project-cache' ? "this project's cache" : plan.bytesFrom === 'legacy-cache' ? 'the cache the earlier install read' : `a fetch from ${plan.network.hosts.join(' and ')}`}`,
+    `  Bytes from: ${plan.bytesFrom === 'project-cache' ? "this machine's skills cache" : plan.bytesFrom === 'legacy-cache' ? 'the cache the earlier install read' : `a fetch from ${plan.network.hosts.join(' and ')}`}`,
     '  .bowerloom-skills moves into a private backup. A rollback puts it back exactly.',
     `  The earlier state folder ${plan.legacy.stateDir} is read, never written.`,
     'This copies text files only. It starts no workers and runs nothing.',

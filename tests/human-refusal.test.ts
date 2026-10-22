@@ -24,7 +24,7 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['PROJECT_UNREADABLE', 'A folder on the way to the project could not be read, so Bowerloom cannot tell which project holds this folder.', 'ls -ld <folder>'],
   ['PROJECT_LOCKED', 'Two commands must not change one project at the same time, so nothing was changed.', 'bowerloom status'],
   ['PROJECT_LOCK_UNAVAILABLE', 'The lock uses a local port, and this computer would not give it out.', 'bowerloom status'],
-  ['PROJECT_LOCK_SLOT_COLLISION', 'The lock uses a local port, and another program is listening on it.', 'lsof -nP -iTCP:<port> -sTCP:LISTEN'],
+  ['PROJECT_LOCK_SLOT_COLLISION', 'The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer.', 'lsof -nP -iTCP:<port> -sTCP:LISTEN'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {
@@ -44,7 +44,7 @@ test('renderRefusal gives approval and held words only to a refusal a new comman
 
 test('renderRefusal names the port of a slot collision when the error carries one', () => {
   assert.equal(renderRefusal('PROJECT_LOCK_SLOT_COLLISION', 'Taken.', { port: 23456 }),
-    text('PROJECT_LOCK_SLOT_COLLISION', 'Taken.', 'The lock uses a local port, and another program is listening on port 23456.', 'lsof -nP -iTCP:23456 -sTCP:LISTEN'));
+    text('PROJECT_LOCK_SLOT_COLLISION', 'Taken.', 'The lock uses local port 23456. Another program listens on it, or another Bowerloom command is too busy to answer.', 'lsof -nP -iTCP:23456 -sTCP:LISTEN'));
   for (const port of [0, 65536, 1.5, -1, Number.NaN]) assert.match(renderRefusal('PROJECT_LOCK_SLOT_COLLISION', 'Taken.', { port }), /TCP:<port>/, String(port));
 });
 
@@ -130,7 +130,7 @@ test('reportFailure on a terminal prints plain words, with the right exit code',
     assert.equal(failure.exitCode, 1, error.name); assert.equal(failure.text.includes('--approve'), false, error.name); assert.match(failure.text, /^Refused \(APPROVAL_REQUIRED\): /);
   }
   const port = reportFailure(Object.assign(new DefinitionError('PROJECT_LOCK_SLOT_COLLISION', 'Another program holds local port 23456.'), { port: 23456 }), true);
-  assert.equal(port.exitCode, 1); assert.match(port.text, /listening on port 23456\.\nNext: lsof -nP -iTCP:23456 -sTCP:LISTEN\n$/);
+  assert.equal(port.exitCode, 1); assert.match(port.text, /another Bowerloom command is too busy to answer\.\nNext: lsof -nP -iTCP:23456 -sTCP:LISTEN\n$/);
   const escaped = reportFailure(new DefinitionError('SCHEMA_INVALID', 'key \x1b[31m'), true);
   assert.equal(escaped.text.includes('\x1b'), false); assert.match(escaped.text, /key \\u001b\[31m/);
   assert.deepEqual(reportFailure(new Error('raw \x1b detail'), true), { text: renderRefusal('IO_ERROR', GENERIC_FAILURE), exitCode: 1 });

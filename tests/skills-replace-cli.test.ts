@@ -96,6 +96,7 @@ test('--replace moves an npm skill to a new version: the plan shows the old and 
     '  Files: 4',
     '  Teams: every team',
     `  skills.json: replaces the file with sha256 ${sha}`,
+    `  Cache: ${join(p.home, 'state', 'bowerloom', 'cache')} keeps the bytes checked here, so skills sync need not fetch them again.`,
     'This records the new pin only. Nothing is installed or run. Run bowerloom skills sync to update the installed copies.',
     `Revision: ${revision}`,
     `Approval required. Run the same command again with --approve ${revision}`, '',
@@ -106,10 +107,11 @@ test('--replace moves an npm skill to a new version: the plan shows the old and 
   const change = json.plan.change.replace as { from: Skill; to: Skill };
   assert.equal(change.from.source.version, '0.0.1'); assert.equal(change.to.source.version, '0.0.2');
   const applied = run(p.dir, ['skills', 'add', NPM_SPEC2, '--replace', '--approve', revision], p.serve);
-  assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\n`);
+  assert.equal(applied.status, 0, applied.stderr); assert.equal(applied.stdout, `Applied plan ${revision}.\nCache: kept the checked bytes in ${join(p.home, 'state', 'bowerloom', 'cache')}.\n`);
   assert.deepEqual(skills(p.manifest).map(s => [s.id, s.source.version]), [['synthetic-db-collections', '0.0.2']]);
+  // skills add kept the new pin's bytes, so the update reads them from the machine cache.
   const sync = run(p.dir, ['skills', 'sync'], p.serve); assert.equal(sync.status, 3, sync.stderr);
-  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, fetched from registry\.npmjs\.org$/m);
+  assert.match(sync.stdout, /^ {2}synthetic-db-collections +update to @synthetic\/db-skills@0\.0\.2:skills\/synthetic-db\/collections, from this machine's cache$/m);
   approve(p, ['skills', 'sync'], p.serve);
   assert.match(readFileSync(installed, 'utf8'), /Version two\./);
   const again = run(p.dir, ['skills', 'sync', '--offline'], p.deny); assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /Nothing to change\.\n$/);

@@ -77,17 +77,21 @@ export function npmPackage(id, { version = '1.0.0', name = 'synthetic-' + id, gu
 }
 export const localEntry = (id, teams) => ({ id, ...(teams ? { teams } : {}), source: { kind: 'local', path: 'skills/' + id } });
 
-/** A project folder with `.bowerloom/` under a fresh folder in HOME. Private state is not created: sync creates it. */
-export function syncProject(t, prefix = '.bowerloom-sync-') {
+/**
+ * A project folder with `.bowerloom/` under a fresh folder in HOME. Private state is not created: sync creates it.
+ * `stateRoot` lets a second project share the first one's private state root, as two projects on one machine do.
+ * `cacheRoot` is the one skills cache of the machine; `legacyCacheRoot` is the per-project cache of earlier betas.
+ */
+export function syncProject(t, prefix = '.bowerloom-sync-', { stateRoot: shared } = {}) {
   const home = fs.realpathSync(os.homedir()), base = fs.mkdtempSync(path.join(home, prefix)); fs.chmodSync(base, 0o700);
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const projectDir = path.join(base, 'project'); fs.mkdirSync(projectDir, { mode: 0o755 }); fs.mkdirSync(path.join(projectDir, '.bowerloom'), { mode: 0o755 });
   fs.writeFileSync(path.join(projectDir, 'AGENTS.md'), 'Keep founder governance.\n', { mode: 0o644 });
-  const stateRoot = path.join(base, 'state', 'bowerloom');
+  const stateRoot = shared ?? path.join(base, 'state', 'bowerloom');
   const project = () => discoverProject(projectDir, home);
   const input = (extra = {}) => ({ project: project(), stateRoot, team: null, offline: false, ...extra });
   const ctx = project(), privateRoot = path.join(stateRoot, ctx.projectId);
-  return { home, base, projectDir, stateRoot, project, input, privateRoot, cacheRoot: path.join(privateRoot, 'cache'), itemsRoot: path.join(privateRoot, 'items') };
+  return { home, base, projectDir, stateRoot, project, input, privateRoot, cacheRoot: path.join(stateRoot, 'cache'), legacyCacheRoot: path.join(privateRoot, 'cache'), itemsRoot: path.join(privateRoot, 'items') };
 }
 
 /** Writes `.bowerloom/skills.json` in canonical form. */
@@ -116,7 +120,8 @@ export function fakeAcquirer(packages, { fail = new Set(), calls = [] } = {}) {
   return {
     calls,
     async npm(plan, approval, signal) {
-      calls.push({ kind: 'npm', id: plan.request.skill.id, operationId: plan.cache.operationId, approval, planRevision: plan.revision });
+      // The cache is keyed on content, so the request names no entry id. The synthetic package name carries it.
+      calls.push({ kind: 'npm', id: plan.request.package.split('/').at(-1), operationId: plan.cache.operationId, approval, planRevision: plan.revision });
       const pkg = byName.get(plan.request.package);
       if (!pkg || fail.has(pkg.id)) { const op = openNpmCacheOperation(plan, approval, signal); op.receiving(); op.hold(); op.release(); throw new NpmAcquisitionError('NPM_NETWORK'); }
       return store(plan, approval, signal, pkg);
@@ -131,13 +136,22 @@ export function noAcquirer() {
 }
 
 /** The private folders as sync creates them: mode 0700, every level. */
-export function privateFolders(f) { for (const p of [path.dirname(f.stateRoot), f.stateRoot, f.privateRoot, f.cacheRoot, f.itemsRoot]) if (!fs.existsSync(p)) fs.mkdirSync(p, { mode: 0o700 }); }
-/** Fills the sync cache for one package at its attempt-0 operation id, as an earlier sync would have. */
+export function privateFolders(f) { for (const p of [path.dirname(f.stateRoot), f.stateRoot, f.cacheRoot, f.privateRoot, f.itemsRoot]) if (!fs.existsSync(p)) fs.mkdirSync(p, { mode: 0o700 }); }
+/** Fills the machine's skills cache for one package at its attempt-0 operation id, as an earlier sync would have. */
 export async function prefill(f, pkg, attempt = 0) {
-  privateFolders(f); const { request, digest } = entryRequest(pkg.entry), operationId = cacheOperationId(digest, attempt);
-  const plan = planNpmAcquisition(request, observeSkillCacheRoot(f.cacheRoot, operationId, 33554432));
+  privateFolders(f); const { cacheRequest, digest } = entryRequest(pkg.entry), operationId = cacheOperationId(digest, attempt);
+  const plan = planNpmAcquisition(cacheRequest, observeSkillCacheRoot(f.cacheRoot, operationId, 33554432));
   return store(plan, plan.revision, new AbortController().signal, pkg);
 }
+/** Fills the per-project cache of an earlier beta for one entry: keyed on the request with the entry id in it. */
+export async function prefillLegacy(f, pkg, attempt = 0) {
+  privateFolders(f); if (!fs.existsSync(f.legacyCacheRoot)) fs.mkdirSync(f.legacyCacheRoot, { mode: 0o700 });
+  const { request, legacyDigest } = entryRequest(pkg.entry), operationId = cacheOperationId(legacyDigest, attempt);
+  const plan = planNpmAcquisition(request, observeSkillCacheRoot(f.legacyCacheRoot, operationId, 33554432));
+  return store(plan, plan.revision, new AbortController().signal, pkg);
+}
+/** The op-* folders in a cache root, or [] when it does not exist. */
+export const cacheOps = root => fs.existsSync(root) ? fs.readdirSync(root).filter(n => n.startsWith('op-')).sort() : [];
 
 /** Every entry under a folder with inode, mode, mtime and content hash: any write shows. */
 export function exactTree(dir) {

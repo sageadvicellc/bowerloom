@@ -86,6 +86,11 @@ function safeContentText(text: string): void {
   // Preserve bytes; allow ordinary multiline text, not terminal or bidi controls.
   requireSkill(!/[\p{Cc}\p{Cf}]/u.test(text.replace(/\r\n|\n|\t/g, '')), 'SKILL_TEXT_CONTROL');
 }
+/**
+ * The SKILL.md frontmatter rules: the Agent Skills keys, plus Claude Code's display-only `argument-hint`. A key that
+ * changes what an agent does, such as `hooks` or `model`, refuses SKILL_FRONTMATTER.
+ */
+export function checkSkillFrontmatter(text: string, name: string, declaredLicense: string, allowedTools: unknown): void { frontmatter(text, name, declaredLicense, allowedTools); }
 function frontmatter(text: string, name: string, declaredLicense: string, allowedTools: unknown): void {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   requireSkill(match && Buffer.byteLength(match[1]!) <= 8192, 'SKILL_FRONTMATTER');
@@ -95,12 +100,14 @@ function frontmatter(text: string, name: string, declaredLicense: string, allowe
     const parsed = captureSkillData(doc.toJS({ maxAliasCount: 0 }));
     requireSkill(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), 'SKILL_FRONTMATTER');
     const data = parsed as Record<string, unknown>;
-    requireSkill(Object.keys(data).every(k => ['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools'].includes(k)), 'SKILL_FRONTMATTER');
+    requireSkill(Object.keys(data).every(k => ['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools', 'argument-hint'].includes(k)), 'SKILL_FRONTMATTER');
     // The pin and the text must say the same thing, so a reviewer sees every tool the skill pre-approves.
     requireSkill(Object.hasOwn(data, 'allowed-tools') ? (allowedToolsText(data['allowed-tools']), data['allowed-tools'] === allowedTools) : allowedTools === undefined, 'SKILL_FRONTMATTER');
     requireSkill(data.name === name && typeof data.description === 'string' && data.description.trim().length > 0 && Buffer.byteLength(data.description) <= 1024, 'SKILL_FRONTMATTER');
     safeContentText(data.description as string);
     for (const key of ['license', 'compatibility']) if (Object.hasOwn(data, key)) boundedText(data[key], 512);
+    // Claude Code shows argument-hint during autocomplete and does nothing else with it: one short line of text.
+    if (Object.hasOwn(data, 'argument-hint')) boundedText(data['argument-hint'], 256);
     if (data.license === 'MIT' || data.license === 'Apache-2.0') requireSkill(data.license === declaredLicense, 'SKILL_FRONTMATTER');
     if (Object.hasOwn(data, 'metadata')) {
       requireSkill(data.metadata !== null && typeof data.metadata === 'object' && !Array.isArray(data.metadata), 'SKILL_FRONTMATTER');

@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { parseDocument } from 'yaml';
-import { SkillSourceError, captureSkillData, allowedToolsText, relativeSkillPath } from '../../skill-sources/src/validation.js';
+import { SkillSourceError, captureSkillData, allowedToolsText, checkSkillFrontmatter, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
@@ -106,6 +106,13 @@ export function licenseFolders(sourceRoot: string): string[] {
 }
 
 export interface SelectedFile { path: string; sourcePath: string; bytes: Buffer }
+/**
+ * The bytes a resolver read and verified against the entry it returns: the npm metadata and archive, or the Git
+ * commit and the payload (listings and selected blobs) that verifyGitPayload reads. A cache operation stores exactly these.
+ */
+export interface VerifiedBytes { kind: 'npm' | 'git'; metadata: Buffer; data: Buffer }
+/** A resolved entry and the bytes it was verified against. */
+export interface VerifiedPin<C> { content: C; bytes: VerifiedBytes }
 /** The pinned content of one skill: files sorted by path, the license files, the references. */
 export function pinnedContent<S>(source: S, sourceRoot: string, files: readonly SelectedFile[], spdx: SkillLicense, licenseFiles: readonly string[]): PinnedContent<S> & { texts: Map<string, string> } {
   checkBounds(files.map(f => ({ bytes: f.bytes.length })));
@@ -113,7 +120,10 @@ export function pinnedContent<S>(source: S, sourceRoot: string, files: readonly 
   const skill = texts.get('SKILL.md'); requireManifest(skill !== undefined, 'SKILLS_ADD_SKILL_MISSING');
   requireManifest(licenseFiles.length > 0 && licenseFiles.length <= CONTENT_LIMITS.licenseFiles, 'SKILLS_ADD_LICENSE_UNKNOWN');
   const pins: ManifestFile[] = files.map(f => ({ path: f.path, sourcePath: f.sourcePath, sha256: sha256(f.bytes), bytes: f.bytes.length })).sort((a, b) => compare(a.path, b.path));
-  return { source, skill: { ...(({ name, allowedTools }) => ({ name, sourceRoot, ...(allowedTools !== undefined ? { allowedTools } : {}) }))(skillHead(skill)) }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
+  const head = skillHead(skill);
+  // The validator's frontmatter rules, run here so a key it does not accept gets its own refusal, not unsafe content.
+  try { checkSkillFrontmatter(skill, head.name, spdx, head.allowedTools); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_FRONTMATTER'); throw error; }
+  return { source, skill: { ...(({ name, allowedTools }) => ({ name, sourceRoot, ...(allowedTools !== undefined ? { allowedTools } : {}) }))(head) }, license: { spdx, files: [...licenseFiles].sort(compare) }, files: pins, references: referenceEdges(texts), texts };
 }
 export const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 

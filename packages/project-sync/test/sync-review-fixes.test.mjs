@@ -10,6 +10,7 @@ import path from 'node:path';
 import { planSync, applySync } from '../../../dist/packages/project-sync/src/index.js';
 import { ignoreCarrier } from '../../../dist/packages/project-sync/src/plan.js';
 import { planProjectApply } from '../../../dist/packages/project-sync/src/index.js';
+import { discoverProject } from '../../../dist/packages/project-context/src/index.js';
 import { planManagedItem } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
 import { denyNetwork, npmPackage, localEntry, syncProject, writeManifest, localSkill, fakeAcquirer, noAcquirer, exactTree, exists, deps, code, byId } from './sync-fixture.mjs';
@@ -122,4 +123,18 @@ test('finding 9: the test network guard also stops net.connect, tls.connect and 
   const server = net.createServer().listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
   const socket = net.connect({ host: '127.0.0.1', port: server.address().port }); await new Promise((r, j) => { socket.once('connect', r); socket.once('error', j); });
   socket.destroy(); await new Promise(r => server.close(r));
+});
+
+test('a project folder, or a folder above it, that others can change refuses SKILLS_PROJECT_UNSAFE at plan time and names the folder', async t => {
+  for (const [label, mode] of [['group write', 0o775], ['world write', 0o777], ['sticky and world write, like /tmp', 0o1777]]) {
+    const f = syncProject(t); localSkill(f, 'bravo'); writeManifest(f, [localEntry('bravo')]);
+    // The project lives in its own folder here, so the state root stays safe and only the project's chain is unsafe.
+    const holder = path.join(f.base, 'holder'); fs.mkdirSync(holder, { mode: 0o755 }); fs.renameSync(f.projectDir, path.join(holder, 'project'));
+    const projectDir = path.join(holder, 'project'); fs.chmodSync(holder, mode);
+    const project = discoverProject(projectDir, f.home);
+    const named = e => e?.code === 'SKILLS_PROJECT_UNSAFE' && e.message.includes(holder);
+    await assert.rejects(planSync({ project, stateRoot: f.stateRoot, team: null, offline: false }), named, label);
+    await assert.rejects(planProjectApply({ project, stateRoot: f.stateRoot, harnesses: ['claude', 'codex'], team: null }), named, label);
+    fs.chmodSync(holder, 0o755);
+  }
 });

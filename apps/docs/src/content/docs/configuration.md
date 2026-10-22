@@ -74,7 +74,7 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 
 <a id="skills-json"></a>
 
-`.bowerloom/skills.json` is the one file that pins third-party skills. Its format is `bowerloom/skills/v1beta1`. It lists the harnesses, the agent applications that read the skills (`claude` for Claude Code and `codex` for Codex), and one entry for each skill. A pinned entry holds an exact npm version or a full 40-character Git commit, the integrity and tree values that prove the bytes, the license, and the hash of every file. Exact pins only. A range, tag, or branch is not a pin. An entry made by `skill create` is a local entry that points at `skills/<id>`. The file is its own lock. It holds at most 32 skills and 1 MiB. Bowerloom reads it strictly, so a hand edit can break it (`MANIFEST_INVALID`). Use `bowerloom skills add` to change it.
+`.bowerloom/skills.json` is the one file that pins third-party skills. Its format is `bowerloom/skills/v1beta1`. It lists the harnesses, the agent applications that read the skills (`claude` for Claude Code and `codex` for Codex), and one entry for each skill. A pinned entry holds an exact npm version or a full 40-character Git commit, the integrity and tree values that prove the bytes, the license, and the hash of every file. Exact pins only. A range, tag, or branch is not a pin. An entry made by `skill create` is a local entry that points at `skills/<id>`. The file is its own lock. It holds at most 128 skills, local and pinned together, and 1 MiB. Each entry names at most 32 teams. Bowerloom reads it strictly, so a hand edit can break it (`MANIFEST_INVALID`). Use `bowerloom skills add` to change it.
 
 | Path | Holds | Commit it |
 | --- | --- | --- |
