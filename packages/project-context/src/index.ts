@@ -245,8 +245,11 @@ function cacheSlotCollision(port: number): DefinitionError & { readonly port: nu
  * (CACHE_LOCK_SILENT_LIMIT_MS) of nothing else, it counts as another program.
  * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
  */
+/** Round 3 of the reviews of PR 99, L-e: the cache lock refuses in its own words, not the project lock's. */
+const cacheLockRefusal = (lost = false): DefinitionError => new DefinitionError('PROJECT_LOCK_UNAVAILABLE', lost ? 'Bowerloom lost the skills cache lock. Try again.' : 'Bowerloom could not take the skills cache lock. Try again.');
 export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, work: (held: HeldCacheLock) => Promise<T>, options: { waitMs?: number; silentMs?: number } = {}): Promise<T> {
-  const slot = cacheLockSlot(cacheRoot), deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
+  let first: LockSlot; try { first = cacheLockSlot(cacheRoot); } catch (error) { if ((error as { code?: unknown }).code === 'PROJECT_LOCK_UNAVAILABLE') throw cacheLockRefusal(); throw error; }
+  const slot = first, deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
   const silentLimit = options.silentMs ?? CACHE_LOCK_SILENT_LIMIT_MS;
   let silentSince: number | undefined;
   const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
@@ -260,7 +263,7 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     server = lockServer(slot);
     const outcome = await bind(server);
     if (outcome.ok) break;
-    if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
+    if (outcome.code !== 'EADDRINUSE') throw cacheLockRefusal();
     const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
     if (holder === 'silent' || holder === 'reset') silentSince ??= Date.now(); else silentSince = undefined;
     if (holder === 'other' || (silentSince !== undefined && Date.now() - silentSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
@@ -268,10 +271,10 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     if (holder === 'this') await pause();
   }
   const stillNames = (): boolean => { try { return cacheLockSlot(cacheRoot).key === slot.key; } catch { return false; } };
-  if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : refuse('PROJECT_LOCK_UNAVAILABLE'); }
+  if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : cacheLockRefusal(); }
   let released = false, failure: unknown, failed = false, result: T | undefined;
   try {
-    const held: HeldCacheLock = Object.freeze({ root: cacheRoot, key: slot.key, assertHeld(): void { if (released || !stillNames()) throw refuse('PROJECT_LOCK_UNAVAILABLE'); } });
+    const held: HeldCacheLock = Object.freeze({ root: cacheRoot, key: slot.key, assertHeld(): void { if (released || !stillNames()) throw cacheLockRefusal(true); } });
     result = await work(held);
   } catch (error) { failed = true; failure = error; }
   released = true;

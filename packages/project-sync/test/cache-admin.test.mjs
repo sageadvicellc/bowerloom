@@ -15,6 +15,7 @@ import { entryRequest, cacheOperationId } from '../../../dist/packages/project-s
 import { observeSkillCacheRoot, openNpmCacheOperation, inspectSkillCache } from '../../../dist/packages/skill-sources/src/cache.js';
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
 import { withCacheLock } from '../../../dist/packages/project-context/src/index.js';
+import { ManagedSkillError } from '../../../dist/packages/managed-skills/src/observed.js';
 import { serializeManifest, validateManifest, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { configWorld, writeLock, storeItem, storePin, storeFiles, authoredLockItem } from './config-fixture.mjs';
 import { denyNetwork, npmPackage, store as storeOperation, exactTree, fakeAcquirer } from './sync-fixture.mjs';
@@ -77,6 +78,8 @@ function projectPins(w, entries) {
 }
 /** The store skills.json with no entries. */
 function emptyStorePins(w) { fs.writeFileSync(path.join(w.store, 'skills.json'), serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [] }, STORE_MANIFEST_LIMITS), STORE_MANIFEST_LIMITS), { mode: 0o600 }); }
+/** Device and inode of a folder, as a sync plan pins it. */
+const identity = p => { const s = fs.lstatSync(p, { bigint: true }); return { device: String(s.dev), inode: String(s.ino) }; };
 const byName = list => Object.fromEntries(list.entries.map(e => [e.name, e]));
 const sumBytes = entry => entry.files.reduce((n, f) => n + f.bytes, 0);
 /** Everything under the state root, the store and the project, with inodes, modes, times and hashes. */
@@ -99,7 +102,8 @@ test('2. three seeded skills-cache entries list with labels, file counts and byt
   assert.equal(list.entries.length, 3);
   for (const [i, p] of pkgs.entries()) {
     const e = names['op-' + ids[i]], seen = await inspectSkillCache({ root: w.cacheRoot, operationId: ids[i] });
-    assert.deepEqual(Object.keys(e), ['scope', 'id', 'projectId', 'status', 'name', 'active', 'stale', 'kind', 'label', 'skillName', 'files', 'bytes', 'key', 'references', 'partialReason']);
+    assert.deepEqual(Object.keys(e), ['scope', 'id', 'projectId', 'status', 'name', 'active', 'stale', 'kind', 'label', 'skillName', 'files', 'bytes', 'key', 'references', 'partialReason', 'next']);
+    assert.equal(e.next, null);
     assert.equal(e.partialReason, null);
     assert.equal(e.scope, 'machine'); assert.equal(e.id, ids[i]); assert.equal(e.projectId, null); assert.equal(e.status, 'completed');
     assert.equal(e.active, false); assert.equal(e.stale, false); assert.equal(e.kind, 'npm');
@@ -178,7 +182,7 @@ test('7. a fetch that stopped before completion lists partial; an entry with an 
 test('8. a store-cache entry lists as completed; a changed file makes it partial', async t => {
   const w = world(t), s = await seedStore(w, 'skill', 'house-style', SKILL_FILES);
   let e = byName(await listCache(w.input()))[s.name];
-  assert.deepEqual({ ...e, references: null }, { scope: 'store', id: s.hash, projectId: null, status: 'completed', name: s.name, active: false, stale: false, kind: 'store-git', label: 'skill house-style', skillName: null, files: 2, bytes: SKILL_FILES.reduce((n, f) => n + Buffer.byteLength(f.text), 0), key: null, references: null, partialReason: null });
+  assert.deepEqual({ ...e, references: null }, { scope: 'store', id: s.hash, projectId: null, status: 'completed', name: s.name, active: false, stale: false, kind: 'store-git', label: 'skill house-style', skillName: null, files: 2, bytes: SKILL_FILES.reduce((n, f) => n + Buffer.byteLength(f.text), 0), key: null, references: null, partialReason: null, next: null });
   fs.writeFileSync(path.join(w.storeCacheRoot, s.name, 'skills', 'house-style', 'references', 'notes.md'), '# Changed\n');
   e = byName(await listCache(w.input()))[s.name];
   assert.equal(e.status, 'partial'); assert.equal(e.label, 'skill house-style'); assert.equal(e.files, null); assert.equal(e.bytes, null); assert.equal(e.partialReason, 'changed');
@@ -221,13 +225,13 @@ test('11. stray names, links, and folders that removeCacheEntry would refuse cou
   const list = await listCache(w.input());
   assert.equal(list.unlisted, 7); assert.deepEqual(list.entries.map(e => e.id), [ia]);
   assert.deepEqual(list.unlistedNames, [
-    { place: 'cache', name: '.prune-op-' + '8'.repeat(32) + '-01234567', reason: 'its mode is 0750, not 0700' },
-    { place: 'cache', name: 'junk', reason: 'the name is not a cache entry name' },
-    { place: 'cache', name: 'notes.txt', reason: 'the name is not a cache entry name' },
-    { place: 'cache', name: 'op-' + '9'.repeat(32), reason: 'its mode is 0755, not 0700' },
-    { place: 'cache', name: 'op-' + 'f'.repeat(32), reason: 'it is a link' },
-    { place: 'store-cache', name: 'junk', reason: 'the name is not a cache entry name' },
-    { place: 'store-cache', name: `skill-x-${'f'.repeat(64)}`, reason: 'it is a link' },
+    { place: 'cache', name: '.prune-op-' + '8'.repeat(32) + '-01234567', reason: 'its mode is 0750, not 0700', next: `chmod 700 ${leftover}` },
+    { place: 'cache', name: 'junk', reason: 'the name is not a cache entry name', next: null },
+    { place: 'cache', name: 'notes.txt', reason: 'the name is not a cache entry name', next: null },
+    { place: 'cache', name: 'op-' + '9'.repeat(32), reason: 'its mode is 0755, not 0700', next: null },
+    { place: 'cache', name: 'op-' + 'f'.repeat(32), reason: 'it is a link', next: null },
+    { place: 'store-cache', name: 'junk', reason: 'the name is not a cache entry name', next: null },
+    { place: 'store-cache', name: `skill-x-${'f'.repeat(64)}`, reason: 'it is a link', next: null },
   ]);
   const before = { notes: fs.readFileSync(path.join(w.cacheRoot, 'notes.txt'), 'utf8'), keep: exactTree(outside), other: exactTree(other) };
   const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input);
@@ -332,9 +336,9 @@ test('17. a failure on the third of five entries refuses CACHE_PRUNE_FAILED, Del
   const w = world(t), pkgs = ['a1', 'a2', 'a3', 'a4', 'a5'].map(id => npmPackage(id));
   for (const p of pkgs) await seed(w, p);
   const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input);
-  const hooks = { heldCheck: (index, step) => { if (index === 2 && step === 1) throw new Error('TEST_CRASH_AFTER_RENAME'); } };
+  const hooks = { heldCheck: (index, step) => { if (index === 2 && step === 1) throw Object.assign(new Error('injected'), { code: 'EIO' }); } };
   const third = plan.picked[2].name;
-  await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, signal()), e => code('CACHE_PRUNE_FAILED')(e) && e.message === `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete cache/${third} at the delete step (Error). Deleted 2 of 5 entries. It stopped at cache ${plan.picked[2].id.slice(0, 8)}.`);
+  await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, signal()), e => code('CACHE_PRUNE_FAILED')(e) && e.message === `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete cache/${third} at the delete step (EIO). Deleted 2 of 5 entries. It stopped at cache ${plan.picked[2].id.slice(0, 8)}.`);
   const left = fs.readdirSync(w.cacheRoot).sort();
   assert.equal(left.length, 3); assert.equal(left.filter(n => n.startsWith('.prune-op-')).length, 1);
   assert.ok(left.some(n => n.startsWith(`.prune-${third}-`)), 'the third is the leftover');
@@ -384,7 +388,7 @@ test('21. selectors combine as a union, and each entry appears once', async t =>
   const leftover = folder(path.join(w.stateRoot, 'e'.repeat(32), 'cache', '.prune-op-' + '3'.repeat(32) + '-01234567'));
   const plan = await planCachePrune({ ...w.input(), selectors: sel({ partial: true, legacy: true, unreferenced: true, entries: [ib.slice(0, 8)] }) });
   const machine = [partial.operationId, ib].sort().map(id => 'op-' + id);
-  assert.deepEqual(plan.picked.map(p => p.name), [...machine, path.basename(leftover), 'op-' + legacy], 'a leftover id is its name, and . sorts before hex');
+  assert.deepEqual(plan.picked.map(p => p.name), [...machine, 'op-' + legacy, path.basename(leftover)], 'round 3, M-A: a .prune- leftover goes after every other pick');
   assert.equal(new Set(plan.picked.map(p => `${p.scope}/${p.projectId}/${p.name}`)).size, plan.picked.length);
 });
 
@@ -417,10 +421,10 @@ test('23. a project folder or cache in the state folder that fails the folder ch
   assert.equal(list.unlisted, 4); assert.deepEqual(list.entries.map(e => [e.projectId, e.id]), [['5'.repeat(32), ok]]);
   const id = n => n.repeat(32);
   assert.deepEqual(list.unlistedNames, [
-    { place: 'legacy', name: id('1'), reason: `the folder ${id('1')} has mode 0755, not 0700` },
-    { place: 'legacy', name: id('2'), reason: `the folder ${id('2')}/cache has mode 0750, not 0700` },
-    { place: 'legacy', name: id('3'), reason: `the folder ${id('3')} is a link` },
-    { place: 'legacy', name: id('4'), reason: `the folder ${id('4')}/cache is a link` },
+    { place: 'legacy', name: id('1'), reason: `the folder ${id('1')} has mode 0755, not 0700`, next: null },
+    { place: 'legacy', name: id('2'), reason: `the folder ${id('2')}/cache has mode 0750, not 0700`, next: null },
+    { place: 'legacy', name: id('3'), reason: `the folder ${id('3')} is a link`, next: null },
+    { place: 'legacy', name: id('4'), reason: `the folder ${id('4')}/cache is a link`, next: null },
   ]);
   t.after(() => { for (const n of ['1', '2']) try { fs.chmodSync(path.join(w.stateRoot, n.repeat(32)), 0o700); fs.chmodSync(path.join(w.stateRoot, n.repeat(32), 'cache'), 0o700); } catch { /* gone */ } });
 });
@@ -533,11 +537,12 @@ test('12.7b. a cached pin pruned before phase A reads it back gives the same cau
   const w = world(t), a = npmPackage('alpha'); projectPins(w, [a.entry]); await seed(w, a);
   const item = (await planSync({ project: w.project(), stateRoot: w.stateRoot, team: null, offline: false, home: w.home })).items[0];
   const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal());
-  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache), e => code('STALE_APPROVAL')(e)
+  const context = { rerun: 'bowerloom skills sync', stateRoot: w.stateRoot, cacheIdentity: identity(w.cacheRoot) };
+  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), e => code('STALE_APPROVAL')(e)
     && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'bowerloom skills sync');
   // An operation that is there but unreadable keeps its own refusal.
   await seed(w, a); fs.appendFileSync(path.join(w.cacheRoot, 'op-' + item.cache.operationId, 'files', 'SKILL.md'), 'x');
-  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache), code('SKILLS_CACHE_RECOVERY_REQUIRED'));
+  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), code('SKILLS_CACHE_RECOVERY_REQUIRED'));
 });
 
 test('H1. apply yields between deletes, so an interrupt stops it between two entries', async t => {
@@ -612,8 +617,15 @@ test('L10. writeStoreCache removes a .tmp- leftover through removeCacheEntry, so
   stateFolders(w); folder(w.storeCacheRoot);
   const ok = folder(path.join(w.storeCacheRoot, `.tmp-${key}-0123abcd`)), bad = path.join(w.storeCacheRoot, `.tmp-${key}-89abcdef`);
   fs.mkdirSync(bad, { mode: 0o755 }); fs.chmodSync(bad, 0o755);
-  await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), code('SKILLS_STATE_UNSAFE'));
+  // Round 3, M-C: the refusal names the leftover and why, keeps the cause, and gives the command that fixes it.
+  await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => code('SKILLS_STATE_UNSAFE')(e)
+    && e.message.endsWith(` Could not delete store-cache/${path.basename(bad)}: its mode is 0755, not 0700.`) && e.next === `chmod 700 ${bad}` && e.cause?.code === 'CACHE_PRUNE_FAILED');
   assert.ok(fs.existsSync(bad), 'a leftover that removeCacheEntry refuses stays');
+  const file = path.join(w.storeCacheRoot, `.tmp-${key}-01234567`); fs.writeFileSync(file, 'x\n', { mode: 0o600 });
+  await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => code('SKILLS_STATE_UNSAFE')(e) && e.next === `rm ${file}`);
+  const list = await listCache(w.input());
+  assert.deepEqual(list.unlistedNames.map(u => [u.name, u.next]), [[path.basename(file), `rm ${file}`], [path.basename(bad), `chmod 700 ${bad}`]], 'cache list shows the same hints');
+  fs.rmSync(file);
   fs.chmodSync(bad, 0o700);
   await writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal());
   assert.deepEqual(fs.readdirSync(w.storeCacheRoot), [key]); void ok;
@@ -625,4 +637,99 @@ test('16c. a completed entry replaced under the lock, with the same status, is s
   const hooks = { underLock: async () => { fs.rmSync(path.join(w.cacheRoot, 'op-' + ia), { recursive: true }); await seedInsideLock(w, a); } };
   await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, signal()), e => code('STALE_APPROVAL')(e) && e.message.endsWith(` Entry cache ${ia.slice(0, 8)} changed after the plan: its bytes changed.`));
   assert.deepEqual(fs.readdirSync(w.cacheRoot), ['op-' + ia]);
+});
+
+// --- Round 3 of the reviews of PR 99 ---
+
+/** Three hand-made operation folders; the second holds a subfolder that its owner cannot write, so it cannot be deleted. */
+function stuckEntries(t, w) {
+  stateFolders(w);
+  const ids = ['1', '2', '3'].map(c => c.repeat(32));
+  for (const id of ids) { const op = folder(path.join(w.cacheRoot, 'op-' + id)); fs.writeFileSync(path.join(op, 'a.md'), 'x\n'); }
+  const sub = path.join(w.cacheRoot, 'op-' + ids[1], 'locked'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'inside.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) { try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } } });
+  return ids;
+}
+test('M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes last, and its refusal and cache list name the fix', async t => {
+  const w = world(t), ids = stuckEntries(t, w), input = { ...w.input(), selectors: sel({ all: true }) };
+  const plan = await planCachePrune(input); assert.deepEqual(plan.picked.map(p => p.id), ids);
+  let leftover = '';
+  await assert.rejects(applyCachePrune(input, plan.revision, signal()), e => {
+    leftover = path.join(w.cacheRoot, fs.readdirSync(w.cacheRoot).find(n => n.startsWith('.prune-')));
+    code('CACHE_PRUNE_FAILED')(e);
+    assert.equal(e.message, `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}). Deleted 1 of 3 entries. It stopped at cache 22222222.`);
+    assert.equal(e.next, `chmod -R u+rwx ${leftover}, then run the command again without --approve`); assert.equal(e.cause, 'EACCES'); return true;
+  });
+  const listed = byName(await listCache(w.input()))[path.basename(leftover)];
+  assert.deepEqual([listed.partialReason, listed.next], ['prune-leftover', `chmod -R u+rwx ${leftover}`]);
+  // The rerun puts the leftover last, so the third entry is deleted before the leftover refuses again.
+  const again = await planCachePrune(input); assert.deepEqual(again.picked.map(p => p.name), ['op-' + ids[2], path.basename(leftover)]);
+  await assert.rejects(applyCachePrune(input, again.revision, signal()), e => code('CACHE_PRUNE_FAILED')(e) && e.message.includes(' Deleted 1 of 2 entries. '));
+  assert.deepEqual(fs.readdirSync(w.cacheRoot), [path.basename(leftover)]);
+  fs.chmodSync(path.join(leftover, 'locked'), 0o700);
+  const last = await planCachePrune(input); await applyCachePrune(input, last.revision, signal());
+  assert.deepEqual(fs.readdirSync(w.cacheRoot), []);
+});
+
+test('M-B. a real refusal of phase B keeps its code even when a prune deletes the pin at the same time', async t => {
+  const w = world(t), a = npmPackage('alpha'); projectPins(w, [a.entry]);
+  const syncInput = () => ({ project: w.project(), stateRoot: w.stateRoot, team: null, offline: false, home: w.home });
+  const plan = await planSync(syncInput());
+  const { managedPort } = await import('../../../dist/packages/project-sync/src/deps.js');
+  const managed = { async plan() { const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal()); throw new ManagedSkillError('MANAGED_SKILL_LOCAL_DRIFT'); }, apply: managedPort.apply };
+  await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: fakeAcquirer([a]), signal: signal(), managed }), code('MANAGED_SKILL_LOCAL_DRIFT'));
+});
+
+test('M-B. a skills cache folder swapped for a link during phase B refuses SKILLS_STATE_UNSAFE, not STALE_APPROVAL', async t => {
+  const w = world(t), a = npmPackage('alpha'); projectPins(w, [a.entry]); await seed(w, a);
+  const syncInput = () => ({ project: w.project(), stateRoot: w.stateRoot, team: null, offline: false, home: w.home });
+  const plan = await planSync(syncInput());
+  const { managedPort } = await import('../../../dist/packages/project-sync/src/deps.js');
+  const away = path.join(w.base, 'cache-away'), empty = folder(path.join(w.base, 'empty'));
+  t.after(() => { try { fs.unlinkSync(w.cacheRoot); fs.renameSync(away, w.cacheRoot); } catch { /* restored */ } });
+  const managed = { async plan(req, options) { fs.renameSync(w.cacheRoot, away); fs.symlinkSync(empty, w.cacheRoot); return managedPort.plan(req, options); }, apply: managedPort.apply };
+  await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: noFetch(), signal: signal(), managed }), e => code('SKILLS_STATE_UNSAFE')(e) && /the folder cache is a link/.test(e.message));
+});
+const noFetch = () => ({ async npm() { throw new Error('TEST_NO_FETCH'); }, async git() { throw new Error('TEST_NO_FETCH'); } });
+
+test('L-a. the delete step yields between files: the lock answers, and an abort leaves the renamed leftover and says so', async t => {
+  const w = world(t); stateFolders(w); const op = folder(path.join(w.cacheRoot, 'op-' + '4'.repeat(32)));
+  for (let i = 0; i < 2000; i++) fs.writeFileSync(path.join(op, `f${i}.md`), 'x\n');
+  const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input), controller = new AbortController();
+  const { lockHolder, cacheLockSlot } = await import('../../../dist/packages/project-context/src/index.js');
+  let holder = '';
+  const hooks = { heldCheck: (index, step) => { if (step === 1) setTimeout(async () => { holder = await lockHolder(cacheLockSlot(w.cacheRoot), 1000); controller.abort(); }, 0); } };
+  await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, controller.signal), e => {
+    const left = fs.readdirSync(w.cacheRoot); assert.equal(left.length, 1); assert.match(left[0], /^\.prune-op-4{32}-[a-f0-9]{8}$/);
+    assert.equal(e.name, 'AbortError'); assert.equal(e.deleted, 0); assert.equal(e.leftover, path.join(w.cacheRoot, left[0])); return true;
+  });
+  assert.equal(holder, 'this', 'the lock answered while one entry was being deleted');
+});
+
+test('L-b. the plan counts the names that are not listed', async t => {
+  const w = world(t); await seed(w, npmPackage('alpha')); fs.writeFileSync(path.join(w.cacheRoot, 'stray'), 'x\n', { mode: 0o600 });
+  assert.equal((await planCachePrune({ ...w.input(), selectors: sel({ all: true }) })).unlisted, 1);
+});
+
+test('L-c. a fault with no code passes through as itself', async t => {
+  const w = world(t); await seed(w, npmPackage('alpha'));
+  const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input);
+  await assert.rejects(applyCachePrune({ ...input, hooks: { heldCheck: () => { throw new TypeError('a fault of the code'); } } }, plan.revision, signal()), TypeError);
+});
+
+test('L-d and L-e. the cache folder removed during a prune is a lost cache lock, in cache lock words', async t => {
+  const w = world(t); await seed(w, npmPackage('alpha')); await seed(w, npmPackage('beta'));
+  const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input), away = path.join(w.base, 'moved');
+  const hooks = { afterRemove: index => { if (index === 0) fs.renameSync(w.cacheRoot, away); } };
+  await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, signal()), e => code('PROJECT_LOCK_UNAVAILABLE')(e) && e.message === `Bowerloom lost the skills cache lock. Try again. Deleted 1 of 2 entries. It stopped at cache ${plan.picked[1].id.slice(0, 8)}.`);
+  await assert.rejects(withCacheLock(w.cacheRoot, signal(), async () => 0), e => code('PROJECT_LOCK_UNAVAILABLE')(e) && e.message === 'Bowerloom could not take the skills cache lock. Try again.');
+});
+
+test('M-B. a skills cache folder replaced by another private folder during phase B refuses SKILLS_STATE_UNSAFE', async t => {
+  const w = world(t), a = npmPackage('alpha'); projectPins(w, [a.entry]); await seed(w, a);
+  const syncInput = () => ({ project: w.project(), stateRoot: w.stateRoot, team: null, offline: false, home: w.home });
+  const plan = await planSync(syncInput());
+  const { managedPort } = await import('../../../dist/packages/project-sync/src/deps.js');
+  const managed = { async plan(req, options) { fs.renameSync(w.cacheRoot, path.join(w.base, 'cache-away')); folder(w.cacheRoot); return managedPort.plan(req, options); }, apply: managedPort.apply };
+  await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: noFetch(), signal: signal(), managed }), e => code('SKILLS_STATE_UNSAFE')(e) && e.message.endsWith(' The skills cache folder was replaced during the run.'));
 });

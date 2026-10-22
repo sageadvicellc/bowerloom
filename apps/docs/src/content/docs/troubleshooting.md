@@ -104,7 +104,7 @@ Bowerloom keeps the skill bytes it downloads in a cache on this machine, and it 
 2. Run `bowerloom cache prune --unreferenced` in the project. It plans to delete the entries that your store and this project do not list. Other projects on this machine are not checked. A project that needs a deleted pin fetches it again at its next sync.
 3. Read the plan, then run the same command with `--approve <revision>`.
 
-If a fetch stopped part way, `bowerloom cache prune --partial` deletes what it left. If `bowerloom skills sync` refuses with `STALE_APPROVAL` because the cached pin of a skill was deleted after the fetch, run `bowerloom skills sync` again. It fetches the pin again. [CLI reference](/docs/cli/#cache) lists every selector.
+If a fetch stopped part way, `bowerloom cache prune --partial` deletes what it left. If `cache prune` cannot delete a folder, run the `chmod` line that it prints, then run it again. If `bowerloom skills sync` refuses with `STALE_APPROVAL` because the cached pin of a skill was deleted after the fetch, run `bowerloom skills sync` again. It fetches the pin again. [CLI reference](/docs/cli/#cache) lists every selector.
 
 ## Existing setup
 

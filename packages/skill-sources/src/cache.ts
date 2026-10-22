@@ -489,13 +489,30 @@ export async function readAcquiredSkillCache(value: unknown, options: { signal: 
 
 /** Spec 09, 4.4: the names a cache entry or a leftover can have. Anything else is not removed. */
 const ENTRY_NAMES = [/^op-[a-f0-9]{32}$/, /^(?:skill|prompt|team)-[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{64}$/, /^\.tmp-.{1,200}$/, /^\.prune-.{1,200}$/];
+/** The private folder hint of a leftover tree: the first folder its owner cannot fully use, or null (round 3, M-A). */
+export function leftoverBlocked(path: string, limit = 4096): string | null {
+  let seen = 0;
+  const visit = (p: string): string | null => {
+    if (++seen > limit) return null;
+    let s: fs.Stats; try { s = fs.lstatSync(p); } catch { return null; }
+    if (!s.isDirectory()) return null;
+    if ((s.mode & 0o700) !== 0o700) return p;
+    let names: string[]; try { names = fs.readdirSync(p); } catch { return p; }
+    for (const n of names) { const hit = visit(join(p, n)); if (hit !== null) return hit; }
+    return null;
+  };
+  return visit(path);
+}
+/** The command that clears a leftover name the delete refuses: `chmod 700` for a folder, `rm` for a file or a link (round 3, M-C). */
+export function leftoverFix(path: string): string { try { const s = fs.lstatSync(path); return s.isDirectory() && !s.isSymbolicLink() ? `chmod 700 ${path}` : `rm ${path}`; } catch { return `rm ${path}`; } }
 const PRUNE_FAILED = 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.';
 export type CachePlace = { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null };
 /** A refusal of removeCacheEntry: why it stopped, in words, and the system code, if any, as the cause. */
 export class CachePruneRefusal extends DefinitionError {
-  constructor(readonly where: string, readonly reason: string, cause?: string) {
+  constructor(readonly where: string, readonly reason: string, cause?: string, readonly next?: string) {
     super('CACHE_PRUNE_FAILED', `${PRUNE_FAILED} Could not delete ${where}${reason.startsWith('at the ') ? ' ' : ': '}${reason}.`);
     if (cause !== undefined) Object.defineProperty(this, 'cause', { value: cause, enumerable: false });
+    if (next === undefined) Object.defineProperty(this, 'next', { value: undefined, enumerable: false });
   }
 }
 const errnoOf = (error: unknown): string => { const code = (error as { code?: unknown } | null)?.code; return typeof code === 'string' ? code : (error as { name?: unknown } | null)?.name === undefined ? 'Error' : String((error as { name: unknown }).name); };
@@ -543,17 +560,34 @@ function problemOf(stateRoot: string, place: CachePlace, name: string): { reason
 export function cacheEntryProblem(stateRoot: string, place: CachePlace, name: string): string | null { return problemOf(stateRoot, place, name)?.reason ?? null; }
 /** Step 0a alone: why the root of a place cannot be used, as words, or null. */
 export function cacheRootProblem(stateRoot: string, place: CachePlace): string | null { return rootProblem(stateRoot, place)?.reason ?? null; }
+/** An abort during the delete step: the renamed leftover is partly deleted. `cache prune --partial` finishes it. */
+export interface CacheDeleteStopped extends Error { leftover: string }
+/**
+ * Round 3 of the reviews of PR 99 (M-A and L-a): deletes a renamed entry one file at a time, never following a link, and
+ * awaits each step, so a signal and the cache lock's listener run between two files. A failure names the inner path.
+ */
+async function removeTree(path: string, signal: AbortSignal | undefined, leftover: string): Promise<void> {
+  if (signal?.aborted) throw Object.assign(new Error(`The delete stopped. ${leftover} is partly deleted.`), { name: 'AbortError', leftover });
+  const s = await fs.promises.lstat(path);
+  if (s.isDirectory()) {
+    for (const name of await fs.promises.readdir(path)) await removeTree(join(path, name), signal, leftover);
+    await fs.promises.rmdir(path);
+  } else await fs.promises.unlink(path);
+}
+/** A lost lock is reported as itself, before any refusal of the entry (round 3, L-d). */
+function lockFirst(held: { assertHeld(): void }, refusal: CachePruneRefusal): never { held.assertHeld(); throw refusal; }
 /**
  * Spec 09, 4.4: deletes one entry of the skills cache, the store cache, or a per-project cache of an earlier beta. The
  * caller holds the cache lock. The entry is first renamed to `.prune-<name>-<8 hex>`, so a crash leaves a leftover that
  * `cache prune --partial` finds, then removed without following any link. The contents are never read. A refusal is a
- * CachePruneRefusal (CACHE_PRUNE_FAILED) that names the folder and the step; a lost lock passes through as itself.
+ * CachePruneRefusal (CACHE_PRUNE_FAILED) that names the folder and the step; a lost lock passes through as itself. An
+ * abort during the delete step stops between two files, with the leftover named.
  */
-export function removeCacheEntry(stateRoot: string, place: CachePlace, name: string, held: { assertHeld(): void }): void {
+export async function removeCacheEntry(stateRoot: string, place: CachePlace, name: string, held: { assertHeld(): void }, options: { signal?: AbortSignal } = {}): Promise<void> {
   const where = whereOf(place, name);
   // Steps 0 and 0a: the name, then the root.
   if (!nameOk(name)) throw new CachePruneRefusal(where, 'the name is not a cache entry name');
-  const root0 = rootProblem(stateRoot, place); if (root0) throw new CachePruneRefusal(where, root0.reason, root0.cause);
+  const root0 = rootProblem(stateRoot, place); if (root0) lockFirst(held, new CachePruneRefusal(where, root0.reason, root0.cause));
   const root = join(stateRoot, placeRoot(place)!);
   // Steps 1 and 2: the lock, then the entry itself: a real private folder, never a link.
   held.assertHeld();
@@ -563,11 +597,16 @@ export function removeCacheEntry(stateRoot: string, place: CachePlace, name: str
   if (!name.startsWith('.prune-')) {
     doomed = join(root, `.prune-${name}-${randomBytes(4).toString('hex')}`);
     if (fs.existsSync(doomed) || isLink(doomed)) throw new CachePruneRefusal(where, 'at the rename step (EEXIST)', 'EEXIST');
-    try { fs.renameSync(entry, doomed); syncDir(root); } catch (error) { throw new CachePruneRefusal(where, `at the rename step (${errnoOf(error)})`, errnoOf(error)); }
+    try { fs.renameSync(entry, doomed); syncDir(root); } catch (error) { lockFirst(held, new CachePruneRefusal(where, `at the rename step (${errnoOf(error)})`, errnoOf(error))); }
   }
   // Step 4: the lock again, before anything is deleted.
   held.assertHeld();
-  // Step 5: rmSync unlinks a link inside the entry as a name and never follows it.
-  try { fs.rmSync(doomed, { recursive: true, force: false }); syncDir(root); } catch (error) { throw new CachePruneRefusal(where, `at the delete step (${errnoOf(error)})`, errnoOf(error)); }
+  // Step 5: one file at a time; a link inside the entry is unlinked as a name and never followed.
+  try { await removeTree(doomed, options.signal, doomed); syncDir(root); }
+  catch (error) {
+    if ((error as { name?: unknown }).name === 'AbortError') throw error;
+    const code = errnoOf(error), at = (error as { path?: unknown }).path;
+    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, `chmod -R u+rwx ${doomed}, then run the command again without --approve`));
+  }
 }
 function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }

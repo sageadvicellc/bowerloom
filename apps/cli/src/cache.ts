@@ -57,15 +57,17 @@ function listLine(e: CacheEntry): string {
   const note = e.active ? `  ${e.stale ? OLD_LOCK : IN_USE}` : '';
   return `  ${head}  ${e.status.padEnd(9)}  ${what(e)}${e.status === 'completed' ? sized(e.files, e.bytes) : sized(null, null)}${e.scope === 'project-legacy' ? '' : tags(e.references)}${note}`;
 }
+/** An entry line, and a Next line for a leftover that cannot be deleted as it is (round 3, M-A). */
+const listLines = (e: CacheEntry): string[] => [listLine(e), ...(e.next ? [`    Next: ${e.next}`] : [])];
 /** `cache list` in words (3.3, with review M3 and L1 of PR 99). */
 export function renderCacheList(list: CacheList): string {
   if (list.entries.length === 0 && list.unlisted === 0) return 'The cache is empty.\n';
   const lines: string[] = [];
   const of = (scope: CacheEntry['scope']) => list.entries.filter(e => e.scope === scope);
   const machine = of('machine'), store = of('store'), legacy = of('project-legacy');
-  if (machine.length) lines.push(`Skills cache: ${join(list.stateRoot, 'cache')}`, ...machine.map(listLine));
-  if (store.length) lines.push(`Store cache: ${join(list.stateRoot, 'store-cache')}`, ...store.map(listLine));
-  if (legacy.length) lines.push(`Earlier per-project caches: ${legacy.length} entries in ${new Set(legacy.map(e => e.projectId)).size} projects`, ...legacy.map(listLine));
+  if (machine.length) lines.push(`Skills cache: ${join(list.stateRoot, 'cache')}`, ...machine.flatMap(listLines));
+  if (store.length) lines.push(`Store cache: ${join(list.stateRoot, 'store-cache')}`, ...store.flatMap(listLines));
+  if (legacy.length) lines.push(`Earlier per-project caches: ${legacy.length} entries in ${new Set(legacy.map(e => e.projectId)).size} projects`, ...legacy.flatMap(listLines));
   if (list.entries.length === 0) lines.push('The cache holds no entries.');
   else {
     const unknown = unknownCount(list.entries), n = list.totals.entries;
@@ -73,7 +75,7 @@ export function renderCacheList(list: CacheList): string {
   }
   if (list.unlisted > 0) {
     lines.push(`Not listed: ${list.unlisted} names that cache prune never deletes.`);
-    for (const u of list.unlistedNames.slice(0, UNLISTED_SHOWN)) lines.push(`  ${u.place === 'legacy' ? `legacy ${u.name}` : `${u.place}/${u.name}`}: ${u.reason}`);
+    for (const u of list.unlistedNames.slice(0, UNLISTED_SHOWN)) lines.push(`  ${u.place === 'legacy' ? `legacy ${u.name}` : `${u.place}/${u.name}`}: ${u.reason}${u.next ? `. Next: ${u.next}` : ''}`);
     if (list.unlisted > UNLISTED_SHOWN) lines.push(`  and ${list.unlisted - UNLISTED_SHOWN} more. bowerloom cache list --json lists up to 256 of them.`);
   }
   if (list.truncated) lines.push(`More entries exist. Only the first ${CACHE_LIST_LIMIT} are shown.`);
@@ -86,11 +88,14 @@ function deleteLine(p: PickedEntry): string {
   const body = p.status === 'completed' ? `${what(p)}${sized(p.files, p.bytes)}` : what(p);
   return `  delete  ${body}  ${place(p)} ${id8(p)}${tags(p.references)}${p.stale ? `  ${OLD_LOCK}` : ''}`;
 }
+/** Round 3, L-b: the names a prune never touches. */
+const unlistedLine = (n: number): string => `${n} names are not listed and are never pruned. bowerloom cache list shows why.`;
 /** The notes that every prune path prints when they apply (review M3 and L4 of PR 99). */
 function pruneNotes(plan: CachePrunePlan): string[] {
   return [
     ...(plan.selectors.unreferenced && plan.unreadable.length ? [notChecked(plan.unreadable, true)] : []),
     ...(plan.truncated ? [`More entries exist. Only the first ${CACHE_LIST_LIMIT} are listed. Run the command again after this one.`] : []),
+    ...(plan.unlisted ? [unlistedLine(plan.unlisted)] : []),
   ];
 }
 /** The prune plan in words (3.4). */
@@ -115,11 +120,12 @@ export function renderNothingToPrune(plan: CachePrunePlan): string {
 export function renderPruneResult(result: CachePruneResult, plan: CachePrunePlan): string {
   const unknown = unknownCount(plan.picked), n = result.deleted.length;
   const size = unknown === 0 ? `, about ${humanBytes(plan.freed)}` : unknown === plan.picked.length ? ' of unknown size' : `, about ${humanBytes(plan.freed)}, plus ${unknown} of unknown size`;
-  return `Deleted ${n} entries${size}.\n${result.skipped.length ? `Skipped ${result.skipped.length} entries that another command is using.\n` : ''}`;
+  return `Deleted ${n} entries${size}.\n${result.skipped.length ? `Skipped ${result.skipped.length} entries that another command is using.\n` : ''}${plan.unlisted ? `${unlistedLine(plan.unlisted)}\n` : ''}`;
 }
 /** Review H1 of PR 99: the words of a prune that Ctrl-C stopped between two deletes. */
-export function renderStopped(at: { deleted: number; of: number; stoppedAt: string }): string {
-  return plainText(`Stopped. Deleted ${at.deleted} of ${at.of} entries. It stopped at ${at.stoppedAt}. Run bowerloom cache list to see what is left.\n`, true);
+export function renderStopped(at: { deleted: number; of: number; stoppedAt: string; leftover?: string | null }): string {
+  const inside = at.leftover ? ` Its folder ${at.leftover} is partly deleted, and bowerloom cache prune --partial finishes it.` : '';
+  return plainText(`Stopped. Deleted ${at.deleted} of ${at.of} entries. It stopped at ${at.stoppedAt}.${inside} Run bowerloom cache list to see what is left.\n`, true);
 }
 
 /** Decision E (tech lead): these discovery refusals mean that the folder is no project, not that the project is unknown. */
@@ -188,7 +194,7 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
   } catch (error) {
     if ((error as { name?: unknown } | null)?.name !== 'AbortError') throw error;
     const at = error as Partial<PruneInterrupt>;
-    const stopped = typeof at.deleted === 'number' ? { deleted: at.deleted, of: at.of!, stoppedAt: at.stoppedAt! } : { deleted: 0, of: approved.picked.length, stoppedAt: null };
+    const stopped = typeof at.deleted === 'number' ? { deleted: at.deleted, of: at.of!, stoppedAt: at.stoppedAt!, leftover: at.leftover ?? null } : { deleted: 0, of: approved.picked.length, stoppedAt: null, leftover: null };
     // Review L7 of PR 99: exit 130 keeps --json.
     write(flags.json ? newCommandJson({ stopped: true, ...stopped }) : stopped.stoppedAt === null ? 'Stopped before anything was deleted.\n' : renderStopped(stopped as { deleted: number; of: number; stoppedAt: string }));
     return 130;

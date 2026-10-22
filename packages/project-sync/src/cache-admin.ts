@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { canonicalJson, DefinitionError } from '../../contracts/src/index.js';
-import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, removeCacheEntry } from '../../skill-sources/src/cache.js';
+import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, leftoverBlocked, leftoverFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
 import type { CacheInspection } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { inspectStore, projectRefusal, storeRootOf, withCacheLock } from '../../project-context/src/index.js';
@@ -52,10 +52,12 @@ export interface CacheEntry {
   files: number | null; bytes: number | null; key: string | null; references: { store: boolean | null; project: boolean | null };
   /** Review L3 of PR 99: why a partial entry is partial. Null for a completed one. */
   partialReason: PartialReason | null;
+  /** Round 3 of the reviews of PR 99 (M-A): the command that lets a stuck leftover be deleted, or null. */
+  next: string | null;
 }
 export type PartialReason = 'unfinished-fetch' | 'unreadable' | 'changed' | 'prune-leftover' | 'write-leftover';
 /** Review H2 of PR 99: a name in a cache folder that is not an entry, and why. */
-export interface UnlistedName { place: 'cache' | 'store-cache' | 'legacy'; name: string; reason: string }
+export interface UnlistedName { place: 'cache' | 'store-cache' | 'legacy'; name: string; reason: string; next: string | null }
 /** Review M1 of PR 99: why a source could not be read: its refusal code, and the file or item, when one is known. */
 export interface Unreadable { source: SourceName; code: string; item: string | null }
 export interface CacheList {
@@ -85,6 +87,8 @@ export interface CachePrunePlan {
   truncated: boolean;
   unreadableSources: SourceName[];
   unreadable: Unreadable[];
+  /** Round 3, L-b: names in the cache folders that are not entries and are never pruned. */
+  unlisted: number;
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
 export interface CachePruneResult {
@@ -173,14 +177,15 @@ async function operationEntry(input: CacheAdminInput, root: string, scope: Cache
       kind: receipt ? (receipt.source as { kind: 'npm' | 'git' }).kind : null, label: receipt ? receiptLabel(inspection!) : null,
       skillName: receipt ? receipt.skill.name : null, files: receipt ? receipt.inventory.length : null,
       bytes: receipt ? receipt.inventory.reduce((n, f) => n + f.bytes, 0) : null, key: null, references: { store: null, project: null },
-      partialReason: completed ? null : inspection === null ? 'unreadable' : 'unfinished-fetch',
+      partialReason: completed ? null : inspection === null ? 'unreadable' : 'unfinished-fetch', next: null,
     },
     bound: { snapshotRevision: inspection?.snapshotRevision ?? null, receiptRevision: receipt?.revision ?? null, contentHash: null },
   };
 }
 /** A `.prune-*` or `.tmp-*` leftover: partial, never active, nothing bound, its name as its id. */
-function leftoverEntry(scope: CacheScope, projectId: string | null, name: string): Listed {
-  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover' }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
+function leftoverEntry(scope: CacheScope, projectId: string | null, name: string, root: string): Listed {
+  const blocked = name.startsWith('.prune-') && leftoverBlocked(join(root, name)) !== null;
+  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover', next: blocked ? `chmod -R u+rwx ${join(root, name)}` : null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
 }
 /** One `<kind>-<id>-<hash>` folder of the store cache (3.3, step 3). */
 function storeEntry(root: string, name: string, kind: 'skill' | 'prompt' | 'team', id: string, hash: string): Listed | null {
@@ -194,7 +199,7 @@ function storeEntry(root: string, name: string, kind: 'skill' | 'prompt' | 'team
     // A hash mismatch is a changed folder: partial, with its label. Any other refusal is a guard failure: no label.
     if ((error as { code?: unknown } | null)?.code !== 'LOCK_HASH_MISMATCH') { label = null; partialReason = 'unreadable'; }
   }
-  return { entry: { scope: 'store', id: hash, projectId: null, status, name, active: false, stale: false, kind: 'store-git', label, skillName: null, files, bytes, key: null, references: { store: null, project: null }, partialReason }, bound: { snapshotRevision: null, receiptRevision: null, contentHash } };
+  return { entry: { scope: 'store', id: hash, projectId: null, status, name, active: false, stale: false, kind: 'store-git', label, skillName: null, files, bytes, key: null, references: { store: null, project: null }, partialReason, next: null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash } };
 }
 
 /**
@@ -207,17 +212,22 @@ async function scan(input: CacheAdminInput): Promise<Scan> {
   const stateRoot = input.stateRoot;
   if (!exists(stateRoot)) return out;
   const full = (): boolean => { if (out.entries.length >= CACHE_LIST_LIMIT) { out.truncated = true; return true; } return false; };
-  const unlist = (place: UnlistedName['place'], name: string, reason: string): void => { out.unlisted++; if (out.unlistedNames.length < UNLISTED_LIMIT) out.unlistedNames.push({ place, name, reason }); };
+  // Round 3, M-C: a leftover name that the delete refuses gets the command that clears it.
+  const unlist = (place: UnlistedName['place'], name: string, reason: string, path: string): void => {
+    out.unlisted++;
+    const base = name.slice(name.lastIndexOf('/') + 1), next = reason !== NOT_A_NAME && (base.startsWith('.tmp-') || base.startsWith('.prune-')) ? leftoverFix(path) : null;
+    if (out.unlistedNames.length < UNLISTED_LIMIT) out.unlistedNames.push({ place, name, reason, next });
+  };
   /** The skills cache or one legacy cache: `op-` operations and `.prune-` leftovers. */
   const operations = async (root: string, scope: CacheScope, projectId: string | null): Promise<boolean> => {
     const place = scope === 'machine' ? 'cache' as const : 'legacy' as const, shown = (name: string): string => projectId === null ? name : `${projectId}/${name}`;
     for (const name of sortedNames(root)) {
       const op = OP.exec(name);
-      if (op === null && !PRUNE_LEFTOVER.test(name)) { unlist(place, shown(name), NOT_A_NAME); continue; }
+      if (op === null && !PRUNE_LEFTOVER.test(name)) { unlist(place, shown(name), NOT_A_NAME, join(root, name)); continue; }
       const problem = cacheEntryProblem(stateRoot, { scope, projectId }, name);
-      if (problem !== null) { unlist(place, shown(name), problem); continue; }
+      if (problem !== null) { unlist(place, shown(name), problem, join(root, name)); continue; }
       if (full()) return false;
-      out.entries.push(op ? await operationEntry(input, root, scope, projectId, name, op[1]!) : leftoverEntry(scope, projectId, name));
+      out.entries.push(op ? await operationEntry(input, root, scope, projectId, name, op[1]!) : leftoverEntry(scope, projectId, name, root));
     }
     return true;
   };
@@ -227,11 +237,11 @@ async function scan(input: CacheAdminInput): Promise<Scan> {
   if (exists(storeRoot)) {
     for (const name of sortedNames(storeRoot)) {
       const m = STORE_ENTRY.exec(name);
-      if (m === null && !PRUNE_LEFTOVER.test(name) && !TMP_LEFTOVER.test(name)) { unlist('store-cache', name, NOT_A_NAME); continue; }
+      if (m === null && !PRUNE_LEFTOVER.test(name) && !TMP_LEFTOVER.test(name)) { unlist('store-cache', name, NOT_A_NAME, join(storeRoot, name)); continue; }
       const problem = cacheEntryProblem(stateRoot, { scope: 'store', projectId: null }, name);
-      if (problem !== null) { unlist('store-cache', name, problem); continue; }
+      if (problem !== null) { unlist('store-cache', name, problem, join(storeRoot, name)); continue; }
       if (full()) return out;
-      const listed = m ? storeEntry(storeRoot, name, m[1] as 'skill' | 'prompt' | 'team', m[2]!, m[3]!) : leftoverEntry('store', null, name);
+      const listed = m ? storeEntry(storeRoot, name, m[1] as 'skill' | 'prompt' | 'team', m[2]!, m[3]!) : leftoverEntry('store', null, name, storeRoot);
       if (listed !== null) out.entries.push(listed);
     }
   }
@@ -242,7 +252,7 @@ async function scan(input: CacheAdminInput): Promise<Scan> {
     // A project folder with no cache is not a legacy cache. Anything else is checked as removeCacheEntry checks it (step 0a).
     if (s.isDirectory() && !s.isSymbolicLink()) { try { fs.lstatSync(root); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; } }
     const problem = cacheRootProblem(stateRoot, { scope: 'project-legacy', projectId });
-    if (problem !== null) { unlist('legacy', projectId, problem); continue; }
+    if (problem !== null) { unlist('legacy', projectId, problem, folder); continue; }
     if (!await operations(root, 'project-legacy', projectId)) return out;
   }
   return out;
@@ -414,14 +424,16 @@ function planBody(input: CachePruneInput, seen: Observed): Omit<CachePrunePlan, 
     if (busy(found[0]!.entry)) throw syncError('CACHE_ENTRY_BUSY');
     picked.set(placeKey(found[0]!.entry), found[0]!); skipped.delete(placeKey(found[0]!.entry));
   }
-  const order = sortListed([...picked.values()]).map(pickedOf);
+  // Round 3, M-A: a .prune- leftover goes after every other pick, so one that cannot be deleted never blocks the rest.
+  const sorted = sortListed([...picked.values()]), isPrune = (l: Listed): boolean => l.entry.name.startsWith('.prune-');
+  const order = [...sorted.filter(l => !isPrune(l)), ...sorted.filter(isPrune)].map(pickedOf);
   return {
     format: CACHE_PRUNE_PLAN_FORMAT, stateRoot: input.stateRoot,
     selectors: { unreferenced: s.unreferenced, partial: s.partial, legacy: s.legacy, all: s.all, entries: [...s.entries] },
     picked: order,
     skipped: sortListed([...skipped.values()]).map(l => ({ scope: l.entry.scope, id: l.entry.id, projectId: l.entry.projectId, reason: 'active' as const, label: l.entry.label })),
     freed: order.reduce((n, p) => n + (p.bytes ?? 0), 0),
-    projectChecked: seen.sets.projectChecked, truncated: seen.scan.truncated, unreadableSources: [...seen.sets.unreadableSources], unreadable: seen.sets.unreadable.map(u => ({ ...u })),
+    projectChecked: seen.sets.projectChecked, truncated: seen.scan.truncated, unreadableSources: [...seen.sets.unreadableSources], unreadable: seen.sets.unreadable.map(u => ({ ...u })), unlisted: seen.scan.unlisted,
     writesAuthorized: false, executionAuthorized: false,
   };
 }
@@ -448,8 +460,8 @@ function lockFolder(stateRoot: string): string {
   return cacheRoot;
 }
 /** The interrupt of a prune: an AbortError with the count of entries it deleted and the entry it stopped at. */
-export interface PruneInterrupt extends Error { deleted: number; of: number; stoppedAt: string }
-const interrupt = (deleted: number, of: number, stoppedAt: string): PruneInterrupt => Object.assign(new Error(`cache prune stopped. Deleted ${deleted} of ${of} entries. It stopped at ${stoppedAt}.`), { name: 'AbortError', deleted, of, stoppedAt });
+export interface PruneInterrupt extends Error { deleted: number; of: number; stoppedAt: string; leftover: string | null }
+const interrupt = (deleted: number, of: number, stoppedAt: string, leftover: string | null = null): PruneInterrupt => Object.assign(new Error(`cache prune stopped. Deleted ${deleted} of ${of} entries. It stopped at ${stoppedAt}.`), { name: 'AbortError', deleted, of, stoppedAt, leftover });
 const codeOf = (error: unknown): string => { const c = (error as { code?: unknown } | null)?.code, n = (error as { name?: unknown } | null)?.name; return typeof c === 'string' ? c : typeof n === 'string' ? n : 'Error'; };
 const withCause = <E extends Error>(error: E, cause: unknown): E => { if (cause !== undefined) Object.defineProperty(error, 'cause', { value: cause, enumerable: false }); return error; };
 
@@ -494,13 +506,20 @@ export async function applyCachePrune(input: CachePruneInput, revision: string, 
       if (signal.aborted) throw interrupt(deleted.length, of, lineName(p));
       let step: 0 | 1 = 0;
       const guard = { assertHeld: (): void => { held.assertHeld(); input.hooks?.heldCheck?.(index, step); step = 1; } };
-      try { removeCacheEntry(input.stateRoot, { scope: p.scope, projectId: p.projectId }, p.name, guard); }
+      try { await removeCacheEntry(input.stateRoot, { scope: p.scope, projectId: p.projectId }, p.name, guard, { signal }); }
       catch (error) {
+        // L-a: an abort inside one entry leaves its renamed folder, and says so.
+        if ((error as { name?: unknown } | null)?.name === 'AbortError') throw interrupt(deleted.length, of, lineName(p), (error as { leftover?: string }).leftover ?? null);
         const count = `Deleted ${deleted.length} of ${of} entries. It stopped at ${lineName(p)}.`;
         if (codeOf(error) === 'PROJECT_LOCK_UNAVAILABLE') throw withCause(new DefinitionError('PROJECT_LOCK_UNAVAILABLE', `${(error as Error).message} ${count}`), error);
-        const why = error instanceof CachePruneRefusal ? `Could not delete ${error.where}${error.reason.startsWith('at the ') ? ' ' : ': '}${error.reason}.`
-          : `Could not delete ${relPath(p)} at the ${step === 0 ? 'check' : 'delete'} step (${codeOf(error)}).`;
-        throw withCause(syncError('CACHE_PRUNE_FAILED', `${why} ${count}`), error instanceof CachePruneRefusal ? error.cause : codeOf(error));
+        if (error instanceof CachePruneRefusal) {
+          const refusal = withCause(syncError('CACHE_PRUNE_FAILED', `Could not delete ${error.where}${error.reason.startsWith('at the ') ? ' ' : ': '}${error.reason}. ${count}`), error.cause);
+          throw error.next === undefined ? refusal : Object.assign(refusal, { next: error.next });
+        }
+        // L-c: a fault with no code is the code's own fault, and passes through as itself.
+        const code = (error as { code?: unknown } | null)?.code;
+        if (typeof code !== 'string') throw error;
+        throw withCause(syncError('CACHE_PRUNE_FAILED', `Could not delete ${relPath(p)} at the ${step === 0 ? 'check' : 'delete'} step (${code}). ${count}`), code);
       }
       deleted.push({ scope: p.scope, id: p.id, projectId: p.projectId });
       await input.hooks?.afterRemove?.(index);
