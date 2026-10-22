@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 import { world, run, approve, mustApprove, errorCode, errorMessage, project, pushStore, network, NETWORK, shared, EMPTY_CONFIG, STORE_COMMIT } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
+import { renderRefusal } from '../apps/cli/src/human.js';
 
 const CANARY = 'ghp_' + ('ghijklmnopqrstuvwxyz' + 'zyxwvutsrqponmlkjh').slice(0, 36);
 const TOKEN = (value: string): Record<string, string> => ({ BOWERLOOM_GITHUB_TOKEN: value });
@@ -278,4 +279,22 @@ test('S2. skills sync --offline with an invalid variable and an authored item to
   assert.equal(json.plan.network.credentials, null); assert.deepEqual(json.plan.network.hosts, []);
   assert.ok(json.plan.items.some(i => i.id === 'house-style' && i.lockPin !== null && (i.action === 'install' || i.action === 'update')), JSON.stringify(json.plan.items.map(i => [i.id, i.action])));
   assert.deepEqual(logOf(offNet.log), []); clean('offline', text.stdout + text.stderr);
+});
+
+// Round 3 of the review of PR 97: GITHUB_REQUEST_FAILED comes from a pinned third-party skill, which never sends the token,
+// and from a store fetch. Both keep the code, and its next step names the token for the store repository only.
+test('GITHUB_REQUEST_FAILED: a pinned GitHub skill with the variable set and a store fetch without it share one code and a conditional next step', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  const recorded = JSON.parse(readFileSync(join(fixtures, 'github-skills-repo.json'), 'utf8')) as { responses: Record<string, string> };
+  const responses = join(w.base, 'responses'); mkdirSync(responses);
+  const routes: Record<string, string | { status: number; file: null }> = {};
+  Object.entries(recorded.responses).forEach(([url, body], i) => { const file = join(responses, `${i}.json`); writeFileSync(file, Buffer.from(body, 'base64')); routes[url] = file; });
+  routes[`https://api.github.com/repos/synthetic-owner/skills-repo/git/commits/${GIT_COMMIT}`] = { status: 401, file: null };
+  const pinNet = network(w, routes), pinned = run(dir, ['skills', 'add', GIT_SPEC, '--json'], { ...pinNet.env, ...TOKEN(CANARY) }, NETWORK);
+  assert.equal(errorCode(pinned.stderr), 'GITHUB_REQUEST_FAILED');
+  assert.ok(requests(pinNet.log).length > 0 && requests(pinNet.log).every(r => r.authorization === false), 'the pinned skill sent no token');
+  const { mate, dir: copy, routes: storeRoutes } = clone(t), storeNet = network(mate, { ...storeRoutes, ...NPM_ROUTES, [COMMIT_URL]: { status: 401, file: null } });
+  assert.equal(errorCode(approve(copy, ['apply', '--frozen'], storeNet.env, NETWORK).applied.stderr), 'GITHUB_REQUEST_FAILED');
+  const next = renderRefusal('GITHUB_REQUEST_FAILED', 'm.').split('\n').find(l => l.startsWith('Next: '))!;
+  assert.equal(next, 'Next: Run the command again later. If the status is 401 or 403, make sure that the store repository is public. If this is your store repository, set BOWERLOOM_GITHUB_TOKEN.');
 });

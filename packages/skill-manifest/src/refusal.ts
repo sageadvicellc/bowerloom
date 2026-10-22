@@ -28,7 +28,7 @@ const MESSAGES = {
   MANIFEST_WRITE_UNCONFIRMED: 'skills.json was written, but reading it back did not give the planned bytes. Another program may have changed it at the same moment. Check it with bowerloom skills check.',
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   TEAM_NOT_FOUND: 'This project has no team with that id. Run bowerloom ls teams to see the teams.',
-  GITHUB_RATE_LIMITED: 'api.github.com answered 429, or 403 with no requests left.',
+  GITHUB_RATE_LIMITED: 'api.github.com answered 429, or 403 with no requests left or with a message that names a rate limit.',
   GITHUB_REQUEST_FAILED: 'api.github.com refused the request.',
   // Spec 07, section 5.
   GITHUB_TOKEN_INVALID: 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.',
