@@ -172,3 +172,11 @@ test('C4. --explain with --slice for an installed slice the agent does not list 
   const r = run(p.dir, ['context', 'guard', '--agent', 'lead', '--slice', 'other', '--explain', join(p.dir, 'notes/n.md')], p.home);
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'allowed: ' + join(p.dir, 'notes/n.md') + ' is in slice other\n');
 });
+
+test('G10. the guide and the release notes state the 2.1.295 requirement and what older versions do', () => {
+  const docs = (rel: string): string => readFileSync(new URL(`../../apps/docs/src/content/docs/${rel}`, import.meta.url), 'utf8');
+  const guide = docs('guides/context-slices.md'), releases = docs('releases.md');
+  for (const text of [guide, releases]) { assert.match(text, /2\.1\.295/); assert.match(text, /cannot start, crashes, or runs longer than 10 seconds/); }
+  assert.match(guide, /On Claude Code 2\.1\.295 or later, a guard that cannot start, crashes, or runs longer than 10 seconds blocks the call\. Before 2\.1\.295, such a guard lets the call through\./);
+  assert.match(guide, /A hard link outside the root to a file under the root reads that file/); assert.match(releases, /untrusted folder skips it/);
+});

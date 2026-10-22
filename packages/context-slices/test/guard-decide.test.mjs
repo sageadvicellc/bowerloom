@@ -41,7 +41,7 @@ test('4. Read through an outside link to a non-member inside is denied', t => {
   denied(read(f, path.join(f.base, 'outside/ln.md'))); quiet(read(f, path.join(f.base, 'outside/o.md')));
   fs.symlinkSync(f.root, path.join(f.base, 'outside/dirlink')); denied(read(f, path.join(f.base, 'outside/dirlink/b.md'))); quiet(read(f, path.join(f.base, 'outside/dirlink/a.md')));
 });
-test('5. Read of a case alias of a member is silent', { skip: !caseInsensitive }, t => { const f = fixture(t); quiet(read(f, path.join(f.root, 'A.MD'))); denied(read(f, path.join(f.root, 'B.MD'))); });
+test('5. Read of a case alias of a member is silent', { skip: !caseInsensitive && 'this disk is case-sensitive, so A.MD names a different file' }, t => { const f = fixture(t); quiet(read(f, path.join(f.root, 'A.MD'))); denied(read(f, path.join(f.root, 'B.MD'))); });
 test('6. Read of a missing file under a root is denied', t => { const f = fixture(t); denied(read(f, path.join(f.root, 'nope.md'))); denied(read(f, path.join(f.root, 'nope/deeper/none.md'))); });
 test('7. Grep of a covered folder is silent', t => { const f = fixture(t); quiet(grep(f, path.join(f.root, 'cov'))); });
 test('8. Grep of a member file is silent', t => { const f = fixture(t); quiet(grep(f, path.join(f.root, 'a.md'))); denied(grep(f, path.join(f.root, 'b.md'))); });
@@ -142,7 +142,7 @@ test('35. a value with leading white space, or a control or format character, is
   for (const v of [' /etc/hosts', '/etc/hosts ', '/etc/ho' + c(7) + 'sts', '/etc/ho' + c(0x202e) + 'sts', '\n/etc/hosts', '~root/x', '/a/./b']) denied(read(f, v));
   denied(glob(f, ' *.md')); denied(grep(f, '/etc/' + c(0x200b) + 'x'));
 });
-test('36. a path under /System/Volumes/Data that reaches a root is inside the area', { skip: !fs.existsSync('/System/Volumes/Data') }, t => {
+test('36. a path under /System/Volumes/Data that reaches a root is inside the area', { skip: !fs.existsSync('/System/Volumes/Data') && 'this system has no /System/Volumes/Data firmlink' }, t => {
   const f = fixture(t), via = '/System/Volumes/Data' + f.root; if (!fs.existsSync(via)) return t.skip('this volume has no firmlink for the temporary folder');
   denied(read(f, via + '/b.md')); quiet(read(f, via + '/a.md')); denied(grep(f, '/System/Volumes/Data')); denied(grep(f, '/System/Volumes/Data' + f.base));
 });
