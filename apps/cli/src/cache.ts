@@ -123,9 +123,8 @@ export function renderPruneResult(result: CachePruneResult, plan: CachePrunePlan
   return `Deleted ${n} entries${size}.\n${result.skipped.length ? `Skipped ${result.skipped.length} entries that another command is using.\n` : ''}${plan.unlisted ? `${unlistedLine(plan.unlisted)}\n` : ''}`;
 }
 /** Review H1 of PR 99: the words of a prune that Ctrl-C stopped between two deletes. */
-export function renderStopped(at: { deleted: number; of: number; stoppedAt: string; leftover?: string | null }): string {
-  const inside = at.leftover ? ` Its folder ${at.leftover} is partly deleted, and bowerloom cache prune --partial finishes it.` : '';
-  return plainText(`Stopped. Deleted ${at.deleted} of ${at.of} entries. It stopped at ${at.stoppedAt}.${inside} Run bowerloom cache list to see what is left.\n`, true);
+export function renderStopped(at: { deleted: number; of: number; stoppedAt: string }): string {
+  return plainText(`Stopped. Deleted ${at.deleted} of ${at.of} entries. It stopped at ${at.stoppedAt}. Run bowerloom cache list to see what is left.\n`, true);
 }
 
 /** Decision E (tech lead): these discovery refusals mean that the folder is no project, not that the project is unknown. */
@@ -184,7 +183,7 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
     review: renderCachePrune,
     async apply(revision: string) { result = await applyCachePrune(input, revision, controller.signal); return result; },
   };
-  // Ctrl-C stops the prune between two deletes; apply yields before each one, so this listener runs (review H1).
+  // Ctrl-C stops the prune between two entries; apply yields before each one, so this listener runs (review H1).
   const stop = (): void => controller.abort();
   process.once('SIGINT', stop);
   try {
@@ -194,7 +193,7 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
   } catch (error) {
     if ((error as { name?: unknown } | null)?.name !== 'AbortError') throw error;
     const at = error as Partial<PruneInterrupt>;
-    const stopped = typeof at.deleted === 'number' ? { deleted: at.deleted, of: at.of!, stoppedAt: at.stoppedAt!, leftover: at.leftover ?? null } : { deleted: 0, of: approved.picked.length, stoppedAt: null, leftover: null };
+    const stopped = typeof at.deleted === 'number' ? { deleted: at.deleted, of: at.of!, stoppedAt: at.stoppedAt! } : { deleted: 0, of: approved.picked.length, stoppedAt: null };
     // Review L7 of PR 99: exit 130 keeps --json.
     write(flags.json ? newCommandJson({ stopped: true, ...stopped }) : stopped.stoppedAt === null ? 'Stopped before anything was deleted.\n' : renderStopped(stopped as { deleted: number; of: number; stoppedAt: string }));
     return 130;

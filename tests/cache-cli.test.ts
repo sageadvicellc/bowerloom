@@ -13,7 +13,7 @@ import type { World } from './support/config-cli.js';
 import { TOPICS } from '../apps/cli/src/human.js';
 import { renderCacheList, renderCachePrune, renderNothingToPrune, renderPruneResult, renderStopped } from '../apps/cli/src/cache.js';
 import { cacheLockSlot, lockHolder } from '../packages/project-context/src/index.js';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { cli, baseEnv } from './support/config-cli.js';
 import type { CacheList, CachePrunePlan, PickedEntry } from '../packages/project-sync/src/index.js';
 import { readInstalledRelease } from '../apps/cli/src/release.js';
@@ -218,7 +218,7 @@ test('H1. Ctrl-C stops a long prune between two deletes with exit 130, and the l
   const w = world(t), { result, n, left, holder } = await interrupted(w, false);
   assert.equal(holder, 'this', 'the cache lock answered during the prune');
   assert.equal(result.status, 130, result.stderr);
-  const m = /^Stopped\. Deleted (\d+) of (\d+) entries\. It stopped at cache [a-f0-9]{8}\.(?: Its folder \S+ is partly deleted, and bowerloom cache prune --partial finishes it\.)? Run bowerloom cache list to see what is left\.\n$/.exec(result.stdout);
+  const m = /^Stopped\. Deleted (\d+) of (\d+) entries\. It stopped at cache [a-f0-9]{8}\. Run bowerloom cache list to see what is left\.\n$/.exec(result.stdout);
   assert.ok(m, result.stdout); assert.equal(Number(m![2]), n); assert.ok(Number(m![1]) > 0 && Number(m![1]) < n);
   assert.equal(left, n - Number(m![1]), 'it deleted exactly what it reported');
 });
@@ -306,14 +306,11 @@ test('M-A, M-C and L-b. the words name the fix for a leftover, and count the nam
   assert.equal(renderNothingToPrune(plan({ unlisted: 2 })), '2 names are not listed and are never pruned. bowerloom cache list shows why.\nNothing to prune.\n');
   assert.equal(renderPruneResult({ format: 'bowerloom/cache-prune-result/v1beta1', planRevision: 'f'.repeat(64), deleted: [{ scope: 'machine', id: 'e'.repeat(32), projectId: null }], skipped: [], freed: 10, executionAuthorized: false }, plan({ picked: [one], freed: 10, unlisted: 7 })),
     'Deleted 1 entries, about 10 B.\n7 names are not listed and are never pruned. bowerloom cache list shows why.\n');
-  assert.equal(renderStopped({ deleted: 0, of: 1, stoppedAt: 'cache eeeeeeee', leftover: '/s/cache/.prune-op-e-01234567' }),
-    'Stopped. Deleted 0 of 1 entries. It stopped at cache eeeeeeee. Its folder /s/cache/.prune-op-e-01234567 is partly deleted, and bowerloom cache prune --partial finishes it. Run bowerloom cache list to see what is left.\n');
 });
 
-test('L-a. Ctrl-C stops inside one large entry; the lock answers while it is deleted', async t => {
-  const w = world(t), cache = manyEntries(w, 0), op = join(cache, `op-${'0'.repeat(32)}`);
-  mkdirSync(op, { mode: 0o700 }); chmodSync(op, 0o700);
-  for (let f = 0; f < 20000; f++) writeFileSync(join(op, `f${f}.md`), 'x\n', { mode: 0o600 });
+test('L-a. Ctrl-C stops between two entries; the lock answers while the prune runs', async t => {
+  const w = world(t), n = 400, cache = manyEntries(w, n);
+  for (let k = 0; k < n; k++) for (let f = 8; f < 60; f++) writeFileSync(join(cache, `op-${k.toString(16).padStart(32, '0')}`, `f${f}.md`), 'x\n', { mode: 0o600 });
   const planned = run(w.work, ['cache', 'prune', '--partial', '--json'], w.env); assert.equal(planned.status, 3, planned.stderr);
   const revision = (JSON.parse(planned.stdout) as { revision: string }).revision;
   let holder = '';
@@ -321,15 +318,34 @@ test('L-a. Ctrl-C stops inside one large entry; the lock answers while it is del
     void (async () => {
       for (;;) {
         await new Promise(r => setTimeout(r, 5));
-        const renamed = readdirSync(cache).find(n => n.startsWith('.prune-'));
-        if (renamed && readdirSync(join(cache, renamed)).length < 19900) { holder = await lockHolder(cacheLockSlot(cache), 1000); child.kill('SIGINT'); return; }
+        if (readdirSync(cache).length < n - 10) { holder = await lockHolder(cacheLockSlot(cache), 1000); child.kill('SIGINT'); return; }
       }
     })();
   });
-  assert.equal(holder, 'this', 'the cache lock answered during one entry');
+  assert.equal(holder, 'this', 'the cache lock answered during the prune');
   assert.equal(result.status, 130, result.stderr);
-  assert.match(result.stdout, new RegExp(`^Stopped\\. Deleted 0 of 1 entries\\. It stopped at cache 00000000\\. Its folder ${escape(cache)}/\\.prune-op-0{32}-[a-f0-9]{8} is partly deleted, and bowerloom cache prune --partial finishes it\\. Run bowerloom cache list to see what is left\\.\\n$`));
-  const finish = run(w.work, ['cache', 'prune', '--partial', '--json'], w.env); assert.equal(finish.status, 3);
-  const done = run(w.work, ['cache', 'prune', '--partial', '--approve', (JSON.parse(finish.stdout) as { revision: string }).revision], w.env);
-  assert.equal(done.status, 0, done.stderr); assert.deepEqual(readdirSync(cache), []);
+  const m = /^Stopped\. Deleted (\d+) of (\d+) entries\. It stopped at cache [a-f0-9]{8}\. Run bowerloom cache list to see what is left\.\n$/.exec(result.stdout);
+  assert.ok(m, result.stdout); assert.equal(Number(m![2]), n);
+  const left = readdirSync(cache); assert.equal(left.length, n - Number(m![1]));
+  assert.ok(left.every(name => name.startsWith('op-') && readdirSync(join(cache, name)).length === 60), 'every entry left is whole, and no .prune- leftover');
+});
+
+
+test('M2 (round 4). each printed next step, run in a shell, changes only its own leftover, with a space in the state folder', t => {
+  const w = world(t), state = join(w.base, 'state dir'), env = { ...w.env, XDG_STATE_HOME: state };
+  const cache = join(state, 'bowerloom', 'cache'), storeCache = join(state, 'bowerloom', 'store-cache');
+  for (const p of [state, join(state, 'bowerloom'), cache, storeCache]) { mkdirSync(p, { mode: 0o700 }); chmodSync(p, 0o700); }
+  const dirs = ['.prune-x ~', '.prune-y $(touch PWNED)', ".prune-q'q"].map(n => { const p = join(cache, n); mkdirSync(p, { mode: 0o750 }); chmodSync(p, 0o750); return p; });
+  const files = ['.tmp-w ;id', '.tmp-z *'].map(n => { const p = join(storeCache, n); writeFileSync(p, 'x\n', { mode: 0o600 }); return p; });
+  const sandbox = join(w.base, 'sandbox'); mkdirSync(sandbox, { mode: 0o700 }); writeFileSync(join(sandbox, 'keep.md'), 'keep\n');
+  const text = run(w.work, ['cache', 'list'], env), json = JSON.parse(run(w.work, ['cache', 'list', '--json'], env).stdout) as { unlistedNames: { next: string | null }[] };
+  const fromText = [...text.stdout.matchAll(/\. Next: (.+)$/gm)].map(m => m[1]!);
+  const nexts = json.unlistedNames.map(u => u.next!).filter(Boolean);
+  assert.equal(nexts.length, 5); assert.deepEqual([...fromText].sort(), [...nexts].sort(), 'the text prints the same commands as the JSON');
+  for (const command of nexts) { const r = spawnSync('/bin/sh', ['-c', command], { cwd: sandbox, encoding: 'utf8' }); assert.equal(r.status, 0, command + r.stderr); }
+  for (const d of dirs) assert.equal(lstatSync(d).mode & 0o7777, 0o700, d);
+  for (const f of files) assert.equal(existsSync(f), false, f);
+  assert.deepEqual(readdirSync(sandbox), ['keep.md'], 'nothing ran outside the leftovers: no PWNED, no glob, no ~');
+  // The leftover folders are private now, so they are entries; the files are gone.
+  assert.match(run(w.work, ['cache', 'list'], env).stdout, /^Skills cache: .*\n(?: {2}\.prune-.*\n)+Total: 3 entries, size unknown\n$/);
 });

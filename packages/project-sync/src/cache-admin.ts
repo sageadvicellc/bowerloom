@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { canonicalJson, DefinitionError } from '../../contracts/src/index.js';
-import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, leftoverBlocked, leftoverFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
+import { CachePruneRefusal, cacheEntryProblem, cacheRootProblem, inspectSkillCache, leftoverBlocked, leftoverFix, leftoverTreeFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
 import type { CacheInspection } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { inspectStore, projectRefusal, storeRootOf, withCacheLock } from '../../project-context/src/index.js';
@@ -185,7 +185,7 @@ async function operationEntry(input: CacheAdminInput, root: string, scope: Cache
 /** A `.prune-*` or `.tmp-*` leftover: partial, never active, nothing bound, its name as its id. */
 function leftoverEntry(scope: CacheScope, projectId: string | null, name: string, root: string): Listed {
   const blocked = name.startsWith('.prune-') && leftoverBlocked(join(root, name)) !== null;
-  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover', next: blocked ? `chmod -R u+rwx ${join(root, name)}` : null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
+  return { entry: { scope, id: name, projectId, status: 'partial', name, active: false, stale: false, kind: null, label: null, skillName: null, files: null, bytes: null, key: null, references: { store: null, project: null }, partialReason: name.startsWith('.prune-') ? 'prune-leftover' : 'write-leftover', next: blocked ? leftoverTreeFix(join(root, name)) : null }, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
 }
 /** One `<kind>-<id>-<hash>` folder of the store cache (3.3, step 3). */
 function storeEntry(root: string, name: string, kind: 'skill' | 'prompt' | 'team', id: string, hash: string): Listed | null {
@@ -460,8 +460,8 @@ function lockFolder(stateRoot: string): string {
   return cacheRoot;
 }
 /** The interrupt of a prune: an AbortError with the count of entries it deleted and the entry it stopped at. */
-export interface PruneInterrupt extends Error { deleted: number; of: number; stoppedAt: string; leftover: string | null }
-const interrupt = (deleted: number, of: number, stoppedAt: string, leftover: string | null = null): PruneInterrupt => Object.assign(new Error(`cache prune stopped. Deleted ${deleted} of ${of} entries. It stopped at ${stoppedAt}.`), { name: 'AbortError', deleted, of, stoppedAt, leftover });
+export interface PruneInterrupt extends Error { deleted: number; of: number; stoppedAt: string }
+const interrupt = (deleted: number, of: number, stoppedAt: string): PruneInterrupt => Object.assign(new Error(`cache prune stopped. Deleted ${deleted} of ${of} entries. It stopped at ${stoppedAt}.`), { name: 'AbortError', deleted, of, stoppedAt });
 const codeOf = (error: unknown): string => { const c = (error as { code?: unknown } | null)?.code, n = (error as { name?: unknown } | null)?.name; return typeof c === 'string' ? c : typeof n === 'string' ? n : 'Error'; };
 const withCause = <E extends Error>(error: E, cause: unknown): E => { if (cause !== undefined) Object.defineProperty(error, 'cause', { value: cause, enumerable: false }); return error; };
 
@@ -506,10 +506,8 @@ export async function applyCachePrune(input: CachePruneInput, revision: string, 
       if (signal.aborted) throw interrupt(deleted.length, of, lineName(p));
       let step: 0 | 1 = 0;
       const guard = { assertHeld: (): void => { held.assertHeld(); input.hooks?.heldCheck?.(index, step); step = 1; } };
-      try { await removeCacheEntry(input.stateRoot, { scope: p.scope, projectId: p.projectId }, p.name, guard, { signal }); }
+      try { await removeCacheEntry(input.stateRoot, { scope: p.scope, projectId: p.projectId }, p.name, guard); }
       catch (error) {
-        // L-a: an abort inside one entry leaves its renamed folder, and says so.
-        if ((error as { name?: unknown } | null)?.name === 'AbortError') throw interrupt(deleted.length, of, lineName(p), (error as { leftover?: string }).leftover ?? null);
         const count = `Deleted ${deleted.length} of ${of} entries. It stopped at ${lineName(p)}.`;
         if (codeOf(error) === 'PROJECT_LOCK_UNAVAILABLE') throw withCause(new DefinitionError('PROJECT_LOCK_UNAVAILABLE', `${(error as Error).message} ${count}`), error);
         if (error instanceof CachePruneRefusal) {

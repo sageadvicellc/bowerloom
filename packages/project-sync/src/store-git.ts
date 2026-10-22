@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { revisionOf } from '../../skill-sources/src/validation.js';
-import { CachePruneRefusal, leftoverFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
+import { CachePruneRefusal, couldNot, leftoverFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { withCacheLock } from '../../project-context/src/index.js';
 import type { HeldCacheLock } from '../../project-context/src/index.js';
@@ -182,7 +182,8 @@ async function writeHeld(held: HeldCacheLock, roots: StoreCacheRoots, kind: Auth
     catch (error) {
       if ((error as { code?: unknown } | null)?.code === 'PROJECT_LOCK_UNAVAILABLE') throw error;
       // Round 3 of the reviews of PR 99, M-C: the words name the leftover and why, and the next step fixes it.
-      if (error instanceof CachePruneRefusal) throw Object.defineProperty(Object.assign(syncError('SKILLS_STATE_UNSAFE', `Could not delete ${error.where}: ${error.reason}.`), { next: leftoverFix(join(roots.storeCacheRoot, name)) }), 'cause', { value: error, enumerable: false });
+      // Round 4, L3: after a delete-step failure the fix names the .prune- folder the leftover became.
+      if (error instanceof CachePruneRefusal) throw Object.defineProperty(Object.assign(syncError('SKILLS_STATE_UNSAFE', couldNot(error.where, error.reason)), { next: error.fix ?? leftoverFix(join(roots.storeCacheRoot, name)) }), 'cause', { value: error, enumerable: false });
       throw unsafe();
     }
   }

@@ -225,7 +225,7 @@ test('11. stray names, links, and folders that removeCacheEntry would refuse cou
   const list = await listCache(w.input());
   assert.equal(list.unlisted, 7); assert.deepEqual(list.entries.map(e => e.id), [ia]);
   assert.deepEqual(list.unlistedNames, [
-    { place: 'cache', name: '.prune-op-' + '8'.repeat(32) + '-01234567', reason: 'its mode is 0750, not 0700', next: `chmod 700 ${leftover}` },
+    { place: 'cache', name: '.prune-op-' + '8'.repeat(32) + '-01234567', reason: 'its mode is 0750, not 0700', next: `chmod -- 700 '${leftover}'` },
     { place: 'cache', name: 'junk', reason: 'the name is not a cache entry name', next: null },
     { place: 'cache', name: 'notes.txt', reason: 'the name is not a cache entry name', next: null },
     { place: 'cache', name: 'op-' + '9'.repeat(32), reason: 'its mode is 0755, not 0700', next: null },
@@ -619,12 +619,12 @@ test('L10. writeStoreCache removes a .tmp- leftover through removeCacheEntry, so
   fs.mkdirSync(bad, { mode: 0o755 }); fs.chmodSync(bad, 0o755);
   // Round 3, M-C: the refusal names the leftover and why, keeps the cause, and gives the command that fixes it.
   await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => code('SKILLS_STATE_UNSAFE')(e)
-    && e.message.endsWith(` Could not delete store-cache/${path.basename(bad)}: its mode is 0755, not 0700.`) && e.next === `chmod 700 ${bad}` && e.cause?.code === 'CACHE_PRUNE_FAILED');
+    && e.message.endsWith(` Could not delete store-cache/${path.basename(bad)}: its mode is 0755, not 0700.`) && e.next === `chmod -- 700 '${bad}'` && e.cause?.code === 'CACHE_PRUNE_FAILED');
   assert.ok(fs.existsSync(bad), 'a leftover that removeCacheEntry refuses stays');
   const file = path.join(w.storeCacheRoot, `.tmp-${key}-01234567`); fs.writeFileSync(file, 'x\n', { mode: 0o600 });
-  await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => code('SKILLS_STATE_UNSAFE')(e) && e.next === `rm ${file}`);
+  await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => code('SKILLS_STATE_UNSAFE')(e) && e.next === `rm -- '${file}'`);
   const list = await listCache(w.input());
-  assert.deepEqual(list.unlistedNames.map(u => [u.name, u.next]), [[path.basename(file), `rm ${file}`], [path.basename(bad), `chmod 700 ${bad}`]], 'cache list shows the same hints');
+  assert.deepEqual(list.unlistedNames.map(u => [u.name, u.next]), [[path.basename(file), `rm -- '${file}'`], [path.basename(bad), `chmod -- 700 '${bad}'`]], 'cache list shows the same hints');
   fs.rmSync(file);
   fs.chmodSync(bad, 0o700);
   await writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal());
@@ -658,10 +658,10 @@ test('M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes
     leftover = path.join(w.cacheRoot, fs.readdirSync(w.cacheRoot).find(n => n.startsWith('.prune-')));
     code('CACHE_PRUNE_FAILED')(e);
     assert.equal(e.message, `Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Could not delete ${leftover} at the delete step (EACCES at ${path.join(leftover, 'locked', 'inside.md')}). Deleted 1 of 3 entries. It stopped at cache 22222222.`);
-    assert.equal(e.next, `chmod -R u+rwx ${leftover}, then run the command again without --approve`); assert.equal(e.cause, 'EACCES'); return true;
+    assert.equal(e.next, `chmod -R -- u+rwx '${leftover}', then run the command again without --approve`); assert.equal(e.cause, 'EACCES'); return true;
   });
   const listed = byName(await listCache(w.input()))[path.basename(leftover)];
-  assert.deepEqual([listed.partialReason, listed.next], ['prune-leftover', `chmod -R u+rwx ${leftover}`]);
+  assert.deepEqual([listed.partialReason, listed.next], ['prune-leftover', `chmod -R -- u+rwx '${leftover}'`]);
   // The rerun puts the leftover last, so the third entry is deleted before the leftover refuses again.
   const again = await planCachePrune(input); assert.deepEqual(again.picked.map(p => p.name), ['op-' + ids[2], path.basename(leftover)]);
   await assert.rejects(applyCachePrune(input, again.revision, signal()), e => code('CACHE_PRUNE_FAILED')(e) && e.message.includes(' Deleted 1 of 2 entries. '));
@@ -692,18 +692,21 @@ test('M-B. a skills cache folder swapped for a link during phase B refuses SKILL
 });
 const noFetch = () => ({ async npm() { throw new Error('TEST_NO_FETCH'); }, async git() { throw new Error('TEST_NO_FETCH'); } });
 
-test('L-a. the delete step yields between files: the lock answers, and an abort leaves the renamed leftover and says so', async t => {
-  const w = world(t); stateFolders(w); const op = folder(path.join(w.cacheRoot, 'op-' + '4'.repeat(32)));
-  for (let i = 0; i < 2000; i++) fs.writeFileSync(path.join(op, `f${i}.md`), 'x\n');
+test('L-a. a prune yields between entries: the lock answers, and an abort stops between two whole entries', async t => {
+  const w = world(t); stateFolders(w);
+  for (let k = 0; k < 8; k++) { const op = folder(path.join(w.cacheRoot, 'op-' + String(k).repeat(32))); for (let i = 0; i < 300; i++) fs.writeFileSync(path.join(op, `f${i}.md`), 'x\n'); }
   const input = { ...w.input(), selectors: sel({ all: true }) }, plan = await planCachePrune(input), controller = new AbortController();
   const { lockHolder, cacheLockSlot } = await import('../../../dist/packages/project-context/src/index.js');
   let holder = '';
-  const hooks = { heldCheck: (index, step) => { if (step === 1) setTimeout(async () => { holder = await lockHolder(cacheLockSlot(w.cacheRoot), 1000); controller.abort(); }, 0); } };
+  // The hook is awaited, as the yield between two entries is: the lock listener must answer while the prune waits there.
+  const hooks = { afterRemove: async index => { if (index === 0) { holder = await lockHolder(cacheLockSlot(w.cacheRoot), 5000); controller.abort(); } } };
   await assert.rejects(applyCachePrune({ ...input, hooks }, plan.revision, controller.signal), e => {
-    const left = fs.readdirSync(w.cacheRoot); assert.equal(left.length, 1); assert.match(left[0], /^\.prune-op-4{32}-[a-f0-9]{8}$/);
-    assert.equal(e.name, 'AbortError'); assert.equal(e.deleted, 0); assert.equal(e.leftover, path.join(w.cacheRoot, left[0])); return true;
+    assert.equal(e.name, 'AbortError'); assert.equal(e.deleted, 1, 'stopped at the next yield, between the first and second entries');
+    const left = fs.readdirSync(w.cacheRoot); assert.equal(left.length, 8 - e.deleted);
+    assert.ok(left.every(n => n.startsWith('op-') && fs.readdirSync(path.join(w.cacheRoot, n)).length === 300), 'every entry left is whole, and no .prune- leftover');
+    assert.equal(e.stoppedAt, `cache ${plan.picked[e.deleted].id.slice(0, 8)}`); return true;
   });
-  assert.equal(holder, 'this', 'the lock answered while one entry was being deleted');
+  assert.equal(holder, 'this', 'the lock answered between two entries');
 });
 
 test('L-b. the plan counts the names that are not listed', async t => {
@@ -732,4 +735,42 @@ test('M-B. a skills cache folder replaced by another private folder during phase
   const { managedPort } = await import('../../../dist/packages/project-sync/src/deps.js');
   const managed = { async plan(req, options) { fs.renameSync(w.cacheRoot, path.join(w.base, 'cache-away')); folder(w.cacheRoot); return managedPort.plan(req, options); }, apply: managedPort.apply };
   await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: noFetch(), signal: signal(), managed }), e => code('SKILLS_STATE_UNSAFE')(e) && e.message.endsWith(' The skills cache folder was replaced during the run.'));
+});
+
+// --- Round 4 of the reviews of PR 99 ---
+
+test('M2 (round 4). every next step quotes its path, whatever the leftover name holds', async t => {
+  const w = world(t); stateFolders(w); folder(w.storeCacheRoot);
+  const dirs = ['.prune-x ~', '.prune-y $(touch PWNED)', ".prune-q'q"].map(n => { const p = path.join(w.cacheRoot, n); fs.mkdirSync(p, { mode: 0o750 }); fs.chmodSync(p, 0o750); return p; });
+  const files = ['.tmp-w ;id', '.tmp-z *'].map(n => { const p = path.join(w.storeCacheRoot, n); fs.writeFileSync(p, 'x\n', { mode: 0o600 }); return p; });
+  const q = p => `'${p.replaceAll("'", "'\\''")}'`;
+  const list = await listCache(w.input());
+  assert.deepEqual(list.unlistedNames.map(u => u.next).sort(), [...dirs.map(p => `chmod -- 700 ${q(p)}`), ...files.map(p => `rm -- ${q(p)}`)].sort());
+});
+
+test('L3 (round 4). a .tmp- leftover that fails at the delete step names the .prune- folder it became', async t => {
+  const w = world(t), rows = SKILL_FILES.map(f => ({ path: f.path, bytes: Buffer.from(f.text) }));
+  const { hash } = (await import('../../../dist/packages/skill-manifest/src/resolve-store-git.js')).authoredRows(rows), key = `skill-house-style-${hash}`;
+  stateFolders(w); folder(w.storeCacheRoot);
+  const tmp = folder(path.join(w.storeCacheRoot, `.tmp-${key}-0123abcd`)), sub = path.join(tmp, 'locked');
+  fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'inside.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  const unlock = () => { for (const n of fs.existsSync(w.storeCacheRoot) ? fs.readdirSync(w.storeCacheRoot) : []) try { fs.chmodSync(path.join(w.storeCacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } };
+  try { await assert.rejects(writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', 'house-style', hash, rows, signal()), e => {
+    const left = path.join(w.storeCacheRoot, fs.readdirSync(w.storeCacheRoot).find(n => n.startsWith('.prune-')));
+    code('SKILLS_STATE_UNSAFE')(e);
+    assert.ok(e.message.includes(` Could not delete ${left} at the delete step (EACCES at `), e.message);
+    assert.equal(e.next, `chmod -R -- u+rwx '${left}'`); return true;
+  }); } finally { unlock(); }
+});
+
+test('L4 (round 4). selectorFor: a linked cache folder, or one the plan did not pin, is unsafe, never stale', async t => {
+  const w = world(t), a = npmPackage('alpha'); projectPins(w, [a.entry]); await seed(w, a);
+  const item = (await planSync({ project: w.project(), stateRoot: w.stateRoot, team: null, offline: false, home: w.home })).items[0];
+  const away = path.join(w.base, 'cache-away'), empty = folder(path.join(w.base, 'empty'));
+  fs.renameSync(w.cacheRoot, away); fs.symlinkSync(empty, w.cacheRoot);
+  const context = { rerun: 'bowerloom skills sync', stateRoot: w.stateRoot, cacheIdentity: identity(away) };
+  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), e => code('SKILLS_STATE_UNSAFE')(e) && /the folder cache is a link/.test(e.message));
+  fs.unlinkSync(w.cacheRoot); fs.renameSync(away, w.cacheRoot);
+  const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal());
+  await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, { ...context, cacheIdentity: null }), e => code('SKILLS_STATE_UNSAFE')(e) && /did not pin/.test(e.message));
 });
