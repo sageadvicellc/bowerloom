@@ -7,7 +7,7 @@
  *    team name becomes the display name of first-team.
  * 2. team, when the name matches neither first-team (by id or display name) nor a created team: `team create`.
  * 3. sync, when .bowerloom/skills.json has skills of the team to install: `skills sync --team <id>`.
- * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
+ * 4. apply, when skills, prompts, or agents of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
  * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD). When a
  *    skill, prompt or team of the team is held or gone, it prints `prepared, N items held` with each item's next
  *    command instead, and never says the copies are in place (review finding 2).
@@ -27,7 +27,7 @@ import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sy
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { readManifestState } from '../../../packages/skill-manifest/src/add.js';
 import type { StartupPlan } from '../../../packages/startup/src/index.js';
-import { renderApplyReview } from './apply.js';
+import { confirmAllowances, renderApplyReview, requireTerminal } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { createChange, renderCreateReview } from './create.js';
@@ -51,6 +51,10 @@ export interface UpContext {
   team: string;
   goal: string | null; name: string | null;
   harnesses: Harness[]; acquirer: Acquirer;
+  /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
+  allow?: readonly string[];
+  /** The terminal, when the person may take an allowance. */
+  terminal?: boolean; io?: ApprovalIo; write?: (text: string) => void;
 }
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
@@ -139,15 +143,16 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
-      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
+      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: p => renderApplyReview(p, ctx.terminal === true),
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
-    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills and prompts of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
+    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, and agents of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
   }
-  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts));
+  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents));
   return { step: 'held', team, change: null, held: uniqueHolds(held) };
 }
 
@@ -170,25 +175,29 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',
-      `  Team: ${teamWords(team)}, with skills and prompts in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills, prompts, and agents in place for ${harnessWords(ctx.harnesses)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);
 }
 
 /** Splits the up command line. Every value flag at most once; anything else is the approval wrapper's. */
-export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[] } {
-  const values = new Map<string, string>(), rest: string[] = [];
+export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[]; allow: string[] } {
+  const values = new Map<string, string>(), rest: string[] = [], allow: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const word = args[i]!;
     if (word === '--team' || word === '--goal' || word === '--name') {
       const value = args[++i];
       if (value === undefined || value === '' || value.startsWith('-') || values.has(word)) usage();
       values.set(word, value!);
+    } else if (word === '--allow-agent') {
+      const value = args[++i];
+      if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/.test(value)) usage();
+      allow.push(value!);
     } else rest.push(word);
   }
   if (args[0] !== 'up' || !values.has('--team')) usage();
-  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest };
+  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest, allow: [...new Set(allow)].sort() };
 }
 
 const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '' });
@@ -212,7 +221,8 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
+  if (parsed.allow.length) requireTerminal(io, approval.json);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.

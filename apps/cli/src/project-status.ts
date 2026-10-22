@@ -12,6 +12,8 @@ import { managedVerifier } from '../../../packages/managed-skills/src/v2-verifie
 import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
 import { newCommandJson, plainText } from './human.js';
 import { planProjectApply } from '../../../packages/project-sync/src/index.js';
+import type { AgentItem } from '../../../packages/project-sync/src/index.js';
+import { noticeWords } from './apply.js';
 import { editedPrompts, missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 
@@ -26,6 +28,14 @@ export function projectOwners(project: ProjectContext, env: NodeJS.ProcessEnv, h
   return owners;
 }
 
+/** Refusals of the apply plan that `status` leaves to its drift lines: a legacy install, an unfinished operation, a pending revise, and an uncached pin. */
+const EXPECTED_PLAN_REFUSALS = ['MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'REVISION_PENDING', 'SKILLS_OFFLINE'];
+/** What an installed copy says, in the words of the status line. A copy that is gone or does not parse is named, with the grant keys a loose scan finds. */
+function installedWords(copy: NonNullable<AgentItem['installed']>): string {
+  if (copy.copy === 'missing') return 'copy missing';
+  if (copy.copy === 'unparsed') return `notices unknown, the copy does not parse${copy.loose.length ? `; it names ${copy.loose.join(', ')}` : ''}`;
+  return copy.notices.length ? copy.notices.map(noticeWords).join(', ') : 'no notices';
+}
 /** True when `.bowerloom/installation-receipt.json` is not there. Any other lstat result counts as present, so the startup inspection reports it. */
 function receiptMissing(project: ProjectContext): boolean {
   try { lstatSync(join(project.dir, '.bowerloom', 'installation-receipt.json')); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false; }
@@ -72,18 +82,29 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // prompt files, and each held or missing item comes with its next step. These reads are best effort: when one
   // cannot be made, the folder line stays.
   const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts') return [path]; const files = editedPrompts(project); return files === null || files.length === 0 ? [path] : files; };
-  let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null);
+  let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [];
+  const base = { project, stateRoot: privateStateRoot(env, home), harnesses: ['claude' as const, 'codex' as const], team: null };
   if (project.bowerloomIdentity !== null) try {
-    const plan = await planProjectApply({ project, stateRoot: privateStateRoot(env, home), harnesses: ['claude', 'codex'], team: null });
-    held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts)]);
-  } catch { /* The drift lines above still name the folder. */ }
+    const plan = await planProjectApply(base);
+    agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents)]);
+  } catch (error) {
+    // The refusal is named. Some already show as drift lines, so they leave the setup as it is; any other makes it drifted.
+    const code = (error as { code?: unknown } | null)?.code;
+    unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
+    drifted = !EXPECTED_PLAN_REFUSALS.includes(String(code));
+    // The agents are planned on their own, so their holds still show.
+    try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents)]); } catch { /* Nothing more to show. */ }
+  }
+  const installed = agents.filter(a => a.installed !== null).map(a => `  agent ${plainText(a.id)}: installed copy still active (${installedWords(a.installed!)})`);
   return [
     `Project: ${plainText(project.dir)}`,
     ...configLine(config),
-    `Setup: ${plainText(status)}${setup === 'none' ? ' (no startup setup, this project uses bowerloom.json)' : ''}`,
+    `Setup: ${plainText(drifted ? 'drifted' : status)}${setup === 'none' ? ' (no startup setup, this project uses bowerloom.json)' : ''}`,
     ...(revision ? [`Revision: ${plainText(revision)}`] : []),
     ...drift.map(item => `  ${plainText(item.kind)}: ${plainText(item.path)}${item.code ? ` (${plainText(item.code)})` : ''}`),
     ...owned.filter(item => item.state === 'edited').flatMap(item => editedFiles(item.path)).map(path => `  edited: ${plainText(path)}`),
+    ...(unavailable !== null ? [`  plan unavailable (${plainText(unavailable)})`] : []),
+    ...installed,
     ...held.map(item => `  ${item.kind} ${plainText(item.id)}: held (${plainText(item.code)}). Next: ${plainText(item.next)}`),
     ...(legacy ? [`Legacy managed skill: .bowerloom-skills. Run ${MIGRATE}`] : []),
     'Workers: none started (this beta starts none)',

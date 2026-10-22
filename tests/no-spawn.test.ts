@@ -134,10 +134,14 @@ test('the up chain and apply run in process with zero child_process calls', asyn
     const revision = revisionIn(out);
     out = ''; assert.equal(await runCreateCommand([...args, '--approve', revision], dir, testHome, write, quietIo), 0);
   }
+  // A team agent, placed by hand in first-team: apply copies it to .claude/agents with no process and no network call (spec 01a).
+  mkdirSync(join(dir, '.bowerloom/teams/first-team/agents'), { recursive: true });
+  writeFileSync(join(dir, '.bowerloom/teams/first-team/agents/scribe.md'), '---\nname: scribe\ndescription: Writes things down.\n---\nTake notes.\n', { mode: 0o644 });
   assert.equal(await step(up), 3); assert.match(out, /^Next step: sync\./m);
   assert.equal(await step([...up, '--approve', revisionIn(out)]), 3); assert.match(out, /^Next step: apply\./m);
   await held([...up, '--approve', revisionIn(out)]);
   assert.ok(existsSync(join(dir, '.claude/commands/weekly-update.md')));
+  assert.equal(readFileSync(join(dir, '.claude/agents/scribe.md'), 'utf8'), readFileSync(join(dir, '.bowerloom/teams/first-team/agents/scribe.md'), 'utf8'));
   out = ''; assert.equal(await runApplyCommand(['apply'], dir, testHome, write, quietIo, env), 0); assert.match(out, /Nothing to change\./);
   out = ''; assert.equal(await runApplyCommand(['apply', '--harness', 'claude', '--json'], dir, testHome, write, quietIo, env), 0);
   assert.deepEqual(spawned, []); assert.deepEqual(network, []);

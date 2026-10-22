@@ -13,6 +13,7 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { isId } from '../../../packages/skill-manifest/src/schema.js';
 import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
+import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
@@ -103,7 +104,7 @@ export function watchedPort(): { managed: ManagedPort; current: () => string | n
     managed: {
       plan: (req, options) => managedPort.plan(req, options),
       async apply(held, req, revision, options) {
-        running = req.item.kind === 'prompt' ? 'prompt-' + req.item.id : req.item.id;
+        running = itemId(req.item);
         try { return await managedPort.apply(held, req, revision, options); } finally { running = null; }
       },
     },

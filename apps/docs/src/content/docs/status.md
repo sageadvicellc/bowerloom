@@ -37,14 +37,16 @@ Bowerloom `0.7.0` adds these commands, and each one is documented:
 - `bowerloom ls` and `bowerloom status` read the project and write nothing.
 - `bowerloom team create`, `skill create`, and `prompt create` make files inside `.bowerloom`.
 - `.bowerloom/skills.json` pins skills at exact versions and commits. `skills add`, `skills check`, `skills sync`, `skills recover`, and `skills migrate` manage it.
-- `bowerloom skills sync` puts the pinned skills in place for Claude Code and Codex. `bowerloom apply` puts the prompts in place, and any skill copy that is still missing.
+- `bowerloom skills sync` puts the pinned skills in place for Claude Code and Codex. `bowerloom apply` puts the prompts in place, and any skill copy that is still missing, and copies the agents of a team to `.claude/agents` for Claude Code.
 
 Every change shows a plan first and needs `--approve <revision>`. Exit codes are 0 done, 1 refused, 2 usage, 3 approval required, and 4 held by a gate, and 130 stopped at the yes/no question. See [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
 These limits are current facts of this beta:
 
 - No worker starts. `up` ends at `prepared, workers held`.
-- Native discovery of the skill and prompt copies by Claude Code and Codex is not observed.
+- Native discovery of the skill, prompt and agent copies by Claude Code and Codex is not observed.
+- Codex agents are not projected in this beta.
+- `bowerloom status` does not report the files of a team's `agents/` folder as edited. It reports a bad agent file as `owner-refused` with `AGENT_INVALID`. For an agent whose source is gone, or that is held while an older copy is installed, it prints `agent <role>: installed copy still active` with the notices of that copy. When the rest of the apply plan is refused, `status` prints `plan unavailable (<code>)` and still plans the agents on their own.
 - Skills come from public sources only, and only MIT and Apache-2.0 skills install.
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
 - Bowerloom keeps history and deletes none. A full item needs a manual step. See [the guide](/docs/guides/add-skills/#current-beta-limits).

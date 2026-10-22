@@ -19,7 +19,7 @@ import { dirname, join, relative } from 'node:path';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, path as managedPath, raw, stablePins, temporary } from '../../managed-skills/src/observed.js';
-import { MANAGED_ROOT, MARKER_V2, catalogItem, currentV2, ignoreState, locateV2, matchesV2, ownSurface, readPending, receiptAtV2, surfaceV2 } from '../../managed-skills/src/v2-observed.js';
+import { MANAGED_ROOT, MARKER_V2, catalogItem, currentV2, ignoreState, itemId, locateV2, matchesV2, ownSurface, readPending, receiptAtV2, surfaceV2 } from '../../managed-skills/src/v2-observed.js';
 import { readLocalSkill } from '../../managed-skills/src/local-source.js';
 import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
@@ -116,7 +116,7 @@ function requireTeam(project: ProjectContext, team: string): void {
 
 /** The pending marker names an unfinished operation: refuse, and name the item to recover. */
 export function pendingRefusal(project: string): Error {
-  try { const m = readPending(project); const id = m.item.kind === 'prompt' ? 'prompt-' + m.item.id : m.item.id; return syncError('MANAGED_SKILL_RECOVERY_REQUIRED', `It belongs to ${id}. Run bowerloom skills recover plan --item ${id}.`); }
+  try { const m = readPending(project); const id = itemId(m.item); return syncError('MANAGED_SKILL_RECOVERY_REQUIRED', `It belongs to ${id}. Run bowerloom skills recover plan --item ${id}.`); }
   catch { return syncError('MANAGED_SKILL_RECOVERY_REQUIRED', 'Run bowerloom status, then bowerloom skills recover plan --item <id>.'); }
 }
 

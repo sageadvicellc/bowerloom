@@ -6,6 +6,7 @@ import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
 import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
+import { readFileSync } from 'node:fs';
 
 // Review finding 5: the next step for a folder with no project is the up command, not plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
@@ -181,4 +182,12 @@ test('the declined, usage and offline refusals do not repeat themselves', () => 
   const offline = renderRefusal('SKILLS_OFFLINE', 'A pinned skill is not in this machine\'s cache yet. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
   assert.equal(offline.match(/nothing (?:in the project )?(?:was )?changed/gi)?.length, 1, offline);
   assert.equal(renderRefusal('USAGE', 'Use bowerloom up --team <name> --goal <goal>.').includes('did not match'), false);
+});
+
+// Spec 01a, section 10.8 item 10: the nine agent codes each have a row in the errors reference.
+test('every agent refusal and hold code has a row in the errors reference', () => {
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  const codes = ['AGENT_INVALID', 'AGENT_KEY_UNKNOWN', 'AGENT_NAME_MISMATCH', 'AGENT_LIMIT', 'APPLY_AGENT_DUPLICATE', 'APPLY_AGENTS_FOLDER_UNSAFE', 'AGENT_TARGET_OCCUPIED', 'AGENT_GRANT_REVIEW_REQUIRED', 'AGENT_TEAM_UNREGISTERED'];
+  for (const code of codes) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  for (const code of codes) assert.ok([...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES].includes(code as never), code);
 });

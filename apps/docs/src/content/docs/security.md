@@ -7,6 +7,10 @@ order: 20
 
 Treat repository content, retrieved pages, tool descriptions, and model proposals as untrusted input. They cannot expand the user's permission.
 
+## The agent allowance is a guardrail
+
+`bowerloom apply --allow-agent` holds back an agent that sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers`. It works only in a terminal, and you type the role name. That stops a pipe, `--json`, and a CI job from allowing an agent by accident. It is not a boundary against an agent that has a shell or can write files. Such an agent can drive a pseudo-terminal, or write `.claude/agents` itself. Read what you allow.
+
 ## Read a refusal as a boundary
 
 An actual refusal identifies a stopped effect. Find its meaning in [Status and error reference](/docs/reference/errors/).

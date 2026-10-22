@@ -1,7 +1,7 @@
 /**
  * Registered owners of paths inside `.bowerloom/` (build plan 01, section 2). `inspectStartup` asks them about any entry
  * the startup receipt does not account for. A path passes only when exactly one owner claims it and that owner
- * verifies it. Without owners, `inspectStartup` behaves as it did at cc117ac.
+ * verifies it. Without owners, `inspectStartup` behaves as it did at cc117ac, except for the user areas in USER_AREAS.
  */
 import type { OwnedEntryKind, OwnerName, OwnerVerifier } from '../../project-context/src/types.js';
 
