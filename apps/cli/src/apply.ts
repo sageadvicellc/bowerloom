@@ -8,7 +8,7 @@
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
-import { applyProjectApply, planProjectApply } from '../../../packages/project-sync/src/index.js';
+import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
 import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
@@ -60,10 +60,12 @@ function promptState(item: PromptItem, width: number): string[] {
  * A team agent's Claude Code file can grant tools, register hooks and start servers when the agent runs (spec 01a,
  * section 3.2). The notice names them; it never quotes the file.
  */
-const NOTICE_WORDS: Readonly<Record<string, string>> = {
+export const NOTICE_WORDS: Readonly<Record<string, string>> = {
   hooks: 'sets hooks', mcpServers: 'sets mcpServers', 'shell-tools': 'lists shell tools in tools', 'edit-tools': 'lists file-editing tools in tools',
   'web-tools': 'lists web tools in tools', 'mcp-tools': 'lists MCP tools in tools', 'agent-tools': 'lists the Agent tool in tools', 'all-tools': 'inherits every tool, including shell tools',
 };
+/** The words of one notice, as the plan prints them. */
+export const noticeWords = (n: string): string => n.startsWith('permissionMode:') ? `sets permissionMode ${n.slice('permissionMode:'.length)}` : NOTICE_WORDS[n] ?? n;
 function agentNoticeLine(item: AgentItem): string[] {
   const copies = item.action === 'install' || item.action === 'update';
   if (!copies || !item.notices.length) return [];
@@ -129,16 +131,30 @@ export function parseHarness(words: readonly string[]): { harnesses: Harness[]; 
   return { harnesses: harnesses ?? [...HARNESSES.both!], rest };
 }
 
-/** Takes every `--allow-agent <role>:<12 hex>` out of the words (it repeats); the rest goes on. */
+/** Takes every `--allow-agent <role>:<64 hex>` out of the words (it repeats); the rest goes on. */
 export function takeAllow(words: readonly string[]): { allow: string[]; rest: string[] } {
   const allow: string[] = [], rest: string[] = [];
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
-    if (word === '--allow-agent') { const value = words[++i]; if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{12}$/.test(value)) usage(); allow.push(value!); }
+    if (word === '--allow-agent') { const value = words[++i]; if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/.test(value)) usage(); allow.push(value!); }
     else if (word.startsWith('--allow-agent=')) usage();
     else rest.push(word);
   }
   return { allow: [...new Set(allow)].sort(), rest };
+}
+
+const TERMINAL_ONLY = 'The flag --allow-agent works only in a terminal, and not with --json. Run bowerloom apply in a terminal to review and allow it.';
+/** `--allow-agent` is for a person at a terminal: no pipe, no --json. */
+export function requireTerminal(io: ApprovalIo, json: boolean): void { if (!io.interactive || json) throw new DefinitionError('USAGE', TERMINAL_ONLY); }
+const GRANT_WORDS: Readonly<Record<string, string>> = { hooks: 'hooks', mcpServers: 'MCP servers', 'permissionMode:bypassPermissions': 'bypass permissions' };
+/** For each agent the plan will install because of an allowance, the person types its role name. A wrong answer allows nothing. */
+export async function confirmAllowances(plan: ApplyPlan, io: ApprovalIo): Promise<void> {
+  for (const a of plan.agents) {
+    const grants = a.notices.filter(n => n in GRANT_WORDS);
+    if ((a.action !== 'install' && a.action !== 'update') || !grants.length || !plan.allow.some(x => x.startsWith(a.id + ':'))) continue;
+    const answer = (await io.ask(`Type ${a.id} to allow its ${grants.map(n => GRANT_WORDS[n]).join(', ')}: `)).trim();
+    if (answer !== a.id) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `You did not type ${a.id}, so nothing was allowed. Nothing was changed.`);
+  }
 }
 
 /** `bowerloom apply`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
@@ -146,8 +162,10 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const parsedHarness = parseHarness(args.slice(1)), { harnesses } = parsedHarness, { allow, rest } = takeAllow(parsedHarness.rest);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
-  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow });
+  if (allow.length) requireTerminal(io, approval.json);
+  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow, terminal: io.interactive && !approval.json });
   const first = await planProjectApply(input());
+  if (allow.length) await confirmAllowances(first, io);
   if (!first.actionable && approval.approve === undefined) {
     write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first), true)}\nNothing to change.\n`); return 0;
   }

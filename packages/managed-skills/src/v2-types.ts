@@ -30,6 +30,8 @@ export interface ItemFile { path: string; text: string; sha256: string; mode: nu
 export interface LocalClosure {
   format: 'bowerloom/local-item-closure/v1beta2'; source: { kind: 'local'; path: string } | { kind: 'prompt'; path: string } | { kind: 'agent'; path: string };
   files: ItemFile[]; inventory: InventoryRow[]; executionAuthorized: false;
+  /** For an agent: the sha256 of the raw source bytes, which `--allow-agent` names. The closure file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The material source of one item, normalized from a cache closure or a local closure. Content only. */
 export interface ItemClosure {

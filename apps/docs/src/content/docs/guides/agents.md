@@ -56,7 +56,7 @@ Apply never removes a copy. If you delete a source file, the plan shows `agent k
 
 ### The keys a file can use
 
-The file starts with a `---` line, holds YAML, and ends the YAML with a `---` line. Then comes the body. The body must not be empty. A byte order mark, a null byte, or a carriage return at the start or inside the file holds the agent.
+The file starts with a `---` line, holds YAML, and ends the YAML with a `---` line. Then comes the body. The body must not be empty. A byte order mark, a null byte, or a carriage return at the start or inside the file holds the agent. So does `---` anywhere inside the YAML, even in a comment or a value, and so does a YAML line that starts with a tab. Claude Code ends the YAML at the first `---` it finds, so Bowerloom refuses a file that the two would read differently.
 
 Bowerloom accepts only the documented subagent keys, in this order:
 
@@ -126,7 +126,7 @@ A hold affects one agent. Every other skill, prompt, and agent still applies. Th
 - `AGENT_NAME_MISMATCH` means the `name` key differs from the file name, or the file name is not a valid role.
 - `APPLY_AGENT_DUPLICATE` means two teams hold an agent with the same role. Both are held. Rename or remove one. An agent that was installed before stays installed.
 - `AGENT_TARGET_OCCUPIED` means a file that Bowerloom did not install is at the target.
-- `AGENT_GRANT_REVIEW_REQUIRED` means the agent sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers`. Read the file. Then run `bowerloom apply --allow-agent <role>:<hash>`, where `<hash>` is the first 12 hex characters of the sha256 of the file. The `Next:` line has the exact flag, and `up` takes the flag too. The flag is part of the plan, so `--approve` alone never installs the agent. An edit to the file holds it again.
+- `AGENT_GRANT_REVIEW_REQUIRED` means the agent sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers`. Read the file. Then run `bowerloom apply --allow-agent <role>:<hash>`, where `<hash>` is the full sha256 of the file, 64 hex characters. The flag works only in a terminal and not with `--json`. At a terminal, the `Next:` line has the exact flag, and Bowerloom asks you to type the role name. Without a terminal, the line says to run `bowerloom apply` in one. `up` takes the flag too. The flag is part of the plan, so `--approve` alone never installs the agent. An edit to the file holds it again.
 - `AGENT_TEAM_UNREGISTERED` means the agent sits in a team folder that `team create` did not make.
 
 Two problems stop the whole `apply`, and nothing is written. `AGENT_LIMIT` means the project holds more than 128 agent files. `APPLY_AGENTS_FOLDER_UNSAFE` means `.claude` or `.claude/agents` is a link or others can write to it. An unsafe `agents` folder in `.bowerloom` stops it with `AUTHORING_UNSAFE_PATH`. [Errors](/docs/reference/errors/) lists each code.

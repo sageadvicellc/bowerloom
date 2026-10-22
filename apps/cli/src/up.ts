@@ -27,7 +27,7 @@ import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sy
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { readManifestState } from '../../../packages/skill-manifest/src/add.js';
 import type { StartupPlan } from '../../../packages/startup/src/index.js';
-import { renderApplyReview } from './apply.js';
+import { confirmAllowances, renderApplyReview, requireTerminal } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { createChange, renderCreateReview } from './create.js';
@@ -53,6 +53,8 @@ export interface UpContext {
   harnesses: Harness[]; acquirer: Acquirer;
   /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
   allow?: readonly string[];
+  /** The terminal, when the person may take an allowance. */
+  terminal?: boolean; io?: ApprovalIo;
 }
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
@@ -141,7 +143,8 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [], terminal: ctx.terminal === true }), applyPlan = await planProjectApply(applyInput());
+  if ((ctx.allow ?? []).length && ctx.io) await confirmAllowances(applyPlan, ctx.io);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
@@ -189,7 +192,7 @@ export function parseUpArgs(args: readonly string[]): { team: string; goal: stri
       values.set(word, value!);
     } else if (word === '--allow-agent') {
       const value = args[++i];
-      if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{12}$/.test(value)) usage();
+      if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/.test(value)) usage();
       allow.push(value!);
     } else rest.push(word);
   }
@@ -218,7 +221,8 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io };
+  if (parsed.allow.length) requireTerminal(io, approval.json);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.

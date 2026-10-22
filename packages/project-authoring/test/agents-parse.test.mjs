@@ -164,3 +164,15 @@ test('S3: an explicit YAML tag is AGENT_INVALID, and the opaque size is measured
 test('F6: a YAML warning is AGENT_INVALID', () => {
   bad(file(base('model: sonnet\nhooks: !unknown {a: 1}')), 'AGENT_INVALID');
 });
+
+test('R1: a --- inside the frontmatter block, or a leading tab, is AGENT_INVALID', () => {
+  // Claude Code ends the frontmatter at the first --- anywhere, so this comment would hide the tools line from it.
+  bad('---\nname: scribe\ndescription: x\n# ---\ntools: Read\n---\nBody\n', 'AGENT_INVALID');
+  bad(file(base('model: a---b')), 'AGENT_INVALID');
+  bad(file(base('initialPrompt: "Start --- now"')), 'AGENT_INVALID');
+  bad(file(base('hooks:\n  a: 1 # ---')), 'AGENT_INVALID');
+  bad(file(base('tools: Read\n\tmodel: sonnet')), 'AGENT_INVALID');
+  ok(file(base('tools: Read')));
+  // A --- in the body is fine: Claude Code has already ended the frontmatter.
+  ok(file(base('tools: Read'), 'Body\n---\nmore\n'));
+});

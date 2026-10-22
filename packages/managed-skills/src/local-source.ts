@@ -36,9 +36,9 @@ function closing(pins: Pin[], live: () => void): void {
   for (const pin of pins) { live(); const s = fs.lstatSync(pin.path, { bigint: true }); check(!s.isSymbolicLink() && owned(s) && same(pinOf(pin.path, s), pin)); }
 }
 const byPath = <T extends { path: string }>(rows: T[]): T[] => rows.sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-function closure(source: LocalClosure['source'], files: ItemFile[]): LocalClosure {
+function closure(source: LocalClosure['source'], files: ItemFile[], sourceSha256?: string): LocalClosure {
   const sorted = byPath(files), inventory: InventoryRow[] = sorted.map(f => ({ path: f.path, sha256: f.sha256, bytes: Buffer.byteLength(f.text) }));
-  return freezeSkillData({ format: 'bowerloom/local-item-closure/v1beta2', source, files: sorted, inventory, executionAuthorized: false });
+  return freezeSkillData({ format: 'bowerloom/local-item-closure/v1beta2', source, files: sorted, inventory, executionAuthorized: false, ...(sourceSha256 === undefined ? {} : { sourceSha256 }) });
 }
 /** The fixed folders from the project down to `.bowerloom/<area>`. */
 function base(projectDir: string, area: 'skills' | 'prompts' | 'teams', pins: Pin[]): string {
@@ -82,6 +82,6 @@ export function readLocalAgent(projectDir: string, team: string, role: string, l
     const teamDir = join(base(projectDir, 'teams', pins), team), agents = join(teamDir, 'agents'); pins.push(folder(teamDir), folder(agents));
     const got = authored(join(agents, role + '.md'), LIMITS.file, true); pins.push(got.pin); closing(pins, live); live();
     const text = claudeCopyBytes(got.text);
-    return closure({ kind: 'agent', path: `teams/${team}/agents/${role}.md` }, [{ path: role + '.md', text, sha256: hash(text), mode: 420 }]);
+    return closure({ kind: 'agent', path: `teams/${team}/agents/${role}.md` }, [{ path: role + '.md', text, sha256: hash(text), mode: 420 }], hash(got.text));
   } catch (e) { return boundary(e); }
 }

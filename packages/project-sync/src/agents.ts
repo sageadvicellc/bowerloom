@@ -23,7 +23,7 @@ import { DefinitionError } from '../../contracts/src/index.js';
 import { AGENT_STEM, AGENT_STEM_MAX, parseAgent, skippedAgentName } from '../../project-authoring/src/agent-file.js';
 import type { AgentParseCode, ParsedAgent } from '../../project-authoring/src/agent-file.js';
 import { folderNames, lstatOrNull, realFolder } from '../../project-authoring/src/files.js';
-import { isAuthoringRefusal } from '../../project-authoring/src/refusal.js';
+import { authoringRefusal, isAuthoringRefusal } from '../../project-authoring/src/refusal.js';
 import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
 import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold } from './plan.js';
@@ -58,6 +58,8 @@ export interface AgentItem {
   history: number;
   hold: { code: string; next: string } | null;
   notices: AgentNotice[];
+  /** The notices of the copy that is installed now, for an orphan or a held agent that has one. Null when no copy is installed. */
+  installed: AgentNotice[] | null;
   /** On an update, the notices that the installed copy did not have. */
   newNotices: AgentNotice[];
   builtin: boolean;
@@ -94,9 +96,9 @@ export function agentNotices(agent: ParsedAgent): AgentNotice[] {
 }
 /** An agent that sets bypassPermissions, hooks or mcpServers installs only with `--allow-agent <role>:<hash>`. */
 export const needsReview = (agent: ParsedAgent): boolean => agent.keys.includes('hooks') || agent.keys.includes('mcpServers') || agent.permissionMode === 'bypassPermissions';
-/** The first 12 hex characters of the sha256 of the source file's text. */
-export const sourceHash = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 12);
-export const ALLOW_FLAG = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{12}$/;
+/** The sha256 of the source file's raw text, in full. Callers use it on bytes read from the source, not on the Claude copy. */
+export const sourceHash = (text: string): string => createHash('sha256').update(text).digest('hex');
+export const ALLOW_FLAG = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/;
 export const isBuiltinAgentName = (role: string): boolean => BUILTIN_FOLDED.has(role.toLowerCase());
 
 /** One entry of an `agents/` folder, validated. A valid entry has a closure and a parsed file; any other has a hold. */
@@ -202,7 +204,7 @@ export function agentSurfaces(project: string, id: string): { id: ItemSurface['i
 
 const heldItem = (s: ScannedAgent): AgentItem => ({
   id: s.role, team: s.team, itemId: 'agent_' + s.role, state: 'held', action: 'hold', harnesses: ['claude'],
-  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold: s.hold, notices: [], newNotices: [],
+  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold: s.hold, notices: [], newNotices: [], installed: null,
   builtin: false, userCopy: false, capabilities: null, enforcement: [],
 });
 
@@ -234,7 +236,7 @@ function userCopy(role: string): boolean {
 }
 
 /** Classifies one scanned agent. Reads only. A held entry comes back as a held item. */
-export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgent, allow: readonly string[] = []): AgentItem {
+export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgent, allow: readonly string[] = [], terminal = false): AgentItem {
   if (s.hold !== null || s.closure === null || s.parsed === null) return heldItem(s);
   const role = s.role, ref: ItemRef = { kind: 'agent', id: role }, itemId = 'agent_' + role, stateDir = join(itemsRoot, itemId), source = sourceOf(s.team, s.entry);
   const files = [...s.closure.inventory], sourcePath = `teams/${s.team}/agents/${s.entry}`;
@@ -274,16 +276,16 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
     hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(itemId, previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder', 'bowerloom apply') };
   }
   // An agent that asks for bypassPermissions, hooks or mcpServers waits for an explicit allowance bound to these bytes.
-  const hash = sourceHash(s.closure.files[0]!.text);
+  const hash = s.closure.sourceSha256 ?? sourceHash(s.closure.files[0]!.text);
   if ((action === 'install' || action === 'update') && hold === null && needsReview(s.parsed) && !allow.includes(`${role}:${hash}`)) {
-    hold = { code: 'AGENT_GRANT_REVIEW_REQUIRED', next: `Read ${source}, then run bowerloom apply --allow-agent ${role}:${hash}.` };
+    hold = { code: 'AGENT_GRANT_REVIEW_REQUIRED', next: terminal ? `Read ${source}, then run bowerloom apply --allow-agent ${role}:${hash}.` : 'Run bowerloom apply in a terminal to review and allow it.' };
   }
   if (hold !== null) { action = 'hold'; if (state !== 'drift') state = 'held'; }
   const notices = agentNotices(s.parsed), had = action === 'update' && previous !== null ? installedNotices(project, role, s.team) : null, newOnes = had === null ? [] : notices.filter(n => !had.includes(n));
   return {
     id: role, team: s.team, itemId, state, action, harnesses: ['claude'],
     expected: { files, surfaces: surfaces.map(x => ({ id: x.id, path: relative(project, x.path) })), source: { kind: 'agent', path: sourcePath } }, before,
-    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, newNotices: newOnes, builtin: isBuiltinAgentName(role),
+    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, newNotices: newOnes, installed: action === 'hold' && previous !== null ? installedNotices(project, role, s.team) : null, builtin: isBuiltinAgentName(role),
     userCopy: userCopy(role), capabilities: null, enforcement: [],
   };
 }
@@ -297,7 +299,7 @@ export function orphanAgent(project: string, itemsRoot: string, id: string): Age
   try { previous = currentV2(project, join(itemsRoot, 'agent_' + id), { kind: 'agent', id }); } catch (e) { code = managedCode(e); }
   const base: AgentItem = {
     id, team: null, itemId: 'agent_' + id, state: 'orphaned', action: 'none', harnesses: ['claude'], expected: { files: [], surfaces: [], source: null }, before: [],
-    previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], newNotices: [], builtin: false, userCopy: false, capabilities: null, enforcement: [],
+    previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], newNotices: [], installed: installedNotices(project, id, 'unknown'), builtin: false, userCopy: false, capabilities: null, enforcement: [],
   };
   if (code === null) return base;
   const next = code === 'MANAGED_SKILL_PATH_OCCUPIED' ? `Move .bowerloom/managed/catalog/agent_${id}.json aside, then run bowerloom apply.` : `Run bowerloom status to see what changed in the copies of agent ${id}. Its source file is gone, so Bowerloom keeps what is there.`;
@@ -326,6 +328,10 @@ export function checkAgentChild(dir: string, item: AgentItem, req: ManagedItemRe
   if ((c.core.previous?.revision ?? null) !== item.previousReceiptRevision) throw stale();
   // Checked again against the bytes that will be written: an allowance names one hash, and a later edit does not carry it over.
   const text = closure.files[0]!.text, parsed = parseAgent(text, item.id, item.team!);
-  if (!parsed.ok || (needsReview(parsed.agent) && !allow.includes(`${item.id}:${sourceHash(text)}`))) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `Agent ${item.id} changed since the plan.`);
+  if (!parsed.ok) throw authoringRefusal('AGENT_INVALID');
+  if (needsReview(parsed.agent)) {
+    let raw: string | undefined; try { raw = readLocalAgent(dir, item.team!, item.id, () => {}).sourceSha256; } catch { raw = undefined; }
+    if (raw === undefined || !allow.includes(`${item.id}:${raw}`)) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `Agent ${item.id} changed since the plan.`);
+  }
   return c;
 }

@@ -109,7 +109,12 @@ function frontmatter(text: string): { block: string; body: string } {
   if (end < 0) invalid('the frontmatter has no closing --- line');
   const body = lines.slice(end + 1).join('\n').replace(/\n+$/, '');
   if (body.trim() === '') invalid('the body is empty');
-  return { block: lines.slice(1, end).join('\n'), body };
+  // Claude Code ends the frontmatter at the first --- anywhere, even inside a comment or a value, and its YAML retry
+  // rewrites leading tabs. Bowerloom would read more lines than Claude Code does, so it refuses both.
+  const inside = lines.slice(1, end);
+  if (inside.some(l => l.includes('---'))) invalid('the frontmatter holds --- inside a line');
+  if (inside.some(l => l.startsWith('\t'))) invalid('a frontmatter line starts with a tab');
+  return { block: inside.join('\n'), body };
 }
 
 function validate(text: string, stem: string, team: string): ParsedAgent {

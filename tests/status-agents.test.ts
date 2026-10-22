@@ -3,11 +3,14 @@ import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
+import { runApplyCommand } from '../apps/cli/src/apply.js';
+import { runUpCommand } from '../apps/cli/src/up.js';
+import { runProjectStatus } from '../apps/cli/src/project-status.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 const preload = pathToFileURL(fileURLToPath(new URL('./support/fake-network.js', import.meta.url))).href;
@@ -138,34 +141,75 @@ test('help apply and help up carry the agent sentences', t => {
   assert.ok(up.stdout.includes('exits 4. When a skill, prompt,\n') && up.stdout.includes('agent, or team is held or gone, it prints "prepared, N items held" instead, with the next command for each item.\n'));
 });
 
-const shaOf = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 12);
+const shaOf = (text: string): string => createHash('sha256').update(text).digest('hex');
+const terminal = (answers: string[], asked: string[] = []) => ({ interactive: true, async ask(question: string): Promise<string> { asked.push(question); return answers.shift() ?? ''; } });
+const noTerminal = { interactive: false, async ask(): Promise<string> { throw new Error('TEST_NO_TERMINAL'); } };
+const hookedText = agent('hooked', 'hooks:\n  PreToolUse:\n    - matcher: Bash\ntools: Read');
 
-test('S2: --approve alone never installs an agent that needs review; --allow-agent does, on apply and on up', t => {
-  const p = project(t), text = agent('hooked', 'hooks:\n  PreToolUse:\n    - matcher: Bash\ntools: Read'); place(p, 'desk', 'hooked.md', text); place(p, 'desk', 'plain.md', agent('plain', 'tools: Read'));
-  const flag = `hooked:${shaOf(text)}`;
+test('R3: without a terminal a grant agent never installs, the hold names no flag, and --allow-agent is refused', t => {
+  const p = project(t); place(p, 'desk', 'hooked.md', hookedText); place(p, 'desk', 'plain.md', agent('plain', 'tools: Read'));
+  const flag = `hooked:${shaOf(hookedText)}`, hold = 'Run bowerloom apply in a terminal to review and allow it.';
   const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
-  assert.match(shown.stdout, /^ {2}hooked +agent held \(AGENT_GRANT_REVIEW_REQUIRED\)$/m); assert.ok(shown.stdout.includes(`then run bowerloom apply --allow-agent ${flag}.`), shown.stdout);
+  assert.match(shown.stdout, /^ {2}hooked +agent held \(AGENT_GRANT_REVIEW_REQUIRED\)$/m); assert.ok(shown.stdout.includes(`Next: ${hold}`), shown.stdout); assert.ok(!shown.stdout.includes('--allow-agent'), shown.stdout);
+  const json = run(p, ['apply', '--json']); assert.doesNotMatch(json.stdout, /--allow-agent/);
   const approved = run(p, ['apply', '--approve', revisionIn(shown.stdout)]); assert.equal(approved.status, 0, approved.stderr);
   assert.match(approved.stdout, /^ {2}agent hooked: held \(AGENT_GRANT_REVIEW_REQUIRED\)\. Next: /m); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false); assert.equal(existsSync(join(p.dir, '.claude/agents/plain.md')), true);
   const up = run(p, ['up', '--team', 'desk']); assert.equal(up.status, 4, up.stderr + up.stdout); assert.match(up.stdout, /Held: agent hooked \(AGENT_GRANT_REVIEW_REQUIRED\)/); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
-  const upShown = run(p, ['up', '--team', 'desk', '--allow-agent', flag]); assert.equal(upShown.status, 3, upShown.stderr);
-  assert.match(upShown.stdout, /^ {2}hooked +install agent: /m);
-  // The plan made with the allowance is a different plan, and only it installs the agent.
-  const without = run(p, ['apply', '--allow-agent', flag]); assert.equal(without.status, 3);
+  for (const args of [['apply', '--allow-agent', flag], ['apply', '--allow-agent', flag, '--json'], ['apply', '--allow-agent', flag, '--approve', 'a'.repeat(64)], ['up', '--team', 'desk', '--allow-agent', flag], ['up', '--team', 'desk', '--allow-agent', flag, '--json']]) {
+    const r = run(p, args); assert.equal(r.status, 2, args.join(' ') + r.stdout); assert.equal(errorOf(r.stderr).code, 'USAGE');
+  }
+  for (const bad of [['--allow-agent'], ['--allow-agent', 'hooked'], ['--allow-agent', `hooked:${shaOf(hookedText).slice(0, 12)}`], [`--allow-agent=${flag}`]]) assert.equal(run(p, ['apply', ...bad]).status, 2, bad.join(' '));
   assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
-  const done = run(p, ['apply', '--allow-agent', flag, '--approve', revisionIn(without.stdout)]); assert.equal(done.status, 0, done.stderr);
-  assert.match(done.stdout, /^ {2}agent hooked: installed$/m); assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), text);
-  for (const bad of [['--allow-agent'], ['--allow-agent', 'hooked'], ['--allow-agent', 'hooked:zzz'], ['--allow-agent=hooked:000000000000']]) assert.equal(run(p, ['apply', ...bad]).status, 2, bad.join(' '));
 });
 
-test('S2: up --approve with the allowance installs it, and without it never does', t => {
-  const p = project(t), text = agent('hooked', 'hooks:\n  a: 1\ntools: Read'); place(p, 'desk', 'hooked.md', text);
-  const shown = run(p, ['up', '--team', 'desk']); assert.equal(shown.status, 4, shown.stdout);
-  const flag = `hooked:${shaOf(text)}`, planned = run(p, ['up', '--team', 'desk', '--allow-agent', flag]); assert.equal(planned.status, 3);
-  const bare = run(p, ['up', '--team', 'desk', '--approve', revisionIn(planned.stdout)]); assert.notEqual(bare.status, 0);
+test('R3: at a terminal, the right role name installs the agent and a wrong one allows nothing', async t => {
+  const p = project(t); place(p, 'desk', 'hooked.md', hookedText);
+  const flag = `hooked:${shaOf(hookedText)}`, out: string[] = [], write = (x: string) => { out.push(x); }, asked: string[] = [];
+  // The plan at a terminal names the exact flag.
+  const shown: string[] = []; await runApplyCommand(['apply'], p.dir, p.home, write, terminal([], shown), p.env).catch(() => undefined); assert.ok(out.join('').includes(`then run bowerloom apply --allow-agent ${flag}.`), out.join('') + shown.join(''));
+  // A wrong answer refuses and installs nothing.
+  await assert.rejects(runApplyCommand(['apply', '--allow-agent', flag], p.dir, p.home, write, terminal(['nope'], asked), p.env), (e: { code?: string }) => e.code === 'AGENT_GRANT_REVIEW_REQUIRED');
+  assert.deepEqual(asked, ['Type hooked to allow its hooks: ']); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  // A wrong hash allows nothing, so there is nothing to confirm and the agent stays held.
+  asked.length = 0; await runApplyCommand(['apply', '--allow-agent', `hooked:${'0'.repeat(64)}`], p.dir, p.home, write, terminal(['hooked'], asked), p.env);
+  assert.deepEqual(asked, []); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  // The role name allows it.
+  out.length = 0; assert.equal(await runApplyCommand(['apply', '--allow-agent', flag], p.dir, p.home, write, terminal(['hooked', 'y']), p.env), 0);
+  assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), hookedText); assert.match(out.join(''), /^ {2}agent hooked: installed$/m);
+});
+
+test('R3: up at a terminal takes the allowance after the role name; up --approve alone never installs the agent', async t => {
+  const p = project(t); place(p, 'desk', 'hooked.md', hookedText); const flag = `hooked:${shaOf(hookedText)}`, write = () => undefined;
+  const alone = run(p, ['up', '--team', 'desk', '--approve', 'a'.repeat(64)]);
+  assert.equal(alone.status, 4, alone.stderr + alone.stdout); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  await assert.rejects(runUpCommand(['up', '--team', 'desk', '--allow-agent', flag], p.dir, p.home, write, terminal(['wrong']), p.env), (e: { code?: string }) => e.code === 'AGENT_GRANT_REVIEW_REQUIRED');
   assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
-  assert.equal(run(p, ['up', '--team', 'desk', '--allow-agent', flag, '--approve', revisionIn(planned.stdout)]).status, 4);
-  assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), text);
+  // The role name, then y to the plan.
+  await assert.rejects(runUpCommand(['up', '--team', 'desk', '--allow-agent', flag], p.dir, p.home, write, terminal(['hooked', 'y']), p.env), (e: { code?: string }) => e.code === 'WORKERS_HELD');
+  assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), hookedText);
+});
+
+test('R4: status reports the notices of an installed copy that is held or orphaned', async t => {
+  const p = project(t), file = place(p, 'desk', 'hooked.md', hookedText), flag = `hooked:${shaOf(hookedText)}`, out: string[] = [], write = (x: string) => { out.push(x); };
+  assert.equal(await runApplyCommand(['apply', '--allow-agent', flag], p.dir, p.home, write, terminal(['hooked', 'y']), p.env), 0);
+  // A held update whose old copy has hooks.
+  writeFileSync(file, hookedText + 'More.\n');
+  const held = await runProjectStatus(['status'], p.dir, p.home, p.env);
+  assert.match(held, /^ {2}agent hooked: installed copy still active \(sets hooks\)$/m); assert.match(held, /^ {2}agent hooked: held \(AGENT_GRANT_REVIEW_REQUIRED\)/m);
+  // An orphan whose copy has hooks.
+  rmSync(file);
+  assert.match(await runProjectStatus(['status'], p.dir, p.home, p.env), /^ {2}agent hooked: installed copy still active \(sets hooks\)$/m);
+  // A source with no copy installed reports nothing of the kind.
+  const q = project(t); place(q, 'desk', 'plain.md', agent('plain', 'tools: Read')); assert.doesNotMatch(await runProjectStatus(['status'], q.dir, q.home, q.env), /installed copy still active/);
+});
+
+test('R5: status shows an agent hold even when the rest of the plan is refused, and names the refusal', t => {
+  const p = project(t); place(p, 'desk', 'scribe.md', agent('scribe', 'tools: Read'));
+  const planned = run(p, ['apply', '--json']); assert.equal(run(p, ['apply', '--approve', JSON.parse(planned.stdout).revision]).status, 0);
+  appendFileSync(join(p.dir, '.claude/agents/scribe.md'), 'My edit.\n'); mkdirSync(join(p.dir, '.bowerloom-skills'));
+  const words = run(p, ['status']); assert.equal(words.status, 0, words.stderr);
+  assert.match(words.stdout, /^ {2}plan unavailable \(MANAGED_SKILL_LEGACY_PRESENT\)$/m);
+  assert.match(words.stdout, /^ {2}agent scribe: held \(MANAGED_SKILL_LOCAL_DRIFT\)\. Next: /m);
 });
 
 test('F2: status names a refusal of the apply plan and sets the setup to drifted', t => {

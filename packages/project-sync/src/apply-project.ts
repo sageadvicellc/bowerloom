@@ -67,8 +67,12 @@ export interface ApplyInput {
   harnesses: Harness[];
   /** Only this team's skills and prompts (`up --team`). Null or absent: every skill and prompt. */
   team?: string | null;
-  /** `<role>:<12 hex>` allowances from `--allow-agent`. An agent that sets bypassPermissions, hooks or mcpServers installs only with its own. */
+  /** `<role>:<64 hex>` allowances from `--allow-agent`. An agent that sets bypassPermissions, hooks or mcpServers installs only with its own. */
   allow?: readonly string[];
+  /** True when the command runs in a terminal and may take an allowance. Only then does a hold print the flag. */
+  terminal?: boolean;
+  /** Plan the agents alone, for `status`: no skills, no prompts, and none of the write-side checks. */
+  agentsOnly?: boolean;
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -131,35 +135,36 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir;
     if (team !== null && !isId(team)) throw manifestRefusal('TEAM_NOT_FOUND');
     checkProjectAncestry(project);
-    if (legacyPresent(dir)) throw syncError('MANAGED_SKILL_LEGACY_PRESENT');
-    if (exists(join(dir, MARKER_V2)) || exists(temporary(join(dir, MARKER_V2)))) throw pendingRefusal(dir);
-    if (exists(join(dir, '.bowerloom-revision.json'))) throw syncError('REVISION_PENDING');
-    let ignore: 'absent' | 'exact';
-    try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
+    const agentsOnly = input.agentsOnly === true;
+    if (!agentsOnly && legacyPresent(dir)) throw syncError('MANAGED_SKILL_LEGACY_PRESENT');
+    if (!agentsOnly && (exists(join(dir, MARKER_V2)) || exists(temporary(join(dir, MARKER_V2))))) throw pendingRefusal(dir);
+    if (!agentsOnly && exists(join(dir, '.bowerloom-revision.json'))) throw syncError('REVISION_PENDING');
+    let ignore: 'absent' | 'exact' = 'exact';
+    if (!agentsOnly) try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
     const layout = stateLayout(input);
     // Skills: the sync planner, offline, for the chosen harnesses.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();
-    if (readManifestState(dir).file !== null) {
+    if (!agentsOnly && readManifestState(dir).file !== null) {
       const observed = await observeSync({ project, stateRoot: input.stateRoot, team, offline: true, apply: { harnesses } });
       skills = observed.plan; entries = observed.entries;
     }
     // Prompts: every registered prompt of the team, then catalogs of prompts that are no longer registered.
-    const registered = registeredPrompts(dir), prompts: PromptItem[] = registered
+    const registered = agentsOnly ? [] : registeredPrompts(dir), prompts: PromptItem[] = registered
       .filter(p => team === null || p.teams.length === 0 || p.teams.includes(team))
       .map(p => classifyPrompt(dir, layout.itemsRoot, p.id, p.teams, harnesses));
     const catalogs = join(dir, MANAGED_ROOT, 'catalog');
-    if (exists(catalogs)) for (const n of names(catalogs)) {
+    if (!agentsOnly && exists(catalogs)) for (const n of names(catalogs)) {
       const ref = catalogItem(n);
       if (ref.kind === 'prompt' && !registered.some(p => p.id === ref.id)) prompts.push(orphanPrompt(dir, layout.itemsRoot, ref.id));
     }
     // Agents: every team folder is listed and checked whatever the harness and team say (spec 01a, section 3.6).
     const allow = [...new Set(input.allow ?? [])].sort();
-    if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<first 12 hex characters of the agent file\'s sha256>.');
+    if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<the 64 hex characters of the agent file\'s sha256>.');
     const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
     if (claude) {
       const planned = scan.entries.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
-      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
+      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow, input.terminal === true)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
         if (ref.kind === 'agent' && !scan.entries.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
