@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { types as utilTypes } from 'node:util';
 import { dirname, isAbsolute, resolve, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
+import { DefinitionError } from '../../contracts/src/index.js';
 import { SkillSourceError, closed, captureSkillData, freezeSkillData, revisionOf } from './validation.js';
 import { NPM_LIMITS, NpmAcquisitionError, npmCheck, npmRefuse, sha256, validateNpmPlan, verifyNpmPayload } from './npm.js';
 import type { NpmAcquisitionPlan, ObservedNpmPayload, ExpectedSkillFile } from './npm.js';
@@ -485,3 +486,49 @@ export async function readAcquiredSkillCache(value: unknown, options: { signal: 
   } catch (error) { return readRefusal(error, 'NPM_CACHE_PROMOTION_REFUSED'); }
   finally { if (timer) clearTimeout(timer); if (signal && abort) signal.removeEventListener('abort', abort); controller.abort(); }
 }
+
+/** Spec 09, 4.4: the names a cache entry or a leftover can have. Anything else is not removed. */
+const ENTRY_NAMES = [/^op-[a-f0-9]{32}$/, /^(?:skill|prompt|team)-[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{64}$/, /^\.tmp-.{1,200}$/, /^\.prune-.{1,200}$/];
+const pruneFailed = (): never => { throw new DefinitionError('CACHE_PRUNE_FAILED', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.'); };
+function prunable(ok: unknown): asserts ok { if (!ok) pruneFailed(); }
+/** A real folder, not a link, that this user owns with mode exactly 0700. */
+function privateFolder(path: string): void {
+  let s: fs.Stats; try { s = fs.lstatSync(path); } catch { return pruneFailed(); }
+  prunable(s.isDirectory() && !s.isSymbolicLink() && s.uid === process.getuid?.() && (s.mode & 0o7777) === 0o700);
+}
+/**
+ * Spec 09, 4.4: deletes one entry of the skills cache, the store cache, or a per-project cache of an earlier beta. The
+ * caller holds the cache lock. The entry is first renamed to `.prune-<name>-<8 hex>`, so a crash leaves a leftover that
+ * `cache prune --partial` finds, then removed without following any link. The contents are never read. Every refusal is
+ * CACHE_PRUNE_FAILED.
+ */
+export function removeCacheEntry(stateRoot: string, place: { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null }, name: string, held: { assertHeld(): void }): void {
+  // Step 0: the name is one of the four shapes, one path segment.
+  prunable(typeof name === 'string' && !name.includes('/') && !name.includes('\0') && name !== '.' && name !== '..' && ENTRY_NAMES.some(shape => shape.test(name)));
+  // Step 0a: the root is one of the three places, at its real path, a private folder of this user.
+  prunable(typeof stateRoot === 'string' && isAbsolute(stateRoot) && resolve(stateRoot) === stateRoot && !stateRoot.includes('\0') && place !== null && typeof place === 'object');
+  let root: string;
+  if (place.scope === 'machine' && place.projectId === null) root = join(stateRoot, 'cache');
+  else if (place.scope === 'store' && place.projectId === null) root = join(stateRoot, 'store-cache');
+  else if (place.scope === 'project-legacy' && typeof place.projectId === 'string' && /^[a-f0-9]{32}$/.test(place.projectId)) { privateFolder(join(stateRoot, place.projectId)); root = join(stateRoot, place.projectId, 'cache'); }
+  else return pruneFailed();
+  let real: string; try { real = fs.realpathSync(root); } catch { return pruneFailed(); }
+  prunable(real === root); privateFolder(root);
+  // Steps 1 and 2: the lock, then the entry itself: a real private folder, never a link.
+  held.assertHeld();
+  const entry = join(root, name); privateFolder(entry);
+  let doomed = entry;
+  try {
+    // Step 3: the rename, unless the entry is already a leftover. The new name must not exist.
+    if (!name.startsWith('.prune-')) {
+      doomed = join(root, `.prune-${name}-${randomBytes(4).toString('hex')}`);
+      prunable(!fs.existsSync(doomed) && !isLink(doomed));
+      fs.renameSync(entry, doomed); syncDir(root);
+    }
+  } catch (error) { if (error instanceof DefinitionError) throw error; return pruneFailed(); }
+  // Step 4: the lock again, before anything is deleted.
+  held.assertHeld();
+  // Step 5: rmSync unlinks a link inside the entry as a name and never follows it.
+  try { fs.rmSync(doomed, { recursive: true, force: false }); syncDir(root); } catch { return pruneFailed(); }
+}
+function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }
