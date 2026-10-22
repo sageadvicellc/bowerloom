@@ -5,7 +5,7 @@
 - Source: sageadvicellc/bowerloom#80, decision 21. Decision record: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333364163. It reverses the rule "no credentials from the environment" in `packages/skill-manifest/src/public-get.ts:15`. Decision 19 and the lock design: https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6333018480.
 - Lane: 2.
 - Branch: `beta3/07-private-store-token`.
-- Depends on: spec 06 (the store git fetch, `proveAuthored`, `fetchStoreGit`, the lock, and the `githubAuth` hook).
+- Depends on: spec 06 (the store git fetch, `proveAuthored`, `fetchStoreGit`, and the lock). Spec 06 passes no `githubAuth` key and does not change `public-get.ts`. This spec adds the option.
 - This spec is a security change. It needs a security review before it merges (see `docs/beta3/README.md`). The diff is kept small so the reviewer reads one thing. It touches no file that spec 06 does not already touch, apart from the listed ones.
 - Line numbers below are from commit c9730d3. If a line moved, find the place by its function name.
 
@@ -114,11 +114,13 @@ JSON `git.token`: `"set"`, `"not-set"`, or `"invalid"`. The command never prints
 | What GitHub answers | Result |
 |---|---|
 | 200 | Normal. |
-| 401 or 403, token sent | `STORE_REMOTE_AUTH_FAILED` |
+| 401, token sent | `STORE_REMOTE_AUTH_FAILED` |
+| 403 or 429, token sent | `GITHUB_RATE_LIMITED`. With a token, GitHub allows 5,000 requests an hour. The next step is `Wait an hour. With a token, GitHub allows 5,000 requests an hour.` |
 | 404 on the commit request, token sent | `STORE_REMOTE_AUTH_FAILED` (the token lacks access, or the repository does not exist) |
-| 404 on a later request after the commit worked | Proving gives `LOCK_STORE_NOT_PUSHED`. Fetching gives `LOCK_COMMIT_UNREACHABLE`. |
+| 404 on a later request after the commit worked | Proving gives `LOCK_STORE_NOT_PUSHED`. Fetching gives `LOCK_HASH_MISMATCH`. |
 | 404, no token | As spec 06: `STORE_REMOTE_PRIVATE`, or `LOCK_COMMIT_UNREACHABLE` for `--commit` |
-| 401 or 403, no token | `SKILLS_ADD_NETWORK` mapped as in spec 06 (a network failure) |
+| 403 or 429, no token | `GITHUB_RATE_LIMITED`, as in spec 06. Without a token, GitHub allows about 60 requests an hour. |
+| 401, no token | `SKILLS_ADD_NETWORK` mapped as in spec 06 (a network failure) |
 | Any other status | `SKILLS_ADD_NETWORK` mapped as in spec 06 |
 
 `STORE_REMOTE_PRIVATE` now has the next step `Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.` (Spec 06 gave it a shorter text. This spec replaces it.)
@@ -193,6 +195,7 @@ With no token, the whole field is `null`.
 | `GITHUB_TOKEN_INVALID` | `BOWERLOOM_GITHUB_TOKEN` is set to a value that is not a valid GitHub token. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
 | `STORE_REMOTE_AUTH_FAILED` | GitHub refused the token for the store repository, or the repository does not exist. | Check that the token can read the repository, and that the repository name is right. |
 | `STORE_REMOTE_PRIVATE` (text changed) | The repository answered 404 and no token was set. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
+| `GITHUB_RATE_LIMITED` (text changed) | `api.github.com` answered HTTP 403 or 429 to a request that carried a token. | Wait an hour. With a token, GitHub allows 5,000 requests an hour. |
 | `STALE_APPROVAL` | The token was set or removed between plan and apply. | Run the command again without `--approve`. |
 
 In `REFUSALS` the `sentence` of each code is its fixed message, and the `next` text is the Next step cell.
@@ -201,6 +204,7 @@ Add `GITHUB_TOKEN_INVALID` and `STORE_REMOTE_AUTH_FAILED` to the `MESSAGES` of `
 
 - `GITHUB_TOKEN_INVALID`: `The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.`
 - `STORE_REMOTE_AUTH_FAILED`: `GitHub did not accept the token for the store repository, or the repository does not exist.`
+- `GITHUB_RATE_LIMITED`: `GitHub limits requests without a token to about 60 an hour.` Spec 06 defines it. With a token, the next step changes as the table above says.
 
 ## 6. Where to change
 
@@ -216,7 +220,7 @@ Change:
   - `PublicGetOptions` (line 38): add `githubAuth`.
   - Line 56 (the closed key list in `createPublicTransport`): add `'githubAuth'` and check it as in 4.2.
   - `headersFor(host, url)` (lines 94-98): when `host === 'api.github.com'` and `githubAuth` is set and the URL path starts with `/repos/<o>/<r>/` for an approved repository, add `Authorization: githubAuth.token.authorization()`. For every other case the header set is unchanged.
-  - Status handling (line 134): before the 404 branch, add: if the request carried the header and the status is 401 or 403, `settle('STORE_REMOTE_AUTH_FAILED')`. The existing 404 branch is unchanged.
+  - Status handling (line 134): before the 404 branch, add: if the request carried the header and the status is 401, `settle('STORE_REMOTE_AUTH_FAILED')`. For a status of 403 or 429 from `api.github.com`, with or without the header, `settle('GITHUB_RATE_LIMITED')`. The existing 404 branch is unchanged.
   - The token object must not appear in `settle` failures or in any thrown object. Do not log it.
 - `packages/skill-manifest/src/refusal.ts:26`: add the two messages. Add the codes to `ManifestRefusalCode` and to the code list that `fixedRefusal`/`isManifestRefusal` use.
 - `packages/skill-manifest/src/index.ts:2`: export `GithubToken`, `GITHUB_TOKEN_VARIABLE`.
@@ -295,7 +299,7 @@ None. No file format changes. The variable is optional. A machine without it beh
 4. A request to `https://api.github.com/repos/Owner/Repo/git/trees/<sha>` has the header (case-insensitive).
 5. A request to `https://registry.npmjs.org/<package>` has no header.
 6. A request to `https://api.github.com/repos/owner/repo-two/git/commits/<sha>` has no header (the prefix check includes the slash).
-7. A 401 and a 403 response to a request with the header give `STORE_REMOTE_AUTH_FAILED`. The same statuses without the header keep their old result.
+7. A 401 response to a request with the header gives `STORE_REMOTE_AUTH_FAILED`. A 403 or 429 response gives `GITHUB_RATE_LIMITED`, with or without the header. A 401 without the header keeps its old result.
 8. A response with a `Location` header is refused, and no second request is made.
 9. A 404 gives `SKILLS_ADD_NOT_FOUND` in both cases.
 10. `createPublicTransport` refuses a `githubAuth` that is not a `GithubToken`, has zero or more than eight repositories, or has a malformed repository.
@@ -346,7 +350,7 @@ Update `tests/human-refusal.test.ts` for the two new codes and the changed `STOR
 ## 12. Unverified items
 
 1. GitHub accepts `Authorization: Bearer <token>` for both classic and fine-grained tokens on `api.github.com`. This is GitHub's documented form, but no test here can prove it against the live service. Check it by hand once with a real token on a private repository before the pull request. Suppose GitHub answers 401 to `Bearer`. Then change `authorization()` to return `token ` plus the value (the older form), and change test case 8 of `github-token.test.mjs`.
-2. The statuses GitHub uses for a missing token on a private repository. Documentation says 404. Check by hand once. If it answers 403 for rate limits and 404 for private repositories, the table in 3.7 already covers both. If it answers something else, map that status to `STORE_REMOTE_AUTH_FAILED` with a token and `STORE_REMOTE_PRIVATE` without one.
+2. The statuses GitHub uses for a missing token on a private repository. Documentation says 404. Check by hand once. If it answers 403 for rate limits and 404 for private repositories, the table in 3.7 already covers both. Suppose a token without access gets 403 and not 404. Then `GITHUB_RATE_LIMITED` misleads the reader. In that case, read the response header `x-ratelimit-remaining` and map 403 with a value above zero to `STORE_REMOTE_AUTH_FAILED`. If it answers something else, map that status to `STORE_REMOTE_AUTH_FAILED` with a token and `STORE_REMOTE_PRIVATE` without one.
 3. `util.inspect.custom` redaction under Node 22 and later. The symbol is `Symbol.for('nodejs.util.inspect.custom')`. Test case 5 proves it in this repository's Node version. If a test fails, also define `get [Symbol.toStringTag]()` returning `GithubToken`, and keep the private field.
 4. The `fake-network.ts` hook gets the request options as its second argument (`serve(url, _options, callback)`). I read the function header, not the whole file. Suppose the options are not available. Then record the header flag in the stub request object of the unit tests. The CLI-level tests keep only the plan text and the leak scan.
 5. Whether `createPublicTransport` is created once per command or once per request in the fetch code of spec 06. The header rule works for both. Suppose the code makes one transport for npm and git pins together. Then give the authored items their own transport, so the npm requests never see a token.

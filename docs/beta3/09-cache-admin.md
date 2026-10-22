@@ -25,7 +25,7 @@ Deleting cached bytes is safe for a project. Installed copies are separate files
 All paths are under the private state folder. When `XDG_STATE_HOME` is an absolute path, the folder is `$XDG_STATE_HOME/bowerloom`. Otherwise it is `~/.local/state/bowerloom` (`privateStateRoot`, `packages/project-context/src/index.ts:25-30`). Call it `<stateRoot>`.
 
 1. The skills cache, `<stateRoot>/cache`. It holds one folder `op-<operationId>` for each fetched npm or GitHub pin. `<operationId>` is 32 lower-case hex characters. Each operation can hold up to 8 attempts per pin (`packages/project-sync/src/cache-index.ts:66`, `CACHE_ATTEMPTS` is 8).
-2. The store cache, `<stateRoot>/store-cache` (spec 06, 3.11). It holds one folder `<hash>` for each fetched store item. `<hash>` is 64 hex characters.
+2. The store cache, `<stateRoot>/store-cache` (spec 06, 3.11). It holds one folder `<kind>-<id>-<hash>` for each fetched store item (spec 06, 3.11). `<kind>` is `skill`, `prompt`, or `team`. `<hash>` is 64 hex characters.
 3. The old per-project caches of earlier betas, `<stateRoot>/<projectId>/cache`. Each holds `op-<operationId>` folders. `<projectId>` is 32 hex characters. Bowerloom still reads them as a fallback and never writes them (`packages/project-sync/src/cache-index.ts:119-130`).
 
 ### 3.2 No index file
@@ -36,7 +36,7 @@ This spec writes no index of the cache. Something that Bowerloom can read must r
 
 - With a valid store, the store `skills.json`: every pinned entry gives a key and eight operation ids. Source tag: `store`.
 - Inside a project, the current project: every pinned entry of `.bowerloom/skills.json`, every `pin` of `bowerloom.lock.json`, and every `authored.hash` of the lock. Source tag: `project`.
-- The live store items: for each store skill, prompt, and team that is written in the store, the item `hash` (spec 06, 3.11) gives a store-cache key. Source tag: `store`.
+- The live store items: for each store skill, prompt, and team that is written in the store, the item `hash` (spec 06, 3.11) gives a store-cache key. The key is `<kind>-<id>-<hash>`. Source tag: `store`.
 
 When an entry's id is in a source's set, that source references the entry. An entry that no source refers to has `key: null`.
 
@@ -72,7 +72,7 @@ Algorithm:
 
 1. Find `<stateRoot>`. If it does not exist, the cache is empty.
 2. List `<stateRoot>/cache`. For each name that matches `^op-[a-f0-9]{32}$`, run `inspectSkillCache({ root, operationId })` (`packages/skill-sources/src/cache.ts:281`). Names that do not match `op-<32 hex>` and are not `.prune-*` count under `unlisted`. A name that starts with `.prune-` is a partial entry (a leftover of a crashed prune).
-3. List `<stateRoot>/store-cache`. For each name that matches `^[a-f0-9]{64}$`, read the folder with `readStoreCache` and recompute the hash. A match is `completed`. A mismatch is `partial`. Names `.tmp-<hash>-*` and `.prune-*` are `partial`. Other names count under `unlisted`.
+3. List `<stateRoot>/store-cache`. For each name that matches `^(skill|prompt|team)-[a-z0-9-]+-[a-f0-9]{64}$`, read the folder with `readStoreCache` and recompute the hash. A match is `completed`. A mismatch is `partial`. Names `.tmp-<key>-*` and `.prune-*` are `partial`. Other names count under `unlisted`.
 4. List each folder of `<stateRoot>` that matches `^[a-f0-9]{32}$` and has a `cache` folder. For each `op-<32 hex>` inside, inspect it the same way as step 2. Scope: `project-legacy`.
 5. Bound the work: at most 4096 entries in all. Past that, stop listing and set `truncated: true`.
 6. Build the reference sets (3.2). Fill `key` and `references`.
@@ -276,7 +276,7 @@ Create:
 Change:
 
 - `packages/skill-sources/src/cache.ts`: add and export `removeCacheEntry` (4.4). No other change in that file.
-- `packages/project-sync/src/store-git.ts` (spec 06): `readStoreCache(root, hash)` returns the rows and a `valid` flag, `storeCacheRoot(stateRoot)` returns the folder. `cache-admin.ts` uses them.
+- `packages/project-sync/src/store-git.ts` (spec 06): `readStoreCache(root, key)` returns the rows and a `valid` flag, `storeCacheRoot(stateRoot)` returns the folder. `cache-admin.ts` uses them.
 - `packages/project-sync/src/cache-index.ts:55,66`: no change. Import `entryRequest` and `cacheOperationId`.
 - `packages/project-sync/src/index.ts`: export `listCache`, `planCachePrune`, `applyCachePrune`.
 - `packages/project-sync/src/refusal.ts:11-37`: three codes.
@@ -293,7 +293,7 @@ Change:
 | An `op-*` folder whose inspection throws | Listed as `partial` with no label. `--partial` deletes it. |
 | An entry with an active owner | Listed with `active: true`. Group selectors skip it. `--entry` refuses `CACHE_ENTRY_BUSY`. |
 | `.prune-*` leftover | Listed as `partial`. `--partial` and `--all` delete it. |
-| `.tmp-<hash>-*` in the store cache | Listed as `partial`. `--partial` and `--all` delete it. |
+| `.tmp-<key>-*` in the store cache | Listed as `partial`. `--partial` and `--all` delete it. |
 | A store-cache folder with a changed file | Status `partial` (hash mismatch). `--partial` deletes it. |
 | `--unreferenced` outside a project | Picks entries that the store does not list. The plan says `Other projects on this machine are not checked.` and `projectChecked` is false. |
 | `--unreferenced` where the store is refused | No entry is picked (the store source is unknown). The plan says so. `Nothing to prune.` |
