@@ -11,6 +11,7 @@
  * (phase B, no project write), then applies each child with a revision planned right before it in the same run.
  */
 import { readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { freezeSkillData, revisionOf } from '../../skill-sources/src/validation.js';
 import { exists, names } from '../../managed-skills/src/observed.js';
@@ -36,7 +37,7 @@ import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, register
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
-import { agentsMayBeTracked, checkSliceChild, listSlices, scanSlices, sliceRequest } from './slices.js';
+import { agentsMayBeTracked, checkSliceChild, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
 import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, outward, syncError } from './refusal.js';
@@ -77,6 +78,11 @@ export interface ApplyInput {
   agentsOnly?: boolean;
   /** A test hook: stands in for the reader of a slice's tree, to change a file during the read. Product code never passes it. */
   sliceTree?: SliceTreeHook;
+  /**
+   * The home folder, where the store of registered folders lives. The default is the home folder of the process.
+   * A slice that names a registered folder is held when the store does not record it.
+   */
+  home?: string;
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -185,7 +191,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
     const catalogNames = exists(catalogs) ? names(catalogs) : [];
     const listing = listSlices(dir);
-    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames) : { items: [] as SliceItem[], unregistered: listing.unregistered };
+    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames, registeredLookup(input.home ?? homedir())) : { items: [] as SliceItem[], unregistered: listing.unregistered };
     const registeredSliceCount = listing.ids.length;
     const plain = plainSkillIds(dir);
     if (claude) {

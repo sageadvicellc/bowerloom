@@ -44,7 +44,7 @@ test('2. requestV2 refuses a slice request whose harness list is not [claude]', 
   assert.throws(() => requestV2({ ...good, source: { kind: 'slice', name: 'other', root: { kind: 'project' } } }));
   assert.throws(() => requestV2({ ...good, source: { kind: 'slice', name: 'wiki' } }));
   assert.throws(() => requestV2({ ...good, source: { kind: 'slice', name: 'wiki', root: { kind: 'project' }, extra: 1 } }));
-  assert.throws(() => requestV2({ ...good, source: { kind: 'slice', name: 'wiki', root: { kind: 'registered', name: 'kb', dir: '/x', identity: {} } } }), 'registered folders arrive with the second part');
+  assert.throws(() => requestV2({ ...good, source: { kind: 'slice', name: 'wiki', root: { kind: 'registered', name: 'kb', dir: '/x', identity: {} } } }), 'an identity needs its three fields');
   assert.throws(() => requestV2({ ...good, item: { kind: 'skill', id: 'wiki' } }));
   assert.throws(() => requestV2({ ...good, stateDir: itemState(f, 'wiki') }));
   assert.throws(() => requestV2({ ...good, item: { kind: 'slice', id: 'prompt-x' }, source: { kind: 'slice', name: 'prompt-x', root: { kind: 'project' } }, stateDir: itemState(f, 'slice_prompt-x') }));
@@ -184,4 +184,114 @@ test('C5. an index over 64 KiB holds SLICE_TOO_LARGE, and summary: none fits the
   const big = tree(f); assert.equal(big.hold.code, 'SLICE_TOO_LARGE'); assert.equal(big.hold.detail, 'the index'); assert.equal(big.index, null);
   sliceFile(f, 'wiki', SLICE.replace('summary: heading', 'summary: none'));
   const small = tree(f); assert.equal(small.hold, null); assert.ok(Buffer.byteLength(small.index) <= 65536 && Buffer.byteLength(small.index) > 40000);
+});
+
+// ---------------------------------------------------------------------------------------------------- Part B: registered roots
+// The lookup that project-sync passes in stands for the store; here it is a function over a real folder next to the project.
+const REGISTERED = 'format: bowerloom/context-slice/v1beta1\ndescription: The wiki.\nroot:\n  registered: kb\n  path: wiki\ninclude:\n  - "**/*.md"\nsummary: heading\nguard: root\n';
+const idOf = dir => { try { const s = fs.statSync(dir, { bigint: true }); return { device: String(s.dev), inode: String(s.ino), birthtimeNs: String(s.birthtimeNs) }; } catch { return { device: '0', inode: '0', birthtimeNs: '0' }; } };
+function kb(f, rel = 'wiki') {
+  const root = path.join(f.base, 'kb'); fs.mkdirSync(path.join(root, rel, 'sub'), { recursive: true, mode: 0o755 });
+  for (const p of [root, path.join(root, rel), path.join(root, rel, 'sub')]) fs.chmodSync(p, 0o755);
+  fs.writeFileSync(path.join(root, rel, 'a.md'), '# Alpha\n', { mode: 0o644 }); fs.writeFileSync(path.join(root, rel, 'sub/b.md'), '# Beta\n', { mode: 0o644 });
+  return root;
+}
+const lookup = (root, record = 'a'.repeat(64)) => (name, sub) => {
+  if (name !== 'kb') return { ok: false, code: 'SLICE_ROOT_MISSING', detail: name };
+  const dir = sub === '.' ? root : path.join(root, sub); return { ok: true, dir, identity: idOf(dir), recordSha256: record };
+};
+const regRoot = (root, sub = 'wiki') => ({ kind: 'registered', name: 'kb', dir: path.join(root, sub), identity: idOf(path.join(root, sub)) });
+const registeredRequest = (f, root, extra = {}) => sliceRequest(f, 'wiki', { source: { kind: 'slice', name: 'wiki', root: regRoot(root) }, ...extra });
+function registeredWiki(t) { const f = project(t); sliceFile(f, 'wiki', REGISTERED); const root = kb(f); return { f, root }; }
+
+test('B1. requestV2 takes a registered root with an absolute dir outside the project and the state folder', t => {
+  const { f, root } = registeredWiki(t), good = registeredRequest(f, root);
+  assert.equal(requestV2(good).source.root.kind, 'registered');
+  const withRoot = r => ({ ...good, source: { kind: 'slice', name: 'wiki', root: r } }), reg = regRoot(root);
+  for (const [why, bad] of [
+    ['a relative dir', { ...reg, dir: 'kb/wiki' }], ['a dir with a NUL', { ...reg, dir: reg.dir + '\0' }], ['the project folder itself', { ...reg, dir: f.projectDir }], ['a folder in the project', { ...reg, dir: path.join(f.projectDir, 'wiki') }],
+    ['the state folder', { ...reg, dir: good.stateDir }], ['a folder in the state folder', { ...reg, dir: path.join(good.stateDir, 'x') }], ['a bad name', { ...reg, name: 'KB' }], ['no name', { ...reg, name: '' }],
+    ['an extra key', { ...reg, extra: 1 }], ['a missing identity key', { ...reg, identity: { device: '1', inode: '2' } }], ['an extra identity key', { ...reg, identity: { ...reg.identity, uid: 1 } }],
+    ['a non-decimal inode', { ...reg, identity: { ...reg.identity, inode: 'abc' } }], ['a number for the device', { ...reg, identity: { ...reg.identity, device: 1 } }], ['an unknown kind', { ...reg, kind: 'other' }],
+  ]) assert.throws(() => requestV2(withRoot(bad)), why);
+  // A registered dir is not one of the roots the other paths are compared with: a folder that holds the project is allowed.
+  assert.equal(requestV2(withRoot({ ...reg, dir: f.base })).source.root.dir, f.base);
+});
+test('B2. readSliceTree reads a registered root outside the project and names its paths from the project folder', t => {
+  const { f, root } = registeredWiki(t), r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, lookup(root));
+  assert.equal(r.hold, null, JSON.stringify(r.hold)); assert.deepEqual(r.resolution.members.map(m => m.path), ['a.md', 'sub/b.md']); assert.equal(r.rootDir, path.join(root, 'wiki')); assert.equal(r.recordSha256, 'a'.repeat(64));
+  assert.match(r.index, /\nSource folder: \.\.\/kb\/wiki \(registered folder kb\)\nFiles: 2\n/);
+  assert.match(r.index, /- `\.\.\/kb\/wiki\/a\.md`: Alpha\n- `\.\.\/kb\/wiki\/sub\/b\.md`: Beta\n$/);
+  assert.equal(r.index.includes(f.base), false, 'no absolute path in the index');
+});
+test('B3. without a lookup, or with a request root that is a project root, a registered root holds SLICE_ROOT_MISSING', t => {
+  const { f } = registeredWiki(t), r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live);
+  assert.deepEqual([r.index, r.hold.code], [null, 'SLICE_ROOT_MISSING']);
+});
+test('B4. a hold of the lookup is the hold of the slice, with its detail', t => {
+  const { f, root } = registeredWiki(t);
+  for (const hold of [{ ok: false, code: 'SLICE_ROOT_MISSING', detail: 'kb' }, { ok: false, code: 'SLICE_ROOT_UNSAFE', detail: '~/kb/wiki' }]) {
+    const r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => hold);
+    assert.deepEqual([r.index, r.definition?.root.kind, r.hold], [null, 'registered', { code: hold.code, detail: hold.detail }]);
+  }
+  fs.rmSync(path.join(root, 'wiki'), { recursive: true });
+  assert.equal(readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, lookup(root)).hold.code, 'SLICE_ROOT_MISSING', 'a lookup that finds a gone folder is not enough: the tree read decides');
+});
+test('B5. a registered root inside the project holds SLICE_ROOT_UNSAFE and names the project root to use', t => {
+  const f = project(t); sliceFile(f, 'wiki', REGISTERED); wikiFile(f, 'a.md', '# Alpha\n');
+  const here = path.join(f.projectDir, 'wiki'), r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: true, dir: here, identity: idOf(here), recordSha256: 'b'.repeat(64) }));
+  assert.deepEqual([r.index, r.hold], [null, { code: 'SLICE_ROOT_UNSAFE', detail: 'wiki', inside: true }]);
+  const same = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: true, dir: f.projectDir, identity: idOf(f.projectDir), recordSha256: 'b'.repeat(64) }));
+  assert.equal(same.hold.code, 'SLICE_ROOT_UNSAFE'); assert.equal(same.hold.detail, '.'); assert.equal(same.hold.inside, true);
+});
+test('B6. a registered folder that holds the project is allowed, and hidden folders are skipped', t => {
+  const f = project(t); sliceFile(f, 'wiki', REGISTERED.replace('path: wiki', 'path: "."').replace('"**/*.md"', '"*/*.md"'));
+  const r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, lookup(f.base));
+  assert.equal(r.hold, null, JSON.stringify(r.hold)); assert.ok(r.resolution.members.some(m => m.path === 'project/AGENTS.md'));
+  assert.equal(r.resolution.members.some(m => m.path.includes('.bowerloom')), false);
+  assert.match(r.index, /Source folder: \.\. \(registered folder kb\)/);
+});
+test('B7. a request root that names the folder is checked against the live folder: identity, name, and kind', t => {
+  const { f, root } = registeredWiki(t), good = regRoot(root);
+  const ok = readLocalSlice(f.projectDir, 'wiki', good, live);
+  assert.deepEqual(ok.source, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki' }, guard: 'root' }); assert.deepEqual(ok.references, ['a.md', 'sub/b.md', './', 'sub/']);
+  assert.match(ok.files[0].text, /Source folder: \.\.\/kb\/wiki \(registered folder kb\)/);
+  assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, name: 'other' }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
+  assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, identity: { ...good.identity, inode: String(BigInt(good.identity.inode) + 1n) } }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
+  assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, identity: { ...good.identity, birthtimeNs: '1' } }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
+  assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, dir: path.join(root, 'nope') }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
+  // The folder replaced by a new one at the same path has another identity.
+  const planned = regRoot(root); fs.rmSync(path.join(root, 'wiki'), { recursive: true }); kb(f);
+  assert.throws(() => readLocalSlice(f.projectDir, 'wiki', planned, live), e => ['MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_REFUSED'].includes(e.code));
+  // A slice file that says project while the request says registered is a change since the plan.
+  sliceFile(f, 'wiki', SLICE); assert.throws(() => readSliceTree(f.projectDir, 'wiki', good, live), code('MANAGED_SKILL_STALE_APPROVAL'));
+});
+test('B8. a registered folder that is now a link, or group-writable, is refused in the child as it is in the plan', t => {
+  const { f, root } = registeredWiki(t), good = regRoot(root);
+  fs.chmodSync(path.join(root, 'wiki'), 0o775);
+  const unsafe = readSliceTree(f.projectDir, 'wiki', good, live); assert.equal(unsafe.hold.code, 'SLICE_ROOT_UNSAFE'); assert.equal(unsafe.index, null);
+  fs.chmodSync(path.join(root, 'wiki'), 0o755); fs.renameSync(path.join(root, 'wiki'), path.join(root, 'real')); fs.symlinkSync(path.join(root, 'real'), path.join(root, 'wiki'));
+  const linked = readSliceTree(f.projectDir, 'wiki', good, live); assert.ok(linked.hold !== null || linked.index === null); assert.equal(linked.index, null);
+});
+test('B9. a transaction installs a slice of a registered folder; the catalog holds the name and the path, never the absolute path', async t => {
+  const { f, root } = registeredWiki(t), req = registeredRequest(f, root), { plan, receipt } = await install(req);
+  assert.equal(receipt.state, 'committed'); assert.equal(plan.core.closure.source.root.kind, 'registered');
+  const text = read(f, '.bowerloom/managed/catalog/slice_wiki.json'), catalog = JSON.parse(text);
+  assert.deepEqual(catalog.source, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki' }, guard: 'root' });
+  assert.deepEqual(catalog.references, ['a.md', 'sub/b.md', './', 'sub/']); assert.equal(text.includes(root), false); assert.equal(text.includes(f.base), false);
+  assert.match(read(f, '.claude/skills/slice-wiki/SKILL.md'), /- `\.\.\/kb\/wiki\/a\.md`: Alpha\n/);
+  assert.equal(read(f, '.claude/skills/slice-wiki/SKILL.md').includes(f.base), false);
+  assert.equal(currentV2(f.projectDir, req.stateDir, req.item).revision, receipt.revision);
+});
+test('B10. planning refuses when the folder was replaced between the request and the read', async t => {
+  const { f, root } = registeredWiki(t), req = registeredRequest(f, root);
+  fs.rmSync(path.join(root, 'wiki'), { recursive: true }); kb(f);
+  await assert.rejects(planManagedItem(req), e => ['MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_REFUSED'].includes(e.code));
+});
+test('B11. sameSource: a move from a project root to a registered folder is an update of the same item', async t => {
+  const f = project(t); sliceFile(f); wikiFile(f, 'a.md', '# Alpha\n'); const req = sliceRequest(f), { receipt } = await install(req);
+  const root = kb(f); sliceFile(f, 'wiki', REGISTERED);
+  const update = { ...registeredRequest(f, root), operation: 'update', expectedPreviousRevision: receipt.revision }, plan = await planManagedItem(update);
+  assert.equal(plan.format, 'bowerloom/managed-item-plan/v1beta2'); assert.deepEqual(plan.core.closure.source.root, { kind: 'registered', name: 'kb', path: 'wiki' });
+  const second = await applyManagedItem(null, update, plan.revision); assert.notEqual(second.revision, receipt.revision);
 });

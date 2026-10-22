@@ -5,7 +5,7 @@
  * The result is content only, so two machines with the same authored bytes produce the same closure.
  */
 import fs from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, check, boundary, hash, same, identity, names, path as projectPath } from './observed.js';
 import { claudeCopyBytes } from './agent-copy.js';
@@ -17,7 +17,7 @@ import type { EntryInfo, SliceResolution, TreeReader } from '../../context-slice
 import { renderSliceIndex } from '../../context-slices/src/render.js';
 import { ManagedSkillError } from './observed.js';
 import type { Identity } from './observed-types.js';
-import type { AgentGuardSource, ItemFile, InventoryRow, LocalClosure, SliceRequestRoot } from './v2-types.js';
+import type { AgentGuardSource, ItemFile, InventoryRow, LocalClosure, RegisteredLookup, RootIdentity, SliceRequestRoot } from './v2-types.js';
 
 export const ITEM_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function itemName(value: unknown): asserts value is string { check(typeof value === 'string' && value.length <= 64 && ITEM_ID.test(value)); }
@@ -108,9 +108,11 @@ export interface SliceTreeResult {
   file: { sha256: string; bytes: number } | null;
   resolution: SliceResolution;
   index: string | null;
-  hold: { code: string; detail: string; errno?: string } | null;
+  hold: { code: string; detail: string; errno?: string; inside?: boolean } | null;
   /** The absolute path of the root folder once it passed the folder checks, else null. */
   rootDir: string | null;
+  /** For a registered root found through the store: the sha256 of its record. Null otherwise. */
+  recordSha256: string | null;
 }
 const staleFile = (): never => { throw new ManagedSkillError('MANAGED_SKILL_STALE_APPROVAL'); };
 const EMPTY: SliceResolution = Object.freeze({ members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }) as SliceResolution;
@@ -153,48 +155,78 @@ function closingStale(pins: Pin[], live: () => void): void {
 }
 
 /**
- * Reads `.bowerloom/slices/<name>.yaml`, resolves its root, and selects its files (spec 05, sections 3.4 and 3.5), then
+ * Reads `.bowerloom/slices/<name>.yaml`, resolves its root (spec 05, section 3.4), selects its files (section 3.5), and
  * renders the index. It never throws for a hold: a bad definition, a root that is gone or unsafe, or a selection that
  * fails comes back as `hold`. A change found by the closing pass throws MANAGED_SKILL_STALE_APPROVAL.
+ *
+ * A project root is walked from the project folder. A registered root comes from `registered`, the store lookup that the
+ * planner passes in, or, in the child of an approved plan, from `root`, which names the folder and its identity: then the
+ * live folder must still be that folder, or the read is stale. A registered root inside the project is a hold.
  */
-export function readSliceTree(projectDir: string, name: string, root: SliceRequestRoot, live: () => void): SliceTreeResult {
+export function readSliceTree(projectDir: string, name: string, root: SliceRequestRoot, live: () => void, registered?: RegisteredLookup): SliceTreeResult {
   try {
-    if (root.kind !== 'project') check(false);
     const pins: Pin[] = []; live();
     const file = join(base(projectDir, 'slices', pins), name + '.yaml');
     let got: { text: string; pin: Pin };
     try { got = authored(file, SLICE_LIMITS.fileBytes); }
     catch (e) {
       if ((e as NodeJS.ErrnoException)?.code === 'ENOENT') return staleFile();
-      return { definition: null, file: null, resolution: EMPTY, index: null, hold: { code: 'SLICE_INVALID', detail: 'the file cannot be read as a plain text file that you own, with one link, no write access for others, and at most 16 KiB' }, rootDir: null };
+      return { definition: null, file: null, resolution: EMPTY, index: null, hold: { code: 'SLICE_INVALID', detail: 'the file cannot be read as a plain text file that you own, with one link, no write access for others, and at most 16 KiB' }, rootDir: null, recordSha256: null };
     }
     pins.push(got.pin);
     const info = { sha256: hash(got.text), bytes: Buffer.byteLength(got.text) };
     const parsed = parseSlice(got.text, name);
-    if (!parsed.ok) { closingStale(pins, live); return { definition: null, file: info, resolution: EMPTY, index: null, hold: { code: parsed.code, detail: parsed.detail }, rootDir: null }; }
+    if (!parsed.ok) { closingStale(pins, live); return { definition: null, file: info, resolution: EMPTY, index: null, hold: { code: parsed.code, detail: parsed.detail }, rootDir: null, recordSha256: null }; }
     const def = parsed.slice;
-    if (def.root.kind !== 'project') { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold: { code: 'SLICE_ROOT_MISSING', detail: 'registered' }, rootDir: null }; }
-    // The folders from the project down to the root must be real folders that only this user can change.
-    let at = projectDir;
+    const held = (hold: { code: string; detail: string; inside?: boolean }, recordSha256: string | null = null): SliceTreeResult => { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold, rootDir: null, recordSha256 }; };
+    let at: string, prefix: string, source: string, recordSha256: string | null = null;
     const rootPath = def.root.path;
-    for (const seg of rootPath === '.' ? [] : rootPath.split('/')) {
-      at = join(at, seg); let s: fs.BigIntStats;
-      try { s = fs.lstatSync(at, { bigint: true }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold: { code: 'SLICE_PATH_MISSING', detail: rootPath }, rootDir: null }; } return staleFile(); }
-      if (s.isSymbolicLink() || !s.isDirectory() || !owned(s)) { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold: { code: 'SLICE_ROOT_UNSAFE', detail: rootPath }, rootDir: null }; }
+    if (def.root.kind === 'project') {
+      // The request says where the plan read; a file that now says another kind of root is a change since the plan.
+      if (root.kind !== 'project') return staleFile();
+      // The folders from the project down to the root must be real folders that only this user can change.
+      at = projectDir;
+      for (const seg of rootPath === '.' ? [] : rootPath.split('/')) {
+        at = join(at, seg); let s: fs.BigIntStats;
+        try { s = fs.lstatSync(at, { bigint: true }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return held({ code: 'SLICE_PATH_MISSING', detail: rootPath }); return staleFile(); }
+        if (s.isSymbolicLink() || !s.isDirectory() || !owned(s)) return held({ code: 'SLICE_ROOT_UNSAFE', detail: rootPath });
+        pins.push(pinOf(at, s));
+      }
+      prefix = rootPath === '.' ? '' : rootPath; source = rootPath === '.' ? 'the project folder' : rootPath;
+    } else {
+      const folderName = def.root.name;
+      let identityWanted: RootIdentity | null = null;
+      if (root.kind === 'registered') {
+        if (root.name !== folderName) return staleFile();
+        at = root.dir; identityWanted = root.identity;
+      } else if (registered !== undefined) {
+        const found = registered(folderName, rootPath);
+        if (!found.ok) return held({ code: found.code, detail: found.detail });
+        at = found.dir; recordSha256 = found.recordSha256;
+      } else return held({ code: 'SLICE_ROOT_MISSING', detail: folderName });
+      let s: fs.BigIntStats;
+      try { s = fs.lstatSync(at, { bigint: true }); } catch (e) { const c = (e as NodeJS.ErrnoException).code; if (c === 'ENOENT' || c === 'ENOTDIR') return identityWanted !== null ? staleFile() : held({ code: 'SLICE_ROOT_MISSING', detail: folderName }); return staleFile(); }
+      if (s.isSymbolicLink() || !s.isDirectory() || !owned(s)) return held({ code: 'SLICE_ROOT_UNSAFE', detail: at });
+      if (identityWanted !== null) {
+        const now = identity(s);
+        if (now.device !== identityWanted.device || now.inode !== identityWanted.inode || now.birthtimeNs !== identityWanted.birthtimeNs) return staleFile();
+      }
+      // A registered folder inside the project would be a project root with a second name: use the project root.
+      if (at === projectDir || at.startsWith(projectDir + '/')) return held({ code: 'SLICE_ROOT_UNSAFE', detail: relative(projectDir, at) || '.', inside: true });
       pins.push(pinOf(at, s));
+      prefix = relative(projectDir, at); source = `${prefix} (registered folder ${folderName})`;
     }
     const resolution = resolveSlice(def, new RootTree(at, pins, live));
     closingStale(pins, live);
     // A path in a hold is named from the project folder, as the person writes it.
-    const qualify = (detail: string): string => rootPath === '.' ? (detail === '.' ? rootPath : detail) : detail === '.' ? rootPath : `${rootPath}/${detail}`;
+    const qualify = (detail: string): string => prefix === '' ? detail : detail === '.' ? prefix : `${prefix}/${detail}`;
     if (resolution.hold !== null) {
       const h = resolution.hold, named = h.code === 'SLICE_PATH_MISSING' || h.code === 'SLICE_SOURCE_UNSAFE';
-      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail), ...(h.errno === undefined ? {} : { errno: h.errno }) } : h, rootDir: at };
+      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail), ...(h.errno === undefined ? {} : { errno: h.errno }) } : h, rootDir: at, recordSha256 };
     }
-    const display = rootPath === '.' ? { source: 'the project folder', prefix: '' } : { source: rootPath, prefix: rootPath };
-    const index = renderSliceIndex(name, def, resolution, display);
-    if (Buffer.byteLength(index) > SLICE_LIMITS.indexBytes) return { definition: def, file: info, resolution, index: null, hold: { code: 'SLICE_TOO_LARGE', detail: 'the index' }, rootDir: at };
-    return { definition: def, file: info, resolution, index, hold: null, rootDir: at };
+    const index = renderSliceIndex(name, def, resolution, { source, prefix });
+    if (Buffer.byteLength(index) > SLICE_LIMITS.indexBytes) return { definition: def, file: info, resolution, index: null, hold: { code: 'SLICE_TOO_LARGE', detail: 'the index' }, rootDir: at, recordSha256 };
+    return { definition: def, file: info, resolution, index, hold: null, rootDir: at, recordSha256 };
   } catch (e) { return boundary(e); }
 }
 

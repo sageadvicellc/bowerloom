@@ -12,7 +12,7 @@ import { projectionFor } from '../../portable/src/harness-projection.js';
 import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { readLocalSkill, readLocalPrompt, readLocalAgent, readLocalSlice, itemName, ITEM_ID } from './local-source.js';
-import { isSliceId } from '../../context-slices/src/slice-file.js';
+import { isFolderName, isSliceId } from '../../context-slices/src/slice-file.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin } from './observed-types.js';
@@ -73,10 +73,19 @@ export function requestV2(value: unknown): ManagedItemRequest {
     }
   }
   else if (source.kind === 'slice') {
-    // The second part of spec 05 adds registered folders. Until then a slice reads from the project only.
     const s = schema<{ name: string; root: unknown }>(source, ['kind', 'name', 'root']);
     check(item.kind === 'slice' && s.name === item.id && v.harnesses.length === 1 && v.harnesses[0] === 'claude');
-    schema(s.root, ['kind']); check((s.root as { kind: string }).kind === 'project');
+    check(s.root !== null && typeof s.root === 'object');
+    const rootKind = (s.root as { kind?: unknown }).kind;
+    if (rootKind === 'project') schema(s.root, ['kind']);
+    else {
+      // A registered root is a folder outside the project. It is not added to `roots`: a folder that holds the project is allowed.
+      const g = schema<{ name: string; dir: string; identity: unknown }>(s.root, ['kind', 'name', 'dir', 'identity']);
+      check(rootKind === 'registered' && isFolderName(g.name)); path(g.dir);
+      check(g.dir !== v.projectDir && !g.dir.startsWith(v.projectDir + '/') && g.dir !== v.stateDir && !g.dir.startsWith(v.stateDir + '/'));
+      const id = schema<{ device: unknown; inode: unknown; birthtimeNs: unknown }>(g.identity, ['device', 'inode', 'birthtimeNs']);
+      check([id.device, id.inode, id.birthtimeNs].every(x => typeof x === 'string' && /^[0-9]{1,24}$/.test(x)));
+    }
   }
   else fail('MANAGED_SKILL_REFUSED');
   if (v.operation === 'migrate') {

@@ -15,7 +15,8 @@ import { LIMITS, OP_TEMP, directory, exists, names, raw, stablePins } from '../.
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import type { SliceTreeResult } from '../../managed-skills/src/local-source.js';
 import { catalogPath, currentV2, locateV2, ownSurface } from '../../managed-skills/src/v2-observed.js';
-import type { InventoryRow, ItemClosure, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
+import type { InventoryRow, ItemClosure, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, RegisteredLookup, SliceRequestRoot, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
+import { resolveRegisteredRoot } from '../../project-context/src/registered-folders.js';
 import { identityFrom, projectId } from '../../project-context/src/discovery.js';
 import type { DirectoryIdentity } from '../../project-context/src/types.js';
 import { SLICE_LIMITS, isSliceId } from '../../context-slices/src/slice-file.js';
@@ -38,7 +39,8 @@ export interface SliceItem {
   action: 'install' | 'update' | 'none' | 'hold';
   harnesses: ['claude'];
   definition: { path: string; sha256: string; bytes: number } | null;
-  root: { kind: 'project'; path: string; dir: string; identity: DirectoryIdentity } | null;
+  root: { kind: 'project'; path: string; dir: string; identity: DirectoryIdentity }
+    | { kind: 'registered'; name: string; path: string; dir: string; identity: DirectoryIdentity; recordSha256: string } | null;
   guard: 'root' | 'none' | null;
   /** Relative to the root, sorted. */
   members: string[];
@@ -87,14 +89,14 @@ export function sliceSurfaces(project: string, id: string): { id: ItemSurface['i
 }
 
 /** The words of a hold from the reading of a slice: its code and the next step. */
-export function holdOf(id: string, hold: { code: string; detail: string; errno?: string }): { code: string; next: string } {
+export function holdOf(id: string, hold: { code: string; detail: string; errno?: string; inside?: boolean }): { code: string; next: string } {
   const path = fileOf(id);
   switch (hold.code) {
     case 'SLICE_INVALID': return { code: hold.code, next: `Fix ${path}: ${hold.detail}. Then run bowerloom apply.` };
     case 'SLICE_KEY_UNKNOWN': return { code: hold.code, next: `Remove ${/^[A-Za-z0-9_.-]{1,64}$/.test(hold.detail) ? `the key ${hold.detail}` : 'a key with unsupported characters'} from ${path}, then run bowerloom apply.` };
     case 'SLICE_PATH_MISSING': return { code: hold.code, next: `${hold.detail} is gone. Fix the path in ${path}, or restore the file, then run bowerloom apply.` };
-    case 'SLICE_ROOT_MISSING': return { code: hold.code, next: 'This build has no registered folders yet. Use a root inside the project.' };
-    case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: `ls -ld ${hold.detail}` };
+    case 'SLICE_ROOT_MISSING': return { code: hold.code, next: 'Run bowerloom folder list, or register the folder with bowerloom folder add <folder-name> <path>, then run bowerloom apply.' };
+    case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : `ls -ld ${hold.detail}` };
     case 'SLICE_SOURCE_UNSAFE': return { code: hold.code, next: hold.errno === undefined ? `ls -l ${hold.detail}` : `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -l ${hold.detail}, let your user read it, then run bowerloom apply.` };
     case 'SLICE_EMPTY': return { code: hold.code, next: `Widen include in ${path}, then run bowerloom apply.` };
     default: return { code: 'SLICE_TOO_LARGE', next: 'Narrow the slice, or set summary: none, then run bowerloom apply.' };
@@ -106,20 +108,31 @@ const indexLines = (text: string): Map<string, string> => {
   for (const line of text.split('\n')) { const m = /^- `([^`]+)`/.exec(line); if (m) out.set(m[1]!, line); }
   return out;
 };
-const qualified = (root: string, member: string): string => root === '.' ? member : `${root}/${member}`;
+/** A member path with the root it belongs to, so that two roots never share a name for the same path. */
+const rootKey = (root: SliceDefinition['root'] | undefined): string => root === undefined ? '' : root.kind === 'registered' ? `@${root.name}/${root.path}` : root.path === '.' ? '' : root.path;
+const qualified = (root: string, member: string): string => root === '' ? member : `${root}/${member}`;
 
-export type SliceTreeHook = (projectDir: string, name: string, root: { kind: 'project' }, live: () => void) => SliceTreeResult;
+export type SliceTreeHook = (projectDir: string, name: string, root: SliceRequestRoot, live: () => void, registered?: RegisteredLookup) => SliceTreeResult;
+
+/** The store lookup of registered folders, for `readSliceTree`: the project-context resolver with the identity cut to what a request carries. */
+export function registeredLookup(home: string): RegisteredLookup {
+  return (name, path) => {
+    const found = resolveRegisteredRoot(home, name, path);
+    if (!found.ok) return found;
+    return { ok: true, dir: found.dir, identity: { device: found.identity.device, inode: found.identity.inode, birthtimeNs: found.identity.birthtimeNs }, recordSha256: found.recordSha256 };
+  };
+}
 
 /** Reads one slice through the hook, and turns a change during the read into the stale refusal. */
-function readTree(read: SliceTreeHook, project: string, id: string): SliceTreeResult {
-  try { return read(project, id, { kind: 'project' }, () => {}); }
+function readTree(read: SliceTreeHook, project: string, id: string, registered?: RegisteredLookup): SliceTreeResult {
+  try { return read(project, id, { kind: 'project' }, () => {}, registered); }
   catch (e) {
     const code = (e as { code?: string } | null)?.code;
     if (code === 'MANAGED_SKILL_STALE_APPROVAL') throw stale(`A file of slice ${id} changed while Bowerloom read it. Run bowerloom apply again.`);
     if (code === 'MANAGED_SKILL_ABORTED' || code === 'MANAGED_SKILL_TIMEOUT') throw syncError(code);
     // An error with no string code is a bug in Bowerloom: it must not look like a fault in the person's files.
     if (typeof code !== 'string') throw e;
-    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id), errno: code }, rootDir: null };
+    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id), errno: code }, rootDir: null, recordSha256: null };
   }
 }
 
@@ -134,7 +147,7 @@ function heldItem(project: string, id: string, extra: Partial<SliceItem>, hold: 
 }
 
 /** Classifies one registered slice. Reads only. */
-export function classifySlice(project: string, itemsRoot: string, id: string, read: SliceTreeHook): SliceItem {
+export function classifySlice(project: string, itemsRoot: string, id: string, read: SliceTreeHook, registered?: RegisteredLookup): SliceItem {
   const ref: ItemRef = { kind: 'slice', id }, itemId = 'slice_' + id, stateDir = join(itemsRoot, itemId), catalog = catalogPath(project, ref);
   const surfaces = sliceSurfaces(project, id), before = beforePins(surfaces, project);
   if (lstatOrNull(join(project, fileOf(id))) === null) {
@@ -142,13 +155,18 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
     const hold = { code: 'AUTHORING_ITEM_MISSING', next: `${fileOf(id)} is gone. Restore it from version control, then run bowerloom apply.` };
     return heldItem(project, id, { installed: installedState(project, itemsRoot, ref) !== null }, hold);
   }
-  const tree = readTree(read, project, id);
+  const tree = readTree(read, project, id, registered);
   const def = tree.definition, res = tree.resolution;
   const notes = {
     unparsed: [...res.notes.unparsed], unresolvedLinks: res.notes.unresolvedLinks, ambiguousLinks: res.notes.ambiguousLinks, emptyPatterns: [...res.notes.emptyPatterns],
-    notText: res.notes.notText, oversize: [...res.notes.oversize], skippedEntries: res.notes.skippedEntries, truncatedLinks: res.notes.truncatedLinks, outsideProject: false, wholeProject: def !== null && def.root.kind === 'project' && def.root.path === '.' && def.guard === 'root',
+    notText: res.notes.notText, oversize: [...res.notes.oversize], skippedEntries: res.notes.skippedEntries, truncatedLinks: res.notes.truncatedLinks, outsideProject: def !== null && def.root.kind === 'registered' && tree.rootDir !== null, wholeProject: def !== null && def.root.kind === 'project' && def.root.path === '.' && def.guard === 'root',
   };
-  const rootItem = def !== null && def.root.kind === 'project' && tree.rootDir !== null ? ((): SliceItem['root'] => { try { return { kind: 'project', path: def.root.path, dir: tree.rootDir!, identity: identityFrom(lstatSync(tree.rootDir!, { bigint: true })) }; } catch { return null; } })() : null;
+  const rootItem = def !== null && tree.rootDir !== null ? ((): SliceItem['root'] => {
+    try {
+      const identity = identityFrom(lstatSync(tree.rootDir!, { bigint: true }));
+      return def.root.kind === 'project' ? { kind: 'project', path: def.root.path, dir: tree.rootDir!, identity } : { kind: 'registered', name: def.root.name, path: def.root.path, dir: tree.rootDir!, identity, recordSha256: tree.recordSha256 ?? '' };
+    } catch { return null; }
+  })() : null;
   const source: SliceCatalogSource | null = def === null ? null : { kind: 'slice', path: `slices/${id}.yaml`, root: def.root, guard: def.guard };
   const previous = installedState(project, itemsRoot, ref);
   const base: Partial<SliceItem> = {
@@ -180,7 +198,7 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
       if (refs === null) { hold = hold ?? { code: 'MANAGED_SKILL_LOCAL_DRIFT', next: driftNext([`.bowerloom/managed/catalog/${itemId}.json`], fileOf(id)).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') }; state = 'drift'; }
       else {
       const oldMembers = refs.filter(r => !r.endsWith('/')), oldCovered = refs.filter(r => r.endsWith('/'));
-      const wasRoot = was?.root?.path ?? '.', nowRoot = def!.root.path;
+      const wasRoot = rootKey(was?.root), nowRoot = rootKey(def!.root);
       const oldSet = new Set(oldMembers.map(m => qualified(wasRoot, m))), newSet = new Set(base.members!.map(m => qualified(nowRoot, m)));
       const installedIndex = readInstalledIndex(project, id);
       const oldLines = installedIndex === null ? new Map<string, string>() : indexLines(installedIndex), newLines = indexLines(tree.index!);
@@ -238,11 +256,18 @@ export function orphanSlice(project: string, itemsRoot: string, id: string): Sli
   return { ...base, state: code === 'MANAGED_SKILL_LOCAL_DRIFT' ? 'drift' : 'held', action: 'hold', hold: { code, next } };
 }
 
+/** The root a child request names: the project, or the registered folder's root with the identity the plan read. */
+export function requestRoot(item: SliceItem): SliceRequestRoot {
+  const root = item.root;
+  if (root === null || root.kind === 'project') return { kind: 'project' };
+  return { kind: 'registered', name: root.name, dir: root.dir, identity: { device: root.identity.device, inode: root.identity.inode, birthtimeNs: root.identity.birthtimeNs } };
+}
+
 /** The child request of one slice. Every field comes from the plan this run computed. */
 export function sliceRequest(project: string, itemsRoot: string, item: SliceItem): ManagedItemRequest {
   return {
     operation: item.action === 'install' ? 'install' : 'update', projectDir: project, stateDir: join(itemsRoot, item.itemId),
-    item: { kind: 'slice', id: item.id }, harnesses: ['claude'], source: { kind: 'slice', name: item.id, root: { kind: 'project' } },
+    item: { kind: 'slice', id: item.id }, harnesses: ['claude'], source: { kind: 'slice', name: item.id, root: requestRoot(item) },
     expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
   };
 }
@@ -271,9 +296,9 @@ export function listSlices(project: string): { ids: string[]; unregistered: stri
   return { ids, unregistered: folder.filter(n => !listed.has(n)) };
 }
 /** Plans every registered slice, then adds the catalogs of slices that are no longer registered. */
-export function scanSlices(project: string, itemsRoot: string, read: SliceTreeHook = readSliceTree as SliceTreeHook, catalogNames: readonly string[] = []): SliceScan {
+export function scanSlices(project: string, itemsRoot: string, read: SliceTreeHook = readSliceTree as SliceTreeHook, catalogNames: readonly string[] = [], registered?: RegisteredLookup): SliceScan {
   const { ids, unregistered } = listSlices(project);
-  const items = ids.map(id => classifySlice(project, itemsRoot, id, read));
+  const items = ids.map(id => classifySlice(project, itemsRoot, id, read, registered));
   for (const n of catalogNames) {
     const m = /^slice_([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/.exec(n);
     if (m && isSliceId(m[1]) && !ids.includes(m[1]!)) items.push(orphanSlice(project, itemsRoot, m[1]!));

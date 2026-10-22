@@ -2,14 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
+import { planFolderAdd, applyFolderAdd } from '../../../dist/packages/project-context/src/index.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import { agentProject, agentText, agentSource, signal } from './agents-fixture.mjs';
 
 export * from './agents-fixture.mjs';
 
 /** `slice create <name>` through the product, under the project lock. `root` and `includes` are as the command takes them. */
-export async function createSlice(f, name, { root = null, includes = null } = {}) {
-  const request = { kind: 'slice', project: f.projectDir, name, root: root === null ? null : { kind: 'project', path: root }, includes };
+export async function createSlice(f, name, { root = null, includes = null, registered = null } = {}) {
+  const request = { kind: 'slice', project: f.projectDir, name, root: registered !== null ? { kind: 'registered', name: registered, path: root ?? '.' } : root === null ? null : { kind: 'project', path: root }, includes };
   await withProjectLock(f.projectDir, signal(), async held => applyCreate(request, (await planCreate(request)).revision, held));
 }
 /** Writes a file under the project as a person would: plain file, mode 0644, folders 0755. */
@@ -35,3 +36,22 @@ export const sliceLine = (id, text) => new RegExp(`^ {2}${id} +${text}$`, 'm');
 
 /** The input of measureContext for a project made by wikiProject. */
 export const measureInput = (f, extra = {}) => ({ project: f.project(), stateRoot: f.stateRoot, home: f.home, from: f.projectDir, ...extra });
+
+let folders = 0;
+/**
+ * A folder in HOME, outside the project, with a wiki of two pages, registered in the store under a new name by the product's
+ * own `folder add`. Both the folder and its record go when the test ends.
+ */
+export async function registeredFolder(f, t, { name = `kb${++folders}`, pages = { 'a.md': '# Alpha\nbody a\n', 'sub/b.md': '# Beta\nbody b\n' } } = {}) {
+  const dir = fs.mkdtempSync(path.join(f.home, 'folder-')); fs.chmodSync(dir, 0o755);
+  t.after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(path.join(f.home, '.bowerloom/folders', name + '.json'), { force: true }); });
+  const wiki = path.join(dir, 'wiki');
+  for (const [rel, text] of Object.entries(pages)) {
+    const file = path.join(wiki, rel); fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o755 });
+    for (let p = path.dirname(file); p !== dir; p = path.dirname(p)) fs.chmodSync(p, 0o755);
+    fs.writeFileSync(file, text, { mode: 0o644 });
+  }
+  const plan = planFolderAdd(f.home, f.home, name, dir);
+  await applyFolderAdd(f.home, f.home, name, dir, plan.revision, signal());
+  return { name, dir, wiki, record: path.join(f.home, '.bowerloom/folders', name + '.json'), display: path.relative(f.projectDir, wiki) };
+}
