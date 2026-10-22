@@ -6,6 +6,8 @@ import type { ProjectContext } from '../../../packages/project-context/src/types
 import { LIMITS, readGuarded } from '../../../packages/project-authoring/src/files.js';
 import { readManifestState } from '../../../packages/skill-manifest/src/add.js';
 import { parseManifest } from '../../../packages/skill-manifest/src/schema.js';
+import { readConfig } from '../../../packages/project-config/src/index.js';
+import { configLine } from './config-status.js';
 import { newCommandJson, plainText } from './human.js';
 
 const SECTIONS = ['teams', 'skills', 'prompts'] as const;
@@ -87,5 +89,8 @@ export function runLsCommand(args: readonly string[], cwd: string, home: string)
   if (words.filter(w => w === '--json').length > 1 || rest.length > 1 || rest.some(w => w.startsWith('-')) || (rest[0] !== undefined && !(SECTIONS as readonly string[]).includes(rest[0]))) {
     throw new DefinitionError('USAGE', 'Use bowerloom ls [teams|skills|prompts] [--json].');
   }
-  return renderListing(listProject(discoverProject(cwd, home)), (rest[0] as Section | undefined) ?? null, json);
+  const project = discoverProject(cwd, home), listing = listProject(project);
+  const text = renderListing(listing, (rest[0] as Section | undefined) ?? null, json);
+  // A project with a bowerloom.json says so first, as status does: valid with counts, or the code that makes it invalid.
+  return json || !project.configPresent ? text : `${configLine(readConfig(project)).join('\n')}\n\n${text}`;
 }

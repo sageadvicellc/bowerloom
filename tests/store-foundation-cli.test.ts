@@ -52,20 +52,39 @@ test('3. a valid store prints its counts, and the counts ignore a link and a str
   writeFileSync(join(w.store, 'skills.json'), JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude'], skills: [{ id: 'a', source: { kind: 'npm' } }, { id: 'b', source: { kind: 'git' } }, { id: 'c', source: { kind: 'local', path: 'skills/c' } }] }));
   const r = run(w.home, ['store', 'status'], w.env);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, `Store: ready\n  Path: ${w.store}\n  Skill folders: 2\n  Pinned skills: 2\n  Prompts: 1\n  Teams: 1\n`);
+  // Silent-failure F1 and F2: what the count skipped is shown, and so is whether a count was capped.
+  assert.equal(r.stdout, `Store: ready\n  Path: ${w.store}\n  Skill folders: 2 (3 entries ignored)\n  Pinned skills: 2\n  Prompts: 1 (2 entries ignored)\n  Teams: 1 (1 entry ignored)\n`);
   const j = JSON.parse(run(w.home, ['store', 'status', '--json'], w.env).stdout);
-  assert.deepEqual(j.counts, { skillFolders: 2, pinnedSkills: 2, prompts: 1, teams: 1 }); assert.equal(j.state, 'store'); assert.equal(j.code, null); assert.equal(j.git, null);
+  assert.deepEqual(j.counts, { skillFolders: 2, pinnedSkills: 2, pinnedSkillsProblem: null, prompts: 1, teams: 1, ignored: { skillFolders: 3, prompts: 2, teams: 1 }, capped: { skillFolders: false, prompts: false, teams: false } }); assert.equal(j.state, 'store'); assert.equal(j.code, null); assert.equal(j.git, null);
 });
 
-test('3b. a skills.json that cannot be parsed prints Pinned skills: unreadable, and no skills.json counts 0; 256 names print as 256 or more', t => {
+test('3b. a skills.json that cannot be used says why; no skills.json counts 0; 256 names print as 256 or more and say capped', t => {
   const w = world(t); mkStore(w);
   assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Pinned skills: 0\n/);
-  writeFileSync(join(w.store, 'skills.json'), '{"a":1,"a":2}');
-  assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Pinned skills: unreadable\n/);
-  assert.equal(JSON.parse(run(w.home, ['store', 'status', '--json'], w.env).stdout).counts.pinnedSkills, null);
+  const counts = () => JSON.parse(run(w.home, ['store', 'status', '--json'], w.env).stdout).counts;
+  const file = join(w.store, 'skills.json');
+  writeFileSync(file, '{"a":1,"a":2}');
+  assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Pinned skills: unreadable \(invalid\)\n/);
+  assert.deepEqual([counts().pinnedSkills, counts().pinnedSkillsProblem], [null, 'invalid']);
+  writeFileSync(file, '{}'); chmodSync(file, 0o666);
+  assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Pinned skills: unreadable \(unsafe\)\n/);
+  assert.equal(counts().pinnedSkillsProblem, 'unsafe');
+  chmodSync(file, 0o600); writeFileSync(file, ' '.repeat(4 * 1024 * 1024 + 1));
+  assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Pinned skills: unreadable \(too-large\)\n/);
+  assert.equal(counts().pinnedSkillsProblem, 'too-large');
+  rmSync(file);
   for (let i = 0; i < 257; i++) mkdirSync(join(w.store, 'teams', `t${i}`), { recursive: true });
   assert.match(run(w.home, ['store', 'status'], w.env).stdout, /Teams: 256 or more\n/);
-  assert.equal(JSON.parse(run(w.home, ['store', 'status', '--json'], w.env).stdout).counts.teams, 256);
+  assert.equal(counts().teams, 256); assert.equal(counts().capped.teams, true); assert.equal(counts().capped.prompts, false);
+});
+
+test('3c. a skills, prompts, or teams entry that is a link or not a folder refuses STORE_UNSAFE', t => {
+  for (const name of ['skills', 'prompts', 'teams']) {
+    const w = world(t); mkStore(w); writeFileSync(join(w.store, name), 'x');
+    let r = run(w.home, ['store', 'status'], w.env); assert.equal(r.status, 0, name); assert.match(r.stdout, /^Store: refused \(STORE_UNSAFE\)\n/, name);
+    rmSync(join(w.store, name)); mkdirSync(join(w.base, 'elsewhere')); symlinkSync(join(w.base, 'elsewhere'), join(w.store, name));
+    r = run(w.home, ['store', 'status'], w.env); assert.match(r.stdout, /^Store: refused \(STORE_UNSAFE\)\n/, `${name} link`);
+  }
 });
 
 test('4. a store folder without store.json prints Store: not a store and exits 0', t => {
@@ -184,7 +203,8 @@ test('13. status in a project with .bowerloom, a config, and no receipt reports 
 
 test('14. ls in a config-only project lists three empty sections, and ls --json has pinned []', t => {
   const w = world(t), dir = configProject(w), r = run(dir, ['ls'], w.env);
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Teams\n  none yet\n\nSkills\n  none yet\n\nPrompts\n  none yet\n');
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  none yet\n\nSkills\n  none yet\n\nPrompts\n  none yet\n');
+  const bad = configProject(w, '{}\n', 'bad'); assert.match(run(bad, ['ls'], w.env).stdout, /^Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\n\nTeams\n/);
   assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta1', teams: [], skills: [], pinned: [], prompts: [], unlisted: 0 });
 });
 
@@ -231,7 +251,8 @@ test('18. a leftover temporary file beside a valid store.json prints the Leftove
   // A store holding only a leftover file is "none yet".
   const bare = world(t); mkdirSync(bare.store, { mode: 0o700 }); writeFileSync(join(bare.store, '.store.json.0123456789abcdef.tmp'), 'x');
   const b = run(bare.home, ['store', 'status', '--json'], bare.env); assert.equal(JSON.parse(b.stdout).state, 'absent');
-  assert.match(run(bare.home, ['store', 'status'], bare.env).stdout, /^Store: none yet\n/);
+  assert.equal(JSON.parse(b.stdout).leftoverTemps, 1, 'F4: the leftover is counted');
+  assert.match(run(bare.home, ['store', 'status'], bare.env).stdout, /^Store: none yet\n.*\n {2}Leftover: \.store\.json\.0123456789abcdef\.tmp \(the next --global write removes it\)\n$/s);
 });
 
 test('a project under a home that holds a store is found, and a bowerloom.json at home is refused', t => {
@@ -240,4 +261,26 @@ test('a project under a home that holds a store is found, and a bowerloom.json a
   assert.equal(run(app, ['ls'], w.env).status, 0);
   const bare = world(t); writeFileSync(join(bare.home, 'bowerloom.json'), '{}', { mode: 0o600 }); mkdirSync(join(bare.home, 'sub'));
   assert.equal(errorCode(run(join(bare.home, 'sub'), ['ls'], bare.env).stderr), 'PROJECT_ROOT_REFUSED');
+});
+
+test('F11: a relative init target inside the store refuses STORE_NOT_A_PROJECT', t => {
+  const w = world(t); mkStore(w); mkdirSync(join(w.store, 'skills'));
+  for (const target of ['.', 'skills', '../.bowerloom']) {
+    const cwd = target === '../.bowerloom' ? join(w.store, 'skills') : w.store;
+    const r = run(cwd, ['init', 'plan', '--mode', 'existing', '--target', target, '--name', 'n', '--goal', 'g'], w.env);
+    assert.equal(r.status, 1, target); assert.equal(errorCode(r.stderr), 'STORE_NOT_A_PROJECT', target);
+  }
+});
+
+test('S9: deleting the receipt of a startup project that also has a bowerloom.json is still drift', t => {
+  const w = world(t), dir = startupProject(w);
+  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(CONFIG, null, 2)}\n`, { mode: 0o600 });
+  rmSync(join(dir, '.bowerloom', 'installation-receipt.json'));
+  const j = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
+  assert.equal(j.setup, 'startup'); assert.equal(j.status, 'drifted'); assert.deepEqual(j.drift, [{ path: '.bowerloom/installation-receipt.json', kind: 'invalid-receipt' }]);
+});
+
+test('S1: a config-only project folder that others can write refuses PROJECT_UNSAFE', t => {
+  const w = world(t), dir = configProject(w); chmodSync(dir, 0o777);
+  const r = run(dir, ['status'], w.env); assert.equal(r.status, 1); assert.equal(errorCode(r.stderr), 'PROJECT_UNSAFE');
 });

@@ -40,13 +40,13 @@ test('3. a link becomes drift unsafe and no owner is asked', async t => {
   const p = project(t); fs.writeFileSync(join(p.dir, 'real'), 'x'); fs.symlinkSync(join(p.dir, 'real'), join(p.bowerloom, 'skills.json'));
   const ok = fakeOwner('manifest', { 'skills.json': 'file' }, { result: 'verified' });
   const result = await inspectOwnedOnly(p.dir, [ok.owner]);
-  assert.deepEqual(result.drift, [{ path: '.bowerloom/skills.json', kind: 'unsafe' }]);
+  assert.deepEqual(result.drift, [{ path: '.bowerloom/skills.json', kind: 'unsafe', code: 'UNSAFE_ENTRY' }]);
   assert.deepEqual(ok.calls, []);
 });
 
 test('4. more than 256 entries returns the drift unsafe for .bowerloom', async t => {
   const p = project(t); for (let i = 0; i < 257; i++) fs.writeFileSync(join(p.bowerloom, `f${String(i).padStart(3, '0')}`), 'x');
-  assert.deepEqual(await inspectOwnedOnly(p.dir, []), { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned: [] });
+  assert.deepEqual(await inspectOwnedOnly(p.dir, []), { drift: [{ path: '.bowerloom', kind: 'unsafe', code: 'INSPECTION_LIMIT' }], owned: [] });
   fs.rmSync(join(p.bowerloom, 'f256'));
   assert.equal((await inspectOwnedOnly(p.dir, [])).drift.length, 256, '256 entries are fine');
 });
@@ -63,7 +63,16 @@ test('6. a .bowerloom that is not owned by the user returns the drift unsafe bef
   const p = project(t); fs.writeFileSync(join(p.bowerloom, 'skills.json'), '{}');
   const ok = fakeOwner('manifest', { 'skills.json': 'file' }, { result: 'verified' });
   fs.chmodSync(p.bowerloom, 0o770);
-  try { assert.deepEqual(await inspectOwnedOnly(p.dir, [ok.owner]), { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned: [] }); } finally { fs.chmodSync(p.bowerloom, 0o700); }
+  try { assert.deepEqual(await inspectOwnedOnly(p.dir, [ok.owner]), { drift: [{ path: '.bowerloom', kind: 'unsafe', code: 'PRIVATE_OWNER_REQUIRED' }], owned: [] }); } finally { fs.chmodSync(p.bowerloom, 0o700); }
   assert.deepEqual(ok.calls, []);
-  fs.rmSync(p.bowerloom, { recursive: true }); assert.deepEqual((await inspectOwnedOnly(p.dir, [])).drift, [{ path: '.bowerloom', kind: 'unsafe' }], 'a missing folder');
+  fs.rmSync(p.bowerloom, { recursive: true }); assert.deepEqual((await inspectOwnedOnly(p.dir, [])).drift, [{ path: '.bowerloom', kind: 'unsafe', code: 'UNREADABLE' }], 'a missing folder');
+});
+
+test('F7: an owner that throws is reported as owner-refused with a code, and the other entries are still inspected', async t => {
+  const p = project(t); fs.writeFileSync(join(p.bowerloom, 'skills.json'), '{}'); fs.writeFileSync(join(p.bowerloom, 'stray.txt'), 'x');
+  const boom = { owner: 'manifest', claims: path => path === 'skills.json', async verify() { throw new Error('boom'); } };
+  const result = await inspectOwnedOnly(p.dir, [boom]);
+  assert.deepEqual(result.drift, [{ path: '.bowerloom/skills.json', kind: 'owner-refused', code: 'OWNER_REFUSED' }, { path: '.bowerloom/stray.txt', kind: 'unexpected' }]);
+  const claimsThrow = { owner: 'manifest', claims() { throw new Error('boom'); }, async verify() { return { result: 'verified' }; } };
+  assert.equal((await inspectOwnedOnly(p.dir, [claimsThrow])).drift.length, 2);
 });

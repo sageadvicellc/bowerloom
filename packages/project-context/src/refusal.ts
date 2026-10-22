@@ -16,10 +16,11 @@ const MESSAGES = {
   PROJECT_LOCK_SLOT_COLLISION: 'Another program holds the local port that Bowerloom uses to lock this project.',
   STORE_NOT_FOUND: 'There is no store yet.',
   STORE_INVALID: 'The store folder has no usable store.json.',
-  STORE_UNSAFE: 'The store is not safe to use. It must be a real folder that you own, with no write access for others and no link on its path.',
+  STORE_UNSAFE: 'The store is not safe to use. It must be a real folder that you own, with no write access for others and no link on its path. Your home folder must be yours or root\'s, and others must not be able to write in it unless it is sticky. Bowerloom does not check the folders above your home folder.',
   STORE_UNREADABLE: 'Bowerloom cannot read the store or a folder on the way to it.',
   STORE_IN_CLOUD_FOLDER: 'The store is in a cloud-synced folder.',
   STORE_NOT_A_PROJECT: 'The store holds definitions only, so a folder inside it cannot be a project.',
+  CONFIG_UNREADABLE: 'Bowerloom cannot read bowerloom.json.',
   CONFIG_UNSAFE: 'bowerloom.json is not safe to read. It must be a plain file that you own, with one link, no write access for others, and at most 1 MiB.',
 } as const;
 

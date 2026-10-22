@@ -176,7 +176,7 @@ test('15b. readConfig refuses a file that is swapped for a link between discover
   assert.throws(() => readConfig(p.found), code('CONFIG_UNSAFE'));
 });
 
-test('16. the validation order: a file with two faults gives the code of the earlier one', () => {
+test('16. the validation order: a file with two faults gives the code of the earlier step (step 5 beats step 7 among them)', () => {
   // A long list (4: limit) and an unknown key (1: keys): keys first.
   assert.throws(() => parse({ ...make({ skills: ids(129) }), extra: 1 }), code('CONFIG_INVALID'));
   // A bad format (2) beats a long list (4).

@@ -14,7 +14,7 @@ import type { BigIntStats } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { refuse } from './refusal.js';
-import { inspectStoreWith, isValidStore, pathInsideStore } from './store.js';
+import { inspectStoreWith, pathInsideStore } from './store.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from './types.js';
 
 /** Test hooks. Product code never passes them. */
@@ -155,8 +155,13 @@ const CONFIG_MAX_BYTES = 1048576;
  * and at most 1 MiB. Otherwise CONFIG_UNSAFE. The inode is not pinned, because a writer replaces the file by rename.
  */
 export function checkConfigFile(dir: string, uid: number = process.getuid?.() ?? -1): BigIntStats | null {
+  // Exactly one name may fold to bowerloom.json, and it must be spelled so, whatever the disk does with case.
+  let listed: string[]; try { listed = readdirSync(dir); } catch (error) { if (absent(error)) return null; throw refuse('CONFIG_UNREADABLE'); }
+  const hits = listed.filter(name => fold(name) === CONFIG_FILENAME);
+  if (hits.length === 0) return null;
+  if (hits.length > 1 || hits[0] !== CONFIG_FILENAME) throw refuse('PROJECT_UNSAFE');
   let stat: BigIntStats;
-  try { stat = lstatSync(join(dir, CONFIG_FILENAME), { bigint: true }); } catch (error) { if (errno(error) === 'ENOENT') return null; throw refuse('CONFIG_UNSAFE'); }
+  try { stat = lstatSync(join(dir, CONFIG_FILENAME), { bigint: true }); } catch (error) { if (errno(error) === 'ENOENT') return null; throw refuse('CONFIG_UNREADABLE'); }
   if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0 || stat.size > BigInt(CONFIG_MAX_BYTES)) throw refuse('CONFIG_UNSAFE');
   return stat;
 }
@@ -196,28 +201,36 @@ export function discoverProjectWith(cwd: string, home: string, hooks: DiscoveryH
   }
 }
 
-/** The refusal at a home folder: a store at `.bowerloom` ends the search quietly; anything else there is too broad to be a project. */
+/**
+ * The refusal at a home folder: a store at `.bowerloom` ends the search quietly; anything else there is too broad to be a
+ * project. A store that fails its safety rules names its STORE_* code instead of hiding behind PROJECT_ROOT_REFUSED.
+ */
 function atHome(aliases: readonly string[], configs: readonly string[], home: string, hooks: DiscoveryHooks): 'PROJECT_NOT_FOUND' | 'PROJECT_ROOT_REFUSED' {
   if (configs.length > 0) return 'PROJECT_ROOT_REFUSED';
   if (aliases.length === 0) return 'PROJECT_NOT_FOUND';
   if (aliases.length !== 1 || aliases[0] !== '.bowerloom') return 'PROJECT_ROOT_REFUSED';
-  try {
-    if (isValidStore(home, hooks)) return 'PROJECT_NOT_FOUND';
-    const found = inspectStoreWith(home, hooks);
-    return found.state === 'absent' && found.leftover ? 'PROJECT_NOT_FOUND' : 'PROJECT_ROOT_REFUSED';
-  } catch { return 'PROJECT_ROOT_REFUSED'; }
+  const found = inspectStoreWith(home, hooks);
+  return found.state === 'store' || (found.state === 'absent' && found.leftover) ? 'PROJECT_NOT_FOUND' : 'PROJECT_ROOT_REFUSED';
 }
 
 function build(dir: string, aliases: string[], configs: string[], uid: number, home: string, hooks: DiscoveryHooks): ProjectContext {
   checkProjectPathWith(dir, home, hooks);
-  if (pathInsideStore(dir, home, hooks)) throw refuse('STORE_NOT_A_PROJECT');
+  let inStore: boolean;
+  try { inStore = pathInsideStore(dir, home, hooks); } catch (error) { throw refuse(errno(error) === 'STORE_UNREADABLE' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
+  if (inStore) throw refuse('STORE_NOT_A_PROJECT');
   if (aliases.length > 1 || (aliases.length === 1 && aliases[0] !== '.bowerloom')) throw refuse('PROJECT_UNSAFE');
   if (configs.length > 1 || (configs.length === 1 && configs[0] !== CONFIG_FILENAME)) throw refuse('PROJECT_UNSAFE');
   // One lstat both checks .bowerloom and pins its identity, so nothing can swap it between the two.
   let bowerloomIdentity: DirectoryIdentity | null = null;
   if (aliases.length === 1) bowerloomIdentity = folderMarker(dir, uid);
-  const configPresent = configs.length === 1 && checkConfigFile(dir, uid) !== null;
+  let configPresent = false;
+  if (configs.length === 1) {
+    if (checkConfigFile(dir, uid) === null) throw refuse('PROJECT_UNSAFE');
+    configPresent = true;
+  }
   const identity = pin(dir);
+  // The project folder itself must be the user's and closed to others, whatever marker it holds.
+  if (identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
   return Object.freeze({ dir, identity, ancestry: pinAncestry(dir), bowerloomIdentity, configPresent, projectId: projectId(dir, identity) });
 }
 
@@ -228,21 +241,27 @@ function folderMarker(dir: string, uid: number): DirectoryIdentity {
   return identityFrom(stat);
 }
 
-/** True when `<dir>/.bowerloom` is not there. Any other lstat failure refuses PROJECT_UNSAFE. */
+/** True when `<dir>` holds no `.bowerloom`. Exactly one name may fold to it, and it must be spelled so; else PROJECT_UNSAFE. */
 function folderAbsent(dir: string): boolean {
-  try { lstatSync(join(dir, '.bowerloom')); return false; } catch (error) { if (errno(error) === 'ENOENT') return true; throw refuse('PROJECT_UNSAFE'); }
+  let listed: string[]; try { listed = readdirSync(dir); } catch { throw refuse('PROJECT_UNSAFE'); }
+  const hits = listed.filter(name => fold(name) === '.bowerloom');
+  if (hits.length === 0) return true;
+  if (hits.length > 1 || hits[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
+  return false;
 }
 
 function verifyPins(project: ProjectContext, skip?: 'folder' | 'config'): void {
+  const uid = process.getuid?.() ?? -1;
   const pins: (readonly [string, DirectoryIdentity])[] = [[project.dir, project.identity]];
   if (project.bowerloomIdentity !== null) pins.push([join(project.dir, '.bowerloom'), project.bowerloomIdentity]);
   for (const [path, pinned] of pins) {
     let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
     if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('PROJECT_UNSAFE');
+    if (path === project.dir && (Number(stat.uid) !== (process.getuid?.() ?? -1) || (Number(stat.mode) & 0o022) !== 0)) throw refuse('PROJECT_UNSAFE');
   }
   if (project.bowerloomIdentity === null && skip !== 'folder' && !folderAbsent(project.dir)) throw refuse('PROJECT_UNSAFE');
   if (skip !== 'config') {
-    const config = checkConfigFile(project.dir);
+    const config = checkConfigFile(project.dir, uid);
     if (project.configPresent ? config === null : config !== null) throw refuse('PROJECT_UNSAFE');
   }
 }
@@ -256,19 +275,29 @@ function verifyPins(project: ProjectContext, skip?: 'folder' | 'config'): void {
  */
 export function verifyProjectPins(project: ProjectContext): void { verifyPins(project); }
 
+/** The identity of the marker the writer made: device and inode of the file for `'config'`; device, inode, and birth time of the folder for `'folder'`. */
+export interface AdoptExpected { readonly device: string; readonly inode: string; readonly birthtimeNs?: string }
+
 /**
  * Right after a writer creates `.bowerloom` (`'folder'`) or `bowerloom.json` (`'config'`), returns the context with that
- * marker adopted. The marker must be missing from `project` (else USAGE). Everything else must still match the pins.
+ * marker adopted. The marker must be missing from `project` (else USAGE), must be the one the writer made (`expected`; else PROJECT_UNSAFE), and everything else must still match the pins. `hooks.uid` is a test hook.
  */
-export function adoptCreatedMarker(project: ProjectContext, marker: 'folder' | 'config'): ProjectContext {
+export function adoptCreatedMarker(project: ProjectContext, marker: 'folder' | 'config', expected: AdoptExpected, hooks: { readonly uid?: number } = {}): ProjectContext {
   if (marker !== 'folder' && marker !== 'config') throw refuse('USAGE');
+  if (expected === null || typeof expected !== 'object' || typeof expected.device !== 'string' || typeof expected.inode !== 'string') throw refuse('USAGE');
   if (marker === 'folder' ? project.bowerloomIdentity !== null : project.configPresent) throw refuse('USAGE');
+  const uid = hooks.uid ?? process.getuid?.() ?? -1;
   verifyPins(project, marker);
-  const uid = process.getuid?.() ?? -1;
   let bowerloomIdentity = project.bowerloomIdentity, configPresent = project.configPresent;
-  if (marker === 'folder') bowerloomIdentity = folderMarker(project.dir, uid);
-  else if (checkConfigFile(project.dir, uid) === null) throw refuse('PROJECT_UNSAFE');
-  else configPresent = true;
+  if (marker === 'folder') {
+    const found = folderMarker(project.dir, uid);
+    if (found.device !== expected.device || found.inode !== expected.inode || found.birthtimeNs !== expected.birthtimeNs) throw refuse('PROJECT_UNSAFE');
+    bowerloomIdentity = found;
+  } else {
+    const found = checkConfigFile(project.dir, uid);
+    if (found === null || found.dev.toString() !== expected.device || found.ino.toString() !== expected.inode) throw refuse('PROJECT_UNSAFE');
+    configPresent = true;
+  }
   return Object.freeze({ dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity, configPresent, projectId: project.projectId });
 }
 
@@ -283,7 +312,8 @@ export function readConfigBytes(project: ProjectContext): Buffer | null {
   if (stat === null) return null;
   const file = join(project.dir, CONFIG_FILENAME);
   let fd: number;
-  try { fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW); } catch { throw refuse('CONFIG_UNSAFE'); }
+  try { fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW); }
+  catch (error) { throw refuse(errno(error) === 'ELOOP' || errno(error) === 'ENOENT' ? 'CONFIG_UNSAFE' : 'CONFIG_UNREADABLE'); }
   let bytes: Buffer;
   try {
     const open = fstatSync(fd, { bigint: true });
@@ -298,7 +328,7 @@ export function readConfigBytes(project: ProjectContext): Buffer | null {
     bytes = Buffer.from(buffer.subarray(0, length));
   } catch (error) {
     if (errno(error) === 'CONFIG_UNSAFE') throw error;
-    throw refuse('CONFIG_UNSAFE');
+    throw refuse('CONFIG_UNREADABLE');
   } finally { closeSync(fd); }
   verifyPins(project);
   return bytes;

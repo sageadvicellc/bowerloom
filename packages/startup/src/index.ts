@@ -306,20 +306,22 @@ export async function inspectOwnedOnly(targetDir: string, owners: readonly Owner
   if (!validOwners(owners)) fail('STARTUP_INPUT');
   const target = canonicalTarget(targetDir); ancestors(target); ownedDirectory(identity(target));
   const directory = join(target, '.bowerloom'), drift: Drift[] = [], owned: OwnedEntry[] = [], signal = new AbortController().signal;
-  try { ownedDirectory(identity(directory)); } catch { return { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned }; }
-  try {
-    const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-    if (entries.length > 256) fail('INSPECTION_LIMIT');
-    for (const entry of entries) {
-      const path = `.bowerloom/${entry.name}`, link = entry.isSymbolicLink();
-      const kind: OwnedEntryKind | null = link ? null : entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : null;
-      if (kind === null) { drift.push({ path, kind: 'unsafe' }); continue; }
-      const outcome = await askOwners(owners, entry.name, kind, signal);
-      if (outcome.result === 'unclaimed') drift.push({ path, kind: 'unexpected' });
-      else if (outcome.result === 'refused') drift.push({ path, kind: 'owner-refused', code: outcome.code });
-      else owned.push({ path, owner: outcome.owner, state: outcome.result });
-    }
-  } catch { return { drift: [{ path: '.bowerloom', kind: 'unsafe' }], owned: [] }; }
+  const unsafe = (code: string) => ({ drift: [{ path: '.bowerloom', kind: 'unsafe' as const, code }], owned: [] as OwnedEntry[] });
+  try { ownedDirectory(identity(directory)); } catch (error) { return unsafe(error instanceof StartupError ? error.code : 'UNREADABLE'); }
+  let entries;
+  try { entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0); } catch { return unsafe('UNREADABLE'); }
+  if (entries.length > 256) return unsafe('INSPECTION_LIMIT');
+  for (const entry of entries) {
+    const path = `.bowerloom/${entry.name}`;
+    const kind: OwnedEntryKind | null = entry.isSymbolicLink() ? null : entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : null;
+    if (kind === null) { drift.push({ path, kind: 'unsafe', code: 'UNSAFE_ENTRY' }); continue; }
+    // askOwners turns a verifier that throws into owner-refused. Anything else that goes wrong is reported, not swallowed.
+    let outcome: Awaited<ReturnType<typeof askOwners>>;
+    try { outcome = await askOwners(owners, entry.name, kind, signal); } catch { return unsafe('OWNER_ERROR'); }
+    if (outcome.result === 'unclaimed') drift.push({ path, kind: 'unexpected' });
+    else if (outcome.result === 'refused') drift.push({ path, kind: 'owner-refused', code: outcome.code });
+    else owned.push({ path, owner: outcome.owner, state: outcome.result });
+  }
   owned.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { drift, owned };
 }

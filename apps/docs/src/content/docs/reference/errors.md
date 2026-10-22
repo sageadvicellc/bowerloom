@@ -91,11 +91,12 @@ The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store
 | --- | --- | --- |
 | `STORE_NOT_FOUND` | There is no store yet. The first `--global` create or `skills add` makes the store. | Run `bowerloom skill create <name> --global`. |
 | `STORE_INVALID` | The store folder has no usable `store.json`. If `~/.bowerloom` holds no `store.json` that Bowerloom wrote, Bowerloom does not use it and never takes over the folder. | Run `bowerloom store status`. |
-| `STORE_UNSAFE` | The store must be a real folder that you own, with no write access for others and no link on its path. Bowerloom does not trust a store that other people or links can change. | Run `ls -ld ~/.bowerloom`. |
+| `STORE_UNSAFE` | The store must be a real folder that you own, with no write access for others and no link on its path. Your home folder must be yours or root's, and others must not be able to write in it unless it is sticky. Bowerloom does not check the folders above your home folder. | Run `ls -ld ~/.bowerloom`. |
 | `STORE_UNREADABLE` | Bowerloom cannot read the store or a folder on the way to it. A folder that cannot be read cannot be checked. | Run `ls -ld ~ ~/.bowerloom`. |
 | `STORE_IN_CLOUD_FOLDER` | The store is in a cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep the store safe. | Move the home folder setup out of iCloud. The store must stay at `~/.bowerloom`. |
 | `STORE_NOT_A_PROJECT` | The store holds definitions only, so a folder inside it cannot be a project. | Run the command in a project folder outside `~/.bowerloom`. |
 | `CONFIG_INVALID` | `bowerloom.json` does not match the project config format. Bowerloom reads it strictly, so a hand edit can break it. | Run `git diff bowerloom.json`. |
+| `CONFIG_UNREADABLE` | Bowerloom cannot read `bowerloom.json`. A file that cannot be read cannot be checked, so Bowerloom does not use it. | Run `ls -l bowerloom.json`. |
 | `CONFIG_UNSAFE` | `bowerloom.json` must be a plain file that you own, with one link, no write access for others, and at most 1 MiB. This refusal stops every project command. | Run `ls -l bowerloom.json`. |
 | `CONFIG_LIMIT` | `bowerloom.json` lists too many items. This beta allows 128 skills, 128 prompts, and 32 teams at most. | Run `bowerloom status`. |
 | `CONFIG_DUPLICATE_ID` | `bowerloom.json` lists a skill, prompt, or team twice. Each item is listed once, from one source. | Run `git diff bowerloom.json`. |

@@ -50,7 +50,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'It holds no cache and no installed copy.',
     'It reads only and writes nothing, and it starts no workers.',
     'The store is always at ~/.bowerloom, and ~ is your HOME folder. Bowerloom refuses a store that is a link,',
-    'that sits in an iCloud folder, or that other users can change.',
+    'that sits in an iCloud folder, or that other users can change, and a home folder that other users can write in.',
+    'It does not check the folders above your home folder.',
     'Add --json for one machine-readable object.', '',
   ].join('\n'),
   ls: [
@@ -252,6 +253,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
   STORE_NOT_A_PROJECT: { sentence: 'Run this command in a project folder outside ~/.bowerloom.', next: 'cd <project-folder>' },
   CONFIG_INVALID: { sentence: 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', next: 'git diff bowerloom.json' },
+  CONFIG_UNREADABLE: { sentence: 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -l bowerloom.json' },
   CONFIG_UNSAFE: { sentence: 'Bowerloom will not trust a bowerloom.json that other people or links can change.', next: 'ls -l bowerloom.json' },
   CONFIG_LIMIT: { sentence: 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', next: 'bowerloom status' },
   CONFIG_DUPLICATE_ID: { sentence: 'Each item is listed once, from one source.', next: 'git diff bowerloom.json' },

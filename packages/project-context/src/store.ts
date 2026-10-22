@@ -25,7 +25,8 @@ export interface StoreContext {
   readonly dir: string;
   readonly identity: DirectoryIdentity;
   readonly ancestry: readonly PinnedDirectory[];
-  readonly fileIdentity: { readonly device: string; readonly inode: string };
+  /** Device and inode of `store.json`, and its size and change time when it was read. */
+  readonly fileIdentity: { readonly device: string; readonly inode: string; readonly size: string; readonly ctimeNs: string };
 }
 export type StoreInspection =
   | { state: 'absent'; leftover: boolean }
@@ -67,7 +68,7 @@ function strictText(bytes: Buffer): string | null {
 }
 
 /** Reads and checks `store.json`: a plain file, at most 4096 bytes, exactly `{"format":"bowerloom/store/v1beta1"}`. Returns its device and inode. */
-function readStoreFile(root: string, uid: number): { device: string; inode: string } {
+function readStoreFile(root: string, uid: number): StoreContext['fileIdentity'] {
   const file = join(root, STORE_FILE);
   let before: BigIntStats;
   try { before = lstatSync(file, { bigint: true }); } catch (error) { throw refuse(missing(error) ? 'STORE_UNSAFE' : 'STORE_UNREADABLE'); }
@@ -99,7 +100,7 @@ function readStoreFile(root: string, uid: number): { device: string; inode: stri
   try { value = strictJson(text, STORE_FILE_LIMIT); } catch { throw refuse('STORE_INVALID'); }
   const keys = value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
   if (keys.length !== 1 || keys[0] !== 'format' || (value as { format: unknown }).format !== STORE_FORMAT) throw refuse('STORE_INVALID');
-  return { device: before.dev.toString(), inode: before.ino.toString() };
+  return { device: before.dev.toString(), inode: before.ino.toString(), size: before.size.toString(), ctimeNs: before.ctimeNs.toString() };
 }
 
 /**
@@ -109,6 +110,11 @@ function readStoreFile(root: string, uid: number): { device: string; inode: stri
  */
 export function inspectStoreWith(home: string, hooks: DiscoveryHooks = {}): StoreInspection {
   const realHome = realHomeOf(home), root = join(realHome, STORE_DIRNAME), uid = hooks.uid ?? process.getuid?.() ?? -1;
+  // The home folder must be yours (or root's), and closed to others unless it is sticky. Folders above it are not checked.
+  let homeStat: BigIntStats;
+  try { homeStat = lstatSync(realHome, { bigint: true }); } catch { throw refuse('STORE_UNREADABLE'); }
+  const homeOwner = Number(homeStat.uid), homeMode = Number(homeStat.mode);
+  if (!homeStat.isDirectory() || (homeOwner !== uid && homeOwner !== 0) || ((homeMode & 0o022) !== 0 && (homeMode & 0o1000) === 0)) throw refuse('STORE_UNSAFE');
   let stat: BigIntStats | null;
   try { stat = lstatSync(root, { bigint: true }); } catch (error) { if (!missing(error)) throw refuse('STORE_UNREADABLE'); stat = null; }
   let names: string[];
@@ -123,16 +129,21 @@ export function inspectStoreWith(home: string, hooks: DiscoveryHooks = {}): Stor
   if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0) throw refuse('STORE_UNSAFE');
   checkStorePath(root, realHome, hooks);
   try { if (realpathSync(root) !== root) throw refuse('STORE_UNSAFE'); } catch (error) { if (errno(error) === 'STORE_UNSAFE') throw error; throw refuse(missing(error) ? 'STORE_UNSAFE' : 'STORE_UNREADABLE'); }
+  // Pin the folder and its parents before anything inside is read, and require them to be the folder that was checked.
+  let identity: DirectoryIdentity, ancestry: readonly PinnedDirectory[];
+  try { identity = pin(root); ancestry = pinAncestry(root); }
+  catch (error) { throw refuse(errno(error) === 'PROJECT_UNREADABLE' ? 'STORE_UNREADABLE' : 'STORE_UNSAFE'); }
+  if (identity.device !== stat.dev.toString() || identity.inode !== stat.ino.toString() || identity.birthtimeNs !== stat.birthtimeNs.toString()
+    || identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('STORE_UNSAFE');
   let inside: string[];
   try { inside = readdirSync(root); } catch { throw refuse('STORE_UNREADABLE'); }
   const kept = inside.filter(name => !LEFTOVER_TEMP.test(name)), leftoverTemp = kept.length !== inside.length;
   if (kept.length === 0) return { state: 'absent', leftover: true };
   if (!exactName(kept, STORE_FILE)) return { state: 'foreign' };
   const fileIdentity = readStoreFile(root, uid);
-  let identity: DirectoryIdentity, ancestry: readonly PinnedDirectory[];
-  try { identity = pin(root); ancestry = pinAncestry(root); }
-  catch (error) { throw refuse(errno(error) === 'PROJECT_UNREADABLE' ? 'STORE_UNREADABLE' : 'STORE_UNSAFE'); }
-  return { state: 'store', context: Object.freeze({ dir: root, identity, ancestry, fileIdentity: Object.freeze(fileIdentity) }), leftoverTemp };
+  const context: StoreContext = Object.freeze({ dir: root, identity, ancestry, fileIdentity: Object.freeze(fileIdentity) });
+  verifyStorePins(context);
+  return { state: 'store', context, leftoverTemp };
 }
 
 /** The pinned store. `absent` refuses STORE_NOT_FOUND and `foreign` refuses STORE_INVALID. */
@@ -150,15 +161,25 @@ export function isValidStore(home: string, hooks: DiscoveryHooks = {}): boolean 
 
 /** Refuses STORE_UNSAFE unless the store folder, every folder above it, and `store.json` are still what was pinned. */
 export function verifyStorePins(store: StoreContext): void {
+  const uid = process.getuid?.() ?? -1;
   for (const [path, pinned] of [...store.ancestry.map(a => [a.path, a.identity] as const), [store.dir, store.identity] as const]) {
     let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('STORE_UNSAFE'); }
     if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('STORE_UNSAFE');
+    if (path === store.dir && (Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0)) throw refuse('STORE_UNSAFE');
   }
   let file: BigIntStats; try { file = lstatSync(join(store.dir, STORE_FILE), { bigint: true }); } catch { throw refuse('STORE_UNSAFE'); }
-  if (file.isSymbolicLink() || !file.isFile() || file.nlink !== 1n || file.dev.toString() !== store.fileIdentity.device || file.ino.toString() !== store.fileIdentity.inode) throw refuse('STORE_UNSAFE');
+  if (file.isSymbolicLink() || !file.isFile() || file.nlink !== 1n || file.dev.toString() !== store.fileIdentity.device || file.ino.toString() !== store.fileIdentity.inode
+    || Number(file.uid) !== uid || (Number(file.mode) & 0o022) !== 0 || file.size.toString() !== store.fileIdentity.size || file.ctimeNs.toString() !== store.fileIdentity.ctimeNs) throw refuse('STORE_UNSAFE');
 }
 
-const idOf = (path: string): string | null => { try { const s = statSync(path, { bigint: true }); return `${s.dev}:${s.ino}`; } catch { return null; } };
+/** The device and inode of a folder, links followed. Null when nothing is there; STORE_UNREADABLE for any other failure. */
+const idOf = (path: string): string | null => {
+  try { const s = statSync(path, { bigint: true }); return `${s.dev}:${s.ino}`; } catch (error) { if (missing(error)) return null; throw refuse('STORE_UNREADABLE'); }
+};
+/** As idOf for `<home>/.bowerloom`, but a link or a non-folder there is no store for this check. */
+const storeIdOf = (path: string): string | null => {
+  try { const s = lstatSync(path, { bigint: true }); return s.isDirectory() && !s.isSymbolicLink() ? `${s.dev}:${s.ino}` : null; } catch (error) { if (missing(error)) return null; throw refuse('STORE_UNREADABLE'); }
+};
 
 /**
  * True for a path at or below `<h>/.bowerloom`, for each home folder `h` (HOME and the account home). Compares by device
@@ -166,7 +187,7 @@ const idOf = (path: string): string | null => { try { const s = statSync(path, {
  */
 export function pathInsideStore(path: string, home: string, hooks: DiscoveryHooks = {}): boolean {
   if (!usable(path) || !usable(home)) throw refuse('USAGE');
-  const stores = new Set(homesOf(home, hooks).map(h => idOf(join(h, STORE_DIRNAME))).filter((id): id is string => id !== null));
+  const stores = new Set(homesOf(home, hooks).map(h => storeIdOf(join(h, STORE_DIRNAME))).filter((id): id is string => id !== null));
   if (stores.size === 0) return false;
   // The real path of the deepest folder that exists, plus the rest.
   let existing = resolve(path), rest = '';

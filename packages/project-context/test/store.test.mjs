@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import '../../../dist/tests/support/isolate-home.js';
 import { inspectStoreWith, openStoreWith, isValidStore, verifyStorePins, pathInsideStore, assertNotInStore, storeRootOf, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
 import { inspectStore, openStore } from '../../../dist/packages/project-context/src/index.js';
@@ -34,7 +35,7 @@ test('2. a valid store returns state store with a pinned context holding fileIde
   assert.equal(r.state, 'store'); assert.equal(r.leftoverTemp, false);
   const c = r.context, s = fs.lstatSync(path.join(w.store, 'store.json'), { bigint: true });
   assert.equal(c.dir, w.store);
-  assert.deepEqual(c.fileIdentity, { device: s.dev.toString(), inode: s.ino.toString() });
+  assert.deepEqual(c.fileIdentity, { device: s.dev.toString(), inode: s.ino.toString(), size: s.size.toString(), ctimeNs: s.ctimeNs.toString() });
   assert.equal(c.ancestry[0].path, '/'); assert.equal(c.ancestry.at(-1).path, w.home);
   assert.equal(c.identity.uid, process.getuid());
   assert.doesNotThrow(() => verifyStorePins(c));
@@ -77,8 +78,11 @@ test('5. store.json that is a link, has two links, is a FIFO, has another owner 
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'), 'group write');
   fs.chmodSync(file(w), 0o602);
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'), 'world write');
-  w = mkStore(world(t), null);
-  try { execFileSync('mkfifo', [file(w)]); } catch { t.diagnostic('no mkfifo on this machine: FIFO case skipped'); return; }
+});
+
+test('5b. store.json that is a FIFO throws STORE_UNSAFE without hanging', t => {
+  const w = mkStore(world(t), null);
+  try { execFileSync('mkfifo', [path.join(w.store, 'store.json')]); } catch { t.skip('no mkfifo on this machine'); return; }
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'), 'fifo');
 });
 
@@ -193,12 +197,7 @@ test('16b. an alias of .bowerloom beside an absent store is caught by the home l
 
 test('17. two names that fold to store.json throw STORE_UNSAFE', t => {
   const w = world(t);
-  if (!caseInsensitive(w.base)) {
-    // A case-sensitive disk can hold both names. Both are refused, which is the fold rule at work.
-    mkStore(w); fs.writeFileSync(path.join(w.store, 'Store.json'), BODY);
-    assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'));
-    return;
-  }
+  if (!caseInsensitive(w.base)) { t.skip('this disk is case-sensitive'); return; }
   mkStore(w, null); fs.writeFileSync(path.join(w.store, 'Store.json'), BODY);
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'));
 });
@@ -247,4 +246,55 @@ test('22. a cloud-folder home with no store folder throws STORE_IN_CLOUD_FOLDER'
 test('a refusal message carries no path', t => {
   const w = mkStore(world(t), BODY, 0o770);
   try { inspectStoreWith(w.home, solo(w)); assert.fail('expected a refusal'); } catch (e) { assert.equal(e.code, 'STORE_UNSAFE'); assert.equal(e.message.includes(w.home), false); }
+});
+
+// ---- Review fixes: S2, S3, S4, S7 ----
+test('S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json', t => {
+  let w = mkStore(world(t)); let c = openStoreWith(w.home, solo(w));
+  fs.chmodSync(w.store, 0o777); assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'store 777'); fs.chmodSync(w.store, 0o700);
+  assert.doesNotThrow(() => verifyStorePins(c));
+  fs.chmodSync(path.join(w.store, 'store.json'), 0o666); assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'store.json 666');
+  w = mkStore(world(t)); c = openStoreWith(w.home, solo(w));
+  fs.writeFileSync(path.join(w.store, 'store.json'), BODY);
+  assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'rewritten in place');
+  w = mkStore(world(t)); c = openStoreWith(w.home, solo(w));
+  fs.appendFileSync(path.join(w.store, 'store.json'), ' ');
+  assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'size changed');
+  assert.ok(typeof c.fileIdentity.size === 'string' && typeof c.fileIdentity.ctimeNs === 'string');
+});
+
+test('S3: a store folder swapped while the inspection runs is refused', t => {
+  const w = mkStore(world(t)); const original = fs.readdirSync; let swapped = false;
+  t.mock.method(fs, 'readdirSync', (...args) => {
+    if (!swapped && String(args[0]) === w.store) { swapped = true; fs.renameSync(w.store, path.join(w.base, 'old')); mkStore(w); }
+    return original(...args);
+  });
+  syncBuiltinESMExports();
+  try { assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE')); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.equal(swapped, true);
+});
+
+test('S4: a home folder that others can write, without the sticky bit, throws STORE_UNSAFE', t => {
+  for (const mode of [0o777, 0o770, 0o707, 0o702]) {
+    const w = mkStore(world(t)); fs.chmodSync(w.home, mode);
+    assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'), mode.toString(8));
+  }
+  const sticky = mkStore(world(t)); fs.chmodSync(sticky.home, 0o1777);
+  assert.equal(inspectStoreWith(sticky.home, solo(sticky)).state, 'store', 'sticky and world-writable passes');
+  const absent = world(t); fs.chmodSync(absent.home, 0o777);
+  assert.throws(() => inspectStoreWith(absent.home, solo(absent)), code('STORE_UNSAFE'), 'absent store, open home');
+  const other = mkStore(world(t));
+  assert.throws(() => inspectStoreWith(other.home, { ...solo(other), uid: process.getuid() + 1 }), code('STORE_UNSAFE'), 'home owned by someone else');
+});
+
+test('S7: a link or file at <home>/.bowerloom is no store for pathInsideStore, and an unreadable one refuses', t => {
+  const w = world(t); const target = path.join(w.base, 'target'); fs.mkdirSync(path.join(target, 'inner'), { recursive: true });
+  fs.symlinkSync(target, w.store);
+  assert.equal(pathInsideStore(path.join(target, 'inner'), w.home, solo(w)), false, 'a link');
+  const f = world(t); fs.writeFileSync(f.store, 'x');
+  assert.equal(pathInsideStore(path.join(f.home, 'x'), f.home, solo(f)), false, 'a file');
+  const r = mkStore(world(t)); const original = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (...args) => { if (String(args[0]) === r.store) { const e = new Error('SYNTHETIC'); e.code = 'EACCES'; throw e; } return original(...args); });
+  syncBuiltinESMExports();
+  try { assert.throws(() => pathInsideStore(path.join(r.store, 'x'), r.home, solo(r)), code('STORE_UNREADABLE')); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
 });

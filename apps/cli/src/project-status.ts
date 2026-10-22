@@ -6,7 +6,7 @@ import type { OwnerVerifier, ProjectContext } from '../../../packages/project-co
 import { inspectOwnedOnly, inspectStartup } from '../../../packages/startup/src/index.js';
 import type { Drift, OwnedEntry } from '../../../packages/startup/src/index.js';
 import { readConfig } from '../../../packages/project-config/src/index.js';
-import type { ConfigRead } from '../../../packages/project-config/src/index.js';
+import { configLine, configObject } from './config-status.js';
 import { authoringVerifier, manifestVerifier } from '../../../packages/project-authoring/src/index.js';
 import { managedVerifier } from '../../../packages/managed-skills/src/v2-verifier.js';
 import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
@@ -28,19 +28,13 @@ export function projectOwners(project: ProjectContext, env: NodeJS.ProcessEnv, h
 
 /** True when `.bowerloom/installation-receipt.json` is not there. Any other lstat result counts as present, so the startup inspection reports it. */
 function receiptMissing(project: ProjectContext): boolean {
-  try { lstatSync(join(project.dir, '.bowerloom', 'installation-receipt.json')); return false; } catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
+  try { lstatSync(join(project.dir, '.bowerloom', 'installation-receipt.json')); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false; }
+  // A folder that holds other startup files lost its receipt; that is drift, not an authored-only project.
+  for (const evidence of ['brief.json', 'START-HERE.md', join('teams', 'first-team')]) {
+    try { lstatSync(join(project.dir, '.bowerloom', evidence)); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false; }
+  }
+  return true;
 }
-
-/** The `config` object of the status JSON, or null for a project with no bowerloom.json. */
-function configObject(read: ConfigRead): Record<string, unknown> | null {
-  if (read.state === 'absent') return null;
-  const base = { path: 'bowerloom.json', sha256: read.sha256, bytes: read.bytes };
-  return read.state === 'valid'
-    ? { ...base, state: 'valid', code: null, harnesses: [...read.config.harnesses], counts: { skills: read.config.skills.length, prompts: read.config.prompts.length, teams: read.config.teams.length } }
-    : { ...base, state: 'invalid', code: read.code, harnesses: [], counts: { skills: 0, prompts: 0, teams: 0 } };
-}
-const configLine = (read: ConfigRead): string[] => read.state === 'absent' ? []
-  : [read.state === 'valid' ? `Config: bowerloom.json (${read.config.skills.length} skills, ${read.config.prompts.length} prompts, ${read.config.teams.length} teams)` : `Config: bowerloom.json (invalid, ${read.code})`];
 
 /** `bowerloom status [--json]` for the project that holds the working folder. Reads only. Returns the text to print; the words escape control characters, the JSON is exact. */
 export async function runProjectStatus(args: readonly string[], cwd: string, home: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
