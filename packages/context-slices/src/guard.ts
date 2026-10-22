@@ -49,7 +49,7 @@ export interface GuardInput {
 export const GUARD_TOOLS: readonly string[] = Object.freeze(['Read', 'Grep', 'Glob']);
 const MAX_RESULTS = 256, MAX_DEPTH = 16, MAX_FILES = 256;
 /** Bounds on the work for one call. A path longer or deeper than these is refused, and a chain that passes them is incomplete. */
-export const GUARD_BOUNDS = Object.freeze({ valueBytes: 4096, parts: 256, chainParts: 2048, chainBytes: 32768, visits: 2048 });
+export const GUARD_BOUNDS = Object.freeze({ valueBytes: 4096, parts: 256, chainParts: 2048, chainBytes: 32768, visits: 2048, operations: 8192 });
 /** A chain of folders that the guard could not walk to the top, so it cannot say what the path is under. */
 class IncompleteChain extends Error { constructor(readonly path: string) { super('incomplete'); } }
 /** The path and every parent up to `/`. Throws IncompleteChain past the bounds; there is no other cap. */
@@ -212,8 +212,13 @@ class Context {
   private memo = new Map<string, FsEntry | null>();
   private rootIds = new Map<string, string[]>();
   constructor(private fs: GuardFs, private view: GuardView, private areas: GuardSliceView[]) {}
-  private lstat(p: string): FsEntry | null { const k = 'l' + p; if (!this.memo.has(k)) this.memo.set(k, this.fs.lstat(p)); return this.memo.get(k)!; }
-  private stat(p: string): FsEntry | null { const k = 's' + p; if (!this.memo.has(k)) this.memo.set(k, this.fs.stat(p)); return this.memo.get(k)!; }
+  private operations = 0;
+  /** One file system operation of this call. Past the budget the chain is incomplete, so the call is denied before the hook times out. */
+  private tick(path: string): void { if (++this.operations > GUARD_BOUNDS.operations) throw new IncompleteChain(path); }
+  private realpath(p: string): string | null { this.tick(p); return this.fs.realpath(p); }
+  private list(p: string): ReturnType<GuardFs['list']> { this.tick(p); return this.fs.list(p); }
+  private lstat(p: string): FsEntry | null { const k = 'l' + p; if (!this.memo.has(k)) { this.tick(p); this.memo.set(k, this.fs.lstat(p)); } return this.memo.get(k)!; }
+  private stat(p: string): FsEntry | null { const k = 's' + p; if (!this.memo.has(k)) { this.tick(p); this.memo.set(k, this.fs.stat(p)); } return this.memo.get(k)!; }
   private rootIdent(s: GuardSliceView): string | null { const e = this.stat(s.root); return e === null ? null : idOf(e); }
   /** The identities of a root's real chain, with the same chain through the data volume of macOS when it exists. */
   private chainOfRoot(s: GuardSliceView): string[] {
@@ -230,10 +235,11 @@ class Context {
     const made = this.buildChains(target); this.chainMemo.set(target, made); return made;
   }
   private buildChains(target: string): { idents: Set<string>; real: string; exists: boolean } {
-    let real = this.fs.realpath(target), exists = real !== null;
+    let real = this.realpath(target), exists = real !== null;
     if (real === null) {
       let anc = target; const rest: string[] = [];
-      for (const up of walkUp(target).slice(1)) { rest.unshift(posix.basename(anc)); anc = up; const r = this.fs.realpath(anc); if (r !== null) { real = posix.join(r, ...rest); break; } }
+      // The deepest ancestor that exists comes from the memoized lstat chain, so realpath runs once, not once per ancestor.
+      for (const up of walkUp(target).slice(1)) { rest.unshift(posix.basename(anc)); anc = up; if (this.lstat(anc) === null) continue; const r = this.realpath(anc); if (r !== null) { real = posix.join(r, ...rest); break; } }
       if (real === null) real = target;
     }
     const idents = new Set<string>();
@@ -274,7 +280,7 @@ class Context {
     const members = this.memberIdents(s); let files = 0, visits = 0;
     const walk = (abs: string, depth: number): boolean => {
       if (depth > MAX_DEPTH) return false;
-      const list = this.fs.list(abs); if (list === null) return false;
+      const list = this.list(abs); if (list === null) return false;
       for (const { name, entry } of list) {
         if (++visits > GUARD_BOUNDS.visits || name.startsWith('.')) return false;
         if (entry.type === 'dir') { if (!walk(posix.join(abs, name), depth + 1)) return false; }

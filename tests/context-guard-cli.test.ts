@@ -186,3 +186,12 @@ test('G9. a root folder moved aside and replaced by a link to it is refused, tho
   const r = guard(p, guardArgs(p), read(join(p.dir, 'wiki/a.md'), p.dir)); assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /"permissionDecision":"deny"/, 'a link in the chain to the root denies the call');
 });
+
+test('R1. a Glob with many brace results and a deep missing path completes fast, and a wiki alternative still denies', t => {
+  const p = sliceProject(t, { agentExtra: '' }), o = join(p.dir, 'o', ...Array(150).fill('d')); mkdirSync(o, { recursive: true });
+  const slow = Array(3).fill('{a,b,c,d}').join('/') + '/{a,b,c}/' + Array(225).fill('z').join('/') + '/*';
+  const timed = (pattern: string) => { const start = Date.now(), r = guard(p, guardArgs(p), hookInput('Glob', { pattern }, o)); return { r, ms: Date.now() - start }; };
+  const one = timed(slow); assert.equal(one.r.status, 0, one.r.stderr); assert.ok(one.ms < 1000, `took ${one.ms} ms`);
+  const two = timed('{' + slow + ',' + join(p.dir, 'wiki') + '/*}'); assert.equal(two.r.status, 0, two.r.stderr); assert.ok(two.ms < 1000, `took ${two.ms} ms`);
+  assert.match(two.r.stdout, /"permissionDecision":"deny"/, 'the wiki alternative denies');
+});

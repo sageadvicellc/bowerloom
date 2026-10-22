@@ -214,3 +214,12 @@ test('G2. a filesystem error other than not-found is not a quiet miss', t => {
   assert.throws(() => read(f, path.join(f.base, 'n'.repeat(300), 'x')), { code: 'ENAMETOOLONG' });
   quiet(read(f, path.join(f.base, 'outside/not-there.md'))); quiet(read(f, path.join(f.base, 'outside/o.md', 'under-a-file')));
 });
+
+test('R1. one call spends at most 8192 file system operations and then denies as too long', t => {
+  const f = fixture(t); const counts = { n: 0 };
+  const counted = Object.fromEntries(['lstat', 'stat', 'realpath', 'list'].map(k => [k, p => { counts.n++; return FS[k](p); }]));
+  const o = path.join(f.base, 'o', ...Array(150).fill('d')); fs.mkdirSync(o, { recursive: true });
+  const slow = Array(3).fill('{a,b,c,d}').join('/') + '/{a,b,c}/' + Array(225).fill('z').join('/') + '/*';
+  const d = decideGuard({ role: 'lead', project: f.project, ids: ['kb'], tool: 'Glob', toolInput: { pattern: slow }, cwd: o, home: f.base }, () => ({ projectOk: true, slices: [f.slice()], fs: counted }));
+  denied(d); assert.match(d.reason, /too long or too deep/); assert.ok(counts.n <= 8192 + 2, `used ${counts.n}`);
+});
