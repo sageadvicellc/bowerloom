@@ -261,6 +261,10 @@ test('9. a team copies whole with agents/, its candidate equals the source; a st
   const changed = await plan(w, { teams: ['research'] });
   await assert.rejects(apply(w, changed, { hooks: { afterStage: (kind, id, dir) => { if (kind === 'team') fs.appendFileSync(path.join(dir, 'assets/milestones.md'), 'changed\n'); } } }), code('STALE_APPROVAL'));
   assert.equal(fs.existsSync(path.join(w.store, 'teams/research')), false, 'nothing was moved');
+  // A skill has no compile step: the staged files themselves are checked against the plan before the move.
+  const skill = await plan(w, { skills: ['house-style'] });
+  await assert.rejects(apply(w, skill, { hooks: { afterStage: (kind, id, dir) => { if (kind === 'skill') fs.writeFileSync(path.join(dir, 'extra.md'), 'not planned\n', { mode: 0o600 }); } } }), code('STALE_APPROVAL'));
+  assert.equal(fs.existsSync(path.join(w.store, 'skills/house-style')), false, 'the changed skill was not moved');
   await apply(w, await plan(w, { teams: ['research'] }));
   assert.deepEqual(tree(w.store, 'teams/research'), tree(bl(w), 'teams/research'));
   assert.equal((await compileCrew(path.join(w.store, 'teams/research/team.yaml'))).candidateRevision, p.items[0].candidate);
