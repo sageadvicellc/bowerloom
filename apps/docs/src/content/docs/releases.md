@@ -13,6 +13,10 @@ Open beta · 0.7.0-beta.2
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+## 0.7.0-beta.3
+
+- Installing from a downloaded .tgz file now gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
+
 ## 0.7.0-beta.2
 
 This release changes the package text and how Bowerloom reads skills. It adds no new command.
