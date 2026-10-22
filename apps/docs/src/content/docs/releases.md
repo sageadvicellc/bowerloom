@@ -23,6 +23,14 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom team adopt` copies a store team into the project, and the project owns the copy.
 - A project with only `bowerloom.json` works with every command. Its first install makes `.bowerloom`, whose engine files git ignores.
 - New plan and result formats: `bowerloom/skills-sync-plan/v1beta2`, `bowerloom/skills-sync-result/v1beta2`, `bowerloom/config-change-plan/v1beta1`, `bowerloom/lock-verify/v1beta1`, `bowerloom/lock-update-result/v1beta1`, and `bowerloom/team-adopt-result/v1beta1`. Plan items name their source.
+- `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.
+- An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
+- The read guard needs Claude Code 2.1.295 or later. On older versions, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
+- `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
+- `bowerloom context show` previews a slice.
+- Ids that start with `slice-` are reserved for new skills and prompts.
+- A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
+- In a project with `bowerloom.json`, a context slice stays a project item. `bowerloom.json`, the store, and the lock never hold it.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
 - A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
 - `bowerloom status` no longer reports a team's `agents/` files as edited.

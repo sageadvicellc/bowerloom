@@ -81,18 +81,18 @@ test('status and up print a held agent with its code and next step, which proves
 test('up --team stops at the apply step when agents are the only work, and ends with the agents text', t => {
   const p = project(t); place(p, 'desk', 'scribe.md', agent('scribe'));
   const shown = run(p, ['up', '--team', 'desk']); assert.equal(shown.status, 3, shown.stderr);
-  assert.match(shown.stdout, /^Next step: apply\. Put the skills, prompts, and agents of team desk in place for Claude Code and Codex\.$/m);
-  assert.match(shown.stdout, /^Apply skills, prompts, and agents for Claude Code and Codex, team desk$/m); assert.match(shown.stdout, /^ {2}scribe +install agent: \.claude\/agents\/scribe\.md$/m);
-  assert.match(shown.stdout, /^Codex agents are not projected in this beta\. See the capability model design\.$/m);
+  assert.match(shown.stdout, /^Next step: apply\. Put the skills, prompts, agents, and context slices of team desk in place for Claude Code and Codex\.$/m);
+  assert.match(shown.stdout, /^Apply skills, prompts, and agents for Claude Code and Codex, and context slices for Claude Code, team desk$/m); assert.match(shown.stdout, /^ {2}scribe +install agent: \.claude\/agents\/scribe\.md$/m);
+  assert.match(shown.stdout, /^Codex agents and context slices are not projected in this beta\. See the capability model design\.$/m);
   assert.equal(existsSync(join(p.dir, '.claude/agents')), false);
   const done = run(p, ['up', '--team', 'desk', '--approve', revisionIn(shown.stdout)]); assert.equal(done.status, 4, done.stderr + done.stdout);
-  assert.match(done.stdout, /^ {2}Team: desk, with skills, prompts, and agents in place for Claude Code and Codex\.$/m);
+  assert.match(done.stdout, /^ {2}Team: desk, with skills, prompts, agents, and context slices in place for Claude Code and Codex\.$/m);
   assert.equal(readFileSync(join(p.dir, '.claude/agents/scribe.md'), 'utf8'), agent('scribe')); assert.deepEqual(p.network(), []);
 });
 
 test('apply exit codes: 3 for approval required, 0 for done and for nothing to change; the result words name the agent', t => {
   const p = project(t);
-  const none = run(p, ['apply']); assert.equal(none.status, 0, none.stderr); assert.match(none.stdout, /Nothing to change\.\n/); assert.match(none.stdout, /^ {2}Nothing in \.bowerloom\/skills\.json, \.bowerloom\/prompts, or \.bowerloom\/teams\/\*\/agents to apply yet\.$/m);
+  const none = run(p, ['apply']); assert.equal(none.status, 0, none.stderr); assert.match(none.stdout, /Nothing to change\.\n/); assert.match(none.stdout, /^ {2}Nothing in \.bowerloom\/skills\.json, \.bowerloom\/prompts, \.bowerloom\/teams\/\*\/agents, or \.bowerloom\/slices to apply yet\.$/m);
   place(p, 'desk', 'scribe.md', agent('scribe', 'tools: Read, Bash(npm run *)')); place(p, 'first-team', 'plan.md', agent('plan'));
   const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
   assert.ok(shown.stdout.endsWith(`Approval required. Run the same command again with --approve ${revisionIn(shown.stdout)}\n`), shown.stdout);
@@ -116,7 +116,7 @@ test('apply exit codes: 3 for approval required, 0 for done and for nothing to c
 test('apply --harness codex prints the Codex line and no agent line; usage errors still exit 2', t => {
   const p = project(t); place(p, 'desk', 'scribe.md', agent('scribe'));
   const codex = run(p, ['apply', '--harness', 'codex']); assert.equal(codex.status, 0, codex.stderr);
-  assert.match(codex.stdout, /^Apply skills and prompts for Codex$/m); assert.match(codex.stdout, /^Codex agents are not projected in this beta\. See the capability model design\.$/m);
+  assert.match(codex.stdout, /^Apply skills and prompts for Codex$/m); assert.match(codex.stdout, /^Codex agents and context slices are not projected in this beta\. See the capability model design\.$/m);
   assert.doesNotMatch(codex.stdout, /scribe/); assert.match(codex.stdout, /Nothing to change\./);
   assert.equal(existsSync(join(p.dir, '.claude/agents')), false); assert.equal(existsSync(join(p.dir, '.codex')), false);
   const bad = run(p, ['apply', '--harness', 'cursor']); assert.equal(bad.status, 2); assert.equal(errorOf(bad.stderr).code, 'USAGE');

@@ -1,5 +1,5 @@
 /**
- * `bowerloom ls [teams|skills|prompts] [--global] [--json]` (format bowerloom/ls/v1beta2). It reads only and writes nothing.
+ * `bowerloom ls [teams|skills|prompts|slices] [--global] [--json]` (format bowerloom/ls/v1beta2). It reads only and writes nothing.
  * Without `--global` it lists the project, and tags every item `project`. With `--global` it lists the store, `~/.bowerloom`,
  * from any folder, and tags every item `store`. A project listing never mixes in store items. Spec 06 adds `via`, `locked`
  * and `resolvedFrom` values; the fields are fixed here.
@@ -21,7 +21,7 @@ import type { ResolvedItem } from '../../../packages/project-sync/src/index.js';
 import { lockItem } from '../../../packages/project-config/src/index.js';
 import { newCommandJson, plainText } from './human.js';
 
-const SECTIONS = ['teams', 'skills', 'prompts'] as const;
+const SECTIONS = ['teams', 'skills', 'prompts', 'slices'] as const;
 type Section = typeof SECTIONS[number];
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const LIMIT = 256;
@@ -33,7 +33,7 @@ export interface Listing {
   scope: ListSource;
   /** For the store only: `absent` when there is no store yet. */
   storeState?: 'ready' | 'absent';
-  teams: string[]; skills: string[]; prompts: string[]; unlisted: number;
+  teams: string[]; skills: string[]; prompts: string[]; slices: string[]; unlisted: number;
   /** Per skill id: its kind and pin. Null when skills.json cannot be read, so an agent never reads it as "no pins". */
   skillInfo: ReadonlyMap<string, ListedSkill> | null;
   /** The code that made skills.json unreadable, or null. */
@@ -73,7 +73,7 @@ function skillItems(folders: readonly string[], entries: ListedSkill[] | null): 
 const byteOrder = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
 
 /** Reads names only. A link, a stray file, or a name that is not a plain id is counted as unlisted and never followed. */
-function entries(base: string, folder: string, wants: 'directory' | 'prompt'): { names: string[]; unlisted: number } {
+function entries(base: string, folder: string, wants: 'directory' | 'prompt' | 'slice'): { names: string[]; unlisted: number } {
   const path = join(base, folder);
   let stat; try { stat = lstatSync(path); } catch { return { names: [], unlisted: 0 }; }
   if (stat.isSymbolicLink() || !stat.isDirectory()) return { names: [], unlisted: 1 };
@@ -82,8 +82,8 @@ function entries(base: string, folder: string, wants: 'directory' | 'prompt'): {
   const names: string[] = []; let unlisted = 0;
   for (const entry of all) {
     const plain = !entry.isSymbolicLink() && (wants === 'directory' ? entry.isDirectory() : entry.isFile());
-    const name = wants === 'prompt' ? entry.name.replace(/\.md$/, '') : entry.name;
-    if (plain && ID.test(name) && (wants === 'directory' || entry.name.endsWith('.md'))) names.push(name); else unlisted++;
+    const name = wants === 'prompt' ? entry.name.replace(/\.md$/, '') : wants === 'slice' ? entry.name.replace(/\.yaml$/, '') : entry.name;
+    if (plain && ID.test(name) && (wants === 'directory' || entry.name.endsWith(wants === 'slice' ? '.yaml' : '.md'))) names.push(name); else unlisted++;
   }
   return { names: names.sort(byteOrder), unlisted };
 }
@@ -92,24 +92,24 @@ function entries(base: string, folder: string, wants: 'directory' | 'prompt'): {
 export function listProject(project: ProjectContext): Listing {
   verifyProjectPins(project);
   const base = join(project.dir, '.bowerloom');
-  const teams = entries(base, 'teams', 'directory'), skills = entries(base, 'skills', 'directory'), prompts = entries(base, 'prompts', 'prompt');
+  const teams = entries(base, 'teams', 'directory'), skills = entries(base, 'skills', 'directory'), prompts = entries(base, 'prompts', 'prompt'), slices = entries(base, 'slices', 'slice');
   const manifest = project.bowerloomIdentity === null ? { entries: [] as ListedSkill[], error: null } : manifestSkills(projectTarget(project.dir));
   const items = skillItems(skills.names, manifest.entries), name = teams.names.includes('first-team') ? firstTeamName(project) : null;
   verifyProjectPins(project);
-  return { scope: 'project', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: name };
+  return { scope: 'project', teams: teams.names, skills: items.ids, prompts: prompts.names, slices: slices.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted + slices.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: name };
 }
 
 /** Lists the store at `home`. No store gives empty lists with storeState absent; a foreign or unsafe store refuses with its STORE_* code. */
 export function listStore(home: string): Listing {
   const found = inspectStore(home);
   if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
-  if (found.state === 'absent') return { scope: 'store', storeState: 'absent', teams: [], skills: [], prompts: [], unlisted: 0, skillInfo: new Map(), firstTeamName: null };
+  if (found.state === 'absent') return { scope: 'store', storeState: 'absent', teams: [], skills: [], prompts: [], slices: [], unlisted: 0, skillInfo: new Map(), firstTeamName: null };
   const store = found.context;
   verifyStorePins(store);
   const teams = entries(store.dir, 'teams', 'directory'), skills = entries(store.dir, 'skills', 'directory'), prompts = entries(store.dir, 'prompts', 'prompt');
   const manifest = manifestSkills(storeTarget(store.dir)), items = skillItems(skills.names, manifest.entries);
   verifyStorePins(store);
-  return { scope: 'store', storeState: 'ready', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: null };
+  return { scope: 'store', storeState: 'ready', teams: teams.names, skills: items.ids, prompts: prompts.names, slices: [], unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: null };
 }
 
 const title = (section: Section): string => section[0]!.toUpperCase() + section.slice(1);
@@ -122,12 +122,14 @@ function skillState(listing: Listing, id: string): string {
 }
 const fixed = (source: ListSource) => ({ via: [] as string[], locked: null, resolvedFrom: source === 'store' ? 'store' : 'project' });
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
-  const shown = only ? [only] : [...SECTIONS], source = listing.scope, info = listing.skillInfo;
+  // A store holds no slices, so its default text leaves the section out; `ls slices --global` still answers.
+  const shown = only ? [only] : SECTIONS.filter(x => x !== 'slices' || listing.scope === 'project'), source = listing.scope, info = listing.skillInfo;
   if (json) {
     const sections: Record<string, unknown> = {
       teams: listing.teams.map(id => ({ id, source, ...fixed(source), displayName: id === 'first-team' && source === 'project' ? listing.firstTeamName ?? null : null, state: 'ok' })),
       skills: listing.skills.map(id => { const s = info?.get(id) ?? { id, kind: 'local' as const, pin: null }; return { id, source, ...fixed(source), kind: s.kind, pin: s.pin, state: skillState(listing, id) }; }),
       prompts: listing.prompts.map(id => ({ id, source, ...fixed(source), state: 'ok' })),
+      slices: listing.slices.map(id => ({ id, source, ...fixed(source), state: 'ok' })),
     };
     return newCommandJson({
       format: 'bowerloom/ls/v1beta2', scope: source, listedBy: 'folders',
@@ -146,6 +148,7 @@ export function renderListing(listing: Listing, only: Section | null, json: bool
   const lines = (s: Section): string[] => s === 'teams'
     ? labelled(listing.teams.map(n => ({ label: n === 'first-team' && source === 'project' && listing.firstTeamName && listing.firstTeamName !== n ? `${n} (${plainText(listing.firstTeamName)})` : plainText(n) })))
     : s === 'skills' ? labelled(listing.skills.map(id => { const k = info?.get(id); return { label: plainText(id), ...(k && k.kind !== 'local' ? { tail: `pinned: ${plainText(pinText(k))}` } : skillState(listing, id) === 'missing' ? { tail: 'missing' } : {}) }; }))
+    : s === 'slices' ? labelled(listing.slices.map(n => ({ label: plainText(n) })))
     : labelled(listing.prompts.map(n => ({ label: plainText(n) })));
   const blocks = shown.map(s => { const l = lines(s); return `${title(s)}\n${l.length ? l.join('\n') : '  none yet'}\n`; });
   const note = listing.unlisted ? `\nNot listed: ${listing.unlisted} ${listing.unlisted === 1 ? 'entry' : 'entries'} with an unusual name or type. Run bowerloom status.\n` : '';
@@ -167,7 +170,9 @@ function renderConfigListing(project: ProjectContext, home: string, only: Sectio
     state: i.hold === null ? 'ok' : 'missing',
   });
   const skill = (i: ResolvedItem) => ({ ...row(i), kind: i.entry ? i.entry.source.kind : 'local', pin: i.entry && i.entry.source.kind !== 'local' ? pinOf(i.entry) : null });
-  const sections: Record<Section, Record<string, unknown>[]> = { teams: r.teams.map(i => ({ ...row(i), displayName: null })), skills: r.skills.map(skill), prompts: r.prompts.map(row) };
+  // Spec 10, 2: a context slice is a project item only. bowerloom.json never selects it, and no store or lock holds it.
+  const slices = project.bowerloomIdentity === null ? [] : entries(join(project.dir, '.bowerloom'), 'slices', 'slice').names;
+  const sections: Record<Section, Record<string, unknown>[]> = { teams: r.teams.map(i => ({ ...row(i), displayName: null })), skills: r.skills.map(skill), prompts: r.prompts.map(row), slices: slices.map(id => ({ id, source: 'project', ...fixed('project'), state: 'ok' })) };
   if (json) {
     return newCommandJson({
       format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'config', ...Object.fromEntries(shown.map(x => [x, sections[x]])),
@@ -188,8 +193,9 @@ function renderConfigListing(project: ProjectContext, home: string, only: Sectio
 }
 
 /** `bowerloom ls [teams|skills|prompts] [--global] [--json]`. Returns the text to print. */
+/** `bowerloom ls [teams|skills|prompts|slices] [--global] [--json]`. Returns the text to print. */
 export function runLsCommand(args: readonly string[], cwd: string, home: string): string {
-  const USAGE = 'Use bowerloom ls [teams|skills|prompts] [--global] [--json].';
+  const USAGE = 'Use bowerloom ls [teams|skills|prompts|slices] [--global] [--json].';
   const words = args.slice(1), json = words.includes('--json'), global = words.includes('--global');
   if (words.filter(w => w === '--global').length > 1) throw new DefinitionError('USAGE', 'Use --global once.');
   const rest = words.filter(w => w !== '--json' && w !== '--global');

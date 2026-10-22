@@ -28,7 +28,7 @@ test('after init, ls shows first-team and personal-assistant, from the project f
   for (const cwd of [p.dir, p.sub]) {
     const r = run(cwd, ['ls'], { HOME: p.home }); assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr, '');
     // Review freeze finding 11: first-team shows the team name setup was given.
-    assert.equal(r.stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  none yet\n');
+    assert.equal(r.stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  none yet\n\nSlices\n  none yet\n');
   }
 });
 
@@ -41,7 +41,7 @@ test('ls teams, ls skills and ls prompts show one section; --json is one canonic
   const team = { id: 'first-team', source: 'project', via: [], locked: null, resolvedFrom: 'project', displayName: 'First team', state: 'ok' };
   const assistant = { id: 'personal-assistant', source: 'project', via: [], locked: null, resolvedFrom: 'project', kind: 'local', pin: null, state: 'ok' };
   const fixedFields = { format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'folders', unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0 };
-  assert.deepEqual(JSON.parse(j.stdout), { ...fixedFields, teams: [team], skills: [assistant], prompts: [], pinsReadable: true, pinsError: null });
+  assert.deepEqual(JSON.parse(j.stdout), { ...fixedFields, teams: [team], skills: [assistant], prompts: [], slices: [], pinsReadable: true, pinsError: null });
   assert.deepEqual(JSON.parse(run(p.dir, ['ls', 'teams', '--json'], env).stdout), { ...fixedFields, teams: [team] });
 });
 
@@ -108,7 +108,7 @@ test('an unlisted entry is counted, not listed', t => {
   const after = JSON.parse(run(p.dir, ['ls', '--json'], env).stdout);
   assert.deepEqual([after.format, after.teams.map((x: { id: string }) => x.id), after.skills.map((x: { id: string }) => x.id), after.prompts.map((x: { id: string }) => x.id), after.unlisted], ['bowerloom/ls/v1beta2', ['first-team'], ['personal-assistant'], ['welcome'], 3]);
   const words = run(p.dir, ['ls'], env); assert.equal(words.status, 0, words.stderr);
-  assert.equal(words.stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  welcome  project\n\nNot listed: 3 entries with an unusual name or type. Run bowerloom status.\n');
+  assert.equal(words.stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  welcome  project\n\nSlices\n  none yet\n\nNot listed: 3 entries with an unusual name or type. Run bowerloom status.\n');
 });
 
 test('status escapes control bytes in a changed file name; --json keeps the exact name', t => {

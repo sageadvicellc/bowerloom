@@ -15,8 +15,8 @@ import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, raw, stablePins } from '../../managed-skills/src/observed.js';
-import { readLocalAgent } from '../../managed-skills/src/local-source.js';
-import { claudeCopyBytes } from '../../managed-skills/src/agent-copy.js';
+import { projectIdOfDir, readLocalAgent } from '../../managed-skills/src/local-source.js';
+import { claudeCopyBytes, guardConflict } from '../../managed-skills/src/agent-copy.js';
 import { catalogPath, currentV2, locateV2, ownSurface, surfaceV2 } from '../../managed-skills/src/v2-observed.js';
 import type { InventoryRow, ItemClosure, ItemRef, LocalClosure, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { DefinitionError } from '../../contracts/src/index.js';
@@ -28,8 +28,11 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
 import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold } from './plan.js';
 import { managedCode, syncError } from './refusal.js';
+import { EMPTY_CONTEXT, agentContext } from './slices.js';
+import type { AgentContext, SliceItem } from './slices.js';
 
-export { claudeCopyBytes };
+export { claudeCopyBytes, guardConflict };
+export type { AgentContext };
 
 /** The built-in Claude Code subagents (code.claude.com/docs/en/sub-agents, verified 2026-10-22). */
 export const BUILTIN_AGENT_NAMES: readonly string[] = Object.freeze(['Explore', 'Plan', 'general-purpose', 'statusline-setup', 'claude-code-guide', 'claude']);
@@ -54,7 +57,7 @@ export interface AgentItem {
   state: AgentState;
   action: 'install' | 'update' | 'none' | 'hold';
   harnesses: ['claude'];
-  expected: { files: InventoryRow[]; surfaces: ItemSurface[]; source: { kind: 'agent'; path: string } | null };
+  expected: { files: InventoryRow[]; surfaces: ItemSurface[]; source: { kind: 'agent'; path: string; guard: string[] | null } | null };
   before: SyncItem['before'];
   previousReceiptRevision: string | null;
   history: number;
@@ -72,6 +75,8 @@ export interface AgentItem {
   /** Reserved for spec 01b. */
   capabilities: null;
   enforcement: [];
+  /** What the skills list says about context slices, and the read guard the copy gets (spec 05). */
+  context: AgentContext;
 }
 
 const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
@@ -206,17 +211,17 @@ export function agentSurfaces(project: string, id: string): { id: ItemSurface['i
   return locateV2(req, { name: id } as ItemClosure, { ignore: false, legacy: false }).filter(ownSurface);
 }
 
-const heldItem = (s: ScannedAgent): AgentItem => ({
+const heldItem = (s: ScannedAgent, context: AgentContext = EMPTY_CONTEXT, hold: Hold | null = s.hold): AgentItem => ({
   id: s.role, team: s.team, itemId: 'agent_' + s.role, state: 'held', action: 'hold', harnesses: ['claude'],
-  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold: s.hold, notices: [], newNotices: [], installed: null, sourceSha256: null,
-  builtin: false, userCopy: false, capabilities: null, enforcement: [],
+  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold, notices: [], newNotices: [], installed: null, sourceSha256: null,
+  builtin: false, userCopy: false, capabilities: null, enforcement: [], context,
 });
 
 /**
  * Looks at `.claude/agents` for the place of a new agent (spec section 3.3). Returns `adopt` for one equal hand-made copy,
  * a hold for anything else that is there, and null for an empty place.
  */
-function targetState(project: string, s: ScannedAgent): 'adopt' | Hold | null {
+function targetState(project: string, s: ScannedAgent, copySha: string): 'adopt' | Hold | null {
   const role = s.role, file = `.claude/agents/${role}.md`, folder = join(project, '.claude/agents'), source = sourceOf(s.team, s.entry);
   if (!exists(folder)) return null;
   let listing: string[]; try { listing = readdirSync(folder); } catch (e) { return { code: 'AGENT_TARGET_OCCUPIED', next: `${file} was not installed by Bowerloom and cannot be read as a plain file that you own (${(e as NodeJS.ErrnoException).code ?? 'IO_ERROR'}). Move it aside, then run bowerloom apply.` }; }
@@ -225,7 +230,7 @@ function targetState(project: string, s: ScannedAgent): 'adopt' | Hold | null {
   if (same.length === 0) return null;
   try {
     const pins = surfaceV2('agent-claude', 'file', join(project, file)).pins;
-    if (pins !== null && pins.length === 1 && pins[0]!.sha256 === s.closure!.files[0]!.sha256) return 'adopt';
+    if (pins !== null && pins.length === 1 && pins[0]!.sha256 === copySha) return 'adopt';
   } catch (e) { return { code: 'AGENT_TARGET_OCCUPIED', next: `${file} was not installed by Bowerloom and cannot be read as a plain file that you own (${managedCode(e)}). Move it aside, then run bowerloom apply.` }; }
   return { code: 'AGENT_TARGET_OCCUPIED', next: `${file} was not installed by Bowerloom and differs from ${source}. Move it aside, then run bowerloom apply.` };
 }
@@ -250,10 +255,17 @@ function userCopy(role: string): boolean {
 }
 
 /** Classifies one scanned agent. Reads only. A held entry comes back as a held item. */
-export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgent, allow: readonly string[] = []): AgentItem {
+export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgent, allow: readonly string[] = [], slices: readonly SliceItem[] = [], plainIds: ReadonlySet<string> = new Set()): AgentItem {
   if (s.hold !== null || s.closure === null || s.parsed === null) return heldItem(s);
   const role = s.role, ref: ItemRef = { kind: 'agent', id: role }, itemId = 'agent_' + role, stateDir = join(itemsRoot, itemId), source = sourceOf(s.team, s.entry);
-  const files = [...s.closure.inventory], sourcePath = `teams/${s.team}/agents/${s.entry}`;
+  const context = agentContext(s.parsed, slices, plainIds), sourceText = s.closure.files[0]!.text;
+  // The read guard goes into the copy. An agent whose hooks cannot take it, or that runs in a worktree, is held before anything else about it.
+  if (context.guard !== null) {
+    if (guardConflict(sourceText)) return heldItem(s, context, { code: 'AGENT_GUARD_CONFLICT', next: `Make hooks a map and hooks.PreToolUse a list in .bowerloom/teams/${s.team}/agents/${s.entry}, then run bowerloom apply.` });
+    if (s.parsed.isolation === 'worktree') return heldItem(s, context, { code: 'AGENT_GUARD_WORKTREE', next: 'Remove isolation: worktree or the agent\'s slices, then run bowerloom apply.' });
+  }
+  const copy = context.guard === null ? sourceText : claudeCopyBytes(sourceText, { guard: { role, slices: context.guard, roots: context.guardRoots, projectDir: project, projectId: projectIdOfDir(project) } });
+  const files: InventoryRow[] = [{ path: role + '.md', sha256: createHash('sha256').update(copy).digest('hex'), bytes: Buffer.byteLength(copy) }], sourcePath = `teams/${s.team}/agents/${s.entry}`;
   let hold: Hold | null = null, heldCode: string | null = null, state: AgentState = 'held', action: AgentItem['action'] = 'hold', previous: ManagedItemReceipt | null = null, ops: string[] = [];
   const occupiedCatalog: Hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: `Move .bowerloom/managed/catalog/${itemId}.json aside, then run bowerloom apply.` };
   if (exists(stateDir)) {
@@ -271,7 +283,7 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
     if (heldCode === 'MANAGED_SKILL_PATH_OCCUPIED') { hold = hold ?? occupiedCatalog; heldCode = null; }
     if (previous !== null) {
       const view = readCatalog(catalog), was = view.source as { path?: unknown };
-      if (!same(view.inventory, files) || was.path !== sourcePath) { state = 'edited'; action = 'update'; }
+      if (!same(view.inventory, files) || was.path !== sourcePath || !same((was as { guard?: unknown }).guard ?? null, context.guard)) { state = 'edited'; action = 'update'; }
       else { state = 'up-to-date'; action = 'none'; }
     }
   }
@@ -282,7 +294,7 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
     if (heldCode === 'MANAGED_SKILL_LOCAL_DRIFT') state = 'drift';
   }
   if (action === 'install' && hold === null) {
-    const found = targetState(project, s);
+    const found = targetState(project, s, files[0]!.sha256);
     if (found === 'adopt') state = 'adopt';
     else if (found !== null) hold = found;
   }
@@ -298,9 +310,9 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
   const notices = agentNotices(s.parsed), had = action === 'update' && previous !== null ? installedCopy(project, role, s.team) : null, newOnes = had === null ? [] : notices.filter(n => !had.notices.includes(n));
   return {
     id: role, team: s.team, itemId, state, action, harnesses: ['claude'],
-    expected: { files, surfaces: surfaces.map(x => ({ id: x.id, path: relative(project, x.path) })), source: { kind: 'agent', path: sourcePath } }, before,
+    expected: { files, surfaces: surfaces.map(x => ({ id: x.id, path: relative(project, x.path) })), source: { kind: 'agent', path: sourcePath, guard: context.guard } }, before,
     previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, newNotices: newOnes, installed: action === 'hold' && previous !== null ? installedCopy(project, role, s.team) : null, sourceSha256: hash, builtin: isBuiltinAgentName(role),
-    userCopy: userCopy(role), capabilities: null, enforcement: [],
+    userCopy: userCopy(role), capabilities: null, enforcement: [], context,
   };
 }
 
@@ -313,7 +325,7 @@ export function orphanAgent(project: string, itemsRoot: string, id: string): Age
   try { previous = currentV2(project, join(itemsRoot, 'agent_' + id), { kind: 'agent', id }); } catch (e) { code = managedCode(e); }
   const base: AgentItem = {
     id, team: null, itemId: 'agent_' + id, state: 'orphaned', action: 'none', harnesses: ['claude'], expected: { files: [], surfaces: [], source: null }, before: [],
-    previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], newNotices: [], installed: installedCopy(project, id, 'unknown'), sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [],
+    previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], newNotices: [], installed: installedCopy(project, id, 'unknown'), sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [], context: EMPTY_CONTEXT,
   };
   if (code === null) return base;
   const next = code === 'MANAGED_SKILL_PATH_OCCUPIED' ? `Move .bowerloom/managed/catalog/agent_${id}.json aside, then run bowerloom apply.` : `Run bowerloom status to see what changed in the copies of agent ${id}. Its source file is gone, so Bowerloom keeps what is there.`;
@@ -324,7 +336,7 @@ export function orphanAgent(project: string, itemsRoot: string, id: string): Age
 export function agentRequest(project: string, itemsRoot: string, item: AgentItem): ManagedItemRequest {
   return {
     operation: item.action === 'install' ? 'install' : 'update', projectDir: project, stateDir: join(itemsRoot, item.itemId),
-    item: { kind: 'agent', id: item.id }, harnesses: ['claude'], source: { kind: 'agent', team: item.team!, name: item.id },
+    item: { kind: 'agent', id: item.id }, harnesses: ['claude'], source: { kind: 'agent', team: item.team!, name: item.id, guard: item.context.guard === null ? null : { slices: item.context.guard, roots: item.context.guardRoots } },
     expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
   };
 }
@@ -335,15 +347,18 @@ export function checkAgentChild(dir: string, item: AgentItem, req: ManagedItemRe
   if (child.format !== 'bowerloom/managed-item-plan/v1beta2') throw stale(`Agent ${item.id} changed since the plan.`);
   const c = child as ManagedItemPlan, closure = c.core.closure;
   // The bytes that will be written must still parse. A source that stopped parsing is AGENT_INVALID, not a quiet stale plan.
-  const text = closure.files[0]!.text, parsed = parseAgent(text, item.id, item.team!);
-  if (!parsed.ok) throw authoringRefusal('AGENT_INVALID');
+  // A copy with the read guard holds more hooks than the source, so it is the source's hash that proves the file is the one planned.
+  const guarded = item.context.guard !== null, text = closure.files[0]!.text, parsed = guarded ? null : parseAgent(text, item.id, item.team!);
+  if (parsed !== null && !parsed.ok) throw authoringRefusal('AGENT_INVALID');
+  if (guarded && closure.sourceSha256 !== item.sourceSha256) throw stale(`Agent ${item.id} changed since the plan.`);
   if (!same(c.core.request, req)) throw stale();
-  if (!same(closure.inventory, item.expected.files) || !same(closure.source, { kind: 'agent', path: `teams/${item.team}/agents/${item.id}.md` }) || closure.skill !== null) throw stale(`Agent ${item.id} changed since the plan.`);
+  if (!same(closure.inventory, item.expected.files) || !same(closure.source, { kind: 'agent', path: `teams/${item.team}/agents/${item.id}.md`, guard: item.context.guard }) || closure.skill !== null) throw stale(`Agent ${item.id} changed since the plan.`);
   const own = c.core.before.filter(ownSurface);
   if (!same(own.map(s => ({ id: s.id, path: rel(dir, s.path) })), item.expected.surfaces)) throw stale();
   if (!same(own.map(s => ({ id: s.id, path: rel(dir, s.path), stablePinsDigest: revisionOf(stablePins(s.pins)) })), item.before)) throw stale(`Agent ${item.id} changed since the plan.`);
   if ((c.core.previous?.revision ?? null) !== item.previousReceiptRevision) throw stale();
   // An allowance names the hash of the raw source in the plan's closure, which is the source being written. A later edit does not carry it over.
-  if (needsReview(parsed.agent) && (closure.sourceSha256 === undefined || !allow.includes(`${item.id}:${closure.sourceSha256}`))) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `Agent ${item.id} changed since the plan.`);
+  const review = parsed !== null && parsed.ok ? needsReview(parsed.agent) : item.notices.includes('hooks') || item.notices.includes('mcpServers') || item.notices.includes('permissionMode:bypassPermissions');
+  if (review && (closure.sourceSha256 === undefined || !allow.includes(`${item.id}:${closure.sourceSha256}`))) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `Agent ${item.id} changed since the plan.`);
   return c;
 }

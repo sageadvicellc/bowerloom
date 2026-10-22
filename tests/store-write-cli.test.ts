@@ -189,7 +189,7 @@ test('11. ls --global with no store prints No store yet and exits 0; a foreign s
 test('12. ls in a project lists items with the source project, and never mixes in store items', t => {
   const w = world(t); mustApprove(w, ['skill', 'create', 'storeskill', '--global']);
   const dir = project(w);
-  assert.equal(run(dir, ['ls'], w.env).stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  none yet\n');
+  assert.equal(run(dir, ['ls'], w.env).stdout, 'Teams\n  first-team (First team)  project\n\nSkills\n  personal-assistant  project\n\nPrompts\n  none yet\n\nSlices\n  none yet\n');
   const j = JSON.parse(run(dir, ['ls', '--json'], w.env).stdout);
   assert.equal(j.format, 'bowerloom/ls/v1beta2'); assert.equal(j.scope, 'project'); assert.equal(j.listedBy, 'folders'); assert.equal(j.storeState, undefined);
   assert.deepEqual(j.teams, [{ id: 'first-team', source: 'project', via: [], locked: null, resolvedFrom: 'project', displayName: 'First team', state: 'ok' }]);
@@ -252,8 +252,8 @@ test('18. the usage words are exact', t => {
   assert.equal(say(['team', 'create', '--global']), 'Use bowerloom team create <name> [--profile engineer|founder|research], with optional --global, --approve <revision> and --json.');
   assert.equal(say(['skills', 'add', '--global']), 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --global, --approve <revision> and --json.');
   assert.equal(say(['skills', 'check', '--global', 'x']), 'Use bowerloom skills check [--global] [--json].');
-  assert.equal(say(['ls', '--global', 'x']), 'Use bowerloom ls [teams|skills|prompts] [--global] [--json].');
-  assert.equal(say(['ls', 'x']), 'Use bowerloom ls [teams|skills|prompts] [--global] [--json].');
+  assert.equal(say(['ls', '--global', 'x']), 'Use bowerloom ls [teams|skills|prompts|slices] [--global] [--json].');
+  assert.equal(say(['ls', 'x']), 'Use bowerloom ls [teams|skills|prompts|slices] [--global] [--json].');
 });
 
 test('19. a held store lock refuses a --global apply with STORE_LOCKED and writes nothing', async t => {

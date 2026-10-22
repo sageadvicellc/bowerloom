@@ -5,11 +5,7 @@ import { readInstalledRelease } from './release.js';
 import { shortHelp, TOPICS, reportFailure } from './human.js';
 import { namesYesFlag } from './confirm.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
-import { localInstallation, privateJson, openLocalSession } from './controller.js';
-import { executeSession, parseSessionCommand } from './session.js';
 import type { TestExecutor } from '../../../packages/controlled-tests/src/index.js';
-import { compileCrew } from '../../../packages/crew/src/index.js';
-import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
 const HELP = `Usage:
   bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
@@ -120,18 +116,19 @@ function topic(name: string | undefined): string | null { return name !== undefi
 const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
 /** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
 function helpText(words: readonly string[]): string | null {
-  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : topic(words[0]);
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : words[0] === 'slice' ? TOPICS.context! : topic(words[0]);
   if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
   if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
   if (words.length === 2 && words[0] === 'team' && words[1] === 'adopt') return TOPICS.team!;
   if (words.length === 2 && words[0] === 'lock' && (words[1] === 'verify' || words[1] === 'update')) return TOPICS.lock!;
+  if (words.length === 2 && words[0] === 'slice' && words[1] === 'create') return TOPICS.context!;
   return null;
 }
 // The flags of the session commands (up --demo, status --installation). With one of them, the session parser keeps
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -156,7 +153,25 @@ async function main(args: string[]): Promise<void> {
   }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
-  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt') {
+  if (args[0] === 'context' && args[1] === 'guard' && !args.includes('--explain')) {
+    // The hook form: it reads stdin, prints a deny line or nothing, and sets its own exit code. It never goes through reportFailure.
+    try {
+      const { runContextCommand } = await import('./context.js');
+      process.exitCode = await runContextCommand(args, process.cwd(), homedir(), text => { process.stdout.write(text); });
+    } catch {
+      try { process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Bowerloom guard: the guard could not run, so the call is blocked. Run bowerloom apply, or reinstall Bowerloom.' } })}\n`); process.exitCode = 0; } catch { process.exitCode = 2; }
+    }
+    return;
+  }
+  if (args[0] === 'context') {
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+    const { runContextCommand } = await import('./context.js');
+    process.exitCode = await runContextCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'slice' && args[1] === 'create' && args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+  if (args.length === 2 && args[0] === 'slice' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt' || args[0] === 'slice') {
     if (args.length === 3 && (args[1] === 'create' || (args[0] === 'team' && args[1] === 'adopt')) && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
     if (args[0] === 'team' && args[1] === 'adopt') {
       const { runAdoptCommand } = await import('./adopt.js');
@@ -277,6 +292,7 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === 'authoring') {
+    const { compileAuthoring } = await import('../../../packages/authoring/src/index.js');
     const [, command, file, flag, scenario, rootFlag, root] = args;
     if (!['validate','export'].includes(command ?? '') || !file || file.startsWith('-') || flag !== '--scenario'
       || !scenario || scenario.startsWith('-') || (args.length !== 5 && (args.length !== 7 || rootFlag !== '--root' || !root || root.startsWith('-')))) {
@@ -290,6 +306,8 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (['up','status','review','approve','cancel'].includes(args[0] ?? '')) {
+    const { localInstallation, privateJson, openLocalSession } = await import('./controller.js');
+    const { executeSession, parseSessionCommand } = await import('./session.js');
     const command=parseSessionCommand(args),config=localInstallation(await privateJson(command.installation));
     const readOnly=command.command==='status'||command.command==='review';
     const signal=new AbortController();const abort=()=>signal.abort();
@@ -322,6 +340,7 @@ async function main(args: string[]): Promise<void> {
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
     throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   }
+  const { compileCrew } = await import('../../../packages/crew/src/index.js');
   const plan = await compileCrew(file, root ? { root } : {});
   const result = command === 'plan' ? plan : {
     valid: true,

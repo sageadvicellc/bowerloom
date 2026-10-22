@@ -10,6 +10,7 @@
  * project lock it plans again, refuses STALE_APPROVAL unless the revision is equal, builds every child plan
  * (phase B, no project write), then applies each child with a revision planned right before it in the same run.
  */
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { freezeSkillData, revisionOf } from '../../skill-sources/src/validation.js';
 import { exists, names } from '../../managed-skills/src/observed.js';
@@ -19,7 +20,7 @@ import { temporary } from '../../managed-skills/src/observed.js';
 import type { Harness, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { isId } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, isId, parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Entry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -46,6 +47,9 @@ import { homedir } from 'node:os';
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
+import { agentsMayBeTracked, checkSliceChild, listSlices, scanSlices, sliceRequest } from './slices.js';
+import type { SliceItem, SliceTreeHook } from './slices.js';
+import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, outward, syncError } from './refusal.js';
 
 export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
@@ -58,7 +62,7 @@ export function applyPointer(harnesses: readonly Harness[]): string {
   const claude = harnesses.includes('claude'), codex = harnesses.includes('codex');
   if (claude && !codex) return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:',
-    '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents.',
+    '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
   ].join('\n');
   if (codex && !claude) return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Codex at these copies, add a line like this to AGENTS.md yourself:',
@@ -66,7 +70,7 @@ export function applyPointer(harnesses: readonly Harness[]): string {
   ].join('\n');
   return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:',
-    '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents.',
+    '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
   ].join('\n');
 }
 /** The pointer for both harnesses, the default. */
@@ -88,6 +92,8 @@ export interface ApplyInput {
   agentsOnly?: boolean;
   /** `--max-github-requests`: the GitHub requests this run may make, 1 to 5000. Default 1000 (second review L2). */
   maxGithubRequests?: number;
+  /** A test hook: stands in for the reader of a slice's tree, to change a file during the read. Product code never passes it. */
+  sliceTree?: SliceTreeHook;
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -110,6 +116,14 @@ export interface ApplyPlan {
   agents: AgentItem[];
   /** The allowances this plan was made with, sorted. They are part of the revision. */
   allow: string[];
+  /** The context slices of this project, planned for Claude Code only (spec 05). Empty under `--harness codex`. */
+  slices: SliceItem[];
+  /** True when the harnesses include Codex and at least one slice is registered: Codex slices are not projected in this beta. */
+  codexSlicesSkipped: boolean;
+  /** File names in `.bowerloom/slices` that no receipt lists: apply skips them. */
+  unregisteredSlices: string[];
+  /** True when a guarded agent copy is planned and `.claude/agents` may not be git-ignored (spec 05, section 3.8). */
+  agentsMayBeTracked: boolean;
   /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; storeCacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
@@ -119,7 +133,7 @@ export interface ApplyPlan {
   pointer: string;
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
-export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent'; id: string; origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }
+export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: string; origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }
 export interface ApplyResult {
   format: typeof APPLY_RESULT_FORMAT; planRevision: string; harnesses: Harness[];
   applied: (ApplyItemRef & { action: 'install' | 'update'; receiptRevision: string })[];
@@ -133,6 +147,15 @@ const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
 const HEX64 = /^[a-f0-9]{64}$/;
 const promptActionable = (p: PromptItem): boolean => p.action === 'install' || p.action === 'update';
 const agentActionable = (a: AgentItem): boolean => a.action === 'install' || a.action === 'update';
+const sliceActionable = (s: SliceItem): boolean => s.action === 'install' || s.action === 'update';
+
+/** Ids that start with slice- and name a skill of this project: a folder in .bowerloom/skills, or an entry of skills.json. */
+function plainSkillIds(dir: string): Set<string> {
+  const out = new Set<string>();
+  try { for (const n of readdirSync(join(dir, '.bowerloom', 'skills'))) if (n.startsWith('slice-')) out.add(n); } catch { /* No local skills folder. */ }
+  try { const state = readManifestState(dir); if (state.file !== null) for (const e of parseManifest(state.file.bytes, MANIFEST_LIMITS).skills) if (e.id.startsWith('slice-')) out.add(e.id); } catch { /* A manifest that cannot be read names none. */ }
+  return out;
+}
 
 function harnessSet(value: unknown): Harness[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 2 || !value.every((h, i) => (h === 'claude' || h === 'codex') && (i === 0 || value[i - 1] < h))) return usage();
@@ -140,12 +163,12 @@ function harnessSet(value: unknown): Harness[] {
 }
 
 /** No item may take a place another item takes, and no new copy may land on something Bowerloom did not install. */
-function checkNames(skills: SyncItem[], prompts: PromptItem[], agents: AgentItem[]): void {
+function checkNames(skills: SyncItem[], prompts: PromptItem[], agents: AgentItem[], slices: SliceItem[] = []): void {
   for (const item of skills) if (item.hold?.code === 'MANAGED_SKILL_PATH_OCCUPIED') {
     throw syncError('APPLY_NAME_COLLISION', `Skill ${item.id}: ${item.hold.next.replace('bowerloom skills sync', 'bowerloom apply')}`);
   }
   const owner = new Map<string, string>();
-  const rows = [...skills.filter(i => i.state !== 'orphaned').map(i => ({ name: `skill ${i.id}`, surfaces: i.expected.surfaces })), ...prompts.filter(p => p.state !== 'orphaned').map(p => ({ name: `prompt ${p.id}`, surfaces: p.expected.surfaces })), ...agents.filter(a => a.state !== 'orphaned').map(a => ({ name: `agent ${a.id}`, surfaces: a.expected.surfaces }))];
+  const rows = [...skills.filter(i => i.state !== 'orphaned').map(i => ({ name: `skill ${i.id}`, surfaces: i.expected.surfaces })), ...prompts.filter(p => p.state !== 'orphaned').map(p => ({ name: `prompt ${p.id}`, surfaces: p.expected.surfaces })), ...slices.filter(s => s.state !== 'orphaned').map(s => ({ name: `slice ${s.id}`, surfaces: s.expected.surfaces })), ...agents.filter(a => a.state !== 'orphaned').map(a => ({ name: `agent ${a.id}`, surfaces: a.expected.surfaces }))];
   for (const row of rows) for (const s of row.surfaces) {
     const key = s.path.normalize('NFC').toLowerCase(), was = owner.get(key);
     if (was !== undefined && was !== row.name) throw syncError('APPLY_NAME_COLLISION', `Both ${was} and ${row.name} would go to ${s.path}. Give one of them another name, then run bowerloom apply.`);
@@ -212,34 +235,48 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const selected = selectedTeams(project, resolved);
     const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
     const scanned = scan.entries.filter(e => selected === null || (e.team !== null && selected.has(e.team)));
+    // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
+    const catalogNames = exists(catalogs) ? names(catalogs) : [];
+    const listing = listSlices(dir);
+    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames) : { items: [] as SliceItem[], unregistered: listing.unregistered };
+    const registeredSliceCount = listing.ids.length;
+    const plain = plainSkillIds(dir);
     if (claude) {
       const planned = scanned.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
-      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
+      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow, sliceScan.items, plain)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
         if (ref.kind === 'agent' && !scanned.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
       }
       agents.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)) || Buffer.compare(Buffer.from(a.team ?? ''), Buffer.from(b.team ?? '')));
     }
-    checkNames(skills?.items ?? [], prompts, agents);
+    // Roles that name a slice. A team filter plans only the slices that team's agents name; the others are neither planned nor kept.
+    for (const s of sliceScan.items) s.agents = agents.filter(a => a.context.slices.includes(s.id)).map(a => a.id).sort();
+    const named = new Set(agents.flatMap(a => a.context.slices));
+    const slices = sliceScan.items.filter(s => team === null || s.state === 'orphaned' || named.has(s.id));
+    checkNames(skills?.items ?? [], prompts, agents, slices);
     const skillWork = (skills?.items ?? []).filter(isActionable);
     // An apply that changes nothing else still puts back a missing shared ignore file, through one installed prompt, or
     // else one installed agent.
-    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable) && !agents.some(agentActionable)) {
+    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable) && !slices.some(sliceActionable) && !agents.some(agentActionable)) {
       const first = ignoreCarrier(prompts.map(p => ({ ...p, kind: 'prompt' })));
       if (first) prompts.find(p => p.id === first.id)!.action = 'update';
-      else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
+      else {
+        const slice = ignoreCarrier(slices.map(s => ({ ...s, kind: 'slice' })));
+        if (slice) slices.find(s => s.id === slice.id)!.action = 'update';
+        else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
+      }
     }
     // A frozen run fetches each locked team the store cache lacks into the store cache, so that team adopt can read it.
     const storeFetch: StoreFetch[] = frozen && resolved !== null ? resolved.teams.filter(t => t.resolvedFrom === 'lock' && t.lockPin !== null).map(t => ({ kind: 'team' as const, id: t.id, lockPin: t.lockPin!, storeCache: storeCacheStatus(layout, 'team', t.id, t.lockPin!.hash, cacheNotes) })) : [];
-    const promptWork = prompts.filter(promptActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
+    const promptWork = prompts.filter(promptActionable), sliceWork = slices.filter(sliceActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
     const lockPrompts = promptWork.filter(p => p.resolvedFrom === 'lock');
     const authoredFetch = (skills?.items ?? []).some(i => isActionable(i) && i.storeCache === 'missing') || lockPrompts.some(p => p.storeCache === 'missing') || storeFetch.some(f => f.storeCache === 'missing');
     const needsFetch = (skills?.network.required ?? false) || authoredFetch;
-    if (skillWork.length || promptWork.length || agentWork.length || storeFetch.length) {
+    if (skillWork.length || promptWork.length || sliceWork.length || agentWork.length || storeFetch.length) {
       create.push(...layout.missing.filter(p => p === layout.cacheRoot ? needsFetch : p === layout.storeCacheRoot ? authoredFetch : true));
-      for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
+      for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...sliceWork.map(s => s.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
     }
     const hosts = [...new Set([...(skills?.network.hosts ?? []), ...(frozen && (lockPrompts.length || storeFetch.length) ? ['api.github.com'] : [])])].sort();
     // Review L2: the GitHub requests this run makes at most; a frozen run only fetches.
@@ -253,9 +290,10 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts, requests, maxRequests }, storeFetch,
       // Review F5: the skills planner's own notes (a store cache entry that fails verification) join the resolver's.
       notes: [...new Set([...(resolved?.notes ?? []), ...(skills?.notes ?? []).filter(n => n !== FROZEN_LINE), ...cacheNotes])].concat(frozen ? [FROZEN_LINE] : []),
-      harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
+      harnesses, team, skills, prompts, slices, agents, allow, codexSlicesSkipped: harnesses.includes('codex') && registeredSliceCount > 0, unregisteredSlices: sliceScan.unregistered,
+      agentsMayBeTracked: agentWork.some(a => a.context.guard !== null) && agentsMayBeTracked(dir), codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
+      managed: { ignore }, actionable: skillWork.length + promptWork.length + sliceWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
@@ -292,8 +330,8 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
     return await withProjectLock(input.project.dir, lock.signal, async held => {
       const { plan, entries } = await observeApply(input);
       if (plan.revision !== revision) throw stale();
-      const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
-      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+      const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), slices = plan.slices.filter(sliceActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
+      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
       createPrivateFolders(plan, held, dir);
       // Review L2: checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
@@ -319,18 +357,27 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       await fetchStoreOnly(plan, held, syncDeps);
       const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
-      const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + agents.length > 0);
-      // Phase B for the skills, then the prompts, then the agents. No project write.
+      const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + slices.length + agents.length > 0);
+      // Phase B for the skills, then the prompts, the slices, and the agents. No project write.
       const children: Child[] = plan.skills && got ? await planSkillChildren(plan.skills, got, syncDeps, managed, 'bowerloom apply') : [];
       for (const item of promptChildren) {
-        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
         const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item, promptDirs.get(item.id) ?? null);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           // Review M6 finding 6: an interrupt here is an interrupt, as it is for a skill (apply.ts phase B).
-          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to prompt ${item.id}; nothing was changed.`);
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkPromptChild(dir, item, req, child) });
+      }
+      for (const item of slices) {
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        const req: ManagedItemRequest = sliceRequest(dir, plan.privateState.itemsRoot, item);
+        let child; try { child = await managed.plan(req, { signal }); } catch (e) {
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to slice ${item.id}; nothing was changed.`);
+        }
+        children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkSliceChild(dir, item, req, child) });
       }
       for (const item of agents) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], 'bowerloom apply');
@@ -347,6 +394,8 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       const project = { origin: 'project' as const, resolvedFrom: 'project' as const };
       const refOf = (id: string): ApplyItemRef => {
         const p = plan.prompts.find(x => x.itemId === id); if (p) return { kind: 'prompt', id: p.id, ...originOf(p) };
+        // Spec 10, 2: a slice is a project item only.
+        const sl = plan.slices.find(x => x.itemId === id && sliceActionable(x)); if (sl) return { kind: 'slice', id: sl.id, ...project };
         const a = plan.agents.find(x => x.itemId === id && agentActionable(x)); if (a) return { kind: 'agent', id: a.id, ...project };
         const s = plan.skills?.items.find(x => x.id === id); return { kind: 'skill', id, ...(s ? originOf(s) : project) };
       };
@@ -354,9 +403,9 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       return {
         format: APPLY_RESULT_FORMAT, planRevision: plan.revision, harnesses: plan.harnesses,
         applied: applied.map(a => ({ ...refOf(a.id), action: a.action, receiptRevision: a.receiptRevision })),
-        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
-        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id, ...project }))],
-        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id, origin: null, resolvedFrom: 'project' as const }))],
+        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.slices.filter(s => s.action === 'hold').map(s => ({ kind: 'slice' as const, id: s.id, code: s.hold!.code, next: s.hold!.next, ...project })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
+        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.slices.filter(s => s.state === 'up-to-date' && s.action === 'none').map(s => ({ kind: 'slice' as const, id: s.id, ...project })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id, ...project }))],
+        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.slices.filter(s => s.state === 'orphaned').map(s => ({ kind: 'slice' as const, id: s.id, origin: null, resolvedFrom: 'project' as const })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id, origin: null, resolvedFrom: 'project' as const }))],
         pointer: plan.pointer, executionAuthorized: false,
       };
     });

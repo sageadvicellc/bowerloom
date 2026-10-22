@@ -24,6 +24,10 @@ import { writeGuardedFile } from '../../project-config/src/write.js';
 import { createBowerloomFolder } from '../../project-config/src/folder.js';
 import type { ProjectContext } from '../../project-context/src/types.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
+import { compilePattern } from '../../context-slices/src/glob.js';
+import { sliceTemplate } from '../../context-slices/src/render.js';
+import { SLICE_LIMITS, isFolderName, isSliceId, parseSlice, validRootPath } from '../../context-slices/src/slice-file.js';
+import type { SliceRoot } from '../../context-slices/src/slice-file.js';
 import { startupInternals, startupProfiles } from '../../startup/src/index.js';
 import type { StartupProfile } from '../../startup/src/index.js';
 import { scaffoldTeam } from '../../startup/src/scaffold.js';
@@ -42,7 +46,9 @@ export const AUTHORING_PLAN_FORMAT = 'bowerloom/authoring-plan/v1beta2' as const
 /** `scope` is `project` when absent. For `store`, `project` holds the path of the store folder itself. */
 export type CreateInput =
   | { kind: 'team'; project: string; name: string; profile?: StartupProfile; scope?: 'project' | 'store'; copyFrom?: { root: string } }
-  | { kind: 'skill' | 'prompt'; project: string; name: string; teams: string[]; scope?: 'project' | 'store' };
+  | { kind: 'skill' | 'prompt'; project: string; name: string; teams: string[]; scope?: 'project' | 'store' }
+  /** `root` and `includes` are null when the person gave no flag, which is how a slice file that is already there is registered. A slice belongs to its layer: it has no scope. */
+  | { kind: 'slice'; project: string; name: string; root: SliceRoot | null; includes: string[] | null };
 
 export interface ManifestStep { id: string; teams: string[]; before: Read | null; after: Read }
 export interface PlannedFile { path: string; text: string; sha256: string; bytes: number }
@@ -72,6 +78,10 @@ export interface CreatePlan {
   settled: AuthoredItem | null;
   /** A pending item that landed with exactly its recorded bytes: apply registers it. */
   finish: AuthoredItem | null;
+  /** The slice a create writes: its root and patterns. Null for any other kind. */
+  slice: { root: SliceRoot; includes: string[] } | null;
+  /** A slice file that is already there and not registered: create registers it and keeps its bytes. */
+  register: { kind: 'slice'; id: string; teams: string[]; files: FilePin[] } | null;
   /** The new item, or null when the request is the pending item this plan finishes or a prompt it restores. */
   item: { kind: ItemKind; id: string; teams: string[]; files: FilePin[] } | null;
   /**
@@ -94,7 +104,7 @@ export interface CreatePlan {
   revision: string;
 }
 
-interface Normalized { kind: ItemKind; scope: 'project' | 'store'; project: string; name: string; teams: string[]; profile: StartupProfile | null; copyFrom: { root: string } | null }
+interface Normalized { kind: ItemKind; scope: 'project' | 'store'; project: string; name: string; teams: string[]; profile: StartupProfile | null; copyFrom: { root: string } | null; root: SliceRoot | null; includes: string[] | null }
 const usage = (): never => refuse('USAGE');
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
@@ -102,17 +112,29 @@ function normalizeInput(input: unknown): Normalized {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return usage();
   const v = input as Record<string, unknown>, keys = Object.keys(v);
   const kind = v.kind;
-  if (kind !== 'team' && kind !== 'skill' && kind !== 'prompt') return usage();
-  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile', 'scope', 'copyFrom'] : ['kind', 'project', 'name', 'teams', 'scope'];
-  if (!keys.every(k => allowed.includes(k)) || !['kind', 'project', 'name', ...(kind === 'team' ? [] : ['teams'])].every(k => Object.hasOwn(v, k))) return usage();
+  if (kind !== 'team' && kind !== 'skill' && kind !== 'prompt' && kind !== 'slice') return usage();
+  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile', 'scope', 'copyFrom'] : kind === 'slice' ? ['kind', 'project', 'name', 'root', 'includes'] : ['kind', 'project', 'name', 'teams', 'scope'];
+  if (!keys.every(k => allowed.includes(k)) || !['kind', 'project', 'name', ...(kind === 'team' ? [] : kind === 'slice' ? ['root', 'includes'] : ['teams'])].every(k => Object.hasOwn(v, k))) return usage();
   if (v.scope !== undefined && v.scope !== 'project' && v.scope !== 'store') return usage();
   const scope: 'project' | 'store' = v.scope === 'store' ? 'store' : 'project';
   const project = v.project;
   if (typeof project !== 'string' || !isAbsolute(project) || resolve(project) !== project || project.includes('\0') || typeof v.name !== 'string') return usage();
   let profile: StartupProfile | null = null;
   if (kind === 'team' && v.profile !== undefined) { if (typeof v.profile !== 'string' || !Object.hasOwn(startupProfiles, v.profile)) return usage(); profile = v.profile as StartupProfile; }
-  let teams: string[] = [];
-  if (kind !== 'team') {
+  let teams: string[] = [], root: SliceRoot | null = null, includes: string[] | null = null;
+  if (kind === 'slice') {
+    if (v.root !== null) {
+      const r = v.root as Record<string, unknown> | undefined;
+      if (r === undefined || typeof r !== 'object' || Array.isArray(r)) return usage();
+      if (r.kind === 'project' && Object.keys(r).length === 2 && validRootPath(r.path)) root = { kind: 'project', path: r.path };
+      else if (r.kind === 'registered' && Object.keys(r).length === 3 && isFolderName(r.name) && validRootPath(r.path)) root = { kind: 'registered', name: r.name, path: r.path };
+      else return usage();
+    }
+    if (v.includes !== null) {
+      if (!Array.isArray(v.includes) || v.includes.length < 1 || v.includes.length > SLICE_LIMITS.patterns || !v.includes.every(p => typeof p === 'string' && Buffer.byteLength(p) <= SLICE_LIMITS.patternBytes && compilePattern(p).ok)) return usage();
+      includes = [...v.includes as string[]];
+    }
+  } else if (kind !== 'team') {
     if (!Array.isArray(v.teams) || v.teams.length > 32 || !v.teams.every(t => typeof t === 'string') || new Set(v.teams).size !== v.teams.length) return usage();
     teams = [...v.teams as string[]].sort(compare);
   }
@@ -123,13 +145,14 @@ function normalizeInput(input: unknown): Normalized {
     if (kind !== 'team' || scope !== 'project' || c === null || typeof c !== 'object' || Object.keys(c).length !== 1 || typeof c.root !== 'string' || !isAbsolute(c.root) || resolve(c.root) !== c.root || c.root.includes('\0')) return usage();
     copyFrom = { root: c.root };
   }
-  return { kind, scope, project, name: v.name, teams, profile, copyFrom };
+  return { kind, scope, project, name: v.name, teams, profile, copyFrom, root, includes };
 }
 function checkName(input: Normalized): void {
   const { kind, name } = input;
   if (kind === 'team') { ensure(name !== FIRST_TEAM, 'TEAM_ID_RESERVED'); ensure(isTeamId(name), 'TEAM_NAME_INVALID'); }
-  else if (kind === 'skill') { ensure(isId(name), 'SKILL_NAME_INVALID'); ensure(isSkillId(name), 'SKILL_NAME_RESERVED'); }
-  else ensure(isPromptId(name), 'PROMPT_NAME_INVALID');
+  else if (kind === 'skill') { ensure(isId(name), 'SKILL_NAME_INVALID'); ensure(isSkillId(name) && !name.startsWith('slice-'), 'SKILL_NAME_RESERVED'); }
+  else if (kind === 'slice') ensure(isSliceId(name), 'SLICE_NAME_INVALID');
+  else ensure(isPromptId(name) && !name.startsWith('slice-'), 'PROMPT_NAME_INVALID');
 }
 
 interface Scope { kind: 'project' | 'store'; dir: string; bowerloom: string; identity: { device: string; inode: string } | null; exists: boolean }
@@ -142,6 +165,7 @@ function configText(dir: string): Buffer | null {
 }
 /** True when the config lists this kind and id from the store: the finish path then adds no entry (3.17). */
 function finishListedFromStore(dir: string, kind: ItemKind, id: string): boolean {
+  if (kind === 'slice') return false;
   const bytes = configText(dir);
   if (bytes === null) return false;
   const c = parseConfig(bytes), list = kind === 'team' ? c.teams : kind === 'skill' ? c.skills : c.prompts;
@@ -152,6 +176,8 @@ function finishListedFromStore(dir: string, kind: ItemKind, id: string): boolean
  * already lists it from the project; a store entry with the same kind and id refuses CONFIG_DUPLICATE_ID.
  */
 function configStep(dir: string, kind: ItemKind, id: string, after?: string): CreatePlan['config'] {
+  // Spec 10, 2: a context slice is a project item only. bowerloom.json never lists it.
+  if (kind === 'slice') return null;
   const bytes = configText(dir);
   if (bytes === null) return null;
   const before = { sha256: sha256(bytes), bytes: bytes.length }, config = parseConfig(after === undefined ? bytes : Buffer.from(after));
@@ -209,19 +235,22 @@ function readBrief(project: Scope): { brief: ReturnType<typeof startupInternals.
 
 const SKILL_TEXT = (id: string): string => `---\nname: ${id}\ndescription: Describe when an agent should use this skill.\n---\n\n# ${id}\n\nWrite the instructions for this skill here. You and your agents own this file, so edit it freely.\nBowerloom lists this skill in .bowerloom/skills.json as a local skill. Nothing runs it.\n`;
 const PROMPT_TEXT = (id: string): string => `---\ndescription: Describe what this prompt asks for.\n---\n\n# ${id}\n\nWrite the reusable prompt here. You and your agents own this file, so edit it freely.\n`;
+const DEFAULT_ROOT: SliceRoot = { kind: 'project', path: '.' }, DEFAULT_INCLUDES = ['**/*.md'];
 const planned = (path: string, text: string): PlannedFile => ({ path, text, sha256: sha256(text), bytes: Buffer.byteLength(text) });
 const pinsOf = (files: readonly PlannedFile[]): FilePin[] => files.map(({ path, sha256: digest, bytes }) => ({ path, sha256: digest, bytes }));
 const samePins = (a: readonly FilePin[], b: readonly FilePin[]): boolean => canonicalJson(a) === canonicalJson(b);
 
 /** Where an interrupted prompt's stage copy sits: the one path whose second link to the prompt is expected. */
 const stagedPrompt = (bowerloom: string, item: { id: string; planRevision: string }): string => join(bowerloom, AUTHORING_FOLDER, stageName(item.planRevision), 'prompts', `${item.id}.md`);
+/** The same for a slice file: the stage copy is the one path whose second link to the slice is expected. */
+export const stagedSlice = (bowerloom: string, item: { id: string; planRevision: string }): string => join(bowerloom, AUTHORING_FOLDER, stageName(item.planRevision), 'slices', `${item.id}.yaml`);
 /** 'landed' when the pending item is in place with exactly its recorded bytes, 'absent' when nothing is there. */
 function pendingState(project: Scope, item: AuthoredItem): 'landed' | 'absent' | 'mismatch' {
   const at = join(project.bowerloom, itemPath(item.kind, item.id));
   if (lstatOrNull(at) === null) return 'absent';
   try {
-    if (item.kind === 'prompt') {
-      const bytes = readGuarded(at, LIMITS.fileBytes, stagedPrompt(project.bowerloom, item));
+    if (item.kind === 'prompt' || item.kind === 'slice') {
+      const bytes = readGuarded(at, LIMITS.fileBytes, (item.kind === 'prompt' ? stagedPrompt : stagedSlice)(project.bowerloom, item));
       return samePins([{ path: item.files[0]!.path, sha256: sha256(bytes), bytes: bytes.length }], item.files) ? 'landed' : 'mismatch';
     }
     return samePins(readTree(project.bowerloom, itemPath(item.kind, item.id)), item.files) ? 'landed' : 'mismatch';
@@ -271,7 +300,7 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
   const registered = finish ? [...receiptItems, finish] : receiptItems;
   const request = { kind: input.kind, id: input.name };
   const isFinish = finish !== null && sameItem(finish, request);
-  const parentFolder = input.kind === 'team' ? 'teams' : input.kind === 'skill' ? 'skills' : 'prompts';
+  const parentFolder = input.kind === 'team' ? 'teams' : input.kind === 'skill' ? 'skills' : input.kind === 'slice' ? 'slices' : 'prompts';
   const parentRead = lstatOrNull(join(project.bowerloom, parentFolder));
   if (parentRead !== null) realFolder(join(project.bowerloom, parentFolder));
   // Review finding 1: `prompt create <id>` for a registered prompt whose file is gone restores it, with the
@@ -286,7 +315,24 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
   }
 
   let brief: Read | null = null, manifestRead: Read | null = null, manifest: CreatePlan['manifest'] = null, compiledCandidate: string | null = null;
-  let files: PlannedFile[] = [];
+  let files: PlannedFile[] = [], register: CreatePlan['register'] = null, slice: CreatePlan['slice'] = null;
+  if (input.kind === 'slice' && !isFinish) {
+    // Rules 3 to 7 of the slice create: a registered slice, a skill the index would replace, a name that differs in case, a file already there.
+    const file = join(project.bowerloom, itemPath('slice', input.name)), present = lstatOrNull(file) !== null;
+    if (receiptItems.some(i => sameItem(i, request))) { ensure(present, 'AUTHORING_ITEM_MISSING'); refuse('SLICE_EXISTS'); }
+    ensure(lstatOrNull(join(project.bowerloom, 'skills', `slice-${input.name}`)) === null, 'SLICE_EXISTS');
+    const manifestNow = currentManifest(project); manifestRead = manifestNow.read;
+    ensure(!manifestNow.manifest?.skills.some(s => s.id === `slice-${input.name}`), 'SLICE_EXISTS');
+    if (parentRead !== null) ensure(!folderNames(join(project.bowerloom, 'slices')).some(n => n !== `${input.name}.yaml` && n.normalize('NFC').toLowerCase() === `${input.name}.yaml`), 'SLICE_EXISTS');
+    if (present) {
+      const bytes = readGuarded(file, LIMITS.fileBytes);
+      let text: string; try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch { return refuse('SLICE_INVALID', 'the file is not valid UTF-8'); }
+      const parsed = parseSlice(text, input.name);
+      if (!parsed.ok) return refuse('SLICE_INVALID', `${parsed.detail}.`);
+      ensure(input.root === null && input.includes === null, 'USAGE');
+      register = { kind: 'slice', id: input.name, teams: [], files: [{ path: itemPath('slice', input.name), sha256: sha256(bytes), bytes: bytes.length }] };
+    } else slice = { root: input.root ?? DEFAULT_ROOT, includes: input.includes ?? DEFAULT_INCLUDES };
+  }
   const folders: string[] = [];
   const parent = parentFolder, parentStat = parentRead;
 
@@ -304,6 +350,10 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
   if (restore) {
     if (parentStat === null) folders.push(parent);
     files = [planned(itemPath('prompt', restore.id), PROMPT_TEXT(restore.id))];
+  } else if (input.kind === 'slice' && !isFinish) {
+    if (!state.folder) folders.push(AUTHORING_FOLDER);
+    if (register === null && parentStat === null) folders.push(parent);
+    if (slice !== null) files = [planned(itemPath('slice', input.name), sliceTemplate({ root: slice.root, includes: slice.includes }))];
   } else if (!isFinish) {
     if (input.copyFrom !== null) ensure(!registered.some(i => sameItem(i, request)) && lstatOrNull(join(project.bowerloom, itemPath('team', input.name))) === null, 'TEAM_EXISTS');
     const exists = input.kind === 'team' ? 'TEAM_EXISTS' : input.kind === 'skill' ? 'SKILL_EXISTS' : 'PROMPT_EXISTS';
@@ -358,7 +408,8 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
     reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead, config: configRead }, config,
     ...(input.copyFrom !== null ? { copyFrom: { ...input.copyFrom } } : {}),
     scratch: state.scratch, discard, settled, finish,
-    item: isFinish || restore ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
+    slice, register,
+    item: isFinish || restore || register ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
     compiledCandidate, files, folders, manifest, writesAuthorized: false, executionAuthorized: false,
     ...(restore ? { restore } : {}),
   };
@@ -450,13 +501,22 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
   if (p.finish) {
     const finish = p.finish;
     live(); ensure(pendingState(project, finish) === 'landed', 'STALE_APPROVAL'); wrote = true;
-    if (finish.kind === 'prompt') readGuarded(join(project.bowerloom, itemPath('prompt', finish.id)), LIMITS.fileBytes);
+    if (finish.kind === 'prompt' || finish.kind === 'slice') readGuarded(join(project.bowerloom, itemPath(finish.kind, finish.id)), LIMITS.fileBytes);
     if (finish.kind === 'skill' && p.manifest?.steps.some(s => s.id === finish.id)) writeManifest(finish.id);
     writeConfig();
     writeReceipt([...items, finish]);
     removePending(p.reads.pending!.sha256);
   }
   // 3. The new item, or the registered prompt this plan restores (its receipt entry stays as it is).
+  if (p.register) {
+    // The file is already there. Check that it still has the planned bytes, then write the receipt. No pending record: no file moves.
+    const reg = p.register, at = join(project.bowerloom, reg.files[0]!.path);
+    live(); const bytes = readGuarded(at, LIMITS.fileBytes);
+    ensure(sha256(bytes) === reg.files[0]!.sha256 && bytes.length === reg.files[0]!.bytes, 'STALE_APPROVAL');
+    for (const folder of p.folders) { live(); wrote = true; makeFolder(join(project.bowerloom, folder)); }
+    if (p.folders.length) syncFolder(project.bowerloom);
+    wrote = true; writeReceipt([...items, { ...reg, planRevision: p.revision }]);
+  }
   const placed: AuthoredItem | null = p.item ? { ...p.item, planRevision: p.revision } : p.restore ?? null;
   if (placed) {
     const item = placed;
@@ -476,9 +536,9 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
       ensure(compiled.candidateRevision === p.compiledCandidate, 'STALE_APPROVAL');
     }
     const from = join(stage, itemPath(item.kind, item.id)), to = join(project.bowerloom, itemPath(item.kind, item.id));
-    const parentFolder = join(project.bowerloom, item.kind === 'team' ? 'teams' : item.kind === 'skill' ? 'skills' : 'prompts');
+    const parentFolder = join(project.bowerloom, item.kind === 'team' ? 'teams' : item.kind === 'skill' ? 'skills' : item.kind === 'slice' ? 'slices' : 'prompts');
     live(); realFolder(parentFolder); ensure(lstatOrNull(to) === null, 'STALE_APPROVAL');
-    if (item.kind === 'prompt') {
+    if (item.kind === 'prompt' || item.kind === 'slice') {
       try { fs.linkSync(from, to); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'EEXIST') refuse('STALE_APPROVAL'); throw e; }
       fs.unlinkSync(from);
     } else fs.renameSync(from, to);

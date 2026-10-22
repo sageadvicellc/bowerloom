@@ -23,11 +23,11 @@ test('1. the plan lists a first-team agent as install agent with the Claude path
   const a = p.agents[0];
   assert.deepEqual([a.id, a.team, a.itemId, a.state, a.action, a.harnesses], ['scribe', 'first-team', 'agent_scribe', 'new', 'install', ['claude']]);
   assert.deepEqual(a.expected.surfaces, [{ id: 'agent-claude', path: '.claude/agents/scribe.md' }, { id: 'catalog', path: '.bowerloom/managed/catalog/agent_scribe.json' }]);
-  assert.deepEqual(a.expected.source, { kind: 'agent', path: 'teams/first-team/agents/scribe.md' });
+  assert.deepEqual(a.expected.source, { kind: 'agent', path: 'teams/first-team/agents/scribe.md', guard: null });
   assert.equal(a.expected.files.length, 1); assert.equal(a.hold, null); assert.equal(a.builtin, false); assert.deepEqual(a.notices, ['all-tools']);
   assert.equal(p.writesAuthorized, false); assert.equal(p.executionAuthorized, false);
   assert.match(review(p), /^ {2}scribe +install agent: \.claude\/agents\/scribe\.md$/m);
-  assert.match(review(p), /^Apply skills, prompts, and agents for Claude Code$/m);
+  assert.match(review(p), /^Apply skills, prompts, agents, and context slices for Claude Code$/m);
 });
 
 test('2. after apply, a second plan says agent up to date and has nothing to change', async t => {
@@ -195,9 +195,9 @@ test('13. --harness codex with agents: no agent line, the Codex line once, no ke
   assert.deepEqual(p.agents, []); assert.equal(p.codexAgentsSkipped, true); assert.equal(p.actionable, false);
   assert.match(text, /^Apply skills and prompts for Codex$/m);
   assert.match(text, /^ {2}Nothing in \.bowerloom\/skills\.json or \.bowerloom\/prompts to apply yet\.$/m);
-  assert.equal(lines(text).filter(l => l === 'Codex agents are not projected in this beta. See the capability model design.').length, 1);
+  assert.equal(lines(text).filter(l => l === 'Codex agents and context slices are not projected in this beta. See the capability model design.').length, 1);
   assert.doesNotMatch(text, /scribe|kept/);
-  const order = lines(text); assert.ok(order.indexOf('Codex agents are not projected in this beta. See the capability model design.') < order.findIndex(l => l.startsWith('Network:')));
+  const order = lines(text); assert.ok(order.indexOf('Codex agents and context slices are not projected in this beta. See the capability model design.') < order.findIndex(l => l.startsWith('Network:')));
   assert.doesNotMatch(p.pointer, /Agents are in/);
 });
 
@@ -205,8 +205,8 @@ test('14. --harness both with agents: agent lines and the Codex line', async t =
   const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', agentText('scribe'));
   const p = await plan(f, ['claude', 'codex']), text = review(p);
   assert.equal(p.agents.length, 1); assert.equal(p.codexAgentsSkipped, true); assert.match(text, /install agent: \.claude\/agents\/scribe\.md/);
-  assert.equal(lines(text).filter(l => l === 'Codex agents are not projected in this beta. See the capability model design.').length, 1);
-  assert.match(text, /^Apply skills, prompts, and agents for Claude Code and Codex$/m); assert.match(p.pointer, / Agents are in \.claude\/agents\.$/);
+  assert.equal(lines(text).filter(l => l === 'Codex agents and context slices are not projected in this beta. See the capability model design.').length, 1);
+  assert.match(text, /^Apply skills, prompts, and agents for Claude Code and Codex, and context slices for Claude Code$/m); assert.match(p.pointer, / Agents are in \.claude\/agents\. Context slices are skills named slice-<name> in \.claude\/skills\.$/);
 });
 
 test('15. --harness claude: agent lines and no Codex line', async t => {
@@ -278,7 +278,7 @@ test('22. .claude as a link and .claude/agents writable by the group refuse APPL
 });
 
 test('23. claudeCopyBytes returns its input for any string', () => {
-  for (const s of ['', 'a', '---\nname: x\n---\nBody\n', 'é🌿\u0000\r\n', 'x'.repeat(70000)]) assert.equal(claudeCopyBytes(s), s);
+  for (const s of ['', 'a', '---\nname: x\n---\nBody\n', 'é🌿\u0000\r\n', 'x'.repeat(70000)]) assert.equal(claudeCopyBytes(s, { guard: null }), s);
 });
 
 test('24. a catalog with no private state, or one the managed code calls occupied, holds that agent only', async t => {

@@ -18,6 +18,9 @@ export interface ParsedAgent {
   tools: string[] | null;
   disallowedTools: string[] | null; skills: string[] | null;
   permissionMode: string | null;
+  /** `omitClaudeMd`, `isolation` and `mcpServers`, for the context of slices (spec 05). */
+  omitClaudeMd: boolean;
+  isolation: 'worktree' | null;
 }
 export type AgentParse = { ok: true; agent: ParsedAgent } | { ok: false; code: AgentParseCode; detail: string };
 
@@ -140,7 +143,7 @@ function validate(text: string, stem: string, team: string): ParsedAgent {
   if (name !== stem) throw new Failure('AGENT_NAME_MISMATCH', 'the key name differs from the file name');
   const description = get('description');
   if (typeof description !== 'string' || description.length < 1 || description.length > 2048) invalid('the key description is required, from 1 to 2048 characters');
-  const parsed: ParsedAgent = { stem, team, name: name as string, description: description as string, keys, tools: null, disallowedTools: null, skills: null, permissionMode: null };
+  const parsed: ParsedAgent = { stem, team, name: name as string, description: description as string, keys, tools: null, disallowedTools: null, skills: null, permissionMode: null, omitClaudeMd: false, isolation: null };
   for (const key of keys) {
     const v = map[key];
     if (key === 'name' || key === 'description') continue;
@@ -155,9 +158,9 @@ function validate(text: string, stem: string, team: string): ParsedAgent {
       case 'autoCompactWindow': integer(key, v, 100000, 1000000); break;
       case 'mcpServers': case 'hooks': opaque(key, v, sourceSize(doc, key, block)); break;
       case 'memory': oneOf(key, v, MEMORY); break;
-      case 'background': case 'omitClaudeMd': if (typeof v !== 'boolean') invalid(`${keyWords(key)} must be true or false`); break;
+      case 'background': case 'omitClaudeMd': if (typeof v !== 'boolean') invalid(`${keyWords(key)} must be true or false`); if (key === 'omitClaudeMd') parsed.omitClaudeMd = v; break;
       case 'effort': oneOf(key, v, EFFORT); break;
-      case 'isolation': oneOf(key, v, ['worktree']); break;
+      case 'isolation': oneOf(key, v, ['worktree']); parsed.isolation = 'worktree'; break;
       case 'color': oneOf(key, v, COLORS); break;
       case 'initialPrompt': if (typeof v !== 'string' || Buffer.byteLength(v) > 8192) invalid('the key initialPrompt must be text of at most 8192 bytes'); break;
       case 'experimental': {

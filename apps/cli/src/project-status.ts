@@ -16,7 +16,8 @@ import { legacyPresent } from '../../../packages/managed-skills/src/migrate.js';
 import { newCommandJson, plainText } from './human.js';
 import { planProjectApply } from '../../../packages/project-sync/src/index.js';
 import type { AgentItem } from '../../../packages/project-sync/src/index.js';
-import { noticeWords } from './apply.js';
+import { noticeWords, sliceNoteLines } from './apply.js';
+import type { SliceItem } from '../../../packages/project-sync/src/index.js';
 import { editedPrompts, missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 
@@ -50,6 +51,13 @@ function receiptMissing(project: ProjectContext): boolean {
 }
 
 /** `bowerloom status [--json]` for the project that holds the working folder. Reads only. Returns the text to print; the words escape control characters, the JSON is exact. */
+/** The status lines of installed slices: an out-of-date index, and the count of notes with the command that lists them. */
+function sliceLines(slices: readonly SliceItem[]): string[] {
+  return slices.filter(s => s.installed).flatMap(s => [
+    ...(s.action === 'update' ? [`  slice ${plainText(s.id)}: index out of date (${s.changes.added} added, ${s.changes.gone} gone, ${s.changes.summaries} summaries changed). Next: bowerloom apply`] : []),
+    ...(sliceNoteLines(s).length > 0 ? [`slice ${plainText(s.id)}: ${sliceNoteLines(s).length} notes, run bowerloom context show ${plainText(s.id)}`] : []),
+  ]);
+}
 export async function runProjectStatus(args: readonly string[], cwd: string, home: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const words = args.slice(1);
   if (words.some(w => w !== '--json') || words.length > 1) throw new DefinitionError('USAGE', 'Use bowerloom status [--json]. For a prepared session, use bowerloom status --installation <private.json>.');
@@ -101,19 +109,20 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // Review finding 16: name the files and items, not only their folders. An edited prompts folder names its edited
   // prompt files, and each held or missing item comes with its next step. These reads are best effort: when one
   // cannot be made, the folder line stays.
-  const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts') return [path]; const files = editedPrompts(project); return files === null || files.length === 0 ? [path] : files; };
-  let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [];
+  const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts' && path !== '.bowerloom/slices') return [path]; const files = editedPrompts(project, path === '.bowerloom/slices' ? 'slice' : 'prompt'); return files === null || files.length === 0 ? [path] : files; };
+  let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [], stale: string[] = [];
   const base = { project, stateRoot: privateStateRoot(env, home), home, harnesses: ['claude' as const, 'codex' as const], team: null };
   if (project.bowerloomIdentity !== null) try {
     const plan = await planProjectApply(base);
-    agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents)]);
+    agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents, plan.slices)]);
+    stale = sliceLines(plan.slices);
   } catch (error) {
     // The refusal is named. Some already show as drift lines, so they leave the setup as it is; any other makes it drifted.
     const code = (error as { code?: unknown } | null)?.code;
     unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
     drifted = !EXPECTED_PLAN_REFUSALS.includes(String(code));
     // The agents are planned on their own, so their holds still show.
-    try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents)]); } catch { /* Nothing more to show. */ }
+    try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]); stale = sliceLines(only.slices); } catch { /* Nothing more to show. */ }
   }
   const installed = agents.filter(a => a.installed !== null).map(a => `  agent ${plainText(a.id)}: installed copy still active (${installedWords(a.installed!)})`);
   return [
@@ -127,6 +136,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     ...(unavailable !== null ? [`  plan unavailable (${plainText(unavailable)})`] : []),
     ...installed,
     ...held.map(item => `  ${item.kind} ${plainText(item.id)}: held (${plainText(item.code)}). Next: ${plainText(item.next)}`),
+    ...stale,
     ...(legacy ? [`Legacy managed skill: .bowerloom-skills. Run ${MIGRATE}`] : []),
     'Workers: none started (this beta starts none)',
     '',

@@ -20,7 +20,7 @@ function agentFile(f, team, role, text = TEXT, mode = 0o644) {
   const file = path.join(dir, role + '.md'); fs.writeFileSync(file, text, { mode }); fs.chmodSync(file, mode); return file;
 }
 function agentRequest(f, role, team = 'desk', extra = {}) {
-  return { operation: 'install', projectDir: f.projectDir, stateDir: itemState(f, 'agent_' + role), item: { kind: 'agent', id: role }, harnesses: ['claude'], source: { kind: 'agent', team, name: role }, expectedPreviousRevision: null, minFreeBytes: 33554432, legacy: null, ...extra };
+  return { operation: 'install', projectDir: f.projectDir, stateDir: itemState(f, 'agent_' + role), item: { kind: 'agent', id: role }, harnesses: ['claude'], source: { kind: 'agent', team, name: role, guard: null }, expectedPreviousRevision: null, minFreeBytes: 33554432, legacy: null, ...extra };
 }
 async function install(req) { const plan = await planManagedItem(req); return { plan, receipt: await applyManagedItem(null, req, plan.revision) }; }
 const read = (f, rel) => fs.readFileSync(path.join(f.projectDir, rel), 'utf8');
@@ -46,11 +46,11 @@ test('requestV2 takes an agent for Claude only and with the agent source keys on
   const f = project(t), good = agentRequest(f, 'scribe');
   assert.equal(requestV2(good).item.kind, 'agent');
   for (const harnesses of [['codex'], ['claude', 'codex']]) assert.throws(() => requestV2({ ...good, harnesses }), `harnesses ${harnesses}`);
-  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk', name: 'scribe', extra: 1 } }));
-  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk' } }));
-  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk', name: 'other' } }));
-  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'Desk', name: 'scribe' } }));
-  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'a'.repeat(65), name: 'scribe' } }));
+  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk', name: 'scribe', extra: 1, guard: null } }));
+  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk', guard: null } }));
+  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'desk', name: 'other', guard: null } }));
+  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'Desk', name: 'scribe', guard: null } }));
+  assert.throws(() => requestV2({ ...good, source: { kind: 'agent', team: 'a'.repeat(65), name: 'scribe', guard: null } }));
   assert.throws(() => requestV2({ ...good, source: { kind: 'prompt', name: 'scribe' } }));
   assert.throws(() => requestV2({ ...good, source: { kind: 'local', path: 'skills/scribe' } }));
   assert.throws(() => requestV2({ ...good, item: { kind: 'skill', id: 'scribe' } }));
@@ -69,7 +69,7 @@ test('itemId and catalogItem tell an agent from a skill and a prompt', () => {
 
 test('the planned material writes the closure text to agent-claude and the catalog', async t => {
   const f = project(t); agentFile(f, 'desk', 'scribe'); const plan = await planManagedItem(agentRequest(f, 'scribe'));
-  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/desk/agents/scribe.md' }); assert.equal(plan.core.closure.skill, null);
+  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/desk/agents/scribe.md', guard: null }); assert.equal(plan.core.closure.skill, null);
   const byId = Object.fromEntries(plan.material.map(m => [m.id, m]));
   assert.deepEqual(Object.keys(byId).sort(), ['agent-claude', 'catalog', 'ignore']);
   assert.equal(byId['agent-claude'].kind, 'file'); assert.equal(byId['agent-claude'].files.length, 1);
@@ -80,7 +80,7 @@ test('the planned material writes the closure text to agent-claude and the catal
 });
 
 test('claudeCopyBytes returns its input', () => {
-  for (const s of ['', TEXT, 'x\u0000y', '\uFEFFz', 'é🌿']) assert.equal(claudeCopyBytes(s), s);
+  for (const s of ['', TEXT, 'x\u0000y', '\uFEFFz', 'é🌿']) assert.equal(claudeCopyBytes(s, { guard: null }), s);
 });
 
 test('an agent installs, updates, reports up to date, and refuses a local edit of the copy', async t => {
@@ -147,7 +147,7 @@ test('readLocalAgent keeps a leading BOM in the text, fails an invalid UTF-8 seq
 
 test('readClosure for an agent returns the closure of readLocalAgent with the team path and no skill', async t => {
   const f = project(t); agentFile(f, 'desk', 'scribe'); const plan = await planManagedItem(agentRequest(f, 'scribe')), read1 = readLocalAgent(f.projectDir, 'desk', 'scribe', live);
-  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/desk/agents/scribe.md' }); assert.equal(plan.core.closure.skill, null);
+  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/desk/agents/scribe.md', guard: null }); assert.equal(plan.core.closure.skill, null);
   assert.deepEqual(plan.core.closure.inventory, read1.inventory); assert.deepEqual(plan.core.closure.files, read1.files);
   assert.equal(plan.core.closure.name, 'scribe'); assert.deepEqual(plan.core.closure.inventory, [{ path: 'scribe.md', sha256: hash(TEXT), bytes: Buffer.byteLength(TEXT) }]);
 });
@@ -177,9 +177,9 @@ test('the install check lets an equal hand-made agent file through and refuses a
 test('an agent that moves to another team with the same bytes plans an update', async t => {
   const f = project(t); agentFile(f, 'a', 'scribe'); const req = agentRequest(f, 'scribe', 'a'); const { receipt } = await install(req);
   fs.rmSync(path.join(f.projectDir, '.bowerloom/teams/a/agents/scribe.md')); agentFile(f, 'b', 'scribe');
-  const move = { ...req, operation: 'update', source: { kind: 'agent', team: 'b', name: 'scribe' }, expectedPreviousRevision: receipt.revision };
+  const move = { ...req, operation: 'update', source: { kind: 'agent', team: 'b', name: 'scribe', guard: null }, expectedPreviousRevision: receipt.revision };
   const plan = await planManagedItem(move); assert.notEqual(plan.status, 'up-to-date');
-  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/b/agents/scribe.md' });
+  assert.deepEqual(plan.core.closure.source, { kind: 'agent', path: 'teams/b/agents/scribe.md', guard: null });
   const next = await applyManagedItem(null, move, plan.revision); assert.equal(next.state, 'committed');
   assert.equal(JSON.parse(read(f, '.bowerloom/managed/catalog/agent_scribe.json')).source.path, 'teams/b/agents/scribe.md');
   const same = await planManagedItem({ ...move, expectedPreviousRevision: next.revision }); assert.equal(same.status, 'up-to-date');

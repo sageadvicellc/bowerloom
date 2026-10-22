@@ -25,7 +25,7 @@ A working agreement records the team's proposed scope and review expectations. M
 
 ## Readable definitions
 
-The setup includes team YAML, role prompts, skills, maps, and supporting assets. [Files and configuration](/docs/configuration/) lists all 20 files.
+`.bowerloom/slices/` holds context slice files, and `apply` writes the index skill `.claude/skills/slice-<id>` for each one. The setup includes team YAML, role prompts, skills, maps, and supporting assets. [Files and configuration](/docs/configuration/) lists all 20 files.
 
 Crew describes team definitions. Relay describes communication structure. Roots concerns knowledge access. Vines records activity.
 
