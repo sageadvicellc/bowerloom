@@ -43,6 +43,9 @@ export function imports(text, path) {
 }
 // The root entry of a shrinkwrap, built from a manifest. optionalDependencies appears only when it holds a pin.
 const rootEntry = manifest => ({name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,...(manifest.optionalDependencies && Object.keys(manifest.optionalDependencies).length ? {optionalDependencies:manifest.optionalDependencies} : {}),bin:manifest.bin,engines:manifest.engines});
+// An npm package name, and a lock path made only of such names. A name never starts a segment with a dot, so no path leaves node_modules.
+const SEGMENT = '[A-Za-z0-9_~-][A-Za-z0-9._~-]*', NAME = `(?:@${SEGMENT}/)?${SEGMENT}`;
+const NAME_RE = new RegExp(`^${NAME}$`), LOCK_PATH_RE = new RegExp(`^node_modules/${NAME}(?:/node_modules/${NAME})*$`);
 export function lockedDependencies(lock, dependencies, manifest) {
   if(lock.lockfileVersion !== 3 || !lock.packages) fail('Expected npm lockfile v3');
   const chosen = {}, queue = [];
@@ -58,16 +61,19 @@ export function lockedDependencies(lock, dependencies, manifest) {
     fail('Missing locked runtime dependency: '+name);
   }
   for(const [name,version] of Object.entries(dependencies)) {
+    if(!NAME_RE.test(name)) fail('Bundle path unsafe: '+name);
     const path=locate('',name); if(lock.packages[path].version!==version) fail('Direct dependency lock mismatch: '+name); queue.push(path);
   }
   while(queue.length) {
     const path=queue.shift(); if(chosen[path]) continue;
+    if(!LOCK_PATH_RE.test(path)) fail('Bundle path unsafe: '+path);
     const item=lock.packages[path];
     if(item.link || !/^https:\/\/registry\.npmjs\.org\//.test(item.resolved??'') || !/^sha512-/.test(item.integrity??'')) fail('Nonregistry or unpinned dependency: '+path);
     // Security freeze info 5: "no install scripts" is a checked rule, not an observation.
     if(Object.hasOwn(item,'hasInstallScript') && item.hasInstallScript!==false) fail('Locked dependency has an install script: '+path);
     const {dev,devOptional,workspaces,...entry}=item; chosen[path]=entry;
     for(const [name] of Object.entries({...item.dependencies,...item.optionalDependencies,...item.peerDependencies})) {
+      if(!NAME_RE.test(name)) fail('Bundle path unsafe: '+name);
       const optional=Object.hasOwn(item.optionalDependencies??{},name) || item.peerDependenciesMeta?.[name]?.optional===true;
       const found=locate(path,name,optional); if(found) queue.push(found);
     }
@@ -209,7 +215,7 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false, bund
   files.set('package.json',Buffer.from(json(manifest)));
   files.set('npm-shrinkwrap.json',Buffer.from(json(shrink)));
   files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Private packaging proof\n\nThe current monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for historical source excluded from that grant. This artifact is private; publication remains separately authorized.\n\nPlaywright-derived seccomp policy notice: packages/linux-browser/PLAYWRIGHT-LICENSE.txt. Supabase upstream notice: packages/local-backend/THIRD_PARTY_NOTICES.md. '+(bundle?'The runtime npm dependencies ship inside this package under node_modules, each with its own license file.':'External npm dependencies are installed separately under their own package licenses.')+' No prior module repository source or its history is imported by this staging tool.\n'));
-  files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; '+(bundle?'The runtime dependencies ship inside the tarball.':'external pinned npm dependencies must be available from cache or a separately authorized registry connection.')+' No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
+  files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm'+(bundle?'. The runtime dependencies ship inside the tarball.':'; external pinned npm dependencies must be available from cache or a separately authorized registry connection.')+' No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
   if(releaseCandidate) {
     files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom notices\n\nThe monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. '+(bundle?'The bundled runtime npm dependencies retain their own licenses and ship with their own license files.':'External dependencies retain their own licenses.')+'\n'));
     files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\n${installHeading(release)}\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
@@ -231,46 +237,96 @@ function newDestination(destination, boundBytes=STAGING_BOUND) {
 }
 export const defaultNpmCache = () => join(process.env.npm_config_cache ?? join(homedir(),'.npm'),'_cacache');
 const ALLOWED_TYPES = new Set(['File','OldFile','ContiguousFile','Directory']);
-function modeWalk(directory, stageDir, found) {
+const MAX_PACKAGE_ENTRIES = 8192, MAX_BUNDLE_ENTRIES = 50000, MIN_ENTRY_COST = 4096, MAX_CACHE_FILE = 256 * 2 ** 20;
+// Files that npm-packlist drops by its default rules, so a staged copy of one may be absent from the tarball.
+const DEFAULT_OMITTED = /^(?:\.npmignore|\.gitignore|\.npmrc|\.DS_Store|\._.*|.*\.orig|npm-debug\.log|\.lock-wscript|\.wafpickle-.*)$/;
+export function checkMaxBundleBytes(value) {
+  if(value === undefined) return GIB;
+  if(!Number.isSafeInteger(value) || value <= 0 || value > GIB) fail('maxBundleBytes must be a positive integer of at most 1 GiB');
+  return value;
+}
+const fileHash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+function modeWalk(directory, base, modes, onFile) {
+  chmodSync(directory,0o755);
   for(const name of readdirSync(directory).sort()) {
     const full=join(directory,name), info=lstatSync(full);
-    if(info.isDirectory()) { chmodSync(full,0o755); modeWalk(full,stageDir,found); }
-    else if(info.isFile()) { chmodSync(full,info.mode & 0o111 ? 0o755 : 0o644); found.files.push(relative(stageDir,full).split(sep).join('/')); found.bytes+=info.size; }
-    else fail('Bundle tarball unsafe: '+relative(stageDir,full));
+    if(info.isDirectory()) modeWalk(full,base,modes,onFile);
+    else if(info.isFile()) { chmodSync(full,(modes.get(relative(base,full).split(sep).join('/')) ?? 0) & 0o111 ? 0o755 : 0o644); onFile(full,info.size); }
+    else fail('Bundle tarball unsafe: '+relative(base,full));
   }
 }
 // Extract each locked package from the npm cache into <stage>/<lock path>. The cache file is named by the lock integrity value.
-export function extractBundle({stageDir, packages, npmCache, maxBundleBytes=GIB}) {
+// Every package is then checked against the lock: its own package.json names the same package and version, its license passes
+// the gate, and it has no install script.
+export function extractBundle({stageDir, packages, npmCache, maxBundleBytes}) {
   if(typeof npmCache !== 'string' || !isAbsolute(npmCache)) fail('npmCache must be an absolute path');
-  const found={files:[],bytes:0};
-  let total=0;
+  const max=checkMaxBundleBytes(maxBundleBytes);
+  if(mkdirSync(stageDir,{recursive:true}) !== undefined) chmodSync(stageDir,0o700);
+  const realStage=realpathSync(stageDir), modulesRoot=join(realStage,'node_modules'), bundleFiles=new Map();
+  let total=0, entryTotal=0, bytes=0;
   for(const path of Object.keys(packages).filter(Boolean).sort(byName)) {
-    const integrity=packages[path].integrity;
+    if(!LOCK_PATH_RE.test(path)) fail('Bundle path unsafe: '+path);
+    const item=packages[path], name=path.slice(path.lastIndexOf('node_modules/')+'node_modules/'.length);
+    if(item.resolved !== `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${item.version}.tgz`) fail('Bundle resolved URL mismatch: '+path);
+    const integrity=item.integrity;
     if(typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) fail('Bundle integrity mismatch: '+path);
     const hex=Buffer.from(integrity.slice(7),'base64').toString('hex'), file=join(npmCache,'content-v2','sha512',hex.slice(0,2),hex.slice(2,4),hex.slice(4));
-    let data; try { data=readFileSync(file); } catch(error) { if(error?.code==='ENOENT') fail('Bundle cache entry missing: '+path); throw error; }
+    const info=lstatSync(file,{throwIfNoEntry:false});
+    if(!info) fail('Bundle cache entry missing: '+path);
+    if(!info.isFile() || info.size > MAX_CACHE_FILE) fail('Bundle cache entry unsafe: '+path);
+    const data=readFileSync(file);
     if('sha512-'+createHash('sha512').update(data).digest('base64') !== integrity) fail('Bundle integrity mismatch: '+path);
-    const target=join(stageDir,path); mkdirSync(target,{recursive:true});
-    let entries=0, unsafe=null, oversize=false;
-    const refuse=raw => { unsafe ??= 'Bundle tarball unsafe: '+path+'/'+raw; };
+    const target=join(realStage,path), rootInfo=lstatSync(modulesRoot,{throwIfNoEntry:false});
+    if(rootInfo && !rootInfo.isDirectory()) fail('Bundle path unsafe: '+path);
+    if(!rootInfo) mkdirSync(modulesRoot);
+    chmodSync(modulesRoot,0o755);
+    if(!resolve(target).startsWith(modulesRoot+sep) || lstatSync(target,{throwIfNoEntry:false})) fail('Bundle path unsafe: '+path);
+    mkdirSync(target,{recursive:true});
+    if(realpathSync(target) !== target) fail('Bundle path unsafe: '+path);
+    // Folders made here take the umask of the user, so set them now. They are real folders inside the stage.
+    for(let folder=target; folder !== modulesRoot; folder=dirname(folder)) chmodSync(folder,0o755);
+    let entries=0, unsafe=null, oversize=false, tooMany=false;
+    const modes=new Map(), refuse=raw => { unsafe ??= 'Bundle tarball unsafe: '+path+'/'+raw; };
     const filter=(raw,entry) => {
-      const segments=String(raw).split('/');
-      if(!ALLOWED_TYPES.has(entry.type) || String(raw).startsWith('/') || /^[A-Za-z]:/.test(String(raw)) || segments.includes('..')) { refuse(raw); return false; }
-      if(++entries > 8192) { refuse(raw); return false; }
-      total+=entry.size ?? 0; if(total > maxBundleBytes) { oversize=true; return false; }
+      const text=String(raw), segments=text.replace(/\/$/,'').split('/');
+      if(!ALLOWED_TYPES.has(entry.type) || text.startsWith('/') || /^[A-Za-z]:/.test(text) || segments.some(part => part === '' || part === '.' || part === '..') || segments[1] === 'node_modules') { refuse(raw); return false; }
+      if(++entries > MAX_PACKAGE_ENTRIES) { refuse(raw); return false; }
+      if(++entryTotal > MAX_BUNDLE_ENTRIES) { tooMany=true; return false; }
+      total+=Math.max(entry.size ?? 0, MIN_ENTRY_COST); if(total > max) { oversize=true; return false; }
+      if(entry.type !== 'Directory') modes.set(segments.slice(1).join('/'),entry.mode ?? 0);
       return true;
     };
-    const unpack=new UnpackSync({cwd:target,strip:1,strict:true,preserveOwner:false,noMtime:true,filter,onwarn:(code,message)=>refuse(message ?? code)});
-    let thrown=null; try { unpack.end(data); } catch(error) { thrown=error; }
+    // strict mode sends every tar warning through the throw, with the tar message in the error, so no warning handler is needed.
+    const unpack=new UnpackSync({cwd:target,strip:1,strict:true,preserveOwner:false,noMtime:true,filter});
+    // The process umask changes the folders tar makes, so fix it for this synchronous call only.
+    const previousUmask=process.umask(0o022);
+    let thrown=null; try { unpack.end(data); } catch(error) { thrown=error; } finally { process.umask(previousUmask); }
     if(unsafe) fail(unsafe);
+    if(tooMany) fail('Bundle exceeds 50000 entries');
     if(oversize) fail('Bundle exceeds 1 GiB');
     if(thrown) fail('Bundle tarball unsafe: '+path+'/'+(thrown.message ?? thrown));
-    modeWalk(target,stageDir,found);
+    const manifestFile=join(target,'package.json'), manifestInfo=lstatSync(manifestFile,{throwIfNoEntry:false});
+    let pkg; try { if(!manifestInfo?.isFile()) throw new Error('none'); pkg=JSON.parse(readFileSync(manifestFile,'utf8')); } catch { fail('Bundle package mismatch: '+path); }
+    if(pkg === null || typeof pkg !== 'object' || pkg.name !== name || pkg.version !== item.version) fail('Bundle package mismatch: '+path);
+    if(!licenseAllowed(pkg.license)) fail('Bundled license not allowed: '+name+' '+(typeof pkg.license === 'string' ? pkg.license : '(none)'));
+    if(['preinstall','install','postinstall'].some(key => pkg.scripts && typeof pkg.scripts === 'object' && Object.hasOwn(pkg.scripts,key)) || lstatSync(join(target,'binding.gyp'),{throwIfNoEntry:false})) fail('Bundle package has an install script: '+path);
+    const restricted=Array.isArray(pkg.files) || ['.npmignore','.gitignore'].some(n => lstatSync(join(target,n),{throwIfNoEntry:false}));
+    modeWalk(target,target,modes,(full,size) => {
+      const rel=relative(realStage,full).split(sep).join('/'), base=relative(target,full).split(sep).join('/');
+      bundleFiles.set(rel,{sha256:fileHash(full),mayOmit:base !== 'package.json' && (restricted || DEFAULT_OMITTED.test(full.slice(full.lastIndexOf(sep)+1)))}); bytes+=size;
+    });
   }
-  return {files:found.files.length,bytes:found.bytes,bundleFiles:new Set(found.files)};
+  return {files:bundleFiles.size,bytes,bundleFiles};
+}
+// Re-hash every staged bundled file just before npm reads the stage.
+export function verifyBundleFiles(stageDir, bundleFiles) {
+  for(const [path,{sha256:expected}] of bundleFiles) {
+    let actual; try { actual=fileHash(join(stageDir,path)); } catch { actual=null; }
+    if(actual !== expected) fail('Bundle file changed before pack: '+path);
+  }
 }
 function stageBundle(options) {
-  const bundle=options.bundle===true, max=options.maxBundleBytes ?? GIB;
+  const bundle=options.bundle === true, max=checkMaxBundleBytes(options.maxBundleBytes);
   const npmCache=bundle ? (options.npmCache ?? defaultNpmCache()) : undefined;
   if(bundle && !isAbsolute(npmCache)) fail('npmCache must be an absolute path');
   const prepared=collect(options); newDestination(options.stageDir, bundle ? 2*(max+STAGING_BOUND) : STAGING_BOUND);
@@ -289,20 +345,21 @@ function stageBundle(options) {
 }
 export function stage(options) { return stageBundle(options).record; }
 export function pack(options) {
-  const bundle=options.bundle===true, max=options.maxBundleBytes ?? GIB, output=options.outputDir; newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND);
+  const bundle=options.bundle === true, max=checkMaxBundleBytes(options.maxBundleBytes), output=options.outputDir; newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND);
   if(output===options.stageDir || output.startsWith(options.stageDir+sep) || options.stageDir.startsWith(output+sep)) fail('Stage and output must be distinct siblings or separate trees');
   const {record,manifest,bundleFiles}=stageBundle(options);
   newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND); mkdirSync(output,{mode:0o700});
   writeFileSync(join(output,'.empty-npmrc'),'',{flag:'wx',mode:0o600});
-  const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',output],{cwd:options.stageDir,encoding:'utf8',timeout:600000,maxBuffer:64*2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true'}});
+  if(bundle) verifyBundleFiles(options.stageDir,bundleFiles);
+  const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',output],{cwd:options.stageDir,encoding:'utf8',timeout:600000,maxBuffer:64*2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true',npm_config_update_notifier:'false'}});
   if(result.error?.code==='ENOBUFS') fail('npm pack output exceeds 64 MiB');
   if(result.status!==0) fail('npm pack failed: '+(result.stderr||result.error?.message));
-  const info=JSON.parse(result.stdout)[0];
+  let info; try { info=JSON.parse(result.stdout)[0]; if(!info || !Array.isArray(info.files)) throw new Error('shape'); } catch { fail('npm pack output is not JSON'); }
   const all=info.files.map(f=>f.path), own=all.filter(p=>!p.startsWith('node_modules/')).sort(), bundled=info.files.filter(f=>f.path.startsWith('node_modules/')),expected=[...record.files.map(f=>f.path),'DISTRIBUTION.json'].sort();
   if(JSON.stringify(own)!==JSON.stringify(expected)) fail('npm tarball contents differ from explicit inventory');
   if(bundle) {
     const listed=new Set(all), lockPaths=record.bundle.entries.map(e=>e.path);
-    if(bundled.some(f=>!bundleFiles.has(f.path)) || lockPaths.some(p=>!listed.has(p+'/package.json'))
+    if(bundled.some(f=>!bundleFiles.has(f.path)) || [...bundleFiles].some(([path,{mayOmit}])=>!mayOmit && !listed.has(path)) || lockPaths.some(p=>!listed.has(p+'/package.json'))
       || JSON.stringify([...(info.bundled??[])].sort(byName))!==JSON.stringify([...manifest.bundleDependencies].sort(byName))) fail('Bundle packed files differ from the staged bundle');
   }
   return {file:join(output,info.filename),sha256:sha256(readFileSync(join(output,info.filename))),bytes:info.size,unpackedBytes:info.unpackedSize,files:own.length,...(bundle?{bundle:{packages:(info.bundled??[]).length,files:bundled.length,bytes:bundled.reduce((sum,f)=>sum+f.size,0)}}:{}),record};

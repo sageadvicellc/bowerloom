@@ -40,7 +40,7 @@ export function putInCache(npmCache,bytes,integrity=integrityOf(bytes)) {
 export function packageTarball(name,version,{first='package',extra=[],deps}={}) {
  return tarBytes([
   {path:first+'/',type:'5'},
-  {path:first+'/package.json',data:JSON.stringify({name,version,main:'index.js',...(deps?{dependencies:deps}:{})})},
+  {path:first+'/package.json',data:JSON.stringify({name,version,license:'MIT',main:'index.js',...(deps?{dependencies:deps}:{})})},
   {path:first+'/index.js',data:`module.exports='${name}';\n`},
   ...extra.map(e=>({...e,path:first+'/'+e.path})),
  ]);
@@ -55,4 +55,10 @@ export function syntheticClosure(npmCache,paths) {
  }
  return packages;
 }
+export const registryUrl=(name,version)=>`https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`;
+// One lock entry for hand-made tarball bytes. The manifest entry makes a package that passes every check.
+export function entryFor(cache,name,entries,options,version='1.0.0') {
+ return {version,resolved:registryUrl(name,version),integrity:putInCache(cache,tarBytes(entries,options))};
+}
+export const manifestEntry=(name,extra={},version='1.0.0')=>({path:'package/package.json',data:JSON.stringify({name,version,license:'MIT',...extra})});
 export const lockOf=packages=>({name:'synthetic',version:'1.0.0',lockfileVersion:3,requires:true,packages:{'':{name:'synthetic',version:'1.0.0'},...packages}});

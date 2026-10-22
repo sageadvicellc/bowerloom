@@ -7,8 +7,8 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {collect,stage,pack,imports,lockedDependencies,flatDependencies,requireFreeSpace,licenseAllowed,extractBundle,defaultNpmCache,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
-import {tarBytes,putInCache,integrityOf,syntheticClosure,lockOf} from './bundle-fixture.mjs';
+import {collect,stage,pack,imports,lockedDependencies,verifyBundleFiles,flatDependencies,requireFreeSpace,licenseAllowed,extractBundle,defaultNpmCache,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
+import {tarBytes,putInCache,integrityOf,cachePath,syntheticClosure,lockOf,registryUrl,entryFor,manifestEntry} from './bundle-fixture.mjs';
 import childProcess from 'node:child_process';
 import {statSync} from 'node:fs';
 const TAGLINE='Set up the skills, prompts, and teams your agents use, and approve every change.';
@@ -55,11 +55,11 @@ test('dependency lock rejects unpinned, wrong-version, and workspace-linked pack
  const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
  for(const item of [{version:'2.0.0'},{version:'1.0.0',link:true},{version:'1.0.0',resolved:'file:private',integrity:'sha512-x'}])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest));
 });
-test('actual npm tarballs are byte-deterministic with exact inventory and standalone offline startup', {timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
+test('actual npm tarballs are byte-deterministic with exact inventory and standalone offline startup', {timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'&&'set BOWERLOOM_PACK_INSTALL_PROOF=1'},t=>{
  const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage-one'),outputDir:join(root,'pack-one'),bundle:true,npmCache:defaultNpmCache()}),two=pack({repoDir:repo,stageDir:join(root,'stage-two'),outputDir:join(root,'pack-two'),bundle:true,npmCache:defaultNpmCache()});
  assert.equal(one.sha256,two.sha256);assert.equal(one.files,collect({repoDir:repo}).files.size);
  const install=join(root,'isolated-install');mkdirSync(install);writeFileSync(join(install,'.empty-npmrc'),'');
- const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_offline:'true',npm_config_ignore_scripts:'true'};
+ const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_offline:'true',npm_config_ignore_scripts:'true',npm_config_update_notifier:'false'};
  const npm=spawnSync('npm',['install','--prefix',install,'--offline','--ignore-scripts','--no-audit','--no-fund','--no-save',one.file],{cwd:install,env,encoding:'utf8',timeout:120000,maxBuffer:2**20});
  assert.equal(npm.status,0,npm.stderr||npm.stdout);
  assert.deepEqual(readFileSync(join(install,'node_modules/bowerloom/packages/local-backend/licenses/supabase-Apache-2.0.txt')),readFileSync(join(repo,'packages/local-backend/licenses/supabase-Apache-2.0.txt')));
@@ -439,21 +439,112 @@ test('extractBundle names the path of a missing cache entry',t=>{
 test('extractBundle refuses cache bytes that do not match the lock and integrity values that are not one sha512',t=>{
  const root=area(t),cache=join(root,'cache'),good=tarBytes([{path:'package/package.json',data:'{}'}]),other=tarBytes([{path:'package/package.json',data:'{"x":1}'}]);
  const integrity=integrityOf(good);putInCache(cache,other,integrity);
- assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/a':{version:'1.0.0',integrity}},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/);
- const sha512=integrityOf(good);
- for(const bad of ['sha1-AAAAAAAAAAAAAAAAAAAAAAAAAAA=',sha512+' '+sha512,'sha512-AAAA',undefined])
-  assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/a':{version:'1.0.0',integrity:bad}},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/,String(bad));
+ const item=integrity=>({version:'1.0.0',resolved:registryUrl('a','1.0.0'),integrity});
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/a':item(integrity)},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/);
+ for(const bad of ['sha1-AAAAAAAAAAAAAAAAAAAAAAAAAAA=',integrity+' '+integrity,'sha512-AAAA',undefined])
+  assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/a':item(bad)},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/,String(bad));
 });
 test('extractBundle refuses links, devices, unsafe paths, too many entries, tar warnings, and oversized content',t=>{
  const root=area(t),cache=join(root,'cache');let n=0;
- const attempt=(entries,options,max)=>{const integrity=putInCache(cache,tarBytes(entries,options));return ()=>extractBundle({stageDir:join(root,'s'+n++),packages:{'node_modules/p':{version:'1.0.0',integrity}},npmCache:cache,...(max?{maxBundleBytes:max}:{})});};
- const manifest={path:'package/package.json',data:'{}'};
- for(const [label,entry] of [['package/sym',{path:'package/sym',type:'2',linkpath:'/etc/passwd'}],['package/hard',{path:'package/hard',type:'1',linkpath:'package/package.json'}],['package/dev',{path:'package/dev',type:'3'}],['/abs/file',{path:'/abs/file',data:'x'}],['package/../evil.js',{path:'package/../evil.js',data:'x'}]])
+ const attempt=(entries,options,max)=>{const item=entryFor(cache,'p',entries,options);return ()=>extractBundle({stageDir:join(root,'s'+n++),packages:{'node_modules/p':item},npmCache:cache,...(max?{maxBundleBytes:max}:{})});};
+ const manifest=manifestEntry('p');
+ for(const [label,entry] of [['package/sym',{path:'package/sym',type:'2',linkpath:'/etc/passwd'}],['package/hard',{path:'package/hard',type:'1',linkpath:'package/package.json'}],['package/dev',{path:'package/dev',type:'3'}],['/abs/file',{path:'/abs/file',data:'x'}],['package/../evil.js',{path:'package/../evil.js',data:'x'}],
+  ['package//double.js',{path:'package//double.js',data:'x'}],['package/./dot.js',{path:'package/./dot.js',data:'x'}],['package/node_modules/x/index.js',{path:'package/node_modules/x/index.js',data:'x'}],['package/node_modules/',{path:'package/node_modules/',type:'5'}]])
   assert.throws(attempt([manifest,entry]),e=>e.message==='Bundle tarball unsafe: node_modules/p/'+label,label);
- assert.throws(attempt(Array.from({length:8193},(_,i)=>({path:`package/f${i}`,data:'x'}))),/^Error: Bundle tarball unsafe: node_modules\/p\//);
- assert.doesNotThrow(attempt(Array.from({length:8192},(_,i)=>({path:`package/f${i}`,data:'x'}))));
+ assert.throws(attempt([manifest,...Array.from({length:8192},(_,i)=>({path:`package/f${i}`,data:'x'}))]),/^Error: Bundle tarball unsafe: node_modules\/p\//);
+ assert.doesNotThrow(attempt([manifest,...Array.from({length:8191},(_,i)=>({path:`package/f${i}`,data:'x'}))]));
  assert.throws(attempt([manifest],{corruptChecksum:true}),/^Error: Bundle tarball unsafe: node_modules\/p\//);
  assert.throws(attempt([manifest,{path:'package/big.bin',data:Buffer.alloc(2*2**20,97)}],{},2**20),e=>e.message==='Bundle exceeds 1 GiB');
+});
+test('every tar entry costs at least 4096 bytes of the bundle cap',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),...Array.from({length:300},(_,i)=>({path:`package/f${i}`,data:'x'}))]);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/p':item},npmCache:cache,maxBundleBytes:2**20}),e=>e.message==='Bundle exceeds 1 GiB');
+ extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/p':item},npmCache:cache,maxBundleBytes:2**21});
+});
+test('a bundle of more than 50000 entries is refused',t=>{
+ const root=area(t),cache=join(root,'cache'),packages={};
+ for(let i=0;i<7;i++){const name='p'+i;packages['node_modules/'+name]=entryFor(cache,name,[manifestEntry(name),...Array.from({length:8000},(_,k)=>({path:`package/f${k}`}))]);}
+ assert.throws(()=>extractBundle({stageDir:join(root,'stage'),packages,npmCache:cache}),/^Error: Bundle exceeds 50000 entries$/);
+});
+test('a path with dots or an absolute look never writes outside the stage',t=>{
+ const root=area(t),cache=join(root,'cache'),sentinel=join(root,'sentinel');mkdirSync(sentinel);writeFileSync(join(sentinel,'keep'),'x');
+ const item=entryFor(cache,'p',[manifestEntry('p')]);
+ const before=readdirSync(root).sort();
+ for(const key of ['node_modules/../../sentinel/x','node_modules/..','node_modules/a/../../../sentinel','/abs/path','node_modules//a','node_modules/.hidden','sentinel','node_modules/a/node_modules/..'])
+  assert.throws(()=>extractBundle({stageDir:join(root,'stage'),packages:{[key]:item},npmCache:cache}),e=>e.message==='Bundle path unsafe: '+key,key);
+ assert.deepEqual(readdirSync(root).sort(),[...before,'stage'].sort());assert.deepEqual(readdirSync(sentinel),['keep']);
+ assert.deepEqual(readdirSync(join(root,'stage')),[]);
+});
+test('extractBundle refuses a target that already exists or is reached through a link',t=>{
+ const root=area(t),cache=join(root,'cache'),stageDir=join(root,'stage'),outside=join(root,'outside');mkdirSync(outside);
+ const item=entryFor(cache,'p',[manifestEntry('p')]);
+ mkdirSync(join(stageDir,'node_modules/p'),{recursive:true});
+ assert.throws(()=>extractBundle({stageDir,packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle path unsafe: node_modules\/p$/);
+ rmSync(join(stageDir,'node_modules/p'),{recursive:true});symlinkSync(outside,join(stageDir,'node_modules/p'));
+ assert.throws(()=>extractBundle({stageDir,packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle path unsafe: node_modules\/p$/);
+ fs.unlinkSync(join(stageDir,'node_modules/p'));rmSync(join(stageDir,'node_modules'),{recursive:true});symlinkSync(outside,join(stageDir,'node_modules'));
+ assert.throws(()=>extractBundle({stageDir,packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle path unsafe: node_modules\/p$/);
+ assert.deepEqual(readdirSync(outside),[]);
+});
+test('lockedDependencies refuses a dependency name that leaves node_modules',()=>{
+ const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
+ const item={version:'1.0.0',resolved:'https://registry.npmjs.org/x/-/x-1.0.0.tgz',integrity:'sha512-x'};
+ for(const bad of ['..','../evil','.hidden','a/b','@s/..','/abs','a b','']) {
+  assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':{...item,dependencies:{[bad]:'1.0.0'}}}},manifest.dependencies,manifest),e=>e.message==='Bundle path unsafe: '+bad,JSON.stringify(bad));
+  assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},{[bad]:'1.0.0'},manifest),e=>e.message==='Bundle path unsafe: '+bad,JSON.stringify(bad));
+ }
+ assert.ok(lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':{...item,dependencies:{'@scope/pkg.js':'1.0.0'}},'node_modules/@scope/pkg.js':{...item,version:'1.0.0'}}},manifest.dependencies,manifest));
+});
+test('extractBundle ties each package to the lock: name, version, resolved URL, license, install scripts',t=>{
+ const root=area(t),cache=join(root,'cache');let n=0;
+ const attempt=(name,entries,change={})=>{const item={...entryFor(cache,name,entries),...change};return ()=>extractBundle({stageDir:join(root,'s'+n++),packages:{['node_modules/'+name]:item},npmCache:cache});};
+ assert.doesNotThrow(attempt('p',[manifestEntry('p')]));
+ assert.throws(attempt('p',[manifestEntry('other')]),/^Error: Bundle package mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[{path:'package/index.js',data:'x'}]),/^Error: Bundle package mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[{path:'package/package.json',data:'not json'}]),/^Error: Bundle package mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[manifestEntry('p',{},'2.0.0')]),/^Error: Bundle package mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[manifestEntry('p',{license:'GPL-3.0-only'})]),/^Error: Bundled license not allowed: p GPL-3.0-only$/);
+ assert.throws(attempt('p',[manifestEntry('p',{license:undefined})]),/^Error: Bundled license not allowed: p \(none\)$/);
+ for(const script of ['preinstall','install','postinstall'])assert.throws(attempt('p',[manifestEntry('p',{scripts:{[script]:'node x.js'}})]),/^Error: Bundle package has an install script: node_modules\/p$/,script);
+ assert.doesNotThrow(attempt('p',[manifestEntry('p',{scripts:{test:'x'}})]));
+ assert.throws(attempt('p',[manifestEntry('p'),{path:'package/binding.gyp',data:'{}'}]),/^Error: Bundle package has an install script: node_modules\/p$/);
+ assert.throws(attempt('p',[manifestEntry('p')],{resolved:'https://registry.npmjs.org/p/-/p-9.9.9.tgz'}),/^Error: Bundle resolved URL mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[manifestEntry('p')],{resolved:'https://evil.example/p/-/p-1.0.0.tgz'}),/^Error: Bundle resolved URL mismatch: node_modules\/p$/);
+ assert.throws(attempt('p',[manifestEntry('p')],{resolved:undefined}),/^Error: Bundle resolved URL mismatch: node_modules\/p$/);
+ assert.doesNotThrow(attempt('@s/q',[manifestEntry('@s/q')]));
+});
+test('maxBundleBytes must be a positive integer of at most 1 GiB',t=>{
+ const {root,cache}=bundledRepo(t),message=/^Error: maxBundleBytes must be a positive integer of at most 1 GiB$/;
+ for(const bad of [NaN,'5',0,-1,1.5,2**30+1,Infinity,null]) {
+  assert.throws(()=>stage(run1(t,{repoDir:root,bundle:true,npmCache:cache,maxBundleBytes:bad})),message,String(bad));
+  assert.throws(()=>pack(run1(t,{repoDir:root,bundle:true,npmCache:cache,maxBundleBytes:bad})),message,String(bad));
+  assert.throws(()=>extractBundle({stageDir:join(area(t),'s'),packages:{},npmCache:cache,maxBundleBytes:bad}),message,String(bad));
+ }
+});
+test('extractBundle refuses a cache entry that is a FIFO or larger than 256 MiB',t=>{
+ const root=area(t),cache=join(root,'cache');
+ const good=tarBytes([manifestEntry('p')]),integrity=integrityOf(good),file=cachePath(cache,integrity);
+ mkdirSync(dirname(file),{recursive:true});assert.equal(spawnSync('mkfifo',[file]).status,0);
+ const item={version:'1.0.0',resolved:registryUrl('p','1.0.0'),integrity};
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
+ rmSync(file);fs.writeFileSync(file,'');fs.truncateSync(file,257*2**20);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
+});
+test('executable bits come from the tar entry, whatever the umask',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),{path:'package/bin/run.js',data:'x',mode:0o755},{path:'package/plain.js',data:'x',mode:0o644}]);
+ const before=process.umask(0o177);try{extractBundle({stageDir:join(root,'stage'),packages:{'node_modules/p':item},npmCache:cache});}finally{process.umask(before);}
+ assert.equal(statSync(join(root,'stage/node_modules/p/bin/run.js')).mode&0o777,0o755);
+ assert.equal(statSync(join(root,'stage/node_modules/p/plain.js')).mode&0o777,0o644);
+ assert.equal(statSync(join(root,'stage/node_modules/p/bin')).mode&0o777,0o755);
+});
+test('verifyBundleFiles names a staged bundled file that changed after extraction',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),{path:'package/index.js',data:'one'}]),stageDir=join(root,'stage');
+ const {bundleFiles}=extractBundle({stageDir,packages:{'node_modules/p':item},npmCache:cache});
+ verifyBundleFiles(stageDir,bundleFiles);
+ writeFileSync(join(stageDir,'node_modules/p/index.js'),'two');
+ assert.throws(()=>verifyBundleFiles(stageDir,bundleFiles),/^Error: Bundle file changed before pack: node_modules\/p\/index\.js$/);
+ rmSync(join(stageDir,'node_modules/p/index.js'));
+ assert.throws(()=>verifyBundleFiles(stageDir,bundleFiles),/^Error: Bundle file changed before pack: node_modules\/p\/index\.js$/);
 });
 test('stage with a bundle removes its own stage folder when extraction fails',t=>{
  const {root}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:join(area(t),'empty')});
@@ -480,6 +571,31 @@ test('pack refuses an npm pack result that lists a bundled file the stage lacks'
  const {root,cache}=bundledRepo(t);
  stubSpawn(t,r=>{if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);info[0].files.push({path:'node_modules/jose/extra.js'});return {...r,stdout:JSON.stringify(info)};}return r;});
  assert.throws(()=>pack(run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache})),/^Error: Bundle packed files differ from the staged bundle$/);
+});
+const bundledOptions=(t,ctx)=>run1(t,{repoDir:ctx.root,bundle:true,maxBundleBytes:2**20,npmCache:ctx.cache});
+const rewriteList=(t,change)=>stubSpawn(t,r=>{if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);change(info[0]);return {...r,stdout:JSON.stringify(info)};}return r;});
+test('pack refuses an npm pack result that lacks the package.json of a lock package',t=>{
+ const ctx=bundledRepo(t);rewriteList(t,info=>{info.files=info.files.filter(f=>f.path!=='node_modules/jose/package.json');});
+ assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/);
+});
+test('pack refuses an npm pack result that lacks a staged bundled file it should have kept',t=>{
+ const ctx=bundledRepo(t);rewriteList(t,info=>{info.files=info.files.filter(f=>f.path!=='node_modules/jose/index.js');});
+ assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/);
+});
+test('pack refuses an npm pack result whose bundled names differ from bundleDependencies',t=>{
+ for(const change of [info=>{info.bundled=[...info.bundled,'extra'];},info=>{info.bundled=info.bundled.slice(1);},info=>{delete info.bundled;}]) {
+  const ctx=bundledRepo(t),original=childProcess.spawnSync;
+  childProcess.spawnSync=(...args)=>{const r=original(...args);if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);change(info[0]);return {...r,stdout:JSON.stringify(info)};}return r;};syncBuiltinESMExports();
+  try{assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/);}finally{childProcess.spawnSync=original;syncBuiltinESMExports();}
+ }
+});
+test('pack refuses npm pack output that is not JSON',t=>{
+ const ctx=bundledRepo(t);stubSpawn(t,(r,args)=>args[0]==='npm'?{...r,stdout:'not json at all'}:r);
+ assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: npm pack output is not JSON$/);
+});
+test('npm pack runs with the update notifier off',t=>{
+ const ctx=bundledRepo(t);let seen;stubSpawn(t,(r,args)=>{if(args[0]==='npm')seen=args[2].env;return r;});
+ pack(bundledOptions(t,ctx));assert.equal(seen.npm_config_update_notifier,'false');
 });
 test('DISTRIBUTION.json of a bundled stage inventories the bundle and keeps node_modules out of files',t=>{
  const {root,cache,lock}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache});
@@ -540,7 +656,7 @@ test('the release candidate description ends with the approved tagline',t=>{
 });
 
 // Offline proofs: pack needs the cache, the install does not.
-test('a bundled tarball installs offline with an empty npm cache and starts',{timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
+test('a bundled tarball installs offline with an empty npm cache and starts',{timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'&&'set BOWERLOOM_PACK_INSTALL_PROOF=1'},t=>{
  const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage'),outputDir:join(root,'out'),bundle:true,npmCache:defaultNpmCache()});
  const install=join(root,'prefix'),emptyCache=join(root,'empty-cache');mkdirSync(install);mkdirSync(emptyCache);writeFileSync(join(install,'.empty-npmrc'),'');
  const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_cache:emptyCache,npm_config_offline:'true',npm_config_ignore_scripts:'true',npm_config_update_notifier:'false'};
@@ -567,8 +683,11 @@ function differences(installed,expected) {
  return list;
 }
 const online=process.env.BOWERLOOM_PACK_ONLINE_PROOF==='1'?{}:null;
+// A skip inside a proof group that was asked for is a failure, so a requested proof never passes by skipping.
+const proofRequested=process.env.BOWERLOOM_PACK_ONLINE_PROOF==='1'||process.env.BOWERLOOM_PACK_INSTALL_PROOF==='1';
+const proofSkip=(t,message)=>{if(proofRequested)assert.fail('Requested proof did not run: '+message);t.skip(message);return null;};
 function onlineContext(t) {
- try{requireFreeSpace(tmpdir(),4*(2**30+0.05*2**30));}catch(e){t.skip(e.message);return null;}
+ try{requireFreeSpace(tmpdir(),4*(2**30+0.05*2**30));}catch(e){return proofSkip(t,e.message);}
  if(online.root)return online;
  const root=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-online-proof-')));chmodSync(root,0o700);online.root=root;
  online.pack=pack({repoDir:repo,stageDir:join(root,'stage'),outputDir:join(root,'out'),bundle:true,npmCache:defaultNpmCache()});
@@ -588,7 +707,8 @@ test('online 1: a local tarball install gets exactly the packed shrinkwrap versi
  for(const [k,v] of Object.entries(hidden))if(k.startsWith('node_modules/bowerloom/'))fromLock[k]=v.version;
  const walked=walkInstalled(join(prefix,'node_modules/bowerloom/node_modules'),'node_modules/bowerloom/node_modules');
  const walkDiff=differences(walked,expected);assert.deepEqual(walkDiff,[],'Installed packages differ from the shrinkwrap: '+walkDiff.join(', '));
- if(Object.keys(fromLock).length){const lockDiff=differences(fromLock,expected);assert.deepEqual(lockDiff,[],'Installed packages differ from the shrinkwrap: '+lockDiff.join(', '));}
+ assert.ok(Object.keys(fromLock).length>0,'.package-lock.json lists no bundled package');
+ const lockDiff=differences(fromLock,expected);assert.deepEqual(lockDiff,[],'Installed packages differ from the shrinkwrap: '+lockDiff.join(', '));
 });
 test('online 2: a global tarball install gets exactly the packed shrinkwrap versions and starts',onlineOptions,t=>{
  const ctx=onlineContext(t);if(!ctx)return;
@@ -600,16 +720,17 @@ test('online 2: a global tarball install gets exactly the packed shrinkwrap vers
  const version=spawnSync(join(prefix,'bin/bowerloom'),['--version'],{env:ctx.env(join(ctx.root,'cache-global')),encoding:'utf8',timeout:30000});assert.equal(version.status,0,version.stderr);
 });
 test('online 3: the four reported packages are at the packed versions',onlineOptions,t=>{
- const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return t.skip('online 1 did not run');
+ const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return proofSkip(t,'online 1 did not run');
  const expected=shrinkMap(join(ctx.root,'stage'),'');
  for(const name of ['express','@langchain/core','@langchain/langgraph-checkpoint','@langchain/langgraph-sdk'])
   assert.equal(JSON.parse(readFileSync(join(ctx.localPrefix,'node_modules/bowerloom/node_modules',name,'package.json'),'utf8')).version,expected['node_modules/'+name],name);
 });
 test('online 4: the local install names no registry fetch',onlineOptions,t=>{
- const ctx=onlineContext(t);if(!ctx)return;if(ctx.localOutput===undefined)return t.skip('online 1 did not run');
+ const ctx=onlineContext(t);if(!ctx)return;if(ctx.localOutput===undefined)return proofSkip(t,'online 1 did not run');
+ assert.ok(ctx.localOutput.split('\n').some(line=>line.includes('npm http')),'the install printed no http log line, so the next check proves nothing');
  assert.deepEqual(ctx.localOutput.split('\n').filter(line=>line.includes('registry.npmjs.org')),[]);
 });
 test('online 5: the installed CLI starts',onlineOptions,t=>{
- const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return t.skip('online 1 did not run');
+ const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return proofSkip(t,'online 1 did not run');
  const version=spawnSync(join(ctx.localPrefix,'node_modules/.bin/bowerloom'),['--version'],{env:ctx.env(join(ctx.root,'cache-local')),encoding:'utf8',timeout:30000});assert.equal(version.status,0,version.stderr);
 });
