@@ -39,7 +39,7 @@ export type StoreInspection =
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const missing = (error: unknown): boolean => errno(error) === 'ENOENT' || errno(error) === 'ENOTDIR';
-const chmodOwn = (path: string): void => { const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); try { fchmodSync(fd, 0o700); } finally { closeSync(fd); } };
+export const chmodOwn = (path: string): void => { const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); try { fchmodSync(fd, 0o700); } finally { closeSync(fd); } };
 const usable = (path: unknown): path is string => typeof path === 'string' && isAbsolute(path) && !path.includes('\0');
 
 /** Rule 1 and the real path of rule 2: the home folder with links resolved. */
@@ -68,7 +68,7 @@ function exactName(names: readonly string[], wanted: string): boolean {
   return hits.length === 1;
 }
 
-function strictText(bytes: Buffer): string | null {
+export function strictText(bytes: Buffer): string | null {
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { return null; }
 }
 
@@ -216,12 +216,12 @@ export function assertNotInStore(path: string, home: string): void {
   if (pathInsideStore(path, home)) throw refuse('STORE_NOT_A_PROJECT');
 }
 
-const syncFolder = (path: string): void => {
+export const syncFolder = (path: string): void => {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { fsyncSync(fd); } finally { closeSync(fd); }
 };
 /** Runs a write step. A Bowerloom refusal passes; any system error becomes STORE_WRITE_FAILED, which names it. */
-function writing<T>(step: () => T): T {
+export function writing<T>(step: () => T): T {
   try { return step(); }
   catch (error) { const code = errno(error); if (typeof code === 'string' && code.startsWith('STORE_')) throw error; throw storeWriteFailed(error); }
 }

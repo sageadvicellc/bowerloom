@@ -57,7 +57,7 @@ export function homesOf(home: string, hooks: DiscoveryHooks): string[] {
  * resolves to HOME/Documents or HOME/Desktop, as macOS 15 shows it. A marker that lstat or realpath cannot read
  * (EPERM, EACCES or anything but "not there") refuses. No attribute is read and no process starts.
  */
-function syncOn(home: string, folder: 'Documents' | 'Desktop'): boolean {
+export function syncOn(home: string, folder: 'Documents' | 'Desktop'): boolean {
   const marker = join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs', folder);
   const read = <T>(step: () => T): T | null => { try { return step(); } catch (error) { if (absent(error)) return null; throw refuse('PROJECT_IN_CLOUD_FOLDER'); } };
   const link = read(() => lstatSync(marker));

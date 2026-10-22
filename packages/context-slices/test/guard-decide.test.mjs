@@ -255,3 +255,18 @@ test('R5. ENAMETOOLONG and ELOOP read as too long, and EACCES reads as not reada
   const d = denied(go('EACCES')); assert.match(d.reason, /is not readable by the guard for agent lead, so the call is blocked\. Check the permissions of its folders\.$/);
   assert.throws(() => go('EIO'), /EIO/, 'an unexpected error still ends as an internal error in the caller');
 });
+
+// Part B: a registered folder can hold the project. The project's own files are then inside the guarded area.
+test('B1. a registered root that holds the project: a member passes, the project files are non-members and are denied', t => {
+  const f = fixture(t); write(path.join(f.project, 'AGENTS.md'));
+  const holder = f.slice({ root: f.base, display: '..', prefix: '..', members: ['outside/o.md'], covered: [] });
+  quiet(read(f, path.join(f.base, 'outside/o.md'), { slices: [holder] }));
+  const d = denied(read(f, path.join(f.project, 'AGENTS.md'), { slices: [holder] }));
+  assert.match(d.reason, /^Bowerloom guard: .*AGENTS\.md is under \.\., and no context slice of agent lead \(kb\) lists it\./);
+  denied(grep(f, f.project, { slices: [holder] })); denied(grep(f, undefined, { slices: [holder] }));
+  quiet(read(f, '/etc/hosts', { slices: [holder] }));
+});
+test('B2. two registered roots, one inside the other: a member of the inner slice passes under the outer area', t => {
+  const f = fixture(t), outer = f.slice({ id: 'outer', root: f.root, members: ['a.md'], covered: [] }), inner = f.slice({ id: 'inner', root: path.join(f.root, 'sub'), display: '../kb/sub', prefix: '../kb/sub', members: ['c.md'], covered: [] });
+  quiet(read(f, path.join(f.root, 'sub/c.md'), { slices: [outer, inner] })); denied(read(f, path.join(f.root, 'sub/d.md'), { slices: [outer, inner] }));
+});

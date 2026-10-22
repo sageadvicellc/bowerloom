@@ -16,7 +16,7 @@ import { renderSliceIndex } from '../../context-slices/src/render.js';
 import type { ProjectContext } from '../../project-context/src/types.js';
 import { scanAgents } from './agents.js';
 import { planProjectApply, observeApply } from './apply-project.js';
-import { registeredSlices } from './slices.js';
+import { registeredLookup, registeredSlices } from './slices.js';
 import type { SliceItem } from './slices.js';
 import { syncError } from './refusal.js';
 
@@ -42,10 +42,19 @@ export const ASSUMPTIONS: readonly string[] = Object.freeze([
 
 // ---------------------------------------------------------------------------------------------------------------- show
 
-export interface ShowInput { project: ProjectContext; stateRoot: string; slice: string; sliceTree?: Parameters<typeof observeApply>[0]['sliceTree'] }
+export interface ShowInput { project: ProjectContext; stateRoot: string; slice: string; home?: string; sliceTree?: Parameters<typeof observeApply>[0]['sliceTree'] }
 export interface ShowResult {
   format: typeof SHOW_FORMAT;
-  id: string; root: string; members: string[]; covered: string[];
+  id: string;
+  /** The root as a path from the project folder; for a held registered slice, the path the definition names inside the folder; null when the definition cannot be read. */
+  root: string | null;
+  /** The absolute real path of a registered root, when it was resolved. */
+  folder: string | null;
+  /** What the index copies out of a registered folder, or null. */
+  copies: SliceItem['copies'];
+  /** The name of the registered folder the root is in, or null for a root in the project. `root` is then the path from the project folder. */
+  registered: string | null;
+  members: string[]; covered: string[];
   notes: SliceItem['notes']; hold: { code: string; next: string } | null; guard: 'root' | 'none' | null; agents: string[];
   index: { text: string; bytes: number; sha256: string } | null;
   installed: 'installed and the same' | 'installed and out of date' | 'not installed';
@@ -53,14 +62,15 @@ export interface ShowResult {
 export async function showSlice(input: ShowInput): Promise<ShowResult> {
   const dir = input.project.dir;
   if (!registeredSlices(dir).includes(input.slice)) throw syncError('CONTEXT_SLICE_NOT_FOUND');
-  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, ...(input.sliceTree ? { sliceTree: input.sliceTree } : {}) });
+  const home = input.home ?? homedir();
+  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home, ...(input.sliceTree ? { sliceTree: input.sliceTree } : {}) });
   const item = plan.slices.find(s => s.id === input.slice)!;
-  const tree = (input.sliceTree ?? readSliceTree)(dir, input.slice, { kind: 'project' }, () => {});
-  const text = tree.index, root = item.root === null ? (tree.definition?.root.kind === 'project' ? tree.definition.root.path : '.') : item.root.path;
+  const tree = (input.sliceTree ?? readSliceTree)(dir, input.slice, { kind: 'project' }, () => {}, registeredLookup(home, input.project.projectId, input.project.identity.birthtimeNs, input.stateRoot));
+  const def = tree.definition, text = tree.index, root = item.root !== null ? (item.root.kind === 'registered' ? relative(dir, item.root.dir) : item.root.path) : def === null ? null : def.root.path;
   const installed = !item.installed ? 'not installed' : item.hold === null && item.action === 'none' ? 'installed and the same' : 'installed and out of date';
   const { createHash } = await import('node:crypto');
   return {
-    format: SHOW_FORMAT, id: item.id, root, members: item.members, covered: item.covered, notes: item.notes, hold: item.hold, guard: item.guard, agents: item.agents,
+    format: SHOW_FORMAT, id: item.id, root, folder: item.root?.kind === 'registered' ? item.root.dir : null, copies: item.copies, registered: item.root?.kind === 'registered' ? item.root.name : tree.definition?.root.kind === 'registered' ? tree.definition.root.name : null, members: item.members, covered: item.covered, notes: item.notes, hold: item.hold, guard: item.guard, agents: item.agents,
     index: text === null ? null : { text, bytes: Buffer.byteLength(text), sha256: createHash('sha256').update(text).digest('hex') }, installed,
   };
 }
@@ -162,7 +172,7 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
   }
   if (input.team) { chosen = chosen.filter(e => e.team === input.team); heldEntries = heldEntries.filter(e => e.team === input.team); }
   const held = heldEntries.map(e => ({ role: e.role, team: e.team, code: e.hold!.code, next: e.hold!.next })).sort((a, b) => cmp(a.role, b.role) || cmp(a.team, b.team));
-  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true });
+  const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home });
   const planned = (e: (typeof chosen)[number]) => { const item = plan.agents.find(a => a.id === e.role && a.team === e.team); if (item === undefined) throw new Error(`context measure: the plan holds no item for agent ${e.role}`); return item; };
   const sliceOf = (id: string): SliceItem | undefined => plan.slices.find(s => s.id === id && s.state !== 'orphaned');
 
@@ -206,11 +216,12 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
     const heldNotes: string[] = [], staleNotes: string[] = [], sliceRows: MeasureAgent['start']['slices'] = [], memberIdents = new Map<string, number>(), memberPaths: string[] = [];
     let sliceBytes = 0, descriptionBytes = 0;
     for (const id of preloaded.filter(n => n.startsWith('slice-')).map(n => n.slice(6)).filter(id => sliceIds.has(id))) {
-      const s = sliceOf(id)!, tree = readSliceTree(dir, id, { kind: 'project' }, () => {});
+      const s = sliceOf(id)!, tree = readSliceTree(dir, id, { kind: 'project' }, () => {}, registeredLookup(home, input.project.projectId, input.project.identity.birthtimeNs, input.stateRoot));
       if (s.hold !== null && !(s.installed && s.state === 'drift')) { heldNotes.push(`slice ${id} is held (${s.hold.code}), so it is not counted.`); sliceRows.push({ id, indexBytes: 0, source: 'live', memberBytes: 0, indexToMembersPpm: 0, installed: s.installed, hold: s.hold.code }); continue; }
       const def = tree.definition!, res = tree.resolution, installedIndex = (() => { try { return fs.readFileSync(join(dir, '.claude/skills', 'slice-' + id, 'SKILL.md'), 'utf8'); } catch { return null; } })();
       const current = s.installed && s.action === 'none' && installedIndex !== null;
-      const live = tree.index ?? renderSliceIndex(id, def, res, { source: def.root.kind === 'project' && def.root.path !== '.' ? def.root.path : 'the project folder', prefix: def.root.kind === 'project' && def.root.path !== '.' ? def.root.path : '' });
+      const shown = def.root.kind === 'registered' && tree.rootDir !== null ? relative(dir, tree.rootDir) : null;
+      const live = tree.index ?? renderSliceIndex(id, def, res, shown !== null ? { source: `${shown} (registered folder ${(def.root as { name: string }).name})`, prefix: shown } : { source: def.root.kind === 'project' && def.root.path !== '.' ? def.root.path : 'the project folder', prefix: def.root.kind === 'project' && def.root.path !== '.' ? def.root.path : '' });
       const indexText = current ? installedIndex! : live, indexBytes = Buffer.byteLength(indexText);
       if (s.installed && !current) staleNotes.push(`the index of slice ${id} is out of date, so the live render is counted. Run bowerloom apply.`);
       counted.push(indexText); sliceBytes += indexBytes; descriptionBytes += Buffer.byteLength(def.description);

@@ -153,9 +153,9 @@ test('21. JSON keeps format v1beta2 and holds slices, codexSlicesSkipped, unregi
   assert.equal(json.format, 'bowerloom/project-apply-plan/v1beta2'); for (const k of ['slices', 'codexSlicesSkipped', 'unregisteredSlices', 'agentsMayBeTracked']) assert.ok(k in json, k);
   assert.equal(json.agentsMayBeTracked, false);
 });
-test('22. a registered folder root in Part A holds SLICE_ROOT_MISSING with the Part A next step', async t => {
+test('22. a registered folder that the store does not record holds SLICE_ROOT_MISSING with the folder steps', async t => {
   const f = await wikiProject(t); rewriteSlice(f, 'wiki', s => s.replace('root: "wiki"', 'root:\n  registered: kb\n  path: "wiki"'));
-  const p = await plan(f, ['claude']); assert.deepEqual([slice(p).action, slice(p).hold.code, slice(p).hold.next], ['hold', 'SLICE_ROOT_MISSING', 'This build has no registered folders yet. Use a root inside the project.']);
+  const p = await plan(f, ['claude']); assert.deepEqual([slice(p).action, slice(p).hold.code, slice(p).hold.next], ['hold', 'SLICE_ROOT_MISSING', 'Run bowerloom folder list, or register the folder with bowerloom folder add <folder-name> <path>, then run bowerloom apply.']);
 });
 test('23. with no .bowerloom/managed/.gitignore and nothing else to do, a slice carries the ignore file when no prompt can', async t => {
   const f = await wikiProject(t); await applied(f, ['claude']); fs.rmSync(path.join(f.bowerloom, 'managed/.gitignore'));

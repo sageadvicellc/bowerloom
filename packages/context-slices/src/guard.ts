@@ -23,7 +23,9 @@ export interface GuardFs {
 export interface GuardSliceView {
   id: string;
   mode: 'root' | 'none';
-  state: 'ok' | 'not-installed' | 'root-missing';
+  state: 'ok' | 'not-installed' | 'root-missing' | 'not-allowed';
+  /** For `not-allowed`: the name of the registered folder the project may not read. */
+  folder?: string;
   /** The real path of the slice root. */
   root: string;
   /** The root as the reasons name it: a path from the project folder, or `the project folder`. */
@@ -166,6 +168,8 @@ export function decideGuard(input: GuardInput, getView: () => GuardView): GuardD
   if (!view.projectOk) return deny('GUARD_PROJECT_MISMATCH', `Bowerloom guard: the project at ${plain(project)} does not manage agent ${role}, or it is not the folder that apply wrote this copy for. Run bowerloom apply in the project that holds .claude/agents/${role}.md.`);
   const missing = view.slices.find(s => s.state === 'not-installed');
   if (missing) return deny('GUARD_SLICE_NOT_INSTALLED', `Bowerloom guard: slice ${missing.id} of agent ${role} is not installed, or its copy changed. Every read, search, and file listing of this agent is blocked. Run bowerloom apply in ${plain(project)}.`);
+  const blocked = view.slices.find(s => s.state === 'not-allowed');
+  if (blocked) return deny('GUARD_ROOT_MISSING', `Bowerloom guard: this project is not allowed to read registered folder ${plain(blocked.folder ?? '')}, which slice ${blocked.id} of agent ${role} names, so every read, search, and file listing of this agent is blocked. Run bowerloom folder allow ${plain(blocked.folder ?? '')} in ${plain(project)}.`);
   const lost = view.slices.find(s => s.state === 'root-missing');
   if (lost) return deny('GUARD_ROOT_MISSING', `Bowerloom guard: the folder of slice ${lost.id} cannot be found, or it changed since apply, so every read, search, and file listing of agent ${role} is blocked. Run bowerloom apply in ${plain(project)} to see why.`);
   const areas = view.slices.filter(s => s.mode === 'root');
