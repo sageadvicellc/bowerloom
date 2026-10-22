@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
-import { discoverProject, checkProjectPath, projectId, privateStateRoot, verifyProjectPins } from '../../../dist/packages/project-context/src/index.js';
+import { discoverProject, checkProjectPath, projectId, privateStateRoot, verifyProjectPins, adoptCreatedMarker, checkConfigFile } from '../../../dist/packages/project-context/src/index.js';
 // Test hooks live in the internal module only. The package index exports no hook.
 import { discoverProjectWith, checkProjectPathWith } from '../../../dist/packages/project-context/src/discovery.js';
 
@@ -34,7 +34,8 @@ test('discovery finds the nearest parent folder with a real .bowerloom and pins 
   assert.equal(found.ancestry.at(-1).path, outer);
   const parts = path.dirname(inner).split(path.sep).filter(Boolean), prefixes = ['/', ...parts.map((_, i) => path.sep + parts.slice(0, i + 1).join(path.sep))];
   assert.deepEqual(found.ancestry.map(a => a.path), prefixes);
-  assert.deepEqual(Object.keys(found), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'projectId']);
+  assert.deepEqual(Object.keys(found), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'configPresent', 'projectId']);
+  assert.equal(found.configPresent, false);
   assert.equal(discoverProject(inner, home).dir, inner);
 });
 
@@ -87,7 +88,7 @@ test('discovery refuses HOME and / as the working folder, and a .bowerloom held 
   const { home } = world(t);
   assert.throws(() => discoverProject(home, home), code('PROJECT_ROOT_REFUSED'));
   assert.throws(() => discoverProject('/', home), code('PROJECT_ROOT_REFUSED'));
-  mk(path.join(home, '.bowerloom'));
+  mk(path.join(home, '.bowerloom')); fs.writeFileSync(path.join(home, '.bowerloom', 'x'), 'x');
   assert.throws(() => discoverProject(mk(path.join(home, 'sub')), home), code('PROJECT_ROOT_REFUSED'));
 });
 
@@ -218,7 +219,7 @@ test('the account home from the user database is refused too, not only HOME', t 
   // The search stops at the account home as it does at HOME.
   mk(path.join(base, '.bowerloom'));
   assert.throws(() => discoverProjectWith(mk(path.join(account, 'sub')), home, hooks), code('PROJECT_NOT_FOUND'));
-  mk(path.join(account, '.bowerloom'));
+  mk(path.join(account, '.bowerloom')); fs.writeFileSync(path.join(account, '.bowerloom', 'x'), 'x');
   assert.throws(() => discoverProjectWith(path.join(account, 'sub'), home, hooks), code('PROJECT_ROOT_REFUSED'));
   assert.throws(() => discoverProjectWith(account, home, hooks), code('PROJECT_ROOT_REFUSED'));
 });
@@ -292,7 +293,7 @@ test('the .bowerloom check and its pinned identity come from one lstat', t => {
   let reads = 0;
   for (const name of ['lstatSync', 'statSync']) {
     const original = fs[name];
-    t.mock.method(fs, name, (...args) => { if (String(args[0]).endsWith(`${path.sep}.bowerloom`)) reads++; return original(...args); });
+    t.mock.method(fs, name, (...args) => { if (String(args[0]) === path.join(dir, '.bowerloom')) reads++; return original(...args); });
   }
   syncBuiltinESMExports();
   try { discoverProject(dir, home); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
@@ -318,4 +319,181 @@ test('the exported discoverProject takes no test hooks', t => {
   const dir = mk(path.join(home, 'app')); mk(path.join(dir, '.bowerloom'));
   assert.equal(discoverProject(dir, home, { uid: process.getuid() + 1, deviceOf: () => 'other', accountHome: dir }).dir, dir);
   assert.doesNotThrow(() => checkProjectPath(path.join(home, 'x'), home, { accountHome: path.join(home, 'x') }));
+});
+
+// ---- Store foundation (spec 03): the config marker and the store at home ----
+const STORE_BODY = '{"format":"bowerloom/store/v1beta1"}\n';
+const mkStore = (dir) => { mk(path.join(dir, '.bowerloom')); fs.writeFileSync(path.join(dir, '.bowerloom', 'store.json'), STORE_BODY, { mode: 0o600 }); };
+const putConfig = (dir, text = '{}\n', mode = 0o600) => { const f = path.join(dir, 'bowerloom.json'); fs.writeFileSync(f, text, { mode }); fs.chmodSync(f, mode); return f; };
+const solo = base => ({ accountHome: path.join(base, 'nobody') });
+
+test('a home with a valid store gives PROJECT_NOT_FOUND for a folder under home', t => {
+  const { base, home } = world(t); mkStore(home);
+  const sub = mk(path.join(home, 'sub', 'deep'));
+  assert.throws(() => discoverProjectWith(sub, home, solo(base)), code('PROJECT_NOT_FOUND'));
+  assert.throws(() => discoverProject(sub, home), code('PROJECT_NOT_FOUND'));
+});
+
+test('a home with an empty .bowerloom (a leftover store) gives PROJECT_NOT_FOUND', t => {
+  const { base, home } = world(t); mk(path.join(home, '.bowerloom'));
+  assert.throws(() => discoverProjectWith(mk(path.join(home, 'sub')), home, solo(base)), code('PROJECT_NOT_FOUND'));
+  fs.writeFileSync(path.join(home, '.bowerloom', '.store.json.0123456789abcdef.tmp'), 'x');
+  assert.throws(() => discoverProjectWith(path.join(home, 'sub'), home, solo(base)), code('PROJECT_NOT_FOUND'));
+});
+
+test('a home with a non-empty .bowerloom that has no store.json gives PROJECT_ROOT_REFUSED', t => {
+  const { base, home } = world(t); mk(path.join(home, '.bowerloom')); fs.writeFileSync(path.join(home, '.bowerloom', 'x'), 'x');
+  assert.throws(() => discoverProjectWith(mk(path.join(home, 'sub')), home, solo(base)), code('PROJECT_ROOT_REFUSED'));
+});
+
+test('a home with a store whose store.json is invalid, or a store that is a link, gives PROJECT_ROOT_REFUSED', t => {
+  const { base, home } = world(t); mkStore(home); fs.writeFileSync(path.join(home, '.bowerloom', 'store.json'), '{"format":"x"}\n');
+  assert.throws(() => discoverProjectWith(mk(path.join(home, 'sub')), home, solo(base)), code('PROJECT_ROOT_REFUSED'));
+  const w = world(t); mk(path.join(w.base, 'elsewhere')); fs.symlinkSync(path.join(w.base, 'elsewhere'), path.join(w.home, '.bowerloom'));
+  assert.throws(() => discoverProjectWith(mk(path.join(w.home, 'sub')), w.home, solo(w.base)), code('PROJECT_ROOT_REFUSED'));
+});
+
+test('a bowerloom.json at home, or an alias of .bowerloom at home, gives PROJECT_ROOT_REFUSED; at the disk root too', t => {
+  const { base, home } = world(t); putConfig(home);
+  assert.throws(() => discoverProjectWith(mk(path.join(home, 'sub')), home, solo(base)), code('PROJECT_ROOT_REFUSED'));
+  const w = world(t); mk(path.join(w.home, '.BOWERLOOM'));
+  assert.throws(() => discoverProjectWith(mk(path.join(w.home, 'sub')), w.home, solo(w.base)), code('PROJECT_ROOT_REFUSED'));
+});
+
+test('a folder with only bowerloom.json is a project with a null bowerloomIdentity and configPresent true', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); putConfig(dir);
+  const found = discoverProject(mk(path.join(dir, 'src')), home);
+  assert.equal(found.dir, dir); assert.equal(found.bowerloomIdentity, null); assert.equal(found.configPresent, true);
+  assert.deepEqual(Object.keys(found), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'configPresent', 'projectId']);
+  assert.equal(found.projectId, projectId(dir, found.identity));
+  assert.ok(Object.isFrozen(found));
+  assert.doesNotThrow(() => verifyProjectPins(found));
+});
+
+test('a folder with both markers has both', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); mk(path.join(dir, '.bowerloom')); putConfig(dir);
+  const found = discoverProject(dir, home);
+  assert.equal(found.configPresent, true); assert.equal(found.bowerloomIdentity.uid, process.getuid());
+});
+
+test('the nearest marker wins, in both orders of inner and outer', t => {
+  const { home } = world(t);
+  const outer = mk(path.join(home, 'outer')), inner = mk(path.join(outer, 'inner')); mk(path.join(outer, '.bowerloom')); putConfig(inner);
+  assert.equal(discoverProject(inner, home).dir, inner);
+  assert.equal(discoverProject(inner, home).bowerloomIdentity, null);
+  const o2 = mk(path.join(home, 'o2')), i2 = mk(path.join(o2, 'i2')); putConfig(o2); mk(path.join(i2, '.bowerloom'));
+  const found = discoverProject(i2, home);
+  assert.equal(found.dir, i2); assert.equal(found.configPresent, false);
+});
+
+test('Bowerloom.json, or two names that fold to bowerloom.json, give PROJECT_UNSAFE', t => {
+  const { home } = world(t);
+  const alias = mk(path.join(home, 'alias')); fs.writeFileSync(path.join(alias, 'Bowerloom.json'), '{}');
+  assert.throws(() => discoverProject(alias, home), code('PROJECT_UNSAFE'));
+  const two = mk(path.join(home, 'two')); putConfig(two);
+  try { fs.writeFileSync(path.join(two, 'BOWERLOOM.JSON'), '{}', { flag: 'wx' }); assert.throws(() => discoverProject(two, home), code('PROJECT_UNSAFE')); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+});
+
+test('an unsafe bowerloom.json gives CONFIG_UNSAFE', t => {
+  const { base, home } = world(t);
+  const at = name => mk(path.join(home, name));
+  let dir = at('link'); fs.writeFileSync(path.join(base, 'real.json'), '{}'); fs.symlinkSync(path.join(base, 'real.json'), path.join(dir, 'bowerloom.json'));
+  assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'link');
+  dir = at('folder'); mk(path.join(dir, 'bowerloom.json'));
+  assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'folder');
+  dir = at('twolinks'); const f = putConfig(dir); fs.linkSync(f, path.join(base, 'twin.json'));
+  assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'two hard links');
+  dir = at('group'); putConfig(dir, '{}', 0o660); assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'group write');
+  dir = at('world'); putConfig(dir, '{}', 0o602); assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'world write');
+  dir = at('owner'); putConfig(dir); assert.throws(() => discoverProjectWith(dir, home, { uid: process.getuid() + 1 }), code('CONFIG_UNSAFE'), 'another owner');
+  dir = at('big'); putConfig(dir, ' '.repeat(1048577)); assert.throws(() => discoverProject(dir, home), code('CONFIG_UNSAFE'), 'over 1 MiB');
+  dir = at('exact'); putConfig(dir, ' '.repeat(1048576)); assert.equal(discoverProject(dir, home).configPresent, true, 'exactly 1 MiB passes');
+  assert.throws(() => checkConfigFile(path.join(home, 'link')), code('CONFIG_UNSAFE'));
+  assert.equal(checkConfigFile(path.join(home, 'nothing-here')), null);
+});
+
+test('an unsafe config stops the search instead of falling through to a safer parent', t => {
+  const { home } = world(t); const outer = mk(path.join(home, 'outer')), inner = mk(path.join(outer, 'inner')); mk(path.join(outer, '.bowerloom')); putConfig(inner, '{}', 0o660);
+  assert.throws(() => discoverProject(inner, home), code('CONFIG_UNSAFE'));
+});
+
+test('verifyProjectPins passes after the config is replaced by rename, and refuses after it is deleted or linked', t => {
+  const { base, home } = world(t); const dir = mk(path.join(home, 'app')); const f = putConfig(dir, '{"a":1}');
+  const found = discoverProject(dir, home);
+  fs.writeFileSync(f + '.new', '{"b":2}', { mode: 0o600 }); fs.renameSync(f + '.new', f);
+  assert.doesNotThrow(() => verifyProjectPins(found));
+  fs.rmSync(f); assert.throws(() => verifyProjectPins(found), code('PROJECT_UNSAFE'));
+  fs.writeFileSync(path.join(base, 'real.json'), '{}'); fs.symlinkSync(path.join(base, 'real.json'), f);
+  assert.throws(() => verifyProjectPins(found), code('CONFIG_UNSAFE'));
+});
+
+test('verifyProjectPins refuses PROJECT_UNSAFE when .bowerloom appears after a config-only discovery, or a config appears after a folder-only one', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); putConfig(dir);
+  const found = discoverProject(dir, home);
+  mk(path.join(dir, '.bowerloom'));
+  assert.throws(() => verifyProjectPins(found), code('PROJECT_UNSAFE'));
+  const d2 = mk(path.join(home, 'app2')); mk(path.join(d2, '.bowerloom')); const f2 = discoverProject(d2, home);
+  putConfig(d2);
+  assert.throws(() => verifyProjectPins(f2), code('PROJECT_UNSAFE'));
+});
+
+test('adoptCreatedMarker adopts a folder into a config-only project and a config into a folder-only one', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); putConfig(dir);
+  const found = discoverProject(dir, home);
+  mk(path.join(dir, '.bowerloom'));
+  const adopted = adoptCreatedMarker(found, 'folder');
+  assert.deepEqual(Object.keys(adopted), ['dir', 'identity', 'ancestry', 'bowerloomIdentity', 'configPresent', 'projectId']);
+  assert.notEqual(adopted.bowerloomIdentity, null); assert.equal(adopted.configPresent, true); assert.equal(adopted.projectId, found.projectId);
+  assert.ok(Object.isFrozen(adopted));
+  assert.doesNotThrow(() => verifyProjectPins(adopted));
+  assert.throws(() => verifyProjectPins(found), code('PROJECT_UNSAFE'));
+  assert.deepEqual(adopted.bowerloomIdentity, discoverProject(dir, home).bowerloomIdentity);
+  assert.throws(() => adoptCreatedMarker(adopted, 'folder'), code('USAGE'));
+  const d2 = mk(path.join(home, 'app2')); mk(path.join(d2, '.bowerloom')); const f2 = discoverProject(d2, home);
+  putConfig(d2);
+  const a2 = adoptCreatedMarker(f2, 'config');
+  assert.equal(a2.configPresent, true); assert.doesNotThrow(() => verifyProjectPins(a2));
+  assert.throws(() => adoptCreatedMarker(a2, 'config'), code('USAGE'));
+  assert.throws(() => adoptCreatedMarker(f2, 'nope'), code('USAGE'));
+});
+
+test('adoptCreatedMarker refuses a new marker that is unsafe or missing', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); putConfig(dir);
+  const found = discoverProject(dir, home);
+  assert.throws(() => adoptCreatedMarker(found, 'folder'), code('PROJECT_UNSAFE'), 'no folder was made');
+  const b = mk(path.join(dir, '.bowerloom')); fs.chmodSync(b, 0o770);
+  assert.throws(() => adoptCreatedMarker(found, 'folder'), code('PROJECT_UNSAFE'), 'a group-writable folder');
+  const d2 = mk(path.join(home, 'app2')); mk(path.join(d2, '.bowerloom')); const f2 = discoverProject(d2, home);
+  assert.throws(() => adoptCreatedMarker(f2, 'config'), code('PROJECT_UNSAFE'), 'no config was made');
+  putConfig(d2, '{}', 0o660);
+  assert.throws(() => adoptCreatedMarker(f2, 'config'), code('CONFIG_UNSAFE'), 'a group-writable config');
+});
+
+test('the walk stops at the account home with a valid store there', t => {
+  const { base, home } = world(t); const account = mk(path.join(base, 'account')); mkStore(account); mk(path.join(base, '.bowerloom'));
+  const hooks = { accountHome: account };
+  assert.throws(() => discoverProjectWith(mk(path.join(account, 'sub')), home, hooks), code('PROJECT_NOT_FOUND'));
+  assert.throws(() => discoverProjectWith(account, home, hooks), code('PROJECT_ROOT_REFUSED'));
+});
+
+test('a project folder inside the store gives STORE_NOT_A_PROJECT, for both homes', t => {
+  const { base, home } = world(t); mkStore(home);
+  for (const marker of ['.bowerloom', 'bowerloom.json']) {
+    const work = mk(path.join(home, '.bowerloom', `work-${marker}`));
+    if (marker === '.bowerloom') mk(path.join(work, '.bowerloom')); else putConfig(work);
+    assert.throws(() => discoverProjectWith(work, home, solo(base)), code('STORE_NOT_A_PROJECT'), marker);
+  }
+  const account = mk(path.join(base, 'account')); mkStore(account);
+  const work = mk(path.join(account, '.bowerloom', 'work')); mk(path.join(work, '.bowerloom'));
+  assert.throws(() => discoverProjectWith(work, home, { accountHome: account }), code('STORE_NOT_A_PROJECT'), 'account home');
+});
+
+test('a working folder inside the store gives PROJECT_NOT_FOUND', t => {
+  const { base, home } = world(t); mkStore(home); const inside = mk(path.join(home, '.bowerloom', 'skills', 'x'));
+  assert.throws(() => discoverProjectWith(inside, home, solo(base)), code('PROJECT_NOT_FOUND'));
+});
+
+test('a project under a home that has a store is found as usual', t => {
+  const { base, home } = world(t); mkStore(home); const app = mk(path.join(home, 'app')); mk(path.join(app, '.bowerloom'));
+  assert.equal(discoverProjectWith(mk(path.join(app, 'src')), home, solo(base)).dir, app);
 });

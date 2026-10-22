@@ -13,13 +13,15 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
 import { refuse } from './refusal.js';
+/** The project layer's fixed refusal for `code`, for a caller that detects the same fault itself. */
+export { refuse as projectRefusal } from './refusal.js';
 import { checkProjectPathWith, discoverProjectWith } from './discovery.js';
 import { inspectStoreWith, openStoreWith, pathInsideStore as pathInsideStoreWith } from './store.js';
 import type { StoreContext, StoreInspection } from './store.js';
 import type { HeldProjectLock, ProjectContext } from './types.js';
 
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
-export { projectId, verifyProjectPins } from './discovery.js';
+export { adoptCreatedMarker, checkConfigFile, projectId, readConfigBytes, verifyProjectPins } from './discovery.js';
 export type { StoreContext, StoreInspection } from './store.js';
 export { assertNotInStore, storeRootOf, verifyStorePins } from './store.js';
 
