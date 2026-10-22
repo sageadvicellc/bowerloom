@@ -38,7 +38,7 @@ export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as co
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
 export interface MigratePlan {
   format: typeof MIGRATE_PLAN_FORMAT;
-  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
+  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   manifest: { sha256: string; bytes: number };
   legacy: { stateDir: string; operationKey: string; receiptRevision: string; harness: Harness; catalogSha256: string };
   /** Where the pinned bytes come from: this machine's skills cache ('project-cache', its name from earlier betas), the cache the v1 install read, or a fetch in phase A. */

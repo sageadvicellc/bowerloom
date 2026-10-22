@@ -77,7 +77,7 @@ export interface SyncItem {
 }
 export interface SyncPlan {
   format: typeof SYNC_PLAN_FORMAT;
-  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
+  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   manifest: { sha256: string; bytes: number };
   harnesses: Harness[]; team: string | null; offline: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };

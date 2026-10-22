@@ -40,6 +40,7 @@ Every change shows a plan first. Agents pass --approve <revision> or --json.
 No command here starts workers yet.
 
   bowerloom help <command>   bowerloom help advanced
+  bowerloom help store       Your store, ~/.bowerloom, and how a project uses it.
 `;
 
 function run(cwd: string, args: string[]) {
@@ -68,20 +69,20 @@ test('help advanced prints the cc117ac help byte for byte, under the release hea
 });
 
 test('the short help is shorter than the advanced help and lists no plumbing', () => {
-  // DESIGN-01 section B's first screen: with M1 to M6 it fills 24 entries, the last one the empty string after the final newline.
-  assert.ok(short.split('\n').length <= 24); assert.doesNotMatch(short, /skills source|bowerloom harness|portable|recipe|backend|--installation/);
+  // sageadvicellc/bowerloom#80, decision of 2026-10-22: two help lines, store and context, make 26 entries, the last one the empty string after the final newline.
+  assert.ok(short.split('\n').length <= 26); assert.doesNotMatch(short, /skills source|bowerloom harness|portable|recipe|backend|--installation/);
 });
 
 test('the short help lists only commands that exist at this commit, and each has help of its own', t => {
   const root = folder(t);
   const listed = [...short.matchAll(/^ {2}bowerloom (\w+)/gm)].map(m => m[1]!);
   assert.deepEqual([...new Set(listed)].sort(), ['apply', 'help', 'ls', 'prompt', 'skill', 'skills', 'status', 'team', 'up']);
-  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
+  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
 });
 
 test('help <command> and <command> --help agree, and an unknown topic is a usage error', t => {
   const root = folder(t);
-  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
+  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
   assert.equal(run(root, ['help', 'init']).stdout, run(root, ['init', '--help']).stdout);
   const unknown = run(root, ['help', 'nonsense']); assert.equal(unknown.status, 2); assert.equal(unknown.stdout, '');
   assert.equal(JSON.parse(unknown.stderr).error.code, 'USAGE');

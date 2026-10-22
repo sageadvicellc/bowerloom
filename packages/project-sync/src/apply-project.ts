@@ -76,7 +76,7 @@ export interface ApplyInput {
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
-  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
+  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   harnesses: Harness[]; team: string | null;
   /** The offline `skills sync` plan of the same skills for these harnesses; null when there is no skills.json. */
   skills: SyncPlan | null;

@@ -15,16 +15,19 @@ export interface PinnedDirectory {
 }
 
 /**
- * A discovered project: the nearest parent folder with a real, owned, non-symlinked `.bowerloom/`.
- * The fields match the `project` binding of the sync plan, plus the project id.
+ * A discovered project: the nearest parent folder with a real, owned, non-symlinked `.bowerloom/`, or with a plain
+ * `bowerloom.json`, or both. The fields match the `project` binding of the sync plan, plus the project id.
  */
 export interface ProjectContext {
-  /** Real absolute path of the project folder, the parent of `.bowerloom/`. */
+  /** Real absolute path of the project folder, the parent of `.bowerloom/` and of `bowerloom.json`. */
   readonly dir: string;
   readonly identity: DirectoryIdentity;
   /** Every directory from the file system root down to the parent of `dir`, in that order. */
   readonly ancestry: readonly PinnedDirectory[];
-  readonly bowerloomIdentity: DirectoryIdentity;
+  /** `null` when the project has no `.bowerloom` folder. */
+  readonly bowerloomIdentity: DirectoryIdentity | null;
+  /** True when the project folder holds a `bowerloom.json`. */
+  readonly configPresent: boolean;
   /** The first 32 hex characters of sha256 over the real path, device and inode. */
   readonly projectId: string;
 }
