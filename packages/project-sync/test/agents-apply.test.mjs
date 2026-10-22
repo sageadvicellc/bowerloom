@@ -29,7 +29,7 @@ test('2. the catalog record exists, names kind agent, and lists harnesses ["clau
   const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', agentText('scribe')); await applied(f, ['claude']);
   const catalog = JSON.parse(read(f, '.bowerloom/managed/catalog/agent_scribe.json'));
   assert.deepEqual(catalog.item, { kind: 'agent', id: 'scribe' }); assert.deepEqual(catalog.harnesses, ['claude']);
-  assert.deepEqual(catalog.source, { kind: 'agent', path: 'teams/first-team/agents/scribe.md' }); assert.equal(catalog.skill, null);
+  assert.deepEqual(catalog.source, { kind: 'agent', path: 'teams/first-team/agents/scribe.md', guard: null }); assert.equal(catalog.skill, null);
   assert.ok(fs.readdirSync(path.join(f.itemsRoot, 'agent_scribe')).some(n => /^op-[a-f0-9]{64}$/.test(n)));
 });
 

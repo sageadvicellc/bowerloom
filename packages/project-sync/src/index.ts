@@ -16,3 +16,6 @@ export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, A
 export type { ApplyInput, ApplyPlan, ApplyResult, ApplyItemRef } from './apply-project.js';
 export type { PromptItem, PromptState } from './prompts.js';
 export type { AgentItem, AgentState } from './agents.js';
+export type { SliceItem, SliceState } from './slices.js';
+export { measureContext, showSlice, MEASURE_FORMAT, SHOW_FORMAT } from './context-measure.js';
+export type { MeasureAgent, MeasureInput, MeasureResult, ShowInput, ShowResult } from './context-measure.js';

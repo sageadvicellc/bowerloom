@@ -10,6 +10,7 @@
  * project lock it plans again, refuses STALE_APPROVAL unless the revision is equal, builds every child plan
  * (phase B, no project write), then applies each child with a revision planned right before it in the same run.
  */
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { freezeSkillData, revisionOf } from '../../skill-sources/src/validation.js';
 import { exists, names } from '../../managed-skills/src/observed.js';
@@ -19,7 +20,7 @@ import { temporary } from '../../managed-skills/src/observed.js';
 import type { Harness, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { isId } from '../../skill-manifest/src/schema.js';
+import { isId, parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Entry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -35,6 +36,9 @@ import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, register
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
+import { agentsMayBeTracked, checkSliceChild, listSlices, scanSlices, sliceRequest } from './slices.js';
+import type { SliceItem, SliceTreeHook } from './slices.js';
+import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, outward, syncError } from './refusal.js';
 
 export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
@@ -47,7 +51,7 @@ export function applyPointer(harnesses: readonly Harness[]): string {
   const claude = harnesses.includes('claude'), codex = harnesses.includes('codex');
   if (claude && !codex) return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Claude Code at these copies, add a line like this to CLAUDE.md yourself:',
-    '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents.',
+    '  Project skills are in .claude/skills. Prompts are Claude Code commands in .claude/commands. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
   ].join('\n');
   if (codex && !claude) return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point Codex at these copies, add a line like this to AGENTS.md yourself:',
@@ -55,7 +59,7 @@ export function applyPointer(harnesses: readonly Harness[]): string {
   ].join('\n');
   return [
     'Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:',
-    '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents.',
+    '  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents. Context slices are skills named slice-<name> in .claude/skills.',
   ].join('\n');
 }
 /** The pointer for both harnesses, the default. */
@@ -71,6 +75,8 @@ export interface ApplyInput {
   allow?: readonly string[];
   /** Plan the agents alone, for `status`: no skills, no prompts, and none of the write-side checks. */
   agentsOnly?: boolean;
+  /** A test hook: stands in for the reader of a slice's tree, to change a file during the read. Product code never passes it. */
+  sliceTree?: SliceTreeHook;
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -83,6 +89,14 @@ export interface ApplyPlan {
   agents: AgentItem[];
   /** The allowances this plan was made with, sorted. They are part of the revision. */
   allow: string[];
+  /** The context slices of this project, planned for Claude Code only (spec 05). Empty under `--harness codex`. */
+  slices: SliceItem[];
+  /** True when the harnesses include Codex and at least one slice is registered: Codex slices are not projected in this beta. */
+  codexSlicesSkipped: boolean;
+  /** File names in `.bowerloom/slices` that no receipt lists: apply skips them. */
+  unregisteredSlices: string[];
+  /** True when a guarded agent copy is planned and `.claude/agents` may not be git-ignored (spec 05, section 3.8). */
+  agentsMayBeTracked: boolean;
   /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
@@ -92,7 +106,7 @@ export interface ApplyPlan {
   pointer: string;
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
-export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent'; id: string }
+export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: string }
 export interface ApplyResult {
   format: typeof APPLY_RESULT_FORMAT; planRevision: string; harnesses: Harness[];
   applied: (ApplyItemRef & { action: 'install' | 'update'; receiptRevision: string })[];
@@ -106,6 +120,15 @@ const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
 const HEX64 = /^[a-f0-9]{64}$/;
 const promptActionable = (p: PromptItem): boolean => p.action === 'install' || p.action === 'update';
 const agentActionable = (a: AgentItem): boolean => a.action === 'install' || a.action === 'update';
+const sliceActionable = (s: SliceItem): boolean => s.action === 'install' || s.action === 'update';
+
+/** Ids that start with slice- and name a skill of this project: a folder in .bowerloom/skills, or an entry of skills.json. */
+function plainSkillIds(dir: string): Set<string> {
+  const out = new Set<string>();
+  try { for (const n of readdirSync(join(dir, '.bowerloom', 'skills'))) if (n.startsWith('slice-')) out.add(n); } catch { /* No local skills folder. */ }
+  try { const state = readManifestState(dir); if (state.file !== null) for (const e of parseManifest(state.file.bytes).skills) if (e.id.startsWith('slice-')) out.add(e.id); } catch { /* A manifest that cannot be read names none. */ }
+  return out;
+}
 
 function harnessSet(value: unknown): Harness[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 2 || !value.every((h, i) => (h === 'claude' || h === 'codex') && (i === 0 || value[i - 1] < h))) return usage();
@@ -113,12 +136,12 @@ function harnessSet(value: unknown): Harness[] {
 }
 
 /** No item may take a place another item takes, and no new copy may land on something Bowerloom did not install. */
-function checkNames(skills: SyncItem[], prompts: PromptItem[], agents: AgentItem[]): void {
+function checkNames(skills: SyncItem[], prompts: PromptItem[], agents: AgentItem[], slices: SliceItem[] = []): void {
   for (const item of skills) if (item.hold?.code === 'MANAGED_SKILL_PATH_OCCUPIED') {
     throw syncError('APPLY_NAME_COLLISION', `Skill ${item.id}: ${item.hold.next.replace('bowerloom skills sync', 'bowerloom apply')}`);
   }
   const owner = new Map<string, string>();
-  const rows = [...skills.filter(i => i.state !== 'orphaned').map(i => ({ name: `skill ${i.id}`, surfaces: i.expected.surfaces })), ...prompts.filter(p => p.state !== 'orphaned').map(p => ({ name: `prompt ${p.id}`, surfaces: p.expected.surfaces })), ...agents.filter(a => a.state !== 'orphaned').map(a => ({ name: `agent ${a.id}`, surfaces: a.expected.surfaces }))];
+  const rows = [...skills.filter(i => i.state !== 'orphaned').map(i => ({ name: `skill ${i.id}`, surfaces: i.expected.surfaces })), ...prompts.filter(p => p.state !== 'orphaned').map(p => ({ name: `prompt ${p.id}`, surfaces: p.expected.surfaces })), ...slices.filter(s => s.state !== 'orphaned').map(s => ({ name: `slice ${s.id}`, surfaces: s.expected.surfaces })), ...agents.filter(a => a.state !== 'orphaned').map(a => ({ name: `agent ${a.id}`, surfaces: a.expected.surfaces }))];
   for (const row of rows) for (const s of row.surfaces) {
     const key = s.path.normalize('NFC').toLowerCase(), was = owner.get(key);
     if (was !== undefined && was !== row.name) throw syncError('APPLY_NAME_COLLISION', `Both ${was} and ${row.name} would go to ${s.path}. Give one of them another name, then run bowerloom apply.`);
@@ -159,36 +182,51 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const allow = [...new Set(input.allow ?? [])].sort();
     if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<the 64 hex characters of the agent file\'s sha256>.');
     const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
+    // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
+    const catalogNames = exists(catalogs) ? names(catalogs) : [];
+    const listing = listSlices(dir);
+    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames) : { items: [] as SliceItem[], unregistered: listing.unregistered };
+    const registeredSliceCount = listing.ids.length;
+    const plain = plainSkillIds(dir);
     if (claude) {
       const planned = scan.entries.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
-      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
+      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow, sliceScan.items, plain)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
         if (ref.kind === 'agent' && !scan.entries.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
       }
       agents.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)) || Buffer.compare(Buffer.from(a.team ?? ''), Buffer.from(b.team ?? '')));
     }
-    checkNames(skills?.items ?? [], prompts, agents);
+    // Roles that name a slice. A team filter plans only the slices that team's agents name; the others are neither planned nor kept.
+    for (const s of sliceScan.items) s.agents = agents.filter(a => a.context.slices.includes(s.id)).map(a => a.id).sort();
+    const named = new Set(agents.flatMap(a => a.context.slices));
+    const slices = sliceScan.items.filter(s => team === null || s.state === 'orphaned' || named.has(s.id));
+    checkNames(skills?.items ?? [], prompts, agents, slices);
     const skillWork = (skills?.items ?? []).filter(isActionable);
     // An apply that changes nothing else still puts back a missing shared ignore file, through one installed prompt, or
     // else one installed agent.
-    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable) && !agents.some(agentActionable)) {
+    if (ignore === 'absent' && !skillWork.length && !prompts.some(promptActionable) && !slices.some(sliceActionable) && !agents.some(agentActionable)) {
       const first = ignoreCarrier(prompts.map(p => ({ ...p, kind: 'prompt' })));
       if (first) prompts.find(p => p.id === first.id)!.action = 'update';
-      else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
+      else {
+        const slice = ignoreCarrier(slices.map(s => ({ ...s, kind: 'slice' })));
+        if (slice) slices.find(s => s.id === slice.id)!.action = 'update';
+        else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
+      }
     }
-    const promptWork = prompts.filter(promptActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
-    if (skillWork.length || promptWork.length || agentWork.length) {
+    const promptWork = prompts.filter(promptActionable), sliceWork = slices.filter(sliceActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
+    if (skillWork.length || promptWork.length || sliceWork.length || agentWork.length) {
       create.push(...layout.missing.filter(p => p !== layout.cacheRoot));
-      for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
+      for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...sliceWork.map(s => s.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
     }
     const body = {
       format: APPLY_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
-      harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
+      harnesses, team, skills, prompts, slices, agents, allow, codexSlicesSkipped: harnesses.includes('codex') && registeredSliceCount > 0, unregisteredSlices: sliceScan.unregistered,
+      agentsMayBeTracked: agentWork.some(a => a.context.guard !== null) && agentsMayBeTracked(dir), codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0, pointer: applyPointer(harnesses),
+      managed: { ignore }, actionable: skillWork.length + promptWork.length + sliceWork.length + agentWork.length > 0, pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
@@ -220,20 +258,29 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
     return await withProjectLock(input.project.dir, lock.signal, async held => {
       const { plan, entries } = await observeApply(input);
       if (plan.revision !== revision) throw stale();
-      const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
-      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+      const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), slices = plan.slices.filter(sliceActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
+      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
       createPrivateFolders(plan, held, dir);
       // Phases A (cache reads only) and B for the skills, then phase B for the prompts, then for the agents. No project write.
       const children: Child[] = plan.skills ? (await prepareSkillChildren(plan.skills, entries, held, { acquirer: NO_FETCH, signal }, managed, 'bowerloom apply')).children : [];
       for (const item of prompts) {
-        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
         const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           // Review M6 finding 6: an interrupt here is an interrupt, as it is for a skill (apply.ts phase B).
-          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to prompt ${item.id}; nothing was changed.`);
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkPromptChild(dir, item, req, child) });
+      }
+      for (const item of slices) {
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        const req: ManagedItemRequest = sliceRequest(dir, plan.privateState.itemsRoot, item);
+        let child; try { child = await managed.plan(req, { signal }); } catch (e) {
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to slice ${item.id}; nothing was changed.`);
+        }
+        children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkSliceChild(dir, item, req, child) });
       }
       for (const item of agents) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], 'bowerloom apply');
@@ -248,15 +295,16 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, 'bowerloom apply');
       const refOf = (id: string): ApplyItemRef => {
         const p = plan.prompts.find(x => x.itemId === id); if (p) return { kind: 'prompt', id: p.id };
+        const sl = plan.slices.find(x => x.itemId === id && sliceActionable(x)); if (sl) return { kind: 'slice', id: sl.id };
         const a = plan.agents.find(x => x.itemId === id && agentActionable(x)); return a ? { kind: 'agent', id: a.id } : { kind: 'skill', id };
       };
       const skills = plan.skills?.items ?? [];
       return {
         format: APPLY_RESULT_FORMAT, planRevision: plan.revision, harnesses: plan.harnesses,
         applied: applied.map(a => ({ ...refOf(a.id), action: a.action, receiptRevision: a.receiptRevision })),
-        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next }))],
-        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id }))],
-        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id }))],
+        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next })), ...plan.slices.filter(s => s.action === 'hold').map(s => ({ kind: 'slice' as const, id: s.id, code: s.hold!.code, next: s.hold!.next })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next }))],
+        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.slices.filter(s => s.state === 'up-to-date' && s.action === 'none').map(s => ({ kind: 'slice' as const, id: s.id })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id }))],
+        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.slices.filter(s => s.state === 'orphaned').map(s => ({ kind: 'slice' as const, id: s.id })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id }))],
         pointer: plan.pointer, executionAuthorized: false,
       };
     });
