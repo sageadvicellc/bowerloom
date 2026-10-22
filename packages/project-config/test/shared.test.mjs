@@ -121,10 +121,60 @@ test('7. an unreadable config counts as shared and does not throw', t => {
   assert.deepEqual(isSharedProject(projectAt(repo)), UNKNOWN('.git/config'));
 });
 
-test('7. a group-writable config counts as shared', t => {
+test('M2. a group-writable .git (0775) and config (0664), as umask 002 makes them, are read as git reads them', t => {
   const dir = folder(t), repo = path.join(dir, 'repo'); gitFolder(repo, '[core]\n');
-  fs.chmodSync(path.join(repo, '.git', 'config'), 0o664);
-  assert.deepEqual(isSharedProject(projectAt(repo)), UNKNOWN('.git/config'));
+  fs.chmodSync(path.join(repo, '.git'), 0o775); fs.chmodSync(path.join(repo, '.git', 'config'), 0o664);
+  assert.deepEqual(isSharedProject(projectAt(repo)), NOT);
+  gitFolder(repo); fs.chmodSync(path.join(repo, '.git', 'config'), 0o664);
+  assert.deepEqual(isSharedProject(projectAt(repo)), { shared: true, reason: 'origin' });
+});
+
+test('M2. a .git and config owned by another user are read as git reads them', t => {
+  const dir = folder(t), repo = path.join(dir, 'repo'); gitFolder(repo);
+  assert.deepEqual(isSharedProject(projectAt(repo), { uid: 12345 }), { shared: true, reason: 'origin' });
+});
+
+test('M2. a worktree of a bare repository is shared by the origin of that repository', t => {
+  const dir = folder(t), bare = path.join(dir, 'app.git');
+  fs.mkdirSync(path.join(bare, 'objects'), { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(bare, 'HEAD'), 'ref: refs/heads/main\n'); fs.writeFileSync(path.join(bare, 'config'), CONFIG);
+  const admin = path.join(bare, 'worktrees', 'feature'); fs.mkdirSync(admin, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(admin, 'commondir'), '../..\n');
+  const tree = path.join(dir, 'feature'); fs.mkdirSync(tree, { mode: 0o700 }); fs.writeFileSync(path.join(tree, '.git'), `gitdir: ${admin}\n`);
+  assert.deepEqual(isSharedProject(projectAt(tree)), { shared: true, reason: 'origin' });
+  fs.rmSync(path.join(bare, 'HEAD'));
+  assert.deepEqual(isSharedProject(projectAt(tree)), UNKNOWN('.git'), 'a commondir that is no git folder is unknown');
+});
+
+test('M2. a submodule inside a worktree is shared by the config of its module folder', t => {
+  const dir = folder(t), main = path.join(dir, 'main'); gitFolder(main);
+  const admin = path.join(main, '.git', 'worktrees', 'feature'), tree = path.join(dir, 'feature');
+  fs.mkdirSync(admin, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(admin, 'commondir'), '../..\n'); fs.writeFileSync(path.join(admin, 'gitdir'), `${tree}/.git\n`);
+  fs.mkdirSync(tree, { mode: 0o700 }); fs.writeFileSync(path.join(tree, '.git'), `gitdir: ${admin}\n`);
+  const mod = path.join(admin, 'modules', 'lib'); fs.mkdirSync(mod, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(mod, 'config'), CONFIG);
+  const sub = path.join(tree, 'lib'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, '.git'), `gitdir: ${mod}\n`);
+  assert.deepEqual(isSharedProject(projectAt(sub)), { shared: true, reason: 'origin' });
+  const away = path.join(dir, 'away'); fs.mkdirSync(away, { mode: 0o700 }); fs.writeFileSync(path.join(away, '.git'), `gitdir: ${mod}\n`);
+  assert.deepEqual(isSharedProject(projectAt(away)), UNKNOWN('.git'), 'a worktree module of a tree that is not above the project is unknown');
+});
+
+test('L3. a submodule gitdir whose repository is not above the project is unknown', t => {
+  const dir = folder(t), other = path.join(dir, 'other'); gitFolder(other);
+  const mod = path.join(other, '.git', 'modules', 'lib'); fs.mkdirSync(mod, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(mod, 'config'), '[core]\n');
+  const repo = path.join(dir, 'repo'); fs.mkdirSync(repo, { mode: 0o700 }); fs.writeFileSync(path.join(repo, '.git'), `gitdir: ${mod}\n`);
+  assert.deepEqual(isSharedProject(projectAt(repo)), UNKNOWN('.git'));
+});
+
+test('L3. a gitdir under /Volumes, /net or /Network is unknown, and nothing there is read', t => {
+  const dir = folder(t), repo = path.join(dir, 'repo'); fs.mkdirSync(repo, { mode: 0o700 });
+  const project = projectAt(repo);
+  for (const root of ['/Volumes', '/net', '/Network']) {
+    fs.writeFileSync(path.join(repo, '.git'), `gitdir: ${root}/share/app/.git/worktrees/x\n`);
+    const seen = [], lstat = fs.lstatSync, open = fs.openSync;
+    t.mock.method(fs, 'lstatSync', (p, ...a) => { seen.push(String(p)); return lstat(p, ...a); });
+    t.mock.method(fs, 'openSync', (p, ...a) => { seen.push(String(p)); return open(p, ...a); });
+    syncBuiltinESMExports();
+    try { assert.deepEqual(isSharedProject(project), UNKNOWN('.git'), root); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+    assert.equal(seen.some(p => p.startsWith(root + '/')), false, seen.join('\n'));
+  }
 });
 
 test('7. a .git folder that is a link counts as shared', t => {

@@ -39,7 +39,7 @@ import type { Resolved } from './resolve.js';
 import { authoredFolder, bowerloomBeforePhaseB, fetchSkillSources, fetchStoreOnly, originOf, planSkillChildren, reviewHold, storeText } from './apply.js';
 import { productionAcquirer } from './deps.js';
 import type { SyncDeps } from './deps.js';
-import { fetchRequests, requireRequestBudget } from './store-git.js';
+import { fetchRequests, missingRequests, requestLimit, requireRequestBudget } from './store-git.js';
 import { verifyProjectPins } from '../../project-context/src/index.js';
 import { readConfig } from '../../project-config/src/config.js';
 import { homedir } from 'node:os';
@@ -86,6 +86,8 @@ export interface ApplyInput {
   allow?: readonly string[];
   /** Plan the agents alone, for `status`: no skills, no prompts, and none of the write-side checks. */
   agentsOnly?: boolean;
+  /** `--max-github-requests`: the GitHub requests this run may make, 1 to 5000. Default 1000 (second review L2). */
+  maxGithubRequests?: number;
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -95,7 +97,8 @@ export interface ApplyPlan {
   config: { sha256: string; bytes: number } | null; lock: { sha256: string; bytes: number } | null;
   store: StorePlanBinding | null;
   /** The hosts this run may contact: those of the skills sub-plan, and api.github.com for a locked authored prompt or team it fetches. */
-  network: { hosts: string[]; requests: number };
+  /** `requests` is shown, not bound: phase A counts again. `maxRequests` is bound (second review L2). */
+  network: { hosts: string[]; requests: number; maxRequests: number };
   /** Locked authored teams a frozen apply puts in the store cache, so that team adopt can read them. */
   storeFetch: StoreFetch[];
   notes: string[];
@@ -161,7 +164,7 @@ function selectedTeams(project: ProjectContext, resolved: Resolved | null): Set<
 /** Plans the apply. Reads only, and never the network. Every refusal here comes before any write anywhere. */
 export async function observeApply(input: ApplyInput): Promise<Observed> {
   try {
-    const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir, frozen = input.frozen === true;
+    const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir, frozen = input.frozen === true, maxRequests = requestLimit(input.maxGithubRequests);
     if (team !== null && !isId(team)) throw manifestRefusal('TEAM_NOT_FOUND');
     checkProjectAncestry(project);
     const agentsOnly = input.agentsOnly === true, home = input.home ?? homedir();
@@ -176,7 +179,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     // Skills: the sync planner, for the chosen harnesses. Offline unless frozen: a plain apply never fetches.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();
     if (resolved !== null && resolved.manifest !== null && (resolved.mode === 'legacy' || resolved.skills.length > 0)) {
-      const observed = await observeSync({ project, stateRoot: input.stateRoot, home, frozen, team, offline: !frozen, apply: { harnesses } }, resolved);
+      const observed = await observeSync({ project, stateRoot: input.stateRoot, home, frozen, team, offline: !frozen, apply: { harnesses }, maxGithubRequests: maxRequests }, resolved);
       skills = observed.plan; entries = observed.entries;
     }
     // Prompts: legacy, every registered prompt of the team; config, every listed prompt of the team, from where it resolves.
@@ -240,14 +243,14 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     }
     const hosts = [...new Set([...(skills?.network.hosts ?? []), ...(frozen && (lockPrompts.length || storeFetch.length) ? ['api.github.com'] : [])])].sort();
     // Review L2: the GitHub requests this run makes at most; a frozen run only fetches.
-    const requests = (skills?.network.requests ?? 0) + (frozen ? [...lockPrompts.flatMap(p => p.lockPin ? [p.lockPin] : []), ...storeFetch.map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0) : 0);
+    const requests = (skills?.network.requests ?? 0) + (frozen ? [...lockPrompts.flatMap(p => p.lockPin && p.storeCache === 'missing' ? [p.lockPin] : []), ...storeFetch.filter(f => f.storeCache === 'missing').map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0) : 0);
     const fromStore = (skills?.store ?? null) !== null || prompts.some(p => p.origin === 'store' && p.resolvedFrom === 'store');
     const body = {
       format: APPLY_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
       bowerloomFolder: project.bowerloomIdentity === null ? 'create' as const : 'present' as const, frozen,
       config: resolved?.config ?? null, lock: resolved && resolved.lock.sha256 !== null ? { sha256: resolved.lock.sha256, bytes: resolved.lock.bytes! } : null,
-      store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts, requests }, storeFetch,
+      store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts, requests, maxRequests }, storeFetch,
       // Review F5: the skills planner's own notes (a store cache entry that fails verification) join the resolver's.
       notes: [...new Set([...(resolved?.notes ?? []), ...(skills?.notes ?? []).filter(n => n !== FROZEN_LINE), ...cacheNotes])].concat(frozen ? [FROZEN_LINE] : []),
       harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
@@ -258,7 +261,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
     // sync in another project that fills the machine cache, or creates a shared folder, does not stale this plan. Whether
     // the store cache holds a locked prompt or team now is dropped too; its hash stays.
-    const binding = { ...body, agentsOnly, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState), prompts: body.prompts.map(p => ({ ...p, storeCache: null })), storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })), actionable: null };
+    const binding = { ...body, network: { hosts: body.network.hosts, maxRequests: body.network.maxRequests }, agentsOnly, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState), prompts: body.prompts.map(p => ({ ...p, storeCache: null })), storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })), actionable: null };
     return { plan: freezeSkillData({ ...body, revision: revisionOf(binding) }) as ApplyPlan, entries, skillsPlan: skills };
   } catch (e) { throw outward(e); }
 }
@@ -293,7 +296,12 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
       createPrivateFolders(plan, held, dir);
       // Review L2: checked again before any fetch.
-      requireRequestBudget(plan.network.requests);
+      // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
+      requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [
+        ...(plan.skills?.items ?? []).filter(i => isActionable(i) && i.lockPin !== null).map(i => ({ kind: 'skill' as const, id: i.id, lockPin: i.lockPin! })),
+        ...(plan.frozen ? prompts.filter(p => p.resolvedFrom === 'lock' && p.lockPin !== null).map(p => ({ kind: 'prompt' as const, id: p.id, lockPin: p.lockPin! })) : []),
+        ...plan.storeFetch,
+      ]), plan.network.maxRequests);
       // Phase A: the private caches only. Skills; locked prompts; locked teams. A lock-fetched item with a notice the plan
       // did not show is held for review and gets no child.
       const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, 'bowerloom apply') : null;

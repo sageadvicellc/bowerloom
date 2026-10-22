@@ -16,9 +16,9 @@ import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
-import { harnessWords, itemLine, sourceTag, withInterrupt } from './sync.js';
+import { harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, withInterrupt } from './sync.js';
 
-const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen], with optional --approve <revision> and --json.';
+const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
 const HARNESSES: Readonly<Record<string, Harness[]>> = { claude: ['claude'], codex: ['codex'], both: ['claude', 'codex'] };
 const NULL_PINS = revisionOf(null);
@@ -117,6 +117,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
     ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
     ...(plan.codexAgentsSkipped ? ['Codex agents are not projected in this beta. See the capability model design.'] : []),
     network,
+    ...requestLine(plan.network),
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
@@ -145,6 +146,17 @@ export function parseHarness(words: readonly string[]): { harnesses: Harness[]; 
   return { harnesses: harnesses ?? [...HARNESSES.both!], rest, frozen };
 }
 
+/** Takes `--max-github-requests <n>` out of the words, once at most (second review L2). */
+function takeMaxRequests(words: readonly string[]): { max: number | undefined; rest: string[] } {
+  let max: number | undefined; const rest: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (word === '--max-github-requests') { if (max !== undefined) usage(); max = maxRequestsFlag(words[++i], APPLY_USAGE); if (max === undefined) usage(); }
+    else if (word.startsWith('--max-github-requests=')) usage();
+    else rest.push(word);
+  }
+  return { max, rest };
+}
 /** Takes every `--allow-agent <role>:<64 hex>` out of the words (it repeats); the rest goes on. */
 export function takeAllow(words: readonly string[]): { allow: string[]; rest: string[] } {
   const allow: string[] = [], rest: string[] = [];
@@ -181,11 +193,12 @@ export async function confirmAllowances(plan: ApplyPlan, io: ApprovalIo, write: 
 
 /** `bowerloom apply`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
 export async function runApplyCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
-  const parsedHarness = parseHarness(args.slice(1)), { harnesses } = parsedHarness, { allow, rest } = takeAllow(parsedHarness.rest);
+  const parsedHarness = parseHarness(args.slice(1)), { harnesses } = parsedHarness, { allow, rest: afterAllow } = takeAllow(parsedHarness.rest);
+  const { max, rest } = takeMaxRequests(afterAllow);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
-  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow });
+  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   const first = await planProjectApply(input());
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {

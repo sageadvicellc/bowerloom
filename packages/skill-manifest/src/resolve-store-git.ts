@@ -39,6 +39,8 @@ export const BLOBS_PER_TRANSPORT = 40;
 export type NextTransport = () => PublicTransport & { close(): void };
 export interface AuthoredFetch { tree: string; files: { path: string; bytes: Buffer }[] }
 export interface AuthoredTarget { remote: string; commit: string; kind: AuthoredKind; id: string }
+/** The object id the item must have at the commit (the lock's `tree`), and the refusal of another one. */
+export interface ExpectedTree { sha: string; refuse: () => never }
 
 const REMOTE = /^https:\/\/github\.com\/([a-z0-9][a-z0-9-]{0,38})\/([a-z0-9._-]{1,100})$/;
 /** The path of an item in the store repository, relative to its root. */
@@ -70,7 +72,7 @@ async function folder(transport: PublicTransport, api: string, sha: string, sign
  * The commit and the walk to the item, steps 1 and 2 of 3.11. Returns the item's object id and its rows (one row for a
  * prompt), or null when a segment row is missing at that commit.
  */
-async function walk(transport: PublicTransport, t: ReturnType<typeof target>, signal: AbortSignal, onCommitMissing: () => never = () => refuse('SKILLS_ADD_NOT_FOUND')): Promise<{ sha: string; rows: Row[] } | null> {
+async function walk(transport: PublicTransport, t: ReturnType<typeof target>, signal: AbortSignal, onCommitMissing: () => never = () => refuse('SKILLS_ADD_NOT_FOUND'), expected?: ExpectedTree): Promise<{ sha: string; rows: Row[] } | null> {
   let metadata: Buffer;
   try { metadata = await fetchBytes(transport, `${t.api}/commits/${t.commit}`, GIT_LIMITS.metadataBytes, signal); }
   catch (error) { if (isManifestRefusal(error) && error.code === 'SKILLS_ADD_NOT_FOUND') onCommitMissing(); throw error; }
@@ -82,6 +84,8 @@ async function walk(transport: PublicTransport, t: ReturnType<typeof target>, si
   unsafeKind(areaRow); requireManifest(areaRow.type === 'tree' && areaRow.mode === '040000', 'SKILLS_ADD_UNSAFE_CONTENT');
   const area = await folder(transport, t.api, areaRow.sha, signal), itemRow = area.find(r => r.path === t.segments[1]);
   if (itemRow === undefined) return null;
+  // Second review L1: an item whose object id is not the one the lock names stops here, before its listing and its blobs.
+  if (expected !== undefined && itemRow.sha !== expected.sha) expected.refuse();
   unsafeKind(itemRow);
   if (t.kind === 'prompt') {
     // A prompt is exactly one file: a blob of mode 100644, never a folder.
@@ -125,10 +129,10 @@ async function files(transport: PublicTransport, t: ReturnType<typeof target>, i
  * blob for a skill or a team, 4 plus one for a prompt. A missing segment row is SKILLS_ADD_NOT_FOUND. Every refusal is a
  * manifest refusal: the transport's codes pass through.
  */
-export async function fetchAuthored(transport: PublicTransport, value: AuthoredTarget, signal: AbortSignal, next?: NextTransport): Promise<AuthoredFetch> {
+export async function fetchAuthored(transport: PublicTransport, value: AuthoredTarget, signal: AbortSignal, next?: NextTransport, expected?: ExpectedTree): Promise<AuthoredFetch> {
   const t = target(value);
   requireManifest(signal instanceof AbortSignal && !signal.aborted, 'SKILLS_ADD_NETWORK');
-  const item = await walk(transport, t, signal);
+  const item = await walk(transport, t, signal, undefined, expected);
   if (item === null) return refuse('SKILLS_ADD_NOT_FOUND');
   return files(transport, t, item, signal, next);
 }

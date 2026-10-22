@@ -13,6 +13,7 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { isId } from '../../../packages/skill-manifest/src/schema.js';
 import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
+import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-git.js';
 import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
@@ -21,7 +22,13 @@ import { newCommandJson, plainText } from './human.js';
 import { allowedToolsLine, terminalIo } from './manifest.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
-const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>] [--frozen], with optional --approve <revision> and --json.';
+const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>] [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
+/** `--max-github-requests <n>`: a whole number; planSync and planProjectApply refuse one outside 1 to 5000 (second review L2). */
+export function maxRequestsFlag(value: string | undefined, message: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^[0-9]{1,6}$/.test(value)) usage(message);
+  return Number(value);
+}
 const RECOVER_USAGE = 'Use bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon], with optional --approve <revision> (apply only) and --json.';
 const MIGRATE_USAGE = 'Use bowerloom skills migrate plan|apply --state <earlier-state-folder>, with optional --approve <revision> (apply only) and --json.';
 const HARNESS_NAMES: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
@@ -52,7 +59,22 @@ export function sourceTag(item: { origin: 'store' | 'project' | null; resolvedFr
 export function itemLine(item: SyncItem, width: number): string[] {
   const base = itemLineBase(item, width), lines = base.length ? [`${base[0]}${sourceTag(item)}`, ...base.slice(1)] : base;
   const tools = item.allowedTools !== undefined && item.action !== 'hold' && item.state !== 'up-to-date' ? [`  ${''.padEnd(width)} ${allowedToolsLine(item.allowedTools).trim()}`] : [];
-  return [...lines, ...tools, ...skillNoticeLine(item)];
+  return [...lines, ...tools, ...skillNoticeLine(item), ...extraFilesLine(item)];
+}
+/** Second review INFO: a store skill's files besides SKILL.md are named, so scripts that come with it show. */
+function extraFilesLine(item: SyncItem): string[] {
+  if (item.origin !== 'store' || (item.action !== 'install' && item.action !== 'update')) return [];
+  const extra = item.expected.files.map(f => f.path).filter(p => p !== 'SKILL.md');
+  if (!extra.length) return [];
+  const shown = extra.slice(0, 20).map(p => plainText(p)).join(', ');
+  return [`  skill ${item.id} also holds: ${shown}${extra.length > 20 ? `, and ${extra.length - 20} more` : ''}`];
+}
+/** Second review L2: the GitHub requests of the run and its limit, when the run makes any or the limit was set. */
+export function requestLine(network: { requests?: number; maxRequests?: number } | undefined): string[] {
+  const requests = network?.requests ?? 0, max = network?.maxRequests ?? GITHUB_REQUEST_LIMIT;
+  if (requests === 0 && max === GITHUB_REQUEST_LIMIT) return [];
+  const over = requests > max ? ` Run it with --max-github-requests ${requests} or more.` : '';
+  return [`GitHub requests: at most ${requests}, of the ${max} this run allows.${over}`];
 }
 const SKILL_NOTICE_WORDS: Record<string, string> = { 'allowed-tools': 'sets allowed-tools in its frontmatter', hooks: 'registers hooks that keep running for the rest of the session', 'shell-lines': 'runs shell commands marked with !' };
 /** Review H1: a store skill that can do more than text is named, as a prompt is; allowed-tools a pin shows is not repeated. */
@@ -92,6 +114,7 @@ export function renderSyncReview(plan: SyncPlan): string {
     ...plan.notes,
     n ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.`
       : plan.network.hosts.length ? `Network: none now. Every pinned skill is in this machine's cache. Only if one is gone when this applies does sync read ${plan.network.hosts.join(' and ')} for it.` : 'Network: none.',
+    ...requestLine(plan.network),
     `Skills cache: ${plan.privateState.cacheRoot}, shared by every project on this machine.`,
     `Private state: ${plan.privateState.root}${plan.privateState.create.length ? ' (new folders get mode 0700)' : ''}`,
     'Copies go to .bowerloom/managed, .claude/skills and .agents/skills, and stay on this machine. Commit .bowerloom/skills.json and your own skills.',
@@ -152,10 +175,11 @@ function contextOf(cwd: string, home: string, env: NodeJS.ProcessEnv): { project
 
 /** `skills sync`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
 export async function runSyncCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: SyncDeps['acquirer'] = productionAcquirer): Promise<number> {
-  const { values, flags, rest } = takeFlags(args.slice(2), ['--team'], ['--offline', '--frozen'], SYNC_USAGE);
+  const { values, flags, rest } = takeFlags(args.slice(2), ['--team', '--max-github-requests'], ['--offline', '--frozen'], SYNC_USAGE);
+  const max = maxRequestsFlag(values.get('--max-github-requests'), SYNC_USAGE);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage(SYNC_USAGE);
   const team = values.get('--team') ?? null; if (team !== null && !isId(team)) usage(SYNC_USAGE);
-  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen') });
+  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen'), ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   const first = await planSync(input());
   if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;

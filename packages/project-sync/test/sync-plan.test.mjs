@@ -36,7 +36,7 @@ test('a first plan classifies needs-fetch, cached and local, binds every input a
     ['canonical', '.bowerloom/managed/skills/alpha'], ['projection-claude', '.claude/skills/synthetic-alpha'], ['projection-codex', '.agents/skills/synthetic-alpha'], ['catalog', '.bowerloom/managed/catalog/alpha.json']]);
   assert.ok(items.alpha.before.every(s => /^[a-f0-9]{64}$/.test(s.stablePinsDigest)));
   assert.deepEqual(plan.items.map(i => i.previousReceiptRevision), [null, null, null]);
-  assert.deepEqual(plan.network, { required: true, hosts: ['registry.npmjs.org'], requests: 0 });
+  assert.deepEqual(plan.network, { required: true, hosts: ['registry.npmjs.org'], requests: 0, maxRequests: 1000 });
   assert.equal((await planSync(f.input())).revision, plan.revision);
   assert.equal(exactTree(f.base), before);
 });
@@ -50,7 +50,7 @@ test('after a sync every skill is up to date; then each change gets its own stat
   assert.equal(read(f, '.bowerloom/managed/.gitignore'), '*\n');
   const steady = await planSync(f.input());
   assert.deepEqual(steady.items.map(i => [i.state, i.action]), Array(4).fill(['up-to-date', 'none']));
-  assert.deepEqual(steady.network, { required: false, hosts: [], requests: 0 }); assert.deepEqual(steady.privateState.create, []);
+  assert.deepEqual(steady.network, { required: false, hosts: [], requests: 0, maxRequests: 1000 }); assert.deepEqual(steady.privateState.create, []);
   assert.ok(steady.items.every(i => /^[a-f0-9]{64}$/.test(i.previousReceiptRevision)));
 
   const a2 = npmPackage('alpha', { version: '2.0.0' });

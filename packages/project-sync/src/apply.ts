@@ -40,7 +40,7 @@ import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
 import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
-import { fetchStoreGit, readStoreCache, requireRequestBudget } from './store-git.js';
+import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
 import { promptNotices } from './notices.js';
 import { verifyProjectPins } from '../../project-context/src/index.js';
 import { createBowerloomFolder } from '../../project-config/src/folder.js';
@@ -57,7 +57,8 @@ export interface SyncResult {
   executionAuthorized: false;
 }
 /** The hold of a lock-fetched item whose bytes give a notice (spec 06, 3.16, decision A). */
-export const reviewHold = (): { code: string; next: string } => ({ code: 'ITEM_REVIEW_REQUIRED', next: 'Run bowerloom apply --frozen again to review it.' });
+/** The hold of a fetched item the approved plan did not show; `rerun` is the command that shows it (second review INFO). */
+export const reviewHold = (rerun = 'bowerloom apply --frozen'): { code: string; next: string } => ({ code: 'ITEM_REVIEW_REQUIRED', next: `Run ${rerun} again to review it.` });
 const HEX64 = /^[a-f0-9]{64}$/;
 const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
 const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
@@ -354,7 +355,8 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
       createPrivateFolders(plan, held, dir);
       // Review L2: a run never makes more GitHub requests than the budget, checked again before any fetch.
-      requireRequestBudget(plan.network.requests);
+      // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
+      requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [...work.filter(i => i.lockPin !== null).map(i => ({ kind: 'skill' as const, id: i.id, lockPin: i.lockPin! })), ...plan.storeFetch]), plan.network.maxRequests);
       // Phase A: the private caches only.
       const got = await fetchSkillSources(plan, entries, held, deps);
       const stored = await fetchStoreOnly(plan, held, deps);
@@ -367,7 +369,7 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       return {
         format: SYNC_RESULT_FORMAT, planRevision: plan.revision,
         applied: applied.map(a => ({ ...a, ...originOf(byId.get(a.id)!) })),
-        held: [...plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...got.review.map(id => ({ id, ...reviewHold(), ...originOf(byId.get(id)!) }))],
+        held: [...plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...got.review.map(id => ({ id, ...reviewHold(plan.frozen ? 'bowerloom skills sync --frozen' : 'bowerloom skills sync'), ...originOf(byId.get(id)!) }))],
         upToDate: plan.items.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ id: i.id, ...originOf(i) })),
         orphaned: plan.items.filter(i => i.state === 'orphaned').map(i => i.id), fetched: [...got.fetched, ...stored], executionAuthorized: false,
       };

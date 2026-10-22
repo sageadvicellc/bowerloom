@@ -12,7 +12,7 @@ import type { HeldProjectLock, ProjectContext } from '../../project-context/src/
 import { readConfig } from '../../project-config/src/config.js';
 import { CONFIG_FORMAT, serializeConfig } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
-import { configRefusal, notShareable } from '../../project-config/src/refusal.js';
+import { configRefusal, honestShared, notShareable } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
@@ -274,11 +274,11 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   }
   const text = serializeConfig(next);
   // The lock: kept up to date in a shared project and in a project with a lock (3.9, 3.13).
-  const current = lockFor(project), shared = isSharedProject(project).shared;
+  const current = lockFor(project), sharedState = isSharedProject(project), shared = sharedState.shared;
   // Review C4: a lock is created only when the new config has a store entry; an existing lock is always kept up to date.
   const writeLock = current.lock !== null || (op === 'use' && shared && storeEntries(next).length > 0);
   let lock: ConfigChangePlan['lock'] = null, authored: ConfigChangePlan['authored'] = [], hosts: string[] = [];
-  if (writeLock) {
+  if (writeLock) try {
     const items = pairsOf(current.lock), wanted = new Set(storeEntries(next)), lockRemoves: string[] = [], lockAdds: string[] = [];
     for (const pair of [...items.keys()]) if (!wanted.has(pair)) { items.delete(pair); lockRemoves.push(pair); }
     if (op === 'use') {
@@ -297,7 +297,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     }
     const lockText = serializeLock(lockFrom(items));
     lock = { before: current.read, after: { sha256: sha(lockText), bytes: Buffer.byteLength(lockText) }, text: lockText, adds: lockAdds.sort(byteOrder), removes: lockRemoves.sort(byteOrder) };
-  }
+  } catch (error) { throw sharedState.unknown !== undefined ? honestShared(error, sharedState.unknown) : error; }
   const body: Omit<ConfigChangePlan, 'revision'> = {
     format: CONFIG_CHANGE_FORMAT,
     project: { dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },

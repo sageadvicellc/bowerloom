@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
 import { testHome } from '../../../dist/tests/support/isolate-home.js';
-import { writeStoreCache, readStoreCache, fetchStoreGit, storeCacheKey } from '../../../dist/packages/project-sync/src/store-git.js';
+import { writeStoreCache, readStoreCache, fetchStoreGit, storeCacheKey, fetchRequests } from '../../../dist/packages/project-sync/src/store-git.js';
 import { cacheLockSlot, lockHolder, withCacheLock } from '../../../dist/packages/project-context/src/index.js';
 import { authoredRows } from '../../../dist/packages/skill-manifest/src/resolve-store-git.js';
 import { manifestRefusal } from '../../../dist/packages/skill-manifest/src/refusal.js';
@@ -154,15 +154,17 @@ test('fetch errors: an item the locked commit does not hold gives STORE_ITEM_GON
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ ...fakeTransport(gone.repo.responses), close() {} }) }), code('STORE_ITEM_GONE_AT_COMMIT'));
 });
 test('fetch errors: unsafe content is refused by the content check, before any blob is read', async t => {
-  const s = state(t), l = locked(t), unsafe = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Notes\n', 'skills/house-style/x.png': 'x' });
+  // The pin names the tree the repository holds, so the tree check passes and the content check refuses.
+  const s = state(t), unsafe = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Notes\n', 'skills/house-style/x.png': 'x' });
   const urls = [], transport = fakeTransport(unsafe.repo.responses);
-  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
+  await assert.rejects(fetchStoreGit(unsafe.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
   assert.equal(urls.some(u => u.includes('/blobs/')), false, 'the content check refused it, not the hash');
 });
-test('fetch errors: safe bytes with another hash are refused by the hash, after the blobs are read', async t => {
-  const s = state(t), l = locked(t), other = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Other\n' });
+test('fetch errors: a pin whose rows do not match its own tree is refused by the hash, after the blobs are read', async t => {
+  // The pin names the repository's tree but the rows of other bytes: the tree check passes, and the hash refuses.
+  const s = state(t), other = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Other\n' });
   const urls = [], transport = fakeTransport(other.repo.responses);
-  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
+  await assert.rejects(fetchStoreGit(other.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
   assert.equal(urls.some(u => u.includes('/blobs/')), true);
 });
 test('fetch errors: an abort gives SKILLS_SYNC_INTERRUPTED', async t => {
@@ -191,4 +193,16 @@ test('F10. readStoreCache refuses a prompt entry with an extra file or another t
   assert.throws(() => readStoreCache(s.roots.storeCacheRoot, 'prompt', 'weekly-update', hash), code('SKILLS_STATE_UNSAFE'));
   fs.rmdirSync(path.join(dir, 'skills'));
   assert.deepEqual(readStoreCache(s.roots.storeCacheRoot, 'prompt', 'weekly-update', hash).rows, authoredRows(files).rows);
+});
+
+test('L1. a pin listing 1 file at a 126-file tree is refused by the tree id before any blob is read, within its request estimate', async t => {
+  const s = state(t), files = { 'skills/house-style/SKILL.md': SKILL };
+  for (let j = 0; j < 125; j++) files[`skills/house-style/f${String(j).padStart(3, '0')}.md`] = `${j}\n`;
+  const big = locked(t, files), one = locked(t, { 'skills/house-style/SKILL.md': SKILL });
+  const { rows, hash } = authoredRows([{ path: 'SKILL.md', bytes: Buffer.from(SKILL) }]), lockPin = { ...one.lockPin, files: rows, hash };
+  const urls = [], transport = fakeTransport(big.repo.responses);
+  await assert.rejects(fetchStoreGit({ kind: 'skill', id: 'house-style', requestDigest: hash, lockPin }, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
+  assert.equal(urls.some(u => u.includes('/blobs/')), false);
+  assert.ok(urls.length <= fetchRequests(lockPin), `${urls.length} requests, estimate ${fetchRequests(lockPin)}`);
+  assert.deepEqual(cacheEntries(s), []);
 });

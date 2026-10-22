@@ -12,6 +12,8 @@ import { planProjectApply, applyProjectApply, planSync, applySync, planConfigCha
 import { fetchStoreGit } from '../../../dist/packages/project-sync/src/store-git.js';
 import { writeGuardedFile } from '../../../dist/packages/project-config/src/write.js';
 import { renderApplyReview } from '../../../dist/apps/cli/src/apply.js';
+import { renderSyncReview } from '../../../dist/apps/cli/src/sync.js';
+import { promptNotices } from '../../../dist/packages/project-sync/src/notices.js';
 import { authoredRows } from '../../../dist/packages/skill-manifest/src/resolve-store-git.js';
 import { manifestRefusal, githubRequestFailed } from '../../../dist/packages/skill-manifest/src/refusal.js';
 import { withProjectLock, discoverProject } from '../../../dist/packages/project-context/src/index.js';
@@ -283,4 +285,125 @@ test('T7. the guarded writer refuses STALE_APPROVAL when a new file appears afte
   t.mock.restoreAll();
   assert.equal(calls, 2); assert.equal(fs.readFileSync(target, 'utf8'), '{}\n', 'the file that appeared is kept');
   assert.deepEqual(fs.readdirSync(w.projectDir).filter(n => n.endsWith('.tmp')), []);
+});
+
+// Second security review of PR 94.
+const ALL = ['allowed-tools', 'hooks', 'shell-lines'];
+const NOTICE_CASES = {
+  hooksBlock: [skill('hooks:\n  PreToolUse: []\n---\nx\n'), ['hooks']],
+  bang: [skill('---\n!`id`\n'), ['shell-lines']],
+  bangInFence: [skill('---\n```\n!`id`\n```\n'), ['shell-lines']],
+  flowHooks: ['---\n{name: house-style, description: d, hooks: {Stop: []}}\n---\nx\n', ['hooks']],
+  escapedKey: [skill('"hoo\\x6bs": {Stop: []}\n---\nx\n'), ['hooks']],
+  dashesInValue: ['---\nname: house-style\ndescription: a---\nhooks:\n  Stop: []\n---\nx\n', ['hooks']],
+  mergeHooks: [skill('<<: {hooks: {Stop: []}}\n---\nx\n'), ALL],
+  mergeNested: [skill('metadata:\n  <<: {a: 1}\n---\nx\n'), ALL],
+  alias: [skill('metadata: &m {a: 1}\nother: *m\n---\nx\n'), ALL],
+  noCloser: ['---\nname: house-style\nhooks:\n  Stop: []\n', ALL],
+  noCloserPlain: ['---\nname: house-style\ndescription: d\n', ALL],
+  midlineFence: [skill('---\ntext ```!\nid\n```\n'), ['shell-lines']],
+  midlineTilde: [skill('---\ntext ~~~!\nid\n~~~\n'), ['shell-lines']],
+  indentedBang: [skill('---\n  !id\n'), ['shell-lines']],
+  tabBang: [skill('---\n\t!id\n'), ['shell-lines']],
+  allowedUnderscore: [skill('allowed_tools: Bash\n---\nx\n'), ['allowed-tools']],
+  allowedCamel: [skill('allowedTools: Bash\n---\nx\n'), ['allowed-tools']],
+  allowedUpper: [skill('ALLOWED-TOOLS: Bash\n---\nx\n'), ['allowed-tools']],
+  hooksUpper: [skill('Hooks: {Stop: []}\n---\nx\n'), ['hooks']],
+  plain: [skill('---\nUse it. Wow!\n'), []],
+};
+for (const [name, [text, expected]] of Object.entries(NOTICE_CASES)) {
+  test(`M1. promptNotices names every notice of the form ${name}`, () => assert.deepEqual(promptNotices(text), expected));
+}
+
+test('M1. a live store skill whose frontmatter has no closing fence is held, not installed', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); editStore(w, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: d\nhooks:\n  Stop: []\n');
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] });
+  const plan = await planProjectApply(applyInput(w, { frozen: false }));
+  assert.deepEqual([plan.skills.items[0].action, plan.skills.items[0].hold?.code], ['hold', 'SKILLS_ADD_FRONTMATTER']);
+});
+
+test('M2. an unknown shared state that causes a refusal says so honestly', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style');
+  const config = path.join(w.projectDir, '.git', 'config');
+  fs.mkdirSync(path.join(w.projectDir, '.git')); fs.writeFileSync(config, '[core]\n'); fs.chmodSync(config, 0o000);
+  try {
+    await assert.rejects(planConfigChange({ project: ctx(w), home: w.home, op: 'use', kind: 'skill', id: 'house-style' }),
+      e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.startsWith('Bowerloom could not read .git/config and treats this project as shared') && !e.message.includes('This project is shared'));
+  } finally { fs.chmodSync(config, 0o644); }
+});
+
+test('M2. a group-writable .git and config (umask 002) are read as git reads them, so the project is not shared', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style');
+  fs.mkdirSync(path.join(w.projectDir, '.git')); fs.writeFileSync(path.join(w.projectDir, '.git', 'config'), '[core]\n\tbare = false\n');
+  fs.chmodSync(path.join(w.projectDir, '.git'), 0o775); fs.chmodSync(path.join(w.projectDir, '.git', 'config'), 0o664);
+  const p = await planConfigChange({ project: ctx(w), home: w.home, op: 'use', kind: 'skill', id: 'house-style' });
+  assert.equal(p.lock, null); assert.deepEqual(p.notes.filter(n => /shared/.test(n)), []);
+});
+
+const bigRows = i => [{ path: 'SKILL.md', bytes: Buffer.from(`---\nname: big-${i}\ndescription: d\n---\nx\n`) }, ...Array.from({ length: 125 }, (_, j) => ({ path: `f${String(j).padStart(3, '0')}.md`, bytes: Buffer.from(`${i}-${j}\n`) }))];
+function bigWorld(t) {
+  const w = configWorld(t, { folder: true }), ids = Array.from({ length: 8 }, (_, i) => `big-${i}`);
+  writeConfig(w, { skills: ids.map(id => ({ id, source: 'store' })) });
+  writeLock(w, { skills: ids.map((id, i) => authoredLockItem(w, 'skill', id, { files: bigRows(i) })) });
+  return { w, ids };
+}
+test('L2. the budget counts only items the store cache lacks: 8 maximum-size cached skills install', async t => {
+  const { w, ids } = bigWorld(t);
+  fs.mkdirSync(w.cacheRoot, { recursive: true, mode: 0o700 }); fs.chmodSync(path.dirname(w.cacheRoot), 0o700);
+  for (const [i, id] of ids.entries()) await writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', id, authoredRows(bigRows(i)).hash, bigRows(i), signal());
+  const plan = await planProjectApply(applyInput(w));
+  assert.equal(plan.network.requests, 0); assert.equal(plan.network.maxRequests, 1000);
+  // The run passes the budget and phase A with no fetch. Phase B stops at its first child, so the test does not copy 2,016 files.
+  const transport = storeTransport({ responses: new Map() }), past = new Error('past phase A');
+  await assert.rejects(applyProjectApply(applyInput(w), plan.revision, signal(), { acquirer: noAcquirer(), storeTransport: transport, managed: { ...managedPort, plan: async () => { throw past; } } }), e => e === past || e?.cause === past || e?.code === 'MANAGED_SKILL_REFUSED');
+  assert.equal(transport.urls.length, 0);
+});
+test('L2. --max-github-requests raises the limit; it is bound and shown, and at most 5000', async t => {
+  const { w } = bigWorld(t);
+  const low = await planProjectApply(applyInput(w)), high = await planProjectApply(applyInput(w, { maxGithubRequests: 2000 }));
+  assert.equal(high.network.maxRequests, 2000); assert.notEqual(high.revision, low.revision);
+  assert.match(renderApplyReview(high), /^GitHub requests: at most 1040, of the 2000 this run allows\.$/m);
+  assert.match(renderApplyReview(low), /^GitHub requests: at most 1040, of the 1000 this run allows\. Run it with --max-github-requests 1040 or more\.$/m);
+  const transport = storeTransport({ responses: new Map() });
+  // Past the budget check, the fetch itself fails: the repository the transport serves is empty.
+  await assert.rejects(applyProjectApply(applyInput(w, { maxGithubRequests: 2000 }), high.revision, signal(), { acquirer: noAcquirer(), storeTransport: transport }), e => e.code !== 'GITHUB_REQUEST_BUDGET');
+  assert.ok(transport.urls.length > 0);
+  for (const bad of [0, 5001, 1.5, '100']) await assert.rejects(planProjectApply(applyInput(w, { maxGithubRequests: bad })), code('USAGE'));
+  for (const bad of [0, 5001]) await assert.rejects(planSync({ project: ctx(w), stateRoot: w.stateRoot, home: w.home, team: null, offline: false, maxGithubRequests: bad }), code('USAGE'));
+});
+// The cached skills' notices are bound, so a cache entry removed after the review makes the plan stale before any fetch.
+test('L2. a cache entry removed after the plan stops apply before any fetch', async t => {
+  const { w, ids } = bigWorld(t);
+  fs.mkdirSync(w.cacheRoot, { recursive: true, mode: 0o700 }); fs.chmodSync(path.dirname(w.cacheRoot), 0o700);
+  for (const [i, id] of ids.entries()) await writeStoreCache({ cacheRoot: w.cacheRoot, storeCacheRoot: w.storeCacheRoot }, 'skill', id, authoredRows(bigRows(i)).hash, bigRows(i), signal());
+  const plan = await planProjectApply(applyInput(w));
+  for (const n of fs.readdirSync(w.storeCacheRoot)) fs.rmSync(path.join(w.storeCacheRoot, n), { recursive: true });
+  const transport = storeTransport({ responses: new Map() });
+  await assert.rejects(applyProjectApply(applyInput(w), plan.revision, signal(), { acquirer: noAcquirer(), storeTransport: transport }), code('STALE_APPROVAL'));
+  assert.equal(transport.urls.length, 0);
+  // Planned again, the run is over the limit and refuses before any fetch.
+  await assert.rejects(applyProjectApply(applyInput(w), (await planProjectApply(applyInput(w))).revision, signal(), { acquirer: noAcquirer(), storeTransport: transport }), code('GITHUB_REQUEST_BUDGET'));
+  assert.equal(transport.urls.length, 0);
+});
+
+test('INFO. the plan names the extra files of a store skill', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style');
+  fs.mkdirSync(path.join(w.store, 'skills/house-style/references'), { recursive: true }); fs.writeFileSync(path.join(w.store, 'skills/house-style/references/setup.md'), 'Run the setup.\n');
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] });
+  const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style')] }); dropStore(w);
+  const plan = await planProjectApply(applyInput(w));
+  assert.match(renderApplyReview(plan), /^ {2}skill house-style also holds: references\/setup\.md$/m);
+  assert.match(renderSyncReview(await planSync({ project: ctx(w), stateRoot: w.stateRoot, home: w.home, team: null, offline: false })), /^ {2}skill house-style also holds: references\/setup\.md$/m);
+});
+test('INFO. a skill held during skills sync names skills sync as the next step', async t => {
+  const { w, repo } = await clone(t, skill('hooks:\n  Stop: []\n---\nx\n'));
+  const input = { project: ctx(w), stateRoot: w.stateRoot, home: w.home, team: null, offline: false };
+  const plan = await planSync(input);
+  const result = await applySync(input, plan.revision, { acquirer: noAcquirer(), signal: signal(), storeTransport: storeTransport(repo) });
+  assert.deepEqual(result.held.map(h => [h.id, h.code, h.next]), [['house-style', 'ITEM_REVIEW_REQUIRED', 'Run bowerloom skills sync again to review it.']]);
+  assert.equal(exists(w, '.claude/skills/house-style'), false);
 });

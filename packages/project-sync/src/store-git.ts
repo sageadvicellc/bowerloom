@@ -175,12 +175,26 @@ function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolea
   if (code === 'SKILLS_ADD_UNSAFE_CONTENT') return configRefusal('LOCK_HASH_MISMATCH');
   return error;
 }
-/** At most this many GitHub requests in one run (review L2). */
+/** At most this many GitHub requests in one run by default (review L2); --max-github-requests sets up to GITHUB_REQUEST_MAX. */
 export const GITHUB_REQUEST_LIMIT = 1000;
+export const GITHUB_REQUEST_MAX = 5000;
 /** The requests the fetch of one authored item takes: 4, plus one per distinct blob for a skill or a team (3.10). */
 export const fetchRequests = (pin: AuthoredPin): number => 4 + new Set(pin.files.map(f => f.sha256)).size;
-/** Refuses GITHUB_REQUEST_BUDGET when a run would make more than GITHUB_REQUEST_LIMIT requests. */
-export function requireRequestBudget(requests: number): void { if (requests > GITHUB_REQUEST_LIMIT) throw configRefusal('GITHUB_REQUEST_BUDGET'); }
+/** The limit of a run: GITHUB_REQUEST_LIMIT, or a whole number from 1 to GITHUB_REQUEST_MAX that the person set. */
+export function requestLimit(value: unknown): number {
+  if (value === undefined) return GITHUB_REQUEST_LIMIT;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > GITHUB_REQUEST_MAX) throw new DefinitionError('USAGE', `Use --max-github-requests <n>, a whole number from 1 to ${GITHUB_REQUEST_MAX}.`);
+  return value;
+}
+/** Refuses GITHUB_REQUEST_BUDGET when a run would make more than `limit` requests. */
+export function requireRequestBudget(requests: number, limit: number = GITHUB_REQUEST_LIMIT): void { if (requests > limit) throw configRefusal('GITHUB_REQUEST_BUDGET'); }
+/**
+ * Second review L2: the requests of the items whose store cache entry is missing now. Phase A counts again with this, so
+ * an entry removed after the plan counts, and one another run filled does not.
+ */
+export function missingRequests(storeCacheRoot: string, items: readonly { kind: AuthoredKind; id: string; lockPin: AuthoredPin }[]): number {
+  return items.reduce((n, i) => n + (probeStoreCache(storeCacheRoot, i.kind, i.id, i.lockPin.hash).dir === null ? fetchRequests(i.lockPin) : 0), 0);
+}
 
 /**
  * Phase A for one authored lock item (3.16 step 5): under the cache lock for this item only, reuse a store cache folder
@@ -202,7 +216,7 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       const transport = (deps.storeTransport ?? createPublicTransport)(), seen = watched(transport);
       let fetched;
       const next = () => { const more = (deps.storeTransport ?? createPublicTransport)(), w = watched(more); return { get: w.get, close: () => more.close() }; };
-      try { fetched = await fetchAuthored(seen, { remote: pin.remote, commit: pin.commit, kind: item.kind, id: item.id }, deps.signal, next); }
+      try { fetched = await fetchAuthored(seen, { remote: pin.remote, commit: pin.commit, kind: item.kind, id: item.id }, deps.signal, next, { sha: pin.tree, refuse: () => { throw configRefusal('LOCK_HASH_MISMATCH'); } }); }
       finally { commitMissing = seen.commitMissing; transport.close(); }
       const { rows, hash } = authoredRows(fetched.files);
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');

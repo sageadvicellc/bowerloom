@@ -37,8 +37,9 @@ import type { CacheLookup, PinnedRequest } from './cache-index.js';
 import { managedCode, outward, syncError } from './refusal.js';
 import { resolveProject } from './resolve.js';
 import type { Resolved, ResolvedItem } from './resolve.js';
-import { fetchRequests, faultNote, probeStoreCache } from './store-git.js';
+import { fetchRequests, faultNote, probeStoreCache, requestLimit } from './store-git.js';
 import { promptNotices } from './notices.js';
+import { skillHead } from '../../skill-manifest/src/content.js';
 import type { PromptNotice } from './notices.js';
 import { declaredAllowedTools } from './notices.js';
 import { projectRefusal } from '../../project-context/src/index.js';
@@ -62,6 +63,8 @@ export interface SyncInput {
    * harness outside this set is kept as it is and never reported as one to remove. Absent for `skills sync`.
    */
   apply?: { harnesses: Harness[] };
+  /** `--max-github-requests`: the GitHub requests this run may make, 1 to 5000. Default 1000 (second review L2). */
+  maxGithubRequests?: number;
 }
 export type ItemState = 'up-to-date' | 'needs-fetch' | 'cached' | 'drift' | 'pin-changed' | 'harnesses-changed' | 'orphaned' | 'local';
 export type ItemAction = 'none' | 'install' | 'update' | 'hold';
@@ -122,8 +125,10 @@ export interface SyncPlan {
    * `hosts`: the hosts this run may contact, one per kind of pinned item that installs or updates (none offline). Bound.
    * `required`: true when a pin is not in the cache now, so the run will read the network unless another project
    * fills the cache first. Shown, not bound.
+   * `requests`: the GitHub requests of the authored items the store cache lacks now. Shown, not bound: apply counts again.
+   * `maxRequests`: the limit of the run. Bound (second review L2).
    */
-  network: { required: boolean; hosts: string[]; requests: number };
+  network: { required: boolean; hosts: string[]; requests: number; maxRequests: number };
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
 export interface StorePlanBinding { dir: string; identity: DirectoryIdentity; skills: { sha256: string; bytes: number } | null; authoring: { sha256: string; bytes: number } | null }
@@ -347,7 +352,14 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
       try {
         const read = src.origin === 'store' ? readLocalSkill(dir, 'skills/' + id, () => {}, { bowerloom: src.dir!, origin: 'store' }) : readLocalSkill(dir, 'skills/' + id, () => {});
         files = [...read.inventory];
-        if (src.origin === 'store') { const skill = read.files.find(f => f.path === 'SKILL.md'); if (skill) { allowedTools = declaredAllowedTools(skill.text); notices = promptNotices(skill.text); } }
+        if (src.origin === 'store') {
+          const skill = read.files.find(f => f.path === 'SKILL.md');
+          if (skill) {
+            allowedTools = declaredAllowedTools(skill.text); notices = promptNotices(skill.text);
+            // Second review M1: a store skill's frontmatter must open and close and name the skill, as a pinned one must.
+            try { skillHead(skill.text); } catch { hold = { code: 'SKILLS_ADD_FRONTMATTER', next: `Fix the frontmatter of ${r.resolvedFrom === 'lock' && r.lockPin ? `skills/${id}/SKILL.md in the store at ${r.lockPin.remote.slice('https://'.length)}` : `${where}/SKILL.md`}: it opens and closes with a --- line and names the skill. Then run bowerloom skills sync.` }; }
+          }
+        }
       } catch (e) { hold = { code: managedCode(e), next: `Check ${where}: it must be a folder with a SKILL.md, of plain text files you own, with no links or hidden files. Then run bowerloom skills sync.` }; }
     }
   }
@@ -468,7 +480,7 @@ export function bindPrivateState<T extends { root: string; create: string[]; pin
  */
 export function syncBinding(body: Omit<SyncPlan, 'revision'>): unknown {
   return {
-    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts, requests: body.network.requests },
+    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts, maxRequests: body.network.maxRequests },
     // Spec 06, 4.4: whether the store cache holds an authored item now is dropped too; its hash stays.
     items: body.items.map(i => ({ ...i, state: i.state === 'cached' ? 'needs-fetch' : i.state, cacheOperationId: null, cache: null, storeCache: null })),
     storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })),
@@ -497,7 +509,7 @@ export const offlineHold = (kind: 'skill' | 'prompt', id: string): { code: strin
 /** Plans the sync. Reads only. Every refusal here happens before any write anywhere. `resolved` lets apply pass the resolution it made. */
 export async function observeSync(input: SyncInput, given?: Resolved): Promise<Observed> {
   try {
-    const project = input.project, dir = project.dir, frozen = input.frozen === true;
+    const project = input.project, dir = project.dir, frozen = input.frozen === true, maxRequests = requestLimit(input.maxGithubRequests);
     if (input.team !== null && !isId(input.team)) throw manifestRefusal('TEAM_NOT_FOUND');
     checkProjectAncestry(project);
     const resolved = given ?? resolveProject({ project, home: input.home ?? '/', frozen });
@@ -580,7 +592,7 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, items, storeFetch, notes: [...resolved.notes, ...ctx.notes, ...(frozen ? [FROZEN_LINE] : [])],
       // Review L2: the GitHub requests of the authored items of this run, whether or not the store cache holds them now.
-      network: { required: needsFetch, hosts: kinds, requests: [...items.filter(i => actionable(i) && i.lockPin !== null).map(i => i.lockPin!), ...storeFetch.map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0) },
+      network: { required: needsFetch, hosts: kinds, requests: [...items.filter(i => actionable(i) && i.lockPin !== null && i.storeCache === 'missing').map(i => i.lockPin!), ...storeFetch.filter(f => f.storeCache === 'missing').map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0), maxRequests },
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     const plan = freezeSkillData({ ...body, revision: revisionOf(syncBinding(body)) }) as SyncPlan;

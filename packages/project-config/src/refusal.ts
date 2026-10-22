@@ -58,6 +58,14 @@ export function configRefusal(code: ConfigRefusalCode, message?: string): Defini
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('configRefusal takes a listed code only.');
   const error = new DefinitionError(code, code === 'CONFIG_DUPLICATE_ID' && message !== undefined ? message : MESSAGES[code]); own.add(error); return error;
 }
+/**
+ * Second review M2: a refusal that a shared state caused, when that state is only unknown, says so: "Bowerloom could not
+ * read <what> and treats this project as shared" in place of "This project is shared". Any other error is returned as it is.
+ */
+export function honestShared(error: unknown, what: string): unknown {
+  if (!(error instanceof DefinitionError) || !own.has(error) || !error.message.startsWith('This project is shared')) return error;
+  const honest = new DefinitionError(error.code, `Bowerloom could not read ${what} and treats this project as shared${error.message.slice('This project is shared'.length)}`); own.add(honest); return honest;
+}
 /** STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. */
 export function notShareable(cause: NotShareableCause): DefinitionError {
   const error = new DefinitionError('STORE_ITEM_NOT_SHAREABLE', `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} ${NOT_SHAREABLE[cause]}`); own.add(error); return error;
