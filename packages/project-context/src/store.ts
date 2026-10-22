@@ -16,6 +16,9 @@ import type { DiscoveryHooks } from './discovery.js';
 import { withProjectLock } from './index.js';
 import { refuse, storeWriteFailed } from './refusal.js';
 import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory } from './types.js';
+import { ensureStoreGitignore } from './store-gitignore.js';
+/** The plan line of a write that makes the store (fix 3 of the beta.3 docs review names the .gitignore it writes). */
+export const STORE_CREATE_LINE = 'Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.';
 
 export const STORE_DIRNAME = '.bowerloom';
 export const STORE_FILE = 'store.json';
@@ -281,6 +284,8 @@ export async function withStoreForWriteWith<T>(home: string, signal: AbortSignal
         if (found.leftover) writing(() => chmodOwn(root));
         held.assertHeld(root);
         writeStoreFile(root); created = true;
+        // Fix 3 of the beta.3 docs review: a new store gets its .gitignore at once, before anything of this machine lands.
+        ensureStoreGitignore(root);
       }
       const store = openStoreWith(home, hooks);
       verifyStorePins(store, hooks);

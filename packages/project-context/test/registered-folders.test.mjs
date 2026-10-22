@@ -46,7 +46,7 @@ test('1. folder add plans the exact lines, and the store-create line only when t
   const plan = planFolderAddWith(w.home, w.home, 'kb', '~/My Notes/knowledge-base', w.hooks);
   assert.equal(plan.storeCreate, true); assert.equal(plan.path, 'My Notes/knowledge-base'); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal(renderFolderAddReview(plan), [
-    'Create the store at ~/.bowerloom (store.json). It holds definitions only.',
+    'Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.',
     'Register folder kb in the store at ~/.bowerloom/folders/kb.json',
     '  Folder: ~/My Notes/knowledge-base',
     '  A slice names it with root: { registered: kb }. Bowerloom reads this folder and never writes it.',

@@ -9,7 +9,7 @@
  * first `--global` write makes the store (spec 04, 3.3). The store holds definitions only.
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { checkRegisteredFolder, discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
+import { checkRegisteredFolder, discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite, STORE_CREATE_LINE } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { applyCreate, planCreate } from '../../../packages/project-authoring/src/index.js';
 import type { AuthoringReceipt, CreateInput, CreatePlan } from '../../../packages/project-authoring/src/index.js';
@@ -77,7 +77,7 @@ export function renderCreateReview(plan: CreatePlan, registeredRel?: string): st
   const store = plan.scope === 'store', root = store ? '~/.bowerloom' : '.bowerloom';
   const where = (kind: string, id: string) => kind === 'prompt' ? `${root}/prompts/${id}.md` : kind === 'slice' ? `${root}/slices/${id}.yaml` : `${root}/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
   const after = (id: string): string[] => [`After this, bowerloom apply puts the index skill slice-${id} in place. An agent loads it when its skills list names slice-${id}.`];
-  if (plan.storeCreate) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  if (plan.storeCreate) lines.push(STORE_CREATE_LINE);
   if (plan.bowerloomFolder === 'create') lines.push('Create .bowerloom (records of the copies). Its contents are git-ignored.');
   if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in ${root}/authoring`);
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);

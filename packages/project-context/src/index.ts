@@ -23,7 +23,9 @@ import type { HeldProjectLock, ProjectContext } from './types.js';
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
 export { ADOPT_MARKER_CHANNEL, adoptCreatedMarker, checkConfigFile, projectId, readConfigBytes, verifyProjectPins } from './discovery.js';
 export type { StoreContext, StoreInspection } from './store.js';
-export { assertNotInStore, storeRootOf, verifyStorePins, withStoreForWrite } from './store.js';
+export { STORE_CREATE_LINE, assertNotInStore, storeRootOf, verifyStorePins, withStoreForWrite } from './store.js';
+export { STORE_GITIGNORE, STORE_GITIGNORE_LINES, ensureStoreGitignore, storeGitignoreState } from './store-gitignore.js';
+export type { StoreGitignoreState } from './store-gitignore.js';
 export { FOLDER_FORMAT, GRANT_FORMAT, checkRegisteredFolder, applyFolderAdd, applyFolderAllow, applyFolderDeny, planFolderAllow, planFolderDeny, renderFolderAllowReview, renderFolderDenyReview, applyFolderRemove, isFolderName, listFolders, planFolderAdd, planFolderRemove, readFolderRecord, renderFolderAddReview, renderFolderRemoveReview, resolveRegisteredFolder, resolveRegisteredRoot } from './registered-folders.js';
 export type { FolderAddPlan, FolderAllowPlan, FolderDenyPlan, FolderHooks, GrantProject, RootAccess, FolderList, FolderListing, FolderRecord, FolderRemovePlan, ResolvedRoot, RootHold } from './registered-folders.js';
 

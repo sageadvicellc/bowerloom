@@ -30,7 +30,7 @@ test('1. folder add <name> <path> prints the plan and exits 3, from a folder tha
   const w = world(t), r = run(w.work, ['folder', 'add', 'kb', w.kb], w.home);
   assert.equal(r.status, 3, r.stderr); assert.equal(r.stderr, '');
   const rel = 'kb';
-  assert.match(r.stdout, new RegExp(`^Create the store at ~/\\.bowerloom \\(store\\.json\\)\\. It holds definitions only\\.\\nRegister folder kb in the store at ~/\\.bowerloom/folders/kb\\.json\\n  Folder: ~/${rel}\\n  A slice names it with root: \\{ registered: kb \\}\\. Bowerloom reads this folder and never writes it\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\. Run the same command again with --approve [a-f0-9]{64}\\n$`));
+  assert.match(r.stdout, new RegExp(`^Create the store at ~/\\.bowerloom \\(store\\.json, and a \\.gitignore that leaves out the files of this machine\\)\\. It holds definitions only\\.\\nRegister folder kb in the store at ~/\\.bowerloom/folders/kb\\.json\\n  Folder: ~/${rel}\\n  A slice names it with root: \\{ registered: kb \\}\\. Bowerloom reads this folder and never writes it\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\. Run the same command again with --approve [a-f0-9]{64}\\n$`));
   assert.equal(existsSync(join(w.home, '.bowerloom')), false, 'the plan writes nothing');
   const json = run(w.work, ['folder', 'add', 'kb', w.kb, '--json'], w.home); assert.equal(json.status, 3);
   const body = JSON.parse(json.stdout) as { code: string; plan: { format: string; name: string; path: string; storeCreate: boolean }; revision: string };

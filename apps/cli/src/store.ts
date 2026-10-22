@@ -3,10 +3,10 @@ import type { Dirent } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { AdapterError, strictJson } from '../../../packages/codex-adapter/src/safe.js';
-import { inspectStore, projectRefusal, storeRootOf, verifyStorePins } from '../../../packages/project-context/src/index.js';
+import { inspectStore, projectRefusal, storeRootOf, verifyStorePins, STORE_CREATE_LINE } from '../../../packages/project-context/src/index.js';
 import type { StoreContext } from '../../../packages/project-context/src/index.js';
 import { newCommandJson, plainText } from './human.js';
-import { readStoreRepo } from '../../../packages/project-config/src/git.js';
+import { readStoreRepo, storeTracksFolders } from '../../../packages/project-config/src/git.js';
 import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
@@ -36,7 +36,7 @@ type Problem = 'unsafe' | 'too-large' | 'invalid' | 'unreadable';
 interface Count { n: number; capped: boolean; ignored: number }
 interface Pinned { count: number | null; problem: Problem | null }
 interface Counts { skillFolders: Count; pinnedSkills: Pinned; prompts: Count; teams: Count }
-interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null }
+interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null; foldersTracked?: boolean | null }
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const storeCode = (error: unknown): string | null => { const code = errno(error); return typeof code === 'string' && code.startsWith('STORE_') ? code : null; };
@@ -105,8 +105,10 @@ function report(home: string): Report {
     const leftovers = leftoversIn(store.dir);
     // Spec 06, 3.21: the git repository of the store, read from files only.
     const git = readStoreRepo(store.dir, null);
+    // Fix 3 of the beta.3 docs review: folder records that git already tracks are published by the next push.
+    const foldersTracked = git.problem === 'none' ? false : storeTracksFolders(store.dir);
     verifyStorePins(store);
-    return { state: 'store', path, code: null, message: null, counts, leftovers, git };
+    return { state: 'store', path, code: null, message: null, counts, leftovers, git, foldersTracked };
   } catch (error) {
     const code = storeCode(error);
     if (code !== null) return { state: 'refused', path, code, message: (error as Error).message, counts: null, leftovers: [], git: null };
@@ -131,9 +133,11 @@ function render(r: Report, token: TokenState): string {
   const pinned = c.pinnedSkills.count === null ? `unreadable (${c.pinnedSkills.problem})` : String(c.pinnedSkills.count);
   return [
     'Store: ready', `  Path: ${plainText(r.path)}`, `  Skill folders: ${show(c.skillFolders)}`,
-    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!, token), ...leftover, '',
+    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!, token), ...(r.foldersTracked === true ? [FOLDERS_TRACKED] : []), ...leftover, '',
   ].join('\n');
 }
+/** Fix 3 of the beta.3 docs review: the warning for folder records in the git index of the store. */
+const FOLDERS_TRACKED = '  Warning: folders/ is tracked by git; run git rm -r --cached folders and commit';
 /** The commands that fix a git problem of the store (3.21). The person runs them; Bowerloom never runs git. */
 const FIX: Readonly<Record<string, (branch: string) => string[]>> = {
   none: b => ['cd ~/.bowerloom', 'git init', 'git add -A', 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
@@ -172,7 +176,7 @@ export async function runStoreCommand(args: readonly string[], cwd: string, home
       ignored: { skillFolders: c.skillFolders.ignored, prompts: c.prompts.ignored, teams: c.teams.ignored },
       capped: { skillFolders: c.skillFolders.capped, prompts: c.prompts.capped, teams: c.teams.capped },
     };
-    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown', token };
+    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown', token, foldersTracked: r.foldersTracked ?? null };
     write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git }));
   } else write(render(r, token));
   return 0;
@@ -204,7 +208,7 @@ export function renderStoreMigrate(plan: StoreMigratePlan): string {
   const moving = plan.items.filter(i => i.state !== 'present' || i.switch);
   const lines = [`Move ${plural(moving.length, 'item')} from this project to the store at ~/.bowerloom`];
   const writes = !migrateIsNoop(plan);
-  if (plan.store.create && writes) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  if (plan.store.create && writes) lines.push(STORE_CREATE_LINE);
   for (const item of plan.items) lines.push(itemLine(item));
   for (const s of plan.skipped) lines.push(`${itemLabel(s.kind, s.id)}${s.line}`);
   for (const item of plan.items) if (item.switch && isAgentFile(item)) lines.push(`${itemLabel('team', item.id)}its agents stop being projected. A store team projects no agents in this beta. Copies in .claude/agents stay.`);

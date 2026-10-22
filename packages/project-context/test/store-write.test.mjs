@@ -27,14 +27,14 @@ test('1. it makes the folder and store.json, and calls work with created true', 
   assert.equal(out, 'done'); assert.equal(seen.created, true); assert.equal(seen.store.dir, w.store);
   assert.equal(fs.readFileSync(path.join(w.store, 'store.json'), 'utf8'), BODY);
   assert.equal(fs.statSync(w.store).mode & 0o777, 0o700); assert.equal(fs.statSync(path.join(w.store, 'store.json')).mode & 0o777, 0o644);
-  assert.deepEqual(fs.readdirSync(w.store), ['store.json']);
+  assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'store.json']);
 });
 
 test('2. it removes a leftover temporary file first and store.json has one link', async t => {
   const w = world(t); fs.mkdirSync(w.store, { mode: 0o700 });
   fs.writeFileSync(path.join(w.store, '.store.json.0123456789abcdef.tmp'), 'half');
   await run(w, async () => {});
-  assert.deepEqual(fs.readdirSync(w.store), ['store.json']);
+  assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'store.json']);
   assert.equal(fs.lstatSync(path.join(w.store, 'store.json')).nlink, 1);
 });
 
@@ -121,7 +121,7 @@ test('11. an empty store folder is a leftover: the first write makes the store i
   const w = world(t); fs.mkdirSync(w.store, { mode: 0o700 });
   let created;
   await run(w, async (store, held, c) => { created = c; });
-  assert.equal(created, true); assert.deepEqual(fs.readdirSync(w.store), ['store.json']);
+  assert.equal(created, true); assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'store.json']);
 });
 
 test('12. S1: a leftover folder with mode 0755 is made 0700 before store.json is written', async t => {
@@ -148,7 +148,9 @@ test('14. C3b: store.json is written through a temporary and a rename, never by 
   syncBuiltinESMExports();
   try { await run(w, async () => {}); } finally { fs.writeFileSync = writeFile; fs.renameSync = rename; fs.openSync = open; syncBuiltinESMExports(); }
   assert.deepEqual(writes.filter(x => x.endsWith('store.json') || x.startsWith('open:')), []);
-  assert.equal(renames.length, 1); assert.match(renames[0][0], /\.store\.json\.[a-f0-9]{16}\.tmp$/); assert.equal(renames[0][1], finalPath);
+  // Fix 3 of the beta.3 docs review: the .gitignore of the new store is the one other rename.
+  const toStore = renames.filter(r => r[1] === finalPath);
+  assert.equal(toStore.length, 1); assert.match(toStore[0][0], /\.store\.json\.[a-f0-9]{16}\.tmp$/); assert.deepEqual(renames.filter(r => r[1] !== finalPath).map(r => path.basename(r[1])), ['.gitignore']);
 });
 
 test('15. F1: a failed write is STORE_WRITE_FAILED with the system error, and read failures stay STORE_UNREADABLE', async t => {

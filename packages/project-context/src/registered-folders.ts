@@ -16,8 +16,10 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { checkProjectPathWith, fold, homesOf, identityFrom, syncOn } from './discovery.js';
 import type { DiscoveryHooks } from './discovery.js';
 import { refuse } from './refusal.js';
-import { STORE_DIRNAME, chmodOwn, inspectStoreWith, pathInsideStore, strictText, syncFolder, verifyStorePins, withStoreForWriteWith, writing } from './store.js';
+import { STORE_CREATE_LINE, STORE_DIRNAME, chmodOwn, inspectStoreWith, pathInsideStore, strictText, syncFolder, verifyStorePins, withStoreForWriteWith, writing } from './store.js';
 import type { StoreContext } from './store.js';
+import { ensureStoreGitignore, storeGitignoreState } from './store-gitignore.js';
+import type { StoreGitignoreState } from './store-gitignore.js';
 import type { DirectoryIdentity } from './types.js';
 
 export const FOLDER_FORMAT = 'bowerloom/store-folder/v1beta1';
@@ -307,6 +309,8 @@ export interface FolderAddPlan {
   /** The grants of an earlier registration of this name, which the add removes, so that they never apply to the new record. */
   readonly oldGrants: number;
   readonly oldGrantsIdentity: DirectoryIdentity | null;
+  /** Fix 3 of the beta.3 docs review: what the store's .gitignore needs. `create` for a store this add makes. Bound. */
+  readonly gitignore: StoreGitignoreState['state'];
   readonly writesAuthorized: false;
   readonly revision: string;
 }
@@ -354,12 +358,13 @@ function buildAdd(home: string, cwd: string, name: string, argument: string, hoo
   if (folders.names.some(n => fold(n) === wanted)) throw refuse('FOLDER_EXISTS');
   const store = view.state === 'store' ? pinsOf(view.context) : STORE_ABSENT;
   const old = view.state === 'store' ? grantsEntries(view.context, name, hooks) : { identity: null, ids: [], temps: [] };
+  const ignore: StoreGitignoreState = view.state === 'store' ? storeGitignoreState(view.context.dir, uidOf(hooks)) : { state: 'create', sha256: null };
   const body = {
     format: 'bowerloom/folder-add-plan/v1beta1' as const, name, path: rel, folder: identity, storeCreate: view.state === 'absent', store,
-    folders: { identity: folders.identity, names: folders.names }, oldGrants: old.ids.length, oldGrantsIdentity: old.identity, writesAuthorized: false as const,
+    folders: { identity: folders.identity, names: folders.names }, oldGrants: old.ids.length, oldGrantsIdentity: old.identity, gitignore: ignore.state, writesAuthorized: false as const,
   };
   const revision = digest([body.format, name, rel, identityKey(identity), body.storeCreate, store === null ? null : [identityKey(store.identity), store.file.device, store.file.inode, store.file.size, store.file.ctimeNs],
-    folders.identity === null ? null : identityKey(folders.identity), folders.names, old.ids, old.identity === null ? null : identityKey(old.identity)]);
+    folders.identity === null ? null : identityKey(folders.identity), folders.names, old.ids, old.identity === null ? null : identityKey(old.identity), ignore.state, ignore.sha256]);
   return Object.freeze({ ...body, revision });
 }
 
@@ -389,6 +394,8 @@ export async function applyFolderAddWith(home: string, cwd: string, name: string
     const plan = buildAdd(home, cwd, name, argument, hooks, { store, created });
     if (plan.revision !== revision) throw refuse('STALE_APPROVAL');
     held.assertHeld(store.dir);
+    // Fix 3: the store's .gitignore leaves out folders/ before a record is there. A store this run made already has it.
+    ensureStoreGitignore(store.dir, undefined, uidOf(hooks));
     const dir = join(store.dir, FOLDERS_DIR), final = join(dir, name + '.json');
     writing(() => {
       if (plan.folders.identity === null) { mkdirSync(dir, { mode: 0o700 }); chmodOwn(dir); }
@@ -461,14 +468,20 @@ export async function applyFolderRemoveWith(home: string, name: string, revision
   }, hooks);
 }
 
+/** Fix 3 of the beta.3 docs review: the plan line of a .gitignore write, or none. */
+function gitignoreLines(state: StoreGitignoreState['state']): string[] {
+  if (state === 'ok') return [];
+  return [`${state === 'create' ? 'Write ~/.bowerloom/.gitignore' : 'Add lines to ~/.bowerloom/.gitignore'}, so git leaves out folders/ and the other files of this machine.`];
+}
 /** The plan in plain words, verbatim from spec 05, section 3.3. Control characters are escaped by the command that prints it. */
 export function renderFolderAddReview(plan: FolderAddPlan): string {
   return [
-    ...(plan.storeCreate ? ['Create the store at ~/.bowerloom (store.json). It holds definitions only.'] : []),
+    ...(plan.storeCreate ? [STORE_CREATE_LINE] : []),
     `Register folder ${plan.name} in the store at ~/.bowerloom/folders/${plan.name}.json`,
     `  Folder: ~/${plan.path}`,
     `  A slice names it with root: { registered: ${plan.name} }. Bowerloom reads this folder and never writes it.`,
     ...(plan.oldGrants > 0 ? [`  Removes ${plan.oldGrants} old grant${plan.oldGrants === 1 ? '' : 's'} for ${plan.name}.`] : []),
+    ...(plan.storeCreate ? [] : gitignoreLines(plan.gitignore)),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');
 }
@@ -636,6 +649,8 @@ export interface FolderAllowPlan {
   readonly store: StorePins;
   readonly record: { readonly sha256: string; readonly device: string; readonly inode: string };
   readonly grants: { readonly identity: DirectoryIdentity | null; readonly names: readonly string[] };
+  /** Fix 3 of the beta.3 docs review: what the store's .gitignore needs. Bound. */
+  readonly gitignore: StoreGitignoreState['state'];
   readonly writesAuthorized: false;
   readonly revision: string;
 }
@@ -666,13 +681,13 @@ function buildAllow(home: string, project: GrantProject, name: string, hooks: Fo
   const store = existingStore(home, hooks, inside), pins = pinsOf(store), record = readFolderRecord(store, name, hooks);
   let root: ResolvedRoot;
   try { root = resolveRoot(home, store, name, '.', hooks, null); } catch (error) { throw isGone(error) ? refuse('FOLDER_UNSAFE', 'The folder does not exist.') : error; }
-  const grants = grantsState(store, name, hooks);
+  const grants = grantsState(store, name, hooks), ignore = storeGitignoreState(store.dir, uidOf(hooks));
   const body = {
     format: 'bowerloom/folder-allow-plan/v1beta1' as const, name, project: project.dir, projectId: project.projectId, birthtimeNs: project.birthtimeNs, path: record.path, folderDir: root.dir, folder: root.identity, store: pins,
-    record: { sha256: record.sha256, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants: { identity: grants.identity, names: grants.names }, writesAuthorized: false as const,
+    record: { sha256: record.sha256, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants: { identity: grants.identity, names: grants.names }, gitignore: ignore.state, writesAuthorized: false as const,
   };
   const revision = digest([body.format, name, project.dir, project.projectId, project.birthtimeNs, record.path, root.dir, identityKey(root.identity), identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs,
-    record.sha256, record.fileIdentity.device, record.fileIdentity.inode, grants.identity === null ? null : identityKey(grants.identity), grants.names]);
+    record.sha256, record.fileIdentity.device, record.fileIdentity.inode, grants.identity === null ? null : identityKey(grants.identity), grants.names, ignore.state, ignore.sha256]);
   return Object.freeze({ ...body, revision });
 }
 /** Plans `folder allow`: this project may read the registered folder. Reads only. The plan names the project and the absolute folder. */
@@ -708,6 +723,8 @@ export async function applyFolderAllowWith(home: string, project: GrantProject, 
     try { plan = buildAllow(home, project, name, hooks, store); } catch (error) { throw errno(error) === 'FOLDER_NOT_FOUND' ? refuse('STALE_APPROVAL') : error; }
     if (plan.revision !== revision) throw refuse('STALE_APPROVAL');
     held.assertHeld(store.dir);
+    // Fix 3: the store's .gitignore leaves out folders/ before a grant is there.
+    ensureStoreGitignore(store.dir, undefined, uidOf(hooks));
     writeGrant(store, plan);
     verifyStorePins(store, hooks);
     return { name };
@@ -755,6 +772,7 @@ export function renderFolderAllowReview(plan: FolderAllowPlan): string {
     `  Folder: ${plan.folderDir} (~/${plan.path})`,
     `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led ${shellWord(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
+    ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');
 }

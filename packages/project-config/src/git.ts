@@ -146,3 +146,60 @@ export function readStoreRepo(storeDir: string, commit: string | null, hooks: St
     return result(null, { remote, branch, head, pushed });
   } catch (error) { if (error instanceof Unreadable) return result('unreadable'); throw error; }
 }
+
+const INDEX_LIMIT = 33554432, INDEX_ENTRIES = 1048576;
+/**
+ * Fix 3 of the beta.3 docs review: true when the git index of the store tracks a path under `folders/`, the records of
+ * registered folders, which name places on this machine. False when the store has no repository or no index, or the
+ * index tracks nothing there. Null when Bowerloom cannot read the index: a file that fails the plain-file rules, a format
+ * it does not know, or a size over 32 MiB. It reads `.git/index` as a plain file and runs no git. Index versions 2, 3,
+ * and 4 are read, with sha1 or sha256 object names.
+ */
+export function storeTracksFolders(storeDir: string, hooks: StoreRepoHooks = {}): boolean | null {
+  const uid = hooks.uid ?? process.getuid?.() ?? -1, git = join(storeDir, '.git');
+  try {
+    let stat: BigIntStats;
+    try { stat = lstatSync(git, { bigint: true }); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; return null; }
+    if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid) return null;
+    const configBytes = plainFile(join(git, 'config'), 65536, uid);
+    const hashBytes = configBytes !== null && configValues(utf8(configBytes)).objectFormat === 'sha256' ? 32 : 20;
+    const index = plainFile(join(git, 'index'), INDEX_LIMIT, uid);
+    if (index === null) return false;
+    return indexHasFolders(index, hashBytes);
+  } catch (error) { if (error instanceof Unreadable) return null; throw error; }
+}
+/** Walks the entries of a git index. True at the first path in `folders/`; null for bytes that do not parse. */
+function indexHasFolders(bytes: Buffer, hashBytes: number): boolean | null {
+  if (bytes.length < 12 || bytes.toString('latin1', 0, 4) !== 'DIRC') return null;
+  const version = bytes.readUInt32BE(4), count = bytes.readUInt32BE(8);
+  if (version < 2 || version > 4 || count > INDEX_ENTRIES) return null;
+  const fixed = 40 + hashBytes + 2;
+  let at = 12, previous: Buffer = Buffer.alloc(0);
+  for (let i = 0; i < count; i++) {
+    if (at + fixed > bytes.length) return null;
+    const flags = bytes.readUInt16BE(at + 40 + hashBytes);
+    let name = at + fixed;
+    if (flags & 0x4000) { if (version < 3) return null; name += 2; }
+    let path: Buffer;
+    if (version === 4) {
+      // A path is the previous path less N bytes, then the bytes up to a NUL. N is git's offset varint.
+      if (name >= bytes.length) return null;
+      let c = bytes[name++]!, strip = c & 127;
+      while (c & 128) { if (name >= bytes.length || strip > INDEX_LIMIT) return null; c = bytes[name++]!; strip = ((strip + 1) * 128) + (c & 127); }
+      if (strip > previous.length) return null;
+      const end = bytes.indexOf(0, name);
+      if (end < 0) return null;
+      path = Buffer.concat([previous.subarray(0, previous.length - strip), bytes.subarray(name, end)]);
+      at = end + 1;
+    } else {
+      const end = bytes.indexOf(0, name);
+      if (end < 0) return null;
+      path = bytes.subarray(name, end);
+      // The entry, path included, is padded with 1 to 8 NUL bytes to a multiple of 8.
+      at += ((name - at) + path.length + 8) & ~7;
+    }
+    if (path.length >= 7 && path.toString('latin1', 0, 7) === 'folders' && (path.length === 7 || path[7] === 0x2f)) return true;
+    previous = path;
+  }
+  return false;
+}
