@@ -1,5 +1,5 @@
 /**
- * The items `up` and `status` name as held, each with its next command (freeze review findings 1, 2 and 16).
+ * The items `up` and `status` name as held, each with its next command (review findings 1, 2 and 16).
  * Reads only. Two sources: a created team, skill or prompt whose folder or file is gone (the authoring receipt still
  * lists it), and every skill or prompt a sync or apply plan holds.
  */

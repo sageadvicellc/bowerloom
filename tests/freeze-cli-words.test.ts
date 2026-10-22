@@ -1,4 +1,4 @@
-// Freeze review of F (b68f557): the words of the CLI. Findings 6, 8, 9, 10, 11, 13, 15, 16 and 18. Every run is
+// Review of F (b68f557): the words of the CLI. Findings 6, 8, 9, 10, 11, 13, 15, 16 and 18. Every run is
 // an agent's (no terminal), so a refusal is the JSON envelope on stderr. The network is denied in every child process.
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';

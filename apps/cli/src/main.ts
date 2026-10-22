@@ -109,7 +109,7 @@ const INIT_HELP = [
 
 function installedVersion(): string { return readInstalledRelease().version; }
 
-// Freeze review finding 8 (Hanna's default: F' is the launch build): the heading says "open beta". The release
+// Review finding 8 (the owner's default: F' is the launch build): the heading says "open beta". The release
 // record and its validators keep their state values.
 function releaseHeading(): string {
   const record = readInstalledRelease();

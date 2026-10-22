@@ -1,7 +1,7 @@
 /**
  * Prompts in `bowerloom apply` (build plan 01, M6). A prompt is an authored file, `.bowerloom/prompts/<name>.md`,
  * registered by `prompt create`. Apply installs it as a managed v1beta2 item of kind `prompt`: Claude Code gets
- * `.claude/commands/<name>.md`, Codex gets the skill wrapper `.agents/skills/prompt-<name>/SKILL.md` (Hanna,
+ * `.claude/commands/<name>.md`, Codex gets the skill wrapper `.agents/skills/prompt-<name>/SKILL.md` (owner,
  * answer 6). Its private folder and catalog are named `prompt-<name>`.
  *
  * Planning reads only. Every check of the planned child mirrors the skill check in apply.ts.

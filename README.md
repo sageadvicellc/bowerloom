@@ -5,7 +5,7 @@
 
 <a id="grow-your-capabilities-with-bowerloom"></a>
 
-# Bring governance to your agent workflows
+# Own your AI skills, agents, and connections
 
 <p>
   <a href="https://bowerloom.ai/docs/releases/"><img src="docs/assets/badge-version.svg" alt="Current beta version" height="28"></a>
@@ -14,7 +14,7 @@
   <a href="#install-bowerloom"><img src="docs/assets/badge-npm.svg" alt="npm 11" height="28"></a>
 </p>
 
-Bowerloom brings governance to agent workflows in files that follow you. Use your existing personal agent to turn a manual process or a one-to-one agent workflow into defined roles, handoffs, and review points. The beta binds setup-file writes to an exact approved plan, records installed state, detects drift, and supports recorded revision recovery. Your team specification declares proposed access and review expectations, while runtime permissions remain a separate decision. Integrate those definitions with your current project before approving later work.
+Bowerloom is an agent environment manager. It sets up the skills, prompts, and teams that Claude Code and Codex use in your project. Each change shows its exact plan first, and Bowerloom writes nothing until you approve that plan. It records what it installed, and it does not overwrite a copy that you changed. Skills come from npm or GitHub, pinned to an exact version or commit. Team definitions declare proposed access and review points. Runtime permissions stay a separate decision.
 
 [Main site](https://bowerloom.ai) · [Documentation](https://bowerloom.ai/docs/) · [Build with your agent](#build-with-your-agent) · [Roadmap](#roadmap)
 
@@ -134,7 +134,7 @@ Installation, runtime enrollment, backend setup, and connected actions need thei
 ## Current capabilities
 
 <!-- release:support:start -->
-Open beta · 0.7.0-beta.1
+Open beta · 0.7.0-beta.2
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 
@@ -174,7 +174,7 @@ bowerloom --version
 bowerloom --help
 ```
 
-Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.1.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.1.tgz`.
+Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install. If your agent runs in a sandbox that blocks writes outside the project, run the install in your own terminal. A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`.
 
 If npm refuses with a permission error, do not use `sudo`. Set a user prefix for global packages instead. The [install guide](https://bowerloom.ai/docs/start/) shows the steps.
 

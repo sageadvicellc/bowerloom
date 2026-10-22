@@ -200,7 +200,7 @@ export function createMcpStdioDiscoveryFactory(value: McpStdioOptions): Discover
         busy = true; count++;
         const params = data(suppliedParams ?? {});
         if (method === 'initialize') {
-          if (canonicalJson(params) !== canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.1' } })) fail('MCP_STDIO_INPUT');
+          if (canonicalJson(params) !== canonicalJson({ protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'bowerloom-discovery', version: '0.7.0-beta.2' } })) fail('MCP_STDIO_INPUT');
         } else if (method === 'tools/list') {
           if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => key !== 'cursor')) fail('MCP_STDIO_INPUT');
           const cursor = (params as Record<string, unknown>).cursor;

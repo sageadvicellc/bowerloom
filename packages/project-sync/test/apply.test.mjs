@@ -194,7 +194,7 @@ test('an interrupt during prompt phase B reports SKILLS_SYNC_INTERRUPTED and cha
   assert.equal(exists(f, '.claude/commands/review.md'), false);
 });
 
-// Freeze review finding 1: a registered prompt whose file was deleted is held with its restore step. It never refuses
+// Review finding 1: a registered prompt whose file was deleted is held with its restore step. It never refuses
 // the whole plan, so the other skills and prompts still apply.
 test('a registered prompt whose file is gone is held with the restore step; the rest of the plan applies', async t => {
   const f = syncProject(t), gone = await createPrompt(f, 'runbook-check'); await createPrompt(f, 'review'); localSkill(f, 'house-style'); writeManifest(f, [localEntry('house-style')]);

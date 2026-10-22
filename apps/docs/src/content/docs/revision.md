@@ -8,7 +8,7 @@ order: 8
 Revision changes an installed setup through another exact plan. It retains private history and preserves unrelated project files.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.1
+Open beta · 0.7.0-beta.2
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->

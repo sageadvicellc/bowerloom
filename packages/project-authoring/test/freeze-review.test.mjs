@@ -1,4 +1,4 @@
-// Freeze review of F (b68f557), finding 1: a registered prompt whose file was deleted. Status reports it as a missing
+// Review of F (b68f557), finding 1: a registered prompt whose file was deleted. Status reports it as a missing
 // item, as it does a team or a skill, and `prompt create <id>` restores it through the normal plan and approval.
 import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';

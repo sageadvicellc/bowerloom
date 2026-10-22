@@ -8,10 +8,27 @@ order: 27
 Release notes describe user-visible changes by version. [Current support](/docs/status/) describes supported tasks and limits.
 
 <!-- release:status:start -->
-Open beta · 0.7.0-beta.1
+Open beta · 0.7.0-beta.2
 
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
+
+## 0.7.0-beta.2
+
+This release changes the package text and how Bowerloom reads skills. It adds no new command.
+
+- The npm package text is public. It holds no private or proof wording.
+- The package homepage link now points at bowerloom.ai.
+- The installed CLI accepts the npm beta-stream release record. The 0.7.0-beta.1 package did not include this check.
+- `skills add` and `skills sync` read npm packages packed by npm 11. Those packages leave the owner and group id fields empty, and 0.7.0-beta.1 refused them with `NPM_TAR_NUMBER`.
+- An npm package can hold up to 8,192 archive entries. 0.7.0-beta.1 refused a package with more than 1,024 entries with `NPM_TAR_BOUND`.
+- A skill can declare `allowed-tools` in `SKILL.md`. The `skills add` and `skills sync` plans print it on an `Allowed tools:` line, and `skills.json` records it. 0.7.0-beta.1 refuses a `skills.json` that records it.
+- One skills cache serves every project on the machine. Each project kept its own cache in 0.7.0-beta.1. The cache is keyed by content, so a skill pinned in two projects downloads once.
+- `skills add` keeps the bytes it checked in that cache. A later `skills sync` needs no second download and works with `--offline`.
+- A skill can declare `argument-hint` in `SKILL.md`, as one line of plain text of at most 256 bytes. A key that changes what an agent does, such as `hooks` or `model`, still refuses.
+- `skills add` refuses a frontmatter key that Bowerloom does not accept with `SKILLS_ADD_FRONTMATTER`, which lists the accepted keys. 0.7.0-beta.1 reported it as unsafe content.
+- `skills sync` and `apply` refuse a project under a folder that other users can change with `SKILLS_PROJECT_UNSAFE`, at plan time. 0.7.0-beta.1 failed later, after the download.
+- Dependency pins are unchanged.
 
 ## 0.7.0-beta.1
 

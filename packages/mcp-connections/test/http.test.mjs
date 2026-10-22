@@ -6,7 +6,7 @@ import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import { createMcpHttpDiscoveryFactory, mcpBindingRevision, McpConnectionError } from '../../../dist/packages/mcp-connections/src/index.js';
 import { isMcpPublicAddress } from '../../../dist/packages/mcp-connections/src/http.js';
-const init={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.1'}};
+const init={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.7.0-beta.2'}};
 const clone=structuredClone;
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const refused=error=>error instanceof McpConnectionError&&/^MCP_HTTP_[A-Z_]+$/.test(error.code)&&error.message===error.code&&!error.message.includes('PRIVATE');
