@@ -7,6 +7,7 @@
 - Branch: `beta3/10-docs-item-sources`.
 - Depends on: specs 01a, 02, and 03 to 09, merged at cc8187e. It also depends on the code track `beta3/10a-sharing-fixes` (section 1.2). The build starts after that track merges into `release/0.7.0-beta.3`.
 - Line numbers below are from commit cc8187e, the head of `release/0.7.0-beta.3` with every beta.3 spec merged. If a line moved, find the place by its text.
+- Status: Frozen 2026-10-22 after two independent reviews.
 - Revised on 2026-10-22 against cc8187e, after an independent review. The verdict was "revise, not rewrite". The outline, the anchors, the writing rules, and the examples-from-code approach stay.
 
 ### 1.1 Decisions already taken
@@ -21,7 +22,7 @@
 
 A parallel code track builds three fixes. The docs describe them. Each fact below is marked "from beta3/10a". Check each one against the merged code before you write it. If the merged code differs, the code wins. Record the difference in the pull request.
 
-1. `bowerloom team adopt <name>` also accepts a store team that `bowerloom.json` does not list yet. One approved plan copies the team into the project and lists it as a project item. Store skills and prompts that name the team stay store entries. They still need a pushed store, and the plan names them. The `STORE_ITEM_NOT_SHAREABLE` refusal ends with the next step `Or adopt a team into this project with bowerloom team adopt.` That step then works for a team that `use team` refused.
+1. `bowerloom team adopt <name>` also accepts a store team that `bowerloom.json` does not list yet. One approved plan copies the team into the project and lists it as a project item. Store skills and prompts that name the team stay store entries. They still need a pushed store, and the plan names them. The `STORE_ITEM_NOT_SHAREABLE` refusal ends with the next step `Or adopt a team into this project with bowerloom team adopt.` That step then works for a team that `use team` refused. Check whether the merged `team adopt` reads `BOWERLOOM_GITHUB_TOKEN` or makes GitHub requests. At cc8187e it reads neither (`packages/project-sync/src/adopt.ts:39-52`). If it does after 10a, add it to page section 8, fact 5, page section 8a, fact 3, section 3.2.2, item 2, and test D9.
 2. A new refusal code, `LOCK_COMMIT_GONE`. A locked commit can be gone from GitHub while the repository still reads. Then Bowerloom makes one more request to check the repository. That request counts in the request budget. The refusal message is `The locked commit is no longer on GitHub.` The next step asks the author of the store to run `bowerloom lock update` and push. A repository that does not read keeps `STORE_REMOTE_PRIVATE` without a token and `STORE_REMOTE_AUTH_FAILED` with one.
 3. The store keeps a `.gitignore` that ignores `folders/`. That folder holds the records of registered folders and their grants, which belong to one machine. Bowerloom writes the file under the store lock on the first `--global` write that creates the store, on `folder add`, and on `folder allow`. If git tracks `folders/`, `bowerloom store status` warns.
 
@@ -65,9 +66,9 @@ Writing rules for the whole page. They are the repository's simple-English rules
 1. Short sentences. At most 20 words each.
 2. Active voice. Simple tenses. No perfect tenses.
 3. Put each condition before its command. Example: "If the store has no remote, push it."
-4. Use one word for one thing: "store", "project item", "store item", "pin", "lock", "frozen install", "remote", "cache", "store cache", "shared project".
+4. Use one word for one thing: "store", "project item", "store item", "pin", "lock", "frozen install", "remote", "cache", "store cache", "shared project", "written item", "content key".
 5. Define each term at first use, in the sentence that introduces it.
-6. Use no modal verbs. Test D10 holds the word list. Say what Bowerloom does and what the reader does.
+6. Use none of the words in the list of test D10. Say what Bowerloom does and what the reader does.
 7. No semicolons. No dashes as punctuation.
 8. Do not name Fearless or Advanced Metrics (repository rule 9).
 9. No private paths. The build throws on `/Users/` or `file://` (`apps/docs/src/lib/content.mjs:84`). Use `~` or a placeholder.
@@ -119,8 +120,10 @@ Required facts:
 4. The subsection `### The sharing model in five lines`, a numbered list with exactly these five lines:
    1. `Your store, ~/.bowerloom, stays on your machine. No teammate reads it.` (Write `~/.bowerloom` in inline code.)
    2. `A shared project has bowerloom.lock.json, or sits in a git repository with a remote named origin.` (File names and `origin` in inline code.)
-   3. `In a shared project, the lock records each store item, and a teammate fetches it from the GitHub copy of your store.`
-   4. `So push the store to GitHub before you lock an item, and never rewrite or delete that branch afterward.`
+   3. `In a shared project, the lock records each store item. A teammate fetches each item you wrote from the GitHub copy of your store.`
+   4. `So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.`
+
+   A lock pin comes from npm or from its own GitHub repository, never from your store. The proof reads the store repository only for written items (`packages/project-sync/src/change.ts:180-182`). So a store that holds only pins needs no remote.
    5. `Commit bowerloom.json and bowerloom.lock.json. A teammate runs bowerloom apply --frozen.` (File names and the command in inline code.)
 5. What a teammate needs, as a bullet list with these six bullets:
    - the project
@@ -151,7 +154,7 @@ Required facts and snippets:
 3. A line-by-line reading of that example in a bullet list: `format`, `harnesses`, `id`, `source`, and `via`. Say that `via` appears only on a store entry, and names the store team that picked it (`packages/project-config/src/schema.ts:45`).
 4. A real `bowerloom.lock.json` example in a `json` fence, below the marker `<!-- example: lock -->`. The lock holds exactly the four store entries: skills `house-style` (written) and `tanstack-db` (pin), prompt `weekly-update` (written), and team `research` (written). It comes from the helper of 3.5. Both examples satisfy `lockAgrees`.
 5. A reading of one lock item of each kind in a bullet list. Every item carries `id` and `from: "store"` (`packages/project-config/src/lock.ts:34`). For the pinned item: the whole `skills.json` entry sits in the lock, `teams` included. In the example it carries `teams: ["research"]`, which is why the config lists it with `via: ["research"]`. For the written item: `remote`, `commit`, `path`, `tree`, `files`, and `hash`. If the store entry of a written skill or prompt names teams, its lock item carries `teams` too. A team never does (`lock.ts:50`, `lock.ts:67-74`). Say what `hash` proves: the bytes a teammate fetches are the bytes you locked.
-6. One sentence on how the lock relates to `skills.json`: a lock `pin` is a `skills.json` entry, and the cache key comes from it, so one pin downloads once on a machine.
+6. One sentence on how the lock relates to `skills.json`: a lock `pin` is a `skills.json` entry, and the content key comes from it, so one pin downloads once on a machine.
 7. The rule that the two files agree: the lock lists exactly the store items that the config lists. `bowerloom lock verify` checks it. If they differ, `apply --frozen` refuses.
 8. Replace the old fact about ignored files with this. Bowerloom writes one `.gitignore` of its own in a project, inside `.bowerloom/managed`. It ignores nothing else. It does not ignore `.claude/skills`, `.claude/commands`, `.agents/skills`, or `.claude/agents` (`guides/add-skills.md:226-245`). The project items in `.bowerloom` are files you commit. Link to the subsection `#commit-list`, which lists who commits what. A project with only `bowerloom.json` has no `.bowerloom` until its first install or create.
 
@@ -166,7 +169,7 @@ Required facts:
 5. The sentence: "If your project is not shared, `use` writes no lock and makes no network call."
 6. The folder must already be a project. In a new folder, run `bowerloom up --team <name> --goal <goal>` first.
 7. Approval: in a terminal, each command asks `Apply plan <short revision>? [y/N]`. Without a terminal, or with `--json`, it prints the plan and exits 3. Then run it again with `--approve <revision>` (`cli.md:41-43`).
-8. If you add a remote later, the project becomes shared with no lock. `bowerloom status` then shows `Lock: absent` and the note `This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.` (`packages/project-sync/src/resolve.ts:75`, `:226-228`). Run `bowerloom lock update` and commit the lock.
+8. If you add a remote later and `bowerloom.json` lists a store item, the project becomes shared with no lock. `bowerloom status` then shows `Lock: absent` and the note `This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.` (`packages/project-sync/src/resolve.ts:75`, `:226-228`). A config with no store item shows `Lock: not-used`. Run `bowerloom lock update` and commit the lock.
 
 #### Section 5. If you share a project
 
@@ -204,14 +207,14 @@ Required facts:
 Required facts:
 
 1. A teammate needs the project and network access to `api.github.com` and `registry.npmjs.org`. A teammate does not need your store. A teammate needs Bowerloom 0.7.0-beta.3 or later.
-2. The subsection `### Before you run`. A clone made under `umask 002` gets folders and files that the group can write. Bowerloom refuses those, new in beta.3:
-   - `PROJECT_FOLDER_UNSAFE` for a project folder that is not yours, or that the group or others can write (`packages/project-context/src/discovery.ts:234`, `:261`).
-   - `PROJECT_UNSAFE` for a `.bowerloom` folder that the group or others can write (`discovery.ts:241`).
+2. The subsection `### Before you run`. A clone made under `umask 002` gets folders and files that the group can write. Bowerloom refuses these. `PROJECT_UNSAFE` applied in beta.2 too, and the other three are new in beta.3. Bowerloom checks `.bowerloom` first, then `bowerloom.json`, then the folder (`discovery.ts:226`, `:229`, `:234`). So a clone sees one code at a time:
+   - `PROJECT_UNSAFE` for a `.bowerloom` folder that the group or others can write (`packages/project-context/src/discovery.ts:241`).
    - `CONFIG_UNSAFE` for a `bowerloom.json` that the group or others can write (`discovery.ts:166`).
+   - `PROJECT_FOLDER_UNSAFE` for a project folder that is not yours, or that the group or others can write (`discovery.ts:234`, `:261`).
    - `LOCK_UNSAFE` for a `bowerloom.lock.json` that the group or others can write (`packages/project-config/src/lock.ts:145`).
    The fix, in a `text` fence: run `umask 022` before `git clone`. In a clone you already have, run `chmod -R go-w .` in the project folder. Git records no write bits, so the change shows no diff.
 3. The steps in a `text` fence, in this order: `git clone <project>`, `cd <project>`, `bowerloom apply --frozen`, read the plan, then `bowerloom apply --frozen --approve <revision>`.
-4. A written store skill that this machine has not fetched shows, in a `text` fence, `install skill: <places> (not on this machine yet; Bowerloom shows what it can do after the fetch)`. If the fetched skill declares `allowed-tools`, or a fetched prompt gives a notice, apply installs nothing of it and holds it with `ITEM_REVIEW_REQUIRED`. The next step is `Run bowerloom apply --frozen again to review it.` (`apps/cli/src/human.ts:474`).
+4. A written store skill that this machine has not fetched shows, in a `text` fence, `install skill: <places> (not on this machine yet; Bowerloom shows what it can do after the fetch)`. Some fetched skills and prompts set `allowed-tools`, register hooks, or run shell lines. If the approved plan did not show that, apply installs nothing of such an item. It holds the item with `ITEM_REVIEW_REQUIRED` (`packages/project-sync/src/notices.ts:43-56`). The `Next:` line names the command that shows the item. That is `bowerloom apply --frozen`, `bowerloom skills sync`, or `bowerloom skills sync --frozen`, in the form `Run <command> again to review it.` (`packages/project-sync/src/apply.ts:64`, `:428`, `apply-project.ts:368`, `:420`).
 5. What the plan shows for a lock-resolved item: the `[store, from the lock: github.com/<owner>/<repo>]` tag, the line `Frozen: installing only what bowerloom.lock.json records.` (`packages/project-sync/src/plan.ts:520`), and the `Network:` line with the hosts. With a token, a `Credentials:` line comes before it (section 8).
 6. Tell the teammate to read the `Credentials:` and `Network:` lines before approving.
 7. What `--frozen` does, in order. It reads the config and the lock. When they disagree, it refuses. It ignores any store on the machine. It fetches what the machine does not hold, project pins included. It checks every byte against its pin or the lock. It installs.
@@ -302,7 +305,7 @@ Required facts:
 Required facts:
 
 1. GitHub allows about 60 requests an hour without a token, and about 5,000 with one.
-2. These three sentences, exactly: "A skill or team takes 4 requests plus 1 for each distinct file. A prompt takes 5. One item takes at most 130." (`packages/skill-manifest/src/resolve-store-git.ts:128-129`, `change.ts:169`. A prompt has one file, so 4 plus 1. The file limit is 126, so 4 plus 126.)
+2. These three sentences, exactly: "A skill or team takes 4 requests plus 1 for each file with different content. A prompt takes 5. One item takes at most 130." (`packages/skill-manifest/src/resolve-store-git.ts:128-129`, `change.ts:166`, `change.ts:169`, `store-git.ts:259`. Files with the same sha256 count once. A prompt has one file, so 4 plus 1. The file limit is 126, so 4 plus 126.)
 3. Which commands spend requests. `use`, `lock update`, and `store migrate` prove a written item. `apply --frozen`, `skills sync`, and the sync step of `up` fetch a written item that this machine lacks. `lock update` skips an unchanged item. A cached item costs nothing.
 4. The budget of one run. `apply` and `skills sync` take `--max-github-requests <n>`, a whole number from 1 to 5000. The default is 1000 (`store-git.ts:256-257`, `plan.ts:68`, `cli.md:170`, `cli.md:291`, `human.ts:205`, `human.ts:254`). `use`, `lock update`, and `store migrate` have a fixed budget of 1000 (`change.ts:308`, `change.ts:439`, `packages/project-sync/src/migrate-store.ts:270`). A run over its budget refuses `GITHUB_REQUEST_BUDGET`. From beta3/10a: the extra request that checks for `LOCK_COMMIT_GONE` counts in the budget.
 5. The plan lines of a proof, in a `text` fence, verbatim as templates:
@@ -371,7 +374,7 @@ Required facts, each as a short numbered procedure in a `text` fence with a sent
 Required facts:
 
 1. Why they are rare: one item per id, sorted, no times. Two branches that add items with adjacent ids still conflict, because their lines touch.
-2. What a real conflict looks like: markers in the file, and `LOCK_INVALID` from every command.
+2. What a real conflict looks like: markers in the file, and `LOCK_INVALID` from `use`, `lock verify`, `skills sync`, and `apply`. `bowerloom status` shows `Lock: invalid` (`resolve.ts:176`, `plan.ts:511-512`). `lock update` without `--item` rebuilds the lock.
 3. The steps in a `text` fence: for each conflicting item keep either side, delete the markers, run `bowerloom lock verify`. On a machine with the store, run `bowerloom lock update` without `--item` instead. It rebuilds a lock that reads `LOCK_INVALID` from `bowerloom.json`, and it drops the old pins. With `--item`, it refuses (`change.ts:396-408`). The plan prints, in a `text` fence: `bowerloom.lock.json could not be read (LOCK_INVALID); it is rebuilt from your store. The old pins are dropped.`
 4. Settle `bowerloom.json` first. Until it parses, Bowerloom reads it as `CONFIG_INVALID`.
 5. If the settled pair lists different items, `lock verify` refuses `LOCK_CONFIG_MISMATCH`. Run `bowerloom lock update`.
@@ -401,7 +404,7 @@ Copy the last two cells of each row from the first row for that code in the merg
 
 #### Section 14. Words used on this page
 
-A definition list. One entry for each of: store, project item, store item, pin, lock, content key, remote, frozen install, shared project, cache, store cache, config, registered folder. Each definition is one sentence. The page defines a term at first use as well.
+A definition list. One entry for each of: store, project item, store item, pin, lock, content key, remote, frozen install, shared project, cache, store cache, config, registered folder, written item. Each definition is one sentence. The page defines a term at first use as well.
 
 ### 3.2 Edits to other pages
 
@@ -424,7 +427,7 @@ The merged code and docs already hold these. Do not rewrite them. Read each one 
 | `guides/existing-project.md:72-85` | `## Move your items to the store` (spec 08). |
 | `guides/create-items.md:117-135` | `## Create an item in your store` and `## Pick an item from your store`. |
 | `guides/add-skills.md:403-420` | `## Share a project`, `## Pin a skill in your store`, and `## See and clear the cache`. |
-| `guides/agents.md`, `guides/context-slices.md` | The pages of specs 01a and 05. |
+| `guides/agents.md`, `guides/context-slices.md` | The pages of specs 01a and 05, except `guides/context-slices.md:87` and `:155` (section 3.2.2, items 32 and 33). |
 | `reference/errors.md` | The beta.3 rows of specs 03 to 09. |
 
 #### 3.2.2 Still to do
@@ -449,7 +452,8 @@ Each item names the file, the place, and the exact change. A quoted sentence is 
    - "In a project without `bowerloom.json`, that is every skill in `.bowerloom/skills.json`."
    - "In a project with it, that is the skills it lists."
    - "It fetches only what this machine lacks."
-   - "That is a pin that the skills cache does not hold, or a store item of the lock that the store cache does not hold."
+   - "That is a pin that the skills cache does not hold."
+   - "It is also a lock item that the store cache does not hold."
    - "It checks every byte against its pin or the lock first."
    - "`--frozen` installs only what `bowerloom.lock.json` records and ignores your store, as `apply --frozen` does."
    - "`--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000."
@@ -505,9 +509,13 @@ Each item names the file, the place, and the exact change. A quoted sentence is 
 16. `guides/add-skills.md:174` and `:260`. Replace the `PROJECT_BRIEF_INVALID` sentence with the three sentences of item 12.
 17. `guides/add-skills.md:228-245` and `:247`.
     - Add the line `.claude/agents/` to the `.gitignore` block, after `.claude/commands/`.
-    - The sentence at line 247 becomes: "Git then shows `bowerloom.json`, `bowerloom.lock.json`, and `skills.json` as files to commit. It also shows the team, skill, prompt, and slice definitions."
+    - Replace the whole line 247 with these four sentences:
+      - "Git then shows `bowerloom.json`, `bowerloom.lock.json`, and `skills.json` as files to commit."
+      - "It also shows the team, skill, prompt, and slice definitions."
+      - "In a project without `bowerloom.json`, a teammate's `skills sync` needs only `.bowerloom/skills.json`."
+      - "In the trial run for this release, the teammate's clone held only that file, and sync and apply worked."
 18. `guides/add-skills.md:405`. "The page about where items come from explains" becomes "[Where your items come from](/docs/guides/item-sources/) explains".
-19. `guides/add-skills.md:424`. The same change as item 15, in the bullet.
+19. `guides/add-skills.md:424`. In the bullet, replace "Private registries and private repositories are not supported." with the three sentences of item 15.
 20. `guides/add-skills.md:438`. The bullet becomes "Private npm registries and private Git repositories for pinned skills."
 21. `guides/create-items.md:8`. "They write inside `.bowerloom` only." becomes "They write inside `.bowerloom` only, or inside your store with `--global`."
 22. `guides/create-items.md:12`. "so the project holds `.bowerloom`" becomes "so the project holds `.bowerloom` or `bowerloom.json`".
@@ -532,6 +540,10 @@ Each item names the file, the place, and the exact change. A quoted sentence is 
 28. `reference/errors.md`, the table of `## Project and approval refusals`, which ends before line 85. The prose at line 85 names two codes that no table row holds. Add a row for each:
     - `AUTHORING_DISK_FULL`. Meaning: "The disk has no room, so Bowerloom stopped before it wrote more." Next action: "Run `df -h .`."
     - `AUTHORING_ACCESS_DENIED`. Meaning: "The system refused the write, so Bowerloom stopped before it wrote more." Next action: "Run `ls -ld .bowerloom ~/.bowerloom`."
+28a. `reference/errors.md:82`. The `PROJECT_BRIEF_INVALID` Meaning cell becomes these three sentences. Keep the next action.
+    - "A new team is built from the project brief that setup saved, and it cannot be read."
+    - "On a clone, `team create` refuses this way, because `.bowerloom/brief.json` stays on the first machine."
+    - "In a project without `bowerloom.json`, `bowerloom up --team` refuses the same way."
 29. `troubleshooting.md`, two new entries after `## My disk is filling up`, before line 109.
     - The entry `## My teammate cannot install my store items`. It lists each code the teammate sees, with what to do:
       - `LOCK_MISSING` and `LOCK_CONFIG_MISMATCH`: the author runs `bowerloom lock update` and commits the lock.
@@ -541,9 +553,11 @@ Each item names the file, the place, and the exact change. A quoted sentence is 
       - `GITHUB_RATE_LIMITED`: wait, or set a token.
       - A plain `apply` holds an item with `SKILLS_OFFLINE`: run `bowerloom apply --frozen`.
       - The entry links to `/docs/guides/item-sources/#teammate-steps`.
-    - The entry `## A clone refuses PROJECT_FOLDER_UNSAFE`. It names the four codes of page section 6, fact 2. It gives the fix: `umask 022` before `git clone`, or `chmod -R go-w .` in the project. It links to `/docs/guides/item-sources/#check-modes`.
+    - The entry `## A clone refuses PROJECT_UNSAFE or PROJECT_FOLDER_UNSAFE`. It names the four codes of page section 6, fact 2, in the order Bowerloom checks them. It gives the fix: `umask 022` before `git clone`, or `chmod -R go-w .` in the project. It links to `/docs/guides/item-sources/#check-modes`.
 30. `apps/docs/tools/check-brand.mjs:14`. Add `'guides/item-sources'` to `userPages`.
 31. `apps/docs/package.json:13`. The `test` script becomes `node ../../tools/run-node-tests.mjs tools/content.test.mjs tools/docs-codes.test.mjs`.
+32. `guides/context-slices.md:155`. The line becomes `bowerloom folder add knowledge-base ~/notes/knowledge-base`. The old line names a private folder.
+33. `guides/context-slices.md:87`. Replace "Older versions ignore `onFailure`" with "Claude Code before 2.1.295 ignores `onFailure`", so the page uses one form, as line 77 does.
 
 Do not edit the release status block in `releases.md` or the support block in `status.md`. `tools/sync-release.mjs` owns those blocks, and `npm run check:release` must pass. Do not edit `cli.md:35`, `status.md:8`, or the tarball name in `start.md:42` (decision 3).
 
@@ -559,13 +573,14 @@ Move each existing line under its label. Keep each line's text unless a row belo
 - Agents and context slices: the lines of specs 01a and 05, except the lines that the list below moves.
 - Install: the tarball line of spec 02.
 - Changed formats: the format line, and the two lines that say a 0.7.0-beta.2 CLI cannot read a project with slices or agent catalogs.
-- Known limits: the guard version line (`releases.md:28`, which says "older versions", as `guides/context-slices.md:77` and `:87` do), the Codex agents line, the `revise` line.
+- Known limits: the guard version line (`releases.md:28`), the Codex agents line, the `revise` line (`releases.md:39`). The guard line becomes: "The read guard needs Claude Code 2.1.295 or later. Before 2.1.295, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted." The hook sets `timeout` 10 and `onFailure` `block` (`packages/managed-skills/src/agent-copy.ts:49`). The trust condition is in `guides/context-slices.md:88`. In the `revise` line, drop the words "Known limit:", because the label says it.
+- The folder add line (`releases.md:31`) holds a semicolon. Split it into two sentences: "... runs in it." and "`folder deny` takes the grant back."
 
 Add these lines. Write each in the repository's simple English.
 
 Projects and the store:
 
-- The project folder, `bowerloom.json`, and `bowerloom.lock.json` must be yours and closed to group and other writes. Otherwise they refuse `PROJECT_FOLDER_UNSAFE`, `CONFIG_UNSAFE`, and `LOCK_UNSAFE`. A clone made under `umask 002` refuses until you run `chmod -R go-w .`.
+- The project folder, `bowerloom.json`, and `bowerloom.lock.json` must be yours and closed to group and other writes. Otherwise Bowerloom refuses with `PROJECT_FOLDER_UNSAFE`, `CONFIG_UNSAFE`, or `LOCK_UNSAFE`. A clone made under `umask 002` refuses until you run `chmod -R go-w .`.
 - `bowerloom store status` shows the `Git:` line of the store, the commands that fix a store with no remote, and the `GitHub token:` line. Its JSON format is `bowerloom/store-status/v1beta1`.
 - `bowerloom status` prints a `Config:` line, one of seven `Lock:` states, and the notes for a stale lock and for a shared project with no lock.
 - `bowerloom up` reads `bowerloom.json`. A team that the file does not list refuses `TEAM_NOT_SELECTED`. On a clone, `up` works for a listed team.
@@ -640,7 +655,7 @@ Run these in `apps/docs` before the pull request. All must pass.
 
 - Spec 01a: `guides/agents.md` (order 7.8), `cli.md` `## Apply`, `status.md`, `harnesses.md`, `errors.md`, and `releases.md`. Check only.
 - Spec 02: `releases.md`, plus the `start.md:42` sentence of 3.2.2.
-- Spec 05: `guides/context-slices.md` (order 7.9), `cli.md` `## Context` and `## Registered folders`, `security.md`, `status.md`, `harnesses.md`, `guides/index.md`, and `errors.md` `## Context slice refusals`. Check only, except the `status.md:48` and `cli.md:177` corrections.
+- Spec 05: `guides/context-slices.md` (order 7.9), `cli.md` `## Context` and `## Registered folders`, `security.md`, `status.md`, `harnesses.md`, `guides/index.md`, and `errors.md` `## Context slice refusals`. Check only, except the `status.md:48`, `cli.md:177`, and `guides/context-slices.md:87` and `:155` corrections.
 - Specs 03 to 09: this page, the check-only list of 3.2.1, and the edits of 3.2.2.
 - Track 10a: page sections 2, 5, 7, 8a, 9, 10, and 13, `troubleshooting.md`, and `releases.md`.
 
@@ -743,11 +758,11 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
 - D6. The page's refusal table holds exactly the codes of 5.1, under the eight bold labels of section 13, in their order. For each row, the second and third cells equal the second and third cells of the first `errors.md` row for that code.
 - D7. `releases.md` holds a `## 0.7.0-beta.3` section with the seven bold labels of 3.3, in that order, each on a line by itself. The section holds no `**Fixes**` line.
 - D8. Every format string in `packages/*/src` and `apps/cli/src` that is not in `beta2-formats.json` appears in the `## 0.7.0-beta.3` section of `releases.md`.
-- D9. The `private-store` section of the page holds these phrases: `api.github.com`, `never stores`, `never prints`, `refuses redirects`, `Credentials:`, `--approve`. It names each of `apply --frozen`, `skills sync`, `up`, `use`, `lock update`, and `store migrate`.
+- D9. The `private-store` section of the page holds these phrases: `api.github.com`, `never stores`, `never prints`, `refuses redirects`, `Credentials:`, `--approve`. It names each of `apply --frozen`, `skills sync`, `use`, `lock update`, and `store migrate`, and holds the phrase "sync step of `up`".
 - D10. Outside fenced blocks, inline code spans, and the lines between the `item-source-refusals` anchor and the next anchor, the page has no semicolon. It uses none of the words `can`, `could`, `may`, `might`, `should`, `would` (whole words, any case).
 - D11. The page does not contain `Fearless` or `Advanced Metrics`.
 - D12. The line of `cli.md` that starts "These commands work in a project folder." holds `bowerloom.json`.
-- D13. `add-skills.md` holds "without credentials" and "/docs/guides/item-sources/#private-store", and links `/docs/guides/item-sources/` in its `## Share a project` section. It no longer holds "Private registries and private repositories are not supported in this beta."
+- D13. `add-skills.md` holds "without credentials" and "/docs/guides/item-sources/#private-store", and links `/docs/guides/item-sources/` in its `## Share a project` section. It no longer holds "Private registries and private repositories are not supported in this beta." or "Private registries and private repositories are not supported."
 - D14. `guides/index.md` links to `/docs/guides/item-sources/`.
 - D15. `check-brand.mjs` lists `guides/item-sources`.
 - D16. `guides/agents.md` and `guides/context-slices.md` exist with the front matter of spec 01a section 9 and spec 05 section 9.
@@ -764,13 +779,14 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
   - No page under `apps/docs/src/content/docs` holds "reads skills only from public sources". Neither does `README.md`.
   - Each of the 12 pages of 3.2.2, item 6, holds "This beta reads pinned skills only from public sources."
   - `README.md` holds "Pinned skills come from public sources only."
-- D22. The What to commit table of `configuration.md` holds rows for `bowerloom.json`, `bowerloom.lock.json`, `.bowerloom/slices/`, and `.claude/agents/`. Neither `configuration.md` nor `add-skills.md` holds "`bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID`".
-- D23. `troubleshooting.md` holds the headings `## My teammate cannot install my store items` and `## A clone refuses PROJECT_FOLDER_UNSAFE`. Each section links to `/docs/guides/item-sources/`.
+- D22. The What to commit table of `configuration.md` holds rows for `bowerloom.json`, `bowerloom.lock.json`, `.bowerloom/slices/`, and `.claude/agents/`. Neither `configuration.md` nor `add-skills.md` holds "`bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID`". `errors.md` no longer holds "`bowerloom up --team` and `team create` refuse this way".
+- D23. `troubleshooting.md` holds the headings `## My teammate cannot install my store items` and `## A clone refuses PROJECT_UNSAFE or PROJECT_FOLDER_UNSAFE`. Each section links to `/docs/guides/item-sources/`.
 - D24. In `errors.md`, the `GITHUB_REQUEST_BUDGET` row holds `--max-github-requests`, and the `LOCK_LIMIT` row holds "126 files".
 - D25. `cli.md` names each key of `TOPICS` (the lines of `human.ts` that match `^  ([a-z]+): \[`) and `init` in its help sentence. It holds a `## Store and lock` heading whose section links to `/docs/guides/item-sources/`. Its `skills sync` paragraph holds `--frozen` and `--max-github-requests`. Its token paragraph names `store migrate`.
 - D26. The page's `### What to commit` section names `bowerloom.json`, `bowerloom.lock.json`, `.bowerloom/authoring/receipt.json`, and `.claude/agents`. Its `### Before you run` section names `PROJECT_FOLDER_UNSAFE`, `PROJECT_UNSAFE`, `CONFIG_UNSAFE`, `LOCK_UNSAFE`, `umask 022`, and `chmod -R go-w .`.
 - D27. `concepts/teams-and-files.md` and `guides/create-items.md` link to or name the store as 3.2.2 says: the first links `/docs/guides/item-sources/`, and the second holds "or inside your store with `--global`".
-- D28. The page holds the five lines of `### The sharing model in five lines` exactly, inline code aside.
+- D28. The page holds the five lines of `### The sharing model in five lines` exactly, inline code aside. Line 3 is two sentences, and line 4 says "before you lock an item you wrote".
+- D29. No page under `apps/docs/src/content/docs`, and not `README.md`, holds the private path forms `Sage\ Advice`, `~/Sage Advice`, or `/Sage Advice/`. (`README.md:342` names the maker, "Made by Sage Advice.", which is not a path.)
 
 `tests/docs-examples.test.ts` (run by the root `npm test`). It imports the code.
 
@@ -791,7 +807,7 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
   - Take each line after `  To fix this, run these commands yourself:`, up to the last line. Trim its four-space indent. It appears as a line in a `text` fence of the page.
   - The last line is `  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.` The page holds it, trimmed.
   - The page shows the fix lines of three more cases: `no-origin`, `unsupported-remote`, and `unpushed` (page section 7, fact 6).
-  - Each of those lines appears as a quoted string in `apps/cli/src/store.ts`, with `${b}` for `<branch>`.
+  - Each of those lines appears in `apps/cli/src/store.ts` as a string in single quotes or backticks, with `${b}` for `<branch>`.
 - E8. `STORE_ITEM_NOT_SHAREABLE`: for each of the seven causes, `notShareable(cause).message` minus its fixed first sentence appears in the page. Each line of `renderRefusal('STORE_ITEM_NOT_SHAREABLE', notShareable('none').message)` appears in the page. The prefix `Bowerloom could not read .git and treats this project as shared`, from `honestShared(notShareable('none'), '.git').message`, appears in the page with `<x>` for `.git`.
 - E9. Plan strings, by import. Each appears in the page:
   - `NETWORK_LINE(7777, 8888)` with `<n>` for 7777 and `<r>` for 8888, and `NO_TOKEN_LINE` (`change.ts:170-171`).
@@ -809,6 +825,7 @@ This spec is the docs track. Sections 3.1 to 3.8 list every change.
 - E11. Request counts: `requestCount([{ local: { distinct: 1 } }])` is 5. `4 + STORE_FILE_LIMITS.files` is 130. `GITHUB_REQUEST_LIMIT` is 1000 and `GITHUB_REQUEST_MAX` is 5000. The page holds "A prompt takes 5.", "One item takes at most 130.", "1000", and "5000".
 - E12. Every code of the four exported code lists (4.2) that is not in the baseline has an `errors.md` row.
 - E13. From beta3/10a: `LOCK_COMMIT_GONE` has a `REFUSALS` entry. Its message, read from the code, is `The locked commit is no longer on GitHub.`, and the page holds it. The `LOCK_COMMIT_GONE` row of `errors.md` and the page row match (D6).
+- E14. From beta3/10a: read the `folders/` warning string from the merged `apps/cli/src/store.ts`. It appears on the page.
 
 The build checks of 3.6 pass. Rule 1 (20 words) and the simple-English check are manual review. The reviewer reads the page for them.
 
@@ -833,4 +850,4 @@ The build checks of 3.6 pass. Rule 1 (20 words) and the simple-English check are
 6. The strings of track 10a. This spec quotes them from the decision. The merged code wins.
 7. Settled: the order of the frozen refusals. `frozen.test.mjs:33-54` pins no order. Page section 9 takes the order of `resolve.ts:158-182`.
 8. `FROZEN_LINE` (`plan.ts:520`), the `FIX` table (`apps/cli/src/store.ts:138-144`), and the unpushed-HEAD warning (`change.ts:185`) are not exported. The tests read them from the source text. If a later change exports them, import them instead.
-9. The `umask 002` fix. The code reading says that a clone under `umask 002` refuses with the four codes of page section 6, fact 2, and that `chmod -R go-w .` clears them. Nobody ran it. Before the pull request, run it in a temporary folder: `umask 002`, clone a project that holds `.bowerloom`, `bowerloom.json`, and `bowerloom.lock.json`, run `bowerloom status`, then `chmod -R go-w .`, and run it again. Record both outputs in the pull request. If another code appears, add it to the page and to `troubleshooting.md`. Do the same for a store `.git` under `umask 002` and `chmod -R go-w ~/.bowerloom/.git` (page section 7, fact 8).
+9. The `umask 002` fix. The code reading says that a clone under `umask 002` refuses with the four codes of page section 6, fact 2, and that `chmod -R go-w .` clears them. Nobody ran it. Before the pull request, run it in a temporary folder: `umask 002`, clone a project that holds `.bowerloom`, `bowerloom.json`, and `bowerloom.lock.json`, run `bowerloom status`, then `chmod -R go-w .`, and run it again. Record both outputs in the pull request, and the first code that appears. The code reading says that is `PROJECT_UNSAFE`. If another code appears, add it to the page and to `troubleshooting.md`. Do the same for a store `.git` under `umask 002` and `chmod -R go-w ~/.bowerloom/.git` (page section 7, fact 8).

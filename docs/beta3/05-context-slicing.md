@@ -1318,7 +1318,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 105. `slice create wiki --registered kb` in Part A. Result: refusal `USAGE` with the Part B text.
 106. A crash during `slice create` after the link and before the receipt. Result: the next `slice create wiki` plans `Finish slice wiki`.
 107. A config-only project of spec 03 with no `.bowerloom`. Result: `slice create` refuses with the code it already uses for a missing `.bowerloom` (03 section 3.7).
-108. (Part B) `folder add kb ~/Sage Advice/knowledge-base`. Result: the plan registers `Sage Advice/knowledge-base`.
+108. (Part B) `folder add kb ~/My Notes/knowledge-base`. Result: the plan registers `My Notes/knowledge-base`.
 109. (Part B) `folder add kb ~`. Result: `FOLDER_UNSAFE`.
 110. (Part B) `folder add kb ~/Library/Mobile Documents/x`. Result: `FOLDER_IN_CLOUD`.
 111. (Part B) `folder add kb` with a path reached through a link. Result: the real path is recorded. A link at the recorded path later gives `SLICE_ROOT_UNSAFE`.
@@ -1326,7 +1326,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 113. (Part B) `folder add kb ~/.bowerloom/teams`. Result: `FOLDER_UNSAFE`.
 114. (Part B) `folder add kb` twice. Result: the second refuses `FOLDER_EXISTS`.
 115. (Part B) A slice names folder `kb`, and `kb` is removed. Result: hold `SLICE_ROOT_MISSING`. The installed index stays. The guard of its agents denies every call with `GUARD_ROOT_MISSING`.
-116. (Part B) The store syncs to a machine where `~/Sage Advice/knowledge-base` does not exist. Result: hold `SLICE_ROOT_MISSING` on that machine.
+116. (Part B) The store syncs to a machine where `~/My Notes/knowledge-base` does not exist. Result: hold `SLICE_ROOT_MISSING` on that machine.
 117. (Part B) A registered root sits inside the project. Result: hold `SLICE_ROOT_UNSAFE`, with the next step to use a project root.
 118. (Part B) A registered folder holds the project. Result: allowed. Hidden folders, `.bowerloom` included, are skipped.
 119. (Part B) A registered folder is outside the session's working folders. Result: the plan note about `--add-dir` and `permissions.additionalDirectories`.
