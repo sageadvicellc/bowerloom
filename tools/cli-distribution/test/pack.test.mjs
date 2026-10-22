@@ -7,7 +7,11 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {collect,stage,pack,imports,lockedDependencies,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
+import {collect,stage,pack,imports,lockedDependencies,flatDependencies,requireFreeSpace,licenseAllowed,extractBundle,defaultNpmCache,installHeading,expectedInstallCommand,sha256,MODULES} from '../pack.mjs';
+import {tarBytes,putInCache,integrityOf,syntheticClosure,lockOf} from './bundle-fixture.mjs';
+import childProcess from 'node:child_process';
+import {statSync} from 'node:fs';
+const TAGLINE='Set up the skills, prompts, and teams your agents use, and approve every change.';
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 function area(t) {const path=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-pack-proof-')));chmodSync(path,0o700);t.after(()=>rmSync(path,{recursive:true,force:true}));return path;}
 function fixture(t) {
@@ -51,8 +55,8 @@ test('dependency lock rejects unpinned, wrong-version, and workspace-linked pack
  const manifest={name:'proof',version:'1.0.0',license:'MIT',dependencies:{x:'1.0.0'}};
  for(const item of [{version:'2.0.0'},{version:'1.0.0',link:true},{version:'1.0.0',resolved:'file:private',integrity:'sha512-x'}])assert.throws(()=>lockedDependencies({lockfileVersion:3,packages:{'node_modules/x':item}},manifest.dependencies,manifest));
 });
-test('actual npm tarballs are byte-deterministic with exact inventory and standalone offline startup', {timeout:180000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
- const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage-one'),outputDir:join(root,'pack-one')}),two=pack({repoDir:repo,stageDir:join(root,'stage-two'),outputDir:join(root,'pack-two')});
+test('actual npm tarballs are byte-deterministic with exact inventory and standalone offline startup', {timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
+ const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage-one'),outputDir:join(root,'pack-one'),bundle:true,npmCache:defaultNpmCache()}),two=pack({repoDir:repo,stageDir:join(root,'stage-two'),outputDir:join(root,'pack-two'),bundle:true,npmCache:defaultNpmCache()});
  assert.equal(one.sha256,two.sha256);assert.equal(one.files,collect({repoDir:repo}).files.size);
  const install=join(root,'isolated-install');mkdirSync(install);writeFileSync(join(install,'.empty-npmrc'),'');
  const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_offline:'true',npm_config_ignore_scripts:'true'};
@@ -348,4 +352,264 @@ test('a release record whose urls differ from the canonical set is refused befor
   assert.throws(()=>collect({repoDir:source,releaseCandidate}),message,String(edit));
   const root=area(t);assert.throws(()=>stage({repoDir:source,stageDir:join(root,'stage'),releaseCandidate}),message,String(edit));assert.deepEqual(readdirSync(root),[]);
  }
+});
+
+
+// ---- Spec 02: install pins and the bundled runtime ----
+let realBundle;const real=()=>realBundle??=collect({repoDir:repo,bundle:true});
+const DIRECT=['@dbos-inc/dbos-sdk','@langchain/langgraph','@langchain/langgraph-checkpoint-postgres','@modelcontextprotocol/sdk','ajv','jose','langsmith','pg','tar','yaml'];
+// A fixture copy of the repository whose lock is synthetic: the ten direct dependencies, one nested path, and tiny tarballs in a temporary cache.
+function bundledRepo(t) {
+ const root=fixture(t),cache=join(area(t),'cache'),versions=collect({repoDir:repo}).manifest.dependencies,paths={};
+ for(const name of DIRECT)paths['node_modules/'+name]={version:versions[name],...(name==='pg'?{deps:{inner:'4.0.0'}}:{})};
+ paths['node_modules/pg/node_modules/inner']={version:'4.0.0'};
+ const packages=syntheticClosure(cache,paths);
+ const lock=lockOf(packages);writeFileSync(join(root,'package-lock.json'),JSON.stringify(lock,null,2)+'\n');
+ return {root,cache,lock};
+}
+const run1=(t,options)=>{const base=area(t);return {base,...options,stageDir:join(base,'stage'),outputDir:join(base,'out')};};
+
+test('flatDependencies returns every top-level entry, skips nested ones, and sorts optional ones apart',()=>{
+ const packages={'':{},'node_modules/zeta':{version:'1.0.0'},'node_modules/@scope/pkg':{version:'2.1.0-beta.1'},'node_modules/opt':{version:'3.0.0',optional:true},'node_modules/zeta/node_modules/inner':{version:'9.9.9'}};
+ const result=flatDependencies(packages,{zeta:'1.0.0'});
+ assert.deepEqual(result,{dependencies:{'@scope/pkg':'2.1.0-beta.1',zeta:'1.0.0'},optionalDependencies:{opt:'3.0.0'}});
+ assert.deepEqual(Object.keys(result.dependencies),['@scope/pkg','zeta']);
+});
+test('flatDependencies refuses an alias and a link',()=>{
+ assert.throws(()=>flatDependencies({'node_modules/a':{version:'1.0.0',name:'other'}},{}),/^Error: Unpinnable dependency: node_modules\/a$/);
+ assert.throws(()=>flatDependencies({'node_modules/a':{version:'1.0.0',link:true}},{}),/^Error: Unpinnable dependency: node_modules\/a$/);
+});
+test('flatDependencies refuses versions that are not exact',()=>{
+ for(const version of ['^1.0.0','1.0','1.0.0+build',undefined,1])assert.throws(()=>flatDependencies({'node_modules/x':{version}},{}),/^Error: Unpinnable dependency: node_modules\/x$/,String(version));
+});
+test('flatDependencies refuses a direct dependency that differs from the lock or has no entry',()=>{
+ const packages={'node_modules/x':{version:'1.0.0'}};
+ assert.throws(()=>flatDependencies(packages,{x:'1.0.1'}),/^Error: Pinned dependency differs from the lock: x$/);
+ assert.throws(()=>flatDependencies(packages,{missing:'1.0.0'}),/^Error: Pinned dependency differs from the lock: missing$/);
+ assert.deepEqual(flatDependencies(packages,{x:'1.0.0'}).dependencies,{x:'1.0.0'});
+});
+test('the real manifest pins every top-level lock entry to its lock version',()=>{
+ const lock=JSON.parse(readFileSync(join(repo,'package-lock.json'))),{manifest}=real();
+ for(const group of [manifest.dependencies,manifest.optionalDependencies])for(const [name,version] of Object.entries(group))assert.equal(version,lock.packages['node_modules/'+name].version,name);
+});
+test('the real manifest holds the tested versions of the four drifting packages and react',()=>{
+ const {dependencies}=real().manifest;
+ assert.equal(dependencies['@langchain/core'],'1.2.14');assert.equal(dependencies['@langchain/langgraph-checkpoint'],'1.1.5');assert.equal(dependencies['@langchain/langgraph-sdk'],'1.12.0');
+ assert.equal(dependencies.express,'5.2.1');assert.equal(dependencies.react,'19.3.0');
+});
+test('the real shrinkwrap root lists the same dependencies as the manifest',()=>{
+ const {manifest,files}=real(),root=JSON.parse(files.get('npm-shrinkwrap.json')).packages[''];
+ assert.deepEqual(root.dependencies,manifest.dependencies);assert.deepEqual(root.optionalDependencies,manifest.optionalDependencies);
+});
+test('pg-cloudflare is an optional pin and not a required one',()=>{
+ const {manifest}=real();assert.deepEqual(manifest.optionalDependencies,{'pg-cloudflare':'1.4.1'});assert.equal(manifest.dependencies['pg-cloudflare'],undefined);
+});
+test('bundleDependencies is the sorted union of both maps and has 142 names',()=>{
+ const {manifest}=real(),names=[...Object.keys(manifest.dependencies),...Object.keys(manifest.optionalDependencies)].sort((a,b)=>a.localeCompare(b));
+ assert.deepEqual(manifest.bundleDependencies,names);assert.equal(names.length,142);assert.equal(Object.keys(manifest.dependencies).length,141);
+});
+test('without bundle the manifest has pins and no bundleDependencies, and collect is deterministic',()=>{
+ const a=collect({repoDir:repo});assert.equal(a.manifest.bundleDependencies,undefined);assert.equal(a.record.bundle,undefined);
+ assert.equal(a.manifest.dependencies.express,'5.2.1');
+ assert.deepEqual(collect({repoDir:repo,bundle:true}),real());
+});
+test('the real shrinkwrap has exactly the six known nested paths',()=>{
+ const nested=Object.keys(JSON.parse(real().files.get('npm-shrinkwrap.json')).packages).filter(p=>p.split('node_modules/').length>2).sort();
+ assert.deepEqual(nested,['node_modules/@langchain/langgraph-sdk/node_modules/eventemitter3','node_modules/@langchain/langgraph-sdk/node_modules/p-queue','node_modules/@langchain/langgraph-sdk/node_modules/p-timeout','node_modules/body-parser/node_modules/content-type','node_modules/negotiator/node_modules/content-type','node_modules/type-is/node_modules/content-type']);
+});
+
+test('extractBundle lays out top-level and nested packages, strips any first folder, and sets modes whatever the umask',t=>{
+ const root=area(t),cache=join(root,'cache'),stageDir=join(root,'stage');
+ const packages=syntheticClosure(cache,{'node_modules/a':{version:'1.0.0',extra:[{path:'bin/run.js',data:'#!/usr/bin/env node\n',mode:0o755},{path:'plain.txt',data:'x',mode:0o666}]},'node_modules/@s/b':{version:'2.0.0',first:'other'},'node_modules/a/node_modules/c':{version:'3.0.0'}});
+ const before=process.umask(0o077);let result;try{result=extractBundle({stageDir,packages,npmCache:cache});}finally{process.umask(before);}
+ for(const file of ['node_modules/a/package.json','node_modules/@s/b/package.json','node_modules/a/node_modules/c/index.js'])assert.ok(existsSync(join(stageDir,file)),file);
+ assert.equal(JSON.parse(readFileSync(join(stageDir,'node_modules/@s/b/package.json'))).version,'2.0.0');
+ assert.equal(statSync(join(stageDir,'node_modules/a/bin/run.js')).mode&0o777,0o755);
+ assert.equal(statSync(join(stageDir,'node_modules/a/plain.txt')).mode&0o777,0o644);
+ assert.equal(statSync(join(stageDir,'node_modules/a/package.json')).mode&0o777,0o644);
+ assert.equal(statSync(join(stageDir,'node_modules/a/bin')).mode&0o777,0o755);
+ assert.ok(result.bundleFiles.has('node_modules/a/bin/run.js'));assert.ok(result.bundleFiles.has('node_modules/a/node_modules/c/package.json'));
+ assert.equal(result.files,result.bundleFiles.size);assert.ok(result.bytes>0);
+});
+test('extractBundle names the path of a missing cache entry',t=>{
+ const root=area(t),cache=join(root,'cache');mkdirSync(cache);
+ const packages=syntheticClosure(join(root,'other'),{'node_modules/a':{version:'1.0.0'}});
+ assert.throws(()=>extractBundle({stageDir:join(root,'stage'),packages,npmCache:cache}),/^Error: Bundle cache entry missing: node_modules\/a$/);
+});
+test('extractBundle refuses cache bytes that do not match the lock and integrity values that are not one sha512',t=>{
+ const root=area(t),cache=join(root,'cache'),good=tarBytes([{path:'package/package.json',data:'{}'}]),other=tarBytes([{path:'package/package.json',data:'{"x":1}'}]);
+ const integrity=integrityOf(good);putInCache(cache,other,integrity);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/a':{version:'1.0.0',integrity}},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/);
+ const sha512=integrityOf(good);
+ for(const bad of ['sha1-AAAAAAAAAAAAAAAAAAAAAAAAAAA=',sha512+' '+sha512,'sha512-AAAA',undefined])
+  assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/a':{version:'1.0.0',integrity:bad}},npmCache:cache}),/^Error: Bundle integrity mismatch: node_modules\/a$/,String(bad));
+});
+test('extractBundle refuses links, devices, unsafe paths, too many entries, tar warnings, and oversized content',t=>{
+ const root=area(t),cache=join(root,'cache');let n=0;
+ const attempt=(entries,options,max)=>{const integrity=putInCache(cache,tarBytes(entries,options));return ()=>extractBundle({stageDir:join(root,'s'+n++),packages:{'node_modules/p':{version:'1.0.0',integrity}},npmCache:cache,...(max?{maxBundleBytes:max}:{})});};
+ const manifest={path:'package/package.json',data:'{}'};
+ for(const [label,entry] of [['package/sym',{path:'package/sym',type:'2',linkpath:'/etc/passwd'}],['package/hard',{path:'package/hard',type:'1',linkpath:'package/package.json'}],['package/dev',{path:'package/dev',type:'3'}],['/abs/file',{path:'/abs/file',data:'x'}],['package/../evil.js',{path:'package/../evil.js',data:'x'}]])
+  assert.throws(attempt([manifest,entry]),e=>e.message==='Bundle tarball unsafe: node_modules/p/'+label,label);
+ assert.throws(attempt(Array.from({length:8193},(_,i)=>({path:`package/f${i}`,data:'x'}))),/^Error: Bundle tarball unsafe: node_modules\/p\//);
+ assert.doesNotThrow(attempt(Array.from({length:8192},(_,i)=>({path:`package/f${i}`,data:'x'}))));
+ assert.throws(attempt([manifest],{corruptChecksum:true}),/^Error: Bundle tarball unsafe: node_modules\/p\//);
+ assert.throws(attempt([manifest,{path:'package/big.bin',data:Buffer.alloc(2*2**20,97)}],{},2**20),e=>e.message==='Bundle exceeds 1 GiB');
+});
+test('stage with a bundle removes its own stage folder when extraction fails',t=>{
+ const {root}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:join(area(t),'empty')});
+ assert.throws(()=>stage(options),/Bundle cache entry missing/);assert.equal(existsSync(options.stageDir),false);
+});
+test('stage with a bundle refuses a relative npm cache path',t=>{
+ const {root}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,npmCache:'relative/cache'});
+ assert.throws(()=>stage(options),/^Error: npmCache must be an absolute path$/);assert.equal(existsSync(options.stageDir),false);
+});
+test('pack with a bundle holds every lock package, matches bundleDependencies, and is byte-deterministic',t=>{
+ const {root,cache,lock}=bundledRepo(t),one=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache}),two=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache});
+ const a=pack(one),b=pack(two);assert.equal(a.sha256,b.sha256);
+ const listing=spawnSync('tar',['-tzf',a.file],{encoding:'utf8',maxBuffer:2**24}).stdout.split('\n');
+ for(const path of Object.keys(lock.packages).filter(Boolean))assert.ok(listing.includes('package/'+path+'/package.json'),path);
+ assert.equal(a.bundle.packages,10);assert.ok(a.bundle.files>=22);assert.ok(a.bundle.bytes>0);
+ assert.equal(a.files,collect({repoDir:root}).files.size);
+});
+function stubSpawn(t,change) {
+ const original=childProcess.spawnSync;
+ childProcess.spawnSync=(...args)=>change(original(...args),args);syncBuiltinESMExports();
+ t.after(()=>{childProcess.spawnSync=original;syncBuiltinESMExports();});
+}
+test('pack refuses an npm pack result that lists a bundled file the stage lacks',t=>{
+ const {root,cache}=bundledRepo(t);
+ stubSpawn(t,r=>{if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);info[0].files.push({path:'node_modules/jose/extra.js'});return {...r,stdout:JSON.stringify(info)};}return r;});
+ assert.throws(()=>pack(run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache})),/^Error: Bundle packed files differ from the staged bundle$/);
+});
+test('DISTRIBUTION.json of a bundled stage inventories the bundle and keeps node_modules out of files',t=>{
+ const {root,cache,lock}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache});
+ stage(options);const record=JSON.parse(readFileSync(join(options.stageDir,'DISTRIBUTION.json')));
+ assert.equal(record.bundle.packageCount,11);assert.equal(record.bundle.entries.length,11);
+ assert.ok(record.bundle.extractedFiles>0);assert.ok(record.bundle.extractedBytes>0);
+ const paths=record.bundle.entries.map(e=>e.path);assert.deepEqual(paths,[...paths].sort((a,b)=>a.localeCompare(b)));
+ assert.deepEqual(record.bundle.entries[0],{path:paths[0],version:lock.packages[paths[0]].version,integrity:lock.packages[paths[0]].integrity,license:'MIT'});
+ assert.ok(!record.files.some(f=>f.path.includes('node_modules')));
+ assert.match(readFileSync(join(options.stageDir,'README.md'),'utf8'),/ship inside|ship with/);
+});
+test('the real closure passes the license gate and every recorded license is allowed',()=>{
+ const {record}=real();assert.equal(record.bundle.packageCount,148);
+ for(const entry of record.bundle.entries)assert.ok(licenseAllowed(entry.license),entry.path+' '+entry.license);
+ assert.equal(record.bundle.entries.find(e=>e.path==='node_modules/type-fest')?.license,'(MIT OR CC0-1.0)');
+});
+test('pack refuses when npm pack output overflows its buffer',t=>{
+ const {root,cache}=bundledRepo(t);
+ stubSpawn(t,(r,args)=>args[0]==='npm'?{status:null,stdout:'',stderr:'',error:Object.assign(new Error('spawnSync npm ENOBUFS'),{code:'ENOBUFS'})}:r);
+ assert.throws(()=>pack(run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache})),/^Error: npm pack output exceeds 64 MiB$/);
+});
+test('requireFreeSpace names the bound and passes when space is free',t=>{
+ const parent=area(t);
+ assert.throws(()=>requireFreeSpace(parent,2**60),e=>e.message.startsWith('12 GiB reserve plus 1073741824 GiB bound required'));
+ requireFreeSpace(parent,0);
+});
+test('licenseAllowed accepts exactly the seven ids',()=>{
+ for(const id of ['MIT','ISC','Apache-2.0','BSD-2-Clause','BSD-3-Clause','0BSD','BlueOak-1.0.0'])assert.equal(licenseAllowed(id),true,id);
+ for(const id of ['GPL-3.0-only','mit','CC0-1.0'])assert.equal(licenseAllowed(id),false,id);
+});
+test('licenseAllowed reads OR as one allowed side and AND as every side',()=>{
+ for(const v of ['(MIT OR CC0-1.0)','CC0-1.0 OR MIT','MIT AND ISC'])assert.equal(licenseAllowed(v),true,v);
+ for(const v of ['CC0-1.0 OR GPL-3.0-only','MIT AND GPL-3.0-only'])assert.equal(licenseAllowed(v),false,v);
+});
+test('licenseAllowed binds AND tighter than OR and checks parentheses',()=>{
+ for(const v of ['(MIT OR GPL-3.0-only) AND ISC','MIT OR GPL-3.0-only AND ISC'])assert.equal(licenseAllowed(v),true,v);
+ for(const v of ['(GPL-3.0-only OR CC0-1.0) AND MIT','(MIT','MIT)','()'])assert.equal(licenseAllowed(v),false,v);
+});
+test('licenseAllowed refuses WITH, plus, and LicenseRef forms',()=>{
+ for(const v of ['MIT WITH Classpath-exception-2.0','Apache-2.0 WITH LLVM-exception','MIT+','LicenseRef-x'])assert.equal(licenseAllowed(v),false,v);
+});
+test('licenseAllowed refuses missing, wrongly typed, lower case operator, long, and trailing text values',()=>{
+ for(const v of [undefined,null,'','   ',123,'mit or isc','M'.repeat(201),'MIT ISC'])assert.equal(licenseAllowed(v),false,String(v));
+});
+test('collect with a bundle names the first bundled license that fails, and without a bundle does not check',t=>{
+ const root=fixture(t),path=join(root,'package-lock.json'),lock=JSON.parse(readFileSync(path)),write=()=>writeFileSync(path,JSON.stringify(lock,null,2)+'\n');
+ lock.packages['node_modules/tar'].license='GPL-3.0-only';write();
+ assert.throws(()=>collect({repoDir:root,bundle:true}),/^Error: Bundled license not allowed: tar GPL-3.0-only$/);
+ delete lock.packages['node_modules/tar'].license;write();
+ assert.throws(()=>collect({repoDir:root,bundle:true}),/^Error: Bundled license not allowed: tar \(none\)$/);
+ lock.packages['node_modules/ajv'].license='GPL-3.0-only';write();
+ assert.throws(()=>collect({repoDir:root,bundle:true}),/^Error: Bundled license not allowed: ajv GPL-3.0-only$/);
+ assert.doesNotThrow(()=>collect({repoDir:root}));
+});
+test('the release candidate description ends with the approved tagline',t=>{
+ const {root}=betaStreamRecord(t,'unreleased');
+ assert.ok(collect({repoDir:root,releaseCandidate:true}).manifest.description.endsWith(TAGLINE));
+});
+
+// Offline proofs: pack needs the cache, the install does not.
+test('a bundled tarball installs offline with an empty npm cache and starts',{timeout:600000,skip:process.env.BOWERLOOM_PACK_INSTALL_PROOF!=='1'},t=>{
+ const root=area(t),one=pack({repoDir:repo,stageDir:join(root,'stage'),outputDir:join(root,'out'),bundle:true,npmCache:defaultNpmCache()});
+ const install=join(root,'prefix'),emptyCache=join(root,'empty-cache');mkdirSync(install);mkdirSync(emptyCache);writeFileSync(join(install,'.empty-npmrc'),'');
+ const env={PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(install,'.empty-npmrc'),npm_config_cache:emptyCache,npm_config_offline:'true',npm_config_ignore_scripts:'true',npm_config_update_notifier:'false'};
+ const npm=spawnSync('npm',['install','--prefix',install,'--offline','--ignore-scripts','--no-audit','--no-fund','--no-save',one.file],{cwd:install,env,encoding:'utf8',timeout:300000,maxBuffer:2**24});
+ assert.equal(npm.status,0,npm.stderr||npm.stdout);
+ const version=spawnSync(join(install,'node_modules/.bin/bowerloom'),['--version'],{env,encoding:'utf8',timeout:30000});
+ assert.equal(version.status,0,version.stderr);
+});
+
+// Online proofs: public npm registry only.
+const shrinkMap=(stageDir,prefix)=>Object.fromEntries(Object.entries(JSON.parse(readFileSync(join(stageDir,'npm-shrinkwrap.json'))).packages).filter(([k])=>k).map(([k,v])=>[prefix+k,v.version]));
+function walkInstalled(dir,rel,out={}) {
+ for(const name of readdirSync(dir).sort()) {
+  if(name.startsWith('.'))continue;
+  for(const sub of name.startsWith('@')?readdirSync(join(dir,name)).map(n=>name+'/'+n):[name]) {
+   const folder=join(dir,sub);out[rel+'/'+sub]=JSON.parse(readFileSync(join(folder,'package.json'),'utf8')).version;
+   if(existsSync(join(folder,'node_modules')))walkInstalled(join(folder,'node_modules'),rel+'/'+sub+'/node_modules',out);
+  }
+ }
+ return out;
+}
+function differences(installed,expected) {
+ const list=[];for(const key of new Set([...Object.keys(installed),...Object.keys(expected)]))if(installed[key]!==expected[key])list.push(`${key}@${installed[key]??'(absent)'} expected ${expected[key]??'(absent)'}`);
+ return list;
+}
+const online=process.env.BOWERLOOM_PACK_ONLINE_PROOF==='1'?{}:null;
+function onlineContext(t) {
+ try{requireFreeSpace(tmpdir(),4*(2**30+0.05*2**30));}catch(e){t.skip(e.message);return null;}
+ if(online.root)return online;
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'bowerloom-online-proof-')));chmodSync(root,0o700);online.root=root;
+ online.pack=pack({repoDir:repo,stageDir:join(root,'stage'),outputDir:join(root,'out'),bundle:true,npmCache:defaultNpmCache()});
+ const rc=join(root,'empty-npmrc');writeFileSync(rc,'');
+ online.env=cache=>({PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:rc,npm_config_cache:cache,npm_config_ignore_scripts:'true',npm_config_update_notifier:'false'});
+ return online;
+}
+test.after(()=>{if(online?.root)rmSync(online.root,{recursive:true,force:true});});
+const onlineOptions={timeout:600000,skip:online?false:'set BOWERLOOM_PACK_ONLINE_PROOF=1'};
+test('online 1: a local tarball install gets exactly the packed shrinkwrap versions',onlineOptions,t=>{
+ const ctx=onlineContext(t);if(!ctx)return;
+ const prefix=join(ctx.root,'local');mkdirSync(prefix);
+ const npm=spawnSync('npm',['install','--prefix',prefix,'--ignore-scripts','--no-audit','--no-fund','--no-save','--loglevel=http',ctx.pack.file],{cwd:prefix,env:ctx.env(join(ctx.root,'cache-local')),encoding:'utf8',timeout:540000,maxBuffer:2**26});
+ assert.equal(npm.status,0,npm.stderr||npm.stdout);ctx.localOutput=npm.stdout+npm.stderr;ctx.localPrefix=prefix;
+ const expected=shrinkMap(join(ctx.root,'stage'),'node_modules/bowerloom/');
+ const hidden=JSON.parse(readFileSync(join(prefix,'node_modules/.package-lock.json'),'utf8')).packages,fromLock={};
+ for(const [k,v] of Object.entries(hidden))if(k.startsWith('node_modules/bowerloom/'))fromLock[k]=v.version;
+ const walked=walkInstalled(join(prefix,'node_modules/bowerloom/node_modules'),'node_modules/bowerloom/node_modules');
+ const walkDiff=differences(walked,expected);assert.deepEqual(walkDiff,[],'Installed packages differ from the shrinkwrap: '+walkDiff.join(', '));
+ if(Object.keys(fromLock).length){const lockDiff=differences(fromLock,expected);assert.deepEqual(lockDiff,[],'Installed packages differ from the shrinkwrap: '+lockDiff.join(', '));}
+});
+test('online 2: a global tarball install gets exactly the packed shrinkwrap versions and starts',onlineOptions,t=>{
+ const ctx=onlineContext(t);if(!ctx)return;
+ const prefix=join(ctx.root,'global');mkdirSync(prefix);
+ const npm=spawnSync('npm',['install','--global','--prefix',prefix,'--ignore-scripts','--no-audit','--no-fund','--loglevel=http',ctx.pack.file],{cwd:prefix,env:ctx.env(join(ctx.root,'cache-global')),encoding:'utf8',timeout:540000,maxBuffer:2**26});
+ assert.equal(npm.status,0,npm.stderr||npm.stdout);
+ const walked=walkInstalled(join(prefix,'lib/node_modules/bowerloom/node_modules'),'node_modules/bowerloom/node_modules'),diff=differences(walked,shrinkMap(join(ctx.root,'stage'),'node_modules/bowerloom/'));
+ assert.deepEqual(diff,[],'Installed packages differ from the shrinkwrap: '+diff.join(', '));
+ const version=spawnSync(join(prefix,'bin/bowerloom'),['--version'],{env:ctx.env(join(ctx.root,'cache-global')),encoding:'utf8',timeout:30000});assert.equal(version.status,0,version.stderr);
+});
+test('online 3: the four reported packages are at the packed versions',onlineOptions,t=>{
+ const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return t.skip('online 1 did not run');
+ const expected=shrinkMap(join(ctx.root,'stage'),'');
+ for(const name of ['express','@langchain/core','@langchain/langgraph-checkpoint','@langchain/langgraph-sdk'])
+  assert.equal(JSON.parse(readFileSync(join(ctx.localPrefix,'node_modules/bowerloom/node_modules',name,'package.json'),'utf8')).version,expected['node_modules/'+name],name);
+});
+test('online 4: the local install names no registry fetch',onlineOptions,t=>{
+ const ctx=onlineContext(t);if(!ctx)return;if(ctx.localOutput===undefined)return t.skip('online 1 did not run');
+ assert.deepEqual(ctx.localOutput.split('\n').filter(line=>line.includes('registry.npmjs.org')),[]);
+});
+test('online 5: the installed CLI starts',onlineOptions,t=>{
+ const ctx=onlineContext(t);if(!ctx)return;if(!ctx.localPrefix)return t.skip('online 1 did not run');
+ const version=spawnSync(join(ctx.localPrefix,'node_modules/.bin/bowerloom'),['--version'],{env:ctx.env(join(ctx.root,'cache-local')),encoding:'utf8',timeout:30000});assert.equal(version.status,0,version.stderr);
 });

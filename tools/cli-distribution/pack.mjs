@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync, statfsSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, statfsSync, statSync, chmodSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
+import { UnpackSync } from 'tar';
 export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-authoring','skill-manifest','project-sync','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 export const CANONICAL_URLS = Object.freeze({site:'https://bowerloom.ai',docs:'https://bowerloom.ai/docs/',repository:'https://github.com/sageadvicellc/bowerloom'});
@@ -13,6 +15,7 @@ const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const fail = message => { throw new Error(message); };
+const byName = (a,b) => a.localeCompare(b);
 function regular(root, path) {
   const full = join(root,path);
   if (!isAbsolute(root) || resolve(full) !== full || relative(root,full).startsWith('..')) fail('Unsafe source path');
@@ -38,6 +41,8 @@ export function imports(text, path) {
   }
   visit(ast); return result;
 }
+// The root entry of a shrinkwrap, built from a manifest. optionalDependencies appears only when it holds a pin.
+const rootEntry = manifest => ({name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,...(manifest.optionalDependencies && Object.keys(manifest.optionalDependencies).length ? {optionalDependencies:manifest.optionalDependencies} : {}),bin:manifest.bin,engines:manifest.engines});
 export function lockedDependencies(lock, dependencies, manifest) {
   if(lock.lockfileVersion !== 3 || !lock.packages) fail('Expected npm lockfile v3');
   const chosen = {}, queue = [];
@@ -67,7 +72,51 @@ export function lockedDependencies(lock, dependencies, manifest) {
       const found=locate(path,name,optional); if(found) queue.push(found);
     }
   }
-  return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':{name:manifest.name,version:manifest.version,license:manifest.license,dependencies:manifest.dependencies,bin:manifest.bin,engines:manifest.engines},...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
+  return {name:manifest.name,version:manifest.version,lockfileVersion:3,requires:true,packages:{'':rootEntry(manifest),...Object.fromEntries(Object.entries(chosen).sort(([a],[b])=>a.localeCompare(b)))}};
+}
+// Every top-level lock entry becomes an exact pin, because npm ignores a packed shrinkwrap when it installs a tarball.
+const EXACT = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
+export function flatDependencies(packages, direct) {
+  for (const [name,version] of Object.entries(direct)) {
+    const entry = packages['node_modules/'+name];
+    if (!entry || entry.version !== version) fail('Pinned dependency differs from the lock: '+name);
+  }
+  const dependencies = {}, optionalDependencies = {};
+  for (const path of Object.keys(packages).sort(byName)) {
+    if (path === '' || path.split('node_modules/').length > 2) continue;
+    const entry = packages[path];
+    if (!path.startsWith('node_modules/')) fail('Unpinnable dependency: '+path);
+    const name = path.slice('node_modules/'.length);
+    if ((entry.name !== undefined && entry.name !== name) || entry.link || typeof entry.version !== 'string' || !EXACT.test(entry.version)) fail('Unpinnable dependency: '+path);
+    (entry.optional === true ? optionalDependencies : dependencies)[name] = entry.version;
+  }
+  return { dependencies, optionalDependencies };
+}
+// The license gate. Seven ids pass; an SPDX expression of ids joined by OR and AND passes by its structure.
+const LICENSES = Object.freeze(['MIT','ISC','Apache-2.0','BSD-2-Clause','BSD-3-Clause','0BSD','BlueOak-1.0.0']);
+export function licenseAllowed(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 200) return false;
+  const tokens = value.match(/\(|\)|[^\s()]+/g) ?? [];
+  let at = 0;
+  const peek = () => tokens[at];
+  const isId = token => token !== undefined && !['(',')','OR','AND'].includes(token);
+  function atom() {
+    const token = tokens[at++];
+    if (token === '(') { const inner = expression(); if (inner === null || tokens[at++] !== ')') return null; return inner; }
+    return isId(token) ? LICENSES.includes(token) : null;
+  }
+  function term() {
+    let result = atom(); if (result === null) return null;
+    while (peek() === 'AND') { at++; const next = atom(); if (next === null) return null; result = result && next; }
+    return result;
+  }
+  function expression() {
+    let result = term(); if (result === null) return null;
+    while (peek() === 'OR') { at++; const next = term(); if (next === null) return null; result = result || next; }
+    return result;
+  }
+  const result = expression();
+  return result === true && at === tokens.length;
 }
 // A public beta stream installs from npm under its dist-tag, named alike by the distribution and the npm block and
 // never latest. A private archive (a colleague beta) installs the packed file and is never published; otherwise npm.
@@ -90,8 +139,9 @@ export function installHeading(release) {
   if (release.distribution?.kind === 'npm-beta-stream') return 'Install it:';
   return 'Install it from the folder that holds the archive:';
 }
-export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
+export function collect({repoDir, name='bowerloom', releaseCandidate=false, bundle=false}) {
   if(typeof releaseCandidate !== 'boolean') fail('releaseCandidate must be boolean');
+  if(typeof bundle !== 'boolean') fail('bundle must be boolean');
   if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name) || name.length > 214) fail('Invalid npm package identity');
   const repo = realpathSync(repoDir), rootPackage = JSON.parse(regular(repo,'package.json'));
   const release = JSON.parse(regular(repo,'release/beta.json'));
@@ -146,51 +196,123 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false}) {
   }
   for (const path of [...ASSETS,'LICENSE','docs/beta/license-boundary.md']) files.set(path,regular(repo,path));
   const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{repository:{type:'git',url:'git+'+release.urls.repository+'.git'},homepage:release.urls.site,bugs:{url:release.urls.repository+'/issues'},publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
+  // One walk of the lock gives the shrinkwrap. Its top-level entries then become exact pins, and the root entry follows the final manifest.
+  const direct=manifest.dependencies, shrink=lockedDependencies(JSON.parse(regular(repo,'package-lock.json')),direct,manifest), flat=flatDependencies(shrink.packages,direct);
+  if(bundle) for(const path of Object.keys(shrink.packages).filter(Boolean).sort(byName)) {
+    const license=shrink.packages[path].license;
+    if(!licenseAllowed(license)) fail('Bundled license not allowed: '+path.slice('node_modules/'.length)+' '+(typeof license==='string'?license:'(none)'));
+  }
+  manifest.dependencies=flat.dependencies;
+  if(Object.keys(flat.optionalDependencies).length) manifest.optionalDependencies=flat.optionalDependencies;
+  if(bundle) manifest.bundleDependencies=[...Object.keys(flat.dependencies),...Object.keys(flat.optionalDependencies)].sort(byName);
+  shrink.packages['']=rootEntry(manifest);
   files.set('package.json',Buffer.from(json(manifest)));
-  files.set('npm-shrinkwrap.json',Buffer.from(json(lockedDependencies(JSON.parse(regular(repo,'package-lock.json')),manifest.dependencies,manifest))));
-  files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Private packaging proof\n\nThe current monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for historical source excluded from that grant. This artifact is private; publication remains separately authorized.\n\nPlaywright-derived seccomp policy notice: packages/linux-browser/PLAYWRIGHT-LICENSE.txt. Supabase upstream notice: packages/local-backend/THIRD_PARTY_NOTICES.md. External npm dependencies are installed separately under their own package licenses. No prior module repository source or its history is imported by this staging tool.\n'));
-  files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; external pinned npm dependencies must be available from cache or a separately authorized registry connection. No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
+  files.set('npm-shrinkwrap.json',Buffer.from(json(shrink)));
+  files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Private packaging proof\n\nThe current monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for historical source excluded from that grant. This artifact is private; publication remains separately authorized.\n\nPlaywright-derived seccomp policy notice: packages/linux-browser/PLAYWRIGHT-LICENSE.txt. Supabase upstream notice: packages/local-backend/THIRD_PARTY_NOTICES.md. '+(bundle?'The runtime npm dependencies ship inside this package under node_modules, each with its own license file.':'External npm dependencies are installed separately under their own package licenses.')+' No prior module repository source or its history is imported by this staging tool.\n'));
+  files.set('README.md',Buffer.from('# Bowerloom CLI packaging proof\n\nRequires Node '+rootPackage.engines.node+'. Private, unpublished artifact. Install the supplied tarball with npm; '+(bundle?'The runtime dependencies ship inside the tarball.':'external pinned npm dependencies must be available from cache or a separately authorized registry connection.')+' No lifecycle scripts are supplied. No source checkout is needed at installation.\n\n`bowerloom --help`\n\n`bowerloom init plan --mode new --target /absolute/new-project --name "My project" --goal "Review a project setup" --profile engineer --json`\n\nReview the plan. Apply the identical arguments with `init apply --approve EXACT_REVISION`; use `init status --target /absolute/new-project` afterward. Setup writes a review-required portable profile and team. It does not run a team, import settings, start Docker, provision a backend, or authorize actions. The `bowerloom-mcp` bin requires a separately approved installation; it is not a hosted service.\n\nHelp, isolated startup, exact setup revision, optional demo planning, and approved synthetic harness projection/removal are distribution acceptance targets in this proof. Other runtime commands, MCP sessions, Docker, database-backed recipes, browser executors, global installation, and other platforms remain unverified as packaged operations.\n'));
   if(releaseCandidate) {
-    files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom notices\n\nThe monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. External dependencies retain their own licenses.\n'));
+    files.set('DISTRIBUTION-NOTICE.md',Buffer.from('# Bowerloom notices\n\nThe monorepo code is MIT licensed under LICENSE. See docs/beta/license-boundary.md for excluded historical source.\n\nUpstream notices: packages/linux-browser/PLAYWRIGHT-LICENSE.txt and packages/local-backend/THIRD_PARTY_NOTICES.md. '+(bundle?'The bundled runtime npm dependencies retain their own licenses and ship with their own license files.':'External dependencies retain their own licenses.')+'\n'));
     files.set('README.md',Buffer.from(`# Bowerloom ${release.release}\n\nOpen beta. Requires Node ${release.requirements.node}.\n\n${release.npm.availabilityNote}\n\n${installHeading(release)}\n\n\`\`\`sh\n${release.npm.installCommand}\nbowerloom --version\nbowerloom --help\n\`\`\`\n\n${release.capabilities.setup}\n\n${release.capabilities.execution}\n\n${release.systems.note} Full runtime acceptance remains incomplete.\n\nDocumentation: ${release.urls.docs}\n`));
   }
   const inventory=[...files].sort(([a],[b])=>a.localeCompare(b)).map(([path,bytes])=>({path,bytes:bytes.length,sha256:sha256(bytes),executable:ENTRY.includes(path)}));
-  const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:manifest.private,releaseRecordSha256:sha256(regular(repo,'release/beta.json')),publicationState:release.state,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};
+  const record={schema:'bowerloom/cli-distribution/v0.1',name,version:manifest.version,private:manifest.private,releaseRecordSha256:sha256(regular(repo,'release/beta.json')),publicationState:release.state,buildRequirement:'Root TypeScript build completed before packaging; compiled bytes are pinned below.',sourceManifests:manifests,sourceFiles:sourceFiles.sort((a,b)=>a.path.localeCompare(b.path)),sourceLockSha256:sha256(regular(repo,'package-lock.json')),files:inventory,dependencies:manifest.dependencies,...(bundle?{bundle:{packageCount:Object.keys(shrink.packages).length-1,entries:Object.keys(shrink.packages).filter(Boolean).sort(byName).map(path=>({path,version:shrink.packages[path].version,integrity:shrink.packages[path].integrity,license:shrink.packages[path].license})),extractedFiles:0,extractedBytes:0}}:{}),acceptanceScope:['help','isolated startup plan/apply/status'],unverified:['other packaged runtime operations','MCP session','global installation','cross-platform installation'],licenseStatus:'MIT; see LICENSE and docs/beta/license-boundary.md'};
   files.set('DISTRIBUTION.json',Buffer.from(json(record)));
   return {files,record,manifest};
 }
-function newDestination(destination) {
+const GIB = 2 ** 30, STAGING_BOUND = 0.05 * GIB;
+export function requireFreeSpace(parent, boundBytes) {
+  const s=statfsSync(parent); if(s.bavail*s.bsize < 12*GIB+boundBytes) fail(`12 GiB reserve plus ${boundBytes/GIB} GiB bound required`);
+}
+function newDestination(destination, boundBytes=STAGING_BOUND) {
   if (!isAbsolute(destination) || resolve(destination)!==destination || existsSync(destination)) fail('Destination must be a new absolute path');
   const parent=dirname(destination); if(realpathSync(parent)!==parent || !lstatSync(parent).isDirectory()) fail('Destination parent must be real directory');
   let current=parent; while(current!==dirname(current)) { if(lstatSync(current).isSymbolicLink()) fail('Destination symlink ancestor'); current=dirname(current); }
-  const s=statfsSync(parent); if(s.bavail*s.bsize < 12.05*2**30) fail('12 GiB reserve plus 0.05 GiB staging bound required');
+  requireFreeSpace(parent, boundBytes);
 }
-export function stage(options) {
-  const prepared=collect(options); newDestination(options.stageDir);
+export const defaultNpmCache = () => join(process.env.npm_config_cache ?? join(homedir(),'.npm'),'_cacache');
+const ALLOWED_TYPES = new Set(['File','OldFile','ContiguousFile','Directory']);
+function modeWalk(directory, stageDir, found) {
+  for(const name of readdirSync(directory).sort()) {
+    const full=join(directory,name), info=lstatSync(full);
+    if(info.isDirectory()) { chmodSync(full,0o755); modeWalk(full,stageDir,found); }
+    else if(info.isFile()) { chmodSync(full,info.mode & 0o111 ? 0o755 : 0o644); found.files.push(relative(stageDir,full).split(sep).join('/')); found.bytes+=info.size; }
+    else fail('Bundle tarball unsafe: '+relative(stageDir,full));
+  }
+}
+// Extract each locked package from the npm cache into <stage>/<lock path>. The cache file is named by the lock integrity value.
+export function extractBundle({stageDir, packages, npmCache, maxBundleBytes=GIB}) {
+  if(typeof npmCache !== 'string' || !isAbsolute(npmCache)) fail('npmCache must be an absolute path');
+  const found={files:[],bytes:0};
+  let total=0;
+  for(const path of Object.keys(packages).filter(Boolean).sort(byName)) {
+    const integrity=packages[path].integrity;
+    if(typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) fail('Bundle integrity mismatch: '+path);
+    const hex=Buffer.from(integrity.slice(7),'base64').toString('hex'), file=join(npmCache,'content-v2','sha512',hex.slice(0,2),hex.slice(2,4),hex.slice(4));
+    let data; try { data=readFileSync(file); } catch(error) { if(error?.code==='ENOENT') fail('Bundle cache entry missing: '+path); throw error; }
+    if('sha512-'+createHash('sha512').update(data).digest('base64') !== integrity) fail('Bundle integrity mismatch: '+path);
+    const target=join(stageDir,path); mkdirSync(target,{recursive:true});
+    let entries=0, unsafe=null, oversize=false;
+    const refuse=raw => { unsafe ??= 'Bundle tarball unsafe: '+path+'/'+raw; };
+    const filter=(raw,entry) => {
+      const segments=String(raw).split('/');
+      if(!ALLOWED_TYPES.has(entry.type) || String(raw).startsWith('/') || /^[A-Za-z]:/.test(String(raw)) || segments.includes('..')) { refuse(raw); return false; }
+      if(++entries > 8192) { refuse(raw); return false; }
+      total+=entry.size ?? 0; if(total > maxBundleBytes) { oversize=true; return false; }
+      return true;
+    };
+    const unpack=new UnpackSync({cwd:target,strip:1,strict:true,preserveOwner:false,noMtime:true,filter,onwarn:(code,message)=>refuse(message ?? code)});
+    let thrown=null; try { unpack.end(data); } catch(error) { thrown=error; }
+    if(unsafe) fail(unsafe);
+    if(oversize) fail('Bundle exceeds 1 GiB');
+    if(thrown) fail('Bundle tarball unsafe: '+path+'/'+(thrown.message ?? thrown));
+    modeWalk(target,stageDir,found);
+  }
+  return {files:found.files.length,bytes:found.bytes,bundleFiles:new Set(found.files)};
+}
+function stageBundle(options) {
+  const bundle=options.bundle===true, max=options.maxBundleBytes ?? GIB;
+  const npmCache=bundle ? (options.npmCache ?? defaultNpmCache()) : undefined;
+  if(bundle && !isAbsolute(npmCache)) fail('npmCache must be an absolute path');
+  const prepared=collect(options); newDestination(options.stageDir, bundle ? 2*(max+STAGING_BOUND) : STAGING_BOUND);
   mkdirSync(options.stageDir,{mode:0o700});
-  try { for(const [path,bytes] of [...prepared.files].sort(([a],[b])=>a.localeCompare(b))) { const target=join(options.stageDir,path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,bytes,{flag:'wx',mode:prepared.manifest.bin.bowerloom===path||prepared.manifest.bin['bowerloom-mcp']===path?0o755:0o644}); } }
+  let bundleFiles;
+  try {
+    for(const [path,bytes] of [...prepared.files].sort(([a],[b])=>a.localeCompare(b))) { const target=join(options.stageDir,path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,bytes,{flag:'wx',mode:prepared.manifest.bin.bowerloom===path||prepared.manifest.bin['bowerloom-mcp']===path?0o755:0o644}); }
+    if(bundle) {
+      const extracted=extractBundle({stageDir:options.stageDir,packages:JSON.parse(prepared.files.get('npm-shrinkwrap.json')).packages,npmCache,maxBundleBytes:max});
+      prepared.record.bundle.extractedFiles=extracted.files; prepared.record.bundle.extractedBytes=extracted.bytes; bundleFiles=extracted.bundleFiles;
+      writeFileSync(join(options.stageDir,'DISTRIBUTION.json'),json(prepared.record));
+    }
+  }
   catch(e) { rmSync(options.stageDir,{recursive:true,force:true}); throw e; }
-  return prepared.record;
+  return {record:prepared.record,manifest:prepared.manifest,bundleFiles};
 }
+export function stage(options) { return stageBundle(options).record; }
 export function pack(options) {
-  const output=options.outputDir; newDestination(output);
+  const bundle=options.bundle===true, max=options.maxBundleBytes ?? GIB, output=options.outputDir; newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND);
   if(output===options.stageDir || output.startsWith(options.stageDir+sep) || options.stageDir.startsWith(output+sep)) fail('Stage and output must be distinct siblings or separate trees');
-  const record=stage(options);
-  newDestination(output); mkdirSync(output,{mode:0o700});
+  const {record,manifest,bundleFiles}=stageBundle(options);
+  newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND); mkdirSync(output,{mode:0o700});
   writeFileSync(join(output,'.empty-npmrc'),'',{flag:'wx',mode:0o600});
-  const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',output],{cwd:options.stageDir,encoding:'utf8',timeout:120000,maxBuffer:2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true'}});
+  const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',output],{cwd:options.stageDir,encoding:'utf8',timeout:600000,maxBuffer:64*2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true'}});
+  if(result.error?.code==='ENOBUFS') fail('npm pack output exceeds 64 MiB');
   if(result.status!==0) fail('npm pack failed: '+(result.stderr||result.error?.message));
   const info=JSON.parse(result.stdout)[0];
-  const actual=info.files.map(f=>f.path).sort(),expected=[...record.files.map(f=>f.path),'DISTRIBUTION.json'].sort();
-  if(JSON.stringify(actual)!==JSON.stringify(expected)) fail('npm tarball contents differ from explicit inventory');
-  return {file:join(output,info.filename),sha256:sha256(readFileSync(join(output,info.filename))),bytes:info.size,unpackedBytes:info.unpackedSize,files:actual.length,record};
+  const all=info.files.map(f=>f.path), own=all.filter(p=>!p.startsWith('node_modules/')).sort(), bundled=info.files.filter(f=>f.path.startsWith('node_modules/')),expected=[...record.files.map(f=>f.path),'DISTRIBUTION.json'].sort();
+  if(JSON.stringify(own)!==JSON.stringify(expected)) fail('npm tarball contents differ from explicit inventory');
+  if(bundle) {
+    const listed=new Set(all), lockPaths=record.bundle.entries.map(e=>e.path);
+    if(bundled.some(f=>!bundleFiles.has(f.path)) || lockPaths.some(p=>!listed.has(p+'/package.json'))
+      || JSON.stringify([...(info.bundled??[])].sort(byName))!==JSON.stringify([...manifest.bundleDependencies].sort(byName))) fail('Bundle packed files differ from the staged bundle');
+  }
+  return {file:join(output,info.filename),sha256:sha256(readFileSync(join(output,info.filename))),bytes:info.size,unpackedBytes:info.unpackedSize,files:own.length,...(bundle?{bundle:{packages:(info.bundled??[]).length,files:bundled.length,bytes:bundled.reduce((sum,f)=>sum+f.size,0)}}:{}),record};
 }
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const raw=process.argv.slice(2), releaseCandidate=raw.includes('--release-candidate');
   if(raw.filter(x=>x==='--release-candidate').length>1) fail('Duplicate release candidate flag');
   const args=raw.filter(x=>x!=='--release-candidate'), values={};
-  for(let i=0;i<args.length;i+=2) { if(!['--repo','--stage','--output','--name'].includes(args[i])||!args[i+1]||values[args[i]]) fail('Use --repo ABS --stage NEW_ABS --output NEW_ABS [--name IDENTITY]'); values[args[i]]=args[i+1]; }
+  for(let i=0;i<args.length;i+=2) { if(!['--repo','--stage','--output','--name','--npm-cache'].includes(args[i])||!args[i+1]||values[args[i]]) fail('Use --repo ABS --stage NEW_ABS --output NEW_ABS [--name IDENTITY] [--npm-cache ABS]'); values[args[i]]=args[i+1]; }
   if(!values['--repo']||!values['--stage']||!values['--output']) fail('Missing required paths');
-  const result=pack({repoDir:values['--repo'],stageDir:values['--stage'],outputDir:values['--output'],releaseCandidate,...(values['--name']?{name:values['--name']}:{})});
+  const result=pack({repoDir:values['--repo'],stageDir:values['--stage'],outputDir:values['--output'],releaseCandidate,bundle:true,...(values['--npm-cache']?{npmCache:values['--npm-cache']}:{}),...(values['--name']?{name:values['--name']}:{})});
   console.log(json({...result,record:undefined}));
 }
