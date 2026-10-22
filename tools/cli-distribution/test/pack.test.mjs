@@ -211,9 +211,9 @@ test('internal routine and skills manifests are exact exceptions and present man
  }finally{Object.assign(fs,original);syncBuiltinESMExports();}
 });
 
-// Beta 0.7.0 Day 0: the four project-layer packages are runtime modules with optional internal manifests.
+// Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
- const added=['project-context','project-authoring','skill-manifest','project-sync'];
+ const added=['project-context','project-config','project-authoring','skill-manifest','project-sync'];
  for(const name of added)assert.ok(MODULES.includes(name),name);
  assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
  const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};
