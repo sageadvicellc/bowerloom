@@ -69,8 +69,6 @@ export interface ApplyInput {
   team?: string | null;
   /** `<role>:<64 hex>` allowances from `--allow-agent`. An agent that sets bypassPermissions, hooks or mcpServers installs only with its own. */
   allow?: readonly string[];
-  /** True when the command runs in a terminal and may take an allowance. Only then does a hold print the flag. */
-  terminal?: boolean;
   /** Plan the agents alone, for `status`: no skills, no prompts, and none of the write-side checks. */
   agentsOnly?: boolean;
 }
@@ -164,7 +162,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     if (claude) {
       const planned = scan.entries.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
-      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow, input.terminal === true)));
+      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
         if (ref.kind === 'agent' && !scan.entries.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
@@ -195,7 +193,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     };
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
     // sync in another project that fills the machine cache, or creates a shared folder, does not stale this plan.
-    const binding = { ...body, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState) };
+    const binding = { ...body, agentsOnly, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState) };
     return { plan: freezeSkillData({ ...body, revision: revisionOf(binding) }) as ApplyPlan, entries };
   } catch (e) { throw outward(e); }
 }
@@ -215,6 +213,7 @@ const NO_FETCH: Acquirer = Object.freeze({
  */
 export async function applyProjectApply(input: ApplyInput, revision: string, signal: AbortSignal, deps: { managed?: ManagedPort } = {}): Promise<ApplyResult> {
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw stale();
+  if (input?.agentsOnly === true) throw usage();
   if (!(signal instanceof AbortSignal)) throw new TypeError('applyProjectApply needs a signal.');
   const managed = deps.managed ?? managedPort, lock = new AbortController();
   try {

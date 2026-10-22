@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { denyNetwork } from './sync-fixture.mjs';
+import { planManagedItem } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyProjectApply } from '../../../dist/packages/project-sync/src/index.js';
 import { sourceHash } from '../../../dist/packages/project-sync/src/agents.js';
 import { agentProject, createPrompt, agentText, agentSource, claudeAgent, target, plan, applied, review, byId, read, exists, code, signal } from './agents-fixture.mjs';
@@ -84,16 +85,15 @@ test('S2: bypassPermissions, hooks and mcpServers hold the agent until --allow-a
   const f = await agentProject(t), specs = { bypass: 'permissionMode: bypassPermissions\ntools: Read', hooked: 'hooks:\n  PreToolUse:\n    - matcher: Bash\ntools: Read', served: 'mcpServers:\n  docs:\n    command: docs\ntools: Read', calm: 'permissionMode: dontAsk\ntools: Read' };
   for (const [role, extra] of Object.entries(specs)) agentSource(f, 'first-team', role + '.md', agentText(role, extra));
   const text = role => agentText(role, specs[role]);
-  const p = await plan(f, ['claude'], { terminal: true }), agents = byId(p.agents);
+  const p = await plan(f, ['claude']), agents = byId(p.agents);
   for (const role of ['bypass', 'hooked', 'served']) {
     assert.deepEqual([agents[role].state, agents[role].action, agents[role].hold.code], ['held', 'hold', 'AGENT_GRANT_REVIEW_REQUIRED'], role);
     assert.match(allowFor(role, text(role)), /^[a-z]+:[a-f0-9]{64}$/);
-    assert.equal(agents[role].hold.next, `Read .bowerloom/teams/first-team/agents/${role}.md, then run bowerloom apply --allow-agent ${allowFor(role, text(role))}.`);
+    // The plan is the same everywhere: the hold is neutral, and the item carries the hash for the CLI to print at a terminal.
+    assert.equal(agents[role].hold.next, 'Review the agent file, then allow it from a terminal.'); assert.equal(agents[role].sourceSha256, sourceHash(text(role)));
   }
   assert.equal(agents.calm.action, 'install');
-  assert.match(review(p), /^ {2} +Next: Read \.bowerloom\/teams\/first-team\/agents\/bypass\.md, then run bowerloom apply --allow-agent bypass:[a-f0-9]{64}\.$/m);
-  // Without a terminal the hold names no flag.
-  const quiet = byId((await plan(f, ['claude'])).agents).bypass.hold; assert.equal(quiet.next, 'Run bowerloom apply in a terminal to review and allow it.'); assert.doesNotMatch(JSON.stringify(await plan(f, ['claude'])), /--allow-agent/);
+  assert.match(review(p), /^ {2} +Next: Review the agent file, then allow it from a terminal\.$/m); assert.doesNotMatch(JSON.stringify(p), /--allow-agent/);
   // The right allowance installs that agent only, and it is part of the revision.
   const allow = [allowFor('hooked', text('hooked'))], withAllow = await plan(f, ['claude'], { allow });
   assert.equal(byId(withAllow.agents).hooked.action, 'install'); assert.equal(byId(withAllow.agents).bypass.action, 'hold'); assert.notEqual(withAllow.revision, p.revision); assert.deepEqual(withAllow.allow, allow);
@@ -155,9 +155,9 @@ test('R4: an orphan or a held agent with an installed copy reports the notices o
   await applied(f, ['claude'], { allow: [allowFor('scribe', text)] });
   // A held update whose old copy has hooks.
   agentSource(f, 'first-team', 'scribe.md', agentText('scribe', 'hooks:\n  a: 1\ntools: Read', 'Changed.\n'));
-  let a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.action, a.hold.code, a.installed], ['hold', 'AGENT_GRANT_REVIEW_REQUIRED', ['hooks']]);
+  let a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.action, a.hold.code, a.installed.copy, a.installed.notices], ['hold', 'AGENT_GRANT_REVIEW_REQUIRED', 'ok', ['hooks']]);
   // An orphan whose copy has hooks.
-  fs.rmSync(file); a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.state, a.installed], ['orphaned', ['hooks']]);
+  fs.rmSync(file); a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.state, a.installed.copy, a.installed.notices], ['orphaned', 'ok', ['hooks']]);
   // An agent with no installed copy has nothing to report.
   const g = await agentProject(t); agentSource(g, 'first-team', 'plain.md', agentText('plain', 'tools: Read'));
   assert.equal((await plan(g, ['claude'])).agents[0].installed, null);
@@ -168,4 +168,40 @@ test('R5: agentsOnly plans the agents when the rest of the plan is refused', asy
   fs.appendFileSync(target(f, 'scribe'), 'My edit.\n'); fs.mkdirSync(path.join(f.projectDir, '.bowerloom-skills'));
   await assert.rejects(plan(f, ['claude']), code('MANAGED_SKILL_LEGACY_PRESENT'));
   const p = await plan(f, ['claude'], { agentsOnly: true }); assert.deepEqual(p.agents.map(a => [a.id, a.hold?.code]), [['scribe', 'MANAGED_SKILL_LOCAL_DRIFT']]); assert.equal(p.skills, null); assert.deepEqual(p.prompts, []);
+});
+
+test('item 3: an unparseable, a missing and a linked installed copy are reported as what they are', async t => {
+  const text = agentText('scribe', 'hooks:\n  a: 1\ntools: Read'), allow = [allowFor('scribe', text)];
+  const make = async () => { const f = await agentProject(t); const file = agentSource(f, 'first-team', 'scribe.md', text); await applied(f, ['claude'], { allow }); fs.rmSync(file); return f; };
+  // An unparseable copy that still names the grant keys.
+  let f = await make(); fs.writeFileSync(target(f, 'scribe'), 'no frontmatter\nhooks:\n  x: 1\nmcpServers: {a: 1}\npermissionMode: bypassPermissions\n');
+  let a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.installed.copy, a.installed.notices, a.installed.loose], ['unparsed', [], ['hooks', 'mcpServers', 'permissionMode bypassPermissions']]);
+  // A copy that is gone.
+  f = await make(); fs.rmSync(target(f, 'scribe')); a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.installed.copy, a.installed.loose], ['missing', []]);
+  // A link to a device that never ends is not read.
+  f = await make(); fs.rmSync(target(f, 'scribe')); fs.symlinkSync('/dev/zero', target(f, 'scribe'));
+  a = (await plan(f, ['claude'])).agents[0]; assert.deepEqual([a.installed.copy, a.installed.loose], ['unparsed', []]);
+});
+
+test('item 5: apply refuses an agentsOnly input, and the plan binds the flag', async t => {
+  const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', agentText('scribe', 'tools: Read'));
+  const p = await plan(f, ['claude']);
+  await assert.rejects(applyProjectApply(f.input(['claude'], { agentsOnly: true }), p.revision, signal()), code('USAGE'));
+  assert.equal(exists(f, '.claude/agents/scribe.md'), false);
+  assert.notEqual((await plan(f, ['claude'], { agentsOnly: true })).revision, p.revision);
+});
+
+test('item 6 and R7: a source that stops parsing at write time refuses AGENT_INVALID, and the allowance is checked against the planned hash', async t => {
+  const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', agentText('scribe', 'tools: Read'));
+  const p = await plan(f, ['claude']);
+  const managed = {
+    async plan(req, options) { agentSource(f, 'first-team', 'scribe.md', 'not an agent file any more'); return planManagedItem(req, options); },
+    apply: async () => { throw new Error('no child applies'); },
+  };
+  await assert.rejects(applyProjectApply(f.input(['claude']), p.revision, signal(), { managed }), code('AGENT_INVALID'));
+  assert.equal(exists(f, '.claude/agents/scribe.md'), false);
+  // A source that still parses but changed is a stale approval.
+  const g = await agentProject(t); agentSource(g, 'first-team', 'scribe.md', agentText('scribe', 'tools: Read')); const q = await plan(g, ['claude']);
+  const swap = { async plan(req, options) { agentSource(g, 'first-team', 'scribe.md', agentText('scribe', 'tools: Read, Grep')); return planManagedItem(req, options); }, apply: async () => { throw new Error('no child applies'); } };
+  await assert.rejects(applyProjectApply(g.input(['claude']), q.revision, signal(), { managed: swap }), code('STALE_APPROVAL'));
 });

@@ -37,6 +37,8 @@ export interface LocalClosure {
 export interface ItemClosure {
   format: 'bowerloom/managed-item-closure/v1beta2'; source: unknown; skill: { id: string; name: string; sourceRoot: string } | null;
   license: unknown; references: unknown[]; inventory: InventoryRow[]; files: ItemFile[]; name: string;
+  /** For an agent: the sha256 of the raw source bytes. The one file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The bound v1beta1 install of a migrate operation. The v1 state folder is read, never written. */
 export interface LegacyCore { stateDir: string; operationKey: string; receiptRevision: string; receiptPin: FilePin; harness: Harness }

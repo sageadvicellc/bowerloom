@@ -153,7 +153,7 @@ The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store
 | `AGENT_LIMIT` | This beta applies at most 128 agents. Nothing was changed. | Remove agent files until 128 or fewer remain, then run `bowerloom apply`. |
 | `APPLY_AGENT_DUPLICATE` | Each agent name goes to one file in `.claude/agents`. Both agents are held back. | Rename or remove one of the two files the `Next:` line names, then run `bowerloom apply`. |
 | `APPLY_AGENTS_FOLDER_UNSAFE` | Bowerloom writes agents only into a real folder that only you can change. Nothing was changed. | Run `ls -ld .claude .claude/agents`. Replace a link with a folder, and remove group and world write access. |
-| `AGENT_GRANT_REVIEW_REQUIRED` | Bypass permissions, hooks, and MCP servers change what Claude Code lets the agent do. The agent is held back until you allow it. | Read the agent file, then run `bowerloom apply --allow-agent <role>:<hash>`. The `Next:` line has the exact flag. |
+| `AGENT_GRANT_REVIEW_REQUIRED` | Bypass permissions, hooks, and MCP servers change what Claude Code lets the agent do. The agent is held back until you allow it. | Read the agent file, then run `bowerloom apply --allow-agent <role>:<hash>` in a terminal. The plan's `Next:` line says to allow it from a terminal. At a terminal, the shown text carries the exact flag. |
 | `AGENT_TEAM_UNREGISTERED` | Bowerloom applies agents only from teams it created or adopted. The agent is held back. | Run `bowerloom team create`, or move the agent into a registered team. |
 | `AGENT_TARGET_OCCUPIED` | Bowerloom never overwrites what it did not install. The agent is held back. | Move the file the `Next:` line names aside, then run `bowerloom apply`. |
 

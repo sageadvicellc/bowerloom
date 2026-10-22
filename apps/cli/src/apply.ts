@@ -73,9 +73,14 @@ function agentNoticeLine(item: AgentItem): string[] {
     .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
   return [`  Note: agent ${item.id} ${what}. Claude Code applies them when the agent runs. Review .bowerloom/teams/${item.team}/agents/${item.id}.md.`];
 }
-function agentLine(item: AgentItem, width: number): string[] {
+function agentLine(item: AgentItem, width: number, terminal: boolean): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = item.expected.surfaces.filter(s => s.id === 'agent-claude').map(s => s.path).join(' and ');
-  if (item.action === 'hold') return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') {
+    // The plan holds no flag text, so a terminal and a pipe see one revision. At a terminal the text names the exact flag.
+    const next = terminal && item.hold!.code === 'AGENT_GRANT_REVIEW_REQUIRED' && item.sourceSha256 !== null && item.expected.source !== null
+      ? `Read .bowerloom/${item.expected.source.path}, then run bowerloom apply --allow-agent ${item.id}:${item.sourceSha256}.` : item.hold!.next;
+    return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${next}`];
+  }
   const copies = item.action !== 'none', warning = [
     ...(item.builtin && copies ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : []),
     ...(item.userCopy && copies ? [`  ${pad} Warning: ${item.id} also exists in ~/.claude/agents. This project's agent takes precedence in this project.`] : []),
@@ -94,10 +99,10 @@ function places(harnesses: readonly Harness[]): string {
   return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
 }
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
-export function renderApplyReview(plan: ApplyPlan): string {
+export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude');
-  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width))];
+  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width, terminal))];
   return [
     `${claude ? 'Apply skills, prompts, and agents for' : 'Apply skills and prompts for'} ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
     ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
@@ -143,15 +148,23 @@ export function takeAllow(words: readonly string[]): { allow: string[]; rest: st
   return { allow: [...new Set(allow)].sort(), rest };
 }
 
+/**
+ * The terminal gate is a guardrail, not a boundary. It stops a pipe, `--json` and a CI job from allowing an agent by accident.
+ * An agent with a shell or file-write access can drive a pseudo-terminal, or write `.claude/agents` itself, so the gate cannot
+ * stop it. Owner decision: https://github.com/sageadvicellc/bowerloom/issues/84#issuecomment-6335208424
+ */
 const TERMINAL_ONLY = 'The flag --allow-agent works only in a terminal, and not with --json. Run bowerloom apply in a terminal to review and allow it.';
 /** `--allow-agent` is for a person at a terminal: no pipe, no --json. */
 export function requireTerminal(io: ApprovalIo, json: boolean): void { if (!io.interactive || json) throw new DefinitionError('USAGE', TERMINAL_ONLY); }
 const GRANT_WORDS: Readonly<Record<string, string>> = { hooks: 'hooks', mcpServers: 'MCP servers', 'permissionMode:bypassPermissions': 'bypass permissions' };
 /** For each agent the plan will install because of an allowance, the person types its role name. A wrong answer allows nothing. */
-export async function confirmAllowances(plan: ApplyPlan, io: ApprovalIo): Promise<void> {
+export async function confirmAllowances(plan: ApplyPlan, io: ApprovalIo, write: (text: string) => void): Promise<void> {
+  let shown = false;
   for (const a of plan.agents) {
     const grants = a.notices.filter(n => n in GRANT_WORDS);
     if ((a.action !== 'install' && a.action !== 'update') || !grants.length || !plan.allow.some(x => x.startsWith(a.id + ':'))) continue;
+    // The person reads the notes first: the review is written before the first question.
+    if (!shown) { write(`${plainText(renderApplyReview(plan, true), true)}\n`); shown = true; }
     const answer = (await io.ask(`Type ${a.id} to allow its ${grants.map(n => GRANT_WORDS[n]).join(', ')}: `)).trim();
     if (answer !== a.id) throw syncError('AGENT_GRANT_REVIEW_REQUIRED', `You did not type ${a.id}, so nothing was allowed. Nothing was changed.`);
   }
@@ -163,16 +176,16 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
-  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow, terminal: io.interactive && !approval.json });
+  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow });
   const first = await planProjectApply(input());
-  if (allow.length) await confirmAllowances(first, io);
+  if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {
-    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first), true)}\nNothing to change.\n`); return 0;
+    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first, io.interactive), true)}\nNothing to change.\n`); return 0;
   }
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
-    revision: plan => plan.revision, review: renderApplyReview,
+    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json),
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },

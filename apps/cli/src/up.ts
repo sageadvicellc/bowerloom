@@ -54,7 +54,7 @@ export interface UpContext {
   /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
   allow?: readonly string[];
   /** The terminal, when the person may take an allowance. */
-  terminal?: boolean; io?: ApprovalIo;
+  terminal?: boolean; io?: ApprovalIo; write?: (text: string) => void;
 }
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
@@ -143,11 +143,11 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [], terminal: ctx.terminal === true }), applyPlan = await planProjectApply(applyInput());
-  if ((ctx.allow ?? []).length && ctx.io) await confirmAllowances(applyPlan, ctx.io);
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
-      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
+      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: p => renderApplyReview(p, ctx.terminal === true),
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
     return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, and agents of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
@@ -221,7 +221,7 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
   if (parsed.allow.length) requireTerminal(io, approval.json);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);

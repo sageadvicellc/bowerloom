@@ -30,6 +30,12 @@ export function projectOwners(project: ProjectContext, env: NodeJS.ProcessEnv, h
 
 /** Refusals of the apply plan that `status` leaves to its drift lines: a legacy install, an unfinished operation, a pending revise, and an uncached pin. */
 const EXPECTED_PLAN_REFUSALS = ['MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'REVISION_PENDING', 'SKILLS_OFFLINE'];
+/** What an installed copy says, in the words of the status line. A copy that is gone or does not parse is named, with the grant keys a loose scan finds. */
+function installedWords(copy: NonNullable<AgentItem['installed']>): string {
+  if (copy.copy === 'missing') return 'copy missing';
+  if (copy.copy === 'unparsed') return `notices unknown, the copy does not parse${copy.loose.length ? `; it names ${copy.loose.join(', ')}` : ''}`;
+  return copy.notices.length ? copy.notices.map(noticeWords).join(', ') : 'no notices';
+}
 /** True when `.bowerloom/installation-receipt.json` is not there. Any other lstat result counts as present, so the startup inspection reports it. */
 function receiptMissing(project: ProjectContext): boolean {
   try { lstatSync(join(project.dir, '.bowerloom', 'installation-receipt.json')); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false; }
@@ -89,7 +95,7 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
     // The agents are planned on their own, so their holds still show.
     try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents)]); } catch { /* Nothing more to show. */ }
   }
-  const installed = agents.filter(a => a.installed !== null).map(a => `  agent ${plainText(a.id)}: installed copy still active (${a.installed!.length ? a.installed!.map(noticeWords).join(', ') : 'no notices'})`);
+  const installed = agents.filter(a => a.installed !== null).map(a => `  agent ${plainText(a.id)}: installed copy still active (${installedWords(a.installed!)})`);
   return [
     `Project: ${plainText(project.dir)}`,
     ...configLine(config),

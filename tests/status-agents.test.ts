@@ -148,7 +148,7 @@ const hookedText = agent('hooked', 'hooks:\n  PreToolUse:\n    - matcher: Bash\n
 
 test('R3: without a terminal a grant agent never installs, the hold names no flag, and --allow-agent is refused', t => {
   const p = project(t); place(p, 'desk', 'hooked.md', hookedText); place(p, 'desk', 'plain.md', agent('plain', 'tools: Read'));
-  const flag = `hooked:${shaOf(hookedText)}`, hold = 'Run bowerloom apply in a terminal to review and allow it.';
+  const flag = `hooked:${shaOf(hookedText)}`, hold = 'Review the agent file, then allow it from a terminal.';
   const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
   assert.match(shown.stdout, /^ {2}hooked +agent held \(AGENT_GRANT_REVIEW_REQUIRED\)$/m); assert.ok(shown.stdout.includes(`Next: ${hold}`), shown.stdout); assert.ok(!shown.stdout.includes('--allow-agent'), shown.stdout);
   const json = run(p, ['apply', '--json']); assert.doesNotMatch(json.stdout, /--allow-agent/);
@@ -220,4 +220,35 @@ test('F2: status names a refusal of the apply plan and sets the setup to drifted
   const q = project(t); place(q, 'desk', 'scribe.md', agent('scribe', 'tools: Read')); mkdirSync(join(q.dir, '.claude/agents'), { recursive: true }); chmodSync(join(q.dir, '.claude/agents'), 0o775);
   const other = run(q, ['status']); assert.match(other.stdout, /^Setup: drifted$/m); assert.match(other.stdout, /^ {2}plan unavailable \(APPLY_AGENTS_FOLDER_UNSAFE\)$/m);
   const ok = project(t); assert.doesNotMatch(run(ok, ['status']).stdout, /plan unavailable|drifted/);
+});
+
+test('item 2: the terminal does not change the revision, either way round', async t => {
+  const p = project(t); place(p, 'desk', 'hooked.md', hookedText); place(p, 'desk', 'plain.md', agent('plain', 'tools: Read'));
+  const piped = JSON.parse(run(p, ['apply', '--json']).stdout), shown: string[] = [];
+  // A plan from a pipe, approved at a terminal, is not stale.
+  const out: string[] = []; assert.equal(await runApplyCommand(['apply', '--approve', piped.revision], p.dir, p.home, x => { out.push(x); }, terminal([]), p.env), 0, out.join(''));
+  assert.equal(existsSync(join(p.dir, '.claude/agents/plain.md')), true); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  // A plan shown at a terminal names the same revision as the pipe: its short form is a prefix of the piped one.
+  const q = project(t); place(q, 'desk', 'hooked.md', hookedText); place(q, 'desk', 'plain.md', agent('plain', 'tools: Read'));
+  await runApplyCommand(['apply'], q.dir, q.home, () => undefined, terminal([], shown), q.env).catch(() => undefined);
+  const short = /Apply plan ([a-f0-9]+)…([a-f0-9]+)\?/.exec(shown.join('')); assert.ok(short, shown.join(''));
+  const pipedQ = JSON.parse(run(q, ['apply', '--json']).stdout); assert.ok(pipedQ.revision.startsWith(short![1]!) && pipedQ.revision.endsWith(short![2]!));
+  assert.doesNotMatch(JSON.stringify(pipedQ), /--allow-agent/); assert.ok(shown.join('').includes(`then run bowerloom apply --allow-agent hooked:${shaOf(hookedText)}.`));
+});
+
+test('item 4: the notes are written before the typed confirmation is asked', async t => {
+  const p = project(t); place(p, 'desk', 'hooked.md', hookedText); const flag = `hooked:${shaOf(hookedText)}`, log: string[] = [];
+  const io = { interactive: true, async ask(question: string): Promise<string> { log.push('ask:' + question); return question.startsWith('Type ') ? 'hooked' : 'n'; } };
+  await runApplyCommand(['apply', '--allow-agent', flag], p.dir, p.home, x => { log.push('write:' + x); }, io, p.env).catch(() => undefined);
+  const typed = log.findIndex(l => l.startsWith('ask:Type hooked to allow')), note = log.findIndex(l => l.startsWith('write:') && l.includes('Note: agent hooked sets hooks'));
+  assert.ok(note >= 0 && typed >= 0 && note < typed, log.join('\n---\n'));
+});
+
+test('item 3: status words for a missing copy and a copy that does not parse', async t => {
+  const p = project(t), file = place(p, 'desk', 'hooked.md', hookedText), flag = `hooked:${shaOf(hookedText)}`;
+  assert.equal(await runApplyCommand(['apply', '--allow-agent', flag], p.dir, p.home, () => undefined, terminal(['hooked', 'y']), p.env), 0);
+  rmSync(file); writeFileSync(join(p.dir, '.claude/agents/hooked.md'), 'broken\nhooks:\n  a: 1\n');
+  assert.match(await runProjectStatus(['status'], p.dir, p.home, p.env), /^ {2}agent hooked: installed copy still active \(notices unknown, the copy does not parse; it names hooks\)$/m);
+  rmSync(join(p.dir, '.claude/agents/hooked.md'));
+  assert.match(await runProjectStatus(['status'], p.dir, p.home, p.env), /^ {2}agent hooked: installed copy still active \(copy missing\)$/m);
 });

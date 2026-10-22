@@ -119,7 +119,7 @@ test('apply refusals: a collision, an uncached pin, and usage errors; nothing is
 const agentItem = (id: string, extra: Partial<AgentItem>): AgentItem => ({
   id, team: 'first-team', itemId: `agent_${id}`, state: 'new', action: 'install', harnesses: ['claude'],
   expected: { files: [], surfaces: [{ id: 'agent-claude', path: `.claude/agents/${id}.md` }, { id: 'catalog', path: `.bowerloom/managed/catalog/agent_${id}.json` }], source: { kind: 'agent', path: `teams/first-team/agents/${id}.md` } },
-  before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], newNotices: [], installed: null, builtin: false, userCopy: false, capabilities: null, enforcement: [], ...extra,
+  before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], newNotices: [], installed: null, sourceSha256: null, builtin: false, userCopy: false, capabilities: null, enforcement: [], ...extra,
 });
 const planOf = (agents: AgentItem[], harnesses: ('claude' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
   format: 'bowerloom/project-apply-plan/v1beta2', harnesses, team: null, skills: null, prompts: [], agents, codexAgentsSkipped: false, actionable: true,

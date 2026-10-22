@@ -111,7 +111,7 @@ export async function readClosure(v: ManagedItemRequest, life: Lifetime): Promis
   const s = v.source;
   if (s.kind === 'cache') { const acquired = await readAcquiredSkillCache(s.selector, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); return { closure: cacheClosure(acquired, v.item), acquired }; }
   const local = s.kind === 'local' ? readLocalSkill(v.projectDir, s.path, () => life.check()) : s.kind === 'agent' ? readLocalAgent(v.projectDir, s.team, s.name, () => life.check()) : readLocalPrompt(v.projectDir, s.name, () => life.check()); life.check();
-  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: [], inventory: local.inventory, files: local.files, name: v.item.id }), acquired: null };
+  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: [], inventory: local.inventory, files: local.files, name: v.item.id, ...(local.sourceSha256 === undefined ? {} : { sourceSha256: local.sourceSha256 }) }), acquired: null };
 }
 const wrapper = (name: string, text: string): string => `---\nname: prompt-${name}\ndescription: Bowerloom prompt ${name}, wrapped as a skill for Codex. Edit .bowerloom/prompts/${name}.md, not this file.\n---\n${text}`;
 const fileOf = (path: string, text: string) => ({ path, text, sha256: hash(text), mode: 420 });
