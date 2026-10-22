@@ -71,7 +71,7 @@ A subagent loads every `CLAUDE.md` and `AGENTS.md` file above its working folder
 
 ### The read guard
 
-An agent that names a slice with `guard: root` gets a `PreToolUse` hook in its copy, `.claude/agents/<role>.md`. Before each Read, Grep, and Glob of that agent, Claude Code runs `bowerloom-guard`. The guard blocks a call that reaches a file under the root of the slice when no slice of the agent lists that file. It stays silent for everything else, so it never allows a call that Claude Code would ask about or block. A Grep or Glob must name a path. A search of a folder is allowed when every file below it is a member.
+An agent that names a slice with `guard: root` gets a `PreToolUse` hook in its copy, `.claude/agents/<role>.md`. Before each Read, Grep, and Glob of that agent, Claude Code runs `bowerloom-guard`. The guard blocks a call that reaches a file under the root of the slice when no slice of the agent lists that file. It stays silent for everything else, so it never allows a call that Claude Code would ask about or block. A Grep or Glob must name a path. A search of a folder is allowed when every file below it is a member. A Glob pattern without a slash matches at any depth, so a search from a folder that holds a guarded folder is refused too.
 
 To see what the guard decides, run:
 
@@ -81,7 +81,7 @@ bowerloom context guard --agent lead --explain wiki/private/notes.md
 
 The guard needs these things, and without one of them it does not run or it blocks every call:
 
-- Claude Code 2.1.295 or later. Older versions ignore `onFailure`, so a guard that cannot start lets the call through.
+- Claude Code 2.1.295 or later. Older versions ignore `onFailure`, so a guard that cannot start lets the call through. The guard turns every error of its own into a deny, so only a guard that cannot start is affected. In a test on Claude Code 2.1.292, a missing `bowerloom-guard` did not block the call.
 - A folder that you trusted. Claude Code runs the hook of a project subagent only after you accept the workspace trust dialog. A `claude -p` run, a Routine, and a CI job that uses `claude -p` do not run it.
 - `bowerloom-guard` on your `PATH`. Claude Code blocks the call when it is missing.
 - The same `XDG_STATE_HOME` as the shell that ran `apply`. Another one finds no receipts, and every call is blocked.
