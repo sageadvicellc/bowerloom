@@ -34,6 +34,13 @@ const MESSAGES = {
   // Review of PR 94.
   STORE_ITEM_GONE_AT_COMMIT: 'The locked commit does not hold this item.',
   GITHUB_REQUEST_BUDGET: 'This run would make more GitHub requests than Bowerloom allows in one run.',
+  // Spec 08, section 5: store migrate. The message is the Cause cell; UNSUPPORTED adds its reason and TEAM_MISSING names the team.
+  MIGRATE_ITEM_NOT_FOUND: 'A selected item is not defined in the project, or its files are gone.',
+  MIGRATE_ITEM_UNSUPPORTED: 'A selected skill or prompt cannot be a store item.',
+  MIGRATE_ID_EXISTS: 'The store already holds an item with that kind and id but other bytes.',
+  MIGRATE_RESERVED: 'first-team or personal-assistant was named. Setup owns them.',
+  MIGRATE_TEAM_MISSING: 'A skill or prompt is limited to a team that is not in the store and not in this run.',
+  MIGRATE_LIMIT: 'The store record of created items holds 512 items at most.',
 } as const;
 
 export type ConfigRefusalCode = keyof typeof MESSAGES;
@@ -65,6 +72,18 @@ export function configRefusal(code: ConfigRefusalCode, message?: string): Defini
 export function honestShared(error: unknown, what: string): unknown {
   if (!(error instanceof DefinitionError) || !own.has(error) || !error.message.startsWith('This project is shared')) return error;
   const honest = new DefinitionError(error.code, `Bowerloom could not read ${what} and treats this project as shared${error.message.slice('This project is shared'.length)}`); own.add(honest); return honest;
+}
+/** Spec 08, section 5: the reason MIGRATE_ITEM_UNSUPPORTED adds, one per fault of `localItemRows`. */
+export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.' });
+export type MigrateReason = keyof typeof MIGRATE_REASON;
+/** MIGRATE_ITEM_UNSUPPORTED with its reason. */
+export function migrateUnsupported(reason: MigrateReason): DefinitionError {
+  const error = new DefinitionError('MIGRATE_ITEM_UNSUPPORTED', `${MESSAGES.MIGRATE_ITEM_UNSUPPORTED} ${MIGRATE_REASON[reason]}`); own.add(error); return error;
+}
+const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** MIGRATE_TEAM_MISSING naming the team. The name is checked, so no other text gets in. */
+export function migrateTeamMissing(team: string): DefinitionError {
+  const error = new DefinitionError('MIGRATE_TEAM_MISSING', ID.test(team) && team.length <= 64 ? `${MESSAGES.MIGRATE_TEAM_MISSING} The team is ${team}.` : MESSAGES.MIGRATE_TEAM_MISSING); own.add(error); return error;
 }
 /** STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. */
 export function notShareable(cause: NotShareableCause): DefinitionError {

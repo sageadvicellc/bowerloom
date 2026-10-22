@@ -4,9 +4,10 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
+import { SYNC_REFUSAL_CODES, partialRefusal } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 import { readFileSync } from 'node:fs';
+import { CONFIG_REFUSAL_CODES } from '../packages/project-config/src/index.js';
 
 // Review finding 5: the next step for a folder with no project is the up command, not plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
@@ -238,4 +239,52 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
   // The JSON envelope of a pipe keeps the fixed message of each code.
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
+});
+
+// Spec 08, section 5: the six store migrate codes. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why,
+// and does not repeat the message. Each has a row in the errors reference whose meaning is that sentence.
+test('spec 08: the MIGRATE_* codes have their words and a row in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    ['MIGRATE_ITEM_NOT_FOUND', 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', 'bowerloom ls'],
+    ['MIGRATE_ITEM_UNSUPPORTED', 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', 'bowerloom help store'],
+    ['MIGRATE_ID_EXISTS', 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', 'Rename the project item, or remove the store item yourself.'],
+    ['MIGRATE_RESERVED', 'Setup made these items for this project, so they stay in it.', 'bowerloom store migrate --all skips them.'],
+    ['MIGRATE_TEAM_MISSING', 'The store keeps the team tag, so that team must be in the store.', 'Add --team <name> to move that team too.'],
+    ['MIGRATE_LIMIT', 'This beta keeps the store record small: 512 items and 1 MiB at most.', 'Remove items from the store, or move fewer items.'],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` | ${sentence.replace('store migrate', '`store migrate`').replace('.bowerloom', '`.bowerloom`')} |`)), code);
+  for (const code of rows.map(r => r[0])) assert.ok((CONFIG_REFUSAL_CODES as readonly string[]).includes(code), code);
+  // A refusal that carries its own next step names it: the store record whose files are gone.
+  assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
+});
+
+// Second security review of PR 98, M1 and L2: a refusal after a partial write never says that nothing was applied or
+// changed. Its words say the run stopped part way, its Next line is the exact command that finishes it, and the JSON
+// envelope carries partial: true and that command as next.
+test('a partial refusal: its own sentence, the rerun command as Next, and partial: true in JSON', () => {
+  const rerun = 'bowerloom store migrate --prompt brief';
+  const cases: Array<readonly [unknown, string]> = [
+    [new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.'), 'STALE_APPROVAL'],
+    [new DefinitionError('PROJECT_LOCKED', 'Another Bowerloom command is changing this project.'), 'PROJECT_LOCKED'],
+    [new DefinitionError('STORE_LOCKED', 'Another Bowerloom command is changing the store.'), 'STORE_LOCKED'],
+    [Object.assign(new Error('i/o error'), { code: 'EIO' }), 'IO_ERROR'],
+  ];
+  for (const [error, code] of cases) {
+    const partial = partialRefusal(error, ['prompt brief, copied to the store'], rerun) as DefinitionError;
+    assert.equal(partial.code, code);
+    const text = reportFailure(partial, true).text;
+    assert.doesNotMatch(text, /nothing was (?:applied|changed)/i, code);
+    assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: bowerloom store migrate --prompt brief\\n$`), code);
+    const json = JSON.parse(reportFailure(partial, false).text) as { error: { code: string; next?: string; partial?: boolean } };
+    assert.equal(json.error.code, code); assert.equal(json.error.next, rerun); assert.equal(json.error.partial, true);
+    assert.equal(reportFailure(partial, false).exitCode, 1);
+  }
+  // L2: the system code of an error that is not a refusal is kept as the cause.
+  assert.equal((partialRefusal(Object.assign(new Error('x'), { code: 'EXDEV' }), ['bowerloom.json'], rerun) as { cause?: unknown }).cause, 'EXDEV');
+  // Before any write, the error is returned as it is, and its envelope has no partial key.
+  const untouched = new DefinitionError('STALE_APPROVAL', 'm.');
+  assert.equal(partialRefusal(untouched, [], rerun), untouched);
+  assert.equal('partial' in (JSON.parse(reportFailure(untouched, false).text) as { error: object }).error, false);
 });

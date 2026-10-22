@@ -48,10 +48,12 @@ export function shortHelp(): string {
 /** Full help for one command, keyed by the command word. `init` has its own text in main.ts. */
 export const TOPICS: Readonly<Record<string, string>> = {
   store: [
-    'Usage:', '  bowerloom store status [--json]', '',
+    'Usage:', '  bowerloom store status [--json]',
+    '  bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]',
+    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]', '',
     'Shows the state of your store, ~/.bowerloom. The store holds definitions of skills, prompts, and teams.',
     'It holds no cache and no installed copy.',
-    'It reads only and writes nothing, and it starts no workers.',
+    'store status reads only and writes nothing. No store command starts workers.',
     'The store is always at ~/.bowerloom, and ~ is your HOME folder. Bowerloom refuses a store that is a link,',
     'that sits in an iCloud folder, or that other users can change, and a home folder that other users can write in.',
     'It does not check the folders above your home folder.',
@@ -62,6 +64,31 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read',
     'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.',
     'Add --json for one machine-readable object.', '',
+    // Spec 08, 3.1.
+    'store migrate copies skills, prompts, and teams from this project to your store, ~/.bowerloom. Then it lists them in bowerloom.json',
+    'with the source store. It deletes nothing. It prints the git rm lines so you can delete the old files after you check.',
+    '--all picks every skill, prompt, and team that bowerloom.json lists, except first-team and personal-assistant.',
+    'If the project has no bowerloom.json, --all picks every skill, prompt, and team of the project.',
+    'Naming an item with --skill, --prompt, or --team moves it even when bowerloom.json does not list it.',
+    'Slices never move.',
+    'A store skill or prompt holds only md, txt, json, yaml, yml, csv, and license files. Each file is UTF-8, not empty, and not executable.',
+    'An item holds at most 126 files, 65536 bytes in a file, and 2 MiB in all.',
+    'In a shared project, a skill, prompt, or team that you wrote is switched to the store only after the store is',
+    'pushed to its git remote. Until then it is copied and nothing else changes. Run the command again after you push.',
+    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    'After you delete the old files, run bowerloom receipt clean.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
+  ].join('\n'),
+  // Spec 08, 3.4.
+  receipt: [
+    'Usage:',
+    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]', '',
+    'Removes entries from the record of created items when the files of those items are gone. Run it after you delete',
+    'old files, for example after bowerloom store migrate. Then bowerloom status no longer names them as missing.',
+    '--global cleans the record of your store, ~/.bowerloom.',
+    'It also removes the local entry of a gone skill from skills.json, and the project entry from bowerloom.json.',
+    'It deletes no file and no installed copy. Copies that sync or apply made stay where they are.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   use: [
     'Usage:',
@@ -389,6 +416,13 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Review F1 of PR 97.
   GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
+  // Spec 08, section 5. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why, and the next step is the table's.
+  MIGRATE_ITEM_NOT_FOUND: { sentence: 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', next: 'bowerloom ls' },
+  MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', next: 'bowerloom help store' },
+  MIGRATE_ID_EXISTS: { sentence: 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', next: 'Rename the project item, or remove the store item yourself.' },
+  MIGRATE_RESERVED: { sentence: 'Setup made these items for this project, so they stay in it.', next: 'bowerloom store migrate --all skips them.' },
+  MIGRATE_TEAM_MISSING: { sentence: 'The store keeps the team tag, so that team must be in the store.', next: 'Add --team <name> to move that team too.' },
+  MIGRATE_LIMIT: { sentence: 'This beta keeps the store record small: 512 items and 1 MiB at most.', next: 'Remove items from the store, or move fewer items.' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
   CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },
@@ -443,6 +477,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PROJECT_BRIEF_INVALID: { sentence: 'A new team is built from the project brief that setup saved.', next: 'bowerloom status' },
   AUTHORING_PENDING: { sentence: 'Bowerloom finishes an interrupted create only when what it left matches its record exactly.', next: 'cat .bowerloom/authoring/pending.json' },
   AUTHORING_RECEIPT_INVALID: { sentence: 'Bowerloom reads its record of created items strictly, so a hand edit can break it.', next: 'git diff .bowerloom/authoring/receipt.json' },
+  // Review L8 of PR 98.
+  AUTHORING_DISK_FULL: { sentence: 'The disk has no room, so Bowerloom stopped before it wrote more.', next: 'df -h .' },
+  AUTHORING_ACCESS_DENIED: { sentence: 'The system refused the write, so Bowerloom stopped before it wrote more.', next: 'ls -ld .bowerloom ~/.bowerloom' },
   AUTHORING_UNSAFE_PATH: { sentence: 'Bowerloom will not read or write through links, shared files or files others can change.', next: 'ls -la .bowerloom' },
   AUTHORING_UNREGISTERED: { sentence: 'Bowerloom keeps track only of what create made.', next: 'bowerloom status' },
   REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
@@ -534,7 +571,7 @@ export interface RefusalDetail {
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
-  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
+  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT | typeof PARTIAL;
   /** Review C5: the error's own next step, which replaces the generic one of its code. */
   readonly next?: string;
 }
@@ -542,9 +579,13 @@ export interface RefusalDetail {
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
 /** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
 const STORE_LIMIT = 'store-limit';
+/** The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is the command that finishes the run. */
+const PARTIAL = 'partial';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
+  // Second security review of PR 98, M1: a partial refusal never says that nothing was applied.
+  if (detail.hint === PARTIAL && typeof detail.next === 'string' && detail.next.length > 0) return { sentence: 'The run stopped part way; the message lists what was written.', next: detail.next };
   if (typeof detail.next === 'string' && detail.next.length > 0 && Object.hasOwn(REFUSALS, code)) return { sentence: REFUSALS[code]!.sentence, next: detail.next };
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
   if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
@@ -578,10 +619,10 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
   const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
-  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}) } })}\n`, exitCode };
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
 }
 
 /** A path as one shell word: plain characters stay, anything else is single-quoted. */

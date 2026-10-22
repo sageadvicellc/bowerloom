@@ -17,5 +17,5 @@ export { normalizeRemote, readStoreRepo } from './git.js';
 export type { StoreRepo, StoreRepoProblem } from './git.js';
 export { currentSha256, scratchName, writeGuardedFile } from './write.js';
 export type { GuardedWrite } from './write.js';
-export { NOT_SHAREABLE, lockMismatch, notShareable } from './refusal.js';
+export { NOT_SHAREABLE, lockMismatch, notShareable, MIGRATE_REASON, migrateUnsupported, migrateTeamMissing } from './refusal.js';
 export type { NotShareableCause } from './refusal.js';
