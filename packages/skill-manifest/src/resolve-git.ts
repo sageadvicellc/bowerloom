@@ -28,13 +28,13 @@ import type { SelectedFile, VerifiedPin } from './content.js';
 import { toGitRequest, probeBinding } from './requests.js';
 
 export type ResolvedGit = PinnedContent<GitSource>;
-interface Row { path: string; mode: string; type: string; sha: string; size?: number }
+export interface Row { path: string; mode: string; type: string; sha: string; size?: number }
 
 const MODES: Readonly<Record<string, string>> = Object.freeze({ '100644': 'blob', '100755': 'blob', '120000': 'blob', '040000': 'tree', '160000': 'commit' });
 const objectId = (kind: 'blob' | 'tree', b: Buffer) => createHash('sha1').update(`${kind} ${b.length}\0`).update(b).digest('hex');
 const order = (a: { name: string; type: string }, b: { name: string; type: string }) => Buffer.compare(Buffer.from(a.name + (a.type === 'tree' ? '/' : '')), Buffer.from(b.name + (b.type === 'tree' ? '/' : '')));
 /** The Git object id of a tree with these rows, the way git.ts rebuilds it. */
-function treeId(rows: { name: string; mode: string; type: string; sha: string }[]): string {
+export function treeId(rows: { name: string; mode: string; type: string; sha: string }[]): string {
   return objectId('tree', Buffer.concat([...rows].sort(order).flatMap(e => [Buffer.from(`${e.type === 'tree' ? '40000' : e.mode} ${e.name}\0`), Buffer.from(e.sha, 'hex')])));
 }
 function row(raw: unknown, nested: boolean): Row {
@@ -44,7 +44,7 @@ function row(raw: unknown, nested: boolean): Row {
   requireManifest(typeof e.mode === 'string' && Object.hasOwn(MODES, e.mode) && MODES[e.mode] === e.type && (e.type === 'blob' ? Number.isSafeInteger(e.size) && e.size! >= 0 : e.size === undefined), 'SKILLS_ADD_UNSAFE_CONTENT');
   return { path: e.path, mode: e.mode, type: e.type, sha: e.sha, ...(e.type === 'blob' ? { size: e.size! } : {}) };
 }
-function listing(bytes: Buffer, sha: string, nested: boolean): Row[] {
+export function listing(bytes: Buffer, sha: string, nested: boolean): Row[] {
   const v = fetchedJson(bytes, GIT_LIMITS.treeBytes);
   requireManifest(v.sha === sha && v.truncated === false && Array.isArray(v.tree) && v.tree.length > 0 && v.tree.length <= GIT_LIMITS.records, 'SKILLS_ADD_UNSAFE_CONTENT');
   const rows = (v.tree as unknown[]).map(r => row(r, nested)), names = new Set(rows.map(r => nested ? r.path.toLowerCase() : r.path));
@@ -53,13 +53,13 @@ function listing(bytes: Buffer, sha: string, nested: boolean): Row[] {
 }
 const parentOf = (p: string) => { const at = p.lastIndexOf('/'); return at < 0 ? '' : p.slice(0, at); };
 /** Rebuilds every tree of a recursive listing up to its root SHA. */
-function proveRecursive(rows: Row[], root: string): void {
+export function proveRecursive(rows: Row[], root: string): void {
   const byPath = new Map(rows.map(r => [r.path, r])), children = new Map<string, Row[]>([['', []]]);
   for (const r of rows) { const parent = parentOf(r.path); requireManifest(parent === '' || byPath.get(parent)?.type === 'tree', 'SKILLS_ADD_UNSAFE_CONTENT'); children.set(parent, [...(children.get(parent) ?? []), r]); if (r.type === 'tree' && !children.has(r.path)) children.set(r.path, []); }
   for (const [parent, list] of children) requireManifest(treeId(list.map(r => ({ name: r.path.slice(parent ? parent.length + 1 : 0), mode: r.mode, type: r.type, sha: r.sha }))) === (parent ? byPath.get(parent)!.sha : root), 'SKILLS_ADD_UNSAFE_CONTENT');
 }
 /** A blob response: its content must decode to exactly the bytes its SHA names. */
-function blob(bytes: Buffer, id: string, size: number): Buffer {
+export function blob(bytes: Buffer, id: string, size: number): Buffer {
   const v = fetchedJson(bytes, GIT_LIMITS.blobResponseBytes);
   requireManifest(v.sha === id && v.encoding === 'base64' && v.size === size && typeof v.content === 'string', 'SKILLS_ADD_UNSAFE_CONTENT');
   const b64 = v.content.replace(/\n/g, '');
@@ -68,7 +68,7 @@ function blob(bytes: Buffer, id: string, size: number): Buffer {
   requireManifest(out.toString('base64') === b64 && out.length === size && objectId('blob', out) === id, 'SKILLS_ADD_UNSAFE_CONTENT');
   return out;
 }
-const unsafeKind = (r: Row) => { requireManifest(r.mode !== '120000' && r.mode !== '160000' && r.type !== 'commit', 'SKILLS_ADD_UNSAFE_CONTENT'); };
+export const unsafeKind = (r: Row) => { requireManifest(r.mode !== '120000' && r.mode !== '160000' && r.type !== 'commit', 'SKILLS_ADD_UNSAFE_CONTENT'); };
 
 export async function resolveGit(specValue: unknown, transport: PublicTransport, signal: AbortSignal): Promise<ResolvedGit> {
   return (await resolveGitVerified(specValue, transport, signal)).content;
