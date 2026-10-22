@@ -78,13 +78,35 @@ test('fix 2. a repository that is not readable keeps STORE_REMOTE_PRIVATE withou
   assert.deepEqual(withToken.log, [{ url: COMMIT_URL, token: true }, { url: REPO_URL, token: true }]);
 });
 
-test('fix 2. a refused token (401 or 403) on the commit request: the repository answer decides, as for a 404', async t => {
-  const s = state(t), l = locked(t);
-  const refused = github({ commit: 'STORE_REMOTE_AUTH_FAILED', repository: 'STORE_REMOTE_AUTH_FAILED' }), error = await fetch(s, l, refused, true);
+test('M2. a refused token (401 or 403) on the commit request makes no repository request and stays STORE_REMOTE_AUTH_FAILED', async t => {
+  // A fine-grained token with Metadata read but no Contents read gets 200 on the repository: that is no proof the commit is gone.
+  const refused = github({ commit: 'STORE_REMOTE_AUTH_FAILED', repository: 'ok' }), error = await fetch(state(t), locked(t), refused, true);
   assert.equal(error?.code, 'STORE_REMOTE_AUTH_FAILED'); clean(error);
-  assert.deepEqual(refused.log.map(r => r.url), [COMMIT_URL, REPO_URL]);
-  const readable = github({ commit: 'STORE_REMOTE_AUTH_FAILED', repository: 'ok' });
-  assert.equal((await fetch(state(t), locked(t), readable, true))?.code, 'LOCK_COMMIT_GONE');
+  assert.deepEqual(refused.log.map(r => r.url), [COMMIT_URL]);
+});
+
+test('M1. a repository request that cannot tell raises its own code, or keeps the old code and says so', async t => {
+  const cases = [
+    ['GITHUB_RATE_LIMITED', false, e => e.code === 'GITHUB_RATE_LIMITED'],
+    ['SKILLS_ADD_NETWORK', false, e => e.code === 'SKILLS_OFFLINE'],
+    ['GITHUB_REQUEST_FAILED', false, e => e.code === 'GITHUB_REQUEST_FAILED'],
+    ['GITHUB_TOKEN_SSO_REQUIRED', true, e => e.code === 'GITHUB_TOKEN_SSO_REQUIRED'],
+    ['SKILLS_ADD_UNSAFE_CONTENT', false, e => e.code === 'STORE_REMOTE_PRIVATE' && e.message.endsWith('Bowerloom could not check the repository: SKILLS_ADD_UNSAFE_CONTENT.')],
+    ['SKILLS_ADD_UNSAFE_CONTENT', true, e => e.code === 'STORE_REMOTE_AUTH_FAILED' && e.message.endsWith('Bowerloom could not check the repository: SKILLS_ADD_UNSAFE_CONTENT.')],
+  ];
+  for (const [thrown, withToken, ok] of cases) {
+    const net = github({ commit: 'SKILLS_ADD_NOT_FOUND', repository: thrown }), error = await fetch(state(t), locked(t), net, withToken);
+    assert.ok(error && ok(error), `${thrown} token ${withToken}: ${error?.code} ${error?.message}`);
+    assert.deepEqual(net.log.map(r => r.url), [COMMIT_URL, REPO_URL], thrown);
+    if (withToken) clean(error);
+  }
+  // With a token, a refused token on the repository request means it cannot be read: the old code, with no extra words.
+  const auth = await fetch(state(t), locked(t), github({ commit: 'SKILLS_ADD_NOT_FOUND', repository: 'STORE_REMOTE_AUTH_FAILED' }), true);
+  assert.equal(auth?.code, 'STORE_REMOTE_AUTH_FAILED'); assert.doesNotMatch(auth.message, /could not check/);
+  // An error that is no refusal of Bowerloom's passes as it is.
+  const odd = { factory: () => ({ async get(url) { if (url === COMMIT_URL) throw manifestRefusal('SKILLS_ADD_NOT_FOUND'); throw new TypeError('a fault'); }, close() {} }) };
+  const fault = await fetch(state(t), locked(t), odd, false);
+  assert.ok(fault instanceof TypeError, String(fault));
 });
 
 test('fix 2. other failures of the commit request make no extra request and keep their codes', async t => {

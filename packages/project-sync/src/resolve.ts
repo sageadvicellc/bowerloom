@@ -9,7 +9,7 @@
  * held STORE_ITEM_MISSING. A frozen run reads only the lock, and refuses a missing, invalid, or disagreeing lock before
  * any other read.
  */
-import { lstatSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { inspectStore, projectRefusal, verifyStorePins } from '../../project-context/src/index.js';
@@ -92,11 +92,28 @@ function projectDefinitions(project: ProjectContext, legacy: boolean): Definitio
 /** What the store defines (3.12): its skills.json entries, and its prompts and teams whose file or folder is there. */
 export interface StoreDefinitions { skills: Map<string, Entry>; prompts: Map<string, AuthoredItem>; teams: Map<string, AuthoredItem>; view: StoreView }
 /**
+ * Round 2 of the reviews of PR 100, S1 (the rule of review S1 of PR 98, store-items.ts): each area folder of the store
+ * that is there, `skills`, `prompts`, and `teams`, is a real folder and really inside the store. A link there would make
+ * every reader, team adopt among them, read or copy files from outside the store. Checked once here, for every reader.
+ */
+export function storeAreasInside(storeDir: string): void {
+  let real: string;
+  try { real = realpathSync(storeDir); } catch { throw projectRefusal('STORE_UNREADABLE'); }
+  for (const area of ['skills', 'prompts', 'teams']) {
+    const at = join(storeDir, area), s = lstatOrNull(at);
+    if (s === null) continue;
+    let inside = false;
+    try { inside = s.isDirectory() && !s.isSymbolicLink() && realpathSync(at) === join(real, area); } catch { inside = false; }
+    if (!inside) throw projectRefusal('STORE_UNSAFE', `The store folder ${area} is a link or is not inside the store.`);
+  }
+}
+/**
  * Reads the store definitions with the store pins checked before and after: `skills.json` with the store limits, and the
  * store authoring receipt. A local skill exists only with its folder, a prompt only with its file, a team only with its folder.
  */
 export function readStoreDefinitions(store: StoreContext): StoreDefinitions {
   verifyStorePins(store);
+  storeAreasInside(store.dir);
   const state = readManifestState(storeTarget(store.dir), { allowAbsent: true });
   const manifest = state.file ? parseManifest(state.file.bytes, STORE_MANIFEST_LIMITS) : null;
   const authoring = readAuthoringState(store.dir);

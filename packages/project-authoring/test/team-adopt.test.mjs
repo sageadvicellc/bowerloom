@@ -71,7 +71,8 @@ test('10, 10a, 11 and 12. an interrupted adopt resumes; the recovery check gives
   // Crash after the receipt and before bowerloom.json: the create path completes, the config write throws.
   const fsMod = await import('node:fs'), original = fsMod.default.renameSync;
   fsMod.default.renameSync = (from, to) => { if (String(to).endsWith('bowerloom.json')) throw new Error('crash'); return original(from, to); };
-  try { await assert.rejects(withProjectLock(w.projectDir, new AbortController().signal, held => applyAdopt(input(w), plan, plan.revision, held)), /crash/); } finally { fsMod.default.renameSync = original; }
+  // Round 2 of PR 100, H2: the failure after the copy keeps its cause and says the team was copied.
+  try { await assert.rejects(withProjectLock(w.projectDir, new AbortController().signal, held => applyAdopt(input(w), plan, plan.revision, held)), e => e.code === 'IO_ERROR' && /The team was copied\. Run bowerloom team adopt research again to finish\.$/.test(e.message)); } finally { fsMod.default.renameSync = original; }
   assert.ok(fs.existsSync(path.join(w.projectDir, '.bowerloom/teams/research/team.yaml')));
   assert.deepEqual(readJson(w, 'bowerloom.json').teams, [{ id: 'research', source: 'store' }]);
   const again = await planAdopt(input(w));

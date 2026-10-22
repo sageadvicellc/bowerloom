@@ -27,6 +27,8 @@ export function renderAdopt(plan: AdoptPlan): string {
   if (plan.config.adds.some(a => a.kind === 'team' && a.id === id)) lines.push(`bowerloom.json adds: team ${id} (project)`);
   else lines.push(`bowerloom.json: team ${id} changes from store to project`);
   if (plan.storeOnly.length) lines.push(`Tagged to team ${id} and not copied: ${joinAnd(plan.storeOnly)}. They stay store items, and a shared project needs a pushed store to pick them.`);
+  if (plan.storeUnusable.length) lines.push(`Tagged to team ${id} and not usable in the store: ${joinAnd(plan.storeUnusable)}.`);
+  lines.push(...plan.notes);
   for (const d of plan.config.direct) lines.push(`bowerloom.json: ${d.kind} ${d.id} is now picked directly`);
   if (plan.config.lock?.removes.includes(`team ${id}`)) lines.push(`bowerloom.lock.json: removes team ${id}`);
   lines.push('The project now owns this copy. Later store changes do not reach it.');

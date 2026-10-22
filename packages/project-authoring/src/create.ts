@@ -367,6 +367,11 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
     if (input.kind === 'team' && input.copyFrom !== null) {
       // Spec 06, 3.17: the files of the source team, read with the authoring guards, and its compiled candidate.
       const root = input.copyFrom.root, rel = itemPath('team', input.name);
+      // Round 2 of the reviews of PR 100, S1: the teams folder of the source is a real folder inside it, never a link out.
+      const area = join(root, 'teams'), areaStat = lstatOrNull(area);
+      let inside = false;
+      try { inside = areaStat !== null && areaStat.isDirectory() && !areaStat.isSymbolicLink() && fs.realpathSync(area) === join(fs.realpathSync(root), 'teams'); } catch { inside = false; }
+      ensure(inside, 'AUTHORING_UNSAFE_PATH');
       files = readTree(root, rel).map(pin => planned(pin.path, readGuarded(join(root, pin.path), LIMITS.fileBytes).toString('utf8')));
       compiledCandidate = (await compileCrew(join(root, rel, 'team.yaml'))).candidateRevision;
     } else if (input.kind === 'team') {

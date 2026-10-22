@@ -16,7 +16,7 @@ import type { DiscoveryHooks } from './discovery.js';
 import { withProjectLock } from './index.js';
 import { refuse, storeWriteFailed } from './refusal.js';
 import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory } from './types.js';
-import { ensureStoreGitignore } from './store-gitignore.js';
+import { tryEnsureStoreGitignore } from './store-gitignore.js';
 /** The plan line of a write that makes the store (fix 3 of the beta.3 docs review names the .gitignore it writes). */
 export const STORE_CREATE_LINE = 'Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.';
 
@@ -285,7 +285,8 @@ export async function withStoreForWriteWith<T>(home: string, signal: AbortSignal
         held.assertHeld(root);
         writeStoreFile(root); created = true;
         // Fix 3 of the beta.3 docs review: a new store gets its .gitignore at once, before anything of this machine lands.
-        ensureStoreGitignore(root);
+        // Round 2 of PR 100, M3: a failure here does not fail the command; its result names it.
+        tryEnsureStoreGitignore(root, (hooks as { uid?: number }).uid);
       }
       const store = openStoreWith(home, hooks);
       verifyStorePins(store, hooks);
@@ -293,7 +294,10 @@ export async function withStoreForWriteWith<T>(home: string, signal: AbortSignal
       // The folder the lock names is the folder that was pinned.
       let now; try { now = lstatSync(root, { bigint: true }); } catch { throw refuse('STORE_UNSAFE'); }
       if (now.dev.toString() !== store.identity.device || now.ino.toString() !== store.identity.inode) throw refuse('STORE_UNSAFE');
-      return work(store, held, created);
+      const result = await work(store, held, created);
+      // Round 2 of PR 100, H1: every store write adds the lines an older store's .gitignore misses, after the write succeeded.
+      if (!created) { held.assertHeld(root); tryEnsureStoreGitignore(root, (hooks as { uid?: number }).uid); }
+      return result;
     });
   } catch (error) {
     if (errno(error) === 'PROJECT_LOCKED') throw refuse('STORE_LOCKED');

@@ -34,6 +34,15 @@ export function git(cwd: string, args: string[], w: World) {
   const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8', env: { ...baseEnv(), ...w.env, GIT_CONFIG_NOSYSTEM: '1' } });
   assert.equal(r.status, 0, r.stderr); return r;
 }
+/** Runs git and returns the result whatever its exit code (git check-ignore exits 1 for a path it does not ignore). */
+export function gitRaw(cwd: string, args: string[], w: World) {
+  return spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'init.defaultBranch=main', ...args], { cwd, encoding: 'utf8', env: { ...baseEnv(), ...w.env, GIT_CONFIG_NOSYSTEM: '1' } });
+}
+/** Runs one shell command line in `cwd`, as a person would paste it. For a test fixture only. */
+export function shell(cwd: string, command: string, w: World) {
+  const r = spawnSync('/bin/sh', ['-c', command], { cwd, encoding: 'utf8', env: { ...baseEnv(), ...w.env, GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' } });
+  assert.equal(r.status, 0, `${command}: ${r.stderr}`); return r;
+}
 export const errorCode = (stderr: string): string => (JSON.parse(stderr) as { error: { code: string } }).error.code;
 export const errorMessage = (stderr: string): string => (JSON.parse(stderr) as { error: { message: string } }).error.message;
 /** Plans a command (exit 3), then applies it with its revision. Both runs are returned. */

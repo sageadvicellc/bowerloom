@@ -56,8 +56,8 @@ test('fix 2: a locked commit gone from a readable repository refuses LOCK_COMMIT
   }
   const words = renderRefusal('LOCK_COMMIT_GONE', 'The locked commit is no longer on GitHub.');
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
-  assert.match(page, /^\| `LOCK_COMMIT_GONE` \| A force-push or a deleted branch removes a commit that a lock still names\. .* \| Ask the author to run `bowerloom lock update` and push the store, then pull the project\. \|$/m);
-  assert.match(words, /^Refused \(LOCK_COMMIT_GONE\): The locked commit is no longer on GitHub\.\nA force-push or a deleted branch removes a commit that a lock still names\.\nNext: Ask the author to run bowerloom lock update and push the store, then pull the project\.\n$/);
+  assert.match(page, /^\| `LOCK_COMMIT_GONE` \| A force-push or a deleted branch removes a commit that a lock still names\. .* \| Ask the author of the store to run `bowerloom lock update`, then commit and push `bowerloom\.lock\.json`\. Then pull the project\. \|$/m);
+  assert.match(words, /^Refused \(LOCK_COMMIT_GONE\): The locked commit is no longer on GitHub\.\nA force-push or a deleted branch removes a commit that a lock still names\.\nNext: Ask the author of the store to run bowerloom lock update, then commit and push bowerloom\.lock\.json\. Then pull the project\.\n$/);
 });
 
 test('fix 2: a repository that is not readable keeps STORE_REMOTE_PRIVATE without a token and STORE_REMOTE_AUTH_FAILED with one', t => {
@@ -69,10 +69,10 @@ test('fix 2: a repository that is not readable keeps STORE_REMOTE_PRIVATE withou
     assert.deepEqual(requests(net.log).map(r => [r.target, r.authorization]), [[COMMIT_URL, token !== null], [REPO_URL, token !== null]]);
     clean('stdout', refused.stdout); clean('stderr', refused.stderr);
   }
-  // A token GitHub refuses (401) on both requests stays STORE_REMOTE_AUTH_FAILED.
+  // Review M2: a token GitHub refuses (401) on the commit request stays STORE_REMOTE_AUTH_FAILED, with no repository request.
   const { [COMMIT_URL]: _c, ...rest } = routes;
   const net = network(mate, { ...rest, [COMMIT_URL]: { status: 401, file: null }, [REPO_URL]: { status: 401, file: null } } as never);
   const { refused } = frozen(dir, { ...net.env, BOWERLOOM_GITHUB_TOKEN: CANARY });
   assert.equal(errorCode(refused.stderr), 'STORE_REMOTE_AUTH_FAILED', refused.stderr);
-  assert.deepEqual(requests(net.log).map(r => r.target), [COMMIT_URL, REPO_URL]);
+  assert.deepEqual(requests(net.log).map(r => r.target), [COMMIT_URL]);
 });

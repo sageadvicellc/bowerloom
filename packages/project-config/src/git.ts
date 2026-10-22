@@ -5,7 +5,7 @@
  */
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { GITHUB_NAME_ANY_CASE, GITHUB_OWNER_ANY_CASE } from '../../skill-manifest/src/github-repository.js';
 
 export type StoreRepoProblem = 'none' | 'no-origin' | 'unsupported-remote' | 'unreadable' | 'unpushed';
@@ -147,13 +147,14 @@ export function readStoreRepo(storeDir: string, commit: string | null, hooks: St
   } catch (error) { if (error instanceof Unreadable) return result('unreadable'); throw error; }
 }
 
-const INDEX_LIMIT = 33554432, INDEX_ENTRIES = 1048576;
+const INDEX_LIMIT = 33554432, INDEX_ENTRIES = 1048576, PATH_LIMIT = 4096;
 /**
  * Fix 3 of the beta.3 docs review: true when the git index of the store tracks a path under `folders/`, the records of
- * registered folders, which name places on this machine. False when the store has no repository or no index, or the
- * index tracks nothing there. Null when Bowerloom cannot read the index: a file that fails the plain-file rules, a format
- * it does not know, or a size over 32 MiB. It reads `.git/index` as a plain file and runs no git. Index versions 2, 3,
- * and 4 are read, with sha1 or sha256 object names.
+ * registered folders, which name places on this machine. False when the store has no `.git` or no index, or the index
+ * tracks nothing there. Null when Bowerloom cannot tell: a file that fails the plain-file rules, a size over 32 MiB, a
+ * format it does not know, a path over 4096 bytes, or a split index, whose entries live in a shared index file (round 2
+ * of the reviews of PR 100, M5). It reads `.git/index` as a plain file and runs no git. It reads index versions 2, 3,
+ * and 4 with sha1 or sha256 object names, and walks the extensions after the entries.
  */
 export function storeTracksFolders(storeDir: string, hooks: StoreRepoHooks = {}): boolean | null {
   const uid = hooks.uid ?? process.getuid?.() ?? -1, git = join(storeDir, '.git');
@@ -168,38 +169,74 @@ export function storeTracksFolders(storeDir: string, hooks: StoreRepoHooks = {})
     return indexHasFolders(index, hashBytes);
   } catch (error) { if (error instanceof Unreadable) return null; throw error; }
 }
-/** Walks the entries of a git index. True at the first path in `folders/`; null for bytes that do not parse. */
+/** Whether the check of `folders/` ran, and what it found (round 2 of the reviews of PR 100, L1). */
+export interface FoldersCheck { check: 'checked' | 'no-repository' | 'outer-repository' | 'unreadable'; tracked: boolean | null }
+/**
+ * The check of `folders/` for `store status`. A store with no `.git` of its own may still sit inside a repository of a
+ * folder above it, such as a home folder kept in git: then Bowerloom cannot tell, and says so. Reads only.
+ */
+export function storeFoldersCheck(storeDir: string, hooks: StoreRepoHooks = {}): FoldersCheck {
+  let own = true;
+  try { lstatSync(join(storeDir, '.git')); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') own = false; }
+  if (!own) {
+    for (let dir = dirname(storeDir); ; dir = dirname(dir)) {
+      try { lstatSync(join(dir, '.git')); return { check: 'outer-repository', tracked: null }; } catch { /* not here */ }
+      if (dirname(dir) === dir) return { check: 'no-repository', tracked: false };
+    }
+  }
+  const tracked = storeTracksFolders(storeDir, hooks);
+  return tracked === null ? { check: 'unreadable', tracked: null } : { check: 'checked', tracked };
+}
+/**
+ * Walks the entries of a git index, then its extensions. True at the first path in `folders/`; null for bytes that do not
+ * parse or a split index. A version 4 path is kept only as its length and its first 8 bytes, which is all the test needs,
+ * so a hostile index costs time in its size only (review S6).
+ */
 function indexHasFolders(bytes: Buffer, hashBytes: number): boolean | null {
-  if (bytes.length < 12 || bytes.toString('latin1', 0, 4) !== 'DIRC') return null;
-  const version = bytes.readUInt32BE(4), count = bytes.readUInt32BE(8);
+  if (bytes.length < 12 + hashBytes || bytes.toString('latin1', 0, 4) !== 'DIRC') return null;
+  const version = bytes.readUInt32BE(4), count = bytes.readUInt32BE(8), end = bytes.length - hashBytes;
   if (version < 2 || version > 4 || count > INDEX_ENTRIES) return null;
   const fixed = 40 + hashBytes + 2;
-  let at = 12, previous: Buffer = Buffer.alloc(0);
+  let at = 12, found = false, previousLength = 0, previous: Buffer = Buffer.alloc(0);
   for (let i = 0; i < count; i++) {
-    if (at + fixed > bytes.length) return null;
+    if (at + fixed > end) return null;
     const flags = bytes.readUInt16BE(at + 40 + hashBytes);
     let name = at + fixed;
     if (flags & 0x4000) { if (version < 3) return null; name += 2; }
-    let path: Buffer;
+    let length: number, prefix: Buffer;
     if (version === 4) {
-      // A path is the previous path less N bytes, then the bytes up to a NUL. N is git's offset varint.
-      if (name >= bytes.length) return null;
+      // The path is the previous path less N bytes, then the bytes up to a NUL. N is git's offset varint.
+      if (name >= end) return null;
       let c = bytes[name++]!, strip = c & 127;
-      while (c & 128) { if (name >= bytes.length || strip > INDEX_LIMIT) return null; c = bytes[name++]!; strip = ((strip + 1) * 128) + (c & 127); }
-      if (strip > previous.length) return null;
-      const end = bytes.indexOf(0, name);
-      if (end < 0) return null;
-      path = Buffer.concat([previous.subarray(0, previous.length - strip), bytes.subarray(name, end)]);
-      at = end + 1;
+      while (c & 128) { if (name >= end || strip > PATH_LIMIT) return null; c = bytes[name++]!; strip = ((strip + 1) * 128) + (c & 127); }
+      if (strip > previousLength) return null;
+      const stop = bytes.indexOf(0, name);
+      if (stop < 0 || stop >= end) return null;
+      const kept = previousLength - strip;
+      length = kept + (stop - name);
+      if (length > PATH_LIMIT) return null;
+      prefix = kept >= 8 ? previous : Buffer.concat([previous.subarray(0, kept), bytes.subarray(name, Math.min(stop, name + 8 - kept))]);
+      at = stop + 1;
     } else {
-      const end = bytes.indexOf(0, name);
-      if (end < 0) return null;
-      path = bytes.subarray(name, end);
+      const stop = bytes.indexOf(0, name);
+      if (stop < 0 || stop >= end) return null;
+      length = stop - name;
+      if (length > PATH_LIMIT) return null;
+      prefix = bytes.subarray(name, Math.min(stop, name + 8));
       // The entry, path included, is padded with 1 to 8 NUL bytes to a multiple of 8.
-      at += ((name - at) + path.length + 8) & ~7;
+      at += ((name - at) + length + 8) & ~7;
     }
-    if (path.length >= 7 && path.toString('latin1', 0, 7) === 'folders' && (path.length === 7 || path[7] === 0x2f)) return true;
-    previous = path;
+    if (length >= 7 && prefix.toString('latin1', 0, 7) === 'folders' && (length === 7 || prefix[7] === 0x2f)) found = true;
+    previousLength = length; previous = prefix;
   }
-  return false;
+  if (at > end) return null;
+  // Extensions: a 4-byte signature and a 4-byte size each, up to the checksum. A `link` extension means a split index.
+  while (at < end) {
+    if (at + 8 > end) return null;
+    const signature = bytes.toString('latin1', at, at + 4), size = bytes.readUInt32BE(at + 4);
+    if (signature === 'link') return null;
+    at += 8 + size;
+    if (at > end) return null;
+  }
+  return found;
 }
