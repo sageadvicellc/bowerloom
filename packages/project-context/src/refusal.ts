@@ -31,6 +31,7 @@ const MESSAGES = {
   FOLDER_UNSAFE: 'This folder cannot be registered. It must exist below your home folder, belong to you, and be safe from other users.',
   FOLDER_IN_CLOUD: 'This folder syncs to a cloud service, so it cannot be registered.',
   FOLDER_INVALID: 'A folder record in your store is not valid.',
+  FOLDER_NOT_ALLOWED: 'This project is not allowed to read this registered folder.',
   CONFIG_UNREADABLE: 'Bowerloom cannot read bowerloom.json.',
   CONFIG_UNSAFE: 'bowerloom.json is not safe to read. It must be a plain file that you own, with one link, no write access for others, and at most 1 MiB.',
 } as const;

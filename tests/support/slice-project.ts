@@ -47,6 +47,7 @@ export function sliceProject(t: TestContext, { apply = true, agentExtra = '', ro
   if (registered) { mkdirSync(base, { mode: 0o755 }); chmodSync(base, 0o755); }
   put(base, `${root}/a.md`, '# Alpha\nbody a\n'); put(base, `${root}/sub/b.md`, '# Beta\nbody b\n'); put(base, `${root}/secret.txt`, 'not in the slice\n');
   if (registered) approve(dir, ['folder', 'add', 'kb', base], home);
+  if (registered) approve(dir, ['folder', 'allow', 'kb'], home);
   approve(dir, ['slice', 'create', 'wiki', '--root', root, '--include', '**/*.md', ...(registered ? ['--registered', 'kb'] : [])], home);
   const agent = put(dir, '.bowerloom/teams/first-team/agents/lead.md', AGENT(agentExtra));
   if (apply) approve(dir, ['apply', '--harness', 'claude'], home);

@@ -124,6 +124,8 @@ export interface ApplyPlan {
   unregisteredSlices: string[];
   /** True when a guarded agent copy is planned and `.claude/agents` may not be git-ignored (spec 05, section 3.8). */
   agentsMayBeTracked: boolean;
+  /** True when a slice of a registered folder is installed or updated and `.claude/skills` may be committed: the index holds text of that folder. */
+  skillsMayBeTracked: boolean;
   /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; storeCacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
@@ -238,7 +240,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
     const catalogNames = exists(catalogs) ? names(catalogs) : [];
     const listing = listSlices(dir);
-    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames, registeredLookup(home)) : { items: [] as SliceItem[], unregistered: listing.unregistered };
+    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames, registeredLookup(home, project.projectId, input.stateRoot)) : { items: [] as SliceItem[], unregistered: listing.unregistered };
     const registeredSliceCount = listing.ids.length;
     const plain = plainSkillIds(dir);
     if (claude) {
@@ -291,7 +293,8 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       // Review F5: the skills planner's own notes (a store cache entry that fails verification) join the resolver's.
       notes: [...new Set([...(resolved?.notes ?? []), ...(skills?.notes ?? []).filter(n => n !== FROZEN_LINE), ...cacheNotes])].concat(frozen ? [FROZEN_LINE] : []),
       harnesses, team, skills, prompts, slices, agents, allow, codexSlicesSkipped: harnesses.includes('codex') && registeredSliceCount > 0, unregisteredSlices: sliceScan.unregistered,
-      agentsMayBeTracked: agentWork.some(a => a.context.guard !== null) && agentsMayBeTracked(dir), codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
+      agentsMayBeTracked: agentWork.some(a => a.context.guard !== null) && agentsMayBeTracked(dir),
+      skillsMayBeTracked: sliceWork.some(sl => sl.copies !== null && sl.copies.summary !== 'none') && agentsMayBeTracked(dir, home, 'skills'), codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, actionable: skillWork.length + promptWork.length + sliceWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,

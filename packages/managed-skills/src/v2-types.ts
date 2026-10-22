@@ -37,12 +37,12 @@ export type SliceRequestRoot = { kind: 'project' } | { kind: 'registered'; name:
  */
 export type RegisteredLookup = (name: string, path: string) =>
   | { ok: true; dir: string; identity: RootIdentity; recordSha256: string }
-  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE'; detail: string };
+  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string };
 export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string }
   | { kind: 'agent'; team: string; name: string; guard: AgentGuardSource | null } | { kind: 'slice'; name: string; root: SliceRequestRoot }
   | { kind: 'store'; path: string; storeDir: string } | { kind: 'store-prompt'; name: string; storeDir: string };
 /** The root and guard mode a slice's catalog records. It holds no absolute path. */
-export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string };
+export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string; id: string };
 export interface LegacyRef { stateDir: string; operationKey: string }
 export interface ManagedItemRequest {
   operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef; harnesses: Harness[];

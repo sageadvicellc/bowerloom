@@ -77,11 +77,12 @@ test('B1. a slice of a registered folder: the apply review, the held line when t
   const p = sliceProject(t, { apply: false, registered: true }), install = run(p.dir, ['apply', '--harness', 'claude'], p.home);
   assert.equal(install.status, 3, install.stderr);
   assert.match(install.stdout, /^ {2}wiki +install slice: \.claude\/skills\/slice-wiki\/SKILL\.md \(2 files from registered folder kb \(\.\.\/kb\/wiki\)\)$/m);
-  assert.match(install.stdout, /^ {2}Note: slice wiki reads \.\.\/kb\/wiki, outside this project\. Claude Code may ask before it reads there\. Start Claude Code with --add-dir \.\.\/kb\/wiki, or add the folder to permissions\.additionalDirectories\.$/m);
+  assert.ok(install.stdout.includes(`  Note: slice wiki reads ../kb/wiki, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${join(p.kb!, 'wiki')}, or add the folder to permissions.additionalDirectories.\n`), install.stdout);
+  assert.ok(install.stdout.includes(`  Note: slice wiki copies the first heading of 2 files from ${join(p.kb!, 'wiki')} into .claude/skills/slice-wiki/SKILL.md.\n`), install.stdout);
   approve(p.dir, ['apply', '--harness', 'claude'], p.home);
   const shown = run(p.dir, ['context', 'show', 'wiki'], p.home); assert.equal(shown.status, 0, shown.stderr);
   assert.match(shown.stdout, /^Slice wiki: 2 files from registered folder kb \(\.\.\/kb\/wiki\)\nIndex: \.claude\/skills\/slice-wiki\/SKILL\.md, \d+ bytes \(installed and the same\)\nGuard: root\nAgents: lead\nNotes:\n {2}reads \.\.\/kb\/wiki, outside this project\./);
-  const status = run(p.dir, ['status'], p.home); assert.match(status.stdout, /slice wiki: 1 notes, run bowerloom context show wiki/);
+  const status = run(p.dir, ['status'], p.home); assert.match(status.stdout, /slice wiki: 2 notes, run bowerloom context show wiki/);
   rmSync(join(p.home, '.bowerloom/folders/kb.json'));
   const held = run(p.dir, ['apply', '--harness', 'claude'], p.home);
   assert.match(held.stdout, /^ {2}wiki +slice held \(SLICE_ROOT_MISSING\)\n {2} +Next: Run bowerloom folder list, or register the folder with bowerloom folder add <folder-name> <path>, then run bowerloom apply\.$/m);
@@ -91,7 +92,7 @@ test('B1. a slice of a registered folder: the apply review, the held line when t
 
 test('8b. every folder code (Part B) has a refusal sentence and a row in errors.md, and the project layer raises it', async () => {
   const { projectRefusal } = await import('../packages/project-context/src/index.js');
-  for (const c of ['FOLDER_NAME_INVALID', 'FOLDER_EXISTS', 'FOLDER_NOT_FOUND', 'FOLDER_UNSAFE', 'FOLDER_IN_CLOUD', 'FOLDER_INVALID']) {
+  for (const c of ['FOLDER_NAME_INVALID', 'FOLDER_EXISTS', 'FOLDER_NOT_FOUND', 'FOLDER_UNSAFE', 'FOLDER_IN_CLOUD', 'FOLDER_INVALID', 'FOLDER_NOT_ALLOWED']) {
     assert.match(errors, new RegExp('\\| `' + c + '` \\|'), `errors.md has a row for ${c}`);
     assert.equal(projectRefusal(c as 'FOLDER_EXISTS').code, c); assert.doesNotMatch(projectRefusal(c as 'FOLDER_EXISTS').message, /\//, `${c} message carries no path`);
   }

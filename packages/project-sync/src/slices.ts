@@ -11,11 +11,11 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import { revisionOf } from '../../skill-sources/src/validation.js';
-import { LIMITS, OP_TEMP, directory, exists, names, raw, stablePins } from '../../managed-skills/src/observed.js';
+import { LIMITS, OP_TEMP, directory, exists, names, raw, sameOrInside, stablePins } from '../../managed-skills/src/observed.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import type { SliceTreeResult } from '../../managed-skills/src/local-source.js';
 import { catalogPath, currentV2, locateV2, ownSurface } from '../../managed-skills/src/v2-observed.js';
-import type { InventoryRow, ItemClosure, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, RegisteredLookup, SliceRequestRoot, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
+import type { SliceCatalogRoot, InventoryRow, ItemClosure, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, RegisteredLookup, SliceRequestRoot, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { resolveRegisteredRoot } from '../../project-context/src/registered-folders.js';
 import { identityFrom, projectId } from '../../project-context/src/discovery.js';
 import type { DirectoryIdentity } from '../../project-context/src/types.js';
@@ -30,7 +30,7 @@ import { managedCode, syncError } from './refusal.js';
 
 export type SliceState = 'new' | 'edited' | 'up-to-date' | 'drift' | 'orphaned' | 'held';
 /** What the catalog of a slice records as its source. It holds no absolute path. */
-export interface SliceCatalogSource { kind: 'slice'; path: string; root: SliceDefinition['root']; guard: 'root' | 'none' }
+export interface SliceCatalogSource { kind: 'slice'; path: string; root: SliceCatalogRoot; guard: 'root' | 'none' }
 export interface SliceItem {
   id: string;
   /** `slice_<id>`: the name of its private folder and its catalog. */
@@ -40,7 +40,9 @@ export interface SliceItem {
   harnesses: ['claude'];
   definition: { path: string; sha256: string; bytes: number } | null;
   root: { kind: 'project'; path: string; dir: string; identity: DirectoryIdentity }
-    | { kind: 'registered'; name: string; path: string; dir: string; identity: DirectoryIdentity; recordSha256: string } | null;
+    | { kind: 'registered'; name: string; path: string; dir: string; identity: DirectoryIdentity; recordSha256: string; holdsProject: boolean } | null;
+  /** For a registered root: what the index copies out of the folder, so the plan can say so. Null for a root in the project. */
+  copies: { summary: 'heading' | 'frontmatter' | 'none'; key: string | null; count: number; folder: string } | null;
   guard: 'root' | 'none' | null;
   /** Relative to the root, sorted. */
   members: string[];
@@ -96,7 +98,8 @@ export function holdOf(id: string, hold: { code: string; detail: string; errno?:
     case 'SLICE_KEY_UNKNOWN': return { code: hold.code, next: `Remove ${/^[A-Za-z0-9_.-]{1,64}$/.test(hold.detail) ? `the key ${hold.detail}` : 'a key with unsupported characters'} from ${path}, then run bowerloom apply.` };
     case 'SLICE_PATH_MISSING': return { code: hold.code, next: `${hold.detail} is gone. Fix the path in ${path}, or restore the file, then run bowerloom apply.` };
     case 'SLICE_ROOT_MISSING': return { code: hold.code, next: 'Run bowerloom folder list, or register the folder with bowerloom folder add <folder-name> <path>, then run bowerloom apply.' };
-    case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : `ls -ld ${hold.detail}` };
+    case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : hold.errno !== undefined ? `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -ld ${hold.detail}, let your user read it, then run bowerloom apply.` : `ls -ld ${hold.detail}` };
+    case 'FOLDER_NOT_ALLOWED': return { code: hold.code, next: `bowerloom folder allow ${hold.detail}` };
     case 'SLICE_SOURCE_UNSAFE': return { code: hold.code, next: hold.errno === undefined ? `ls -l ${hold.detail}` : `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -l ${hold.detail}, let your user read it, then run bowerloom apply.` };
     case 'SLICE_EMPTY': return { code: hold.code, next: `Widen include in ${path}, then run bowerloom apply.` };
     default: return { code: 'SLICE_TOO_LARGE', next: 'Narrow the slice, or set summary: none, then run bowerloom apply.' };
@@ -115,9 +118,9 @@ const qualified = (root: string, member: string): string => root === '' ? member
 export type SliceTreeHook = (projectDir: string, name: string, root: SliceRequestRoot, live: () => void, registered?: RegisteredLookup) => SliceTreeResult;
 
 /** The store lookup of registered folders, for `readSliceTree`: the project-context resolver with the identity cut to what a request carries. */
-export function registeredLookup(home: string): RegisteredLookup {
+export function registeredLookup(home: string, projectId: string, stateRoot?: string): RegisteredLookup {
   return (name, path) => {
-    const found = resolveRegisteredRoot(home, name, path);
+    const found = resolveRegisteredRoot(home, name, path, { projectId, ...(stateRoot !== undefined ? { stateRoot } : {}) });
     if (!found.ok) return found;
     return { ok: true, dir: found.dir, identity: { device: found.identity.device, inode: found.identity.inode, birthtimeNs: found.identity.birthtimeNs }, recordSha256: found.recordSha256 };
   };
@@ -132,14 +135,14 @@ function readTree(read: SliceTreeHook, project: string, id: string, registered?:
     if (code === 'MANAGED_SKILL_ABORTED' || code === 'MANAGED_SKILL_TIMEOUT') throw syncError(code);
     // An error with no string code is a bug in Bowerloom: it must not look like a fault in the person's files.
     if (typeof code !== 'string') throw e;
-    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id), errno: code }, rootDir: null, recordSha256: null };
+    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id), errno: code }, rootDir: null, recordSha256: null, rootId: null };
   }
 }
 
 function heldItem(project: string, id: string, extra: Partial<SliceItem>, hold: { code: string; next: string }): SliceItem {
   const surfaces = sliceSurfaces(project, id);
   return {
-    id, itemId: 'slice_' + id, state: 'held', action: 'hold', harnesses: ['claude'], definition: null, root: null, guard: null, members: [], covered: [],
+    id, itemId: 'slice_' + id, state: 'held', action: 'hold', harnesses: ['claude'], definition: null, root: null, copies: null, guard: null, members: [], covered: [],
     changes: { ...NO_CHANGES }, notes: { ...NO_NOTES, unparsed: [], emptyPatterns: [], oversize: [] }, agents: [], installed: false,
     expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })), source: null }, before: beforePins(surfaces, project),
     previousReceiptRevision: null, history: 0, hold, ...extra,
@@ -157,20 +160,31 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
   }
   const tree = readTree(read, project, id, registered);
   const def = tree.definition, res = tree.resolution;
+  // The root folder is read once more for its identity. A folder that cannot be read now holds the slice, never a plan without a root.
+  let rootItem: SliceItem['root'] = null, holdsProject = false;
+  if (def !== null && tree.rootDir !== null) {
+    try {
+      const identity = identityFrom(lstatSync(tree.rootDir, { bigint: true }));
+      holdsProject = def.root.kind === 'registered' && sameOrInside(project, tree.rootDir);
+      rootItem = def.root.kind === 'project' ? { kind: 'project', path: def.root.path, dir: tree.rootDir, identity } : { kind: 'registered', name: def.root.name, path: def.root.path, dir: tree.rootDir, identity, recordSha256: tree.recordSha256 ?? '', holdsProject };
+    } catch (error) {
+      const errno = (error as NodeJS.ErrnoException | null)?.code;
+      if (typeof errno !== 'string') throw error;
+      const missing = errno === 'ENOENT' || errno === 'ENOTDIR';
+      return heldItem(project, id, { installed: installedState(project, itemsRoot, ref).installed }, missing ? holdOf(id, { code: 'SLICE_ROOT_MISSING', detail: def.root.kind === 'registered' ? def.root.name : def.root.path }) : holdOf(id, { code: 'SLICE_ROOT_UNSAFE', detail: tree.rootDir, errno }));
+    }
+  }
   const notes = {
     unparsed: [...res.notes.unparsed], unresolvedLinks: res.notes.unresolvedLinks, ambiguousLinks: res.notes.ambiguousLinks, emptyPatterns: [...res.notes.emptyPatterns],
-    notText: res.notes.notText, oversize: [...res.notes.oversize], skippedEntries: res.notes.skippedEntries, truncatedLinks: res.notes.truncatedLinks, outsideProject: def !== null && def.root.kind === 'registered' && tree.rootDir !== null, wholeProject: def !== null && def.root.kind === 'project' && def.root.path === '.' && def.guard === 'root',
+    notText: res.notes.notText, oversize: [...res.notes.oversize], skippedEntries: res.notes.skippedEntries, truncatedLinks: res.notes.truncatedLinks,
+    outsideProject: def !== null && def.root.kind === 'registered' && tree.rootDir !== null && !holdsProject,
+    wholeProject: def !== null && def.guard === 'root' && ((def.root.kind === 'project' && def.root.path === '.') || (def.root.kind === 'registered' && holdsProject)),
   };
-  const rootItem = def !== null && tree.rootDir !== null ? ((): SliceItem['root'] => {
-    try {
-      const identity = identityFrom(lstatSync(tree.rootDir!, { bigint: true }));
-      return def.root.kind === 'project' ? { kind: 'project', path: def.root.path, dir: tree.rootDir!, identity } : { kind: 'registered', name: def.root.name, path: def.root.path, dir: tree.rootDir!, identity, recordSha256: tree.recordSha256 ?? '' };
-    } catch { return null; }
-  })() : null;
-  const source: SliceCatalogSource | null = def === null ? null : { kind: 'slice', path: `slices/${id}.yaml`, root: def.root, guard: def.guard };
+  const copies: SliceItem['copies'] = def !== null && def.root.kind === 'registered' && tree.rootDir !== null ? { summary: def.summary.kind, key: def.summary.kind === 'frontmatter' ? def.summary.key : null, count: res.members.length, folder: tree.rootDir } : null;
+  const source: SliceCatalogSource | null = def === null ? null : { kind: 'slice', path: `slices/${id}.yaml`, root: def.root.kind === 'registered' ? { ...def.root, id: tree.rootId ?? '' } : def.root, guard: def.guard };
   const previous = installedState(project, itemsRoot, ref);
   const base: Partial<SliceItem> = {
-    definition: tree.file === null ? null : { path: fileOf(id), ...tree.file }, root: rootItem, guard: def?.guard ?? null, members: res.members.map(m => m.path), covered: [...res.covered], notes, installed: previous.installed,
+    definition: tree.file === null ? null : { path: fileOf(id), ...tree.file }, root: rootItem, guard: def?.guard ?? null, members: res.members.map(m => m.path), covered: [...res.covered], notes, copies, installed: previous.installed,
   };
   if (tree.hold !== null) return heldItem(project, id, base, holdOf(id, tree.hold));
 
@@ -205,7 +219,7 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
       let summaries = 0; for (const [p, line] of newLines) { const was2 = oldLines.get(p); if (was2 !== undefined && was2 !== line) summaries++; }
       changes = {
         added: [...newSet].filter(p => !oldSet.has(p)).length, gone: [...oldSet].filter(p => !newSet.has(p)).length, summaries,
-        rootChanged: !same(was?.root ?? null, def!.root), guardChanged: was?.guard !== def!.guard,
+        rootChanged: !same(was?.root ?? null, source!.root), guardChanged: was?.guard !== def!.guard,
       };
       const differs = !same(view.inventory, files) || !same(oldMembers, base.members) || !same(oldCovered, base.covered) || changes.rootChanged || changes.guardChanged;
       if (differs) { state = 'edited'; action = 'update'; } else { state = 'up-to-date'; action = 'none'; }
@@ -259,6 +273,8 @@ export function orphanSlice(project: string, itemsRoot: string, id: string): Sli
 /** The root a child request names: the project, or the registered folder's root with the identity the plan read. */
 export function requestRoot(item: SliceItem): SliceRequestRoot {
   const root = item.root;
+  // A registered slice with no root was held and has no child request. Naming the project for it would read another folder.
+  if (root === null && item.expected.source?.root.kind === 'registered') throw new Error('A registered slice has no root to read.');
   if (root === null || root.kind === 'project') return { kind: 'project' };
   return { kind: 'registered', name: root.name, dir: root.dir, identity: { device: root.identity.device, inode: root.identity.inode, birthtimeNs: root.identity.birthtimeNs } };
 }
@@ -348,12 +364,13 @@ export function agentContext(agent: ParsedAgent, slices: readonly SliceItem[], p
   return out;
 }
 
-const GITIGNORES = ['.claude', '.claude/', '.claude/agents', '.claude/agents/', '**/.claude', '**/.claude/', '**/.claude/agents', '**/.claude/agents/'];
+const gitignores = (sub: string): string[] => ['.claude', '.claude/', `.claude/${sub}`, `.claude/${sub}/`, '**/.claude', '**/.claude/', `**/.claude/${sub}`, `**/.claude/${sub}/`];
 /**
- * True when `.claude/agents` may be committed (spec 05, section 3.8). It reads `.gitignore` files and `.git/info/exclude`,
+ * True when `.claude/agents`, or with `sub` set to `skills` `.claude/skills`, may be committed (spec 05, section 3.8). It reads `.gitignore` files and `.git/info/exclude`,
  * never the global excludes file of git, and starts no process. Without a repository folder it says false.
  */
-export function agentsMayBeTracked(projectDir: string, home: string = homedir()): boolean {
+export function agentsMayBeTracked(projectDir: string, home: string = homedir(), sub: 'agents' | 'skills' = 'agents'): boolean {
+  const GITIGNORES = gitignores(sub);
   let repo: string | null = null;
   for (let at = projectDir; ; at = join(at, '..')) {
     if (at === home || at === '/' || at === '') break;
@@ -376,7 +393,7 @@ export function agentsMayBeTracked(projectDir: string, home: string = homedir())
       if (line === '' || line.startsWith('#')) continue;
       if (line.startsWith('!') && line.includes('.claude')) return true;
       if (GITIGNORES.includes(line)) ignored = true;
-      else { const lead = fromHere === '' ? '/' : `/${fromHere}/`; if ([`${lead}.claude`, `${lead}.claude/`, `${lead}.claude/agents`, `${lead}.claude/agents/`].includes(line)) ignored = true; }
+      else { const lead = fromHere === '' ? '/' : `/${fromHere}/`; if ([`${lead}.claude`, `${lead}.claude/`, `${lead}.claude/${sub}`, `${lead}.claude/${sub}/`].includes(line)) ignored = true; }
     }
   }
   return !ignored;

@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import { join, relative } from 'node:path';
 import { relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
-import { LIMITS, check, boundary, hash, same, identity, names, path as projectPath } from './observed.js';
+import { LIMITS, check, boundary, hash, same, identity, names, sameOrInside, path as projectPath } from './observed.js';
 import { claudeCopyBytes } from './agent-copy.js';
 import { STORE_FILE_LIMITS, storeFileFault } from '../../skill-manifest/src/content.js';
 import { identityFrom, projectId } from '../../project-context/src/discovery.js';
@@ -131,6 +131,8 @@ export interface SliceTreeResult {
   rootDir: string | null;
   /** For a registered root found through the store: the sha256 of its record. Null otherwise. */
   recordSha256: string | null;
+  /** For a registered root: the id of the root folder (its real path, device and inode), which changes when another folder takes its place. Null otherwise. */
+  rootId: string | null;
 }
 const staleFile = (): never => { throw new ManagedSkillError('MANAGED_SKILL_STALE_APPROVAL'); };
 const EMPTY: SliceResolution = Object.freeze({ members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }) as SliceResolution;
@@ -189,15 +191,15 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
     try { got = authored(file, SLICE_LIMITS.fileBytes); }
     catch (e) {
       if ((e as NodeJS.ErrnoException)?.code === 'ENOENT') return staleFile();
-      return { definition: null, file: null, resolution: EMPTY, index: null, hold: { code: 'SLICE_INVALID', detail: 'the file cannot be read as a plain text file that you own, with one link, no write access for others, and at most 16 KiB' }, rootDir: null, recordSha256: null };
+      return { definition: null, file: null, resolution: EMPTY, index: null, hold: { code: 'SLICE_INVALID', detail: 'the file cannot be read as a plain text file that you own, with one link, no write access for others, and at most 16 KiB' }, rootDir: null, recordSha256: null, rootId: null };
     }
     pins.push(got.pin);
     const info = { sha256: hash(got.text), bytes: Buffer.byteLength(got.text) };
     const parsed = parseSlice(got.text, name);
-    if (!parsed.ok) { closingStale(pins, live); return { definition: null, file: info, resolution: EMPTY, index: null, hold: { code: parsed.code, detail: parsed.detail }, rootDir: null, recordSha256: null }; }
+    if (!parsed.ok) { closingStale(pins, live); return { definition: null, file: info, resolution: EMPTY, index: null, hold: { code: parsed.code, detail: parsed.detail }, rootDir: null, recordSha256: null, rootId: null }; }
     const def = parsed.slice;
-    const held = (hold: { code: string; detail: string; inside?: boolean }, recordSha256: string | null = null): SliceTreeResult => { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold, rootDir: null, recordSha256 }; };
-    let at: string, prefix: string, source: string, recordSha256: string | null = null;
+    const held = (hold: { code: string; detail: string; errno?: string; inside?: boolean }, recordSha256: string | null = null): SliceTreeResult => { closingStale(pins, live); return { definition: def, file: info, resolution: EMPTY, index: null, hold, rootDir: null, recordSha256, rootId: null }; };
+    let at: string, prefix: string, source: string, recordSha256: string | null = null, rootId: string | null = null;
     const rootPath = def.root.path;
     if (def.root.kind === 'project') {
       // The request says where the plan read; a file that now says another kind of root is a change since the plan.
@@ -219,7 +221,7 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
         at = root.dir; identityWanted = root.identity;
       } else if (registered !== undefined) {
         const found = registered(folderName, rootPath);
-        if (!found.ok) return held({ code: found.code, detail: found.detail });
+        if (!found.ok) return held({ code: found.code, detail: found.detail, ...(found.cause !== undefined ? { errno: found.cause } : {}) });
         at = found.dir; recordSha256 = found.recordSha256;
       } else return held({ code: 'SLICE_ROOT_MISSING', detail: folderName });
       let s: fs.BigIntStats;
@@ -229,9 +231,12 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
         const now = identity(s);
         if (now.device !== identityWanted.device || now.inode !== identityWanted.inode || now.birthtimeNs !== identityWanted.birthtimeNs) return staleFile();
       }
-      // A registered folder inside the project would be a project root with a second name: use the project root.
-      if (at === projectDir || at.startsWith(projectDir + '/')) return held({ code: 'SLICE_ROOT_UNSAFE', detail: relative(projectDir, at) || '.', inside: true });
+      // The root must pass the same path rule as the request at apply, or the plan would be refused later.
+      try { projectPath(at); } catch { return held({ code: 'SLICE_ROOT_UNSAFE', detail: at }); }
+      // A registered folder inside the project would be a project root with a second name: use the project root. Compared by identity, so a link or a case alias cannot hide it.
+      if (at === projectDir || at.startsWith(projectDir + '/') || sameOrInside(at, projectDir)) return held({ code: 'SLICE_ROOT_UNSAFE', detail: relative(projectDir, at) || '.', inside: true });
       pins.push(pinOf(at, s));
+      rootId = projectId(fs.realpathSync(at), identityFrom(s));
       prefix = relative(projectDir, at); source = `${prefix} (registered folder ${folderName})`;
     }
     const resolution = resolveSlice(def, new RootTree(at, pins, live));
@@ -240,11 +245,11 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
     const qualify = (detail: string): string => prefix === '' ? detail : detail === '.' ? prefix : `${prefix}/${detail}`;
     if (resolution.hold !== null) {
       const h = resolution.hold, named = h.code === 'SLICE_PATH_MISSING' || h.code === 'SLICE_SOURCE_UNSAFE';
-      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail), ...(h.errno === undefined ? {} : { errno: h.errno }) } : h, rootDir: at, recordSha256 };
+      return { definition: def, file: info, resolution, index: null, hold: named ? { code: h.code, detail: qualify(h.detail), ...(h.errno === undefined ? {} : { errno: h.errno }) } : h, rootDir: at, recordSha256, rootId };
     }
     const index = renderSliceIndex(name, def, resolution, { source, prefix });
-    if (Buffer.byteLength(index) > SLICE_LIMITS.indexBytes) return { definition: def, file: info, resolution, index: null, hold: { code: 'SLICE_TOO_LARGE', detail: 'the index' }, rootDir: at, recordSha256 };
-    return { definition: def, file: info, resolution, index, hold: null, rootDir: at, recordSha256 };
+    if (Buffer.byteLength(index) > SLICE_LIMITS.indexBytes) return { definition: def, file: info, resolution, index: null, hold: { code: 'SLICE_TOO_LARGE', detail: 'the index' }, rootDir: at, recordSha256, rootId };
+    return { definition: def, file: info, resolution, index, hold: null, rootDir: at, recordSha256, rootId };
   } catch (e) { return boundary(e); }
 }
 
@@ -254,6 +259,6 @@ export function readLocalSlice(projectDir: string, name: string, root: SliceRequ
     const got = readSliceTree(projectDir, name, root, live);
     check(got.hold === null && got.definition !== null && got.index !== null);
     const def = got.definition!, index = got.index!;
-    return closure({ kind: 'slice', path: `slices/${name}.yaml`, root: def.root, guard: def.guard }, [{ path: 'SKILL.md', text: index, sha256: hash(index), mode: 420 }], undefined, [...got.resolution.members.map(m => m.path), ...got.resolution.covered]);
+    return closure({ kind: 'slice', path: `slices/${name}.yaml`, root: def.root.kind === 'registered' ? { ...def.root, id: got.rootId ?? '' } : def.root, guard: def.guard }, [{ path: 'SKILL.md', text: index, sha256: hash(index), mode: 420 }], undefined, [...got.resolution.members.map(m => m.path), ...got.resolution.covered]);
   } catch (e) { return boundary(e); }
 }

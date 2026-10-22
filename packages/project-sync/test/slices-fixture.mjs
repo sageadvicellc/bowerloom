@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
-import { planFolderAdd, applyFolderAdd } from '../../../dist/packages/project-context/src/index.js';
+import { planFolderAdd, applyFolderAdd, planFolderAllow, applyFolderAllow } from '../../../dist/packages/project-context/src/index.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 import { agentProject, agentText, agentSource, signal } from './agents-fixture.mjs';
 
@@ -42,8 +42,8 @@ let folders = 0;
  * A folder in HOME, outside the project, with a wiki of two pages, registered in the store under a new name by the product's
  * own `folder add`. Both the folder and its record go when the test ends.
  */
-export async function registeredFolder(f, t, { name = `kb${++folders}`, pages = { 'a.md': '# Alpha\nbody a\n', 'sub/b.md': '# Beta\nbody b\n' } } = {}) {
-  const dir = fs.mkdtempSync(path.join(f.home, 'folder-')); fs.chmodSync(dir, 0o755);
+export async function registeredFolder(f, t, { name = `kb${++folders}`, pages = { 'a.md': '# Alpha\nbody a\n', 'sub/b.md': '# Beta\nbody b\n' }, allow = true, prefix = 'folder-' } = {}) {
+  const dir = fs.mkdtempSync(path.join(f.home, prefix)); fs.chmodSync(dir, 0o755);
   t.after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(path.join(f.home, '.bowerloom/folders', name + '.json'), { force: true }); });
   const wiki = path.join(dir, 'wiki');
   for (const [rel, text] of Object.entries(pages)) {
@@ -53,5 +53,12 @@ export async function registeredFolder(f, t, { name = `kb${++folders}`, pages = 
   }
   const plan = planFolderAdd(f.home, f.home, name, dir);
   await applyFolderAdd(f.home, f.home, name, dir, plan.revision, signal());
+  if (allow) await allowFolder(f, name);
   return { name, dir, wiki, record: path.join(f.home, '.bowerloom/folders', name + '.json'), display: path.relative(f.projectDir, wiki) };
+}
+
+/** `folder allow <name>` for the project of the fixture, through the product. */
+export async function allowFolder(f, name) {
+  const project = { dir: f.projectDir, projectId: f.project().projectId }, plan = planFolderAllow(f.home, project, name);
+  await applyFolderAllow(f.home, project, name, plan.revision, signal());
 }

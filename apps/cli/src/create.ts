@@ -9,7 +9,7 @@
  * first `--global` write makes the store (spec 04, 3.3). The store holds definitions only.
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, inspectStore, projectRefusal, readFolderRecord, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
+import { checkRegisteredFolder, discoverProject, inspectStore, privateStateRoot, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { applyCreate, planCreate } from '../../../packages/project-authoring/src/index.js';
 import type { AuthoringReceipt, CreateInput, CreatePlan } from '../../../packages/project-authoring/src/index.js';
@@ -131,23 +131,30 @@ export async function runCreateCommand(args: readonly string[], cwd: string, hom
     : parsed.noun === 'slice'
     ? { kind: 'slice', project: project.dir, name: parsed.name, root: parsed.registered !== null ? { kind: 'registered', name: parsed.registered, path: parsed.root ?? '.' } : parsed.root === null ? null : { kind: 'project', path: parsed.root }, includes: parsed.includes.length ? parsed.includes : null }
     : { kind: parsed.noun, project: project.dir, name: parsed.name, teams: parsed.teams };
-  // A registered folder must be in the store. The recorded path is part of the plan's words.
-  return runApprovalCommand(parsed.approval, createChange(project, input, parsed.registered === null ? undefined : registeredPath(home, parsed.registered)), io, write);
+  // A registered folder must be in the store and usable. The plan checks it after the create checks, and its recorded path is part of the plan's words.
+  return runApprovalCommand(parsed.approval, createChange(project, input, parsed.registered === null ? undefined : { home, name: parsed.registered, stateRoot: privateStateRoot(process.env, home) }), io, write);
 }
 
 /** The path below home that the store records for registered folder `name`. FOLDER_NOT_FOUND when the store or the record is absent. */
-function registeredPath(home: string, name: string): string {
+function registeredPath(home: string, name: string, stateRoot: string): string {
   const found = inspectStore(home);
   if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
   if (found.state === 'absent') throw projectRefusal('FOLDER_NOT_FOUND');
-  return readFolderRecord(found.context, name).path;
+  // A recorded folder that is gone or unsafe cannot be the root of a slice, so create says so now and not at apply.
+  return checkRegisteredFolder(home, name, stateRoot);
 }
 
 /** One create as a change for the approval wrapper: plan reads only; apply runs under the project lock. `up --team` reuses it. */
-export function createChange(project: ProjectContext, input: CreateInput, registeredRel?: string): PlannedChange<CreatePlan> {
+export function createChange(project: ProjectContext, input: CreateInput, registered?: { home: string; name: string; stateRoot: string }): PlannedChange<CreatePlan> {
   const controller = new AbortController();
+  let registeredRel: string | undefined;
   return {
-    async plan() { verifyProjectPins(project); const plan = await planCreate(input); verifyProjectPins(project); return plan; },
+    async plan() {
+      verifyProjectPins(project); const plan = await planCreate(input);
+      // The folder is looked at only after the create checks of spec 3.2 passed: a pending revision, an existing slice, and a flag the file already says come first.
+      if (registered !== undefined) registeredRel = registeredPath(registered.home, registered.name, registered.stateRoot);
+      verifyProjectPins(project); return plan;
+    },
     revision: plan => plan.revision,
     review: plan => renderCreateReview(plan, registeredRel),
     async apply(revision: string): Promise<AuthoringReceipt> {

@@ -3,6 +3,7 @@ import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { INPUT_INVALID_TEXT } from '../apps/cli/src/guard-run.js';
 import { approve, denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
@@ -203,6 +204,8 @@ test('R2 and R3. the guide says what a Grep of a folder with a hard link does, a
 });
 
 // ------------------------------------------------------------------------------------------ Part B: a root in a registered folder
+import { projectId } from '../packages/project-context/src/discovery.js';
+const projectIdOf = (p: { dir: string }): string => projectId(p.dir, { device: String(statSync(p.dir, { bigint: true }).dev), inode: String(statSync(p.dir, { bigint: true }).ino), birthtimeNs: '', uid: 0, mode: 0 });
 const registered = (t: import('node:test').TestContext) => sliceProject(t, { registered: true });
 const outside = (p: { dir: string; kb: string | null }, rel: string): string => join(p.kb!, rel);
 test('B1. a member Read in a registered folder prints nothing, and a non-member Read names the root from the project folder', t => {
@@ -235,7 +238,7 @@ test('B4. a folder record that is gone or points elsewhere denies every call wit
   rmSync(record); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'no record');
   assert.match(guard(p, args, read('/etc/hosts', p.dir)).stdout, ROOT, 'every call, whatever the target');
   mkdirSync(join(p.home, 'other/wiki'), { recursive: true, mode: 0o755 }); chmodSync(join(p.home, 'other'), 0o755); chmodSync(join(p.home, 'other/wiki'), 0o755); writeFileSync(join(p.home, 'other/wiki/a.md'), '# Alpha\n');
-  writeFileSync(record, saved.replace('"path":"kb"', '"path":"other"'), { mode: 0o644 }); assert.match(guard(p, args, read(join(p.home, 'other/wiki/a.md'), p.dir)).stdout, ROOT, 'a record that points elsewhere');
+  writeFileSync(record, saved.replace('"path":"kb"', '"path":"other"'), { mode: 0o644 }); assert.match(guard(p, args, read(join(p.home, 'other/wiki/a.md'), p.dir)).stdout, /this project is not allowed to read registered folder kb/, 'a record that points elsewhere needs a new grant');
   writeFileSync(record, saved, { mode: 0o644 }); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '', 'the record put back');
   writeFileSync(record, '{"format":"x"}\n', { mode: 0o644 }); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'an invalid record');
 });
@@ -273,4 +276,36 @@ test('B9. the guard with a registered root writes nothing, and stays under the l
   times.sort((a, b) => a - b); console.log(`registered guard latency over ${times.length} calls: p50 ${times[Math.ceil(0.5 * times.length) - 1]!.toFixed(0)} ms, p95 ${times[Math.ceil(0.95 * times.length) - 1]!.toFixed(0)} ms`);
   for (const ms of times) assert.ok(ms < 2000, `${ms} ms`);
   assert.deepEqual([tree(p.dir), tree(join(p.home, 'state')), tree(join(p.home, '.bowerloom'))], before);
+});
+
+test('B10. a registered folder that became unsafe, or whose record points into a cloud folder, denies every call with GUARD_ROOT_MISSING', t => {
+  const p = registered(t), args = guardArgs(p), ROOT = /the folder of slice wiki cannot be found, or it changed since apply/;
+  chmodSync(p.kb!, 0o775); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'a folder others can write in');
+  chmodSync(p.kb!, 0o755); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
+  chmodSync(join(p.kb!, 'wiki'), 0o775); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'a root others can write in'); chmodSync(join(p.kb!, 'wiki'), 0o755);
+  const record = join(p.home, '.bowerloom/folders/kb.json');
+  mkdirSync(join(p.home, 'Library/CloudStorage/y/wiki'), { recursive: true, mode: 0o755 }); for (const d of ['Library', 'Library/CloudStorage', 'Library/CloudStorage/y', 'Library/CloudStorage/y/wiki']) chmodSync(join(p.home, d), 0o755);
+  writeFileSync(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), '# Alpha\n');
+  writeFileSync(record, '{"format":"bowerloom/store-folder/v1beta1","path":"Library/CloudStorage/y"}\n', { mode: 0o644 });
+  const sha = createHash('sha256').update(readFileSync(record)).digest('hex'); writeFileSync(join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p)), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`, { mode: 0o644 });
+  assert.match(guard(p, args, read(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), p.dir)).stdout, ROOT, 'a record into a cloud folder, with a grant that matches it');
+});
+test('N-G1. a project without a grant: the guard denies every call with its own reason, and --explain says the same', t => {
+  const p = registered(t), args = guardArgs(p); approve(p.dir, ['folder', 'deny', 'kb'], p.home);
+  const reason = `Bowerloom guard: this project is not allowed to read registered folder kb, which slice wiki of agent lead names, so every read, search, and file listing of this agent is blocked. Run bowerloom folder allow kb in ${p.dir}.`;
+  assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, denyJson(reason));
+  assert.equal(guard(p, args, read('/etc/hosts', p.dir)).stdout, denyJson(reason), 'whatever the target');
+  const ex = run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', outside(p, 'wiki/a.md')], p.home); assert.equal(ex.status, 0, ex.stderr); assert.equal(ex.stdout, `denied (GUARD_ROOT_MISSING): ${reason}\n`);
+  approve(p.dir, ['folder', 'allow', 'kb'], p.home); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
+});
+test('T2. a record or a store that cannot be read is an internal-error deny with its own cause, not a mismatch, and --explain shows it', { skip: process.getuid?.() === 0 && 'root can read a mode 000 file' }, t => {
+  const p = registered(t), args = guardArgs(p), record = join(p.home, '.bowerloom/folders/kb.json'), INTERNAL = /the guard hit an internal error/;
+  chmodSync(record, 0o000);
+  try {
+    assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, INTERNAL, 'a record that cannot be read');
+    const ex = run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', outside(p, 'wiki/a.md')], p.home); assert.match(ex.stdout, /^denied \(GUARD_INTERNAL_ERROR\): /, ex.stderr);
+  } finally { chmodSync(record, 0o644); }
+  chmodSync(join(p.home, '.bowerloom'), 0o000);
+  try { assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, INTERNAL, 'a store that cannot be read'); } finally { chmodSync(join(p.home, '.bowerloom'), 0o700); }
+  assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
 });

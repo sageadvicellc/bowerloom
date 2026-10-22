@@ -9,7 +9,7 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { freezeSkillData, revisionOf, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
-import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes, sameOrInside } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { readLocalSkill, readLocalPrompt, readLocalAgent, readLocalSlice, itemName, ITEM_ID } from './local-source.js';
 import { isFolderName, isSliceId } from '../../context-slices/src/slice-file.js';
@@ -86,6 +86,8 @@ export function requestV2(value: unknown): ManagedItemRequest {
       const g = schema<{ name: string; dir: string; identity: unknown }>(s.root, ['kind', 'name', 'dir', 'identity']);
       check(rootKind === 'registered' && isFolderName(g.name)); path(g.dir);
       check(g.dir !== v.projectDir && !g.dir.startsWith(v.projectDir + '/') && g.dir !== v.stateDir && !g.dir.startsWith(v.stateDir + '/'));
+      // By identity too: a link or a case alias names the same folder under another text.
+      check(!sameOrInside(g.dir, v.projectDir) && !sameOrInside(g.dir, v.stateDir));
       const id = schema<{ device: unknown; inode: unknown; birthtimeNs: unknown }>(g.identity, ['device', 'inode', 'birthtimeNs']);
       check([id.device, id.inode, id.birthtimeNs].every(x => typeof x === 'string' && /^[0-9]{1,24}$/.test(x)));
     }

@@ -3,6 +3,7 @@ import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { syncBuiltinESMExports } from 'node:module';
 import { itemId, itemRef, requestV2, locateV2, catalogItem, planManagedItem, inspectManagedProject, currentV2 } from '../../../dist/packages/managed-skills/src/v2-observed.js';
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
@@ -254,7 +255,7 @@ test('B6. a registered folder that holds the project is allowed, and hidden fold
 test('B7. a request root that names the folder is checked against the live folder: identity, name, and kind', t => {
   const { f, root } = registeredWiki(t), good = regRoot(root);
   const ok = readLocalSlice(f.projectDir, 'wiki', good, live);
-  assert.deepEqual(ok.source, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki' }, guard: 'root' }); assert.deepEqual(ok.references, ['a.md', 'sub/b.md', './', 'sub/']);
+  assert.deepEqual({ ...ok.source, root: { ...ok.source.root, id: 'ID' } }, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki', id: 'ID' }, guard: 'root' }); assert.match(ok.source.root.id, /^[a-f0-9]{32}$/); assert.deepEqual(ok.references, ['a.md', 'sub/b.md', './', 'sub/']);
   assert.match(ok.files[0].text, /Source folder: \.\.\/kb\/wiki \(registered folder kb\)/);
   assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, name: 'other' }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
   assert.throws(() => readSliceTree(f.projectDir, 'wiki', { ...good, identity: { ...good.identity, inode: String(BigInt(good.identity.inode) + 1n) } }, live), code('MANAGED_SKILL_STALE_APPROVAL'));
@@ -277,7 +278,7 @@ test('B9. a transaction installs a slice of a registered folder; the catalog hol
   const { f, root } = registeredWiki(t), req = registeredRequest(f, root), { plan, receipt } = await install(req);
   assert.equal(receipt.state, 'committed'); assert.equal(plan.core.closure.source.root.kind, 'registered');
   const text = read(f, '.bowerloom/managed/catalog/slice_wiki.json'), catalog = JSON.parse(text);
-  assert.deepEqual(catalog.source, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki' }, guard: 'root' });
+  assert.deepEqual({ ...catalog.source, root: { ...catalog.source.root, id: 'ID' } }, { kind: 'slice', path: 'slices/wiki.yaml', root: { kind: 'registered', name: 'kb', path: 'wiki', id: 'ID' }, guard: 'root' });
   assert.deepEqual(catalog.references, ['a.md', 'sub/b.md', './', 'sub/']); assert.equal(text.includes(root), false); assert.equal(text.includes(f.base), false);
   assert.match(read(f, '.claude/skills/slice-wiki/SKILL.md'), /- `\.\.\/kb\/wiki\/a\.md`: Alpha\n/);
   assert.equal(read(f, '.claude/skills/slice-wiki/SKILL.md').includes(f.base), false);
@@ -292,6 +293,42 @@ test('B11. sameSource: a move from a project root to a registered folder is an u
   const f = project(t); sliceFile(f); wikiFile(f, 'a.md', '# Alpha\n'); const req = sliceRequest(f), { receipt } = await install(req);
   const root = kb(f); sliceFile(f, 'wiki', REGISTERED);
   const update = { ...registeredRequest(f, root), operation: 'update', expectedPreviousRevision: receipt.revision }, plan = await planManagedItem(update);
-  assert.equal(plan.format, 'bowerloom/managed-item-plan/v1beta2'); assert.deepEqual(plan.core.closure.source.root, { kind: 'registered', name: 'kb', path: 'wiki' });
+  assert.equal(plan.format, 'bowerloom/managed-item-plan/v1beta2'); assert.deepEqual({ ...plan.core.closure.source.root, id: 'ID' }, { kind: 'registered', name: 'kb', path: 'wiki', id: 'ID' });
   const second = await applyManagedItem(null, update, plan.revision); assert.notEqual(second.revision, receipt.revision);
+});
+
+// ------------------------------------------------------------------------------------------- Part B security round
+test('S3. a registered dir is inside the project by identity, not by text: a project reached by a link is still the project', t => {
+  const { f, root } = registeredWiki(t), alias = path.join(f.base, 'project-alias'); fs.symlinkSync(f.projectDir, alias);
+  const inside = path.join(f.projectDir, 'wiki'); fs.mkdirSync(inside, { mode: 0o755 });
+  const req = registeredRequest(f, root), withDir = (projectDir, dir) => ({ ...req, projectDir, source: { kind: 'slice', name: 'wiki', root: { ...regRoot(root), dir, identity: idOf(dir) } } });
+  assert.throws(() => requestV2(withDir(alias, inside)), 'the project named through a link');
+  assert.throws(() => requestV2(withDir(alias, f.projectDir)), 'the project itself, named through a link');
+  assert.equal(requestV2(withDir(f.projectDir, path.join(root, 'wiki'))).source.root.kind, 'registered');
+});
+test('S3. readSliceTree holds a registered root that is the project under another spelling of its case', { skip: (() => { const d = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'c-')); try { fs.writeFileSync(path.join(d, 'a'), ''); return !fs.existsSync(path.join(d, 'A')) ? 'this disk is case-sensitive' : false; } finally { fs.rmSync(d, { recursive: true }); } })() }, t => {
+  const f = project(t); sliceFile(f, 'wiki', REGISTERED); wikiFile(f, 'a.md', '# Alpha\n');
+  const here = path.join(f.projectDir, 'wiki'), shouty = f.projectDir.slice(0, -'project'.length) + 'PROJECT/wiki';
+  const r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: true, dir: shouty, identity: idOf(here), recordSha256: 'b'.repeat(64) }));
+  assert.deepEqual([r.index, r.hold?.code, r.hold?.inside], [null, 'SLICE_ROOT_UNSAFE', true]);
+});
+test('S2. a registered root that the managed path rule rejects is a SLICE_ROOT_UNSAFE hold, and the request is refused', t => {
+  const { f, root } = registeredWiki(t); fs.mkdirSync(path.join(root, 'node_modules/wiki'), { recursive: true, mode: 0o755 }); for (const p of ['node_modules', 'node_modules/wiki']) fs.chmodSync(path.join(root, p), 0o755);
+  fs.writeFileSync(path.join(root, 'node_modules/wiki/a.md'), '# A\n');
+  const bad = path.join(root, 'node_modules/wiki'), r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: true, dir: bad, identity: idOf(bad), recordSha256: 'b'.repeat(64) }));
+  assert.deepEqual([r.index, r.hold?.code], [null, 'SLICE_ROOT_UNSAFE']);
+  assert.throws(() => requestV2(registeredRequest(f, root, { source: { kind: 'slice', name: 'wiki', root: { kind: 'registered', name: 'kb', dir: bad, identity: idOf(bad) } } })));
+});
+test('S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root', async t => {
+  const { f, root } = registeredWiki(t), first = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id;
+  const again = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.equal(again, first);
+  const copy = path.join(f.base, 'wiki-copy'); fs.cpSync(path.join(root, 'wiki'), copy, { recursive: true }); fs.rmSync(path.join(root, 'wiki'), { recursive: true }); fs.cpSync(copy, path.join(root, 'wiki'), { recursive: true });
+  const next = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.match(next, /^[a-f0-9]{32}$/); assert.notEqual(next, first);
+});
+test('S1. a hold of the lookup keeps its code and cause; FOLDER_NOT_ALLOWED passes through', t => {
+  const { f } = registeredWiki(t);
+  const r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' }));
+  assert.deepEqual([r.index, r.hold], [null, { code: 'FOLDER_NOT_ALLOWED', detail: 'kb' }]);
+  const c = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: false, code: 'SLICE_ROOT_UNSAFE', detail: '~/kb', cause: 'STORE_UNREADABLE' }));
+  assert.deepEqual([c.hold.code, c.hold.errno], ['SLICE_ROOT_UNSAFE', 'STORE_UNREADABLE']);
 });

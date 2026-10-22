@@ -5,11 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import '../../../dist/tests/support/isolate-home.js';
 import {
   FOLDER_FORMAT, applyFolderAddWith, applyFolderRemoveWith, isFolderName, listFoldersWith, planFolderAddWith, planFolderRemoveWith,
   readFolderRecord, renderFolderAddReview, renderFolderRemoveReview, resolveRegisteredFolderWith, resolveRegisteredRootWith,
+  applyFolderAllowWith, applyFolderDenyWith, planFolderAllowWith, planFolderDenyWith, renderFolderAllowReview, renderFolderDenyReview, holdsStore,
 } from '../../../dist/packages/project-context/src/registered-folders.js';
+import { syncBuiltinESMExports } from 'node:module';
 import { inspectStoreWith } from '../../../dist/packages/project-context/src/store.js';
 
 const code = expected => error => { if (error?.code !== expected) throw new Error(`expected ${expected}, got ${error?.code ?? error} ${error?.message ?? ''}`); return true; };
@@ -24,8 +27,15 @@ function world(t) {
   const hooks = { accountHome: path.join(base, 'nobody') };
   const store = path.join(home, '.bowerloom'), folders = path.join(store, 'folders');
   const make = (rel, mode = 0o755) => { const dir = path.join(home, rel); fs.mkdirSync(dir, { recursive: true, mode }); for (let p = dir; p !== home; p = path.dirname(p)) fs.chmodSync(p, mode); return dir; };
+  const project = { dir: path.join(base, 'project'), projectId: 'a'.repeat(32) }, access = { projectId: project.projectId };
+  const allow = async (name, as = project) => { const plan = planFolderAllowWith(home, as, name, hooks); return applyFolderAllowWith(home, as, name, plan.revision, signal(), hooks); };
+  const grantNow = (name, pid = project.projectId) => {
+    const dir = path.join(folders, name + '.grants'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const sha = createHash('sha256').update(fs.readFileSync(path.join(folders, name + '.json'))).digest('hex');
+    fs.writeFileSync(path.join(dir, pid), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`, { mode: 0o644 });
+  };
   const add = async (name, target) => { const plan = planFolderAddWith(home, home, name, target, hooks); return applyFolderAddWith(home, home, name, target, plan.revision, signal(), hooks); };
-  return { base, home, hooks, store, folders, make, add, record: name => path.join(folders, name + '.json') };
+  return { base, home, hooks, store, folders, make, add, allow, grantNow, project, access, record: name => path.join(folders, name + '.json') };
 }
 const BODY = rel => `{"format":"bowerloom/store-folder/v1beta1","path":${JSON.stringify(rel)}}\n`;
 
@@ -164,8 +174,8 @@ test('15b. folder remove refuses STALE_APPROVAL when the file was replaced by a 
   assert.equal(fs.existsSync(w.record('kb')), true);
 });
 test('16. resolveRegisteredFolder returns the real path, the identity, and the record sha256', async t => {
-  const w = world(t); const dir = w.make('Sage Advice/kb'); await w.add('kb', '~/Sage Advice/kb');
-  const got = resolveRegisteredFolderWith(w.home, 'kb', w.hooks);
+  const w = world(t); const dir = w.make('Sage Advice/kb'); await w.add('kb', '~/Sage Advice/kb'); await w.allow('kb');
+  const got = resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks);
   assert.equal(got.ok, true); assert.equal(got.dir, dir); assert.equal(got.rel, 'Sage Advice/kb');
   const st = fs.statSync(dir, { bigint: true });
   assert.equal(got.identity.device, String(st.dev)); assert.equal(got.identity.inode, String(st.ino)); assert.equal(got.identity.birthtimeNs, String(st.birthtimeNs));
@@ -173,39 +183,39 @@ test('16. resolveRegisteredFolder returns the real path, the identity, and the r
   assert.equal(got.recordSha256, createHash('sha256').update(fs.readFileSync(w.record('kb'))).digest('hex'));
 });
 test('17. the root of a registered folder joins the path, and the holds name the cause', async t => {
-  const w = world(t); const dir = w.make('kb/wiki/sub'); await w.add('kb', '~/kb');
-  const ok = resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks); assert.equal(ok.ok, true); assert.equal(ok.dir, path.join(dir, '..')); assert.equal(ok.rel, 'kb');
-  assert.equal(resolveRegisteredRootWith(w.home, 'kb', '.', w.hooks).dir, path.join(w.home, 'kb'));
-  const none = resolveRegisteredRootWith(w.home, 'kb', 'nope', w.hooks); assert.deepEqual([none.ok, none.code], [false, 'SLICE_ROOT_MISSING']);
-  assert.deepEqual(resolveRegisteredRootWith(w.home, 'unknown', '.', w.hooks), { ok: false, code: 'SLICE_ROOT_MISSING', detail: 'unknown' });
+  const w = world(t); const dir = w.make('kb/wiki/sub'); await w.add('kb', '~/kb'); await w.allow('kb');
+  const ok = resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.access, w.hooks); assert.equal(ok.ok, true); assert.equal(ok.dir, path.join(dir, '..')); assert.equal(ok.rel, 'kb');
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', '.', w.access, w.hooks).dir, path.join(w.home, 'kb'));
+  const none = resolveRegisteredRootWith(w.home, 'kb', 'nope', w.access, w.hooks); assert.deepEqual([none.ok, none.code], [false, 'SLICE_ROOT_MISSING']);
+  assert.deepEqual(resolveRegisteredRootWith(w.home, 'unknown', '.', w.access, w.hooks), { ok: false, code: 'SLICE_ROOT_MISSING', detail: 'unknown' });
   // A link at or below the recorded path is unsafe, not missing.
   fs.renameSync(path.join(w.home, 'kb/wiki'), path.join(w.home, 'wiki-real')); fs.symlinkSync(path.join(w.home, 'wiki-real'), path.join(w.home, 'kb/wiki'));
-  const linked = resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks); assert.deepEqual([linked.ok, linked.code], [false, 'SLICE_ROOT_UNSAFE']);
+  const linked = resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.access, w.hooks); assert.deepEqual([linked.ok, linked.code], [false, 'SLICE_ROOT_UNSAFE']);
   fs.unlinkSync(path.join(w.home, 'kb/wiki')); fs.renameSync(path.join(w.home, 'wiki-real'), path.join(w.home, 'kb/wiki'));
   fs.chmodSync(path.join(w.home, 'kb/wiki'), 0o775);
-  assert.equal(resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
   fs.chmodSync(path.join(w.home, 'kb/wiki'), 0o755);
   // The folder itself replaced by a link: unsafe.
   fs.renameSync(path.join(w.home, 'kb'), path.join(w.home, 'kb-real')); fs.symlinkSync(path.join(w.home, 'kb-real'), path.join(w.home, 'kb'));
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
   fs.unlinkSync(path.join(w.home, 'kb'));
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.hooks).code, 'SLICE_ROOT_MISSING', 'a gone folder is missing');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_MISSING', 'a gone folder is missing');
 });
 test('18. a store that is absent, or a record that is invalid, holds the slice root', async t => {
   const w = world(t); w.make('kb');
-  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', w.hooks), { ok: false, code: 'SLICE_ROOT_MISSING', detail: 'kb' });
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks), { ok: false, code: 'SLICE_ROOT_MISSING', detail: 'kb' });
   await w.add('kb', '~/kb'); fs.writeFileSync(w.record('kb'), '{"format":"x"}\n', { mode: 0o644 });
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
   fs.writeFileSync(w.record('kb'), BODY('kb'), { mode: 0o644 }); fs.chmodSync(w.store, 0o775);
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.hooks).code, 'SLICE_ROOT_UNSAFE', 'an unsafe store');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE', 'an unsafe store');
 });
 test('19. folder add records the real path of a folder reached through a link', async t => {
   const w = world(t); w.make('real/kb'); fs.symlinkSync(path.join(w.home, 'real'), path.join(w.home, 'alias'));
-  await w.add('kb', '~/alias/kb');
+  await w.add('kb', '~/alias/kb'); await w.allow('kb');
   assert.equal(fs.readFileSync(w.record('kb'), 'utf8'), BODY('real/kb'));
   fs.rmSync(path.join(w.home, 'real/kb'), { recursive: true }); fs.symlinkSync(path.join(w.home, 'elsewhere'), path.join(w.home, 'real/kb'));
   fs.mkdirSync(path.join(w.home, 'elsewhere'), { mode: 0o755 });
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.hooks).code, 'SLICE_ROOT_UNSAFE', 'a link at the recorded path');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE', 'a link at the recorded path');
 });
 test('20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE', t => {
   const w = world(t); let rel = ''; for (let i = 0; Buffer.byteLength(rel) <= 1030; i++) rel = path.join(rel, 'd'.repeat(100));
@@ -264,13 +274,142 @@ test('28. a folder or a record owned by another user refuses FOLDER_UNSAFE (the 
   assert.throws(() => planFolderAddWith(w.home, w.home, 'two', '~/kb', other), error => error.code === 'FOLDER_UNSAFE' || error.code === 'STORE_UNSAFE');
   const store = inspectStoreWith(w.home, w.hooks).context;
   assert.throws(() => readFolderRecord(store, 'kb', other), code('FOLDER_UNSAFE'));
-  const again = resolveRegisteredRootWith(w.home, 'kb', '.', other); assert.equal(again.ok, false);
+  const again = resolveRegisteredRootWith(w.home, 'kb', '.', w.access, other); assert.deepEqual([again.ok, again.code, again.detail.length > 0], [false, 'SLICE_ROOT_UNSAFE', true]);
 });
 test('29. the checks run again on a recorded folder: a record that points into a cloud folder holds the slice root, and list names the code', async t => {
   const w = world(t); w.make('kb'); w.make('Library/CloudStorage/y/wiki'); await w.add('kb', '~/kb');
-  fs.writeFileSync(w.record('kb'), BODY('Library/CloudStorage/y'), { mode: 0o644 });
-  assert.deepEqual([resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks).ok, resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks).code], [false, 'SLICE_ROOT_UNSAFE']);
+  fs.writeFileSync(w.record('kb'), BODY('Library/CloudStorage/y'), { mode: 0o644 }); w.grantNow('kb');
+  assert.deepEqual([resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.access, w.hooks).ok, resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.access, w.hooks).code], [false, 'SLICE_ROOT_UNSAFE']);
   assert.equal(listFoldersWith(w.home, w.hooks).folders[0].code, 'FOLDER_IN_CLOUD', 'list names the code that failed');
-  fs.writeFileSync(w.record('kb'), BODY('kb'), { mode: 0o644 });
-  assert.equal(resolveRegisteredRootWith(w.home, 'kb', '.', w.hooks).ok, true);
+  fs.writeFileSync(w.record('kb'), BODY('kb'), { mode: 0o644 }); w.grantNow('kb');
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', '.', w.access, w.hooks).ok, true);
+});
+
+// ---------------------------------------------------------------------------------------------- Part B security round
+const isAllowedDir = (w, name) => path.join(w.folders, name + '.grants');
+test('30. folder allow plans the absolute folder and the project, and writes a grant bound to the record', async t => {
+  const w = world(t); w.make('Sage Advice/kb'); await w.add('kb', '~/Sage Advice/kb');
+  const plan = planFolderAllowWith(w.home, w.project, 'kb', w.hooks);
+  assert.equal(renderFolderAllowReview(plan), [
+    'Allow this project to read registered folder kb',
+    `  Project: ${w.project.dir}`,
+    `  Folder: ${path.join(w.home, 'Sage Advice/kb')} (~/Sage Advice/kb)`,
+    '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
+    'This writes the store only. It changes no project, and it installs nothing.',
+  ].join('\n'));
+  assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false, 'planning writes nothing');
+  await applyFolderAllowWith(w.home, w.project, 'kb', plan.revision, signal(), w.hooks);
+  const sha = createHash('sha256').update(fs.readFileSync(w.record('kb'))).digest('hex');
+  const grant = path.join(isAllowedDir(w, 'kb'), w.project.projectId);
+  assert.equal(fs.readFileSync(grant, 'utf8'), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`);
+  assert.equal(fs.statSync(grant).mode & 0o777, 0o644); assert.equal(fs.statSync(isAllowedDir(w, 'kb')).mode & 0o777, 0o700);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
+});
+test('31. a project without a grant is held with FOLDER_NOT_ALLOWED, before the folder is looked at', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' });
+  fs.rmSync(path.join(w.home, 'kb'), { recursive: true });
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED', 'a project that is not allowed learns nothing about the folder');
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', 'wiki', { projectId: 'b'.repeat(32) }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+});
+test('32. a grant is for one project: another project id is not allowed', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { projectId: 'b'.repeat(32) }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
+});
+test('33. a grant is for one record: a name pointed at another folder is not allowed again', async t => {
+  const w = world(t); w.make('kb'); w.make('other'); await w.add('kb', '~/kb'); await w.allow('kb');
+  fs.writeFileSync(w.record('kb'), BODY('other'), { mode: 0o644 });
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  const removal = planFolderRemoveWith(w.home, 'kb', w.hooks); await applyFolderRemoveWith(w.home, 'kb', removal.revision, signal(), w.hooks);
+  assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false, 'folder remove removes the grants with the record');
+  await w.add('kb', '~/other'); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+});
+test('34. a grant that is unsafe or invalid is not a grant', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  const grant = path.join(isAllowedDir(w, 'kb'), w.project.projectId), good = fs.readFileSync(grant, 'utf8');
+  fs.writeFileSync(grant, good.replace('"record"', '"other"'), { mode: 0o644 }); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  fs.writeFileSync(grant, good, { mode: 0o664 }); fs.chmodSync(grant, 0o664); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  fs.chmodSync(grant, 0o644); fs.renameSync(grant, grant + '.aside'); fs.symlinkSync(grant + '.aside', grant); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  fs.unlinkSync(grant); fs.renameSync(grant + '.aside', grant); fs.chmodSync(isAllowedDir(w, 'kb'), 0o775); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE');
+});
+test('35. folder deny removes the grant, and a project without a grant cannot deny', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  const plan = planFolderDenyWith(w.home, w.project, 'kb', w.hooks);
+  assert.equal(renderFolderDenyReview(plan), [
+    'Stop allowing this project to read registered folder kb',
+    `  Project: ${w.project.dir}`,
+    '  Slices of this project that name it are held with FOLDER_NOT_ALLOWED. Installed indexes stay.',
+    'This writes the store only. It changes no project.',
+  ].join('\n'));
+  await applyFolderDenyWith(w.home, w.project, 'kb', plan.revision, signal(), w.hooks);
+  assert.equal(fs.existsSync(path.join(isAllowedDir(w, 'kb'), w.project.projectId)), false);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.throws(() => planFolderDenyWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_NOT_ALLOWED'));
+});
+test('36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan', async t => {
+  const w = world(t); w.make('kb');
+  assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_NOT_FOUND'));
+  await w.add('kb', '~/kb');
+  const plan = planFolderAllowWith(w.home, w.project, 'kb', w.hooks), other = { dir: path.join(w.base, 'other'), projectId: 'c'.repeat(32) };
+  await assert.rejects(applyFolderAllowWith(w.home, other, 'kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL'));
+  fs.rmSync(path.join(w.home, 'kb'), { recursive: true });
+  assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_UNSAFE'));
+  w.make('kb'); const again = planFolderAllowWith(w.home, w.project, 'kb', w.hooks);
+  fs.rmSync(path.join(w.home, 'kb'), { recursive: true }); w.make('kb');
+  await assert.rejects(applyFolderAllowWith(w.home, w.project, 'kb', again.revision, signal(), w.hooks), code('STALE_APPROVAL'));
+  assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false);
+});
+test('37. folder list skips the grants folders and the leftover names, and the doc of F5 holds', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  fs.writeFileSync(path.join(w.folders, '.DS_Store'), 'x'); fs.writeFileSync(path.join(w.folders, '.folder-kb.0123456789abcdef.tmp'), 'x');
+  assert.deepEqual(listFoldersWith(w.home, w.hooks).folders.map(f => f.name), ['kb']);
+});
+test('38. S2: a folder under a library or node_modules segment, or not in NFC, cannot be registered; one that holds a cloud folder cannot either', t => {
+  const w = world(t); w.make('a/node_modules/x'); w.make('b/Library/y'); w.make('c/LIBRARY');
+  for (const p of ['~/a/node_modules/x', '~/b/Library/y', '~/c/LIBRARY']) assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', p, w.hooks), code('FOLDER_UNSAFE'), p);
+  // The account home sits below HOME here; a folder that holds its Library/CloudStorage holds a cloud folder.
+  w.make('acct/Library/CloudStorage'); const hooks = { accountHome: path.join(w.home, 'acct') };
+  assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', '~/acct/Library', hooks), code('FOLDER_IN_CLOUD'));
+  const decomposed = 'cafe\u0301'; try { w.make(decomposed); } catch { return; }
+  if (fs.readdirSync(w.home).includes(decomposed)) assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', '~/' + decomposed, w.hooks), code('FOLDER_UNSAFE'));
+});
+test('39. S2: a recorded root that the managed path rule would reject becomes a SLICE_ROOT_UNSAFE hold', async t => {
+  const w = world(t); w.make('kb/node_modules/wiki'); await w.add('kb', '~/kb'); await w.allow('kb');
+  const got = resolveRegisteredRootWith(w.home, 'kb', 'node_modules/wiki', w.access, w.hooks);
+  assert.deepEqual([got.ok, got.code], [false, 'SLICE_ROOT_UNSAFE']);
+});
+test('40. S4: a folder that is, is inside, or holds the private state folder is refused, in add and in resolve', async t => {
+  const w = world(t), state = path.join(w.home, 'st', 'bowerloom'); w.make('st/bowerloom/items'); w.make('kb');
+  const hooks = { ...w.hooks, stateRoot: state };
+  for (const p of ['~/st/bowerloom', '~/st/bowerloom/items', '~/st']) assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', p, hooks), code('FOLDER_UNSAFE'), p);
+  assert.equal(planFolderAddWith(w.home, w.home, 'kb', '~/kb', hooks).path, 'kb');
+  await w.add('kb', '~/kb'); await w.allow('kb');
+  fs.writeFileSync(w.record('kb'), BODY('st'), { mode: 0o644 }); w.grantNow('kb');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, stateRoot: state }, w.hooks).code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true, 'without the state folder named, nothing to compare');
+});
+test('41. F2: a record that cannot be read is a hold that keeps its cause, and a plain error is not swallowed', { skip: process.getuid?.() === 0 && 'root can read a mode 000 file' }, async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  fs.chmodSync(w.record('kb'), 0o000);
+  const got = resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks); assert.deepEqual([got.ok, got.code, got.cause], [false, 'SLICE_ROOT_UNSAFE', 'STORE_UNREADABLE']);
+  fs.chmodSync(w.record('kb'), 0o644);
+  const lstat = fs.lstatSync; t.mock.method(fs, 'lstatSync', (p, ...rest) => { if (String(p).endsWith('kb.json')) throw new Error('plain'); return lstat.call(fs, p, ...rest); }); syncBuiltinESMExports();
+  try { assert.throws(() => resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks), error => error.message === 'plain' && error.code === undefined); }
+  finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+});
+test('42. F3: folder list keeps going past one unreadable record, and does not swallow a plain error', { skip: process.getuid?.() === 0 && 'root can read a mode 000 file' }, async t => {
+  const w = world(t); w.make('a'); w.make('b'); await w.add('aa', '~/a'); await w.add('bb', '~/b');
+  fs.chmodSync(w.record('aa'), 0o000);
+  assert.deepEqual(listFoldersWith(w.home, w.hooks).folders.map(f => [f.name, f.state, f.code]), [['aa', 'refused', 'STORE_UNREADABLE'], ['bb', 'ready', null]]);
+  fs.chmodSync(w.record('aa'), 0o644);
+  const lstat = fs.lstatSync; t.mock.method(fs, 'lstatSync', (p, ...rest) => { if (String(p).endsWith('bb.json')) throw new Error('plain'); return lstat.call(fs, p, ...rest); }); syncBuiltinESMExports();
+  try { assert.throws(() => listFoldersWith(w.home, w.hooks), error => error.message === 'plain'); }
+  finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+});
+test('43. F4: a store that cannot be searched fails closed', { skip: process.getuid?.() === 0 && 'root can search any folder' }, t => {
+  const w = world(t), acct = w.make('acct/.bowerloom'); w.make('kb'); fs.chmodSync(path.join(w.home, 'acct'), 0o600);
+  try { assert.throws(() => holdsStore(path.join(w.home, 'kb'), w.home, { accountHome: path.join(w.home, 'acct') }), code('FOLDER_UNSAFE')); }
+  finally { fs.chmodSync(path.join(w.home, 'acct'), 0o755); }
+  void acct;
 });

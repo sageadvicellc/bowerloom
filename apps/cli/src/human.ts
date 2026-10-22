@@ -210,6 +210,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '  bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json]',
     '  bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] [--slice <id>]...',
     '  bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]',
+    '  bowerloom folder allow <folder-name> [--approve <revision>] [--json]',
+    '  bowerloom folder deny <folder-name> [--approve <revision>] [--json]',
     '  bowerloom folder list [--json]',
     '  bowerloom folder remove <folder-name> [--approve <revision>] [--json]', '',
     'A context slice selects files from one folder by path patterns, frontmatter, and links. slice create writes it to',
@@ -230,7 +232,9 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'folder add registers a folder outside this project, such as a knowledge base, in your store. A slice then names it',
     'with root: { registered: <folder-name> } and --registered on slice create. Bowerloom reads it and never writes it.',
     'The folder must be yours, below your home folder, outside iCloud folders, and not writable by other users.',
-    'folder remove deletes the record only. The folder stays.',
+    'folder allow, run in a project, lets that project read the folder after you approve a plan that names it. Every other project',
+    'stays shut out until you allow it. folder deny takes the grant back. folder remove deletes the record and its grants only.',
+    'The folder stays. A slice of a registered folder copies text from it into .claude/skills, so keep that folder out of git.',
     'The commands that change something show the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   team: [
@@ -477,6 +481,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
   FOLDER_UNSAFE: { sentence: 'Bowerloom reads only folders that you own and that no other user can change.', next: 'ls -ld <folder>' },
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
+  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   SKILLS_OFFLINE: { sentence: 'Only bowerloom skills sync fetches, and only the pins that are not cached yet.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
@@ -569,3 +574,6 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}) } })}\n`, exitCode };
 }
+
+/** A path as one shell word: plain characters stay, anything else is single-quoted. */
+export const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
