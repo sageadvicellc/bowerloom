@@ -78,7 +78,7 @@ export async function runHook(args: GuardArgs, io: GuardIo): Promise<0 | 2> {
   if (input === null) { io.err(INPUT_INVALID_TEXT); return 2; }
   let decision: GuardDecision;
   try {
-    decision = decideGuard({ role: args.role, project: args.project, ids: args.slices, tool: input.tool, toolInput: input.toolInput, cwd: input.cwd, home: io.home }, () => loadGuardView(args, stateRootOf(io.env, io.home)));
+    decision = decideGuard({ role: args.role, project: args.project, ids: args.slices, tool: input.tool, toolInput: input.toolInput, cwd: input.cwd, home: io.home }, () => loadGuardView(args, stateRootOf(io.env, io.home), { home: io.home }));
   } catch { decision = { kind: 'deny', code: 'GUARD_INTERNAL_ERROR', reason: INTERNAL_ERROR_TEXT }; }
   if (decision.kind === 'invalid') { io.err(INPUT_INVALID_TEXT); return 2; }
   if (decision.kind === 'deny') io.out(denyLine(decision.reason));

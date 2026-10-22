@@ -2,7 +2,7 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { INPUT_INVALID_TEXT } from '../apps/cli/src/guard-run.js';
 import { approve, denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
@@ -200,4 +200,77 @@ test('R2 and R3. the guide says what a Grep of a folder with a hard link does, a
   const guide = readFileSync(new URL('../../apps/docs/src/content/docs/guides/context-slices.md', import.meta.url), 'utf8');
   assert.match(guide, /A Grep of a folder is denied when the folder holds such a file within 2048 entries and 16 levels/);
   assert.match(guide, /Grep does not: Claude Code 2\.1\.292 runs ripgrep for Grep with `--hidden` and without `--follow` or `-L`/);
+});
+
+// ------------------------------------------------------------------------------------------ Part B: a root in a registered folder
+const registered = (t: import('node:test').TestContext) => sliceProject(t, { registered: true });
+const outside = (p: { dir: string; kb: string | null }, rel: string): string => join(p.kb!, rel);
+test('B1. a member Read in a registered folder prints nothing, and a non-member Read names the root from the project folder', t => {
+  const p = registered(t), args = guardArgs(p), file = outside(p, 'wiki/secret.txt');
+  assert.equal(args.includes('--root'), true); assert.match(args[args.indexOf('--root') + 1]!, /^wiki:[a-f0-9]{32}$/);
+  for (const ok of ['wiki/a.md', 'wiki/sub/b.md']) { const r = guard(p, args, read(outside(p, ok), p.dir)); assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, '', ok); }
+  const r = guard(p, args, read(file, p.dir)); assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, denyJson(`Bowerloom guard: ${file} is under ../kb/wiki, and no context slice of agent lead (wiki) lists it. Read the files that your slice skills list. To widen a slice, ask the main session to edit .bowerloom/slices/wiki.yaml and run bowerloom apply.`));
+  assert.equal(guard(p, args, read(join(p.dir, 'AGENTS.md'), p.dir)).stdout, '', 'the project itself is no guarded area');
+  assert.equal(guard(p, args, read(outside(p, 'wiki/missing.md'), p.dir)).stdout.length > 0, true, 'a missing file under the root is denied');
+});
+test('B2. Grep and Glob of a registered root: the whole root is denied with the covered folders, a covered folder is silent', t => {
+  const p = registered(t), args = guardArgs(p);
+  assert.equal(guard(p, args, hookInput('Grep', { pattern: 'x', path: outside(p, 'wiki') }, p.dir)).stdout, denyJson(`Bowerloom guard: a search of ${outside(p, 'wiki')} would reach files that no context slice of agent lead (wiki) lists. Search one listed file, or a folder whose files are all listed: ../kb/wiki/sub.`));
+  assert.equal(guard(p, args, hookInput('Grep', { pattern: 'x', path: outside(p, 'wiki/sub') }, p.dir)).stdout, '');
+  assert.equal(guard(p, args, hookInput('Grep', { pattern: 'x', path: p.kb! }, p.dir)).stdout.length > 0, true, 'the parent of the root holds the area');
+  assert.equal(guard(p, args, hookInput('Glob', { pattern: 'wiki/**/*.md' }, p.kb!)).stdout.length > 0, true);
+  assert.equal(guard(p, args, hookInput('Grep', { pattern: 'x', path: join(p.dir, '.bowerloom') }, p.dir)).stdout, '', 'the project is outside the area');
+});
+test('B3. a link in the project to a non-member of the registered root is denied, as is a hard link', t => {
+  const p = registered(t), args = guardArgs(p);
+  symlinkSync(outside(p, 'wiki/secret.txt'), join(p.dir, 'via-link.txt')); linkSync(outside(p, 'wiki/secret.txt'), join(p.dir, 'hard.txt'));
+  assert.equal(guard(p, args, read(join(p.dir, 'via-link.txt'), p.dir)).stdout.length > 0, true, 'a link into the root');
+  assert.equal(guard(p, args, read(join(p.dir, 'hard.txt'), p.dir)).stdout.length > 0, true, 'a second name of a file under the root');
+  symlinkSync(outside(p, 'wiki/a.md'), join(p.dir, 'member-link.md')); assert.equal(guard(p, args, read(join(p.dir, 'member-link.md'), p.dir)).stdout, '', 'a link to a member is a member');
+});
+test('B4. a folder record that is gone or points elsewhere denies every call with GUARD_ROOT_MISSING', t => {
+  const p = registered(t), args = guardArgs(p), record = join(p.home, '.bowerloom/folders/kb.json'), ROOT = /^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Bowerloom guard: the folder of slice wiki cannot be found, or it changed since apply, so every read, search, and file listing of agent lead is blocked\. Run bowerloom apply in /;
+  const saved = readFileSync(record, 'utf8');
+  rmSync(record); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'no record');
+  assert.match(guard(p, args, read('/etc/hosts', p.dir)).stdout, ROOT, 'every call, whatever the target');
+  mkdirSync(join(p.home, 'other/wiki'), { recursive: true, mode: 0o755 }); chmodSync(join(p.home, 'other'), 0o755); chmodSync(join(p.home, 'other/wiki'), 0o755); writeFileSync(join(p.home, 'other/wiki/a.md'), '# Alpha\n');
+  writeFileSync(record, saved.replace('"path":"kb"', '"path":"other"'), { mode: 0o644 }); assert.match(guard(p, args, read(join(p.home, 'other/wiki/a.md'), p.dir)).stdout, ROOT, 'a record that points elsewhere');
+  writeFileSync(record, saved, { mode: 0o644 }); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '', 'the record put back');
+  writeFileSync(record, '{"format":"x"}\n', { mode: 0o644 }); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'an invalid record');
+});
+test('B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING', t => {
+  const p = registered(t), args = guardArgs(p);
+  cpSync(join(p.kb!, 'wiki'), join(p.home, 'copy'), { recursive: true }); rmSync(join(p.kb!, 'wiki'), { recursive: true }); cpSync(join(p.home, 'copy'), join(p.kb!, 'wiki'), { recursive: true });
+  assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found, or it changed since apply/);
+  const plan = run(p.dir, ['apply', '--harness', 'claude'], p.home); assert.match(plan.stdout, /^ {2}lead +update agent/m, 'the next apply writes the new root id');
+  approve(p.dir, ['apply', '--harness', 'claude'], p.home);
+  assert.equal(guard(p, guardArgs(p), read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
+});
+test('B6. a link at the recorded path, and a missing store, deny every call', t => {
+  const p = registered(t), args = guardArgs(p);
+  renameSync(join(p.kb!, 'wiki'), join(p.home, 'real-wiki')); symlinkSync(join(p.home, 'real-wiki'), join(p.kb!, 'wiki'));
+  assert.match(guard(p, args, read(join(p.home, 'real-wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found/);
+  unlinkSync(join(p.kb!, 'wiki')); renameSync(join(p.home, 'real-wiki'), join(p.kb!, 'wiki')); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '');
+  renameSync(join(p.home, '.bowerloom'), join(p.home, 'store-aside')); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found/);
+});
+test('B7. a --root value of another folder denies every call, and a missing --root too', t => {
+  const p = registered(t), args = guardArgs(p), i = args.indexOf('--root');
+  const other = [...args]; other[i + 1] = 'wiki:' + '0'.repeat(32); assert.match(guard(p, other, read(outside(p, 'wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found/);
+  const none = args.filter((_, j) => j !== i && j !== i + 1); assert.match(guard(p, none, read(outside(p, 'wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found/);
+});
+test('B8. --explain works for a registered root', t => {
+  const p = registered(t), ok = run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', outside(p, 'wiki/a.md')], p.home), no = run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', outside(p, 'wiki/secret.txt')], p.home);
+  assert.equal(ok.status, 0, ok.stderr); assert.equal(ok.stdout, `allowed: ${outside(p, 'wiki/a.md')} is in slice wiki\n`);
+  assert.match(no.stdout, new RegExp(`^denied \\(GUARD_OUTSIDE_SLICE\\): Bowerloom guard: ${outside(p, 'wiki/secret.txt').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is under \\.\\./kb/wiki, and no context slice`));
+  assert.equal(run(p.dir, ['context', 'guard', '--agent', 'lead', '--explain', '/etc/hosts'], p.home).stdout, 'allowed: no guard rule applies to /etc/hosts\n');
+});
+test('B9. the guard with a registered root writes nothing, and stays under the latency bound', t => {
+  const p = registered(t), args = guardArgs(p), before = [tree(p.dir), tree(join(p.home, 'state')), tree(join(p.home, '.bowerloom'))], times: number[] = [];
+  for (let i = 0; i < 25; i++) {
+    const start = process.hrtime.bigint(), r = guard(p, args, read(outside(p, i % 2 ? 'wiki/secret.txt' : 'wiki/a.md'), p.dir)); if (i >= 5) times.push(Number(process.hrtime.bigint() - start) / 1e6); assert.equal(r.status, 0, r.stderr);
+  }
+  times.sort((a, b) => a - b); console.log(`registered guard latency over ${times.length} calls: p50 ${times[Math.ceil(0.5 * times.length) - 1]!.toFixed(0)} ms, p95 ${times[Math.ceil(0.95 * times.length) - 1]!.toFixed(0)} ms`);
+  for (const ms of times) assert.ok(ms < 2000, `${ms} ms`);
+  assert.deepEqual([tree(p.dir), tree(join(p.home, 'state')), tree(join(p.home, '.bowerloom'))], before);
 });

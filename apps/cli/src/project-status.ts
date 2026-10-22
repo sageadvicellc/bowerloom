@@ -49,10 +49,10 @@ function receiptMissing(project: ProjectContext): boolean {
 
 /** `bowerloom status [--json]` for the project that holds the working folder. Reads only. Returns the text to print; the words escape control characters, the JSON is exact. */
 /** The status lines of installed slices: an out-of-date index, and the count of notes with the command that lists them. */
-function sliceLines(slices: readonly SliceItem[]): string[] {
+function sliceLines(slices: readonly SliceItem[], project: string): string[] {
   return slices.filter(s => s.installed).flatMap(s => [
     ...(s.action === 'update' ? [`  slice ${plainText(s.id)}: index out of date (${s.changes.added} added, ${s.changes.gone} gone, ${s.changes.summaries} summaries changed). Next: bowerloom apply`] : []),
-    ...(sliceNoteLines(s).length > 0 ? [`slice ${plainText(s.id)}: ${sliceNoteLines(s).length} notes, run bowerloom context show ${plainText(s.id)}`] : []),
+    ...(sliceNoteLines(s, project).length > 0 ? [`slice ${plainText(s.id)}: ${sliceNoteLines(s, project).length} notes, run bowerloom context show ${plainText(s.id)}`] : []),
   ]);
 }
 export async function runProjectStatus(args: readonly string[], cwd: string, home: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
@@ -91,18 +91,18 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // cannot be made, the folder line stays.
   const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts' && path !== '.bowerloom/slices') return [path]; const files = editedPrompts(project, path === '.bowerloom/slices' ? 'slice' : 'prompt'); return files === null || files.length === 0 ? [path] : files; };
   let held: HeldItem[] = project.bowerloomIdentity === null ? [] : missingItems(project, null), unavailable: string | null = null, drifted = false, agents: readonly AgentItem[] = [], stale: string[] = [];
-  const base = { project, stateRoot: privateStateRoot(env, home), harnesses: ['claude' as const, 'codex' as const], team: null };
+  const base = { project, stateRoot: privateStateRoot(env, home), harnesses: ['claude' as const, 'codex' as const], team: null, home };
   if (project.bowerloomIdentity !== null) try {
     const plan = await planProjectApply(base);
     agents = plan.agents; held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents, plan.slices)]);
-    stale = sliceLines(plan.slices);
+    stale = sliceLines(plan.slices, project.dir);
   } catch (error) {
     // The refusal is named. Some already show as drift lines, so they leave the setup as it is; any other makes it drifted.
     const code = (error as { code?: unknown } | null)?.code;
     unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
     drifted = !EXPECTED_PLAN_REFUSALS.includes(String(code));
     // The agents are planned on their own, so their holds still show.
-    try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]); stale = sliceLines(only.slices); } catch { /* Nothing more to show. */ }
+    try { const only = await planProjectApply({ ...base, agentsOnly: true }); agents = only.agents; held = uniqueHolds([...held, ...planHolds([], [], only.agents, only.slices)]); stale = sliceLines(only.slices, project.dir); } catch { /* Nothing more to show. */ }
   }
   const installed = agents.filter(a => a.installed !== null).map(a => `  agent ${plainText(a.id)}: installed copy still active (${installedWords(a.installed!)})`);
   return [

@@ -143,7 +143,7 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [], home: ctx.home }), applyPlan = await planProjectApply(applyInput());
   if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {

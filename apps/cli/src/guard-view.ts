@@ -5,12 +5,14 @@
  */
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { join, relative } from 'node:path';
 import { strictJson } from '../../../packages/codex-adapter/src/safe.js';
 import { catalogPath, currentV2 } from '../../../packages/managed-skills/src/v2-observed.js';
 import { identityFrom, projectId } from '../../../packages/project-context/src/discovery.js';
 import type { GuardSliceView, GuardView } from '../../../packages/context-slices/src/guard.js';
-import { validRootPath } from '../../../packages/context-slices/src/slice-file.js';
+import { isFolderName, validRootPath } from '../../../packages/context-slices/src/slice-file.js';
+import { resolveRegisteredRoot } from '../../../packages/project-context/src/registered-folders.js';
 import { nodeGuardFs } from './guard-fs.js';
 
 export interface GuardArgs { role: string; project: string; projectId: string; slices: string[]; roots: string[] }
@@ -40,30 +42,39 @@ function installedCatalog(project: string, itemsRoot: string, ref: { kind: 'agen
   return value.item?.kind === ref.kind && value.item?.id === ref.id ? value : null;
 }
 
-function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot: string | undefined): GuardSliceView {
+function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot: string | undefined, home: string): GuardSliceView {
   const lost = (state: 'not-installed' | 'root-missing', mode: 'root' | 'none' = 'root'): GuardSliceView => ({ id, mode, state, root: '', display: '', prefix: '', members: [], covered: [] });
-  let catalog: Record<string, any> | null, mode: 'root' | 'none', rootPath: string, members: string[], covered: string[];
+  let catalog: Record<string, any> | null, mode: 'root' | 'none', rootPath: string, registered: string | null, members: string[], covered: string[];
   try {
     catalog = installedCatalog(args.project, itemsRoot, { kind: 'slice', id });
     if (catalog === null) return lost('not-installed');
     const source = catalog.source, refs = catalog.references;
-    if (source?.kind !== 'slice' || (source.guard !== 'root' && source.guard !== 'none') || source.root?.kind !== 'project' || !validRootPath(source.root.path) || !Array.isArray(refs) || refs.length > 4096 || !refs.every(safeReference)) return lost('not-installed');
-    mode = source.guard; rootPath = source.root.path;
+    if (source?.kind !== 'slice' || (source.guard !== 'root' && source.guard !== 'none') || (source.root?.kind !== 'project' && source.root?.kind !== 'registered') || !validRootPath(source.root.path)
+      || (source.root.kind === 'registered' ? !isFolderName(source.root.name) : false) || !Array.isArray(refs) || refs.length > 4096 || !refs.every(safeReference)) return lost('not-installed');
+    mode = source.guard; rootPath = source.root.path; registered = source.root.kind === 'registered' ? source.root.name : null;
     members = refs.filter((r: string) => !r.endsWith('/')); covered = refs.filter((r: string) => r.endsWith('/'));
   } catch (error) { unexpected(error); return lost('not-installed'); }
   try {
-    // Every folder from the project down to the root is a real folder; the root's id must be the one the copy names.
-    let at = args.project;
-    for (const seg of rootPath === '.' ? [] : rootPath.split('/')) { at = join(at, seg); realFolder(at); }
-    const real = fs.realpathSync(at);
+    // A registered folder resolves through the store, as apply resolved it. A project root is walked from the project folder.
+    // Either way the root's id must be the one the copy names, so a folder that was replaced since apply denies every call.
+    let real: string, display: string;
+    if (registered !== null) {
+      const found = resolveRegisteredRoot(home, registered, rootPath);
+      if (!found.ok) return lost('root-missing', mode);
+      real = fs.realpathSync(found.dir); display = relative(args.project, real);
+    } else {
+      let at = args.project;
+      for (const seg of rootPath === '.' ? [] : rootPath.split('/')) { at = join(at, seg); realFolder(at); }
+      real = fs.realpathSync(at); display = rootPath === '.' ? 'the project folder' : rootPath;
+    }
     if (expectedRoot === undefined || projectId(real, identityFrom(realFolder(real))) !== expectedRoot) return lost('root-missing', mode);
-    return { id, mode, state: 'ok', root: real, display: rootPath === '.' ? 'the project folder' : rootPath, prefix: rootPath === '.' ? '' : rootPath, members, covered };
+    return { id, mode, state: 'ok', root: real, display, prefix: registered !== null ? display : rootPath === '.' ? '' : rootPath, members, covered };
   } catch (error) { unexpected(error); return lost('root-missing', mode); }
 }
 
 /** Steps 4 to 6 of the hook form. Never throws: a failure is `projectOk: false` or a slice state. */
 /** `explain` skips the check that the agent copy lists these slices, because `--explain --slice` may name any installed slice. */
-export function loadGuardView(args: GuardArgs, stateRoot: string, options: { explain?: boolean } = {}): GuardView {
+export function loadGuardView(args: GuardArgs, stateRoot: string, options: { explain?: boolean; home?: string } = {}): GuardView {
   const fsView = nodeGuardFs();
   try {
     const s = fs.lstatSync(args.project, { bigint: true });
@@ -73,6 +84,6 @@ export function loadGuardView(args: GuardArgs, stateRoot: string, options: { exp
     const itemsRoot = join(stateRoot, args.projectId, 'items'), agent = installedCatalog(args.project, itemsRoot, { kind: 'agent', id: args.role });
     if (agent === null || (options.explain !== true && (!Array.isArray(agent.source?.guard) || !same(agent.source.guard, args.slices)))) return { projectOk: false, slices: [], fs: fsView };
     const roots = new Map(args.roots.map(r => [r.slice(0, r.lastIndexOf(':')), r.slice(r.lastIndexOf(':') + 1)] as const));
-    return { projectOk: true, slices: args.slices.map(id => sliceView(args, itemsRoot, id, roots.get(id))), fs: fsView };
+    return { projectOk: true, slices: args.slices.map(id => sliceView(args, itemsRoot, id, roots.get(id), options.home ?? homedir())), fs: fsView };
   } catch (error) { unexpected(error); return { projectOk: false, slices: [], fs: fsView }; }
 }

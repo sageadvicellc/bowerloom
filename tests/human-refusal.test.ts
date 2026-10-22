@@ -44,6 +44,13 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['CONFIG_UNREADABLE', 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -l bowerloom.json'],
   ['CONFIG_LIMIT', 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', 'bowerloom status'],
   ['CONFIG_DUPLICATE_ID', 'Each item is listed once, from one source.', 'git diff bowerloom.json'],
+  // Spec 05, Part B: registered folders.
+  ['FOLDER_NAME_INVALID', 'The name becomes a file name in your store.', 'bowerloom help context'],
+  ['FOLDER_EXISTS', 'Each registered folder needs its own name.', 'bowerloom folder list'],
+  ['FOLDER_NOT_FOUND', 'Only a registered folder can be used or removed.', 'bowerloom folder list'],
+  ['FOLDER_UNSAFE', 'Bowerloom reads only folders that you own and that no other user can change.', 'ls -ld <folder>'],
+  ['FOLDER_IN_CLOUD', 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', 'mv <folder> ~/Projects/'],
+  ['FOLDER_INVALID', 'Bowerloom reads folder records strictly, so a hand edit can break one.', 'bowerloom folder list'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {

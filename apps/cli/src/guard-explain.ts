@@ -13,14 +13,14 @@ import type { GuardIo, ParsedGuard } from './guard-run.js';
 
 export async function runExplain(parsed: Extract<ParsedGuard, { form: 'explain' }>, io: GuardIo): Promise<0 | 2> {
   const project = discoverProject(io.cwd, io.home), stateRoot = privateStateRoot(io.env, io.home);
-  const plan = await planProjectApply({ project, stateRoot, harnesses: ['claude'], team: null, agentsOnly: true });
+  const plan = await planProjectApply({ project, stateRoot, harnesses: ['claude'], team: null, agentsOnly: true, home: io.home });
   const agent = plan.agents.find(a => a.id === parsed.role && a.state !== 'orphaned');
   if (agent === undefined) throw syncError('CONTEXT_AGENT_NOT_FOUND');
   const slices = parsed.slices.length ? parsed.slices : agent.context.guard ?? [];
   const roots = slices.flatMap(id => { const s = plan.slices.find(x => x.id === id); if (!s?.root) return []; try { const real = fs.realpathSync(s.root.dir); return [`${id}:${projectId(real, identityFrom(fs.lstatSync(real, { bigint: true })))}`]; } catch { return []; } });
   const target = parsed.path.startsWith('/') ? parsed.path : posix.resolve(io.cwd, parsed.path);
   const toolInput = parsed.tool === 'Read' ? { file_path: parsed.path } : parsed.tool === 'Grep' ? { pattern: 'x', path: parsed.path } : { pattern: parsed.path };
-  const view = () => loadGuardView({ role: parsed.role, project: project.dir, projectId: project.projectId, slices, roots }, stateRoot, { explain: true });
+  const view = () => loadGuardView({ role: parsed.role, project: project.dir, projectId: project.projectId, slices, roots }, stateRoot, { explain: true, home: io.home });
   const decision = decideGuard({ role: parsed.role, project: project.dir, ids: slices, tool: parsed.tool, toolInput, cwd: io.cwd, home: io.home }, view);
   const shown = plain(parsed.path);
   if (decision.kind === 'deny') io.out(`denied (${decision.code}): ${decision.reason}\n`);

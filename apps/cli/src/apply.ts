@@ -5,6 +5,7 @@
  * already holds. It never fetches, never removes a copy, never edits AGENTS.md or CLAUDE.md (it prints a pointer
  * instead), and starts no process. The write runs through the approval wrapper; the core takes the project lock.
  */
+import { relative } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
@@ -77,9 +78,11 @@ function agentNoticeLine(item: AgentItem): string[] {
 const andList = (list: readonly string[]): string => list.length <= 1 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
 /** Up to three paths, then `, and <k> more`. */
 const someOf = (list: readonly string[]): string => `${andList(list.slice(0, 3))}${list.length > 3 ? `, and ${list.length - 3} more` : ''}`;
-const sliceWhere = (item: SliceItem): string => item.root === null || item.root.path === '.' ? 'the project folder' : item.root.path;
+/** The root of a registered slice as a path from the project folder, such as `../knowledge-base/wiki`. */
+const registeredDisplay = (item: SliceItem, project: string): string => item.root !== null && item.root.kind === 'registered' ? relative(project, item.root.dir) : '';
+const sliceWhere = (item: SliceItem, project: string): string => item.root === null ? 'the project folder' : item.root.kind === 'registered' ? `registered folder ${item.root.name} (${registeredDisplay(item, project)})` : item.root.path === '.' ? 'the project folder' : item.root.path;
 /** The notes of a slice the plan installs or updates (spec 05, section 3.7.3), in their fixed order. */
-export function sliceNoteLines(item: SliceItem): string[] {
+export function sliceNoteLines(item: SliceItem, project: string): string[] {
   const n = item.notes, id = item.id, out: string[] = [];
   if (n.unparsed.length) out.push(`  Note: slice ${id} left out ${n.unparsed.length} files whose frontmatter does not parse: ${someOf(n.unparsed)}.`);
   if (n.unresolvedLinks > 0 || n.ambiguousLinks > 0) out.push(`  Note: slice ${id} has ${n.unresolvedLinks} links that point to no file and ${n.ambiguousLinks} links that point to more than one file.`);
@@ -88,17 +91,17 @@ export function sliceNoteLines(item: SliceItem): string[] {
   if (n.oversize.length) out.push(`  Note: slice ${id} lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) out.push(`  Note: slice ${id} skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) out.push(`  Note: slice ${id} follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
-  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${sliceWhere(item)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${sliceWhere(item)}, or add the folder to permissions.additionalDirectories.`);
+  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${registeredDisplay(item, project)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${registeredDisplay(item, project)}, or add the folder to permissions.additionalDirectories.`);
   if (n.wholeProject) out.push(`  Note: slice ${id} guards the whole project folder. An agent that names it reads only the slice's files there with Read, Grep, and Glob.`);
   return out;
 }
-function sliceLine(item: SliceItem, width: number): string[] {
+function sliceLine(item: SliceItem, width: number, project: string): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = `.claude/skills/slice-${item.id}/SKILL.md`;
   if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
   const c = item.changes;
   switch (item.state) {
-    case 'new': return [`  ${id} install slice: ${where} (${item.members.length} files from ${sliceWhere(item)})`, ...sliceNoteLines(item)];
-    case 'edited': return [`  ${id} update slice: ${where} (${c.added} added, ${c.gone} gone, ${c.summaries} summaries changed${c.rootChanged ? ', root changed' : ''}${c.guardChanged ? ', guard changed' : ''})`, ...sliceNoteLines(item)];
+    case 'new': return [`  ${id} install slice: ${where} (${item.members.length} files from ${sliceWhere(item, project)})`, ...sliceNoteLines(item, project)];
+    case 'edited': return [`  ${id} update slice: ${where} (${c.added} added, ${c.gone} gone, ${c.summaries} summaries changed${c.rootChanged ? ', root changed' : ''}${c.guardChanged ? ', guard changed' : ''})`, ...sliceNoteLines(item, project)];
     case 'orphaned': return [`  ${id} slice kept: no longer a slice of this project, and apply removes nothing`];
     default: return [`  ${id} slice up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
   }
@@ -127,7 +130,7 @@ function agentContextNotes(item: AgentItem, slices: readonly SliceItem[]): strin
     out.push(`  Note: agent ${item.id} gets the Bowerloom read guard for slices ${andList(c.guard)}. Claude Code runs it only in a folder you trusted, never in a claude -p run, and only when bowerloom-guard is on your PATH. It needs Claude Code 2.1.295 or later.`);
     const ways = readGaps(item); if (ways.length) out.push(`  Note: agent ${item.id} can still read files with ${andList(ways)}. The guard checks Read, Grep, and Glob only.`);
     if (c.tools === null || c.tools.includes('Grep') || c.tools.includes('Glob')) {
-      const roots = [...new Set(c.guard.flatMap(id => { const s = slices.find(x => x.id === id); return s && s.guard === 'root' && s.root !== null && s.root.path !== '.' ? [s.root.path] : []; }))].sort();
+      const roots = [...new Set(c.guard.flatMap(id => { const s = slices.find(x => x.id === id); return s && s.guard === 'root' && s.root !== null && s.root.kind === 'project' && s.root.path !== '.' ? [s.root.path] : []; }))].sort();
       for (const root of roots) out.push(`  Note: agent ${item.id} must pass a path to Grep and Glob. A search of the whole project reaches the guarded folder ${root}.`);
     }
   }
@@ -162,7 +165,7 @@ function places(harnesses: readonly Harness[]): string {
 export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
-  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
+  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project.dir)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
   const guarded = plan.agents.filter(a => (a.action === 'install' || a.action === 'update') && a.context.guard !== null).map(a => a.id);
   const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...slicesBlock, ...plan.agents.flatMap(a => agentLine(a, width, terminal, plan.slices)),
     ...(plan.agentsMayBeTracked && guarded.length ? [`  Note: the read guard in the copies of agents ${andList(guarded)} names this project's folder, ${plan.project.dir}. Bowerloom found no .gitignore line that keeps .claude/agents out of git. A committed copy carries a path from this machine. On another machine its guard blocks every read, and apply holds the copy until it is moved aside.`] : [])];
@@ -240,7 +243,7 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
-  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow });
+  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow, home });
   const first = await planProjectApply(input());
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {

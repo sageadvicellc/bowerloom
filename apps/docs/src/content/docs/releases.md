@@ -20,6 +20,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - The read guard needs Claude Code 2.1.295 or later. On older versions, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
 - `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
 - `bowerloom context show` previews a slice.
+- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it.
 - Ids that start with `slice-` are reserved for new skills and prompts.
 - A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.

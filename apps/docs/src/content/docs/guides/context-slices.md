@@ -23,9 +23,10 @@ Make a context slice named wiki over the folder wiki in this project. Run bowerl
 
 ```sh
 bowerloom slice create wiki --root wiki --include 'research/**/*.md'
+bowerloom slice create kb-wiki --registered knowledge-base --root wiki
 ```
 
-The command shows a plan, then writes `.bowerloom/slices/wiki.yaml` and lists it in `.bowerloom/authoring/receipt.json`. `--root` is the folder the patterns start from. The default is the project folder. `--include` adds a path pattern and repeats up to 64 times. The default is `**/*.md`. If `.bowerloom/slices/wiki.yaml` is already there and not registered, `slice create wiki` registers the file and keeps its bytes. A slice id is lower-case letters and digits in words joined by single hyphens, at most 57 characters, and it does not start with `prompt-`. Ids that start with `slice-` are reserved for new skills and prompts.
+The command shows a plan, then writes `.bowerloom/slices/wiki.yaml` and lists it in `.bowerloom/authoring/receipt.json`. `--root` is the folder the patterns start from. The default is the project folder. `--registered <folder-name>` makes the root a folder inside a [registered folder](#registered-folders) outside the project. `--include` adds a path pattern and repeats up to 64 times. The default is `**/*.md`. If `.bowerloom/slices/wiki.yaml` is already there and not registered, `slice create wiki` registers the file and keeps its bytes. A slice id is lower-case letters and digits in words joined by single hyphens, at most 57 characters, and it does not start with `prompt-`. Ids that start with `slice-` are reserved for new skills and prompts.
 
 ### The slice file
 
@@ -37,7 +38,7 @@ format, description, root, include, exclude, where, links, summary, maxFiles, gu
 
 - `format` is required and is `bowerloom/context-slice/v1beta1`.
 - `description` is required, from 1 to 1024 characters. It becomes the description of the index skill.
-- `root` is a folder inside the project, written relative to it. The default is `.`. A map with `registered` names a registered folder outside the project. This beta has no command to register one, so such a slice is held with `SLICE_ROOT_MISSING`.
+- `root` is a folder inside the project, written relative to it. The default is `.`. A map with `registered` and an optional `path` names a folder inside a registered folder outside the project, such as `root: { registered: knowledge-base, path: wiki }`.
 - `include` is required: 1 to 64 patterns. `exclude` is a list of 0 to 64 patterns.
 - `where` keeps a `.md` file only when its frontmatter matches. Every key must match, and a key matches when its value equals one of the listed strings. A list value matches when any element matches.
 - `links` follows `[[wikilinks]]` and relative markdown links from the files it selects: `follow` takes `wikilink` and `markdown`, and `depth` is 1 or 2.
@@ -148,7 +149,23 @@ The measure does not count Claude Code's own system details and tool definitions
 
 ### Registered folders
 
-A slice can later name a folder outside the project, such as a knowledge base, through a registered folder. This beta has no command to register one, and a slice that names one is held with `SLICE_ROOT_MISSING`. Use a root inside the project.
+A slice can select from a folder outside the project, such as the knowledge base of a workbench, through a registered folder. Register it once, in your store:
+
+```sh
+bowerloom folder add knowledge-base ~/Sage\ Advice/knowledge-base
+bowerloom folder list
+bowerloom folder remove knowledge-base
+```
+
+`folder add` shows a plan, then writes `~/.bowerloom/folders/knowledge-base.json`, which holds the folder as a path below your home folder. The first write makes the store, and the plan says so first. These commands work from any folder and never look for a project. `folder remove` deletes the record only. The folder stays, and Bowerloom never writes it. `folder list` shows each folder as `ready`, `missing` when the folder is gone, or `refused` with the code that failed.
+
+A folder must exist, be yours, and sit below your home folder, not in it. Every folder from your home folder down must be a real folder, not a link, and no other user may be able to write in it. No folder on the path may start with a dot. It cannot be the store or hold it, and it cannot be in an iCloud or other cloud-synced folder, where sync changes file times and moves files. A path reached through a link is recorded by its real path.
+
+A slice names the folder with `root: { registered: <folder-name> }` or `--registered` on `slice create`. The checks run again on every `apply`, on the folder and on the root inside it. A name that the store does not record, or a folder that is gone, holds the slice with `SLICE_ROOT_MISSING`, and an installed index stays. A link, a folder that others can write in, or a record that is not valid holds it with `SLICE_ROOT_UNSAFE`. A registered folder that lies inside the project also holds it, because it would be a project root with a second name: use a project root. A registered folder that holds the project is allowed, and hidden folders such as `.bowerloom` are never members.
+
+The read guard resolves the folder through your store on every call, as `apply` did. A record that is gone or points elsewhere, a store that cannot be read, or a root that is no longer the folder `apply` saw blocks every call of the agent with `GUARD_ROOT_MISSING`. The plan binds the identity of the root folder and the record of the folder. A folder replaced after you saw the plan makes `apply` refuse with `STALE_APPROVAL`. The copy of an agent whose guard covers the folder carries the folder's id, so a replaced folder blocks every call of that agent until the next `apply`. The store can sync to another machine, and its records name folders below your home folder, so a machine without the folder holds the slice with `SLICE_ROOT_MISSING`.
+
+The index names the files from the project folder, such as `../knowledge-base/wiki/index.md`, and never holds an absolute path. Claude Code may ask before an agent reads outside the project. The plan prints a note that names the folder. Start Claude Code with `--add-dir <folder>`, or add the folder to `permissions.additionalDirectories`.
 
 ### Codex
 

@@ -116,7 +116,7 @@ function topic(name: string | undefined): string | null { return name !== undefi
 const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
 /** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
 function helpText(words: readonly string[]): string | null {
-  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : words[0] === 'slice' ? TOPICS.context! : topic(words[0]);
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : words[0] === 'slice' || words[0] === 'folder' ? TOPICS.context! : topic(words[0]);
   if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
   if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
   if (words.length === 2 && words[0] === 'slice' && words[1] === 'create') return TOPICS.context!;
@@ -126,7 +126,7 @@ function helpText(words: readonly string[]): string | null {
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -169,6 +169,12 @@ async function main(args: string[]): Promise<void> {
   }
   if (args[0] === 'slice' && args[1] === 'create' && args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
   if (args.length === 2 && args[0] === 'slice' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+  if (args[0] === 'folder') {
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+    const { runFolderCommand } = await import('./folder.js');
+    process.exitCode = await runFolderCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
   if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt' || args[0] === 'slice') {
     if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
     const { runCreateCommand } = await import('./create.js');

@@ -33,19 +33,24 @@ export function approve(cwd: string, args: string[], home: string): void {
   const planned = run(cwd, args, home); assert.equal(planned.status, 3, planned.stdout + planned.stderr);
   const applied = run(cwd, [...args, '--approve', revisionIn(planned.stdout)], home); assert.equal(applied.status, 0, applied.stdout + applied.stderr);
 }
-export interface SliceProject { home: string; dir: string; agent: string }
+/** `kb` is the registered folder `kb` when the project was made with `registered: true`, else null. */
+export interface SliceProject { home: string; dir: string; agent: string; kb: string | null }
 export const AGENT = (extra = ''): string => `---\nname: lead\ndescription: Leads the desk.\nskills: [slice-wiki]\n${extra}---\nDo the work.\n`;
 /** init, a wiki of three pages, `slice create wiki --root wiki`, the agent `lead`, and `apply --harness claude`. */
-export function sliceProject(t: TestContext, { apply = true, agentExtra = '', root = 'wiki' }: { apply?: boolean; agentExtra?: string; root?: string } = {}): SliceProject {
+export function sliceProject(t: TestContext, { apply = true, agentExtra = '', root = 'wiki', registered = false }: { apply?: boolean; agentExtra?: string; root?: string; registered?: boolean } = {}): SliceProject {
   const home = folder(t), dir = join(home, 'studio'); mkdirSync(dir);
   const init = ['--mode', 'existing', '--target', dir, '--name', 'Studio handbook', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
   const plan = run(home, ['init', 'plan', ...init, '--json'], home); assert.equal(plan.status, 0, plan.stderr);
   const applied = run(home, ['init', 'apply', ...init, '--approve', JSON.parse(plan.stdout).revision], home); assert.equal(applied.status, 0, applied.stderr);
-  put(dir, `${root}/a.md`, '# Alpha\nbody a\n'); put(dir, `${root}/sub/b.md`, '# Beta\nbody b\n'); put(dir, `${root}/secret.txt`, 'not in the slice\n');
-  approve(dir, ['slice', 'create', 'wiki', '--root', root, '--include', '**/*.md'], home);
+  // A registered project keeps the wiki in the folder `kb` beside the project, registered with `folder add`.
+  const base = registered ? join(home, 'kb') : dir;
+  if (registered) { mkdirSync(base, { mode: 0o755 }); chmodSync(base, 0o755); }
+  put(base, `${root}/a.md`, '# Alpha\nbody a\n'); put(base, `${root}/sub/b.md`, '# Beta\nbody b\n'); put(base, `${root}/secret.txt`, 'not in the slice\n');
+  if (registered) approve(dir, ['folder', 'add', 'kb', base], home);
+  approve(dir, ['slice', 'create', 'wiki', '--root', root, '--include', '**/*.md', ...(registered ? ['--registered', 'kb'] : [])], home);
   const agent = put(dir, '.bowerloom/teams/first-team/agents/lead.md', AGENT(agentExtra));
   if (apply) approve(dir, ['apply', '--harness', 'claude'], home);
-  return { home, dir, agent };
+  return { home, dir, agent, kb: registered ? base : null };
 }
 /** The arguments of the guard hook in the installed copy of `lead`. */
 export function guardArgs(p: SliceProject, role = 'lead'): string[] {
