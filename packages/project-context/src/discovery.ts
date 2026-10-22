@@ -230,20 +230,20 @@ function build(dir: string, aliases: string[], configs: string[], uid: number, h
   }
   const identity = pin(dir);
   // The project folder itself must be the user's and closed to others, whatever marker it holds.
-  if (identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
+  if (identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('PROJECT_FOLDER_UNSAFE');
   return Object.freeze({ dir, identity, ancestry: pinAncestry(dir), bowerloomIdentity, configPresent, projectId: projectId(dir, identity) });
 }
 
 /** One lstat of `<dir>/.bowerloom`: a real folder that `uid` owns with no group or world write permission, else PROJECT_UNSAFE. */
 function folderMarker(dir: string, uid: number): DirectoryIdentity {
-  let stat: BigIntStats; try { stat = lstatSync(join(dir, '.bowerloom'), { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
+  let stat: BigIntStats; try { stat = lstatSync(join(dir, '.bowerloom'), { bigint: true }); } catch (error) { throw refuse(errno(error) === 'EACCES' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
   if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
   return identityFrom(stat);
 }
 
 /** True when `<dir>` holds no `.bowerloom`. Exactly one name may fold to it, and it must be spelled so; else PROJECT_UNSAFE. */
 function folderAbsent(dir: string): boolean {
-  let listed: string[]; try { listed = readdirSync(dir); } catch { throw refuse('PROJECT_UNSAFE'); }
+  let listed: string[]; try { listed = readdirSync(dir); } catch (error) { throw refuse(errno(error) === 'EACCES' ? 'PROJECT_UNREADABLE' : 'PROJECT_UNSAFE'); }
   const hits = listed.filter(name => fold(name) === '.bowerloom');
   if (hits.length === 0) return true;
   if (hits.length > 1 || hits[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
@@ -257,9 +257,11 @@ function verifyPins(project: ProjectContext, skip?: 'folder' | 'config'): void {
   for (const [path, pinned] of pins) {
     let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
     if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('PROJECT_UNSAFE');
-    if (path === project.dir && (Number(stat.uid) !== (process.getuid?.() ?? -1) || (Number(stat.mode) & 0o022) !== 0)) throw refuse('PROJECT_UNSAFE');
+    if (path === project.dir && (Number(stat.uid) !== (process.getuid?.() ?? -1) || (Number(stat.mode) & 0o022) !== 0)) throw refuse('PROJECT_FOLDER_UNSAFE');
   }
   if (project.bowerloomIdentity === null && skip !== 'folder' && !folderAbsent(project.dir)) throw refuse('PROJECT_UNSAFE');
+  // With a folder pinned, no second name may fold to `.bowerloom` beside it.
+  if (project.bowerloomIdentity !== null && folderAbsent(project.dir)) throw refuse('PROJECT_UNSAFE');
   if (skip !== 'config') {
     const config = checkConfigFile(project.dir, uid);
     if (project.configPresent ? config === null : config !== null) throw refuse('PROJECT_UNSAFE');
@@ -275,7 +277,10 @@ function verifyPins(project: ProjectContext, skip?: 'folder' | 'config'): void {
  */
 export function verifyProjectPins(project: ProjectContext): void { verifyPins(project); }
 
-/** The identity of the marker the writer made: device and inode of the file for `'config'`; device, inode, and birth time of the folder for `'folder'`. */
+/**
+ * The identity of the marker the writer made: device and inode of the file for `'config'`; device, inode, and birth time of the folder for `'folder'` (required).
+ * Take it from the creation itself: open the new folder with O_DIRECTORY and O_NOFOLLOW and fstat the handle, or fstat the file the writer created. A later lstat by path can see a different entry.
+ */
 export interface AdoptExpected { readonly device: string; readonly inode: string; readonly birthtimeNs?: string }
 
 /**
@@ -285,6 +290,7 @@ export interface AdoptExpected { readonly device: string; readonly inode: string
 export function adoptCreatedMarker(project: ProjectContext, marker: 'folder' | 'config', expected: AdoptExpected, hooks: { readonly uid?: number } = {}): ProjectContext {
   if (marker !== 'folder' && marker !== 'config') throw refuse('USAGE');
   if (expected === null || typeof expected !== 'object' || typeof expected.device !== 'string' || typeof expected.inode !== 'string') throw refuse('USAGE');
+  if (marker === 'folder' && typeof expected.birthtimeNs !== 'string') throw refuse('USAGE');
   if (marker === 'folder' ? project.bowerloomIdentity !== null : project.configPresent) throw refuse('USAGE');
   const uid = hooks.uid ?? process.getuid?.() ?? -1;
   verifyPins(project, marker);

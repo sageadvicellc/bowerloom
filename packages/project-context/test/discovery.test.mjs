@@ -506,12 +506,14 @@ test('a project under a home that has a store is found as usual', t => {
 // ---- Review fixes: S1, S5, S6, S8, F9, F13, C1 ----
 test('S1: a project folder that others can write refuses PROJECT_UNSAFE, at discovery and at verify', t => {
   const { home } = world(t); const dir = mk(path.join(home, 'open')); putConfig(dir); fs.chmodSync(dir, 0o777);
-  assert.throws(() => discoverProject(dir, home), code('PROJECT_UNSAFE'), '0777');
-  fs.chmodSync(dir, 0o770); assert.throws(() => discoverProject(dir, home), code('PROJECT_UNSAFE'), '0770');
+  assert.throws(() => discoverProject(dir, home), code('PROJECT_FOLDER_UNSAFE'), '0777');
+  fs.chmodSync(dir, 0o770); assert.throws(() => discoverProject(dir, home), code('PROJECT_FOLDER_UNSAFE'), '0770');
   fs.chmodSync(dir, 0o755); const found = discoverProject(dir, home);
-  fs.chmodSync(dir, 0o775); assert.throws(() => verifyProjectPins(found), code('PROJECT_UNSAFE'), 'turned group-writable after discovery');
+  fs.chmodSync(dir, 0o775); assert.throws(() => verifyProjectPins(found), code('PROJECT_FOLDER_UNSAFE'), 'turned group-writable after discovery');
   const other = mk(path.join(home, 'other')); mk(path.join(other, '.bowerloom'));
-  assert.throws(() => discoverProjectWith(other, home, { uid: process.getuid() + 1 }), code('PROJECT_UNSAFE'), 'owner');
+  assert.throws(() => discoverProjectWith(other, home, { uid: process.getuid() + 1 }), code('PROJECT_UNSAFE'), 'foreign .bowerloom owner');
+  const solo2 = mk(path.join(home, 'solo2')); putConfig(solo2);
+  assert.throws(() => discoverProjectWith(solo2, home, { uid: process.getuid() + 1 }), code('CONFIG_UNSAFE'), 'foreign config owner is reported first');
 });
 
 test('S5: adoptCreatedMarker refuses a marker that is not the writer\'s own, and takes the uid hook (F13)', t => {
@@ -566,4 +568,29 @@ test('F9: a bowerloom.json that cannot be read gives CONFIG_UNREADABLE, not CONF
   const { home } = world(t); const dir = mk(path.join(home, 'app')); const f = putConfig(dir);
   for (const errno of ['EACCES', 'EMFILE', 'EIO']) failLstat(t, p => p === f, errno, () => assert.throws(() => checkConfigFile(dir), code('CONFIG_UNREADABLE'), errno));
   assert.throws(() => checkConfigFile(dir, process.getuid() + 1), code('CONFIG_UNSAFE'), 'a real unsafe file stays CONFIG_UNSAFE');
+});
+
+// ---- Second review: L4, L5, L6 ----
+test('L4: EACCES while checking .bowerloom gives PROJECT_UNREADABLE', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); mk(path.join(dir, '.bowerloom'));
+  failLstat(t, p => p === path.join(dir, '.bowerloom'), 'EACCES', () => assert.throws(() => discoverProject(dir, home), code('PROJECT_UNREADABLE'), 'folderMarker'));
+  const d2 = mk(path.join(home, 'app2')); putConfig(d2); const found = discoverProject(d2, home);
+  const original = fs.readdirSync;
+  t.mock.method(fs, 'readdirSync', (...args) => { if (String(args[0]) === d2) { const e = new Error('SYNTHETIC'); e.code = 'EACCES'; throw e; } return original(...args); });
+  syncBuiltinESMExports();
+  try { assert.throws(() => verifyProjectPins(found), code('PROJECT_UNREADABLE'), 'folderAbsent'); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+});
+
+test('L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); mk(path.join(dir, '.bowerloom')); const found = discoverProject(dir, home);
+  mk(path.join(dir, '.BOWERLOOM'));
+  if (fs.readdirSync(dir).length < 2) { t.skip('this disk is case-insensitive: no second name can exist'); return; }
+  assert.throws(() => verifyProjectPins(found), code('PROJECT_UNSAFE'));
+});
+
+test('L6: adoptCreatedMarker needs the birth time for a folder', t => {
+  const { home } = world(t); const dir = mk(path.join(home, 'app')); putConfig(dir); const found = discoverProject(dir, home); const folder = mk(path.join(dir, '.bowerloom'));
+  const { birthtimeNs, ...rest } = expectOf(folder, true);
+  assert.throws(() => adoptCreatedMarker(found, 'folder', rest), code('USAGE'));
+  assert.doesNotThrow(() => adoptCreatedMarker(found, 'folder', { ...rest, birthtimeNs }));
 });

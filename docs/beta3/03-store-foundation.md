@@ -73,6 +73,8 @@ At a home folder, the store check uses that home folder. The account home can di
 
 The home check never throws a `STORE_*` code. A bad store at home is a `PROJECT_ROOT_REFUSED`. Only the store commands report `STORE_*` codes. The exception is `STORE_NOT_A_PROJECT` from `build` (3.8).
 
+> Erratum after the build, PR #90: a `.bowerloom` at home that is a link, unsafe, or has an invalid `store.json` now refuses with its `STORE_*` code (`STORE_UNSAFE`, `STORE_INVALID`), not `PROJECT_ROOT_REFUSED`. `PROJECT_ROOT_REFUSED` still covers a non-empty home `.bowerloom` with no `store.json`, and any `bowerloom.json` at home. The table row above and the sentence before it are superseded.
+
 The check order in `build` is: the aliases, the configs, the `lstat` of `.bowerloom`, then the `lstat` of the config.
 
 ### 3.5 The config file is read, never written, in this spec
@@ -510,6 +512,7 @@ Change:
 |---|---|
 | `HOME` is a symbolic link to the real home | `storeRootOf` uses `realpath(home)`. The store is found at the real path. |
 | `~/.bowerloom` is a link to another folder | `STORE_UNSAFE`. Discovery at home sees a `.bowerloom` that is not a store and refuses `PROJECT_ROOT_REFUSED` (when no project marker lies below). |
+| Erratum after the build, PR #90 | The row above now ends in `STORE_UNSAFE` at home too, not `PROJECT_ROOT_REFUSED`. |
 | `~` is a link and the store is real | The store path is built from `realpath(home)`. The state is `store`. |
 | The store folder is a link into `~/Library/Mobile Documents` | `STORE_UNSAFE`, because rule 3 fails first. |
 | The store is a real folder inside an iCloud folder | `STORE_IN_CLOUD_FOLDER` (rule 4). |

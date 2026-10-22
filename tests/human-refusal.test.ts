@@ -34,6 +34,7 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['STORE_NOT_A_PROJECT', 'Run this command in a project folder outside ~/.bowerloom.', 'cd <project-folder>'],
   ['CONFIG_INVALID', 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', 'git diff bowerloom.json'],
   ['CONFIG_UNSAFE', 'Bowerloom will not trust a bowerloom.json that other people or links can change.', 'ls -l bowerloom.json'],
+  ['PROJECT_FOLDER_UNSAFE', 'Bowerloom will not trust a project folder that other people can change.', 'ls -ld .'],
   ['CONFIG_UNREADABLE', 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -l bowerloom.json'],
   ['CONFIG_LIMIT', 'This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most.', 'bowerloom status'],
   ['CONFIG_DUPLICATE_ID', 'Each item is listed once, from one source.', 'git diff bowerloom.json'],

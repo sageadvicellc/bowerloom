@@ -142,7 +142,7 @@ export function inspectStoreWith(home: string, hooks: DiscoveryHooks = {}): Stor
   if (!exactName(kept, STORE_FILE)) return { state: 'foreign' };
   const fileIdentity = readStoreFile(root, uid);
   const context: StoreContext = Object.freeze({ dir: root, identity, ancestry, fileIdentity: Object.freeze(fileIdentity) });
-  verifyStorePins(context);
+  verifyStorePins(context, hooks);
   return { state: 'store', context, leftoverTemp };
 }
 
@@ -160,8 +160,8 @@ export function isValidStore(home: string, hooks: DiscoveryHooks = {}): boolean 
 }
 
 /** Refuses STORE_UNSAFE unless the store folder, every folder above it, and `store.json` are still what was pinned. */
-export function verifyStorePins(store: StoreContext): void {
-  const uid = process.getuid?.() ?? -1;
+export function verifyStorePins(store: StoreContext, hooks: { readonly uid?: number } = {}): void {
+  const uid = hooks.uid ?? process.getuid?.() ?? -1;
   for (const [path, pinned] of [...store.ancestry.map(a => [a.path, a.identity] as const), [store.dir, store.identity] as const]) {
     let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('STORE_UNSAFE'); }
     if (stat.isSymbolicLink() || !stat.isDirectory() || stat.dev.toString() !== pinned.device || stat.ino.toString() !== pinned.inode || stat.birthtimeNs.toString() !== pinned.birthtimeNs) throw refuse('STORE_UNSAFE');

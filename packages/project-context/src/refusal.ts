@@ -14,6 +14,7 @@ const MESSAGES = {
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   PROJECT_LOCK_UNAVAILABLE: 'Bowerloom could not take the project lock. Try again.',
   PROJECT_LOCK_SLOT_COLLISION: 'Another program holds the local port that Bowerloom uses to lock this project.',
+  PROJECT_FOLDER_UNSAFE: 'The project folder is not safe to use. It must be yours, with no write access for others.',
   STORE_NOT_FOUND: 'There is no store yet.',
   STORE_INVALID: 'The store folder has no usable store.json.',
   STORE_UNSAFE: 'The store is not safe to use. It must be a real folder that you own, with no write access for others and no link on its path. Your home folder must be yours or root\'s, and others must not be able to write in it unless it is sticky. Bowerloom does not check the folders above your home folder.',

@@ -71,8 +71,9 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `STALE_APPROVAL` | The plan changed after you saw it. Nothing was applied. | Run the command again without `--approve` to see the new plan. |
 | `WORKERS_HELD` | The project is prepared. No worker was started. Exit 4. | Run `bowerloom status`. |
 | `PROJECT_NOT_FOUND` | Bowerloom looked in this folder and every parent up to your home folder. | Run `bowerloom up --team <name> --goal <goal>` in the project folder. |
-| `PROJECT_ROOT_REFUSED` | A whole disk or home folder is too broad to be a project. It also covers `~/.bowerloom` that is not a store, and `~/bowerloom.json`. | Change into the project folder. |
+| `PROJECT_ROOT_REFUSED` | A whole disk or home folder is too broad to be a project. It also covers a non-empty `~/.bowerloom` with no `store.json`, and a `bowerloom.json` in your home folder. A `~/.bowerloom` that is unsafe, a link, or has an invalid `store.json` refuses with its `STORE_*` code instead. | Change into the project folder. |
 | `PROJECT_IN_CLOUD_FOLDER` | The project is under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder. Cloud sync changes file times and moves files, which breaks the checks that keep a project safe. | Move the project, for example `mv <project-folder> ~/Projects/`. |
+| `PROJECT_FOLDER_UNSAFE` | The project folder is not yours, or other people can write in it. Bowerloom will not trust a project folder that other people can change. | Run `ls -ld .`. |
 | `PROJECT_UNSAFE` | Bowerloom does not trust a `.bowerloom` folder that other people or links can change. | Run `ls -ld .bowerloom`. |
 | `PROJECT_UNREADABLE` | Bowerloom cannot read a folder on the way to the project. | Run `ls -ld <folder>`. |
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |

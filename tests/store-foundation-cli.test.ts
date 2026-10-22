@@ -282,5 +282,5 @@ test('S9: deleting the receipt of a startup project that also has a bowerloom.js
 
 test('S1: a config-only project folder that others can write refuses PROJECT_UNSAFE', t => {
   const w = world(t), dir = configProject(w); chmodSync(dir, 0o777);
-  const r = run(dir, ['status'], w.env); assert.equal(r.status, 1); assert.equal(errorCode(r.stderr), 'PROJECT_UNSAFE');
+  const r = run(dir, ['status'], w.env); assert.equal(r.status, 1); assert.equal(errorCode(r.stderr), 'PROJECT_FOLDER_UNSAFE');
 });

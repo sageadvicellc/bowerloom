@@ -298,3 +298,9 @@ test('S7: a link or file at <home>/.bowerloom is no store for pathInsideStore, a
   syncBuiltinESMExports();
   try { assert.throws(() => pathInsideStore(path.join(r.store, 'x'), r.home, solo(r)), code('STORE_UNREADABLE')); } finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
 });
+
+test('L7: verifyStorePins uses the uid hook when one is given', t => {
+  const w = mkStore(world(t)); const c = openStoreWith(w.home, solo(w));
+  assert.doesNotThrow(() => verifyStorePins(c, { uid: process.getuid() }));
+  assert.throws(() => verifyStorePins(c, { uid: process.getuid() + 1 }), code('STORE_UNSAFE'));
+});
