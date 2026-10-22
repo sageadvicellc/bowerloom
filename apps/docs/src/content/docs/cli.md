@@ -60,14 +60,18 @@ These commands work in a project folder. The project is the nearest parent folde
 
 ```text
 bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--approve <revision>] [--json]
-bowerloom ls [teams|skills|prompts] [--json]
+bowerloom ls [teams|skills|prompts] [--global] [--json]
 bowerloom status [--json]
 bowerloom store status [--json]
 ```
 
 `up` prepares the project one step at a time and starts no workers. See [Install Bowerloom](/docs/start/#prepare-a-project-with-one-command). With `--json`, each line is one JSON object, and each step plan names its `step` and `team`. `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program. `up` ends at `prepared, workers held`. When a skill, prompt, or team is held or gone, it ends at `prepared, N items held` and prints a next command for each item.
 
-`ls` reads the names of teams, skills, and prompts in `.bowerloom` and writes nothing. An empty section shows `none yet`. A link, a stray file, or a name that is not a plain id counts as `Not listed`, and `ls` never follows it. With `--json`, `ls` and `ls skills` also print `pinned`, a list of the pinned skill ids. `pinned` is null when `.bowerloom/skills.json` cannot be read. Run `bowerloom skills check` then. A folder with more than 256 entries refuses with `INSPECTION_LIMIT`. A project with a `bowerloom.json` shows a `Config:` line first, as `status` does.
+`ls` reads the names of teams, skills, and prompts in `.bowerloom` and writes nothing. Each item shows where it comes from, `project` or `store`, in a column after its name. Names in a section are padded to the widest name of that section. A pinned skill adds `pinned:` and its pin, such as `pinned: npm @tanstack/db-skills@0.0.1:skills/tanstack-db/collections`. An empty section shows `none yet`. A link, a stray file, or a name that is not a plain id counts as `Not listed`, and `ls` never follows it. A folder with more than 256 entries refuses with `INSPECTION_LIMIT`. A project with a `bowerloom.json` shows a `Config:` line first, as `status` does.
+
+`ls --global` lists your store, `~/.bowerloom`, from any folder, and tags every item `store`. It needs no project. With no store it prints `No store yet.` and exits 0. A project listing never mixes in store items.
+
+With `--json`, `ls` prints one object in the format `bowerloom/ls/v1beta2`. The fields are `scope` (`project` or `store`), `listedBy` (`folders`), `teams`, `skills`, and `prompts`, `pinsReadable`, `unselected`, `unlisted`, and, for the store, `storeState` (`ready` or `absent`). Each item is an object with `id`, `source`, `via`, `locked`, `resolvedFrom`, and `state`. A team adds `displayName`. A skill adds `kind` (`local`, `npm`, or `git`) and `pin`, which is null for a local skill. `pinsReadable` is false when `skills.json` cannot be read. Run `bowerloom skills check` then. `ls teams`, `ls skills`, and `ls prompts` print only that array, with the fixed fields. A script that reads `bowerloom/ls/v1beta1` must accept `bowerloom/ls/v1beta2`: each item is an object now, and the old `pinned` list is gone.
 
 `status` shows the project folder, the setup state, any drift, and any skill you edited by hand. It reads only. It prints `Workers: none started (this beta starts none)`. With `--json` it prints one object, format `bowerloom/project-status/v1beta2`, with `markers`, `setup`, `status`, `revision`, `drift`, `owned`, `config`, `runtimeReady`, and `executionAuthorized`. `markers` says whether the project has a `.bowerloom` folder and a `bowerloom.json` file. `setup` is `startup` when the project has a startup receipt and `none` when it does not. `config` is null for a project with no `bowerloom.json`. Otherwise it holds the file hash and size, whether the file is valid, and the item counts. A `bowerloom.json` that does not match its format shows as the drift kind `config-invalid`. `status` names each held or missing skill, prompt, or team with its next step. A deleted prompt or team is held. Run `bowerloom prompt create <id>` to restore a registered prompt that was deleted. Restore a deleted team from version control. A skill installed by an earlier Bowerloom shows as `Legacy managed skill: .bowerloom-skills`, with the migrate command.
 
@@ -78,12 +82,14 @@ bowerloom store status [--json]
 ## Create commands
 
 ```text
-bowerloom team create <name> [--profile engineer|founder|research] [--approve <revision>] [--json]
-bowerloom skill create <name> [--team <team>]... [--approve <revision>] [--json]
-bowerloom prompt create <name> [--team <team>]... [--approve <revision>] [--json]
+bowerloom team create <name> [--profile engineer|founder|research] [--global] [--approve <revision>] [--json]
+bowerloom skill create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
+bowerloom prompt create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
 ```
 
-Agents use these commands most. They write inside `.bowerloom` only. You and your agents own the files they make. [Create teams, skills, and prompts](/docs/guides/create-items/) explains each one.
+Agents use these commands most. They write inside `.bowerloom` only, or inside your store with `--global`. You and your agents own the files they make.
+
+`--global` creates the item in your store, `~/.bowerloom`, and not in a project. It works from any folder and never looks for a project. The first `--global` write makes the store, and the plan says so first. The store holds definitions only, and a project picks store items with `bowerloom use`. With `--global`, `--team` names a team in the store. A team made with `--global` is built from a fixed store brief and the profile you choose, and it does not read a project brief. A store that Bowerloom did not make refuses with `STORE_INVALID`, and Bowerloom never takes it over. [Create teams, skills, and prompts](/docs/guides/create-items/) explains each one.
 
 ## Apply
 
@@ -202,9 +208,9 @@ The macOS Docker context, ARM64 daemon, Compose v2, storage, and approval requir
 ## Third-party skills
 
 ```text
-bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]
-bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--approve <revision>] [--json]
-bowerloom skills check [--json]
+bowerloom skills add npm:<package>@<version>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]
+bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path> [--id <id>] [--team <team>]... [--replace] [--global] [--approve <revision>] [--json]
+bowerloom skills check [--global] [--json]
 bowerloom skills sync [--offline] [--team <team>] [--approve <revision>] [--json]
 bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon] [--approve <revision>] [--json]
 bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <revision>] [--json]
@@ -214,7 +220,9 @@ bowerloom skills migrate plan|apply --state <earlier-state-folder> [--approve <r
 
 `--id` sets the entry id. The default is the skill name. `--team` limits the skill to a team. Without it, every team gets the skill. `--replace` moves an existing id to another version or commit of the same package or repository. The plan shows the old pin and the new pin, and the entry keeps its teams unless you pass `--team`. Then `skills sync` updates the copies. [Move a skill to a newer pin](/docs/guides/add-skills/#move-a-skill-to-a-newer-pin) shows an example.
 
-`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing.
+`--global` pins the skill in `~/.bowerloom/skills.json`, your store, and keeps the checked bytes in this machine's skills cache, which is never inside the store. It works from any folder. The store holds up to 256 skills and 4 MiB in `skills.json`. A project holds up to 128 skills and 1 MiB. If the private state folder and the store lie inside one another, the command refuses with `STORE_STATE_NESTED`.
+
+`skills check` reads `.bowerloom/skills.json` and checks every pin offline. It writes nothing. `skills check --global` checks the store `skills.json`. Its JSON format is `bowerloom/skills-manifest-check/v1beta2`, with the new fields `scope` and, on each skill, `source`.
 
 `skills sync` installs every skill in `skills.json` for Claude Code and Codex into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`. It fetches only pins that this machine's skills cache does not hold yet, and it checks every byte against its pin first. `--offline` refuses before any change if a pin still needs fetching. `--team` syncs only that team's skills. A skill whose copy you changed is held and shown with its next step, and the others apply. Sync removes nothing. Ctrl-C stops it between two skills, never inside one.
 

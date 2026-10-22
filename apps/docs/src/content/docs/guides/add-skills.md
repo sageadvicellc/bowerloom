@@ -398,6 +398,17 @@ Search open and closed reports before you write a new one. Use synthetic inputs 
 
 A report or proposal does not guarantee a fix, a response time, or a release date.
 
+## Pin a skill in your store
+
+Add `--global` to pin the skill in your store, `~/.bowerloom/skills.json`, and not in a project:
+
+```sh
+bowerloom skills add npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections --global
+bowerloom skills check --global
+```
+
+It works from any folder. The plan, the exact pin, and the approval work as for a project. The checked bytes go to this machine's skills cache, which is never inside the store. The store holds up to 256 skills, and a project holds up to 128. If the private state folder and the store lie inside one another, the command refuses with `STORE_STATE_NESTED`.
+
 ## Current beta limits
 
 - Public skills only. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, without credentials. Private registries and private repositories are not supported.
