@@ -37,6 +37,16 @@ Keep credentials out of portable definitions. Use private bindings where the sup
 
 No parser here guarantees that arbitrary prose contains no secret. Inspect selected files before sharing them.
 
+## The GitHub token for a private store
+
+A store in a private GitHub repository needs a token. Set the environment variable `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the store repository. It is the only setting: there is no file, no flag, and no stored value. Without it, Bowerloom works as before and a private store refuses with `STORE_REMOTE_PRIVATE`.
+
+Bowerloom sends the token to one host, `api.github.com`, and only for the repository of your store remote, or the repositories your lock names for its store items. Each plan that uses the token shows a `Credentials:` line that names those repositories. Bowerloom never stores the token and never prints it. It never writes it to a plan, a lock, a receipt, a log, or any other file. It refuses every redirect, so the token cannot travel to another host.
+
+`skills add` and the fetch of pinned skills send no credentials. The fetch of store items sends a token. It does so only after you set `BOWERLOOM_GITHUB_TOKEN`.
+
+Give the token read access to the store repository and nothing more. We advise a fine-grained token limited to that one repository. A classic token needs the `repo` scope, which grants write access to every private repository you can reach. This is advice: Bowerloom does not check the scope of the token.
+
 <a id="installed-security-acceptance"></a>
 
 ## Review each execution environment
