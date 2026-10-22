@@ -20,15 +20,16 @@ const heading = `Bowerloom ${release.version}: open beta\n${release.execution}\n
 const short = `Set up agent teams, skills, and prompts for Claude Code and Codex.
 
 Start here
-  bowerloom up --team <name>            Prepare this project for a team. Shows each plan first.
-  bowerloom ls [teams|skills|prompts]   List what this project holds.
-  bowerloom status                      Show whether this project is ready.
+  bowerloom up --team <name>                   Prepare this project for a team. Shows each plan first.
+  bowerloom ls [teams|skills|prompts|slices]   List what this project holds.
+  bowerloom status                             Show whether this project is ready.
+  bowerloom help context                       Give each agent its part of a knowledge base.
 
 Skills and setup
   bowerloom skills add npm:<package>@<version>:<path>
   bowerloom skills add github:<owner>/<repo>@<40-char-commit>:<path>
-  bowerloom skills check                Check the pins in .bowerloom/skills.json.
-  bowerloom skills sync [--offline]     Install the pinned skills on this machine.
+  bowerloom skills check                       Check the pins in .bowerloom/skills.json.
+  bowerloom skills sync [--offline]            Install the pinned skills on this machine.
   bowerloom apply [--harness claude|codex|both]
 
 Create (mostly used by agents)

@@ -23,7 +23,7 @@ function fixture(t) {
 }
 test('runtime closure is deterministic, pins bins/assets/licenses and omits repository-only material',()=>{
  const a=collect({repoDir:repo}),b=collect({repoDir:repo});assert.deepEqual(a,b);
- assert.equal(a.manifest.private,true);assert.equal(a.manifest.dependencies.jose,'6.2.12');assert.equal(a.manifest.name,'bowerloom');assert.deepEqual(Object.keys(a.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(a.manifest.scripts,undefined);
+ assert.equal(a.manifest.private,true);assert.equal(a.manifest.dependencies.jose,'6.2.12');assert.equal(a.manifest.name,'bowerloom');assert.deepEqual(Object.keys(a.manifest.bin),['bowerloom','bowerloom-mcp','bowerloom-guard']);assert.equal(a.manifest.scripts,undefined);
  for(const path of a.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|node_modules|\.git|\.env|work)(?:\/|$)|\.map$|\.ts$/.test(path),path);
  for(const path of ['LICENSE','docs/beta/license-boundary.md','dist/packages/codex-adapter/src/guardian.js','dist/packages/codex-adapter/src/supervisor.js','dist/packages/codex-adapter/src/boundary.js','dist/packages/mcp-connections/src/discovery.js','dist/packages/mcp-connections/src/auth.js','dist/packages/mcp-connections/src/authority.js','dist/packages/mcp-connections/src/authority-postgres.js','dist/packages/mcp-connections/src/http.js','dist/packages/mcp-connections/src/stdio.js','dist/packages/mcp-connections/src/container.js','dist/packages/mcp-connections/src/container-supervisor.js','dist/packages/mcp-connections/src/container-guardian.js','dist/packages/mcp-connections/src/container-policy.js','packages/linux-browser/assets/runner.cjs','npm-shrinkwrap.json'])assert.ok(a.files.has(path),path);
  const supabaseLicense='packages/local-backend/licenses/supabase-Apache-2.0.txt';
@@ -191,7 +191,7 @@ test('routine packaging collection includes only reachable loader closure and ex
  }
  assert.equal(result.manifest.dependencies.yaml,'2.9.1');
  const lock=JSON.parse(result.files.get('npm-shrinkwrap.json'));assert.equal(lock.packages['node_modules/yaml'].version,'2.9.1');
- assert.deepEqual(Object.keys(result.manifest.bin),['bowerloom','bowerloom-mcp']);assert.equal(result.manifest.scripts,undefined);assert.equal(result.manifest.exports,undefined);
+ assert.deepEqual(Object.keys(result.manifest.bin),['bowerloom','bowerloom-mcp','bowerloom-guard']);assert.equal(result.manifest.scripts,undefined);assert.equal(result.manifest.exports,undefined);
  for(const path of result.files.keys())assert.ok(!/(?:^|\/)(?:test|tests|fixtures|work|\.bowerloom)(?:\/|$)|labs-to-blog\.yaml$/.test(path),path);
  assert.deepEqual([...result.files.keys()].filter(path=>path.startsWith('dist/packages/routines/')).sort(),['dist/packages/routines/src/files.js','dist/packages/routines/src/index.js']);
 });
@@ -217,7 +217,7 @@ test('internal routine and skills manifests are exact exceptions and present man
 
 // Beta 0.7.0 Day 0: the project-layer packages are runtime modules with optional internal manifests.
 test('beta 0.7.0 project packages are allowlisted modules whose manifests are optional but validated when present',()=>{
- const added=['project-context','project-config','project-authoring','skill-manifest','project-sync'];
+ const added=['project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices'];
  for(const name of added)assert.ok(MODULES.includes(name),name);
  assert.ok(Object.isFrozen(MODULES));assert.equal(new Set(MODULES).size,MODULES.length);
  const original={lstatSync:fs.lstatSync,readFileSync:fs.readFileSync};

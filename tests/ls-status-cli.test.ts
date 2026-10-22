@@ -28,7 +28,7 @@ test('after init, ls shows first-team and personal-assistant, from the project f
   for (const cwd of [p.dir, p.sub]) {
     const r = run(cwd, ['ls'], { HOME: p.home }); assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr, '');
     // Review freeze finding 11: first-team shows the team name setup was given.
-    assert.equal(r.stdout, 'Teams\n  first-team (First team)\n\nSkills\n  personal-assistant\n\nPrompts\n  none yet\n');
+    assert.equal(r.stdout, 'Teams\n  first-team (First team)\n\nSkills\n  personal-assistant\n\nPrompts\n  none yet\n\nSlices\n  none yet\n');
   }
 });
 
@@ -38,7 +38,7 @@ test('ls teams, ls skills and ls prompts show one section; --json is one canonic
   assert.equal(run(p.dir, ['ls', 'skills'], env).stdout, 'Skills\n  personal-assistant\n');
   assert.equal(run(p.dir, ['ls', 'prompts'], env).stdout, 'Prompts\n  none yet\n');
   const j = run(p.dir, ['ls', '--json'], env); assert.equal(j.status, 0);
-  assert.deepEqual(JSON.parse(j.stdout), { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], skills: ['personal-assistant'], pinned: [], prompts: [], unlisted: 0 });
+  assert.deepEqual(JSON.parse(j.stdout), { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], skills: ['personal-assistant'], pinned: [], prompts: [], slices: [], unlisted: 0 });
   assert.deepEqual(JSON.parse(run(p.dir, ['ls', 'teams', '--json'], env).stdout), { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], unlisted: 0 });
 });
 
@@ -103,9 +103,9 @@ test('an unlisted entry is counted, not listed', t => {
   writeFileSync(join(p.dir, '.bowerloom', 'prompts', 'note.txt'), 'x'); writeFileSync(join(p.dir, '.bowerloom', 'prompts', 'welcome.md'), '# Welcome\n');
   symlinkSync(join(p.dir, '.bowerloom', 'teams', 'first-team'), join(p.dir, '.bowerloom', 'skills', 'linked'));
   const after = JSON.parse(run(p.dir, ['ls', '--json'], env).stdout);
-  assert.deepEqual(after, { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], skills: ['personal-assistant'], pinned: [], prompts: ['welcome'], unlisted: 3 });
+  assert.deepEqual(after, { format: 'bowerloom/ls/v1beta1', teams: ['first-team'], skills: ['personal-assistant'], pinned: [], prompts: ['welcome'], slices: [], unlisted: 3 });
   const words = run(p.dir, ['ls'], env); assert.equal(words.status, 0, words.stderr);
-  assert.equal(words.stdout, 'Teams\n  first-team (First team)\n\nSkills\n  personal-assistant\n\nPrompts\n  welcome\n\nNot listed: 3 entries with an unusual name or type. Run bowerloom status.\n');
+  assert.equal(words.stdout, 'Teams\n  first-team (First team)\n\nSkills\n  personal-assistant\n\nPrompts\n  welcome\n\nSlices\n  none yet\n\nNot listed: 3 entries with an unusual name or type. Run bowerloom status.\n');
 });
 
 test('status escapes control bytes in a changed file name; --json keeps the exact name', t => {

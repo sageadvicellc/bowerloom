@@ -83,7 +83,7 @@ test('findings 9, 10, 11, 15 and 16: apply names only the chosen harness; check,
   const claude = run(p, ['apply', '--harness', 'claude']); assert.equal(claude.status, 3, claude.stderr);
   assert.match(claude.stdout, /^Copies go to \.bowerloom\/managed and \.claude, and stay on this machine\. Apply adds copies and removes none\.$/m);
   assert.match(claude.stdout, /^Bowerloom never edits AGENTS\.md or CLAUDE\.md\. To point Claude Code at these copies, add a line like this to CLAUDE\.md yourself:$/m);
-  assert.match(claude.stdout, /^ {2}Project skills are in \.claude\/skills\. Prompts are Claude Code commands in \.claude\/commands\. Agents are in \.claude\/agents\.$/m);
+  assert.match(claude.stdout, /^ {2}Project skills are in \.claude\/skills\. Prompts are Claude Code commands in \.claude\/commands\. Agents are in \.claude\/agents\. Context slices are skills named slice-<name> in \.claude\/skills\.$/m);
   assert.doesNotMatch(claude.stdout, /\.agents|Codex/);
   approve(p, ['apply', '--harness', 'claude']);
   const codex = run(p, ['apply', '--harness', 'codex']); assert.equal(codex.status, 3, codex.stderr);

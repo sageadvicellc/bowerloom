@@ -10,13 +10,13 @@ import { readConfig } from '../../../packages/project-config/src/index.js';
 import { configLine } from './config-status.js';
 import { newCommandJson, plainText } from './human.js';
 
-const SECTIONS = ['teams', 'skills', 'prompts'] as const;
+const SECTIONS = ['teams', 'skills', 'prompts', 'slices'] as const;
 type Section = typeof SECTIONS[number];
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const LIMIT = 256;
 
 export interface Listing {
-  teams: string[]; skills: string[]; prompts: string[]; unlisted: number;
+  teams: string[]; skills: string[]; prompts: string[]; slices: string[]; unlisted: number;
   /** Review freeze finding 11: the npm and GitHub skills that .bowerloom/skills.json pins, by id. Null when it cannot be read. */
   pinned?: { id: string; pin: string }[] | null;
   /** The display name of first-team: the team name the person gave setup. Null when the brief cannot be read. */
@@ -42,7 +42,7 @@ function pinnedSkills(project: ProjectContext): { id: string; pin: string }[] | 
 }
 
 /** Reads names only. A link, a stray file, or a name that is not a plain id is counted as unlisted and never followed. */
-function entries(project: ProjectContext, folder: string, wants: 'directory' | 'prompt'): { names: string[]; unlisted: number } {
+function entries(project: ProjectContext, folder: string, wants: 'directory' | 'prompt' | 'slice'): { names: string[]; unlisted: number } {
   const path = join(project.dir, '.bowerloom', folder);
   let stat; try { stat = lstatSync(path); } catch { return { names: [], unlisted: 0 }; }
   if (stat.isSymbolicLink() || !stat.isDirectory()) return { names: [], unlisted: 1 };
@@ -51,8 +51,8 @@ function entries(project: ProjectContext, folder: string, wants: 'directory' | '
   const names: string[] = []; let unlisted = 0;
   for (const entry of all) {
     const plain = !entry.isSymbolicLink() && (wants === 'directory' ? entry.isDirectory() : entry.isFile());
-    const name = wants === 'prompt' ? entry.name.replace(/\.md$/, '') : entry.name;
-    if (plain && ID.test(name) && (wants === 'directory' || entry.name.endsWith('.md'))) names.push(name); else unlisted++;
+    const name = wants === 'prompt' ? entry.name.replace(/\.md$/, '') : wants === 'slice' ? entry.name.replace(/\.yaml$/, '') : entry.name;
+    if (plain && ID.test(name) && (wants === 'directory' || entry.name.endsWith(wants === 'slice' ? '.yaml' : '.md'))) names.push(name); else unlisted++;
   }
   return { names: names.sort(), unlisted };
 }
@@ -60,10 +60,10 @@ function entries(project: ProjectContext, folder: string, wants: 'directory' | '
 /** Lists the pinned project only: the project folder and its .bowerloom must be the ones discovery pinned, before and after the reads. */
 export function listProject(project: ProjectContext): Listing {
   verifyProjectPins(project);
-  const teams = entries(project, 'teams', 'directory'), skills = entries(project, 'skills', 'directory'), prompts = entries(project, 'prompts', 'prompt');
+  const teams = entries(project, 'teams', 'directory'), skills = entries(project, 'skills', 'directory'), prompts = entries(project, 'prompts', 'prompt'), slices = entries(project, 'slices', 'slice');
   const pinned = pinnedSkills(project), name = teams.names.includes('first-team') ? firstTeamName(project) : null;
   verifyProjectPins(project);
-  return { teams: teams.names, skills: skills.names, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, pinned, firstTeamName: name };
+  return { teams: teams.names, skills: skills.names, prompts: prompts.names, slices: slices.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted + slices.unlisted, pinned, firstTeamName: name };
 }
 
 const title = (section: Section): string => section[0]!.toUpperCase() + section.slice(1);
@@ -82,12 +82,12 @@ export function renderListing(listing: Listing, only: Section | null, json: bool
   return blocks.join('\n') + note + manifest;
 }
 
-/** `bowerloom ls [teams|skills|prompts] [--json]`. Returns the text to print. */
+/** `bowerloom ls [teams|skills|prompts|slices] [--json]`. Returns the text to print. */
 export function runLsCommand(args: readonly string[], cwd: string, home: string): string {
   const words = args.slice(1), json = words.includes('--json');
   const rest = words.filter(w => w !== '--json');
   if (words.filter(w => w === '--json').length > 1 || rest.length > 1 || rest.some(w => w.startsWith('-')) || (rest[0] !== undefined && !(SECTIONS as readonly string[]).includes(rest[0]))) {
-    throw new DefinitionError('USAGE', 'Use bowerloom ls [teams|skills|prompts] [--json].');
+    throw new DefinitionError('USAGE', 'Use bowerloom ls [teams|skills|prompts|slices] [--json].');
   }
   const project = discoverProject(cwd, home), listing = listProject(project);
   const text = renderListing(listing, (rest[0] as Section | undefined) ?? null, json);

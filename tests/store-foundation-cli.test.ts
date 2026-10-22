@@ -201,11 +201,11 @@ test('13. status in a project with .bowerloom, a config, and no receipt reports 
   assert.equal(stray.status, 'drifted'); assert.deepEqual(stray.drift, [{ path: '.bowerloom/stray.txt', kind: 'unexpected' }]);
 });
 
-test('14. ls in a config-only project lists three empty sections, and ls --json has pinned []', t => {
+test('14. ls in a config-only project lists four empty sections, and ls --json has pinned []', t => {
   const w = world(t), dir = configProject(w), r = run(dir, ['ls'], w.env);
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  none yet\n\nSkills\n  none yet\n\nPrompts\n  none yet\n');
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  none yet\n\nSkills\n  none yet\n\nPrompts\n  none yet\n\nSlices\n  none yet\n');
   const bad = configProject(w, '{}\n', 'bad'); assert.match(run(bad, ['ls'], w.env).stdout, /^Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\n\nTeams\n/);
-  assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta1', teams: [], skills: [], pinned: [], prompts: [], unlisted: 0 });
+  assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta1', teams: [], skills: [], pinned: [], prompts: [], slices: [], unlisted: 0 });
 });
 
 test('15. help store and store --help print the store topic, and the first screen names it', t => {

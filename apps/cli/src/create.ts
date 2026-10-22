@@ -11,27 +11,30 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { applyCreate, planCreate } from '../../../packages/project-authoring/src/index.js';
 import type { AuthoringReceipt, CreateInput, CreatePlan } from '../../../packages/project-authoring/src/index.js';
 import { startupProfiles } from '../../../packages/startup/src/index.js';
+import { compilePattern } from '../../../packages/context-slices/src/glob.js';
+import { SLICE_LIMITS, validRootPath } from '../../../packages/context-slices/src/slice-file.js';
 import type { StartupProfile } from '../../../packages/startup/src/index.js';
 import { runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { terminalIo } from './manifest.js';
 
-export const CREATE_NOUNS = ['team', 'skill', 'prompt'] as const;
+export const CREATE_NOUNS = ['team', 'skill', 'prompt', 'slice'] as const;
 type Noun = typeof CREATE_NOUNS[number];
 const USAGE: Readonly<Record<Noun, string>> = {
   team: 'Use bowerloom team create <name> [--profile engineer|founder|research], with optional --approve <revision> and --json.',
   skill: 'Use bowerloom skill create <name> [--team <team>]..., with optional --approve <revision> and --json.',
   prompt: 'Use bowerloom prompt create <name> [--team <team>]..., with optional --approve <revision> and --json.',
+  slice: 'Use bowerloom slice create <name> [--root <folder>] [--include <pattern>]..., with optional --approve <revision> and --json.',
 };
 const usage = (noun: Noun): never => { throw new DefinitionError('USAGE', USAGE[noun]); };
 
-export interface CreateArgs { noun: Noun; name: string; profile: StartupProfile | null; teams: string[]; approval: string[] }
+export interface CreateArgs { noun: Noun; name: string; profile: StartupProfile | null; teams: string[]; approval: string[]; root: string | null; includes: string[] }
 /** Splits a create command line into its name, --profile or --team, and the approval flags for the wrapper. */
 export function parseCreateArgs(args: readonly string[]): CreateArgs {
   const noun = args[0] as Noun;
   if (!(CREATE_NOUNS as readonly string[]).includes(noun)) throw new DefinitionError('USAGE', USAGE.team);
   if (args[1] !== 'create') usage(noun);
-  let name: string | null = null, profile: StartupProfile | null = null; const teams: string[] = [], approval: string[] = [];
+  let name: string | null = null, profile: StartupProfile | null = null, root: string | null = null; const teams: string[] = [], approval: string[] = [], includes: string[] = [];
   const words = args.slice(2);
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
@@ -41,7 +44,17 @@ export function parseCreateArgs(args: readonly string[]): CreateArgs {
       const value = words[++i];
       if (profile !== null || value === undefined || !Object.hasOwn(startupProfiles, value)) usage(noun);
       profile = value as StartupProfile;
-    } else if (word === '--team' && noun !== 'team') {
+    } else if (word === '--root' && noun === 'slice') {
+      const value = words[++i];
+      if (root !== null || value === undefined || !validRootPath(value)) usage(noun);
+      root = value!;
+    } else if (word === '--registered' && noun === 'slice') {
+      throw new DefinitionError('USAGE', '--registered needs bowerloom folder add, which this build does not have yet.');
+    } else if (word === '--include' && noun === 'slice') {
+      const value = words[++i];
+      if (value === undefined || includes.length >= SLICE_LIMITS.patterns || Buffer.byteLength(value) > SLICE_LIMITS.patternBytes || !compilePattern(value).ok) usage(noun);
+      includes.push(value!);
+    } else if (word === '--team' && noun !== 'team' && noun !== 'slice') {
       const value = words[++i];
       if (value === undefined || value.startsWith('-') || teams.includes(value) || teams.length >= 32) usage(noun);
       teams.push(value!);
@@ -49,13 +62,14 @@ export function parseCreateArgs(args: readonly string[]): CreateArgs {
     else name = word;
   }
   if (name === null) usage(noun);
-  return { noun, name: name!, profile, teams, approval };
+  return { noun, name: name!, profile, teams, approval, root, includes };
 }
 
 /** The plan in plain words. The wrapper escapes control characters before it prints. */
 export function renderCreateReview(plan: CreatePlan): string {
   const lines: string[] = [];
-  const where = (kind: string, id: string) => kind === 'prompt' ? `.bowerloom/prompts/${id}.md` : `.bowerloom/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
+  const where = (kind: string, id: string) => kind === 'prompt' ? `.bowerloom/prompts/${id}.md` : kind === 'slice' ? `.bowerloom/slices/${id}.yaml` : `.bowerloom/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
+  const after = (id: string): string[] => [`After this, bowerloom apply puts the index skill slice-${id} in place. An agent loads it when its skills list names slice-${id}.`];
   if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in .bowerloom/authoring`);
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);
@@ -66,15 +80,23 @@ export function renderCreateReview(plan: CreatePlan): string {
     lines.push(`Restore prompt ${item.id} in ${where('prompt', item.id)}`, '  Its file is gone. Create writes it again with the text it was created with.',
       `  Teams: ${item.teams.length ? item.teams.join(', ') : 'every team'}`, `  Files: ${item.files.length}`);
   }
+  if (plan.register) {
+    const item = plan.register;
+    lines.push(`Register slice ${item.id} from ${where('slice', item.id)}, which is already there`, '  Its bytes stay as they are.', ...after(item.id));
+  }
   if (plan.item) {
     const item = plan.item;
     lines.push(`Create ${item.kind} ${item.id} in ${where(item.kind, item.id)}`);
-    if (item.kind === 'team') {
+    if (item.kind === 'slice' && plan.slice) {
+      const root = plan.slice.root;
+      lines.push(root.kind === 'project' ? `  Root: ${root.path} in this project` : `  Root: ${root.path} in registered folder ${root.name}`, `  Include: ${plan.slice.includes.join(', ')}`);
+    } else if (item.kind === 'team') {
       const brief = plan.files.find(f => f.path.endsWith('/assets/brief.json'));
       const profile = brief ? (JSON.parse(brief.text) as { profile?: string }).profile ?? 'engineer' : 'engineer';
       lines.push(`  Profile: ${profile}`, '  Built from the project brief, with the lead, maker and reviewer templates.');
     } else lines.push(`  Teams: ${item.teams.length ? item.teams.join(', ') : 'every team'}`);
     lines.push(`  Files: ${item.files.length}`);
+    if (item.kind === 'slice') lines.push(...after(item.id));
   }
   if (plan.manifest) lines.push(`  skills.json: adds a local entry; ${plan.manifest.before === null ? 'a new file' : `replaces the file with sha256 ${plan.manifest.before.sha256}`}`);
   lines.push('You and your agents own these files and can edit them.', 'This writes inside .bowerloom only. It starts no workers and runs nothing.');
@@ -87,6 +109,8 @@ export async function runCreateCommand(args: readonly string[], cwd: string, hom
   const project = discoverProject(cwd, home);
   const input: CreateInput = parsed.noun === 'team'
     ? { kind: 'team', project: project.dir, name: parsed.name, ...(parsed.profile !== null ? { profile: parsed.profile } : {}) }
+    : parsed.noun === 'slice'
+    ? { kind: 'slice', project: project.dir, name: parsed.name, root: parsed.root === null ? null : { kind: 'project', path: parsed.root }, includes: parsed.includes.length ? parsed.includes : null }
     : { kind: parsed.noun, project: project.dir, name: parsed.name, teams: parsed.teams };
   return runApprovalCommand(parsed.approval, createChange(project, input), io, write);
 }
