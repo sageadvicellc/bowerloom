@@ -9,7 +9,7 @@ import { compilePattern } from './glob.js';
 export const SLICE_FORMAT = 'bowerloom/context-slice/v1beta1' as const;
 export const SLICE_LIMITS = Object.freeze({
   fileBytes: 16384, idLength: 57, patterns: 64, patternBytes: 256, whereKeys: 16, whereValues: 32, maxFiles: 256, slices: 64,
-  walkEntries: 8192, walkDepth: 16, memberBytes: 1048576, readBytes: 33554432, indexBytes: 65536, referencesBytes: 196608, summaryChars: 160, pathBytes: 512,
+  walkEntries: 8192, walkDepth: 16, memberBytes: 1048576, readBytes: 33554432, indexBytes: 65536, referencesBytes: 196608, references: 4095, summaryChars: 160, pathBytes: 512,
 });
 export const SLICE_KEYS: readonly string[] = Object.freeze(['format', 'description', 'root', 'include', 'exclude', 'where', 'links', 'summary', 'maxFiles', 'guard']);
 

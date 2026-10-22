@@ -199,3 +199,17 @@ test('S9. rawReferences gives null, not an empty list, for a catalog it cannot r
   assert.equal(write('{not json'), null); assert.equal(write('{"a":1}'), null); assert.equal(write('{"references":[1]}'), null);
   assert.deepEqual(write('{"references":["a.md","sub/"]}'), ['a.md', 'sub/']); assert.equal(rawReferences(file + '.missing'), null);
 });
+test('R6. a slice whose references pass 4095 is held SLICE_TOO_LARGE in the plan, 255 members deep are installed, 256 are held', async t => {
+  const deep = Array.from({ length: 14 }, (_, k) => 'd' + k).join('/');
+  const make = async count => {
+    const f = await wikiProject(t, { slice: false });
+    for (let i = 0; i < count; i++) put(f, `wiki/p${String(i).padStart(3, '0')}/${deep}/f.md`, '# F\n');
+    fs.rmSync(path.join(f.projectDir, 'wiki/a.md')); fs.rmSync(path.join(f.projectDir, 'wiki/sub'), { recursive: true });
+    await createSlice(f, 'wiki', { root: 'wiki', includes: ['p*/**/*.md'] }); return f;
+  };
+  const ok = await make(255), planOk = await plan(ok, ['claude']);
+  assert.deepEqual([slice(planOk).state, slice(planOk).action, slice(planOk).members.length, slice(planOk).members.length + slice(planOk).covered.length], ['new', 'install', 255, 4081]);
+  await applied(ok, ['claude']);
+  const big = await make(256), planBig = await plan(big, ['claude']);
+  assert.deepEqual([slice(planBig).state, slice(planBig).action, slice(planBig).hold.code], ['held', 'hold', 'SLICE_TOO_LARGE']);
+});

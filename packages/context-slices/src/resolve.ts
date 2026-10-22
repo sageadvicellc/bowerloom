@@ -172,6 +172,8 @@ function run(def: SliceDefinition, reader: TreeReader, notes: SliceNotes): Slice
   const list = [...members.values()].sort((a, b) => cmp(a.path, b.path));
   if (list.length === 0) throw new SliceTreeError('SLICE_EMPTY', 'the slice');
   const covered = coveredFolders(folders, new Set(list.map(m => m.path)));
+  // The catalog keeps members and covered folders in one list, and the installer accepts at most 4095 of them.
+  if (list.length + covered.length > SLICE_LIMITS.references) tooLarge('the paths');
   if (Buffer.byteLength(JSON.stringify([...list.map(m => m.path), ...covered])) > SLICE_LIMITS.referencesBytes) tooLarge('the paths');
   notes.unparsed.sort(cmp); notes.emptyPatterns.sort(cmp); notes.oversize.sort(cmp);
   return { members: list, covered, notes, hold: null, readBytes };
