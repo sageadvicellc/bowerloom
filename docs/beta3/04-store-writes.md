@@ -38,7 +38,7 @@ Rules for `--global`:
 2. With `--global`, the command does not look for a project. It works from any folder. It uses the store at `~/.bowerloom`.
 3. With `--global`, `--team <team>` on `skill create`, `prompt create`, and `skills add` names a team in the store. A team in the store is a folder `teams/<id>` that the store's authoring record lists.
 4. `team create <name> --global` takes `--profile` and nothing else. It never reads a project brief. It uses the fixed store brief in 3.5. `--team` on `team create` is already a usage error.
-5. The usage error texts are exact. For `team create`: `Use bowerloom team create <name> [--profile engineer|founder|research], with optional --global, --approve <revision> and --json.` For `skill create`: `Use bowerloom skill create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.` For `prompt create`: `Use bowerloom prompt create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.` For `skills add` (`ADD_USAGE`, `apps/cli/src/manifest.ts:~20`): `Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --global, --approve <revision> and --json.` For `skills check`: `Use bowerloom skills check [--global] [--json].` For `ls`: `Use bowerloom ls [teams|skills|prompts] [--global] [--json].`
+5. The usage error texts are exact. For `team create`: `Use bowerloom team create <name> [--profile engineer|founder|research], with optional --global, --approve <revision> and --json.` For `skill create`: `Use bowerloom skill create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.` For `prompt create`: `Use bowerloom prompt create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.` For `skills add` (`ADD_USAGE`, `apps/cli/src/manifest.ts:40`): `Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --global, --approve <revision> and --json.` For `skills check`: `Use bowerloom skills check [--global] [--json].` For `ls`: `Use bowerloom ls [teams|skills|prompts] [--global] [--json].`
 6. `ls --global` and `skills check --global` work on a store that exists. A foreign store refuses `STORE_INVALID`. A refused store refuses its `STORE_*` code. The exit code is 1. In the `ls --global` JSON, `storeState` stays `ready` or `absent`.
 
 ### 3.2 Help text
@@ -58,7 +58,7 @@ The profile defaults to the one in the project brief.
 +A project picks store items with bowerloom use. The first --global write makes the store.
 +With --global a team is built from a fixed store brief and the profile you choose. It does not read a project brief.
 It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the files it makes.
-It writes inside .bowerloom only. It starts no workers and runs nothing.
+~It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.
 ```
 
 `TOPICS.skill`:
@@ -73,7 +73,7 @@ The name is the skill id, such as house-style. personal-assistant and ids that s
 +--global creates the skill in your store, ~/.bowerloom, and not in this project. The store holds definitions only.
 +A project picks store items with bowerloom use. The first --global write makes the store.
 It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.
-It writes inside .bowerloom only. It starts no workers and runs nothing.
+~It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.
 To pin a skill from npm or GitHub instead, see bowerloom help skills.
 ```
 
@@ -90,7 +90,7 @@ The name is the prompt id, such as weekly-update, at most 57 characters.
 +--global creates the prompt in your store, ~/.bowerloom, and not in this project. The store holds definitions only.
 +A project picks store items with bowerloom use. The first --global write makes the store.
 It shows the plan first. Agents pass --approve <revision> or --json. You and your agents own the file it makes.
-It writes inside .bowerloom only. It starts no workers and runs nothing.
+~It writes inside .bowerloom only, or inside your store with --global. It starts no workers and runs nothing.
 ```
 
 `TOPICS.skills` (the lines of the `skills sync`, `recover`, and `migrate` blocks stay as in the source, `human.ts:61-91`):
@@ -128,7 +128,7 @@ Usage:
 ~Lists the teams, skills, and prompts of this project. Each item shows where it comes from: project or store.
 ~--global lists your store, ~/.bowerloom, from any folder.
 It reads only and writes nothing.
-~The project is the nearest parent folder that holds .bowerloom or bowerloom.json, found the way git finds .git.
+The project is the nearest parent folder that holds .bowerloom or bowerloom.json, found the way git finds .git.
 It stops at your home folder and refuses cloud-synced folders.
 Add --json for one machine-readable object.
 ```
@@ -141,7 +141,7 @@ If the store is absent, or is a leftover folder (spec 03, rule 6), the first `--
 Create the store at ~/.bowerloom (store.json). It holds definitions only.
 ```
 
-If `~/.bowerloom` exists and is `foreign`, the command refuses `STORE_INVALID` at plan time. Bowerloom never takes over a folder it did not make. If any safety rule of spec 03 refuses, the command refuses with that `STORE_*` code at plan time. When `inspectStore` returns `absent`, the plan also runs `checkProjectPathWith(storeRootOf(home), home)` with the code mapping of spec 03, rule 4. That function accepts a missing last folder (`discovery.ts:115-125`). So an iCloud home refuses `STORE_IN_CLOUD_FOLDER` before any write. A CLI test uses an iCloud `HOME` fixture.
+If `~/.bowerloom` exists and is `foreign`, the command refuses `STORE_INVALID` at plan time. Bowerloom never takes over a folder it did not make. If any safety rule of spec 03 refuses, the command refuses with that `STORE_*` code at plan time. `inspectStore` also applies the cloud-folder rule to an absent store (spec 03, rule 2). So an iCloud home refuses `STORE_IN_CLOUD_FOLDER` at plan time, before any write.
 
 No read-only `--global` command (`ls --global`, `skills check --global`) creates anything. Without a store, they print the messages in 3.9 and 3.7.
 
@@ -150,7 +150,7 @@ The function `withStoreForWrite<T>(home, signal, work: (store: StoreContext, hel
 1. If the store folder does not exist, create it with mode 0700. If the create fails with `EEXIST`, continue. This is the only write that happens before the plan revision is checked. An empty folder is harmless, because it is a leftover.
 2. Take the store lock: `withProjectLock(storeDir, signal, ...)` from `packages/project-context/src/index.ts:168`. The lock slot follows the inode of the store folder (`lockSlot`, line 59). The lock never waits (`index.ts:176-184`). A `PROJECT_LOCKED` refusal here becomes `STORE_LOCKED`. The function maps `PROJECT_LOCKED` to `STORE_LOCKED` in every place. That includes a throw from `held.assertHeld` inside `work`. `PROJECT_LOCK_SLOT_COLLISION` and `PROJECT_LOCK_UNAVAILABLE` pass through.
 3. Under the lock, inspect the store again.
-   - A valid store: continue with `created` false.
+   - A valid store: remove each name that matches `^\.store\.json\.[a-f0-9]{16}\.tmp$`, `fsync` the folder after a removal, and continue with `created` false.
    - A `foreign` folder: refuse `STORE_INVALID`.
    - An `absent` state or a leftover: write `store.json`. First remove each name that matches `^\.store\.json\.[a-f0-9]{16}\.tmp$`. Then write `.store.json.<16 hex>.tmp` with `O_CREAT | O_EXCL | O_NOFOLLOW`, call `fchmod` to 0644, write the bytes, `fsync`, and close. Then `rename` it to `store.json` and `fsync` the folder. A rename never leaves a second link. Set `created` to true.
 4. Pin the store with `openStore(home)` and keep that context for the rest of the run. Call `verifyStorePins(store)` before each later write.
@@ -164,7 +164,7 @@ Crash recovery. A crash after step 1 leaves an empty folder. A crash during step
 
 The command parses its words, then plans, then asks for approval, then applies. The sequence in apply is the same as for a project (see `applyCreate`, `packages/project-authoring/src/create.ts:274-372`). The steps are: remove scratch, clear or finish a pending record, and make folders. Then write the pending record, stage the files, and move them in place. Last, write `skills.json` for a skill, write the receipt, and remove the pending record. The folder that holds all of this is the store folder itself. In the store, `skills/`, `prompts/`, `teams/`, `authoring/`, and `skills.json` sit directly in the store folder. They do not sit in a `.bowerloom` folder.
 
-`applyCreate` never creates the store. For the store scope it takes a fourth parameter, `store: { context: StoreContext; created: boolean }`. Its `live()` check calls `held.assertHeld(dir)` and then `verifyStorePins(store.context)`, in place of `sameBowerloom`. Its `writeManifest` calls `planManifestChange(storeTarget(dir), ..., { storeCreate: false })`. The CLI function `createStoreChange(home, input)` runs `withStoreForWrite(home, signal, (context, held, created) => applyCreate(input, revision, held, { context, created }))`.
+`applyCreate` never creates the store. For the store scope it takes a fourth parameter, `store: { context: StoreContext; created: boolean }`. Its `live()` check calls `held.assertHeld(dir)` and then `verifyStorePins(store.context)`, in place of `sameBowerloom`. Its `writeManifest` calls `planManifestChange(storeTarget(dir), ..., { storeCreate: false })`. `createStoreChange.plan` calls `verifyStorePins` before and after its reads, as `createChange` (`apps/cli/src/create.ts:98`) does for a project. The CLI function `createStoreChange(home, input)` runs `withStoreForWrite(home, signal, (context, held, created) => applyCreate(input, revision, held, { context, created }))`.
 
 Differences from a project create:
 
@@ -268,7 +268,7 @@ It copies the algorithm of `nested` (`plan.ts:128-136`). It uses the store's ide
 
 `ls` moves to format `bowerloom/ls/v1beta2`. In this spec both forms list folders. Spec 06 makes a project with a config list the config.
 
-`ls` (no flag) lists the project as today, and tags every item `project`. `ls --global` lists the store and tags every item `store`. `ls --global` works from any folder and needs no project. A project listing never mixes in store items.
+`ls` (no flag) lists the project as today, and tags every item `project`. `ls --global` lists the store and tags every item `store`. `ls --global` works from any folder and needs no project. A project listing never mixes in store items. `ls --global` calls `verifyStorePins` before and after its reads, as `listProject` (`ls.ts:59,62`) does for a project.
 
 Skills are the union of the `skills/<id>` folders and the `skills.json` entries. One item appears for each id. The kind comes from the `skills.json` entry. A skill with no entry has the kind `local`. The `pin` is set for `npm` and `git` entries only.
 
@@ -291,7 +291,7 @@ Prompts
 For `ls --global` the same shapes appear with the source `store`.
 
 - A team label is `<id>` or `<id> (<display name>)`.
-- A pinned skill adds two spaces and `pinned: <pin text>`. The pin text is `npm <package>@<version>:<path>` or `GitHub <repo>@<commit>:<path>`, as `apps/cli/src/ls.ts:36-37` builds it today.
+- A pinned skill adds two spaces and `pinned: <pin text>`. The pin text is `npm` or `GitHub` followed by `pinOf(entry)` (`packages/skill-manifest/src/check.ts:15`), such as `npm @tanstack/db-skills@0.0.1:skills/tanstack-db/collections`. Today's `ls.ts:36-37` omits `:<path>`. This spec adds it. The JSON `pin` is `pinOf(entry)` without the `npm` or `GitHub` word.
 - An empty section shows `  none yet`.
 - After the sections, the `Not listed:` note keeps its wording (`ls.ts:77`). The unreadable-pins note (`ls.ts:78`) stays for a project. For the store it reads `Pinned skills are not listed: the store skills.json cannot be read. Run bowerloom store status.`
 - With no store, `ls --global` prints `No store yet. Create one with bowerloom skill create <name> --global.` and exits 0. It prints no sections.
@@ -378,9 +378,9 @@ export const storeTarget = (storeDir: string): ManifestTarget => ({ folder: stor
 
 `readManifestState(target, options?)` (line 76): use `target.folder` in place of `join(project, '.bowerloom')` at line 78. Use `target.limits.bytes` in place of `MANIFEST_LIMITS.bytes` at lines 86, 91, and 92. Add the option `allowAbsent`. For a missing folder it returns `{ bowerloom: null, file: null }`. Without the option a missing folder still refuses `MANIFEST_UNSAFE`. The return type `bowerloom` becomes `{ device: string; inode: string } | null`.
 
-`planManifestChange(target, change, options)` (line 122): use `target.limits.skills` at lines 51 and 139. The options gain `storeCreate?: boolean` (default false). The plan never derives `storeCreate` from the disk. The plan format becomes `bowerloom/skills-manifest-change/v1beta2`. Add the fields `scope` and `storeCreate`, and make `bowerloom` `{ device, inode } | null`. For `scope: store` the value is null. Widen the type of `ManifestChangePlan.manifest` to `string`: it is `.bowerloom/skills.json` for a project and `~/.bowerloom/skills.json` for the store. The field `project` is the lock folder (`target.lockDir`). The store's identity is bound by `verifyStorePins`, not by this field.
+`planManifestChange(target, change, options)` (line 122): use `target.limits.skills` at lines 51 and 139. The options gain `storeCreate?: boolean` (default false). The plan never derives `storeCreate` from the disk. The plan format becomes `bowerloom/skills-manifest-change/v1beta2`. Add the fields `scope` and `storeCreate`, and make `bowerloom` `{ device, inode } | null`. For `scope: store` the value is null. Widen the type of `ManifestChangePlan.manifest` to `string`: it is `.bowerloom/skills.json` for a project and `~/.bowerloom/skills.json` for the store. The field `project` is the lock folder (`target.lockDir`). The store's identity is bound by `verifyStorePins`, not by this field. The function calls `readManifestState(target, { allowAbsent: target.scope === 'store' })`. For the store, a missing folder plans as a missing file (`before: null`).
 
-`applyManifestChange(plan, revision, held)` (line 170): build the target from `plan.scope` and `plan.project`. Use `target.folder` for `folder` at line 180. If `plan.bowerloom` is null, skip the identity comparison at line 188. Pass `plan.storeCreate` to its re-plan. Keep everything else.
+`applyManifestChange(plan, revision, held)` (line 170): build the target from `plan.scope` and `plan.project`. Pass the target to the re-plan at line 178 with `{ cacheRoot, storeCreate: plan.storeCreate }`, and to `readManifestState` at lines 187 and 197. Use `target.folder` for `folder` at line 180. If `plan.bowerloom` is null, skip the identity comparison at line 188. The receipt's `manifest` (line 200) is `plan.manifest`. Widen `ManifestChangeReceipt.manifest` to `string`.
 
 `checkManifest(project)` in `check.ts` takes a string or a target. It adds `scope` to the result and `source` to each skill. Its format becomes `bowerloom/skills-manifest-check/v1beta2`. Widen the type of `ManifestCheck.manifest` to `string`. `MANIFEST_PATH` (`add.ts:18`) stays for the project.
 
@@ -443,11 +443,11 @@ Change:
 - `packages/project-sync/src/seed.ts:37,49-66`: accept a null project.
 - `packages/project-sync/src/index.ts`: export `cacheLayout` for the tests.
 - `apps/cli/src/create.ts:21-25,30-53,56-82,85-92,95-105`: the flag, the usage text, the review, the store branch in `runCreateCommand`, and `createStoreChange` (3.4).
-- `apps/cli/src/manifest.ts:~20-50,100-131,137-207`: the flag, `requireTeams` for the store, `runAdd`, `runCheck`.
+- `apps/cli/src/manifest.ts:39-61,100-131,137-207`: the flag, `requireTeams` for the store, `runAdd`, `runCheck`.
 - `apps/cli/src/ls.ts:16-90`: format, `--global`, source tags, per-item pins. Replace `Listing.pinned` with per-skill `pin` and `kind`. `runLsCommand` (line 83) accepts `--global`. Line 36 passes the store limits for the store.
 - `apps/cli/src/confirm.ts:31`: add `'--global'` to `NO_VALUE`.
 - `apps/cli/src/main.ts:145`: `runLsCommand` already receives all `args`. Lines 152-164 already pass `args` to the create and manifest runners. No new dispatch is needed.
-- `apps/cli/src/human.ts:46-147`: the help topics of 3.2. `human.ts:224`: the refusal words.
+- `apps/cli/src/human.ts:46-147`: the help topics of 3.2. Extend `TOPICS.store` (spec 03) with the line `--global on skill create, prompt create, team create, skills add, skills check and ls works on the store. See bowerloom help skill.` `human.ts:224`: the refusal words.
 - Other callers that pass a string to `readManifestState` stay as they are: `plan.ts:374`, `apply-project.ts:131`, `up.ts:130`, `ls.ts:34`, `held.ts`, `verifiers.ts:92`. Do not change them in this spec.
 - `package.json:30` and `package.json:53`: no change. `packages/skill-manifest/test`, `packages/project-authoring/test`, and `packages/project-sync/test` are already in the globs. Add the new CLI test `dist/tests/store-write-cli.test.js` to `test:project` (line 53).
 
@@ -553,6 +553,8 @@ Tests that change:
 5. A held lock gives `STORE_LOCKED`. `PROJECT_LOCK_SLOT_COLLISION` and `PROJECT_LOCK_UNAVAILABLE` pass through unchanged.
 6. A `PROJECT_LOCKED` thrown from `held.assertHeld` inside `work` becomes `STORE_LOCKED`.
 7. A valid store gives `created: false`.
+8. With the cloud fixture of spec 03 store test 9, `withStoreForWrite` refuses `STORE_IN_CLOUD_FOLDER` at step 3. Step 1 left at most one empty folder.
+9. A valid store with a leftover temporary file: the file is gone after the call, and `created` is false.
 
 `packages/project-config/test/brief.test.mjs`:
 
@@ -589,7 +591,7 @@ Tests that change:
 15. A test makes an empty `~/.bowerloom`, then runs `skill create x --global --approve <rev>` and expects success.
 16. `--global` twice exits 2 with `Use --global once.`
 17. A project `skill create` still works and writes a v1beta2 plan.
-18. With an iCloud `HOME` fixture, the plan refuses `STORE_IN_CLOUD_FOLDER` before any write.
+18. (Moved to `store-write.test.mjs`.) The plan-time cloud refusal is spec 03's store test 22, through the `accountHome` hook.
 19. A test holds `withProjectLock(storeDir)` in the test process. A `--global` apply refuses `STORE_LOCKED` and writes nothing.
 20. `ls` text pads team ids and skill ids to the widest label of each section.
 

@@ -308,7 +308,7 @@ Change:
 - `packages/skill-manifest/src/add.ts:21-44, 122-160, 154-161, 170-201`: the `remove` change (4.5).
 - `apps/cli/src/store.ts` (spec 03): add the `migrate` word. `runStoreCommand` parses the flags above. An unknown flag refuses `USAGE` with `Use bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all], with optional --commit <sha>, --approve <revision> and --json.`
 - `apps/cli/src/main.ts:132`: add `'receipt'` to `COMMANDS`. Add a branch for `receipt` after the `store` branch that imports `./receipt.js`. `help receipt` and `receipt --help` print `TOPICS.receipt`.
-- `apps/cli/src/human.ts`: `SECTIONS` (line 13) gets a new section `Store` with the lines `bowerloom store migrate --all   Move this project's items to your store.` and `bowerloom receipt clean   Forget created items whose files you deleted.` Add `TOPICS.receipt` and extend `TOPICS.store`. Add the refusal words (line 224). `tests/help-human.test.ts:20-45` holds the first screen.
+- `apps/cli/src/human.ts`: `SECTIONS` does not change. Add `TOPICS.receipt` and extend `TOPICS.store` with `store migrate` and `receipt clean`. Add the refusal words (line 224). `tests/help-human.test.ts:20-45` holds the first screen, which this spec does not change. Add `'receipt'` to the help loops at lines 79 and 84.
 - `apps/cli/src/held.ts:26-39` (`missingItems`): no code change. Add a comment that `receipt clean` clears these lines.
 - Reuse from spec 06: `resolveProject`, `readStoreDefinitions`, `localItemRows`, `proveAuthored`, `readStoreRepo`, `isSharedProject`, the config text builders in `change.ts`, `writeGuardedFile`, and the lock builders. Export what migrate needs from `packages/project-sync/src/index.ts`.
 - `package.json:30`: no change. The new tests sit in folders that the glob lists.
@@ -436,7 +436,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 8. Error paths: no selector exits 2, `--all` with a selector exits 2, reserved names, missing items.
 9. `receipt clean --global` outside a project works. With no store it refuses `STORE_NOT_FOUND`.
 
-Update `tests/help-human.test.ts` (first screen), `tests/human-refusal.test.ts` (four new codes), and `tests/store-foundation-cli.test.ts` (the `store` usage words).
+Update `tests/help-human.test.ts` (the help loops at lines 79 and 84 gain `'receipt'`), `tests/human-refusal.test.ts` (four new codes), and `tests/store-foundation-cli.test.ts` (the `store` usage words).
 
 ## 11. Build order
 

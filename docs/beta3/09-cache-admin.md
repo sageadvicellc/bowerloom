@@ -281,7 +281,7 @@ Change:
 - `packages/project-sync/src/index.ts`: export `listCache`, `planCachePrune`, `applyCachePrune`.
 - `packages/project-sync/src/refusal.ts:11-37`: three codes.
 - `apps/cli/src/main.ts:132`: add `'cache'` to `COMMANDS`. After the `ls` branch (line 145), add a branch that imports `./cache.js` and calls `runCacheCommand`. `help cache` and `cache --help` print `TOPICS.cache`.
-- `apps/cli/src/human.ts`: `SECTIONS` (line 13): in the `Store` section spec 08 created, add `bowerloom cache list | prune   Show or clear the downloaded skill bytes.` Add `TOPICS.cache` near line 45. Add the refusal words (line 224). `tests/help-human.test.ts:20-45` holds the first screen.
+- `apps/cli/src/human.ts`: `SECTIONS` does not change. Add `TOPICS.cache` near line 45, and extend `TOPICS.store` with `cache list | prune`. Add the refusal words (line 224). `tests/help-human.test.ts:20-45` holds the first screen, which this spec does not change. Add `'cache'` to the help loops at lines 79 and 84.
 - `package.json:30`: no change. `packages/project-sync/test` and `packages/skill-sources/test` are already in the glob.
 
 ## 7. Edge cases
@@ -381,7 +381,7 @@ Unit tests build a state folder with real cache entries. Use the fixtures of `pa
 12. `cache list` and `cache prune` without `--approve` write nothing (folder snapshot).
 13. `tests/no-spawn.test.ts` still passes.
 
-Update `tests/help-human.test.ts` (first screen) and `tests/human-refusal.test.ts` (three codes).
+Update `tests/help-human.test.ts` (the help loops at lines 79 and 84 gain `'cache'`) and `tests/human-refusal.test.ts` (three codes).
 
 ## 11. Build order
 
