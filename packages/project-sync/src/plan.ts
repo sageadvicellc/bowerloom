@@ -30,6 +30,7 @@ import type { Entry, Manifest, PinnedEntry } from '../../skill-manifest/src/sche
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
 import { verifyProjectPins } from '../../project-context/src/index.js';
+import type { StoreContext } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { entryRequest, lookupCache } from './cache-index.js';
 import type { CacheLookup, PinnedRequest } from './cache-index.js';
@@ -136,6 +137,19 @@ function nested(project: ProjectContext, stateRoot: string, statePins: readonly 
 }
 
 /**
+ * As `nested`, for the store: true when the private state root and the store are inside one another, by path or by
+ * device and inode along the ancestry. With a null store (none yet) only the paths are compared.
+ */
+export function storeStateNested(store: StoreContext | null, storeDir: string, stateRoot: string, statePins: readonly { path: string; identity: Identity }[]): boolean {
+  if (within(stateRoot, storeDir) || within(storeDir, stateRoot)) return true;
+  if (store === null) return false;
+  const key = (id: { device: string; inode: string }) => `${id.device}:${id.inode}`, storeKey = key(store.identity);
+  if (statePins.some(p => key(p.identity) === storeKey)) return true;
+  const below = new Set(statePins.filter(p => within(p.path, stateRoot)).map(p => key(p.identity)));
+  return [store.identity, ...store.ancestry.map(a => a.identity)].some(id => below.has(key(id)));
+}
+
+/**
  * `cacheRoot` is the machine's skills cache, `<stateRoot>/cache`, shared by every project. `legacyCacheRoot` is the
  * per-project cache of earlier betas, `<stateRoot>/<projectId>/cache`: read only, never created, pinned or written.
  */
@@ -172,6 +186,27 @@ export function stateLayout(input: Pick<SyncInput, 'project' | 'stateRoot'>): St
     // in the project could be committed, and a project inside the state folder could be swept by it.
     if (nested(input.project, input.stateRoot, pins)) throw syncError('SKILLS_STATE_UNSAFE', 'The private state folder and the project must not be inside one another. Set XDG_STATE_HOME to a folder outside the project.');
     return { root, cacheRoot, itemsRoot, legacyCacheRoot, pins, missing };
+  } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'SKILLS_STATE_UNSAFE') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
+}
+
+/**
+ * The shared part of the state chain, for a caller with no project (`skills add --global`): the existing folders from
+ * `/` to the state root and the machine cache, pinned, with only the cache private (0700). The folders that do not
+ * exist yet are `missing`; `root` is null because there is no project folder.
+ */
+export function cacheLayout(stateRoot: string): { root: null; cacheRoot: string; pins: { path: string; identity: Identity }[]; missing: string[] } {
+  const cacheRoot = join(stateRoot, 'cache');
+  try {
+    for (const p of [stateRoot, cacheRoot]) managedPath(p);
+    const chain: string[] = []; for (let at = stateRoot; at !== '/'; at = dirname(at)) chain.unshift(at);
+    const privateOnes = new Set([cacheRoot]), pins: { path: string; identity: Identity }[] = [], missing: string[] = [];
+    for (const p of [...chain, cacheRoot]) {
+      if (!exists(p)) { missing.push(p); continue; }
+      if (missing.length && !privateOnes.has(p)) throw syncError('SKILLS_STATE_UNSAFE');
+      pins.push({ path: p, identity: directory(p, privateOnes.has(p)) });
+    }
+    if (missing.length > 8 || missing.some(p => pins.some(q => q.path.startsWith(p + '/')))) throw syncError('SKILLS_STATE_UNSAFE');
+    return { root: null, cacheRoot, pins, missing };
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'SKILLS_STATE_UNSAFE') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
 

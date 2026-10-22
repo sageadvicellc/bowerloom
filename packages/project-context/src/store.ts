@@ -6,14 +6,16 @@
  * The store is always at `join(realpath(home), '.bowerloom')`. Nothing else moves it. The `...With` forms take the
  * test hooks of discovery and are for this package's tests and for discovery only.
  */
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { checkProjectPathWith, fold, homesOf, pin, pinAncestry } from './discovery.js';
 import type { DiscoveryHooks } from './discovery.js';
+import { withProjectLock } from './index.js';
 import { refuse } from './refusal.js';
-import type { DirectoryIdentity, PinnedDirectory } from './types.js';
+import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory } from './types.js';
 
 export const STORE_DIRNAME = '.bowerloom';
 export const STORE_FILE = 'store.json';
@@ -35,6 +37,7 @@ export type StoreInspection =
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const missing = (error: unknown): boolean => errno(error) === 'ENOENT' || errno(error) === 'ENOTDIR';
+const chmodOwn = (path: string): void => { const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); try { fchmodSync(fd, 0o700); } finally { closeSync(fd); } };
 const usable = (path: unknown): path is string => typeof path === 'string' && isAbsolute(path) && !path.includes('\0');
 
 /** Rule 1 and the real path of rule 2: the home folder with links resolved. */
@@ -210,3 +213,66 @@ export function pathInsideStore(path: string, home: string, hooks: DiscoveryHook
 export function assertNotInStore(path: string, home: string): void {
   if (pathInsideStore(path, home)) throw refuse('STORE_NOT_A_PROJECT');
 }
+
+const syncFolder = (path: string): void => {
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try { fsyncSync(fd); } finally { closeSync(fd); }
+};
+/** Removes each `.store.json.<16 hex>.tmp` in the store folder, then syncs the folder when something went. */
+function removeLeftoverTemps(root: string): void {
+  let removed = false;
+  for (const name of readdirSync(root)) {
+    if (!LEFTOVER_TEMP.test(name)) continue;
+    try { unlinkSync(join(root, name)); removed = true; } catch (error) { if (!missing(error)) throw error; }
+  }
+  if (removed) syncFolder(root);
+}
+/** Writes `store.json` through a temporary and a rename, so the file appears whole or not at all. */
+function writeStoreFile(root: string): void {
+  removeLeftoverTemps(root);
+  const temp = join(root, `.store.json.${randomBytes(8).toString('hex')}.tmp`);
+  let made = false;
+  try {
+    const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
+    try {
+      fchmodSync(fd, 0o644);
+      const data = Buffer.from(`{"format":"${STORE_FORMAT}"}\n`);
+      let at = 0; while (at < data.length) at += writeSync(fd, data, at);
+      fsyncSync(fd);
+    } finally { closeSync(fd); }
+    renameSync(temp, join(root, STORE_FILE)); made = false;
+    syncFolder(root);
+  } finally { if (made) { try { unlinkSync(temp); } catch { /* Already gone. */ } } }
+}
+
+/**
+ * Runs `work` with the store pinned and its lock held, and makes the store first when it is absent or a leftover. This
+ * is the only function that creates the store. `created` is true when this run wrote `store.json`. A PROJECT_LOCKED
+ * refusal, from the lock or from `held.assertHeld` inside `work`, becomes STORE_LOCKED. Takes the test hooks of discovery.
+ *
+ * Step 1 makes an empty folder when none exists: it is the one write before the caller's plan is checked, and an empty
+ * folder is a leftover, so a crash here needs no repair. Step 3 runs under the lock.
+ */
+export async function withStoreForWriteWith<T>(home: string, signal: AbortSignal, work: (store: StoreContext, held: HeldProjectLock, created: boolean) => Promise<T>, hooks: DiscoveryHooks = {}): Promise<T> {
+  const root = storeRootOf(home);
+  try { mkdirSync(root, { mode: 0o700 }); chmodOwn(root); } catch (error) { if (errno(error) !== 'EEXIST') throw refuse(missing(error) ? 'STORE_UNSAFE' : 'STORE_UNREADABLE'); }
+  try {
+    return await withProjectLock(root, signal, async held => {
+      let created = false;
+      const found = inspectStoreWith(home, hooks);
+      if (found.state === 'foreign') throw refuse('STORE_INVALID');
+      try {
+        if (found.state === 'store') { if (found.leftoverTemp) removeLeftoverTemps(root); }
+        else { writeStoreFile(root); created = true; }
+      } catch (error) { if (errno(error) !== undefined && String(errno(error)).startsWith('STORE_')) throw error; throw refuse('STORE_UNREADABLE'); }
+      const store = openStoreWith(home, hooks);
+      verifyStorePins(store, hooks);
+      return work(store, held, created);
+    });
+  } catch (error) {
+    if (errno(error) === 'PROJECT_LOCKED') throw refuse('STORE_LOCKED');
+    throw error;
+  }
+}
+/** `withStoreForWriteWith` with no test hooks. */
+export function withStoreForWrite<T>(home: string, signal: AbortSignal, work: (store: StoreContext, held: HeldProjectLock, created: boolean) => Promise<T>): Promise<T> { return withStoreForWriteWith(home, signal, work); }

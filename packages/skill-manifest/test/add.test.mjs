@@ -44,7 +44,7 @@ test('addLocalEntry is pure: it starts a manifest for both harnesses and returns
 
 test('a plan for a project with no skills.json binds a null before, the new bytes, and writes nothing', t => {
   const p = project(t), plan = planManifestChange(p.dir, { add: npmEntry() });
-  assert.equal(plan.format, MANIFEST_CHANGE_FORMAT); assert.equal(plan.format, 'bowerloom/skills-manifest-change/v1beta1');
+  assert.equal(plan.format, MANIFEST_CHANGE_FORMAT); assert.equal(plan.format, 'bowerloom/skills-manifest-change/v1beta2');
   assert.equal(plan.before, null); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal(plan.after.sha256, sha(plan.text)); assert.equal(plan.after.bytes, Buffer.byteLength(plan.text));
   assert.deepEqual(parseManifest(Buffer.from(plan.text)).skills.map(s => s.id), ['synthetic-db-collections']);
@@ -130,12 +130,12 @@ test('checkManifest reports a valid file, and refuses an absent or invalid one w
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_NOT_FOUND'));
   fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['codex'], skills: [npmEntry(), gitEntry(), { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] })))));
   const check = checkManifest(p.dir);
-  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta1'); assert.equal(check.valid, true);
+  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta2'); assert.equal(check.scope, 'project'); assert.equal(check.valid, true);
   assert.equal(check.sha256, sha(fs.readFileSync(p.file))); assert.deepEqual(check.harnesses, ['codex']);
   assert.deepEqual(check.skills, [
-    { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null },
-    { id: 'synthetic-db-collections', kind: 'npm', pin: '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', teams: null },
-    { id: 'verification-loop', kind: 'git', pin: `synthetic-owner/skills-repo@${gitEntry().source.commit}:skills/verification-loop`, teams: ['first-team'] },
+    { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null, source: 'project' },
+    { id: 'synthetic-db-collections', kind: 'npm', pin: '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', teams: null, source: 'project' },
+    { id: 'verification-loop', kind: 'git', pin: `synthetic-owner/skills-repo@${gitEntry().source.commit}:skills/verification-loop`, teams: ['first-team'], source: 'project' },
   ]);
   fs.writeFileSync(p.file, fs.readFileSync(p.file, 'utf8').replace('"0.0.1"', '"^0.0.1"'));
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_PIN_NOT_EXACT'));

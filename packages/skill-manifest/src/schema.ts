@@ -16,7 +16,10 @@ import { LICENSE_NAME } from './content.js';
 export const MANIFEST_FORMAT = 'bowerloom/skills/v1beta1' as const;
 export const MANIFEST_FILE = 'skills.json' as const;
 /** skills: local and pinned entries share the count (Hanna, global skill cache). teams: per entry. */
+export interface ManifestLimits { bytes: number; skills: number; teams: number; idLength: number }
 export const MANIFEST_LIMITS = Object.freeze({ bytes: 1048576, skills: 128, teams: 32, idLength: 64 });
+/** The store holds more than a project: 256 skills and 4 MiB (store writes spec, 4.2). */
+export const STORE_MANIFEST_LIMITS: ManifestLimits = Object.freeze({ bytes: 4194304, skills: 256, teams: 32, idLength: 64 });
 export type Harness = 'claude' | 'codex';
 export const HARNESSES: readonly Harness[] = Object.freeze(['claude', 'codex'] as Harness[]);
 export const NPM_REGISTRY = 'https://registry.npmjs.org' as const;
@@ -141,13 +144,13 @@ export function validateEntry(value: unknown): Entry {
 }
 
 /** Checks a whole manifest value and returns it normalized and frozen. Entries are sorted by id. */
-export function validateManifest(value: unknown): Manifest {
+export function validateManifest(value: unknown, limits: ManifestLimits = MANIFEST_LIMITS): Manifest {
   const v = record(value, ['format', 'harnesses', 'skills']);
   requireManifest(v.format === MANIFEST_FORMAT, 'MANIFEST_INVALID');
   const h = v.harnesses;
   requireManifest(Array.isArray(h) && h.length > 0 && h.every(x => (HARNESSES as readonly unknown[]).includes(x)) && h.every((x, i) => i === 0 || compare(h[i - 1] as string, x as string) < 0), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(v.skills), 'MANIFEST_INVALID');
-  requireManifest(v.skills.length <= MANIFEST_LIMITS.skills, 'MANIFEST_LIMIT');
+  requireManifest(v.skills.length <= limits.skills, 'MANIFEST_LIMIT');
   const skills = (v.skills as unknown[]).map(validateEntry);
   requireManifest(new Set(skills.map(s => s.id)).size === skills.length, 'MANIFEST_DUPLICATE_ID');
   skills.sort((a, b) => compare(a.id, b.id));
@@ -155,15 +158,15 @@ export function validateManifest(value: unknown): Manifest {
 }
 
 /** Strict parse: at most 1 MiB of UTF-8 with no byte order mark, no duplicate or unknown keys. */
-export function parseManifest(bytes: Buffer): Manifest {
+export function parseManifest(bytes: Buffer, limits: ManifestLimits = MANIFEST_LIMITS): Manifest {
   requireManifest(Buffer.isBuffer(bytes), 'MANIFEST_INVALID');
-  requireManifest(bytes.length <= MANIFEST_LIMITS.bytes, 'MANIFEST_LIMIT');
+  requireManifest(bytes.length <= limits.bytes, 'MANIFEST_LIMIT');
   requireManifest(!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf), 'MANIFEST_INVALID');
   const text = strictUtf8(bytes); requireManifest(text !== null, 'MANIFEST_INVALID');
   let value: unknown;
-  try { value = captureSkillData(strictJson(text, MANIFEST_LIMITS.bytes)); }
+  try { value = captureSkillData(strictJson(text, limits.bytes)); }
   catch (error) { if (error instanceof AdapterError || error instanceof SkillSourceError) refuse('MANIFEST_INVALID'); throw error; }
-  return validateManifest(value);
+  return validateManifest(value, limits);
 }
 
 function serializeEntry(e: Entry) {
@@ -181,9 +184,9 @@ function serializeEntry(e: Entry) {
   };
 }
 /** Canonical bytes: fixed key order, entries sorted by id, 2-space indent and a final newline. The result is checked. */
-export function serializeManifest(m: Manifest): string {
+export function serializeManifest(m: Manifest, limits: ManifestLimits = MANIFEST_LIMITS): string {
   requireManifest(m !== null && typeof m === 'object' && Array.isArray(m.skills) && Array.isArray(m.harnesses), 'MANIFEST_INVALID');
   const text = `${JSON.stringify({ format: m.format, harnesses: [...m.harnesses], skills: [...m.skills].sort((a, b) => compare(a.id, b.id)).map(serializeEntry) }, null, 2)}\n`;
-  parseManifest(Buffer.from(text));
+  parseManifest(Buffer.from(text), limits);
   return text;
 }

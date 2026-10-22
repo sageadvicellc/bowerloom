@@ -21,6 +21,8 @@ const MESSAGES = {
   STORE_UNREADABLE: 'Bowerloom cannot read the store or a folder on the way to it.',
   STORE_IN_CLOUD_FOLDER: 'The store is in a cloud-synced folder.',
   STORE_NOT_A_PROJECT: 'The store holds definitions only, so a folder inside it cannot be a project.',
+  STORE_LOCKED: 'Another Bowerloom command is changing the store.',
+  STORE_STATE_NESTED: 'The private state folder and the store must not be inside one another.',
   CONFIG_UNREADABLE: 'Bowerloom cannot read bowerloom.json.',
   CONFIG_UNSAFE: 'bowerloom.json is not safe to read. It must be a plain file that you own, with one link, no write access for others, and at most 1 MiB.',
 } as const;

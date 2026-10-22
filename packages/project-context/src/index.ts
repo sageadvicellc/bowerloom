@@ -23,7 +23,7 @@ import type { HeldProjectLock, ProjectContext } from './types.js';
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
 export { adoptCreatedMarker, checkConfigFile, projectId, readConfigBytes, verifyProjectPins } from './discovery.js';
 export type { StoreContext, StoreInspection } from './store.js';
-export { assertNotInStore, storeRootOf, verifyStorePins } from './store.js';
+export { assertNotInStore, storeRootOf, verifyStorePins, withStoreForWrite } from './store.js';
 
 const hex = (value: string): string => createHash('sha256').update(value).digest('hex');
 

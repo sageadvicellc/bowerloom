@@ -8,3 +8,4 @@ export { readConfig } from './config.js';
 export type { ConfigRead } from './config.js';
 export { CONFIG_REFUSAL_CODES, configRefusal, isConfigRefusal } from './refusal.js';
 export type { ConfigRefusalCode } from './refusal.js';
+export { STORE_BRIEF, storeBrief } from './brief.js';
