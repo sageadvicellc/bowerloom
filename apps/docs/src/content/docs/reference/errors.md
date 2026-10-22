@@ -149,6 +149,15 @@ The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store
 | `MANAGED_SKILL_HISTORY_FULL` | A skill has 64 operations in its private history. Bowerloom deletes no history by itself. | Follow the `Next:` line: move the older `op-<key>` folders out with `mv`, then run the command again. |
 | `APPLY_NAME_COLLISION` | Bowerloom never overwrites what it did not install, and two items cannot share one place. | Run `bowerloom apply` after you resolve it. |
 | `PROMPT_INVALID` | Bowerloom reads only plain prompt files you own. | Run `ls -l .bowerloom/prompts`. |
+| `AGENT_INVALID` | Bowerloom copies only agent files it can check. The file holds only that agent back. | Follow the `Next:` line, fix the file, then run `bowerloom apply`. |
+| `AGENT_KEY_UNKNOWN` | Bowerloom accepts only the documented subagent keys. The file holds only that agent back. | Remove the key the `Next:` line names, then run `bowerloom apply`. |
+| `AGENT_NAME_MISMATCH` | The name becomes the file name in `.claude/agents`. The file holds only that agent back. | Make the `name` key equal the file name, then run `bowerloom apply`. |
+| `AGENT_LIMIT` | This beta applies at most 128 agents. Nothing was changed. | Remove agent files until 128 or fewer remain, then run `bowerloom apply`. |
+| `APPLY_AGENT_DUPLICATE` | Each agent name goes to one file in `.claude/agents`. Both agents are held back. | Rename or remove one of the two files the `Next:` line names, then run `bowerloom apply`. |
+| `APPLY_AGENTS_FOLDER_UNSAFE` | Bowerloom writes agents only into a real folder that only you can change. Nothing was changed. | Run `ls -ld .claude .claude/agents`. Replace a link with a folder, and remove group and world write access. |
+| `AGENT_GRANT_REVIEW_REQUIRED` | Bypass permissions, hooks, and MCP servers change what Claude Code lets the agent do. The agent is held back until you allow it. | Read the agent file, then run `bowerloom apply --allow-agent <role>:<hash>` in a terminal. The plan's `Next:` line says to allow it from a terminal. At a terminal, the shown text carries the exact flag. |
+| `AGENT_TEAM_UNREGISTERED` | Bowerloom applies agents only from teams it created or adopted. The agent is held back. | Run `bowerloom team create`, or move the agent into a registered team. |
+| `AGENT_TARGET_OCCUPIED` | Bowerloom never overwrites what it did not install. The agent is held back. | Move the file the `Next:` line names aside, then run `bowerloom apply`. |
 
 ## Request-file skills refusals
 

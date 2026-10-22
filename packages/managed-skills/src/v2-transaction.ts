@@ -78,7 +78,7 @@ import type { SurfaceId, SurfaceKind, SurfaceV2, ManagedItemPlan, ManagedItemRec
 const intentKeys = ['format', 'plan', 'operationIdentity', 'approvalRevision'];
 const recordKeys = ['sequence', 'previous', 'kind', 'data', 'revision'];
 const pendingKeys = ['format', 'item', 'operationKey', 'stateDir', 'operationIdentity', 'intentSha256'];
-const STAGE_NAME = /^(?:new|old|returned)-(?:canonical|catalog|projection-claude|projection-codex|command-claude|ignore|legacy)$/;
+const STAGE_NAME = /^(?:new|old|returned)-(?:canonical|catalog|projection-claude|projection-codex|command-claude|agent-claude|ignore|legacy)$/;
 const intentPath = (p: ManagedItemPlan) => join(p.core.request.stateDir, 'op-' + p.operationKey);
 function sync(p: string, guard: () => void): void { guard(); const fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { guard(); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
 function durable(p: string, bytes: string | Buffer, guard: () => void, mode = 0o600): void {

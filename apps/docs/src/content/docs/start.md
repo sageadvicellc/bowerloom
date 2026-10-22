@@ -131,13 +131,13 @@ When no step is left, the run prints `prepared, workers held` and exits 4. In th
 ```text
 Applied plan a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078.
 prepared, workers held
-  Team: Studio crew (first-team), with skills and prompts in place for Claude Code and Codex.
+  Team: Studio crew (first-team), with skills, prompts, and agents in place for Claude Code and Codex.
   Next: read .bowerloom/START-HERE.md. This beta starts no worker; worker launch comes after the startup gate.
 ```
 
 The test run also recorded standard error. It held one line of JSON with the code `WORKERS_HELD`.
 
-When a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+When a skill, prompt, agent, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
 `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
 

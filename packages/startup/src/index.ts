@@ -296,6 +296,12 @@ function inspectionOwners(options: unknown): readonly OwnerVerifier[] | null {
   return owners.length ? owners : null;
 }
 /**
+ * Folders inside `.bowerloom/` that a person places by hand and the startup receipt does not list. The first team's agents
+ * are Claude Code subagent files (spec 01a). A real folder here is not drift; with owners, an owner may verify it.
+ */
+const USER_AREAS: readonly string[] = ['teams/first-team/agents'];
+const AGENT_FILE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+/**
  * Inspects the owned entries of a `.bowerloom` folder that has no startup receipt, as a project with `bowerloom.json`
  * and an authored `.bowerloom` has. Every entry is unaccounted for, so each goes to the owners: one that no owner claims
  * is `unexpected`, one an owner refuses is `owner-refused`, and a link or other special entry is `unsafe`. A claimed
@@ -330,7 +336,7 @@ export async function inspectOwnedOnly(targetDir: string, owners: readonly Owner
  * Inspects an installed project. With `options.owners`, an entry inside `.bowerloom/` that the startup receipt does
  * not account for passes only when exactly one owner claims it and verifies it (build plan 01, M2); a claimed folder is
  * verified whole and not walked. A link or other special entry is unsafe and no owner is asked. Without owners, the
- * result is exactly as at cc117ac.
+ * result is exactly as at cc117ac, except for the user areas in USER_AREAS, which the startup record never claims.
  */
 export async function inspectStartup(targetDir: string, options?: InspectStartupOptions): Promise<StartupInspection> {
   const owners = inspectionOwners(options), ownerSignal = new AbortController().signal, owned: OwnedEntry[] = [];
@@ -352,7 +358,7 @@ export async function inspectStartup(targetDir: string, options?: InspectStartup
   }
   const expectedPaths = new Set([...receipt.plan.files.map(file => file.path), RECEIPT]);
   let count = 0;
-  // An entry the receipt does not account for. Without owners it is unexpected, as at cc117ac.
+  // An entry the receipt does not account for, except the user areas in USER_AREAS. Without owners it is unexpected, as at cc117ac.
   const unaccounted = async (path: string, kind: OwnedEntryKind | null): Promise<void> => {
     if (!owners) { result.drift.push({ path: `.bowerloom/${path}`, kind: 'unexpected' }); return; }
     if (kind === null) { result.drift.push({ path: `.bowerloom/${path}`, kind: 'unsafe' }); return; }
@@ -361,6 +367,16 @@ export async function inspectStartup(targetDir: string, options?: InspectStartup
     else if (outcome.result === 'refused') result.drift.push({ path: `.bowerloom/${path}`, kind: 'owner-refused', code: outcome.code });
     else owned.push({ path: `.bowerloom/${path}`, owner: outcome.owner, state: outcome.result });
   };
+  // Without owners, a user area still reports an entry that cannot be an agent: anything but a plain <stem>.md file.
+  // Hidden files and editor backups are skipped.
+  const userAreaEntries = (full: string, path: string): void => {
+    for (const entry of readdirSync(full, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name.endsWith('~')) continue;
+      if (++count > 256) fail('INSPECTION_LIMIT');
+      const stem = entry.name.slice(0, -3);
+      if (!(entry.isFile() && !entry.isSymbolicLink() && AGENT_FILE.test(entry.name) && stem.length <= 64 && !stem.startsWith('prompt-'))) result.drift.push({ path: `.bowerloom/${path}/${entry.name}`, kind: 'unexpected' });
+    }
+  };
   const walk = async (relative: string): Promise<void> => {
     const entries = readdirSync(join(directory, relative), { withFileTypes: true });
     if (owners) entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
@@ -368,7 +384,10 @@ export async function inspectStartup(targetDir: string, options?: InspectStartup
       if (++count > 256) fail('INSPECTION_LIMIT');
       const path = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory() && !entry.isSymbolicLink()) {
-        if (!receipt.plan.files.some(file => file.path.startsWith(path + '/'))) await unaccounted(path, 'directory');
+        // A user area is hand placed, so the startup record claims none of its content: an owner may verify it, and
+        // without owners it is not recorded and not walked.
+        if (USER_AREAS.includes(path)) { if (owners) await unaccounted(path, 'directory'); else userAreaEntries(join(directory, path), path); }
+        else if (!receipt.plan.files.some(file => file.path.startsWith(path + '/'))) await unaccounted(path, 'directory');
         else await walk(path);
       } else if (!expectedPaths.has(path)) await unaccounted(path, entry.isFile() && !entry.isSymbolicLink() ? 'file' : null);
     }

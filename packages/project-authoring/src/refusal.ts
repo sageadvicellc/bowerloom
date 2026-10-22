@@ -28,6 +28,9 @@ const MESSAGES = {
   AUTHORING_ITEM_MISSING: 'A team, skill or prompt that create made is gone from .bowerloom, but its record still lists it. Restore it from version control. To restore a prompt, run bowerloom prompt create with its id.',
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   REVISION_PENDING: 'A revise of this project is not finished. Finish it with bowerloom revise recover first.',
+  AGENT_INVALID: 'An agent file in .bowerloom/teams cannot be used.',
+  AGENT_KEY_UNKNOWN: 'An agent file uses a frontmatter key that Claude Code subagents do not take.',
+  AGENT_NAME_MISMATCH: 'An agent\'s name key differs from its file name, or the file name is not a valid role name.',
 } as const;
 
 export type AuthoringRefusalCode = keyof typeof MESSAGES;

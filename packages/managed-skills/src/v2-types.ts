@@ -11,14 +11,14 @@ export type { Identity, FilePin, JournalRecord };
  * `ignore` is the shared `.bowerloom/managed/.gitignore`, planned only by the operation that finds it absent;
  * `legacy` is the whole v1beta1 namespace `.bowerloom-skills/`, moved out (backup only) by a migrate operation.
  */
-export type ItemSurfaceId = 'canonical' | 'catalog' | 'projection-claude' | 'projection-codex' | 'command-claude';
+export type ItemSurfaceId = 'canonical' | 'catalog' | 'projection-claude' | 'projection-codex' | 'command-claude' | 'agent-claude';
 export type SurfaceId = ItemSurfaceId | 'ignore' | 'legacy';
 export type SurfaceKind = 'directory' | 'file';
 export type Harness = 'claude' | 'codex';
 export interface SurfaceV2 { id: SurfaceId; kind: SurfaceKind; path: string; pins: FilePin[] | null }
 export interface MaterialV2 { id: SurfaceId; kind: SurfaceKind; files: { path: string; text: string; sha256: string; mode: number }[] }
-export interface ItemRef { kind: 'skill' | 'prompt'; id: string }
-export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string };
+export interface ItemRef { kind: 'skill' | 'prompt' | 'agent'; id: string }
+export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string } | { kind: 'agent'; team: string; name: string };
 export interface LegacyRef { stateDir: string; operationKey: string }
 export interface ManagedItemRequest {
   operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef; harnesses: Harness[];
@@ -28,13 +28,17 @@ export interface InventoryRow { path: string; sha256: string; bytes: number }
 export interface ItemFile { path: string; text: string; sha256: string; mode: number }
 /** The local reader's result. Content only: no absolute path, identity or time. */
 export interface LocalClosure {
-  format: 'bowerloom/local-item-closure/v1beta2'; source: { kind: 'local'; path: string } | { kind: 'prompt'; path: string };
+  format: 'bowerloom/local-item-closure/v1beta2'; source: { kind: 'local'; path: string } | { kind: 'prompt'; path: string } | { kind: 'agent'; path: string };
   files: ItemFile[]; inventory: InventoryRow[]; executionAuthorized: false;
+  /** For an agent: the sha256 of the raw source bytes, which `--allow-agent` names. The closure file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The material source of one item, normalized from a cache closure or a local closure. Content only. */
 export interface ItemClosure {
   format: 'bowerloom/managed-item-closure/v1beta2'; source: unknown; skill: { id: string; name: string; sourceRoot: string } | null;
   license: unknown; references: unknown[]; inventory: InventoryRow[]; files: ItemFile[]; name: string;
+  /** For an agent: the sha256 of the raw source bytes. The one file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The bound v1beta1 install of a migrate operation. The v1 state folder is read, never written. */
 export interface LegacyCore { stateDir: string; operationKey: string; receiptRevision: string; receiptPin: FilePin; harness: Harness }

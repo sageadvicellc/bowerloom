@@ -154,7 +154,7 @@ bowerloom apply
 
 `apply` puts the prompts in `.bowerloom/prompts` in place, and any skill copy from `.bowerloom/skills.json` that is still missing. It works from what this machine already holds and never fetches. A pin that is not cached yet refuses until `skills sync` fetches it. The default harness is both. Pass `--harness claude` or `--harness codex` for one.
 
-Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. These copies stay on this machine.
+Skills go to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/<name>.md` and the Codex skill `.agents/skills/prompt-<name>`. An agent becomes `.claude/agents/<role>.md` for Claude Code. These copies stay on this machine.
 
 When there is something to place, `apply` shows a plan and exits 3. When every copy is already in place, it prints its plan and `Nothing to change.` and exits 0. In the test runs for this release, `apply` right after `skills sync` printed `Nothing to change.`, because those projects had no prompt to place. The plan shows a note for each prompt that grants tools with `allowed-tools`, registers hooks, or runs shell commands. A shell command is a line that starts with `!`, text that holds `` !` ``, or a fence opened with ` ```! `. Read that prompt before you approve. Then apply:
 
@@ -166,7 +166,7 @@ bowerloom apply --approve REVISION_FROM_THE_PLAN
 
 ```text
 Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copies, add a line like this to AGENTS.md and CLAUDE.md yourself:
-  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>.
+  Project skills are in .claude/skills and .agents/skills. Prompts are Claude Code commands in .claude/commands, and Codex skills named prompt-<name>. Agents are in .claude/agents.
 ```
 
 Show the line to the human. Add it to `AGENTS.md` and `CLAUDE.md` only after the human approves.
@@ -280,6 +280,7 @@ After any refusal, run the command again without `--approve` and read the new pl
 - `MANAGED_SKILL_RECOVERY_REQUIRED` means a change stopped inside one skill. Run `bowerloom skills recover plan --item <id>`.
 - `MANAGED_SKILL_LEGACY_PRESENT` means an earlier Bowerloom installed skills here. Run `skills migrate`.
 - `APPLY_NAME_COLLISION` means two items share one place, or something Bowerloom did not install is there. Bowerloom never overwrites it.
+- `AGENT_INVALID`, `AGENT_KEY_UNKNOWN`, `AGENT_NAME_MISMATCH`, `APPLY_AGENT_DUPLICATE`, `AGENT_GRANT_REVIEW_REQUIRED`, `AGENT_TEAM_UNREGISTERED`, and `AGENT_TARGET_OCCUPIED` hold one agent back, and the rest of `apply` goes on. `AGENT_LIMIT` and `APPLY_AGENTS_FOLDER_UNSAFE` stop the whole `apply`. [Project agents for Claude Code](/docs/guides/agents/) says how to fix each one.
 
 ### Recover an unfinished change
 

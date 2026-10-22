@@ -15,3 +15,4 @@ export type { MigrateInput, MigratePlan } from './migrate.js';
 export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, APPLY_RESULT_FORMAT, APPLY_POINTER, applyPointer } from './apply-project.js';
 export type { ApplyInput, ApplyPlan, ApplyResult, ApplyItemRef } from './apply-project.js';
 export type { PromptItem, PromptState } from './prompts.js';
+export type { AgentItem, AgentState } from './agents.js';
