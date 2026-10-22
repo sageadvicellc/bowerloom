@@ -14,7 +14,7 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { checkProjectPathWith, fold, homesOf, pin, pinAncestry } from './discovery.js';
 import type { DiscoveryHooks } from './discovery.js';
 import { withProjectLock } from './index.js';
-import { refuse } from './refusal.js';
+import { refuse, storeWriteFailed } from './refusal.js';
 import type { DirectoryIdentity, HeldProjectLock, PinnedDirectory } from './types.js';
 
 export const STORE_DIRNAME = '.bowerloom';
@@ -22,6 +22,8 @@ export const STORE_FILE = 'store.json';
 export const STORE_FORMAT = 'bowerloom/store/v1beta1';
 const STORE_FILE_LIMIT = 4096;
 const LEFTOVER_TEMP = /^\.store\.json\.[a-f0-9]{16}\.tmp$/;
+/** A name the finder of a folder leaves behind. It does not make a folder a foreign one. */
+const IGNORABLE = '.DS_Store';
 
 export interface StoreContext {
   readonly dir: string;
@@ -140,7 +142,7 @@ export function inspectStoreWith(home: string, hooks: DiscoveryHooks = {}): Stor
     || identity.uid !== uid || (identity.mode & 0o022) !== 0) throw refuse('STORE_UNSAFE');
   let inside: string[];
   try { inside = readdirSync(root); } catch { throw refuse('STORE_UNREADABLE'); }
-  const kept = inside.filter(name => !LEFTOVER_TEMP.test(name)), leftoverTemp = kept.length !== inside.length;
+  const kept = inside.filter(name => !LEFTOVER_TEMP.test(name) && name !== IGNORABLE), leftoverTemp = inside.some(name => LEFTOVER_TEMP.test(name));
   if (kept.length === 0) return { state: 'absent', leftover: true };
   if (!exactName(kept, STORE_FILE)) return { state: 'foreign' };
   const fileIdentity = readStoreFile(root, uid);
@@ -218,31 +220,42 @@ const syncFolder = (path: string): void => {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { fsyncSync(fd); } finally { closeSync(fd); }
 };
+/** Runs a write step. A Bowerloom refusal passes; any system error becomes STORE_WRITE_FAILED, which names it. */
+function writing<T>(step: () => T): T {
+  try { return step(); }
+  catch (error) { const code = errno(error); if (typeof code === 'string' && code.startsWith('STORE_')) throw error; throw storeWriteFailed(error); }
+}
 /** Removes each `.store.json.<16 hex>.tmp` in the store folder, then syncs the folder when something went. */
 function removeLeftoverTemps(root: string): void {
-  let removed = false;
-  for (const name of readdirSync(root)) {
-    if (!LEFTOVER_TEMP.test(name)) continue;
-    try { unlinkSync(join(root, name)); removed = true; } catch (error) { if (!missing(error)) throw error; }
-  }
-  if (removed) syncFolder(root);
+  let names: string[];
+  try { names = readdirSync(root); } catch { throw refuse('STORE_UNREADABLE'); }
+  writing(() => {
+    let removed = false;
+    for (const name of names) {
+      if (!LEFTOVER_TEMP.test(name)) continue;
+      try { unlinkSync(join(root, name)); removed = true; } catch (error) { if (!missing(error)) throw error; }
+    }
+    if (removed) syncFolder(root);
+  });
 }
 /** Writes `store.json` through a temporary and a rename, so the file appears whole or not at all. */
 function writeStoreFile(root: string): void {
   removeLeftoverTemps(root);
   const temp = join(root, `.store.json.${randomBytes(8).toString('hex')}.tmp`);
-  let made = false;
-  try {
-    const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
+  writing(() => {
+    let made = false;
     try {
-      fchmodSync(fd, 0o644);
-      const data = Buffer.from(`{"format":"${STORE_FORMAT}"}\n`);
-      let at = 0; while (at < data.length) at += writeSync(fd, data, at);
-      fsyncSync(fd);
-    } finally { closeSync(fd); }
-    renameSync(temp, join(root, STORE_FILE)); made = false;
-    syncFolder(root);
-  } finally { if (made) { try { unlinkSync(temp); } catch { /* Already gone. */ } } }
+      const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
+      try {
+        fchmodSync(fd, 0o644);
+        const data = Buffer.from(`{"format":"${STORE_FORMAT}"}\n`);
+        let at = 0; while (at < data.length) at += writeSync(fd, data, at);
+        fsyncSync(fd);
+      } finally { closeSync(fd); }
+      renameSync(temp, join(root, STORE_FILE)); made = false;
+      syncFolder(root);
+    } finally { if (made) { try { unlinkSync(temp); } catch { /* Already gone. */ } } }
+  });
 }
 
 /**
@@ -255,18 +268,26 @@ function writeStoreFile(root: string): void {
  */
 export async function withStoreForWriteWith<T>(home: string, signal: AbortSignal, work: (store: StoreContext, held: HeldProjectLock, created: boolean) => Promise<T>, hooks: DiscoveryHooks = {}): Promise<T> {
   const root = storeRootOf(home);
-  try { mkdirSync(root, { mode: 0o700 }); chmodOwn(root); } catch (error) { if (errno(error) !== 'EEXIST') throw refuse(missing(error) ? 'STORE_UNSAFE' : 'STORE_UNREADABLE'); }
+  try { mkdirSync(root, { mode: 0o700 }); chmodOwn(root); } catch (error) { if (errno(error) !== 'EEXIST') throw missing(error) ? refuse('STORE_UNSAFE') : storeWriteFailed(error); }
   try {
     return await withProjectLock(root, signal, async held => {
       let created = false;
       const found = inspectStoreWith(home, hooks);
       if (found.state === 'foreign') throw refuse('STORE_INVALID');
-      try {
-        if (found.state === 'store') { if (found.leftoverTemp) removeLeftoverTemps(root); }
-        else { writeStoreFile(root); created = true; }
-      } catch (error) { if (errno(error) !== undefined && String(errno(error)).startsWith('STORE_')) throw error; throw refuse('STORE_UNREADABLE'); }
+      held.assertHeld(root);
+      if (found.state === 'store') { if (found.leftoverTemp) removeLeftoverTemps(root); }
+      else {
+        // A leftover folder may have been made with a wider mode: the store is always 0700.
+        if (found.leftover) writing(() => chmodOwn(root));
+        held.assertHeld(root);
+        writeStoreFile(root); created = true;
+      }
       const store = openStoreWith(home, hooks);
       verifyStorePins(store, hooks);
+      held.assertHeld(root);
+      // The folder the lock names is the folder that was pinned.
+      let now; try { now = lstatSync(root, { bigint: true }); } catch { throw refuse('STORE_UNSAFE'); }
+      if (now.dev.toString() !== store.identity.device || now.ino.toString() !== store.identity.inode) throw refuse('STORE_UNSAFE');
       return work(store, held, created);
     });
   } catch (error) {

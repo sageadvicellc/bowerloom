@@ -1,14 +1,18 @@
 // Spec 04, store writes, through the real binary: `--global` on the create commands, `skills add`, `skills check`, and `ls`.
 // Every run gets its own HOME and XDG_STATE_HOME under a temporary folder. Nothing here touches the real home folder.
+import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, renameSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { withProjectLock } from '../packages/project-context/src/index.js';
+import { addLocalEntry } from '../packages/skill-manifest/src/add.js';
+import { STORE_MANIFEST_LIMITS, serializeManifest } from '../packages/skill-manifest/src/schema.js';
+import { seedWords } from '../apps/cli/src/manifest.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 const preload = pathToFileURL(fileURLToPath(new URL('./support/fake-network.js', import.meta.url))).href;
@@ -166,7 +170,7 @@ test('10. ls --global lists the store items with the source store; --json has sc
     teams: [{ id: 'research', source: 'store', via: [], locked: null, resolvedFrom: 'store', displayName: null, state: 'ok' }],
     skills: [{ id: 'x', source: 'store', via: [], locked: null, resolvedFrom: 'store', kind: 'local', pin: null, state: 'ok' }],
     prompts: [{ id: 'weekly', source: 'store', via: [], locked: null, resolvedFrom: 'store', state: 'ok' }],
-    pinsReadable: true, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0, storeState: 'ready',
+    pinsReadable: true, pinsError: null, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0, storeState: 'ready',
   });
 });
 
@@ -198,7 +202,7 @@ test('13. ls teams --global --json has only the teams array plus the fixed field
   const j = JSON.parse(run(w.work, ['ls', 'teams', '--global', '--json'], w.env).stdout);
   assert.deepEqual(Object.keys(j).sort(), ['format', 'listedBy', 'scope', 'storeState', 'teams', 'unlisted', 'unselected']);
   const s = JSON.parse(run(w.work, ['ls', 'skills', '--global', '--json'], w.env).stdout);
-  assert.deepEqual(Object.keys(s).sort(), ['format', 'listedBy', 'pinsReadable', 'scope', 'skills', 'storeState', 'unlisted', 'unselected']);
+  assert.deepEqual(Object.keys(s).sort(), ['format', 'listedBy', 'pinsError', 'pinsReadable', 'scope', 'skills', 'storeState', 'unlisted', 'unselected']);
   assert.equal(run(w.work, ['ls', 'prompts', '--global'], w.env).stdout, 'Prompts\n  none yet\n');
 });
 
@@ -207,8 +211,10 @@ test('14. a --global write leaves the project .bowerloom untouched', t => {
   mustApprove(w, ['skill', 'create', 'x', '--global'], dir); mustApprove(w, ['team', 'create', 't', '--global'], dir); mustApprove(w, ['prompt', 'create', 'p', '--global'], dir);
   assert.equal(tree(join(dir, '.bowerloom')), before); assert.equal(readFileSync(join(dir, '.bowerloom', 'brief.json'), 'utf8'), files);
   assert.ok(existsSync(join(w.store, 'teams', 't')));
-  // A project with the same skill id is not read.
+  // A project with the same skill id is not read, and a project create leaves the store as it is.
+  const storeBefore = tree(w.store);
   mustApprove(w, ['skill', 'create', 'x'], dir);
+  assert.equal(tree(w.store), storeBefore);
 });
 
 test('15. an empty ~/.bowerloom is a leftover: skill create --global --approve succeeds', t => {
@@ -294,6 +300,142 @@ test('23. the store keeps pinned skills in ls with their pin, and an unreadable 
   assert.equal(j.skills[0].kind, 'npm'); assert.equal(j.skills[0].pin, '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections');
   writeFileSync(join(w.store, 'skills.json'), '{ not json'); chmodSync(join(w.store, 'skills.json'), 0o644);
   const bad = run(w.work, ['ls', 'skills', '--global'], w.env);
-  assert.match(bad.stdout, /\nPinned skills are not listed: the store skills\.json cannot be read\. Run bowerloom store status\.\n$/);
+  assert.match(bad.stdout, /\nPinned skills are not listed: the store skills\.json cannot be read\. Run bowerloom skills check --global\.\n$/);
   assert.equal(JSON.parse(run(w.work, ['ls', 'skills', '--global', '--json'], w.env).stdout).pinsReadable, false);
+});
+
+/** A store with 200 local skills in skills.json, written with the store limits. */
+function bigStore(w: W, count = 200) {
+  mustApprove(w, ['skill', 'create', 'x', '--global']);
+  let m = null as ReturnType<typeof addLocalEntry> | null;
+  for (let i = 0; i < count - 1; i++) m = addLocalEntry(m, `s-${String(i).padStart(3, '0')}`, [], STORE_MANIFEST_LIMITS);
+  m = addLocalEntry(m, 'x', [], STORE_MANIFEST_LIMITS);
+  writeFileSync(join(w.store, 'skills.json'), serializeManifest(m, STORE_MANIFEST_LIMITS), { mode: 0o644 });
+}
+
+test('24. C1: a store with 200 skills lists, checks, and takes a new pin', t => {
+  const w = world(t), env = { ...w.env, ...network(w.base) }; bigStore(w);
+  const j = JSON.parse(run(w.work, ['ls', '--global', '--json'], w.env).stdout);
+  assert.equal(j.pinsReadable, true); assert.equal(j.skills.length, 200);
+  assert.match(run(w.work, ['skills', 'check', '--global'], w.env).stdout, /^skills\.json \(store\) is valid: 200 skills,/);
+  const add = run(w.work, ['skills', 'add', NPM_SPEC, '--global'], env, ['--import', preload]);
+  assert.equal(add.status, 3, add.stderr);
+});
+
+test('25. F3: a store skills.json over the limit is shown as unreadable, with its code', t => {
+  const w = world(t); mustApprove(w, ['skill', 'create', 'x', '--global']);
+  const entries = Array.from({ length: 257 }, (_, i) => ({ id: i === 0 ? 'x' : `s-${i}`, source: { kind: 'local', path: `skills/${i === 0 ? 'x' : `s-${i}`}` } }));
+  writeFileSync(join(w.store, 'skills.json'), JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: entries }), { mode: 0o644 });
+  const j = JSON.parse(run(w.work, ['ls', '--global', '--json'], w.env).stdout);
+  assert.equal(j.pinsReadable, false); assert.equal(j.pinsError, 'MANIFEST_LIMIT');
+  assert.deepEqual(j.skills.map((x: { id: string; state: string }) => [x.id, x.state]), [['x', 'pins-unreadable']]);
+  assert.match(run(w.work, ['ls', '--global'], w.env).stdout, /Run bowerloom skills check --global\./);
+  const ok = JSON.parse(run(w.work, ['ls', 'teams', '--global', '--json'], w.env).stdout);
+  assert.equal(ok.pinsReadable, undefined);
+});
+
+test('26. F7: a local skills.json entry whose folder is gone is listed with state missing', t => {
+  const w = world(t); mustApprove(w, ['skill', 'create', 'x', '--global']); mustApprove(w, ['skill', 'create', 'y', '--global']);
+  rmSync(join(w.store, 'skills', 'x'), { recursive: true });
+  const j = JSON.parse(run(w.work, ['ls', '--global', '--json'], w.env).stdout);
+  assert.deepEqual(j.skills.map((x: { id: string; state: string }) => [x.id, x.state]), [['x', 'missing'], ['y', 'ok']]);
+  assert.match(run(w.work, ['ls', '--global'], w.env).stdout, /^ {2}x {2}store {2}missing$/m);
+});
+
+test('27. S2: a state folder that reaches the store through a link fails closed, store or no store', t => {
+  const w = world(t), env = (x: string) => ({ ...w.env, ...network(w.base), XDG_STATE_HOME: x });
+  mustApprove(w, ['skill', 'create', 'x', '--global']);
+  const link = join(w.base, 'link'); symlinkSync(w.store, link);
+  const r = run(w.work, ['skills', 'add', NPM_SPEC, '--global'], env(link), ['--import', preload]);
+  assert.equal(r.status, 1); assert.equal(errorCode(r.stderr), 'STORE_STATE_NESTED');
+  const dangling = join(w.base, 'dangling'); symlinkSync(join(w.base, 'nowhere'), dangling);
+  const d = run(w.work, ['skills', 'add', NPM_SPEC, '--global'], env(dangling), ['--import', preload]);
+  assert.equal(d.status, 1); assert.equal(errorCode(d.stderr), 'SKILLS_STATE_UNSAFE');
+});
+
+test('28. C3: a state folder aliased to the store after the plan is refused at apply, and nothing is written', t => {
+  const w = world(t), state = join(w.base, 'swap'); mkdirSync(state, { mode: 0o700 });
+  const env = { ...w.env, ...network(w.base), XDG_STATE_HOME: state };
+  mkdirSync(w.store, { mode: 0o700 });
+  const planned = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--json'], env, ['--import', preload]);
+  assert.equal(planned.status, 3, planned.stderr);
+  const revision = JSON.parse(planned.stdout).revision as string;
+  rmSync(state, { recursive: true }); symlinkSync(w.store, state);
+  const r = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--approve', revision], env, ['--import', preload]);
+  assert.equal(r.status, 1, r.stderr); assert.equal(errorCode(r.stderr), 'STORE_STATE_NESTED');
+  assert.deepEqual(readdirSync(w.store), []);
+});
+
+test('29. F6: a seed that fails after the pin is written says so in plain words for the store', t => {
+  const w = world(t), parent = join(w.base, 'ro'); mkdirSync(parent, { mode: 0o700 });
+  const env = { ...w.env, ...network(w.base), XDG_STATE_HOME: join(parent, 'state') };
+  const planned = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--json'], env, ['--import', preload]);
+  assert.equal(planned.status, 3, planned.stderr);
+  chmodSync(parent, 0o500);
+  try {
+    const r = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--approve', JSON.parse(planned.stdout).revision], env, ['--import', preload]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Cache: the checked bytes were not kept in .*\(SKILLS_STATE_UNSAFE\)\. The pin is recorded; a project that selects this skill fetches it\.\n$/);
+    assert.doesNotMatch(r.stdout, /skills sync/);
+  } finally { chmodSync(parent, 0o700); }
+  assert.equal(JSON.parse(readFileSync(join(w.store, 'skills.json'), 'utf8')).skills.length, 1);
+});
+
+test('30. F6: seedWords names the next step by scope', () => {
+  const failed = { root: '/c', status: 'failed' as const, codes: [] };
+  assert.match(seedWords({ ...failed, codes: ['X'] }, false), /skills sync fetches it again\.\n$/);
+  assert.match(seedWords({ ...failed, codes: ['X'] }, true), /a project that selects this skill fetches it\.\n$/);
+});
+
+test('31. F8: an unsafe store refuses ls, skills check, and a write, for a group-writable store and a link', t => {
+  const w = world(t); mustApprove(w, ['skill', 'create', 'x', '--global']);
+  const all = (code: string) => {
+    for (const args of [['ls', '--global'], ['skills', 'check', '--global'], ['skill', 'create', 'y', '--global'], ['skill', 'create', 'y', '--global', '--approve', 'ab'.repeat(32)]]) {
+      const r = run(w.work, args, w.env); assert.equal(r.status, 1, args.join(' ')); assert.equal(errorCode(r.stderr), code, args.join(' '));
+    }
+  };
+  chmodSync(w.store, 0o770); all('STORE_UNSAFE'); chmodSync(w.store, 0o700);
+  const moved = join(w.base, 'moved'); renameSync(w.store, moved); symlinkSync(moved, w.store);
+  all('STORE_UNSAFE'); assert.ok(lstatSync(w.store).isSymbolicLink()); assert.equal(existsSync(join(moved, 'skills', 'y')), false);
+});
+
+test('32. F8: skills add --global --replace needs an existing id, and an unchanged pin is refused', t => {
+  const w = world(t), env = { ...w.env, ...network(w.base) };
+  const none = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--replace'], env, ['--import', preload]);
+  assert.equal(none.status, 1); assert.equal(errorCode(none.stderr), 'SKILLS_ADD_REPLACE_MISSING');
+  const added = approve(w, ['skills', 'add', NPM_SPEC, '--global'], w.work, ['--import', preload], env); assert.equal(added.applied.status, 0, added.applied.stderr);
+  const id = JSON.parse(readFileSync(join(w.store, 'skills.json'), 'utf8')).skills[0].id as string;
+  const same = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--replace', '--id', id], env, ['--import', preload]);
+  assert.equal(same.status, 1); assert.equal(errorCode(same.stderr), 'SKILLS_ADD_EXISTS');
+  const missing = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--replace', '--id', 'other'], env, ['--import', preload]);
+  assert.equal(errorCode(missing.stderr), 'SKILLS_ADD_REPLACE_MISSING');
+});
+
+test('33. F8: skills add --global --team names a store team', t => {
+  const w = world(t), env = { ...w.env, ...network(w.base) };
+  assert.equal(errorCode(run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--team', 'research'], env, ['--import', preload]).stderr), 'TEAM_NOT_FOUND');
+  mustApprove(w, ['team', 'create', 'research', '--global']);
+  assert.equal(errorCode(run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--team', 'nope'], env, ['--import', preload]).stderr), 'TEAM_NOT_FOUND');
+  assert.equal(errorCode(run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--team', 'first-team'], env, ['--import', preload]).stderr), 'TEAM_NOT_FOUND');
+  const r = approve(w, ['skills', 'add', NPM_SPEC, '--global', '--team', 'research'], w.work, ['--import', preload], env);
+  assert.equal(r.applied.status, 0, r.applied.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(w.store, 'skills.json'), 'utf8')).skills[0].teams, ['research']);
+});
+
+test('34. F5: a store team folder that cannot be read is not "not found"', t => {
+  const w = world(t), env = { ...w.env, ...network(w.base) };
+  mustApprove(w, ['team', 'create', 'research', '--global']);
+  chmodSync(join(w.store, 'teams'), 0o000);
+  try {
+    const r = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--team', 'research'], env, ['--import', preload]);
+    assert.equal(r.status, 1); assert.equal(errorCode(r.stderr), 'STORE_UNREADABLE');
+  } finally { chmodSync(join(w.store, 'teams'), 0o700); }
+});
+
+test('35. S6: an empty store folder holding only .DS_Store is a leftover for a create', t => {
+  const w = world(t); mkdirSync(w.store, { mode: 0o700 }); writeFileSync(join(w.store, '.DS_Store'), 'x');
+  const planned = JSON.parse(run(w.work, ['skill', 'create', 'x', '--global', '--json'], w.env).stdout);
+  assert.equal(planned.plan.storeCreate, true);
+  assert.equal(run(w.work, ['skill', 'create', 'x', '--global', '--approve', planned.revision], w.env).status, 0);
+  assert.equal(JSON.parse(run(w.work, ['ls', '--global', '--json'], w.env).stdout).storeState, 'ready');
 });

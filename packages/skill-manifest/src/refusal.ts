@@ -40,6 +40,18 @@ export function manifestRefusal(code: ManifestRefusalCode): DefinitionError {
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('manifestRefusal takes a listed code only.');
   const error = new DefinitionError(code, MESSAGES[code]); own.add(error); return error;
 }
+/**
+ * MANIFEST_LIMIT for the manifest of `limits`. A store refusal (more than the project's 128 skills allowed) says 256 skills
+ * and 4 MiB and carries the hint `store-limit`, so the plain words can point at `skills check --global`.
+ */
+export function limitRefusal(limits: { readonly skills: number }): DefinitionError {
+  if (limits.skills <= 128) return manifestRefusal('MANIFEST_LIMIT');
+  const error = new DefinitionError('MANIFEST_LIMIT', 'The manifest is too large. It holds at most 256 skills and 4 MiB.'); own.add(error);
+  Object.defineProperty(error, 'hint', { value: 'store-limit', enumerable: false });
+  return error;
+}
+/** Refuses with the scope-aware MANIFEST_LIMIT unless `ok`. */
+export function requireLimit(ok: unknown, limits: { readonly skills: number }): asserts ok { if (!ok) throw limitRefusal(limits); }
 export function refuse(code: ManifestRefusalCode): never { throw manifestRefusal(code); }
 export function requireManifest(ok: unknown, code: ManifestRefusalCode): asserts ok { if (!ok) refuse(code); }
 /** True only for an error that manifestRefusal made. */

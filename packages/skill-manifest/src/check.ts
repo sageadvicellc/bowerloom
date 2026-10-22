@@ -5,7 +5,7 @@
 import { MANIFEST_PATH, STORE_MANIFEST_PATH, readManifestState } from './add.js';
 import type { ManifestTarget } from './add.js';
 import { requireManifest } from './refusal.js';
-import { parseManifest } from './schema.js';
+import { MANIFEST_LIMITS, parseManifest } from './schema.js';
 import type { Entry, Harness } from './schema.js';
 
 export const MANIFEST_CHECK_FORMAT = 'bowerloom/skills-manifest-check/v1beta2' as const;
@@ -24,7 +24,7 @@ export function checkManifest(location: string | ManifestTarget): ManifestCheck 
   const target = typeof location === 'string' ? undefined : location, store = target?.scope === 'store';
   const state = readManifestState(location, { allowAbsent: store });
   requireManifest(state.file !== null, 'MANIFEST_NOT_FOUND');
-  const m = parseManifest(state.file.bytes, target?.limits);
+  const m = parseManifest(state.file.bytes, target?.limits ?? MANIFEST_LIMITS);
   return {
     format: MANIFEST_CHECK_FORMAT, manifest: store ? STORE_MANIFEST_PATH : MANIFEST_PATH, scope: store ? 'store' : 'project', valid: true, sha256: state.file.sha256, bytes: state.file.bytes.length, harnesses: [...m.harnesses],
     skills: m.skills.map(e => ({ id: e.id, kind: e.source.kind, pin: pinOf(e), teams: e.teams ? [...e.teams] : null, source: store ? 'store' : 'project' })),

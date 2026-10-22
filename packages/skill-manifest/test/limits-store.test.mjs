@@ -1,3 +1,4 @@
+import '../../../dist/tests/support/isolate-home.js';
 import test from '../../../dist/tests/support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,7 +20,7 @@ function store(t) {
   const folder = path.join(dir, 'store'); fs.mkdirSync(folder, { mode: 0o700 });
   return { dir, folder, file: path.join(folder, 'skills.json') };
 }
-function many(count, limits) { let m = null; for (let i = 0; i < count; i++) m = addLocalEntry(m, `s-${String(i).padStart(3, '0')}`, [], limits); return m; }
+function many(count, limits = MANIFEST_LIMITS) { let m = null; for (let i = 0; i < count; i++) m = addLocalEntry(m, `s-${String(i).padStart(3, '0')}`, [], limits); return m; }
 // A manifest value with `count` local entries, built without the limit guard.
 const raw = count => ({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: Array.from({ length: count }, (_, i) => ({ id: `s-${String(i).padStart(3, '0')}`, source: { kind: 'local', path: `skills/s-${String(i).padStart(3, '0')}` } })) });
 const bytesOf = count => Buffer.from(`${JSON.stringify(raw(count), null, 2)}\n`);
@@ -43,13 +44,13 @@ test('200 skills pass parse, validate, serialize, and addLocalEntry with the sto
   assert.equal(parseManifest(Buffer.from(text), STORE_MANIFEST_LIMITS).skills.length, 200);
   assert.equal(validateManifest(JSON.parse(text), STORE_MANIFEST_LIMITS).skills.length, 200);
   assert.equal(addLocalEntry(m, 'one-more', [], STORE_MANIFEST_LIMITS).skills.length, 201);
-  assert.throws(() => parseManifest(Buffer.from(text)), code('MANIFEST_LIMIT'), 'the project limits still refuse it');
+  assert.throws(() => parseManifest(Buffer.from(text), MANIFEST_LIMITS), code('MANIFEST_LIMIT'), 'the project limits still refuse it');
 });
 
 test('the 257th skill is refused by addLocalEntry with the store limits, and the 129th with the default', () => {
   assert.throws(() => addLocalEntry(many(256, STORE_MANIFEST_LIMITS), 'x-257', [], STORE_MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
-  assert.throws(() => addLocalEntry(many(128), 'x-129', []), code('MANIFEST_LIMIT'));
-  assert.throws(() => parseManifest(bytesOf(129)), code('MANIFEST_LIMIT'));
+  assert.throws(() => addLocalEntry(many(128), 'x-129', [], MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
+  assert.throws(() => parseManifest(bytesOf(129), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
 });
 
 test('byte limits: 4 MiB passes with the store limits, one more byte fails; 1 MiB passes by default', () => {
@@ -61,8 +62,8 @@ test('byte limits: 4 MiB passes with the store limits, one more byte fails; 1 Mi
   assert.equal(pad(STORE_MANIFEST_LIMITS.bytes, 0).length, 4194304);
   assert.equal(parseManifest(pad(STORE_MANIFEST_LIMITS.bytes, 0), STORE_MANIFEST_LIMITS).skills.length, 1);
   assert.throws(() => parseManifest(pad(STORE_MANIFEST_LIMITS.bytes, 1), STORE_MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
-  assert.equal(parseManifest(pad(MANIFEST_LIMITS.bytes, 0)).skills.length, 1);
-  assert.throws(() => parseManifest(pad(MANIFEST_LIMITS.bytes, 1)), code('MANIFEST_LIMIT'));
+  assert.equal(parseManifest(pad(MANIFEST_LIMITS.bytes, 0), MANIFEST_LIMITS).skills.length, 1);
+  assert.throws(() => parseManifest(pad(MANIFEST_LIMITS.bytes, 1), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
 });
 
 test('readManifestState with a store target reads <store>/skills.json and refuses unsafe files', t => {
@@ -88,7 +89,10 @@ test('readManifestState with a store target reads <store>/skills.json and refuse
   const big = Buffer.from(`${JSON.stringify(raw(1), null, 2)}${' '.repeat(MANIFEST_LIMITS.bytes + 1)}\n`);
   fs.writeFileSync(s.file, big, { mode: 0o644 });
   assert.equal(readManifestState(storeTarget(s.folder)).file.bytes.length, big.length);
-  assert.throws(() => readManifestState(projectTarget(s.dir)), code('MANIFEST_UNSAFE'), 'no .bowerloom folder there');
+  // F2: the same oversize file in a project .bowerloom refuses with MANIFEST_LIMIT.
+  fs.mkdirSync(path.join(s.dir, '.bowerloom'), { mode: 0o755 }); fs.chmodSync(path.join(s.dir, '.bowerloom'), 0o755);
+  fs.writeFileSync(path.join(s.dir, '.bowerloom', 'skills.json'), big, { mode: 0o644 });
+  assert.throws(() => readManifestState(projectTarget(s.dir)), code('MANIFEST_LIMIT'));
 });
 
 test('readManifestState allowAbsent returns nulls for a missing folder, and refuses without the option', t => {
@@ -127,4 +131,12 @@ test('apply writes <store>/skills.json, keeps the hash checks, and reuses plan.s
   // A tampered storeCreate invalidates the revision.
   const fresh = planManifestChange(storeTarget(s.folder), { add: { id: 'verification-loop', ...gitVerificationLoop() } }, {});
   await assert.rejects(withProjectLock(s.folder, new AbortController().signal, async held => applyManifestChange({ ...fresh, storeCreate: true }, fresh.revision, held)), code('STALE_APPROVAL'));
+});
+
+test('C5: MANIFEST_LIMIT names the scope: a store refusal says 256 skills and 4 MiB, a project refusal keeps 128 and 1 MiB', () => {
+  const store = (() => { try { parseManifest(bytesOf(257), STORE_MANIFEST_LIMITS); } catch (e) { return e; } })();
+  assert.equal(store.code, 'MANIFEST_LIMIT'); assert.match(store.message, /at most 256 skills and 4 MiB/); assert.equal(store.hint, 'store-limit');
+  const project = (() => { try { parseManifest(bytesOf(129), MANIFEST_LIMITS); } catch (e) { return e; } })();
+  assert.equal(project.code, 'MANIFEST_LIMIT'); assert.match(project.message, /128 skills and 1 MiB/); assert.equal(project.hint, undefined);
+  assert.throws(() => addLocalEntry(many(256, STORE_MANIFEST_LIMITS), 'x-257', [], STORE_MANIFEST_LIMITS), e => e.hint === 'store-limit');
 });

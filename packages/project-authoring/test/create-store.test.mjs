@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import '../../../dist/tests/support/isolate-home.js';
 import { withStoreForWriteWith } from '../../../dist/packages/project-context/src/store.js';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
-import { parseManifest, STORE_MANIFEST_LIMITS, serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, STORE_MANIFEST_LIMITS, serializeManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { addLocalEntry } from '../../../dist/packages/skill-manifest/src/add.js';
 import { scaffoldTeam } from '../../../dist/packages/startup/src/scaffold.js';
 import { storeBrief } from '../../../dist/packages/project-config/src/brief.js';
@@ -61,6 +61,7 @@ test('2. the team plan reads no brief.json and uses the fixed store brief, ident
   assert.deepEqual(a.files.map(f => [f.path, f.text]), expected.files.map(f => [f.path, f.text]));
   assert.equal((await planCreate(input(w, 'team', 'desk'))).compiledCandidate, scaffoldTeam(storeBrief(undefined), 'desk', 'desk').compiled.candidateRevision);
   assert.equal(a.input.profile, 'founder');
+  assert.equal((await planCreate(input(w, 'team', 'desk'))).input.profile, 'engineer', 'C2: the plan never holds a null profile for the store');
 });
 
 test('3. apply writes each kind, the skills.json entry, and the receipt directly in the store folder', async t => {
@@ -68,7 +69,7 @@ test('3. apply writes each kind, the skills.json entry, and the receipt directly
   const skill = await create(w, input(w, 'skill', 'house-style'));
   assert.deepEqual(skill.items.map(i => [i.kind, i.id]), [['skill', 'house-style']]);
   assert.match(fs.readFileSync(join(w.store, 'skills', 'house-style', 'SKILL.md'), 'utf8'), /^---\nname: house-style\n/);
-  const manifest = parseManifest(fs.readFileSync(join(w.store, 'skills.json')));
+  const manifest = parseManifest(fs.readFileSync(join(w.store, 'skills.json')), MANIFEST_LIMITS);
   assert.deepEqual(manifest.harnesses, ['claude', 'codex']); assert.deepEqual(manifest.skills, [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }]);
   await create(w, input(w, 'prompt', 'weekly-update'));
   await create(w, input(w, 'team', 'research-desk', { profile: 'research' }));
@@ -106,7 +107,7 @@ test('6. --team names a store team; first-team and unknown teams give TEAM_NOT_F
   await create(w, input(w, 'team', 'research'));
   const receipt = await create(w, input(w, 'skill', 'x', { teams: ['research'] }));
   assert.deepEqual(receipt.items.find(i => i.id === 'x').teams, ['research']);
-  assert.deepEqual(parseManifest(fs.readFileSync(join(w.store, 'skills.json'))).skills[0].teams, ['research']);
+  assert.deepEqual(parseManifest(fs.readFileSync(join(w.store, 'skills.json')), MANIFEST_LIMITS).skills[0].teams, ['research']);
   await assert.rejects(planCreate(input(w, 'skill', 'y', { teams: ['first-team'] })), code('TEAM_NOT_FOUND'));
   await assert.rejects(planCreate(input(w, 'prompt', 'p', { teams: ['first-team'] })), code('TEAM_NOT_FOUND'));
   // A folder with no receipt entry is not a store team.
@@ -133,7 +134,7 @@ test('7. a pending record is finished or cleared as in a project, and other byte
   const finished = await create(w, input(w, 'prompt', 'other'));
   assert.deepEqual(finished.items.map(x => x.id).sort(), ['desk', 'other']);
   assert.deepEqual(fs.readdirSync(join(w.store, 'authoring')), ['receipt.json']);
-  assert.deepEqual(parseManifest(fs.readFileSync(join(w.store, 'skills.json'))).skills.map(s => s.id), ['desk']);
+  assert.deepEqual(parseManifest(fs.readFileSync(join(w.store, 'skills.json')), MANIFEST_LIMITS).skills.map(s => s.id), ['desk']);
   // A crash before the item landed: the record is cleared.
   const j = input(w, 'team', 'crew'), plan2 = await planCreate(j);
   await assert.rejects(withStoreForWriteWith(w.home, signal(), async (context, held, created) => {
@@ -214,4 +215,21 @@ test('13. live() for the store verifies the pins: a replaced store.json gives ST
   }, w.hooks), code('STORE_UNSAFE'));
   const after = tree(w.store); delete after['store.json']; delete before['store.json'];
   assert.deepEqual(after, before);
+});
+
+test('S4: a store context for another folder is USAGE', async t => {
+  const w = world(t), i = input(w, 'skill', 'x'), plan = await planCreate(i);
+  await withStoreForWriteWith(w.home, signal(), async (context, held, created) => {
+    await assert.rejects(applyCreate(i, plan.revision, held, { context: { ...context, dir: join(w.base, 'elsewhere') }, created }), code('USAGE'));
+  }, w.hooks);
+});
+
+test('S5: a lock lost after the first write is AUTHORING_WRITE_INTERRUPTED, in the store', async t => {
+  const w = world(t), i = input(w, 'prompt', 'hello'), plan = await planCreate(i), abort = new AbortController();
+  const link = fs.linkSync;
+  await assert.rejects(withStoreForWriteWith(w.home, abort.signal, async (context, held, created) => {
+    // The pending record is the first write; the lock is gone right after it.
+    fs.linkSync = function (from, to) { const r = link.call(this, from, to); if (String(to).endsWith('authoring/pending.json')) abort.abort(); return r; };
+    try { return await applyCreate(i, plan.revision, held, { context, created }); } finally { fs.linkSync = link; }
+  }, w.hooks), code('AUTHORING_WRITE_INTERRUPTED'));
 });

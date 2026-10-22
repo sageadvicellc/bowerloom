@@ -92,3 +92,13 @@ test('storeStateNested is false for two siblings', t => {
   assert.equal(storeStateNested(store, store.dir, b.stateRoot, layout.pins), false);
   assert.equal(storeStateNested(null, store.dir, b.stateRoot, []), false);
 });
+
+test('S2: a seed with no project re-checks that the state folder and the store are apart', async t => {
+  const b = base(t), store = storeIn(b.home), pkg = npmPackage('delta'), signal = new AbortController().signal;
+  const inside = path.join(store.dir, 'state', 'bowerloom');
+  const result = await seedPin({ project: null, stateRoot: inside, store }, pkg.entry, verified(pkg), signal);
+  assert.equal(result.status, 'failed'); assert.deepEqual(result.codes, ['STORE_STATE_NESTED']);
+  assert.equal(fs.existsSync(path.join(store.dir, 'state')), false, 'nothing is made inside the store');
+  const apart = await seedPin({ project: null, stateRoot: b.stateRoot, store }, pkg.entry, verified(pkg), signal);
+  assert.equal(apart.status, 'seeded');
+});

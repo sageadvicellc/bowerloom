@@ -41,7 +41,7 @@ test('ls teams, ls skills and ls prompts show one section; --json is one canonic
   const team = { id: 'first-team', source: 'project', via: [], locked: null, resolvedFrom: 'project', displayName: 'First team', state: 'ok' };
   const assistant = { id: 'personal-assistant', source: 'project', via: [], locked: null, resolvedFrom: 'project', kind: 'local', pin: null, state: 'ok' };
   const fixedFields = { format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'folders', unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0 };
-  assert.deepEqual(JSON.parse(j.stdout), { ...fixedFields, teams: [team], skills: [assistant], prompts: [], pinsReadable: true });
+  assert.deepEqual(JSON.parse(j.stdout), { ...fixedFields, teams: [team], skills: [assistant], prompts: [], pinsReadable: true, pinsError: null });
   assert.deepEqual(JSON.parse(run(p.dir, ['ls', 'teams', '--json'], env).stdout), { ...fixedFields, teams: [team] });
 });
 

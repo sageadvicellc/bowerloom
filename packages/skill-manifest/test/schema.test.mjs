@@ -28,14 +28,14 @@ function sample() {
 // The canonical bytes: fixed key order, entries sorted by id, 2-space indent and a final newline.
 const canonical = m => JSON.stringify(m, null, 2) + '\n';
 const bytes = value => Buffer.from(typeof value === 'string' ? value : canonical(value));
-const parsing = mutate => { const m = sample(); mutate(m); return () => parseManifest(bytes(m)); };
+const parsing = mutate => { const m = sample(); mutate(m); return () => parseManifest(bytes(m), MANIFEST_LIMITS); };
 
 test('the canonical sample parses, and serialize after parse gives the same bytes', () => {
-  const text = canonical(sample()), m = parseManifest(Buffer.from(text));
+  const text = canonical(sample()), m = parseManifest(Buffer.from(text), MANIFEST_LIMITS);
   assert.equal(MANIFEST_FORMAT, 'bowerloom/skills/v1beta1');
   assert.equal(m.skills.length, 3); assert.deepEqual(m.harnesses, ['claude', 'codex']);
-  assert.equal(serializeManifest(m), text);
-  assert.equal(serializeManifest(parseManifest(Buffer.from(serializeManifest(m)))), text);
+  assert.equal(serializeManifest(m, MANIFEST_LIMITS), text);
+  assert.equal(serializeManifest(parseManifest(Buffer.from(serializeManifest(m, MANIFEST_LIMITS)), MANIFEST_LIMITS), MANIFEST_LIMITS), text);
   assert.ok(Object.isFrozen(m) && Object.isFrozen(m.skills[1].files[0]));
 });
 
@@ -43,7 +43,7 @@ test('serialize is canonical: entries by id, files by path, fixed key order, wha
   const m = sample(); m.skills.reverse(); m.skills[1].files.reverse(); m.skills[1].references.reverse();
   const reordered = { skills: m.skills, harnesses: m.harnesses, format: m.format };
   const shuffled = JSON.stringify(reordered, (key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).reverse()) : value);
-  assert.equal(serializeManifest(parseManifest(Buffer.from(shuffled))), canonical(sample()));
+  assert.equal(serializeManifest(parseManifest(Buffer.from(shuffled), MANIFEST_LIMITS), MANIFEST_LIMITS), canonical(sample()));
 });
 
 test('ranges, tags, latest, partial versions, branches and short or upper-case SHAs are not exact pins', () => {
@@ -56,24 +56,24 @@ test('ranges, tags, latest, partial versions, branches and short or upper-case S
   assert.throws(parsing(m => { m.skills[2].source.tree = 'abc123'; }), code('MANIFEST_PIN_NOT_EXACT'));
   assert.throws(parsing(m => { m.skills[2].source.pathTrees[0] = 'main'; }), code('MANIFEST_PIN_NOT_EXACT'));
   // A prerelease version is exact.
-  assert.doesNotThrow(() => parseManifest(Buffer.from(canonical(sample()).replace('"version": "0.0.1"', '"version": "0.0.1-beta.2"'))));
+  assert.doesNotThrow(() => parseManifest(Buffer.from(canonical(sample()).replace('"version": "0.0.1"', '"version": "0.0.1-beta.2"')), MANIFEST_LIMITS));
 });
 
 test('duplicate keys, unknown keys, bad encodings and wrong shapes are invalid', () => {
   const text = canonical(sample());
-  assert.throws(() => parseManifest(Buffer.from(text.replace('"id": "house-style",', '"id": "house-style", "id": "house-style",'))), code('MANIFEST_INVALID'));
-  assert.throws(() => parseManifest(Buffer.from(text.replace('"harnesses"', '"harnesses": ["codex"], "harnesses"'))), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest(Buffer.from(text.replace('"id": "house-style",', '"id": "house-style", "id": "house-style",')), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest(Buffer.from(text.replace('"harnesses"', '"harnesses": ["codex"], "harnesses"')), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
   for (const mutate of [m => { m.extra = 1; }, m => { m.skills[0].note = 'x'; }, m => { m.skills[1].source.archiveSha256 = 'a'.repeat(64); }, m => { m.skills[1].skill.id = 'x'; }, m => { m.skills[1].files[0].mode = 420; }, m => { m.skills[1].license.origin = 'included'; }, m => { m.format = 'bowerloom/skills/v1beta2'; }]) {
     assert.throws(parsing(mutate), code('MANIFEST_INVALID'));
   }
-  for (const raw of ['﻿' + text, '', 'null', '[]', '{}', text.slice(0, -10)]) assert.throws(() => parseManifest(Buffer.from(raw)), code('MANIFEST_INVALID'));
-  assert.throws(() => parseManifest(Buffer.concat([Buffer.from(text.slice(0, 20)), Buffer.from([0xc3, 0x28]), Buffer.from(text.slice(20))])), code('MANIFEST_INVALID'));
-  assert.throws(() => parseManifest('not a buffer'), code('MANIFEST_INVALID'));
+  for (const raw of ['﻿' + text, '', 'null', '[]', '{}', text.slice(0, -10)]) assert.throws(() => parseManifest(Buffer.from(raw), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest(Buffer.concat([Buffer.from(text.slice(0, 20)), Buffer.from([0xc3, 0x28]), Buffer.from(text.slice(20))]), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest('not a buffer', MANIFEST_LIMITS), code('MANIFEST_INVALID'));
 });
 
 test('harnesses are a sorted, unique, non-empty subset of claude and codex', () => {
   for (const harnesses of [[], ['codex', 'claude'], ['claude', 'claude'], ['cursor'], 'claude']) assert.throws(parsing(m => { m.harnesses = harnesses; }), code('MANIFEST_INVALID'), JSON.stringify(harnesses));
-  for (const harnesses of [['claude'], ['codex']]) assert.equal(parseManifest(bytes({ ...sample(), harnesses })).harnesses.length, 1);
+  for (const harnesses of [['claude'], ['codex']]) assert.equal(parseManifest(bytes({ ...sample(), harnesses }), MANIFEST_LIMITS).harnesses.length, 1);
 });
 
 test('ids are unique, well formed, at most 64 characters, and not reserved', () => {
@@ -85,9 +85,9 @@ test('ids are unique, well formed, at most 64 characters, and not reserved', () 
 });
 
 test('teams are optional; when present they are unique team ids', () => {
-  assert.equal(parseManifest(bytes(sample())).skills[0].teams, undefined);
+  assert.equal(parseManifest(bytes(sample()), MANIFEST_LIMITS).skills[0].teams, undefined);
   for (const teams of [[], ['first-team', 'first-team'], ['Bad Team'], 'first-team']) assert.throws(parsing(m => { m.skills[1].teams = teams; }), code('MANIFEST_INVALID'), JSON.stringify(teams));
-  assert.deepEqual(parseManifest(bytes((() => { const m = sample(); m.skills[1].teams = ['writers', 'first-team']; return m; })())).skills[1].teams, ['first-team', 'writers']);
+  assert.deepEqual(parseManifest(bytes((() => { const m = sample(); m.skills[1].teams = ['writers', 'first-team']; return m; })()), MANIFEST_LIMITS).skills[1].teams, ['first-team', 'writers']);
 });
 
 test('only MIT and Apache-2.0 are accepted', () => {
@@ -123,27 +123,27 @@ test('at most 128 skills, local and pinned counted together, and 1 MiB; teams pe
   const local = (n, from = 0) => Array.from({ length: n }, (_, i) => { const id = `local-${String(i + from).padStart(3, '0')}`; return { id, source: { kind: 'local', path: `skills/${id}` } }; });
   const many = n => { const m = sample(); m.skills = local(n); return m; };
   assert.equal(MANIFEST_LIMITS.skills, 128); assert.equal(MANIFEST_LIMITS.teams, 32); assert.equal(MANIFEST_LIMITS.bytes, 1048576);
-  assert.equal(parseManifest(bytes(many(0))).skills.length, 0);
-  assert.equal(parseManifest(bytes(many(33))).skills.length, 33);
-  assert.equal(parseManifest(bytes(many(128))).skills.length, 128);
-  assert.throws(() => parseManifest(bytes(many(129))), code('MANIFEST_LIMIT'));
+  assert.equal(parseManifest(bytes(many(0)), MANIFEST_LIMITS).skills.length, 0);
+  assert.equal(parseManifest(bytes(many(33)), MANIFEST_LIMITS).skills.length, 33);
+  assert.equal(parseManifest(bytes(many(128)), MANIFEST_LIMITS).skills.length, 128);
+  assert.throws(() => parseManifest(bytes(many(129)), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
   // Pinned entries share the count with local ones: the sample's pinned entries plus local ones up to 128, then one more.
   const mixed = n => { const m = sample(); m.skills = [...m.skills, ...local(n - m.skills.length, 500)]; return m; };
   assert.ok(sample().skills.some(e => e.source.kind !== 'local'));
-  assert.equal(parseManifest(bytes(mixed(128))).skills.length, 128);
-  assert.throws(() => parseManifest(bytes(mixed(129))), code('MANIFEST_LIMIT'));
+  assert.equal(parseManifest(bytes(mixed(128)), MANIFEST_LIMITS).skills.length, 128);
+  assert.throws(() => parseManifest(bytes(mixed(129)), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
   // The byte cap still holds, below the count cap as well.
-  assert.throws(() => parseManifest(Buffer.concat([bytes(sample()), Buffer.alloc(1024 * 1024, 0x20)])), code('MANIFEST_LIMIT'));
-  assert.throws(() => parseManifest(Buffer.concat([bytes(many(128)), Buffer.alloc(1024 * 1024, 0x20)])), code('MANIFEST_LIMIT'));
+  assert.throws(() => parseManifest(Buffer.concat([bytes(sample()), Buffer.alloc(1024 * 1024, 0x20)]), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
+  assert.throws(() => parseManifest(Buffer.concat([bytes(many(128)), Buffer.alloc(1024 * 1024, 0x20)]), MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
   const teams = sample(); teams.skills[0].teams = Array.from({ length: 33 }, (_, i) => `team-${i}`);
-  assert.throws(() => parseManifest(bytes(teams)), code('MANIFEST_INVALID'));
-  teams.skills[0].teams = teams.skills[0].teams.slice(0, 32); assert.equal(parseManifest(bytes(teams)).skills[0].teams.length, 32);
+  assert.throws(() => parseManifest(bytes(teams), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  teams.skills[0].teams = teams.skills[0].teams.slice(0, 32); assert.equal(parseManifest(bytes(teams), MANIFEST_LIMITS).skills[0].teams.length, 32);
   assert.equal(manifestRefusal('MANIFEST_LIMIT').message, 'The manifest is too large. It holds at most 128 skills and 1 MiB.');
 });
 
 test('each pinned entry maps onto a request the existing acquisition planners accept', t => {
   const binding = observeSkillCacheRoot(privateFolder(t), 'a'.repeat(32), 12582912);
-  const m = parseManifest(bytes(sample()));
+  const m = parseManifest(bytes(sample()), MANIFEST_LIMITS);
   const npm = toNpmRequest(m.skills[1]);
   assert.equal(npm.declaredLicense, 'MIT'); assert.equal(npm.license.origin, 'included'); assert.deepEqual(npm.skill, { id: 'synthetic-db-collections', name: 'synthetic-db-collections', sourceRoot: 'skills/synthetic-db/collections' });
   assert.ok(npm.files.every(f => f.mode === 420)); assert.equal('registry' in npm, false); assert.equal('kind' in npm, false); assert.equal('teams' in npm, false);
@@ -155,7 +155,7 @@ test('each pinned entry maps onto a request the existing acquisition planners ac
   const gitPlan = planGitAcquisition(git, binding);
   assert.equal(gitPlan.metadataUrl, `https://api.github.com/repos/synthetic-owner/skills-repo/git/commits/${m.skills[2].source.commit}`);
   // The entry id, not the skill name, becomes skill.id.
-  const renamed = parseManifest(bytes((() => { const s = sample(); s.skills[1].id = 'collections'; return s; })()));
+  const renamed = parseManifest(bytes((() => { const s = sample(); s.skills[1].id = 'collections'; return s; })()), MANIFEST_LIMITS);
   assert.deepEqual(toNpmRequest(renamed.skills.find(e => e.id === 'collections')).skill, { id: 'collections', name: 'synthetic-db-collections', sourceRoot: 'skills/synthetic-db/collections' });
   assert.throws(() => toNpmRequest(m.skills[2]), code('MANIFEST_INVALID')); assert.throws(() => toGitRequest(m.skills[0]), code('MANIFEST_INVALID'));
 });
@@ -164,13 +164,13 @@ test('a license outside the skill folder maps faithfully: npm only in the skill 
   const binding = observeSkillCacheRoot(privateFolder(t), 'b'.repeat(32), 12582912);
   const m = sample();
   assert.equal(m.skills[1].files[0].sourcePath, 'LICENSE');
-  assert.doesNotThrow(() => planNpmAcquisition(toNpmRequest(parseManifest(bytes(m)).skills[1]), binding));
+  assert.doesNotThrow(() => planNpmAcquisition(toNpmRequest(parseManifest(bytes(m), MANIFEST_LIMITS).skills[1]), binding));
   // npm: a license in a folder that is not above the skill is refused (review M3 finding 2), as for Git.
   const npmOff = sample(); npmOff.skills[1].files[0].sourcePath = 'docs/LICENSE';
-  assert.throws(() => parseManifest(bytes(npmOff)), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest(bytes(npmOff), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
   // Git: a license beside the skill's own path is accepted by the parser; one in an unrelated folder is not.
   const off = sample(); off.skills[2].files[0].sourcePath = 'docs/LICENSE';
-  assert.throws(() => parseManifest(bytes(off)), code('MANIFEST_INVALID'));
+  assert.throws(() => parseManifest(bytes(off), MANIFEST_LIMITS), code('MANIFEST_INVALID'));
 });
 
 test('skill specs: npm takes a path the same shape as GitHub, and a scoped package is unambiguous', () => {
@@ -192,14 +192,14 @@ test('skill specs: npm takes a path the same shape as GitHub, and a scoped packa
 
 test('an entry may carry skill.allowedTools; a file without it still reads and writes the same bytes', () => {
   const old = canonical(sample());
-  assert.equal(serializeManifest(parseManifest(Buffer.from(old))), old);
+  assert.equal(serializeManifest(parseManifest(Buffer.from(old), MANIFEST_LIMITS), MANIFEST_LIMITS), old);
   const m = sample(); m.skills[1].skill.allowedTools = 'Bash(npx:*) Bash(npm:*)';
   // An npm entry must still pass the acquisition planner, which now carries the field.
-  const text = canonical(m), parsed = parseManifest(Buffer.from(text));
+  const text = canonical(m), parsed = parseManifest(Buffer.from(text), MANIFEST_LIMITS);
   assert.equal(parsed.skills[1].skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
-  assert.equal(serializeManifest(parsed), text);
+  assert.equal(serializeManifest(parsed, MANIFEST_LIMITS), text);
   assert.equal(toNpmRequest(parsed.skills[1]).skill.allowedTools, 'Bash(npx:*) Bash(npm:*)');
-  assert.equal(toNpmRequest(parseManifest(Buffer.from(old)).skills[1]).skill.allowedTools, undefined);
+  assert.equal(toNpmRequest(parseManifest(Buffer.from(old), MANIFEST_LIMITS).skills[1]).skill.allowedTools, undefined);
 });
 test('skill.allowedTools refuses a non-string, empty, long or control-character value', () => {
   for (const value of [7, '', 'x'.repeat(1025), 'a\nb', 'a\0b', ['Bash'], null]) {

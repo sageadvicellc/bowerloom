@@ -12,7 +12,7 @@ import { discoverProject, privateStateRoot } from '../packages/project-context/s
 import { planSync, applySync } from '../packages/project-sync/src/index.js';
 import { planObservedManagedSkill } from '../packages/managed-skills/src/observed.js';
 import { applyObservedManagedSkill } from '../packages/managed-skills/src/transaction.js';
-import { serializeManifest, validateManifest } from '../packages/skill-manifest/src/schema.js';
+import { serializeManifest, validateManifest, MANIFEST_LIMITS } from '../packages/skill-manifest/src/schema.js';
 import { npmPackage, cachePackage } from './support/sync-packages.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
@@ -31,7 +31,7 @@ function run(p: ReturnType<typeof project>, args: string[]) {
   const r = spawnSync(process.execPath, ['--import', preload, cli, ...args], { cwd: p.dir, encoding: 'utf8', timeout: 120000, env: { ...process.env, ...p.env } });
   assert.equal(r.error, undefined); return r;
 }
-function writeManifest(dir: string, skills: unknown[]) { const file = join(dir, '.bowerloom/skills.json'); fs.writeFileSync(file, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills }))); fs.chmodSync(file, 0o644); }
+function writeManifest(dir: string, skills: unknown[]) { const file = join(dir, '.bowerloom/skills.json'); fs.writeFileSync(file, serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills }, MANIFEST_LIMITS), MANIFEST_LIMITS)); fs.chmodSync(file, 0o644); }
 function localSkill(dir: string, id: string) { const root = join(dir, '.bowerloom/skills', id); fs.mkdirSync(root, { recursive: true, mode: 0o755 }); fs.writeFileSync(join(root, 'SKILL.md'), `---\nname: ${id}\ndescription: Authored.\n---\nBe plain.\n`, { mode: 0o644 }); }
 const errorOf = (stderr: string) => (JSON.parse(stderr) as { error: { code: string; message: string } }).error;
 const revisionIn = (stdout: string): string => { const m = /^Revision: ([a-f0-9]{64})$/m.exec(stdout); assert.ok(m, stdout); return m[1]!; };

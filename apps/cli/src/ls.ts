@@ -33,6 +33,10 @@ export interface Listing {
   teams: string[]; skills: string[]; prompts: string[]; unlisted: number;
   /** Per skill id: its kind and pin. Null when skills.json cannot be read, so an agent never reads it as "no pins". */
   skillInfo: ReadonlyMap<string, ListedSkill> | null;
+  /** The code that made skills.json unreadable, or null. */
+  pinsError?: string | null;
+  /** The ids that have a folder under skills/. A local entry with no folder is missing. */
+  skillFolders?: ReadonlySet<string>;
   /** The display name of first-team: the team name the person gave setup. Null when the brief cannot be read. */
   firstTeamName?: string | null;
 }
@@ -45,12 +49,16 @@ function firstTeamName(project: ProjectContext): string | null {
   } catch { return null; }
 }
 /** The entries of skills.json, read with the manifest guards. An empty list when there is no skills.json; null when it cannot be read. */
-function manifestSkills(target: ManifestTarget): ListedSkill[] | null {
+function manifestSkills(target: ManifestTarget): { entries: ListedSkill[]; error: null } | { entries: null; error: string } {
   try {
     const state = readManifestState(target, { allowAbsent: target.scope === 'store' });
-    if (state.file === null) return [];
-    return parseManifest(state.file.bytes, target.limits).skills.map(e => ({ id: e.id, kind: e.source.kind, pin: e.source.kind === 'local' ? null : pinOf(e) }));
-  } catch { return null; }
+    if (state.file === null) return { entries: [], error: null };
+    return { entries: parseManifest(state.file.bytes, target.limits).skills.map(e => ({ id: e.id, kind: e.source.kind, pin: e.source.kind === 'local' ? null : pinOf(e) })), error: null };
+  } catch (error) {
+    // Only a Bowerloom refusal gives its code. Anything else is reported by name, never swallowed.
+    const code = (error as { code?: unknown } | null)?.code;
+    return { entries: null, error: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'MANIFEST_UNREADABLE' };
+  }
 }
 /** Folder names and skills.json entries, one item for each id. */
 function skillItems(folders: readonly string[], entries: ListedSkill[] | null): { ids: string[]; info: ReadonlyMap<string, ListedSkill> | null } {
@@ -82,10 +90,10 @@ export function listProject(project: ProjectContext): Listing {
   verifyProjectPins(project);
   const base = join(project.dir, '.bowerloom');
   const teams = entries(base, 'teams', 'directory'), skills = entries(base, 'skills', 'directory'), prompts = entries(base, 'prompts', 'prompt');
-  const manifest = project.bowerloomIdentity === null ? [] : manifestSkills(projectTarget(project.dir));
-  const items = skillItems(skills.names, manifest), name = teams.names.includes('first-team') ? firstTeamName(project) : null;
+  const manifest = project.bowerloomIdentity === null ? { entries: [] as ListedSkill[], error: null } : manifestSkills(projectTarget(project.dir));
+  const items = skillItems(skills.names, manifest.entries), name = teams.names.includes('first-team') ? firstTeamName(project) : null;
   verifyProjectPins(project);
-  return { scope: 'project', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, firstTeamName: name };
+  return { scope: 'project', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: name };
 }
 
 /** Lists the store at `home`. No store gives empty lists with storeState absent; a foreign or unsafe store refuses with its STORE_* code. */
@@ -96,28 +104,33 @@ export function listStore(home: string): Listing {
   const store = found.context;
   verifyStorePins(store);
   const teams = entries(store.dir, 'teams', 'directory'), skills = entries(store.dir, 'skills', 'directory'), prompts = entries(store.dir, 'prompts', 'prompt');
-  const items = skillItems(skills.names, manifestSkills(storeTarget(store.dir)));
+  const manifest = manifestSkills(storeTarget(store.dir)), items = skillItems(skills.names, manifest.entries);
   verifyStorePins(store);
-  return { scope: 'store', storeState: 'ready', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, firstTeamName: null };
+  return { scope: 'store', storeState: 'ready', teams: teams.names, skills: items.ids, prompts: prompts.names, unlisted: teams.unlisted + skills.unlisted + prompts.unlisted, skillInfo: items.info, pinsError: manifest.error, skillFolders: new Set(skills.names), firstTeamName: null };
 }
 
 const title = (section: Section): string => section[0]!.toUpperCase() + section.slice(1);
 const NO_STORE = 'No store yet. Create one with bowerloom skill create <name> --global.';
 const pinText = (skill: ListedSkill): string => `${skill.kind === 'npm' ? 'npm' : 'GitHub'} ${skill.pin}`;
+/** `pins-unreadable` when skills.json cannot be read; `missing` for a local entry with no folder; else `ok`. */
+function skillState(listing: Listing, id: string): string {
+  if (listing.skillInfo === null) return 'pins-unreadable';
+  return listing.skillInfo.get(id)?.kind === 'local' && listing.skillFolders !== undefined && !listing.skillFolders.has(id) ? 'missing' : 'ok';
+}
 const fixed = (source: ListSource) => ({ via: [] as string[], locked: null, resolvedFrom: source });
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
   const shown = only ? [only] : [...SECTIONS], source = listing.scope, info = listing.skillInfo;
   if (json) {
     const sections: Record<string, unknown> = {
       teams: listing.teams.map(id => ({ id, source, ...fixed(source), displayName: id === 'first-team' && source === 'project' ? listing.firstTeamName ?? null : null, state: 'ok' })),
-      skills: listing.skills.map(id => { const s = info?.get(id) ?? { id, kind: 'local' as const, pin: null }; return { id, source, ...fixed(source), kind: s.kind, pin: s.pin, state: 'ok' }; }),
+      skills: listing.skills.map(id => { const s = info?.get(id) ?? { id, kind: 'local' as const, pin: null }; return { id, source, ...fixed(source), kind: s.kind, pin: s.pin, state: skillState(listing, id) }; }),
       prompts: listing.prompts.map(id => ({ id, source, ...fixed(source), state: 'ok' })),
     };
     return newCommandJson({
       format: 'bowerloom/ls/v1beta2', scope: source, listedBy: 'folders',
       ...Object.fromEntries(shown.map(s => [s, sections[s]])),
       // A skills.json that cannot be read is pinsReadable false, so an agent never reads it as "no pins".
-      ...(shown.includes('skills') ? { pinsReadable: info !== null } : {}),
+      ...(shown.includes('skills') ? { pinsReadable: info !== null, pinsError: info !== null ? null : listing.pinsError ?? 'MANIFEST_UNREADABLE' } : {}),
       unselected: { skills: [], prompts: [], teams: [] }, unlisted: listing.unlisted,
       ...(listing.scope === 'store' ? { storeState: listing.storeState ?? 'ready' } : {}),
     });
@@ -129,12 +142,12 @@ export function renderListing(listing: Listing, only: Section | null, json: bool
   };
   const lines = (s: Section): string[] => s === 'teams'
     ? labelled(listing.teams.map(n => ({ label: n === 'first-team' && source === 'project' && listing.firstTeamName && listing.firstTeamName !== n ? `${n} (${plainText(listing.firstTeamName)})` : plainText(n) })))
-    : s === 'skills' ? labelled(listing.skills.map(id => { const k = info?.get(id); return { label: plainText(id), ...(k && k.kind !== 'local' ? { tail: `pinned: ${plainText(pinText(k))}` } : {}) }; }))
+    : s === 'skills' ? labelled(listing.skills.map(id => { const k = info?.get(id); return { label: plainText(id), ...(k && k.kind !== 'local' ? { tail: `pinned: ${plainText(pinText(k))}` } : skillState(listing, id) === 'missing' ? { tail: 'missing' } : {}) }; }))
     : labelled(listing.prompts.map(n => ({ label: plainText(n) })));
   const blocks = shown.map(s => { const l = lines(s); return `${title(s)}\n${l.length ? l.join('\n') : '  none yet'}\n`; });
   const note = listing.unlisted ? `\nNot listed: ${listing.unlisted} ${listing.unlisted === 1 ? 'entry' : 'entries'} with an unusual name or type. Run bowerloom status.\n` : '';
   const manifest = shown.includes('skills') && info === null
-    ? (source === 'store' ? '\nPinned skills are not listed: the store skills.json cannot be read. Run bowerloom store status.\n' : '\nPinned skills are not listed: .bowerloom/skills.json cannot be read. Run bowerloom skills check.\n') : '';
+    ? (source === 'store' ? '\nPinned skills are not listed: the store skills.json cannot be read. Run bowerloom skills check --global.\n' : '\nPinned skills are not listed: .bowerloom/skills.json cannot be read. Run bowerloom skills check.\n') : '';
   return blocks.join('\n') + note + manifest;
 }
 

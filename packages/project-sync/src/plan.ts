@@ -25,7 +25,7 @@ import { legacyPresent } from '../../managed-skills/src/migrate.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import type { Harness, InventoryRow, ItemClosure, ManagedItemReceipt, ManagedItemRequest, SurfaceId, SurfaceKind } from '../../managed-skills/src/v2-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { isId, parseManifest } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, isId, parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Entry, Manifest, PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { pinOf } from '../../skill-manifest/src/check.js';
@@ -408,7 +408,7 @@ export async function observeSync(input: SyncInput): Promise<Observed> {
     checkProjectAncestry(project);
     const state = readManifestState(dir);
     if (state.file === null) throw manifestRefusal('MANIFEST_NOT_FOUND');
-    const manifest = parseManifest(state.file.bytes);
+    const manifest = parseManifest(state.file.bytes, MANIFEST_LIMITS);
     if (input.team !== null) requireTeam(project, input.team);
     if (legacyPresent(dir)) throw syncError('MANAGED_SKILL_LEGACY_PRESENT');
     if (exists(join(dir, MARKER_V2)) || exists(temporary(join(dir, MARKER_V2)))) throw pendingRefusal(dir);

@@ -271,6 +271,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_UNREADABLE: { sentence: 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -ld ~ ~/.bowerloom' },
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
   STORE_STATE_NESTED: { sentence: 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', next: 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.' },
+  STORE_WRITE_FAILED: { sentence: 'The disk refused the write. The message names the system error.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
   STORE_LOCKED: { sentence: 'Two commands must not change the store at the same time, so nothing was changed.', next: 'When the other command is done, run this one again.' },
   STORE_NOT_A_PROJECT: { sentence: 'Run this command in a project folder outside ~/.bowerloom.', next: 'cd <project-folder>' },
   CONFIG_INVALID: { sentence: 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', next: 'git diff bowerloom.json' },
@@ -285,7 +286,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
-  MANIFEST_LIMIT: { sentence: 'This beta keeps a project skills.json small: 128 skills and 1 MiB at most. The store holds 256 skills and 4 MiB.', next: 'bowerloom skills check' },
+  MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_EXISTS: { sentence: 'skills.json already pins this. To move that skill to another version or commit, add --replace.', next: 'bowerloom skills add <source> --id <id> --replace' },
   SKILLS_ADD_SOURCE_CHANGED: { sentence: '--replace keeps the npm package or GitHub repository and moves only its version or commit. To use another source, add it under a new id.', next: 'bowerloom skills check' },
@@ -370,14 +371,17 @@ export interface RefusalDetail {
   /** True only for an error from newCommandRefusal. */
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
-  readonly hint?: typeof LEFTOVER_TEMP_LINK;
+  readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
 }
 /** The hint of a MANIFEST_UNSAFE whose second link is a leftover `.skills.json.*.tmp` (skill-manifest/src/add.ts). */
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
+/** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
+const STORE_LIMIT = 'store-limit';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
+  if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
     return { sentence: 'An interrupted write left a second link to skills.json, the temporary file .bowerloom/.skills.json.*.tmp. Check that both name the same file, then remove the temporary one.', next: 'ls -li .bowerloom/skills.json .bowerloom/.skills.json.*.tmp' };
   }
@@ -407,7 +411,7 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK ? { hint } : {}) };
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
 }

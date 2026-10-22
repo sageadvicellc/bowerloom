@@ -10,7 +10,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { isHeldProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
-import { manifestRefusal, refuse, requireManifest } from './refusal.js';
+import { manifestRefusal, refuse, requireLimit, requireManifest } from './refusal.js';
 import { HARNESSES, MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
 import type { Entry, Manifest, ManifestLimits } from './schema.js';
 
@@ -54,12 +54,12 @@ export type ManifestChange = { add: Entry } | { replace: Entry };
 export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: number } & ({ added: string } | { replaced: string });
 
 /** Adds a local skill entry to a manifest, or starts one for both harnesses. Pure: the input is not changed. */
-export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits = MANIFEST_LIMITS): Manifest {
+export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits): Manifest {
   requireManifest(isEntryId(id), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(teams) && teams.every(isId) && new Set(teams).size === teams.length, 'MANIFEST_INVALID');
   const base = m === null ? { format: MANIFEST_FORMAT, harnesses: [...HARNESSES], skills: [] as Entry[] } : validateManifest(JSON.parse(serializeManifest(m, limits)), limits);
   requireManifest(!base.skills.some(s => s.id === id), 'MANIFEST_DUPLICATE_ID');
-  requireManifest(base.skills.length < limits.skills, 'MANIFEST_LIMIT');
+  requireLimit(base.skills.length < limits.skills, limits);
   const entry: Entry = { id, ...(teams.length ? { teams: [...teams] } : {}), source: { kind: 'local', path: `skills/${id}` } };
   return validateManifest({ format: base.format, harnesses: [...base.harnesses], skills: [...base.skills, entry] }, limits);
 }
@@ -97,13 +97,13 @@ export function readManifestState(location: string | ManifestTarget, options: { 
   try { stat = fs.lstatSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { bowerloom, file: null }; return refuse('MANIFEST_UNSAFE'); }
   if (stat.isFile() && !stat.isSymbolicLink() && stat.nlink !== 1 && leftoverTempLink(folder, stat)) throw leftoverLinkRefusal();
   requireManifest(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && owned(stat), 'MANIFEST_UNSAFE');
-  requireManifest(stat.size <= limits.bytes, 'MANIFEST_LIMIT');
+  requireLimit(stat.size <= limits.bytes, limits);
   let fd: number; try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); } catch { return refuse('MANIFEST_UNSAFE'); }
   try {
     const opened = fs.fstatSync(fd);
     requireManifest(opened.dev === stat.dev && opened.ino === stat.ino && opened.isFile() && opened.nlink === 1, 'MANIFEST_UNSAFE');
     const buffer = Buffer.alloc(limits.bytes + 1); let length = 0, read = 0;
-    while ((read = fs.readSync(fd, buffer, length, buffer.length - length, null)) > 0) { length += read; requireManifest(length <= limits.bytes, 'MANIFEST_LIMIT'); }
+    while ((read = fs.readSync(fd, buffer, length, buffer.length - length, null)) > 0) { length += read; requireLimit(length <= limits.bytes, limits); }
     requireManifest(length === opened.size, 'MANIFEST_UNSAFE');
     const bytes = Buffer.from(buffer.subarray(0, length));
     return { bowerloom, file: { bytes, sha256: sha256(bytes) } };
@@ -152,7 +152,7 @@ export function planManifestChange(location: string | ManifestTarget, change: Ma
     skills = current!.skills.map(s => s.id === entry.id ? entry : s);
   } else {
     if (current) requireManifest(!current.skills.some(s => s.id === entry.id || sourceKey(s) === sourceKey(entry)), 'SKILLS_ADD_EXISTS');
-    requireManifest((current?.skills.length ?? 0) < limits.skills, 'MANIFEST_LIMIT');
+    requireLimit((current?.skills.length ?? 0) < limits.skills, limits);
     skills = [...(current?.skills ?? []), entry];
   }
   const next = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills }, limits);

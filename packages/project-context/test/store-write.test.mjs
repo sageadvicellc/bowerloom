@@ -5,7 +5,8 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import '../../../dist/tests/support/isolate-home.js';
-import { withStoreForWriteWith, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
+import { syncBuiltinESMExports } from 'node:module';
+import { withStoreForWriteWith, inspectStoreWith, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
 import { withStoreForWrite, withProjectLock, lockSlot, projectRefusal } from '../../../dist/packages/project-context/src/index.js';
 
 const code = expected => error => error?.code === expected;
@@ -61,8 +62,9 @@ test('5. a held lock gives STORE_LOCKED, a slot collision and an unavailable loc
   });
   // A program that holds the port and does not answer as the lock: PROJECT_LOCK_SLOT_COLLISION.
   const squat = net.createServer(socket => { socket.on('error', () => {}); socket.end('not the banner\n'); });
-  await new Promise((resolve, reject) => { squat.once('error', reject); squat.listen({ host: '127.0.0.1', port: lockSlot(w.store).port, exclusive: true }, resolve); }).catch(() => null);
-  if (!squat.listening) { t.diagnostic('the lock port was taken; the collision case is skipped'); }
+  const port = lockSlot(w.store).port;
+  const bound = await new Promise(resolve => { squat.once('error', e => resolve(e.code)); squat.listen({ host: '127.0.0.1', port, exclusive: true }, () => resolve('bound')); });
+  if (bound !== 'bound') { t.skip(`the lock port ${port} is taken on this machine (${bound}), so the collision case cannot run`); }
   else { try { await assert.rejects(run(w, async () => {}), code('PROJECT_LOCK_SLOT_COLLISION')); } finally { await new Promise(r => squat.close(r)); } }
   // Any other refusal thrown inside work passes through unchanged.
   await assert.rejects(run(w, async () => { throw projectRefusal('PROJECT_LOCK_UNAVAILABLE'); }), code('PROJECT_LOCK_UNAVAILABLE'));
@@ -91,8 +93,9 @@ test('8. a cloud-synced home refuses STORE_IN_CLOUD_FOLDER and step 1 leaves at 
   let called = false;
   await assert.rejects(withStoreForWriteWith(home, signal(), async () => { called = true; }, { accountHome: account }), code('STORE_IN_CLOUD_FOLDER'));
   assert.equal(called, false);
-  const left = fs.readdirSync(home); assert.ok(left.length <= 1);
-  for (const name of left) assert.deepEqual(fs.readdirSync(path.join(home, name)), []);
+  // The refusal comes at step 3, after step 1 made one empty store folder, and nothing else was written.
+  assert.deepEqual(fs.readdirSync(home), ['.bowerloom']);
+  assert.deepEqual(fs.readdirSync(path.join(home, '.bowerloom')), []);
 });
 
 test('9. a valid store with a leftover temporary file loses the file and gives created false', async t => {
@@ -119,4 +122,43 @@ test('11. an empty store folder is a leftover: the first write makes the store i
   let created;
   await run(w, async (store, held, c) => { created = c; });
   assert.equal(created, true); assert.deepEqual(fs.readdirSync(w.store), ['store.json']);
+});
+
+test('12. S1: a leftover folder with mode 0755 is made 0700 before store.json is written', async t => {
+  const w = world(t); fs.mkdirSync(w.store, { mode: 0o755 }); fs.chmodSync(w.store, 0o755);
+  await run(w, async () => {});
+  assert.equal(fs.statSync(w.store).mode & 0o777, 0o700);
+});
+
+test('13. S6: a .DS_Store alone in the store folder is a leftover, and the store is made beside it', async t => {
+  const w = world(t); fs.mkdirSync(w.store, { mode: 0o700 }); fs.writeFileSync(path.join(w.store, '.DS_Store'), 'x');
+  assert.equal(inspectStoreWith(w.home, w.hooks).state, 'absent');
+  let created;
+  await run(w, async (store, held, c) => { created = c; });
+  assert.equal(created, true);
+  assert.equal(inspectStoreWith(w.home, w.hooks).state, 'store', 'the store stays valid with the .DS_Store in it');
+});
+
+test('14. C3b: store.json is written through a temporary and a rename, never by writing the final path', async t => {
+  const w = world(t), finalPath = path.join(w.store, 'store.json'), writes = [], renames = [];
+  const writeFile = fs.writeFileSync, rename = fs.renameSync, open = fs.openSync;
+  fs.writeFileSync = (file, ...rest) => { writes.push(String(file)); return writeFile(file, ...rest); };
+  fs.renameSync = (from, to) => { renames.push([String(from), String(to)]); return rename(from, to); };
+  fs.openSync = (file, flags, ...rest) => { if (String(file) === finalPath && (flags & fs.constants.O_CREAT)) writes.push(`open:${file}`); return open(file, flags, ...rest); };
+  syncBuiltinESMExports();
+  try { await run(w, async () => {}); } finally { fs.writeFileSync = writeFile; fs.renameSync = rename; fs.openSync = open; syncBuiltinESMExports(); }
+  assert.deepEqual(writes.filter(x => x.endsWith('store.json') || x.startsWith('open:')), []);
+  assert.equal(renames.length, 1); assert.match(renames[0][0], /\.store\.json\.[a-f0-9]{16}\.tmp$/); assert.equal(renames[0][1], finalPath);
+});
+
+test('15. F1: a failed write is STORE_WRITE_FAILED with the system error, and read failures stay STORE_UNREADABLE', async t => {
+  const w = world(t), open = fs.openSync;
+  fs.openSync = (file, flags, ...rest) => { if (String(file).endsWith('.tmp')) throw Object.assign(new Error('no space'), { code: 'ENOSPC' }); return open(file, flags, ...rest); };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(run(w, async () => {}), error => { assert.equal(error.code, 'STORE_WRITE_FAILED'); assert.match(error.message, /ENOSPC/); return true; });
+  } finally { fs.openSync = open; syncBuiltinESMExports(); }
+  // The folder step 1 made is an empty leftover: the next run succeeds.
+  await run(w, async () => {});
+  assert.equal(inspectStoreWith(w.home, w.hooks).state, 'store');
 });

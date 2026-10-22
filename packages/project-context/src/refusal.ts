@@ -21,6 +21,7 @@ const MESSAGES = {
   STORE_UNREADABLE: 'Bowerloom cannot read the store or a folder on the way to it.',
   STORE_IN_CLOUD_FOLDER: 'The store is in a cloud-synced folder.',
   STORE_NOT_A_PROJECT: 'The store holds definitions only, so a folder inside it cannot be a project.',
+  STORE_WRITE_FAILED: 'Bowerloom could not write to the store.',
   STORE_LOCKED: 'Another Bowerloom command is changing the store.',
   STORE_STATE_NESTED: 'The private state folder and the store must not be inside one another.',
   CONFIG_UNREADABLE: 'Bowerloom cannot read bowerloom.json.',
@@ -29,3 +30,9 @@ const MESSAGES = {
 
 export type ProjectRefusalCode = keyof typeof MESSAGES;
 export const refuse = (code: ProjectRefusalCode): DefinitionError => new DefinitionError(code, MESSAGES[code]);
+
+/** STORE_WRITE_FAILED with the system error named in the message. Only an upper-case system name is kept. */
+export function storeWriteFailed(error: unknown): DefinitionError {
+  const name = (error as NodeJS.ErrnoException | null)?.code;
+  return new DefinitionError('STORE_WRITE_FAILED', `${MESSAGES.STORE_WRITE_FAILED} System error: ${typeof name === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(name) ? name : 'UNKNOWN'}.`);
+}

@@ -127,7 +127,7 @@ function openScope(input: Normalized): Scope {
     const found = lstatOrNull(dir);
     if (found === null) return { kind: 'store', dir, bowerloom: dir, identity: null, exists: false };
     realFolder(dir);
-    const exists = fs.readdirSync(dir).some(name => !LEFTOVER_TEMP.test(name));
+    const exists = fs.readdirSync(dir).some(name => !LEFTOVER_TEMP.test(name) && name !== '.DS_Store');
     return { kind: 'store', dir, bowerloom: dir, identity: null, exists };
   }
   let real: string; try { real = fs.realpathSync(dir); } catch { return refuse('AUTHORING_UNSAFE_PATH'); }
@@ -184,7 +184,7 @@ function currentManifest(project: Scope): { manifest: Manifest | null; read: Rea
   return state.file ? { manifest: parseManifest(state.file.bytes, target.limits), read: { sha256: state.file.sha256, bytes: state.file.bytes.length } } : { manifest: null, read: null };
 }
 /** One skills.json step: M3's addLocalEntry on the bytes before it. Pure: it reads and writes nothing. */
-function manifestStep(current: { manifest: Manifest | null; read: Read | null }, id: string, teams: readonly string[], limits: ManifestLimits = MANIFEST_LIMITS): { step: ManifestStep; next: { manifest: Manifest; read: Read } } {
+function manifestStep(current: { manifest: Manifest | null; read: Read | null }, id: string, teams: readonly string[], limits: ManifestLimits): { step: ManifestStep; next: { manifest: Manifest; read: Read } } {
   const manifest = addLocalEntry(current.manifest, id, [...teams], limits), text = serializeManifest(manifest, limits);
   const after = { sha256: sha256(text), bytes: Buffer.byteLength(text) };
   return { step: { id, teams: [...teams], before: current.read, after }, next: { manifest, read: after } };
@@ -281,7 +281,7 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
   if (steps.length) manifest = { before: steps[0]!.before, after: steps[steps.length - 1]!.after, steps };
   const body: Omit<CreatePlan, 'revision'> = {
     format: AUTHORING_PLAN_FORMAT, project: project.dir, scope: project.kind, storeCreate: isStore && (!project.exists || created), bowerloom: project.identity,
-    input: { kind: input.kind, name: input.name, teams: input.teams, profile: input.profile },
+    input: { kind: input.kind, name: input.name, teams: input.teams, profile: isStore ? (input.profile ?? 'engineer') : input.profile },
     reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead },
     scratch: state.scratch, discard, settled, finish,
     item: isFinish || restore ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
@@ -303,6 +303,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
   const normalized = normalizeInput(input);
   // The store scope never creates the store: its caller (withStoreForWrite) did, and says so in `store.created`.
   ensure((normalized.scope === 'store') === (store !== undefined), 'USAGE');
+  ensure(store === undefined || store.context.dir === normalized.project, 'USAGE');
   try { held.assertHeld(normalized.project); } catch { refuse('PROJECT_LOCKED'); }
   ensure(isRevision(revision), 'STALE_APPROVAL');
   const p = await plan(normalized, store?.created ?? false);
@@ -398,7 +399,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     if (p.item) writeReceipt([...items, item]);
     removePending(pendingSha);
   }
-  } catch (error) { if (wrote && (error as { code?: unknown })?.code === 'STALE_APPROVAL') refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }
+  } catch (error) { const failed = (error as { code?: unknown })?.code; if (wrote && (failed === 'STALE_APPROVAL' || failed === 'PROJECT_LOCKED')) refuse('AUTHORING_WRITE_INTERRUPTED'); throw error; }
   live();
   return receiptOf(items);
 }

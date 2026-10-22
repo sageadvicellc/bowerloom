@@ -9,7 +9,7 @@ import { strictUtf8 } from '../../skill-sources/src/cache.js';
 import { planNpmAcquisition } from '../../skill-sources/src/npm.js';
 import { planGitAcquisition } from '../../skill-sources/src/git.js';
 import type { SkillLicense } from '../../skill-sources/src/types.js';
-import { refuse, requireManifest } from './refusal.js';
+import { refuse, requireLimit, requireManifest } from './refusal.js';
 import { toNpmRequest, toGitRequest, probeBinding } from './requests.js';
 import { LICENSE_NAME } from './content.js';
 
@@ -144,13 +144,13 @@ export function validateEntry(value: unknown): Entry {
 }
 
 /** Checks a whole manifest value and returns it normalized and frozen. Entries are sorted by id. */
-export function validateManifest(value: unknown, limits: ManifestLimits = MANIFEST_LIMITS): Manifest {
+export function validateManifest(value: unknown, limits: ManifestLimits): Manifest {
   const v = record(value, ['format', 'harnesses', 'skills']);
   requireManifest(v.format === MANIFEST_FORMAT, 'MANIFEST_INVALID');
   const h = v.harnesses;
   requireManifest(Array.isArray(h) && h.length > 0 && h.every(x => (HARNESSES as readonly unknown[]).includes(x)) && h.every((x, i) => i === 0 || compare(h[i - 1] as string, x as string) < 0), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(v.skills), 'MANIFEST_INVALID');
-  requireManifest(v.skills.length <= limits.skills, 'MANIFEST_LIMIT');
+  requireLimit(v.skills.length <= limits.skills, limits);
   const skills = (v.skills as unknown[]).map(validateEntry);
   requireManifest(new Set(skills.map(s => s.id)).size === skills.length, 'MANIFEST_DUPLICATE_ID');
   skills.sort((a, b) => compare(a.id, b.id));
@@ -158,9 +158,9 @@ export function validateManifest(value: unknown, limits: ManifestLimits = MANIFE
 }
 
 /** Strict parse: at most 1 MiB of UTF-8 with no byte order mark, no duplicate or unknown keys. */
-export function parseManifest(bytes: Buffer, limits: ManifestLimits = MANIFEST_LIMITS): Manifest {
+export function parseManifest(bytes: Buffer, limits: ManifestLimits): Manifest {
   requireManifest(Buffer.isBuffer(bytes), 'MANIFEST_INVALID');
-  requireManifest(bytes.length <= limits.bytes, 'MANIFEST_LIMIT');
+  requireLimit(bytes.length <= limits.bytes, limits);
   requireManifest(!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf), 'MANIFEST_INVALID');
   const text = strictUtf8(bytes); requireManifest(text !== null, 'MANIFEST_INVALID');
   let value: unknown;
@@ -184,7 +184,7 @@ function serializeEntry(e: Entry) {
   };
 }
 /** Canonical bytes: fixed key order, entries sorted by id, 2-space indent and a final newline. The result is checked. */
-export function serializeManifest(m: Manifest, limits: ManifestLimits = MANIFEST_LIMITS): string {
+export function serializeManifest(m: Manifest, limits: ManifestLimits): string {
   requireManifest(m !== null && typeof m === 'object' && Array.isArray(m.skills) && Array.isArray(m.harnesses), 'MANIFEST_INVALID');
   const text = `${JSON.stringify({ format: m.format, harnesses: [...m.harnesses], skills: [...m.skills].sort((a, b) => compare(a.id, b.id)).map(serializeEntry) }, null, 2)}\n`;
   parseManifest(Buffer.from(text), limits);

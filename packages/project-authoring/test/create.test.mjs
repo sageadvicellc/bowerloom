@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { planStartup, applyStartup, inspectStartup } from '../../../dist/packages/startup/src/index.js';
 import { withProjectLock, lockSlot, lockServer } from '../../../dist/packages/project-context/src/index.js';
 import { planCreate, applyCreate, authoringVerifier, manifestVerifier, AUTHORING_REFUSAL_CODES } from '../../../dist/packages/project-authoring/src/index.js';
-import { parseManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const code = expected => error => { assert.equal(error?.code, expected, error?.stack); return true; };
@@ -73,7 +73,7 @@ test('skill create writes skills/<id>/SKILL.md and the local entry in skills.jso
   assert.deepEqual(plan.files.map(f => f.path), ['skills/house-style/SKILL.md']); assert.match(plan.files[0].text, /^---\nname: house-style\n/);
   await withProjectLock(p.dir, signal(), held => applyCreate(first, plan.revision, held));
   const after1 = fs.readFileSync(join(p.bowerloom, 'skills.json'));
-  assert.deepEqual(parseManifest(after1).skills, [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }]);
+  assert.deepEqual(parseManifest(after1, MANIFEST_LIMITS).skills, [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }]);
 
   const second = { kind: 'skill', project: p.dir, name: 'brand-voice', teams: ['first-team'] };
   const plan2 = await planCreate(second);
@@ -85,7 +85,7 @@ test('skill create writes skills/<id>/SKILL.md and the local entry in skills.jso
   assert.deepEqual(tree(p.dir), changed);
   fs.writeFileSync(join(p.bowerloom, 'skills.json'), after1);
   await withProjectLock(p.dir, signal(), held => applyCreate(second, plan2.revision, held));
-  assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json'))).skills.map(s => [s.id, s.teams]), [['brand-voice', ['first-team']], ['house-style', undefined]]);
+  assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json')), MANIFEST_LIMITS).skills.map(s => [s.id, s.teams]), [['brand-voice', ['first-team']], ['house-style', undefined]]);
   assert.deepEqual(readReceipt(p).items.map(i => [i.kind, i.id, i.teams]), [['skill', 'brand-voice', ['first-team']], ['skill', 'house-style', []]]);
   assert.equal((await inspectStartup(p.dir, { owners: owners(p.dir) })).status, 'ready-for-review');
 });
@@ -227,7 +227,7 @@ test('a crash between the item and the receipt is finished on the next run, only
     const receipt = await withProjectLock(p.dir, signal(), held => applyCreate(input, next.revision, held));
     assert.deepEqual(receipt.items.map(i => [i.kind, i.id, i.planRevision]), [[kind, 'desk', plan.revision]]);
     assert.deepEqual(fs.readdirSync(join(p.bowerloom, 'authoring')), ['receipt.json'], kind);
-    if (kind === 'skill') assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json'))).skills.map(s => s.id), ['desk']);
+    if (kind === 'skill') assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json')), MANIFEST_LIMITS).skills.map(s => s.id), ['desk']);
     const after = await inspectStartup(p.dir, { owners: owners(p.dir) });
     assert.equal(after.status, 'ready-for-review', `${kind} ${JSON.stringify(after.drift)}`);
   }
@@ -257,7 +257,7 @@ test('a crash before the item landed is cleared on the next run; a skill whose s
   const finish = await planCreate(skill);
   assert.equal(finish.finish.id, 'voice'); assert.equal(finish.manifest.before, null);
   await withProjectLock(p.dir, signal(), held => applyCreate(skill, finish.revision, held));
-  assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json'))).skills, [{ id: 'voice', teams: ['desk'], source: { kind: 'local', path: 'skills/voice' } }]);
+  assert.deepEqual(parseManifest(fs.readFileSync(join(p.bowerloom, 'skills.json')), MANIFEST_LIMITS).skills, [{ id: 'voice', teams: ['desk'], source: { kind: 'local', path: 'skills/voice' } }]);
   assert.equal((await inspectStartup(p.dir, { owners: owners(p.dir) })).status, 'ready-for-review');
 });
 

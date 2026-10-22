@@ -1,4 +1,5 @@
 import test from 'node:test';
+import '../../../dist/tests/support/isolate-home.js';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';

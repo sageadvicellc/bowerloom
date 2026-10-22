@@ -11,7 +11,8 @@
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
-import { withCacheLock } from '../../project-context/src/index.js';
+import { projectRefusal, withCacheLock } from '../../project-context/src/index.js';
+import type { StoreContext } from '../../project-context/src/index.js';
 import type { ProjectContext } from '../../project-context/src/types.js';
 import { observeSkillCacheRoot, refusalSummary, seedSkillCache } from '../../skill-sources/src/cache.js';
 import { planNpmAcquisition } from '../../skill-sources/src/npm.js';
@@ -20,7 +21,7 @@ import { directory, exists } from '../../managed-skills/src/observed.js';
 import type { PinnedEntry } from '../../skill-manifest/src/schema.js';
 import type { VerifiedBytes } from '../../skill-manifest/src/content.js';
 import { entryRequest, lookupCache, receiptMatches } from './cache-index.js';
-import { MIN_FREE_BYTES, cacheLayout, stateLayout } from './plan.js';
+import { MIN_FREE_BYTES, cacheLayout, stateLayout, storeStateNested } from './plan.js';
 import { syncError } from './refusal.js';
 
 /** How long a seed waits for the cache lock that another command holds. A seed that cannot wait is reported. */
@@ -31,7 +32,11 @@ export type SeedResult = { root: string; status: 'seeded' | 'present' } | { root
 /** The fixed codes of a seed failure: a Bowerloom refusal's code, or the listed cache codes. Never a message. */
 function codesOf(error: unknown): string[] {
   if (error instanceof DefinitionError) return [error.code];
-  const summary = refusalSummary(error); return [...summary.codes];
+  const summary = refusalSummary(error);
+  if (summary.codes.length) return [...summary.codes];
+  // A failure the cache code does not name still gets a name: its own code, else its error name.
+  const own = (error as { code?: unknown } | null)?.code, name = (error as { name?: unknown } | null)?.name;
+  return [typeof own === 'string' && /^[A-Z0-9_]{1,64}$/.test(own) ? own : typeof name === 'string' && /^[A-Za-z]{1,64}$/.test(name) ? name : 'UNKNOWN_FAILURE'];
 }
 /** Creates the missing shared folders of the state chain and the cache, mode 0700. Another run may create one first. */
 function sharedFolders(layout: { root: string | null; missing: string[] }): void {
@@ -46,10 +51,12 @@ function sharedFolders(layout: { root: string | null; missing: string[] }): void
 }
 
 /** Seeds the machine cache with one pinned entry's verified bytes. Never throws: a failure is the result. */
-export async function seedPin(input: { project: ProjectContext | null; stateRoot: string }, entry: PinnedEntry, bytes: VerifiedBytes, signal: AbortSignal): Promise<SeedResult> {
+export async function seedPin(input: { project: ProjectContext | null; stateRoot: string; store?: StoreContext | null }, entry: PinnedEntry, bytes: VerifiedBytes, signal: AbortSignal): Promise<SeedResult> {
   const root = join(input.stateRoot, 'cache');
   try {
     const layout = input.project === null ? cacheLayout(input.stateRoot) : stateLayout({ project: input.project, stateRoot: input.stateRoot }), pinned = entryRequest(entry);
+    // With no project, the store is the other folder the state must keep apart from. It is checked again here, after the write.
+    if (input.project === null && input.store) { if (storeStateNested(input.store, input.store.dir, input.stateRoot, layout.pins)) throw projectRefusal('STORE_STATE_NESTED'); }
     if (bytes.kind !== pinned.kind) throw syncError('SKILLS_SYNC_CONTENT_MISMATCH');
     sharedFolders(layout);
     return await withCacheLock(layout.cacheRoot, signal, async held => {
