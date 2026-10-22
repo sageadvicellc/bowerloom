@@ -114,6 +114,18 @@ A slice selects files from one folder, and `apply` turns it into a short list of
 
 [Errors](/docs/reference/errors/#project-and-approval-refusals) lists the other project refusals.
 
+## Create an item in your store
+
+Add `--global` to create an item in your store, `~/.bowerloom`, and not in a project. It works from any folder. The first `--global` write makes the store, and the plan says so first. The store holds definitions only. A project picks store items with `bowerloom use`.
+
+```sh
+bowerloom team create research-desk --profile research --global
+bowerloom skill create house-style --global
+bowerloom prompt create weekly-update --global
+```
+
+Each command shows the plan and its revision. Run it again with `--approve <revision>` to write. A team in the store is built from a fixed store brief and the profile you choose, and it does not read a project brief. `--team <team>` on a skill or prompt names a team in the store. `bowerloom ls --global` lists what the store holds. A store that Bowerloom did not make refuses with `STORE_INVALID`.
+
 ## Limits in this beta
 
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.

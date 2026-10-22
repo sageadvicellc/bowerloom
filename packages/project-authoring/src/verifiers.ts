@@ -6,7 +6,7 @@
 import { isAbsolute, join, resolve } from 'node:path';
 import type { OwnedEntryKind, OwnerVerdict, OwnerVerifier } from '../../project-context/src/types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { parseManifest } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, parseManifest } from '../../skill-manifest/src/schema.js';
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { LIMITS, folderNames, lstatOrNull, readGuarded, readTree, realFolder, sha256 } from './files.js';
 import { AGENT_STEM, AGENT_STEM_MAX, parseAgentOrRefuse, skippedAgentName } from './agent-file.js';
@@ -138,7 +138,7 @@ export function manifestVerifier(project: string): OwnerVerifier {
       try {
         const state = readManifestState(project);
         if (state.file === null) return refused('MANIFEST_NOT_FOUND');
-        parseManifest(state.file.bytes);
+        parseManifest(state.file.bytes, MANIFEST_LIMITS);
         return verified;
       } catch (error) { return refused(isManifestRefusal(error) ? error.code : 'MANIFEST_INVALID'); }
     },

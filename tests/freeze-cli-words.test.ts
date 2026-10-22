@@ -107,17 +107,17 @@ test('findings 9, 10, 11, 15 and 16: apply names only the chosen harness; check,
 
   // 11: ls teams shows the name the person typed for first-team; ls skills includes the pinned skills.
   const teams = run(p, ['ls', 'teams']); assert.equal(teams.status, 0, teams.stderr);
-  assert.equal(teams.stdout, 'Teams\n  first-team (research-desk)\n');
-  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams, ['first-team']);
+  assert.equal(teams.stdout, 'Teams\n  first-team (research-desk)  project\n');
+  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams.map((x: { id: string }) => x.id), ['first-team']);
   const skills = run(p, ['ls', 'skills']); assert.equal(skills.status, 0, skills.stderr);
-  assert.match(skills.stdout, /^ {2}cached-notes +pinned: npm @synthetic\/cached-notes@1\.0\.0$/m); assert.match(skills.stdout, /^ {2}tone-guide$/m);
-  const listed = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { skills: string[]; pinned: string[] };
-  assert.deepEqual(listed.pinned, ['cached-notes']); assert.ok(listed.skills.includes('tone-guide'));
-  // F' code review B: a skills.json that cannot be read is pinned: null in JSON, never an empty list.
+  assert.match(skills.stdout, /^ {2}cached-notes +project {2}pinned: npm @synthetic\/cached-notes@1\.0\.0:skills\/cached-notes$/m); assert.match(skills.stdout, /^ {2}tone-guide +project$/m);
+  const listed = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { skills: { id: string; kind: string; pin: string | null }[]; pinsReadable: boolean };
+  assert.deepEqual(listed.skills.filter(x => x.kind !== 'local').map(x => x.id), ['cached-notes']); assert.ok(listed.skills.some(x => x.id === 'tone-guide')); assert.equal(listed.pinsReadable, true);
+  // F' code review B: a skills.json that cannot be read is pinsReadable false in JSON, never an empty list of pins.
   const good = readFileSync(join(p.dir, '.bowerloom/skills.json'));
   writeFileSync(join(p.dir, '.bowerloom/skills.json'), '{ not json');
-  const broken = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { pinned: unknown };
-  assert.ok(Object.hasOwn(broken, 'pinned')); assert.equal(broken.pinned, null);
+  const broken = JSON.parse(run(p, ['ls', 'skills', '--json']).stdout) as { pinsReadable: unknown };
+  assert.ok(Object.hasOwn(broken, 'pinsReadable')); assert.equal(broken.pinsReadable, false);
   assert.match(run(p, ['ls', 'skills']).stdout, /^Pinned skills are not listed: \.bowerloom\/skills\.json cannot be read\./m);
   writeFileSync(join(p.dir, '.bowerloom/skills.json'), good);
   writeFileSync(join(p.dir, '.bowerloom/skills.json'), JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'tone-guide', source: { kind: 'local', path: 'skills/tone-guide' } }] }, null, 2) + '\n');

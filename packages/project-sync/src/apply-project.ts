@@ -20,7 +20,7 @@ import { temporary } from '../../managed-skills/src/observed.js';
 import type { Harness, ManagedItemRequest } from '../../managed-skills/src/v2-types.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { readManifestState } from '../../skill-manifest/src/add.js';
-import { isId, parseManifest } from '../../skill-manifest/src/schema.js';
+import { MANIFEST_LIMITS, isId, parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Entry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
@@ -126,7 +126,7 @@ const sliceActionable = (s: SliceItem): boolean => s.action === 'install' || s.a
 function plainSkillIds(dir: string): Set<string> {
   const out = new Set<string>();
   try { for (const n of readdirSync(join(dir, '.bowerloom', 'skills'))) if (n.startsWith('slice-')) out.add(n); } catch { /* No local skills folder. */ }
-  try { const state = readManifestState(dir); if (state.file !== null) for (const e of parseManifest(state.file.bytes).skills) if (e.id.startsWith('slice-')) out.add(e.id); } catch { /* A manifest that cannot be read names none. */ }
+  try { const state = readManifestState(dir); if (state.file !== null) for (const e of parseManifest(state.file.bytes, MANIFEST_LIMITS).skills) if (e.id.startsWith('slice-')) out.add(e.id); } catch { /* A manifest that cannot be read names none. */ }
   return out;
 }
 

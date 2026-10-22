@@ -11,7 +11,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { denyNetwork } from './support/fixtures.mjs';
 import { npmCollections } from './support/expected.mjs';
 import { createPublicTransport, PUBLIC_GET_LIMITS } from '../../../dist/packages/skill-manifest/src/public-get.js';
-import { parseManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { addLocalEntry, planManifestChange, applyManifestChange } from '../../../dist/packages/skill-manifest/src/add.js';
 import { serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { checkManifest } from '../../../dist/packages/skill-manifest/src/check.js';
@@ -62,7 +62,7 @@ function npmLicense(sourcePath, filePath = path.posix.basename(sourcePath)) {
 }
 test('finding 2: an npm license file outside the skill folder sits in the skill folder or a folder above it, has a LICENSE name, and keeps that name', () => {
   assert.equal(npmCollections().skill.sourceRoot, 'skills/synthetic-db/collections');
-  for (const ok of ['LICENSE', 'skills/LICENSE', 'skills/synthetic-db/LICENSE.md', 'LICENSE-MIT']) assert.doesNotThrow(() => parseManifest(npmLicense(ok)), ok);
+  for (const ok of ['LICENSE', 'skills/LICENSE', 'skills/synthetic-db/LICENSE.md', 'LICENSE-MIT']) assert.doesNotThrow(() => parseManifest(npmLicense(ok), MANIFEST_LIMITS), ok);
   const refused = [
     ['dist/index.js', 'docs/NOTICE'], // the review's probe: any package file mapped in as a license
     ['docs/LICENSE', 'LICENSE'], // a folder that is not above the skill
@@ -72,7 +72,7 @@ test('finding 2: an npm license file outside the skill folder sits in the skill 
     ['NOTICE', 'NOTICE'], // not a LICENSE name
     ['COPYING', 'LICENSE'],
   ];
-  for (const [sourcePath, filePath] of refused) assert.throws(() => parseManifest(npmLicense(sourcePath, filePath)), code('MANIFEST_INVALID'), `${sourcePath} as ${filePath}`);
+  for (const [sourcePath, filePath] of refused) assert.throws(() => parseManifest(npmLicense(sourcePath, filePath), MANIFEST_LIMITS), code('MANIFEST_INVALID'), `${sourcePath} as ${filePath}`);
 });
 
 function project(t) {
@@ -86,7 +86,7 @@ const local = id => ({ id, source: { kind: 'local', path: `skills/${id}` } });
 test('finding 5: a read after the write that does not match has its own code and says the file was written', async t => {
   for (const existing of [false, true]) {
     const p = project(t);
-    if (existing) fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'first', [])));
+    if (existing) fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'first', [], MANIFEST_LIMITS), MANIFEST_LIMITS));
     const plan = planManifestChange(p.dir, { add: local('second') });
     const place = existing ? 'renameSync' : 'linkSync', original = fs[place];
     // Another program writes skills.json the moment after Bowerloom put its bytes in place.
@@ -103,7 +103,7 @@ test('finding 5: a read after the write that does not match has its own code and
 
 test('finding 5: a MANIFEST_UNSAFE from a leftover second link names the .skills.json.*.tmp file in its plain words, with no absolute path', t => {
   const p = project(t);
-  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'first', [])));
+  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'first', [], MANIFEST_LIMITS), MANIFEST_LIMITS));
   fs.linkSync(p.file, path.join(p.dir, '.bowerloom', '.skills.json.0123456789abcdef.tmp'));
   let caught; try { checkManifest(p.dir); } catch (error) { caught = error; }
   assert.equal(caught?.code, 'MANIFEST_UNSAFE');
@@ -115,7 +115,7 @@ test('finding 5: a MANIFEST_UNSAFE from a leftover second link names the .skills
   assert.ok(!caught.message.includes(p.dir));
   // Any other second link keeps the general words.
   const q = project(t);
-  fs.writeFileSync(q.file, serializeManifest(addLocalEntry(null, 'first', []))); fs.linkSync(q.file, path.join(q.dir, 'second.json'));
+  fs.writeFileSync(q.file, serializeManifest(addLocalEntry(null, 'first', [], MANIFEST_LIMITS), MANIFEST_LIMITS)); fs.linkSync(q.file, path.join(q.dir, 'second.json'));
   let other; try { checkManifest(q.dir); } catch (error) { other = error; }
   assert.equal(other?.code, 'MANIFEST_UNSAFE'); assert.doesNotMatch(reportFailure(other, true).text, /\.tmp/);
 });

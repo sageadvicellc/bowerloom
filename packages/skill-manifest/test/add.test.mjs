@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { denyNetwork } from './support/fixtures.mjs';
 import { npmCollections, gitVerificationLoop } from './support/expected.mjs';
 import { addLocalEntry, planManifestChange, applyManifestChange, MANIFEST_CHANGE_FORMAT } from '../../../dist/packages/skill-manifest/src/add.js';
-import { parseManifest, serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, serializeManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { checkManifest } from '../../../dist/packages/skill-manifest/src/check.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 
@@ -26,28 +26,28 @@ function project(t) {
 const locked = (dir, work) => withProjectLock(dir, new AbortController().signal, async held => work(held));
 
 test('addLocalEntry is pure: it starts a manifest for both harnesses and returns a new one each time', () => {
-  const first = addLocalEntry(null, 'house-style', []);
-  assert.deepEqual(JSON.parse(serializeManifest(first)), { format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] });
-  const second = addLocalEntry(first, 'brand-voice', ['writers', 'first-team']);
+  const first = addLocalEntry(null, 'house-style', [], MANIFEST_LIMITS);
+  assert.deepEqual(JSON.parse(serializeManifest(first, MANIFEST_LIMITS)), { format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] });
+  const second = addLocalEntry(first, 'brand-voice', ['writers', 'first-team'], MANIFEST_LIMITS);
   assert.equal(first.skills.length, 1); assert.ok(Object.isFrozen(second));
   assert.deepEqual(second.skills.map(s => s.id), ['brand-voice', 'house-style']); assert.deepEqual(second.skills[0].teams, ['first-team', 'writers']);
-  assert.equal(serializeManifest(parseManifest(Buffer.from(serializeManifest(second)))), serializeManifest(second));
-  assert.throws(() => addLocalEntry(second, 'house-style', []), code('MANIFEST_DUPLICATE_ID'));
-  for (const id of ['personal-assistant', 'prompt-x', 'Bad', '../x', '']) assert.throws(() => addLocalEntry(null, id, []), code('MANIFEST_INVALID'), id);
-  assert.throws(() => addLocalEntry(null, 'ok', ['Bad Team']), code('MANIFEST_INVALID'));
-  assert.throws(() => addLocalEntry(null, 'ok', ['a', 'a']), code('MANIFEST_INVALID'));
-  let full = null; for (let i = 0; i < 128; i++) full = addLocalEntry(full, `s-${i}`, []);
+  assert.equal(serializeManifest(parseManifest(Buffer.from(serializeManifest(second, MANIFEST_LIMITS)), MANIFEST_LIMITS), MANIFEST_LIMITS), serializeManifest(second, MANIFEST_LIMITS));
+  assert.throws(() => addLocalEntry(second, 'house-style', [], MANIFEST_LIMITS), code('MANIFEST_DUPLICATE_ID'));
+  for (const id of ['personal-assistant', 'prompt-x', 'Bad', '../x', '']) assert.throws(() => addLocalEntry(null, id, [], MANIFEST_LIMITS), code('MANIFEST_INVALID'), id);
+  assert.throws(() => addLocalEntry(null, 'ok', ['Bad Team'], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  assert.throws(() => addLocalEntry(null, 'ok', ['a', 'a'], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
+  let full = null; for (let i = 0; i < 128; i++) full = addLocalEntry(full, `s-${i}`, [], MANIFEST_LIMITS);
   assert.equal(full.skills.length, 128);
-  assert.throws(() => addLocalEntry(full, 's-128', []), code('MANIFEST_LIMIT'));
-  assert.throws(() => addLocalEntry({ format: 'forged', harnesses: [], skills: [] }, 'x', []), code('MANIFEST_INVALID'));
+  assert.throws(() => addLocalEntry(full, 's-128', [], MANIFEST_LIMITS), code('MANIFEST_LIMIT'));
+  assert.throws(() => addLocalEntry({ format: 'forged', harnesses: [], skills: [] }, 'x', [], MANIFEST_LIMITS), code('MANIFEST_INVALID'));
 });
 
 test('a plan for a project with no skills.json binds a null before, the new bytes, and writes nothing', t => {
   const p = project(t), plan = planManifestChange(p.dir, { add: npmEntry() });
-  assert.equal(plan.format, MANIFEST_CHANGE_FORMAT); assert.equal(plan.format, 'bowerloom/skills-manifest-change/v1beta1');
+  assert.equal(plan.format, MANIFEST_CHANGE_FORMAT); assert.equal(plan.format, 'bowerloom/skills-manifest-change/v1beta2');
   assert.equal(plan.before, null); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal(plan.after.sha256, sha(plan.text)); assert.equal(plan.after.bytes, Buffer.byteLength(plan.text));
-  assert.deepEqual(parseManifest(Buffer.from(plan.text)).skills.map(s => s.id), ['synthetic-db-collections']);
+  assert.deepEqual(parseManifest(Buffer.from(plan.text), MANIFEST_LIMITS).skills.map(s => s.id), ['synthetic-db-collections']);
   assert.equal(plan.writesAuthorized, false); assert.equal(plan.executionAuthorized, false);
   assert.deepEqual(p.listing(), []);
   assert.equal(planManifestChange(p.dir, { add: npmEntry() }).revision, plan.revision, 'the same inputs give the same revision');
@@ -62,18 +62,18 @@ test('apply under the project lock writes exactly the planned bytes, atomically,
   const next = planManifestChange(p.dir, { add: gitEntry() });
   assert.deepEqual(next.before, { sha256: sha(fs.readFileSync(p.file)), bytes: fs.statSync(p.file).size });
   await locked(p.dir, held => applyManifestChange(next, next.revision, held));
-  assert.deepEqual(parseManifest(fs.readFileSync(p.file)).skills.map(s => s.id), ['synthetic-db-collections', 'verification-loop']);
+  assert.deepEqual(parseManifest(fs.readFileSync(p.file), MANIFEST_LIMITS).skills.map(s => s.id), ['synthetic-db-collections', 'verification-loop']);
   assert.equal(checkManifest(p.dir).skills.length, 2);
 });
 
 test('an edit after the plan, a file created after a null plan, and a wrong revision are stale; nothing is written', async t => {
   const p = project(t), plan = planManifestChange(p.dir, { add: npmEntry() });
-  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'house-style', [])));
+  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'house-style', [], MANIFEST_LIMITS), MANIFEST_LIMITS));
   const edited = fs.readFileSync(p.file);
   await assert.rejects(locked(p.dir, held => applyManifestChange(plan, plan.revision, held)), code('STALE_APPROVAL'));
   assert.deepEqual(fs.readFileSync(p.file), edited); assert.deepEqual(p.listing(), ['skills.json']);
   const second = planManifestChange(p.dir, { add: npmEntry() });
-  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'other-style', [])));
+  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'other-style', [], MANIFEST_LIMITS), MANIFEST_LIMITS));
   await assert.rejects(locked(p.dir, held => applyManifestChange(second, second.revision, held)), code('STALE_APPROVAL'));
   const third = planManifestChange(p.dir, { add: npmEntry() });
   await assert.rejects(locked(p.dir, held => applyManifestChange(third, '0'.repeat(64), held)), code('STALE_APPROVAL'));
@@ -93,7 +93,7 @@ test('apply needs a live lock token for this project', async t => {
 
 test('an existing id or source, and an invalid existing manifest, refuse at plan time', t => {
   const p = project(t);
-  fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [npmEntry()] })))));
+  fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [npmEntry()] })), MANIFEST_LIMITS), MANIFEST_LIMITS));
   assert.throws(() => planManifestChange(p.dir, { add: npmEntry() }), code('SKILLS_ADD_EXISTS'));
   assert.throws(() => planManifestChange(p.dir, { add: npmEntry('collections') }), code('SKILLS_ADD_EXISTS'), 'the same source under another id');
   fs.writeFileSync(p.file, '{"format":"bowerloom/skills/v1beta1"}');
@@ -104,9 +104,9 @@ test('an existing id or source, and an invalid existing manifest, refuse at plan
 
 test('an unsafe skills.json or .bowerloom folder refuses: a link, a hard link, group write, a folder, oversize', t => {
   const cases = [
-    p => { fs.writeFileSync(path.join(p.dir, 'real.json'), serializeManifest(addLocalEntry(null, 'a', []))); fs.symlinkSync(path.join(p.dir, 'real.json'), p.file); },
-    p => { fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'a', []))); fs.linkSync(p.file, path.join(p.dir, 'second.json')); },
-    p => { fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'a', []))); fs.chmodSync(p.file, 0o664); },
+    p => { fs.writeFileSync(path.join(p.dir, 'real.json'), serializeManifest(addLocalEntry(null, 'a', [], MANIFEST_LIMITS), MANIFEST_LIMITS)); fs.symlinkSync(path.join(p.dir, 'real.json'), p.file); },
+    p => { fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'a', [], MANIFEST_LIMITS), MANIFEST_LIMITS)); fs.linkSync(p.file, path.join(p.dir, 'second.json')); },
+    p => { fs.writeFileSync(p.file, serializeManifest(addLocalEntry(null, 'a', [], MANIFEST_LIMITS), MANIFEST_LIMITS)); fs.chmodSync(p.file, 0o664); },
     p => { fs.mkdirSync(p.file); },
   ];
   for (const prepare of cases) { const p = project(t); prepare(p); assert.throws(() => planManifestChange(p.dir, { add: npmEntry() }), code('MANIFEST_UNSAFE')); assert.throws(() => checkManifest(p.dir), code('MANIFEST_UNSAFE')); }
@@ -128,14 +128,14 @@ test('a .bowerloom folder replaced after the plan is stale', async t => {
 test('checkManifest reports a valid file, and refuses an absent or invalid one with its code', t => {
   const p = project(t);
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_NOT_FOUND'));
-  fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['codex'], skills: [npmEntry(), gitEntry(), { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] })))));
+  fs.writeFileSync(p.file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['codex'], skills: [npmEntry(), gitEntry(), { id: 'house-style', source: { kind: 'local', path: 'skills/house-style' } }] })), MANIFEST_LIMITS), MANIFEST_LIMITS));
   const check = checkManifest(p.dir);
-  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta1'); assert.equal(check.valid, true);
+  assert.equal(check.format, 'bowerloom/skills-manifest-check/v1beta2'); assert.equal(check.scope, 'project'); assert.equal(check.valid, true);
   assert.equal(check.sha256, sha(fs.readFileSync(p.file))); assert.deepEqual(check.harnesses, ['codex']);
   assert.deepEqual(check.skills, [
-    { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null },
-    { id: 'synthetic-db-collections', kind: 'npm', pin: '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', teams: null },
-    { id: 'verification-loop', kind: 'git', pin: `synthetic-owner/skills-repo@${gitEntry().source.commit}:skills/verification-loop`, teams: ['first-team'] },
+    { id: 'house-style', kind: 'local', pin: 'skills/house-style', teams: null, source: 'project' },
+    { id: 'synthetic-db-collections', kind: 'npm', pin: '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', teams: null, source: 'project' },
+    { id: 'verification-loop', kind: 'git', pin: `synthetic-owner/skills-repo@${gitEntry().source.commit}:skills/verification-loop`, teams: ['first-team'], source: 'project' },
   ]);
   fs.writeFileSync(p.file, fs.readFileSync(p.file, 'utf8').replace('"0.0.1"', '"^0.0.1"'));
   assert.throws(() => checkManifest(p.dir), code('MANIFEST_PIN_NOT_EXACT'));
@@ -144,12 +144,12 @@ test('checkManifest reports a valid file, and refuses an absent or invalid one w
 });
 
 test('skills add plans a pinned entry next to 127 others and refuses the 129th: local and pinned share the count of 128', t => {
-  const write = (p, n) => { let m = null; for (let i = 0; i < n; i++) m = addLocalEntry(m, `s-${i}`, []); fs.writeFileSync(p.file, serializeManifest(m), { mode: 0o644 }); fs.chmodSync(p.file, 0o644); };
+  const write = (p, n) => { let m = null; for (let i = 0; i < n; i++) m = addLocalEntry(m, `s-${i}`, [], MANIFEST_LIMITS); fs.writeFileSync(p.file, serializeManifest(m, MANIFEST_LIMITS), { mode: 0o644 }); fs.chmodSync(p.file, 0o644); };
   const room = project(t); write(room, 32);
-  assert.equal(parseManifest(Buffer.from(planManifestChange(room.dir, { add: npmEntry() }).text)).skills.length, 33);
+  assert.equal(parseManifest(Buffer.from(planManifestChange(room.dir, { add: npmEntry() }).text), MANIFEST_LIMITS).skills.length, 33);
   const last = project(t); write(last, 127);
   const plan = planManifestChange(last.dir, { add: npmEntry() });
-  assert.equal(parseManifest(Buffer.from(plan.text)).skills.length, 128);
+  assert.equal(parseManifest(Buffer.from(plan.text), MANIFEST_LIMITS).skills.length, 128);
   const full = project(t); write(full, 128);
   assert.throws(() => planManifestChange(full.dir, { add: npmEntry() }), code('MANIFEST_LIMIT'));
   assert.equal(checkManifest(full.dir).skills.length, 128);

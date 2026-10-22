@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { denyNetwork } from './support/fixtures.mjs';
 import { npmCollections, gitVerificationLoop } from './support/expected.mjs';
 import { addLocalEntry, planManifestChange, applyManifestChange } from '../../../dist/packages/skill-manifest/src/add.js';
-import { parseManifest, serializeManifest } from '../../../dist/packages/skill-manifest/src/schema.js';
+import { parseManifest, serializeManifest, MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { withProjectLock } from '../../../dist/packages/project-context/src/index.js';
 
 const network = denyNetwork();
@@ -26,11 +26,11 @@ function project(t, skills) {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bowerloom-manifest-replace-'))); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, '.bowerloom'), { mode: 0o755 }); fs.chmodSync(path.join(dir, '.bowerloom'), 0o755);
   const file = path.join(dir, '.bowerloom', 'skills.json');
-  if (skills) fs.writeFileSync(file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills })))));
+  if (skills) fs.writeFileSync(file, serializeManifest(parseManifest(Buffer.from(JSON.stringify({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills })), MANIFEST_LIMITS), MANIFEST_LIMITS));
   return { dir, file, listing: () => fs.readdirSync(path.join(dir, '.bowerloom')).sort() };
 }
 const locked = (dir, work) => withProjectLock(dir, new AbortController().signal, async held => work(held));
-const skillsOf = file => parseManifest(fs.readFileSync(file)).skills;
+const skillsOf = file => parseManifest(fs.readFileSync(file), MANIFEST_LIMITS).skills;
 
 test('replace moves an npm entry to a new version: the plan names the old and the new entry and binds the before-sha256', async t => {
   const p = project(t, [npmAt('0.0.1'), local('house-style')]), before = fs.readFileSync(p.file);
@@ -89,7 +89,7 @@ test('replace refuses a missing id, an unchanged pin, and a pin another entry al
 test('a replace plan is stale after a concurrent edit or a concurrent replace; nothing is written', async t => {
   const p = project(t, [npmAt('0.0.1')]);
   const plan = planManifestChange(p.dir, { replace: npmAt('0.0.2') });
-  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(parseManifest(fs.readFileSync(p.file)), 'house-style', [])));
+  fs.writeFileSync(p.file, serializeManifest(addLocalEntry(parseManifest(fs.readFileSync(p.file), MANIFEST_LIMITS), 'house-style', [], MANIFEST_LIMITS), MANIFEST_LIMITS));
   const edited = fs.readFileSync(p.file);
   await assert.rejects(locked(p.dir, held => applyManifestChange(plan, plan.revision, held)), code('STALE_APPROVAL'));
   assert.deepEqual(fs.readFileSync(p.file), edited); assert.deepEqual(p.listing(), ['skills.json']);

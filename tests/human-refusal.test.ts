@@ -33,6 +33,11 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['STORE_UNREADABLE', 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -ld ~ ~/.bowerloom'],
   ['STORE_IN_CLOUD_FOLDER', 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.'],
   ['STORE_NOT_A_PROJECT', 'Run this command in a project folder outside ~/.bowerloom.', 'cd <project-folder>'],
+  // Spec 04, store writes.
+  ['STORE_STATE_NESTED', 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.'],
+  ['STORE_LOCKED', 'Two commands must not change the store at the same time, so nothing was changed.', 'When the other command is done, run this one again.'],
+  ['MANIFEST_LIMIT', 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', 'bowerloom skills check'],
+  ['STORE_WRITE_FAILED', 'The disk refused the write. The message names the system error.', 'df -h ~ && ls -ld ~/.bowerloom'],
   ['CONFIG_INVALID', 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', 'git diff bowerloom.json'],
   ['CONFIG_UNSAFE', 'Bowerloom will not trust a bowerloom.json that other people or links can change.', 'ls -l bowerloom.json'],
   ['PROJECT_FOLDER_UNSAFE', 'Bowerloom will not trust a project folder that other people can change.', 'ls -ld .'],
@@ -43,6 +48,10 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {
   for (const [code, sentence, next] of M1) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+});
+
+test('a store MANIFEST_LIMIT points at skills check --global', () => {
+  assert.equal(renderRefusal('MANIFEST_LIMIT', 'm', { hint: 'store-limit' }), text('MANIFEST_LIMIT', 'm', 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', 'bowerloom skills check --global'));
 });
 
 test('renderRefusal gives approval and held words only to a refusal a new command raised', () => {

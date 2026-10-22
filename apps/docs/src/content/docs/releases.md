@@ -30,6 +30,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - Hidden files and editor backups in `agents/` are ignored. An agent in a team that is not registered is held with `AGENT_TEAM_UNREGISTERED`.
 - A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
 - A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`.
+- `--global` on `team create`, `skill create`, `prompt create`, `skills add`, `skills check`, and `ls` works on your store, `~/.bowerloom`. `ls` shows where each item comes from. `ls --json` has a new format, `bowerloom/ls/v1beta2`. The store holds up to 256 skills and a project up to 128.
 - Installing from a downloaded .tgz file now gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
 
 ## 0.7.0-beta.2
