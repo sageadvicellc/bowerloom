@@ -170,7 +170,7 @@ Exit codes: 0 when the create finished, 3 when approval is required, 2 for a usa
 
 ### 3.3 Registered folders: `bowerloom folder add`, `folder list`, `folder remove` (Part B)
 
-A registered folder lets a slice select from a folder outside its project, such as the workbench knowledge base for an agent of the `code` layer. The record lives in the store at `~/.bowerloom/folders/<folder-name>.json`. Its path is relative to the home folder, so a store that spec 07 syncs to another machine names the same place there.
+A registered folder lets a slice select from a folder outside its project, such as the workbench knowledge base for an agent of the `code` layer. The record lives in the store at `~/.bowerloom/folders/<folder-name>.json`. Its path is relative to the home folder, so a store that spec 07 syncs to another machine names the same place there. **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** owner decision A (https://github.com/sageadvicellc/bowerloom/pull/100#issuecomment-6352722384): records and grants do not travel. The store's `.gitignore` leaves out `folders/`, and each machine runs `bowerloom folder add` itself.
 
 Usage, verbatim:
 
@@ -204,6 +204,8 @@ Register folder <folder-name> in the store at ~/.bowerloom/folders/<folder-name>
   A slice names it with root: { registered: <folder-name> }. Bowerloom reads this folder and never writes it.
 This writes the store only. It changes no project, and it installs nothing.
 ```
+
+**Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** the store-create line now reads `Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.` The write that makes the store also writes `~/.bowerloom/.gitignore` (fix 3 of the beta.3 docs review).
 
 The first line prints only when the store is absent, as in spec 04 section 3.3.
 
@@ -1326,7 +1328,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 113. (Part B) `folder add kb ~/.bowerloom/teams`. Result: `FOLDER_UNSAFE`.
 114. (Part B) `folder add kb` twice. Result: the second refuses `FOLDER_EXISTS`.
 115. (Part B) A slice names folder `kb`, and `kb` is removed. Result: hold `SLICE_ROOT_MISSING`. The installed index stays. The guard of its agents denies every call with `GUARD_ROOT_MISSING`.
-116. (Part B) The store syncs to a machine where `~/My Notes/knowledge-base` does not exist. Result: hold `SLICE_ROOT_MISSING` on that machine.
+116. (Part B) The store syncs to a machine where `~/My Notes/knowledge-base` does not exist. Result: hold `SLICE_ROOT_MISSING` on that machine. **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** under decision A the records do not travel with the store, so this machine has no record until `folder add` runs there; the hold is `SLICE_ROOT_MISSING`.
 117. (Part B) A registered root sits inside the project. Result: hold `SLICE_ROOT_UNSAFE`, with the next step to use a project root.
 118. (Part B) A registered folder holds the project. Result: allowed. Hidden folders, `.bowerloom` included, are skipped.
 119. (Part B) A registered folder is outside the session's working folders. Result: the plan note about `--add-dir` and `permissions.additionalDirectories`.

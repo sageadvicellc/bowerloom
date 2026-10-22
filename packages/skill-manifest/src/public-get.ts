@@ -40,11 +40,16 @@ export const PUBLIC_GET_LIMITS = Object.freeze({ requests: 130, durationMs: 3000
 export interface PublicTransport { get(url: string, maxBytes: number, signal: AbortSignal): Promise<Buffer> }
 /**
  * Spec 07: `githubAuth` names the token and the repositories (`owner/repo`, lower case, 1 to 8) whose git commits, trees,
- * and blobs may carry it. Null or absent: no request carries an Authorization header.
+ * and blobs, and the repository URL itself, may carry it. Null or absent: no request carries an Authorization header.
  */
 export interface PublicGetOptions { requests?: number; durationMs?: number; requestMs?: number; githubAuth?: { token: GithubToken; repositories: readonly string[] } | null }
 /** The one URL shape that may carry the header (spec 07, section 6): a git object of one repository on api.github.com. */
 const AUTH_URL = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/git\/(commits|trees|blobs)\/[0-9a-f]{40}(\?recursive=1)?$/;
+/**
+ * The repository itself, which a failed commit request is followed by (beta.3 docs review, fix 2): it tells a commit that
+ * is gone from a repository that cannot be read. It carries the header on the same terms as AUTH_URL.
+ */
+const REPOSITORY_URL = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)$/;
 /**
  * The approved repositories of a githubAuth option, checked (4.2), or null for none. A malformed option is a fault of
  * the calling code, not something a person can fix, so it throws a TypeError (review F4 of PR 97).
@@ -114,10 +119,10 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
       work.then(value => settle(undefined, value), error => settle(error ?? manifestRefusal('SKILLS_ADD_NETWORK')));
     });
   }
-  /** True only for a git object URL of an approved repository on api.github.com (spec 07, 3.3). */
+  /** True only for a git object URL, or the bare URL, of an approved repository on api.github.com (spec 07, 3.3). */
   function carriesToken(host: string, url: string): boolean {
     if (githubAuth === null || host !== 'api.github.com') return false;
-    const m = AUTH_URL.exec(url);
+    const m = AUTH_URL.exec(url) ?? REPOSITORY_URL.exec(url);
     return m !== null && githubAuth.repositories.has(`${m[1]!.toLowerCase()}/${m[2]!.toLowerCase()}`);
   }
   function headersFor(host: string, url: string): Record<string, string> {

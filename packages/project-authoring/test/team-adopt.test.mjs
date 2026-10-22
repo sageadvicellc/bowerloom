@@ -56,10 +56,11 @@ test('7 and 7a. adopt copies from the store cache when there is no store; with n
   void files;
 });
 
-test('9. TEAM_EXISTS, TEAM_ID_RESERVED, and CONFIG_ITEM_NOT_SELECTED refuse', async t => {
+test('9. TEAM_EXISTS, TEAM_ID_RESERVED, and STORE_ITEM_NOT_FOUND refuse', async t => {
   const w = await world(t, { folder: true });
   await assert.rejects(planAdopt({ ...input(w), id: 'first-team' }), code('TEAM_ID_RESERVED'));
-  await assert.rejects(planAdopt({ ...input(w), id: 'ops' }), code('CONFIG_ITEM_NOT_SELECTED'));
+  // Decision 1 on #80 (variant A): an unlisted id is looked up in the store, which does not define it.
+  await assert.rejects(planAdopt({ ...input(w), id: 'ops' }), code('STORE_ITEM_NOT_FOUND'));
   fs.mkdirSync(path.join(w.projectDir, '.bowerloom/teams/research'), { recursive: true });
   await assert.rejects(planAdopt(input(w)), code('TEAM_EXISTS'));
 });
@@ -70,7 +71,8 @@ test('10, 10a, 11 and 12. an interrupted adopt resumes; the recovery check gives
   // Crash after the receipt and before bowerloom.json: the create path completes, the config write throws.
   const fsMod = await import('node:fs'), original = fsMod.default.renameSync;
   fsMod.default.renameSync = (from, to) => { if (String(to).endsWith('bowerloom.json')) throw new Error('crash'); return original(from, to); };
-  try { await assert.rejects(withProjectLock(w.projectDir, new AbortController().signal, held => applyAdopt(input(w), plan, plan.revision, held)), /crash/); } finally { fsMod.default.renameSync = original; }
+  // Round 2 of PR 100, H2: the failure after the copy keeps its cause and says the team was copied.
+  try { await assert.rejects(withProjectLock(w.projectDir, new AbortController().signal, held => applyAdopt(input(w), plan, plan.revision, held)), e => e.code === 'IO_ERROR' && /The team was copied\. Run bowerloom team adopt research again to finish\.$/.test(e.message)); } finally { fsMod.default.renameSync = original; }
   assert.ok(fs.existsSync(path.join(w.projectDir, '.bowerloom/teams/research/team.yaml')));
   assert.deepEqual(readJson(w, 'bowerloom.json').teams, [{ id: 'research', source: 'store' }]);
   const again = await planAdopt(input(w));

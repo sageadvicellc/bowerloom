@@ -110,6 +110,8 @@ Your store has commits that are not pushed (HEAD differs from origin/<branch>). 
 Credentials: BOWERLOOM_GITHUB_TOKEN is set. It is sent to api.github.com for github.com/<owner>/<repo> only.   (spec 07, only when used)
 ```
 
+**Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** the store-create line now reads `Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.`
+
 The `Network:` line follows spec 06. If <r> is over 60 and no token is set, the plan adds the line of spec 06 for that case. With a token, the line is the variant of spec 07, section 3.5. Without network, the command refuses `SKILLS_OFFLINE` with the message `Checking <ids> needs api.github.com. Connect to the network and run the command again.` `GITHUB_RATE_LIMITED` and `GITHUB_TOKEN_INVALID` refuse as in specs 06 and 07.
 
 ```text

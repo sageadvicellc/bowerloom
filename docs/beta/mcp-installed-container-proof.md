@@ -33,7 +33,7 @@ Root invokes the generated launcher with the dedicated synthetic database creden
 
 ```sh
 env -i \
-  HOME=/Users/hannamacintosh \
+  HOME=/absolute/home \
   PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
   BOWERLOOM_MCP_CONTAINER_POSTGRES_PROOF=trellis-alpha-proof@127.0.0.1:56582 \
   TRELLIS_BROKER_CREDENTIALS_FILE=/absolute/reviewed-credentials.json \

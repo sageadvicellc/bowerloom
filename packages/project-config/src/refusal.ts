@@ -16,7 +16,8 @@ const MESSAGES = {
   CONFIG_ITEM_NOT_SELECTED: 'The command named an item that bowerloom.json does not list, or there is no bowerloom.json.',
   CONFIG_ITEM_MISSING: 'bowerloom.json lists a project item that has no definition in the project.',
   CONFIG_WRITE_UNCONFIRMED: 'bowerloom.json was written, but it changed before it was read back.',
-  STORE_ITEM_NOT_FOUND: 'bowerloom use named an item that the store does not define.',
+  // Round 2 of the reviews of PR 100, C1: team adopt raises it too, so the words name no command.
+  STORE_ITEM_NOT_FOUND: 'The command named an item that the store does not define.',
   STORE_ITEM_MISSING: 'A listed store item is not in the store and not in the lock.',
   STORE_ITEM_NOT_SHAREABLE: 'This project is shared, and a teammate cannot fetch this store item.',
   STORE_REMOTE_PRIVATE: 'The store repository answered 404. It is private or does not exist.',
@@ -84,6 +85,10 @@ const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** MIGRATE_TEAM_MISSING naming the team. The name is checked, so no other text gets in. */
 export function migrateTeamMissing(team: string): DefinitionError {
   const error = new DefinitionError('MIGRATE_TEAM_MISSING', ID.test(team) && team.length <= 64 ? `${MESSAGES.MIGRATE_TEAM_MISSING} The team is ${team}.` : MESSAGES.MIGRATE_TEAM_MISSING); own.add(error); return error;
+}
+/** Round 2 of the reviews of PR 100, C2: CONFIG_ITEM_NOT_SELECTED for a team that bowerloom.json already lists from the project. */
+export function teamListedFromProject(id: string): DefinitionError {
+  const error = new DefinitionError('CONFIG_ITEM_NOT_SELECTED', ID.test(id) && id.length <= 64 ? `bowerloom.json already lists team ${id} from the project.` : 'bowerloom.json already lists that team from the project.'); own.add(error); return error;
 }
 /** STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. */
 export function notShareable(cause: NotShareableCause): DefinitionError {

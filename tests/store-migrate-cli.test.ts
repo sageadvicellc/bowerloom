@@ -134,7 +134,7 @@ test('1 to 5. a beta.2 project: migrate --all plans and moves; ls, sync and appl
   const text = planned.stdout;
   for (const line of [
     'Move 4 items from this project to the store at ~/.bowerloom',
-    'Create the store at ~/.bowerloom (store.json). It holds definitions only.',
+    'Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.',
     '  skill synthetic-db-collections    pin copied to ~/.bowerloom/skills.json (npm @synthetic/db-skills@0.0.1)',
     '  skill house-style    copy of .bowerloom/skills/house-style (1 file)',
     '  prompt brief   copy of .bowerloom/prompts/brief.md',

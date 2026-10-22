@@ -3,10 +3,13 @@ import type { Dirent } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { AdapterError, strictJson } from '../../../packages/codex-adapter/src/safe.js';
-import { inspectStore, projectRefusal, storeRootOf, verifyStorePins } from '../../../packages/project-context/src/index.js';
+import { inspectStore, projectRefusal, storeRootOf, verifyStorePins, STORE_CREATE_LINE } from '../../../packages/project-context/src/index.js';
 import type { StoreContext } from '../../../packages/project-context/src/index.js';
 import { newCommandJson, plainText } from './human.js';
-import { readStoreRepo } from '../../../packages/project-config/src/git.js';
+import { readStoreRepo, storeFoldersCheck } from '../../../packages/project-config/src/git.js';
+import type { FoldersCheck } from '../../../packages/project-config/src/git.js';
+import { storeGitignoreStatus } from '../../../packages/project-context/src/store-gitignore.js';
+import type { StoreGitignoreStatus } from '../../../packages/project-context/src/store-gitignore.js';
 import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
@@ -36,7 +39,7 @@ type Problem = 'unsafe' | 'too-large' | 'invalid' | 'unreadable';
 interface Count { n: number; capped: boolean; ignored: number }
 interface Pinned { count: number | null; problem: Problem | null }
 interface Counts { skillFolders: Count; pinnedSkills: Pinned; prompts: Count; teams: Count }
-interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null }
+interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null; folders?: FoldersCheck; gitignore?: StoreGitignoreStatus }
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const storeCode = (error: unknown): string | null => { const code = errno(error); return typeof code === 'string' && code.startsWith('STORE_') ? code : null; };
@@ -105,8 +108,11 @@ function report(home: string): Report {
     const leftovers = leftoversIn(store.dir);
     // Spec 06, 3.21: the git repository of the store, read from files only.
     const git = readStoreRepo(store.dir, null);
+    // Fix 3 of the beta.3 docs review: folder records that git already tracks are published by the next push, and an older
+    // store's .gitignore may not leave them out yet (round 2 of PR 100, H1 and L1).
+    const folders = storeFoldersCheck(store.dir), gitignore = storeGitignoreStatus(store.dir);
     verifyStorePins(store);
-    return { state: 'store', path, code: null, message: null, counts, leftovers, git };
+    return { state: 'store', path, code: null, message: null, counts, leftovers, git, folders, gitignore };
   } catch (error) {
     const code = storeCode(error);
     if (code !== null) return { state: 'refused', path, code, message: (error as Error).message, counts: null, leftovers: [], git: null };
@@ -131,27 +137,54 @@ function render(r: Report, token: TokenState): string {
   const pinned = c.pinnedSkills.count === null ? `unreadable (${c.pinnedSkills.problem})` : String(c.pinnedSkills.count);
   return [
     'Store: ready', `  Path: ${plainText(r.path)}`, `  Skill folders: ${show(c.skillFolders)}`,
-    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!, token), ...leftover, '',
+    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!, token, r.gitignore!), ...folderLines(r.folders!), ...leftover, '',
   ].join('\n');
 }
+/** Fix 3 of the beta.3 docs review, and round 2 of PR 100 (M4, L1, L3): what the check of folders/ found, in words. */
+function folderLines(folders: FoldersCheck): string[] {
+  if (folders.tracked === true) return ['  Warning: folders/ is tracked by git. In ~/.bowerloom, run git rm -r --cached folders and commit. Records already pushed stay in git history.'];
+  if (folders.check === 'unreadable') return ["  Warning: Bowerloom could not read the store's git index, so it cannot tell whether folders/ is tracked. Run git -C ~/.bowerloom ls-files folders."];
+  if (folders.check === 'outer-repository') return ['  Warning: ~/.bowerloom is inside another git repository, so Bowerloom cannot tell whether folders/ is tracked. Run git -C ~/.bowerloom ls-files folders.'];
+  return [];
+}
+const shellQuote = (line: string): string => `'${line.replaceAll("'", "'\\''")}'`;
+/** The command that adds the missing .gitignore lines, run in ~/.bowerloom. An empty first word ends a last line that has no line break. */
+const gitignoreStep = (g: StoreGitignoreStatus): string => `printf '%s\\n' ${[...(g.endsWithNewline ? [] : ['']), ...g.missing].map(shellQuote).join(' ')} >> .gitignore`;
+/**
+ * Round 3 of the reviews of PR 100, L1: the printed steps leave folders/ out by themselves, so a .gitignore that is missing,
+ * a link, or shared never lets the records into a commit. `git add -A` is followed by `git rm --cached` of folders, which
+ * exits 0 whether or not folders/ was added. An exclude pathspec does not serve: git 2.39 exits 1 when the path it
+ * excludes is also ignored, and that stops a pasted chain of commands.
+ */
+const ADD_ALL = ['git add -A', 'git rm -r -q --cached --ignore-unmatch folders'];
+const UNSAFE_GITIGNORE = '~/.bowerloom/.gitignore is a link, or not a plain file that you own, so Bowerloom cannot check its lines.';
 /** The commands that fix a git problem of the store (3.21). The person runs them; Bowerloom never runs git. */
 const FIX: Readonly<Record<string, (branch: string) => string[]>> = {
-  none: b => ['cd ~/.bowerloom', 'git init', 'git add -A', 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
+  none: b => ['cd ~/.bowerloom', 'git init', ...ADD_ALL, 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
   'no-origin': b => ['cd ~/.bowerloom', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
   'unsupported-remote': () => ['cd ~/.bowerloom', 'git remote set-url origin https://github.com/<owner>/<repo>.git'],
   unpushed: b => ['cd ~/.bowerloom', `git push -u origin ${b}`],
   unreadable: () => [],
 };
-function gitLines(git: StoreRepo, token: TokenState): string[] {
-  const out: string[] = [];
+function gitLines(git: StoreRepo, token: TokenState, gitignore: StoreGitignoreStatus): string[] {
+  const out: string[] = [], missing = gitignore.state === 'create' || gitignore.state === 'update';
   // Spec 07, 3.6: the token line follows the Git: line of a store with a git remote.
   const tokenLine = git.remote !== null ? [TOKEN_LINE[token]] : [];
   if (git.problem === null) out.push(`  Git: origin ${git.remote!.slice('https://'.length)}, branch ${git.branch ?? '<branch>'}, HEAD ${git.head?.slice(0, 8) ?? 'unknown'}, pushed ${git.pushed!.slice(0, 8)}`, ...tokenLine);
   else {
     out.push(git.problem === 'none' ? '  Git: none' : `  Git: ${NOT_SHAREABLE[git.problem]}`, ...tokenLine);
     const commands = FIX[git.problem]!(git.branch ?? '<branch>');
+    // Round 2 of PR 100, H1: the .gitignore lines go in first, so the git add -A below never takes folders/.
+    if (commands.length && missing) commands.splice(1, 0, gitignoreStep(gitignore));
+    // Round 3, L1: a .gitignore Bowerloom cannot use is named first, so the person fixes it before the commands.
+    if (commands.length && gitignore.state === 'unsafe') out.push(`  Fix ${UNSAFE_GITIGNORE.replace(' is a link', ' first: it is a link')}`);
     if (commands.length) out.push('  To fix this, run these commands yourself:', ...commands.map(c => `    ${c}`));
   }
+  if (missing) {
+    out.push("  Warning: ~/.bowerloom/.gitignore misses lines that keep this machine's files, folders/ among them, out of git.");
+    if (!out.some(l => l.startsWith('    printf '))) out.push('  To add them, run these commands yourself:', '    cd ~/.bowerloom', `    ${gitignoreStep(gitignore)}`);
+  }
+  if (gitignore.state === 'unsafe' && !out.some(l => l.startsWith('  Fix ~/.bowerloom/.gitignore first'))) out.push(`  Warning: ${UNSAFE_GITIGNORE}`);
   out.push('  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.');
   return out;
 }
@@ -172,7 +205,7 @@ export async function runStoreCommand(args: readonly string[], cwd: string, home
       ignored: { skillFolders: c.skillFolders.ignored, prompts: c.prompts.ignored, teams: c.teams.ignored },
       capped: { skillFolders: c.skillFolders.capped, prompts: c.prompts.capped, teams: c.teams.capped },
     };
-    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown', token };
+    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown', token, foldersTracked: r.folders?.tracked ?? null, foldersCheck: r.folders?.check ?? null, gitignore: r.gitignore?.state ?? null };
     write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git }));
   } else write(render(r, token));
   return 0;
@@ -204,7 +237,7 @@ export function renderStoreMigrate(plan: StoreMigratePlan): string {
   const moving = plan.items.filter(i => i.state !== 'present' || i.switch);
   const lines = [`Move ${plural(moving.length, 'item')} from this project to the store at ~/.bowerloom`];
   const writes = !migrateIsNoop(plan);
-  if (plan.store.create && writes) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  if (plan.store.create && writes) lines.push(STORE_CREATE_LINE);
   for (const item of plan.items) lines.push(itemLine(item));
   for (const s of plan.skipped) lines.push(`${itemLabel(s.kind, s.id)}${s.line}`);
   for (const item of plan.items) if (item.switch && isAgentFile(item)) lines.push(`${itemLabel('team', item.id)}its agents stop being projected. A store team projects no agents in this beta. Copies in .claude/agents stay.`);

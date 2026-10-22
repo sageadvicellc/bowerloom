@@ -152,7 +152,7 @@ The measure does not count Claude Code's own system details and tool definitions
 A slice can select from a folder outside the project, such as the knowledge base of a workbench, through a registered folder. Register it once, in your store, then allow each project that may read it:
 
 ```sh
-bowerloom folder add knowledge-base ~/Sage\ Advice/knowledge-base
+bowerloom folder add knowledge-base ~/notes/knowledge-base
 cd ~/Projects/my-project && bowerloom folder allow knowledge-base
 bowerloom folder list
 bowerloom folder deny knowledge-base

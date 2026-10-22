@@ -135,7 +135,7 @@ test('4b. a selection of one item lists every project item in the new bowerloom.
   const w = await fourItems(t);
   await migrate(w, { prompts: ['brief'] });
   assert.deepEqual(configOf(w), { format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [{ id: 'charts', source: 'project' }, { id: 'house-style', source: 'project' }], prompts: [{ id: 'brief', source: 'store' }], teams: [{ id: 'research', source: 'project' }] });
-  assert.deepEqual(fs.readdirSync(w.store).sort(), ['authoring', 'prompts', 'store.json']);
+  assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'authoring', 'prompts', 'store.json']);
 });
 
 test('5. an existing bowerloom.json: chosen items flip, a named unlisted item is added, others stay; --all leaves an unlisted item with its line', async t => {

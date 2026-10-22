@@ -138,7 +138,7 @@ test('7. store scope: the store receipt and store skills.json change, no project
   const stale = planReceiptClean(storeScope(w));
   fs.renameSync(w.store, path.join(w.base, 'moved-store'));
   await assert.rejects(withStoreForWrite(w.home, signal(), async (context, held, created) => { assert.equal(created, true); return applyReceiptClean({ scope: 'store', store: context }, stale.revision, held, { context, created }); }), code('STALE_APPROVAL'));
-  assert.deepEqual(fs.readdirSync(w.store).sort(), ['store.json'], 'nothing but the new store.json was written');
+  assert.deepEqual(fs.readdirSync(w.store).sort(), ['.gitignore', 'store.json'], 'nothing but the new store.json and its .gitignore was written');
 });
 
 test('8 and 11. when nothing is gone, both scopes select nothing; running twice leaves the second run with nothing to clean', async t => {

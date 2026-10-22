@@ -238,17 +238,46 @@ function watched(transport: PublicTransport): PublicTransport & { commitMissing:
   };
   return out;
 }
+/** At most this many bytes of the repository answer are read. Only its status matters. */
+const REPOSITORY_BYTES = 524288;
+/** What the repository request found: GitHub shows it, it does not (404, or a refused token), or an error that cannot tell. */
+type RepositoryCheck = { state: 'readable' } | { state: 'not-readable' } | { state: 'unknown'; error: unknown };
+/**
+ * Beta.3 docs review, fix 2: after a 404 on the commit request, one request for the repository itself, through the same
+ * transport, so it counts against the item's requests and carries the token exactly when the commit request did. A
+ * readable repository means the commit is gone (a force-push or a deleted branch). Nothing of the answer is kept.
+ * Round 2 of the reviews of PR 100, M1: a failure that cannot tell is `unknown`, never "not readable".
+ */
+async function checkRepository(transport: PublicTransport, remote: string, signal: AbortSignal): Promise<RepositoryCheck> {
+  try { await transport.get(`https://${GITHUB_HOST}/repos/${repositoryOf(remote)}`, REPOSITORY_BYTES, signal); return { state: 'readable' }; }
+  catch (error) {
+    const code = error instanceof DefinitionError ? error.code : null;
+    return code === 'SKILLS_ADD_NOT_FOUND' || code === 'STORE_REMOTE_AUTH_FAILED' ? { state: 'not-readable' } : { state: 'unknown', error };
+  }
+}
+/** Codes of the repository request that say more than the commit 404 does, and pass as they are (review M1). */
+const OWN_CODES: ReadonlySet<string> = new Set(['GITHUB_RATE_LIMITED', 'GITHUB_REQUEST_FAILED', 'GITHUB_TOKEN_SSO_REQUIRED', 'SKILLS_ADD_HOST_REFUSED']);
 /**
  * A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. With a token
- * (spec 07, 3.7), a 404 on the commit request is STORE_REMOTE_AUTH_FAILED.
+ * (spec 07, 3.7), a 404 on the commit request is STORE_REMOTE_AUTH_FAILED unless the repository check says more.
  */
-function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean): unknown {
+function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean, check: RepositoryCheck | null = null): unknown {
   if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
   // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
   if (!(error instanceof DefinitionError)) return error;
   const code = error.code;
   if (code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
-  if (code === 'SKILLS_ADD_NOT_FOUND') return !commitMissing ? configRefusal('STORE_ITEM_GONE_AT_COMMIT') : withToken ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
+  if (code === 'SKILLS_ADD_NOT_FOUND') {
+    if (!commitMissing) return configRefusal('STORE_ITEM_GONE_AT_COMMIT');
+    if (check?.state === 'readable') return syncError('LOCK_COMMIT_GONE');
+    const old = withToken ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
+    if (check?.state !== 'unknown') return old;
+    const failure = check.error;
+    if (!(failure instanceof DefinitionError)) return failure;
+    if (failure.code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+    if (OWN_CODES.has(failure.code)) return failure;
+    return new DefinitionError(old.code, `${old.message} Bowerloom could not check the repository: ${/^[A-Z][A-Z0-9_]{0,63}$/.test(failure.code) ? failure.code : 'UNKNOWN'}.`);
+  }
   if (code === 'SKILLS_ADD_UNSAFE_CONTENT') return configRefusal('LOCK_HASH_MISMATCH');
   return error;
 }
@@ -286,7 +315,7 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
   if (!approvedHosts.includes(GITHUB_HOST)) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom apply --frozen without --offline.`);
   const options = storeTransportOptions(credentials, deps.githubToken, pin.remote), withToken = options.githubAuth !== undefined;
   const make = (): StoreTransport => (deps.storeTransport ?? createPublicTransport)(options);
-  let commitMissing = false;
+  let commitMissing = false, check: RepositoryCheck | null = null;
   try {
     return await withCacheLock(roots.cacheRoot, deps.signal, async held => {
       let cached = null;
@@ -297,10 +326,16 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       let fetched;
       const next = () => { const more = make(), w = watched(more); return { get: w.get, close: () => more.close() }; };
       try { fetched = await fetchAuthored(seen, { remote: pin.remote, commit: pin.commit, kind: item.kind, id: item.id }, deps.signal, next, { sha: pin.tree, refuse: () => { throw configRefusal('LOCK_HASH_MISMATCH'); } }); }
+      catch (error) {
+        // Fix 2: a commit GitHub does not show, in a repository it does show, is gone. A 404 alone cannot tell. Review M2:
+        // only a 404 asks; a refused token stays STORE_REMOTE_AUTH_FAILED, since a token may read the repository and not its contents.
+        if (seen.commitMissing && !deps.signal.aborted) check = await checkRepository(transport, pin.remote, deps.signal);
+        throw error;
+      }
       finally { commitMissing = seen.commitMissing; transport.close(); }
       const { rows, hash } = authoredRows(fetched.files);
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');
       return { dir: (await writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files)).dir, fetched: true };
     });
-  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken) as Error; }
+  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken, check) as Error; }
 }
