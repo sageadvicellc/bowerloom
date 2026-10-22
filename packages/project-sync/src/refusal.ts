@@ -82,6 +82,27 @@ export function staleAfterApplied(done: readonly string[], id: string, rerun: st
   const error = new DefinitionError('STALE_APPROVAL', `The plan changed part way through the run: ${id} changed after the approval, so it was not applied. Finished before it: ${done.join(', ')}. Each finished item is complete. Run ${rerun} again to see the new plan.`);
   own.add(error); return error;
 }
+/**
+ * Review H1 of PR 98: a refusal after a run already wrote something. It keeps the code (and any `next` and `cause`), drops
+ * the words that say nothing was applied, names what was written, and says that the same command finishes the rest.
+ * Before any write the error is returned as it is.
+ */
+export function partialRefusal(error: unknown, done: readonly string[], rerun: string): unknown {
+  if (!(error instanceof DefinitionError) || done.length === 0) return error;
+  const base = error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim();
+  const partial = new DefinitionError(error.code, `${base} The run stopped part way. Already written: ${done.join('; ')}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
+  for (const key of ['next', 'cause', 'hint'] as const) if (key in error) Object.defineProperty(partial, key, { value: (error as unknown as Record<string, unknown>)[key], enumerable: false });
+  own.add(partial); return partial;
+}
+/**
+ * Review M3 of PR 98: STALE_APPROVAL for a plan made again at apply that refused. The code it refused with is kept in
+ * `cause` and named in the message, so the person sees what changed.
+ */
+export function staleBecause(error: DefinitionError): DefinitionError {
+  const stale = new DefinitionError('STALE_APPROVAL', `The plan changed after you saw it: ${error.code}. ${error.message} Nothing was applied. Run the command again to see the new plan.`);
+  Object.defineProperty(stale, 'cause', { value: error.code, enumerable: false });
+  own.add(stale); return stale;
+}
 export const isSyncError = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && own.has(error);
 /** A managed-skills code as it passes through: its own code when listed, else MANAGED_SKILL_REFUSED. */
 export function managedCode(error: unknown): SyncCode {

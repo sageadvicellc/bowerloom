@@ -3,7 +3,7 @@
  * authoring guards: the item is walked with `folderNames`, and each file is read once with `readGuarded`. The file rules
  * are those of the store sources and the fetch (`storeFileFault`). Every refusal happens before any network read.
  */
-import { lstatSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { LIMITS, folderNames, readGuarded, realFolder } from '../../project-authoring/src/files.js';
 import { STORE_FILE_LIMITS, storeFileFault } from '../../skill-manifest/src/content.js';
@@ -35,8 +35,12 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string):
     files.push({ path: rel, bytes });
   };
   const root = join(storeDir, authoredPath(kind, id));
+  // Review S1 of PR 98: the area folder (`skills`, `prompts`, or `teams`) is read without following a link, and the item
+  // must really be inside the folder that was given, so a link never brings in files from elsewhere.
+  const area = join(storeDir, kind === 'prompt' ? 'prompts' : `${kind}s`);
+  try { realFolder(area); if (realpathSync(area) !== join(realpathSync(storeDir), kind === 'prompt' ? 'prompts' : `${kind}s`)) file(); }
+  catch (error) { if ((error as { code?: unknown }).code === 'STORE_ITEM_NOT_SHAREABLE') throw error; file(); }
   if (kind === 'prompt') {
-    try { realFolder(join(storeDir, 'prompts')); } catch { file(); }
     take(root, `${id}.md`);
   } else {
     const walk = (abs: string, rel: string, depth: number): void => {

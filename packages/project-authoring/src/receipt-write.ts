@@ -23,6 +23,7 @@ export function writeReceiptRecord(auth: string, planRevision: string, before: R
   parseReceipt(Buffer.from(text));
   const temp = join(auth, tempName(planRevision, 'receipt')), target = join(auth, RECEIPT);
   writeNewFile(temp, text);
+  let failed = false;
   try {
     live();
     const now = readNow();
@@ -31,7 +32,11 @@ export function writeReceiptRecord(auth: string, planRevision: string, before: R
       try { fs.linkSync(temp, target); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') refuse('STALE_APPROVAL'); throw error; }
       fs.unlinkSync(temp);
     } else fs.renameSync(temp, target);
-  } finally { if (lstatOrNull(temp) !== null) fs.unlinkSync(temp); }
+  } catch (error) { failed = true; throw error; }
+  finally {
+    // Review L7 of PR 98: a failed cleanup never hides the error that stopped the write.
+    try { if (lstatOrNull(temp) !== null) fs.unlinkSync(temp); } catch (error) { if (!failed) throw error; }
+  }
   syncFolder(auth);
   return { sha256: sha256(text), bytes: Buffer.byteLength(text) };
 }

@@ -22,6 +22,9 @@ const MESSAGES = {
   AUTHORING_PENDING: 'An earlier create was interrupted, and what it left does not match its record. Check .bowerloom/authoring/pending.json and the item it names.',
   AUTHORING_RECEIPT_INVALID: 'The record of created items, .bowerloom/authoring/receipt.json, is not valid. Restore it from version control.',
   AUTHORING_UNSAFE_PATH: 'A folder or file that create reads or writes is not safe: a link, a file with more than one link, a file you do not own, a file others can write, or a file over the size limit.',
+  // Review L8 of PR 98: a folder that could not be made because the disk is full, or because the system refused it.
+  AUTHORING_DISK_FULL: 'The disk is full, so a folder could not be made. Nothing more was written.',
+  AUTHORING_ACCESS_DENIED: 'The system refused to make a folder. Nothing more was written.',
   AUTHORING_UNREGISTERED: 'This folder or file is not one that create made. Remove it, or move it out of .bowerloom.',
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
   AUTHORING_WRITE_INTERRUPTED: 'The project changed while create was writing, so it stopped. Part of the item may be in place. Run the same command again: its plan finishes or clears what was left.',

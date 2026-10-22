@@ -90,7 +90,9 @@ export function writeNewFile(path: string, data: string | Buffer): void {
 }
 /** Creates a new private folder. A name already there is unsafe. */
 export function makeFolder(path: string): void {
-  try { fs.mkdirSync(path, { mode: 0o700 }); } catch { refuse('AUTHORING_UNSAFE_PATH'); }
+  // Review L8 of PR 98: a full disk and a refused permission have their own codes. A name already there is unsafe.
+  try { fs.mkdirSync(path, { mode: 0o700 }); }
+  catch (error) { const code = (error as NodeJS.ErrnoException).code; refuse(code === 'ENOSPC' ? 'AUTHORING_DISK_FULL' : code === 'EACCES' || code === 'EPERM' ? 'AUTHORING_ACCESS_DENIED' : 'AUTHORING_UNSAFE_PATH'); }
   realFolder(path);
 }
 export function syncFolder(path: string): void {

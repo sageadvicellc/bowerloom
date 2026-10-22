@@ -190,7 +190,8 @@ function removeBlock(lines: readonly string[]): string[] {
 function itemLine(item: StoreMigratePlan['items'][number]): string {
   const head = itemLabel(item.kind, item.id);
   if (item.state === 'present') return `${head}already in the store with the same bytes`;
-  if (item.state === 'register') return `${head}already in the store, not yet recorded. This run records it.`;
+  // Review C1: an item the store records already, whose skills.json entry is missing, only gets the entry.
+  if (item.state === 'register') return item.recorded ? `${head}already in the store. This run adds its skills.json entry.` : `${head}already in the store, not yet recorded. This run records it.`;
   if (item.how === 'pinned') {
     const s = item.entry!.source as { kind: string; package?: string; version?: string; repository?: string; commit?: string };
     return `${head}pin copied to ~/.bowerloom/skills.json (${s.kind === 'npm' ? `npm ${s.package}@${s.version}` : `GitHub ${s.repository}@${s.commit!.slice(0, 8)}`})`;
@@ -221,10 +222,12 @@ export function renderStoreMigrate(plan: StoreMigratePlan): string {
 }
 /** The result in plain words: what moved, what was copied only, the remove lines, and the next step. */
 export function storeMigrateWords(result: StoreMigrateResult): string {
+  // Review M2: moved counts only what switched. The copies, and the items left in the project, are named apart.
   const copied = result.notSwitched.map(n => `${n.kind} ${n.id}`);
   return plainText([
     `Moved ${plural(result.moved.length, 'item')} to the store.`,
-    ...(copied.length ? [`Copied but not switched: ${copied.join(', ')}.`] : []),
+    ...(copied.length ? [`Copied but not switched: ${copied.join(', ')}.`, 'Push the store, then run bowerloom store migrate again to switch them.'] : []),
+    ...result.skipped.map(s => `${itemLabel(s.kind, s.id)}${s.line}`),
     ...removeBlock(result.removeLines),
     ...(result.removeLines.length ? ['Next: bowerloom receipt clean'] : []), '',
   ].join('\n'), true);
@@ -261,7 +264,8 @@ async function runMigrate(words: readonly string[], cwd: string, home: string, w
   const first = await plan();
   const json = approval.json;
   if (first.items.length === 0) {
-    write(json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : plainText([...first.skipped.map(s => `${itemLabel(s.kind, s.id)}${s.line}`), ...(first.staleLock.length ? [STALE_NOTE(first.staleLock)] : []), 'Nothing to move.', ''].join('\n'), true));
+    // Review H2: the old copies of items listed from the store are named, with the lines that remove them.
+    write(json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : plainText([...first.skipped.map(s => `${itemLabel(s.kind, s.id)}${s.line}`), ...(first.staleLock.length ? [STALE_NOTE(first.staleLock)] : []), ...removeBlock(first.removeLines), 'Nothing to move.', ''].join('\n'), true));
     return 0;
   }
   if (migrateIsNoop(first)) { write(json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderStoreMigrate(first), true)}\nNothing to change.\n`); return 0; }

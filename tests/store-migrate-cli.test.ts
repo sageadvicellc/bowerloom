@@ -4,7 +4,8 @@ import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { world, run, approve, mustApprove, errorCode, errorMessage, project, network, NETWORK, pushStore, shared, baseEnv, cli, loggedHosts, STORE_COMMIT } from './support/config-cli.js';
@@ -15,6 +16,12 @@ import { withProjectLock, withStoreForWrite } from '../packages/project-context/
 import { parseLock, serializeLock } from '../packages/project-config/src/index.js';
 
 const heading = `Bowerloom ${readInstalledRelease().version}: open beta\n${readInstalledRelease().execution}\n\n`;
+/** Every path under a folder with the bytes of each file. */
+function snapshot(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const rel of readdirSync(dir, { recursive: true }).map(String).sort()) { const s = lstatSync(join(dir, rel)); out[rel] = s.isFile() ? createHash('sha256').update(readFileSync(join(dir, rel))).digest('hex') : 'dir'; }
+  return out;
+}
 /** A project with `.bowerloom` (the marker of a beta.2 project). */
 function bowerloomProject(w: World, name = 'app'): string { const dir = project(w, name); mkdirSync(join(dir, '.bowerloom'), { mode: 0o755 }); return dir; }
 
@@ -47,6 +54,11 @@ test('9. receipt clean --global works outside a project; with no store it refuse
   const none = run(outside, ['receipt', 'clean', '--global'], w.env);
   assert.equal(none.status, 1); assert.equal(errorCode(none.stderr), 'STORE_NOT_FOUND');
   assert.equal(existsSync(w.store), false, 'the check makes no store');
+  // Decision D: a ~/.bowerloom with no store.json is not a store Bowerloom made.
+  const foreign = world(t); mkdirSync(foreign.store, { mode: 0o700 }); writeFileSync(join(foreign.store, 'notes.md'), 'mine\n');
+  const refused = run(outside, ['receipt', 'clean', '--global'], foreign.env);
+  assert.equal(refused.status, 1); assert.equal(errorCode(refused.stderr), 'STORE_INVALID');
+  assert.equal(existsSync(join(foreign.store, 'store.json')), false, 'no store.json is written');
   mustApprove(outside, ['skill', 'create', 'house-style', '--global'], w.env);
   mustApprove(outside, ['prompt', 'create', 'weekly', '--global'], w.env);
   assert.equal(run(outside, ['receipt', 'clean', '--global'], w.env).stdout, 'Nothing to clean.\n');
@@ -179,7 +191,10 @@ test('6. a shared project: the first run copies and prints Not switched; after t
   assert.match(plan.stdout, /^bowerloom\.lock\.json: adds skill synthetic-db-collections \(npm @synthetic\/db-skills@0\.0\.1\)$/m);
   const first = approve(dir, ['store', 'migrate', '--all'], w.env);
   assert.equal(first.applied.status, 0, first.applied.stderr);
+  // Review M2: the result counts only what switched, and names the copies apart.
+  assert.match(first.applied.stdout, /^Moved 1 item to the store\.$/m);
   assert.match(first.applied.stdout, /^Copied but not switched: skill house-style, prompt brief, team research\.$/m);
+  assert.match(first.applied.stdout, /^Push the store, then run bowerloom store migrate again to switch them\.$/m);
   // The next run: the copies are present, and the store has no git repository yet.
   const repoRun = run(dir, ['store', 'migrate', '--all'], w.env);
   assert.equal(repoRun.status, 0, 'present items with no store .git change nothing');
@@ -195,6 +210,15 @@ test('6. a shared project: the first run copies and prints Not switched; after t
   assert.deepEqual(lock.prompts.map(i => i.id), ['brief']); assert.deepEqual(lock.teams.map(i => i.id), ['research']);
   assert.equal(run(dir, ['lock', 'verify'], w.env).status, 0);
   assert.equal(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')).teams.find((e: { id: string }) => e.id === 'research').source, 'store');
+  // Review C3 (test 13 in words): a lock that lacks a store entry, then --all: the stale-lock line, the old copies, and nothing to move.
+  const lockFile = join(dir, 'bowerloom.lock.json');
+  writeFileSync(lockFile, serializeLock({ ...lock, prompts: [] }));
+  const stale = run(dir, ['store', 'migrate', '--all'], w.env);
+  assert.equal(stale.status, 0, stale.stderr);
+  assert.match(stale.stdout, /^ {2}prompt brief {3}already listed from the store; its old copy is still in this project\.$/m);
+  assert.match(stale.stdout, /^The lock is out of date for prompt brief\. Run bowerloom lock update\.$/m);
+  assert.match(stale.stdout, /^ {2}git rm \.bowerloom\/prompts\/brief\.md$/m);
+  assert.match(stale.stdout, /\nNothing to move\.\n$/);
 });
 
 test('7. help store and help receipt print the topics; store migrate --help prints the store topic', t => {
@@ -244,10 +268,12 @@ test('11. while another command holds the project lock, store migrate --approve 
   const w = world(t), dir = bowerloomProject(w);
   mustApprove(dir, ['prompt', 'create', 'brief'], w.env);
   const revision = (JSON.parse(run(dir, ['store', 'migrate', '--prompt', 'brief', '--json'], w.env).stdout) as { revision: string }).revision;
-  const before = existsSync(join(dir, 'bowerloom.json'));
+  const before = snapshot(dir);
   const r = await withProjectLock(dir, new AbortController().signal, async () => runAsync(dir, ['store', 'migrate', '--prompt', 'brief', '--approve', revision], w.env));
   assert.equal(r.status, 1, r.stderr); assert.equal(errorCode(r.stderr), 'PROJECT_LOCKED');
-  assert.equal(existsSync(join(dir, 'bowerloom.json')), before, 'nothing in the project changed');
+  // Review L3: the store lock came first and made the store, and the words say so.
+  assert.match(errorMessage(r.stderr), /Bowerloom made the store at ~\/\.bowerloom before it waited for the project\. Run the command again without --approve to see the next plan\.$/);
+  assert.deepEqual(snapshot(dir), before, 'nothing in the project changed: no bowerloom.json, no lock, and .bowerloom as it was');
   // The store lock came first, so the store was made; with the lock free again, a new plan applies.
   mustApprove(dir, ['store', 'migrate', '--prompt', 'brief'], w.env);
   assert.equal(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')).prompts[0].source, 'store');
