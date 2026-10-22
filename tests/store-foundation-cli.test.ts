@@ -117,7 +117,8 @@ test('7. store frobnicate, store, and store status --x exit 2 with USAGE', t => 
   for (const args of [['store', 'frobnicate'], ['store'], ['store', 'status', '--x'], ['store', 'status', '--json', '--json'], ['store', 'status', 'extra']]) {
     const r = run(w.home, args, w.env); assert.equal(r.status, 2, args.join(' ')); assert.equal(errorCode(r.stderr), 'USAGE');
   }
-  assert.equal((JSON.parse(run(w.home, ['store', 'status', '--x'], w.env).stderr) as { error: { message: string } }).error.message, 'Use bowerloom store status [--json].');
+  // Spec 08: the usage words name store migrate too.
+  for (const args of [['store', 'status', '--x'], ['store'], ['store', 'frobnicate']]) assert.equal((JSON.parse(run(w.home, args, w.env).stderr) as { error: { message: string } }).error.message, 'Use bowerloom store status [--json] or bowerloom store migrate. See bowerloom help store.', args.join(' '));
 });
 
 test('8. up in a fresh folder under a home that has a valid store reaches the init plan and exits 3', t => {

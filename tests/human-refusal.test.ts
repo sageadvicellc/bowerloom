@@ -7,6 +7,7 @@ import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusa
 import { SYNC_REFUSAL_CODES } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 import { readFileSync } from 'node:fs';
+import { CONFIG_REFUSAL_CODES } from '../packages/project-config/src/index.js';
 
 // Review finding 5: the next step for a folder with no project is the up command, not plumbing.
 const INIT_NEXT = 'bowerloom up --team <name> --goal <goal>';
@@ -231,4 +232,22 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
   // The JSON envelope of a pipe keeps the fixed message of each code.
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
+});
+
+// Spec 08, section 5: the six store migrate codes. The sentence is the Cause cell and the next step the table's. Each has a row in the errors reference.
+test('spec 08: the MIGRATE_* codes have their words and a row in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    ['MIGRATE_ITEM_NOT_FOUND', 'A selected item is not defined in the project, or its files are gone.', 'bowerloom ls'],
+    ['MIGRATE_ITEM_UNSUPPORTED', 'A selected skill or prompt cannot be a store item. The message adds the reason.', 'bowerloom help store'],
+    ['MIGRATE_ID_EXISTS', 'The store already holds an item with that kind and id but other bytes.', 'Rename the project item, or remove the store item yourself.'],
+    ['MIGRATE_RESERVED', 'first-team or personal-assistant was named. Setup owns them.', 'bowerloom store migrate --all skips them.'],
+    ['MIGRATE_TEAM_MISSING', 'A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team.', 'Add --team <name> to move that team too.'],
+    ['MIGRATE_LIMIT', 'The store record of created items holds 512 items at most.', 'Remove items from the store, or move fewer items.'],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const [code] of rows) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  for (const code of rows.map(r => r[0])) assert.ok((CONFIG_REFUSAL_CODES as readonly string[]).includes(code), code);
+  // A refusal that carries its own next step names it: the store record whose files are gone.
+  assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
 });

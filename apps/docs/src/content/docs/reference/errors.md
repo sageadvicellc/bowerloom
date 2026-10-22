@@ -125,6 +125,17 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | `TEAM_NOT_SELECTED` | `up` installs for a team only if `bowerloom.json` lists it. | `bowerloom use team <id>` |
 | `ITEM_REVIEW_REQUIRED` | Bowerloom shows what an item can do before it installs it. | Run `bowerloom apply --frozen` again to review it. |
 
+These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `MIGRATE_ITEM_NOT_FOUND` | A selected item is not defined in the project, or its files are gone. | `bowerloom ls` |
+| `MIGRATE_ITEM_UNSUPPORTED` | A selected skill or prompt cannot be a store item. The message adds the reason: a file that a store item cannot hold, or a size past a limit. | `bowerloom help store` |
+| `MIGRATE_ID_EXISTS` | The store already holds an item with that kind and id but other bytes. Bowerloom never overwrites a store item. | Rename the project item, or remove the store item yourself. For a store record whose files are gone, run `bowerloom receipt clean --global`. |
+| `MIGRATE_RESERVED` | `first-team` or `personal-assistant` was named. Setup owns them. | `bowerloom store migrate --all` skips them. |
+| `MIGRATE_TEAM_MISSING` | A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team. | Add `--team <name>` to move that team too. |
+| `MIGRATE_LIMIT` | The store record of created items holds 512 items at most. | Remove items from the store, or move fewer items. |
+
 ## Lock refusals
 
 `bowerloom.lock.json` records where each store item of a project comes from. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file.

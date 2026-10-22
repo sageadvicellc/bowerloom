@@ -11,10 +11,20 @@ import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import type { ApprovalIo } from './confirm.js';
+import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import { terminalIo } from './manifest.js';
+import { discoverProject } from '../../../packages/project-context/src/index.js';
+import type { PlannedChange } from '../../../packages/project-context/src/types.js';
+import { applyStoreMigrate, checkMigrateSelectors, migrateIsNoop, planStoreMigrate } from '../../../packages/project-sync/src/index.js';
+import type { StoreMigratePlan, StoreMigrateResult } from '../../../packages/project-sync/src/index.js';
+import { STALE_NOTE } from '../../../packages/project-sync/src/resolve.js';
+import { githubTokenReader } from './sync.js';
+import { proofStaleNote, tokenNotes } from './use.js';
+import { itemLabel } from './receipt.js';
 
 const STORE_STATUS_FORMAT = 'bowerloom/store-status/v1beta1';
-const USAGE = 'Use bowerloom store status [--json].';
+const USAGE = 'Use bowerloom store status [--json] or bowerloom store migrate. See bowerloom help store.';
+const MIGRATE_USAGE = 'Use bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all], with optional --commit <sha>, --approve <revision> and --json.';
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const LEFTOVER_TEMP = /^\.store\.json\.[a-f0-9]{16}\.tmp$/;
 const NAME_LIMIT = 256;
@@ -150,8 +160,9 @@ function gitLines(git: StoreRepo, token: TokenState): string[] {
  * `bowerloom store status [--json]`. Reads only. Every STORE_* refusal is reported as state `refused` and exits 0; USAGE
  * passes through. `home` is the HOME folder, and the store is always `<home>/.bowerloom`.
  */
-export async function runStoreCommand(args: readonly string[], _cwd: string, home: string, write: (text: string) => unknown, _io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function runStoreCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => unknown, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const words = args.slice(1);
+  if (words[0] === 'migrate') return runMigrate(words.slice(1), cwd, home, write, io, env);
   if (words[0] !== 'status' || words.length > 2 || (words.length === 2 && words[1] !== '--json')) throw new DefinitionError('USAGE', USAGE);
   const r = report(home), token = GithubToken.status(env);
   if (words[1] === '--json') {
@@ -165,4 +176,107 @@ export async function runStoreCommand(args: readonly string[], _cwd: string, hom
     write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git }));
   } else write(render(r, token));
   return 0;
+}
+// --- Spec 08: store migrate. ---
+
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+const isAgentFile = (item: StoreMigratePlan['items'][number]): boolean => item.kind === 'team' && item.files.some(f => f.path.startsWith(`teams/${item.id}/agents/`));
+/** The block printed after the plan and after the result: the git rm lines. None when no item switched. */
+function removeBlock(lines: readonly string[]): string[] {
+  if (!lines.length) return [];
+  return ['Nothing in this project is deleted. When you have checked the result, you can remove the old copies yourself:', ...lines, 'After you delete the old files, run bowerloom receipt clean.'];
+}
+/** The line of one item (3.1, plan lines). */
+function itemLine(item: StoreMigratePlan['items'][number]): string {
+  const head = itemLabel(item.kind, item.id);
+  if (item.state === 'present') return `${head}already in the store with the same bytes`;
+  if (item.state === 'register') return `${head}already in the store, not yet recorded. This run records it.`;
+  if (item.how === 'pinned') {
+    const s = item.entry!.source as { kind: string; package?: string; version?: string; repository?: string; commit?: string };
+    return `${head}pin copied to ~/.bowerloom/skills.json (${s.kind === 'npm' ? `npm ${s.package}@${s.version}` : `GitHub ${s.repository}@${s.commit!.slice(0, 8)}`})`;
+  }
+  if (item.kind === 'prompt') return `${head}copy of .bowerloom/prompts/${item.id}.md`;
+  return `${head}copy of .bowerloom/${item.kind}s/${item.id} (${plural(item.files.length, 'file')})`;
+}
+/** The plan in plain words (3.1). */
+export function renderStoreMigrate(plan: StoreMigratePlan): string {
+  const moving = plan.items.filter(i => i.state !== 'present' || i.switch);
+  const lines = [`Move ${plural(moving.length, 'item')} from this project to the store at ~/.bowerloom`];
+  const writes = !migrateIsNoop(plan);
+  if (plan.store.create && writes) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  for (const item of plan.items) lines.push(itemLine(item));
+  for (const s of plan.skipped) lines.push(`${itemLabel(s.kind, s.id)}${s.line}`);
+  for (const item of plan.items) if (item.switch && isAgentFile(item)) lines.push(`${itemLabel('team', item.id)}its agents stop being projected. A store team projects no agents in this beta. Copies in .claude/agents stay.`);
+  for (const item of plan.items) if (!item.switch && item.notSwitched) lines.push(`Not switched: ${item.kind} ${item.id} cannot be locked yet. ${item.notSwitched.sentence}. Push the store, then run this command again.`);
+  if (plan.config !== null) {
+    if (plan.config.created) { const c = JSON.parse(plan.config.text) as { skills: unknown[]; prompts: unknown[]; teams: unknown[] }; lines.push(`bowerloom.json: creates it, and lists ${plural(c.skills.length + c.prompts.length + c.teams.length, 'item')} of this project`); }
+    for (const item of plan.items) if (item.switch && !plan.config.adds.includes(`${item.kind} ${item.id}`)) lines.push(`bowerloom.json: ${item.kind} ${item.id} changes from project to store`);
+    for (const pair of plan.config.adds) lines.push(`bowerloom.json: adds ${pair} (store)`);
+  }
+  if (plan.lock !== null) for (const item of plan.items) if (item.switch && item.lock !== null) lines.push(`bowerloom.lock.json: adds ${item.kind} ${item.id} (${item.lock})`);
+  lines.push(...tokenNotes(plan.notes, plan.network.credentials));
+  if (plan.staleLock.length) lines.push(STALE_NOTE(plan.staleLock));
+  lines.push(...removeBlock(plan.removeLines));
+  return lines.join('\n');
+}
+/** The result in plain words: what moved, what was copied only, the remove lines, and the next step. */
+export function storeMigrateWords(result: StoreMigrateResult): string {
+  const copied = result.notSwitched.map(n => `${n.kind} ${n.id}`);
+  return plainText([
+    `Moved ${plural(result.moved.length, 'item')} to the store.`,
+    ...(copied.length ? [`Copied but not switched: ${copied.join(', ')}.`] : []),
+    ...removeBlock(result.removeLines),
+    ...(result.removeLines.length ? ['Next: bowerloom receipt clean'] : []), '',
+  ].join('\n'), true);
+}
+
+interface MigrateArgs { skills: string[]; prompts: string[]; teams: string[]; all: boolean; commit: string | null; approval: string[] }
+function parseMigrateArgs(words: readonly string[]): MigrateArgs {
+  const out: MigrateArgs = { skills: [], prompts: [], teams: [], all: false, commit: null, approval: [] };
+  const usage = (): never => { throw new DefinitionError('USAGE', MIGRATE_USAGE); };
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    if (w === '--skill' || w === '--prompt' || w === '--team') { const v = words[++i]; if (v === undefined || v.startsWith('-')) usage(); out[w === '--skill' ? 'skills' : w === '--prompt' ? 'prompts' : 'teams'].push(v!); }
+    else if (w === '--all') { if (out.all) usage(); out.all = true; }
+    else if (w === '--commit') { const v = words[++i]; if (out.commit !== null || v === undefined) usage(); out.commit = v!; }
+    else if (w === '--approve') { out.approval.push(w); if (i + 1 < words.length) out.approval.push(words[++i]!); }
+    else if (w === '--json') out.approval.push(w);
+    else usage();
+  }
+  return out;
+}
+
+/** `store migrate`. Returns 0 done or nothing to do, 3 approval required. A refusal throws. */
+async function runMigrate(words: readonly string[], cwd: string, home: string, write: (text: string) => unknown, io: ApprovalIo, env: NodeJS.ProcessEnv): Promise<number> {
+  const args = parseMigrateArgs(words), approval = parseApprovalFlags(args.approval);
+  if (approval.rest.length) throw new DefinitionError('USAGE', MIGRATE_USAGE);
+  const selection = { selectors: { skills: args.skills, prompts: args.prompts, teams: args.teams }, all: args.all, commit: args.commit };
+  // Rule 2 before rule 1: a wrong command line is USAGE wherever it runs.
+  checkMigrateSelectors(selection);
+  const project = discoverProject(cwd, home), controller = new AbortController();
+  // Spec 07: the planner reads the token through this reader only to prove a pushed copy; apply only to compare.
+  const githubToken = githubTokenReader(env);
+  const plans = new Map<string, StoreMigratePlan>();
+  const plan = async (): Promise<StoreMigratePlan> => { const p = await planStoreMigrate({ project, home, ...selection, githubToken, signal: controller.signal }); plans.set(p.revision, p); return p; };
+  const first = await plan();
+  const json = approval.json;
+  if (first.items.length === 0) {
+    write(json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : plainText([...first.skipped.map(s => `${itemLabel(s.kind, s.id)}${s.line}`), ...(first.staleLock.length ? [STALE_NOTE(first.staleLock)] : []), 'Nothing to move.', ''].join('\n'), true));
+    return 0;
+  }
+  if (migrateIsNoop(first)) { write(json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderStoreMigrate(first), true)}\nNothing to change.\n`); return 0; }
+  let pending: StoreMigratePlan | null = first, result: StoreMigrateResult | null = null;
+  const change: PlannedChange<StoreMigratePlan> = {
+    async plan() { if (pending) { const p = pending; pending = null; return p; } return plan(); },
+    revision: p => p.revision, review: renderStoreMigrate, staleNote: proofStaleNote,
+    async apply(revision: string) {
+      const p = plans.get(revision); if (!p) throw new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
+      // The token is compared only when the plan proved a pushed copy (spec 07, 3.5).
+      result = await applyStoreMigrate(p, revision, { signal: controller.signal, githubToken: p.network.hosts.length ? githubToken() : null, project, home });
+      return result;
+    },
+  };
+  const outcome = await runWithApproval(change, { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json }, io);
+  write(outcome.output + (outcome.exitCode === 0 && result && !json ? storeMigrateWords(result) : ''));
+  return outcome.exitCode;
 }

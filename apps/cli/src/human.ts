@@ -48,10 +48,12 @@ export function shortHelp(): string {
 /** Full help for one command, keyed by the command word. `init` has its own text in main.ts. */
 export const TOPICS: Readonly<Record<string, string>> = {
   store: [
-    'Usage:', '  bowerloom store status [--json]', '',
+    'Usage:', '  bowerloom store status [--json]',
+    '  bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]',
+    '  bowerloom receipt clean [--global] [--approve <revision>] [--json]', '',
     'Shows the state of your store, ~/.bowerloom. The store holds definitions of skills, prompts, and teams.',
     'It holds no cache and no installed copy.',
-    'It reads only and writes nothing, and it starts no workers.',
+    'store status reads only and writes nothing. No store command starts workers.',
     'The store is always at ~/.bowerloom, and ~ is your HOME folder. Bowerloom refuses a store that is a link,',
     'that sits in an iCloud folder, or that other users can change, and a home folder that other users can write in.',
     'It does not check the folders above your home folder.',
@@ -62,6 +64,20 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read',
     'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.',
     'Add --json for one machine-readable object.', '',
+    // Spec 08, 3.1.
+    'store migrate copies skills, prompts, and teams from this project to your store, ~/.bowerloom. Then it lists them in bowerloom.json',
+    'with the source store. It deletes nothing. It prints the git rm lines so you can delete the old files after you check.',
+    '--all picks every skill, prompt, and team that bowerloom.json lists, except first-team and personal-assistant.',
+    'If the project has no bowerloom.json, --all picks every skill, prompt, and team of the project.',
+    'Naming an item with --skill, --prompt, or --team moves it even when bowerloom.json does not list it.',
+    'Slices never move.',
+    'A store skill or prompt holds only md, txt, json, yaml, yml, csv, and license files. Each file is UTF-8, not empty, and not executable.',
+    'An item holds at most 126 files, 65536 bytes in a file, and 2 MiB in all.',
+    'In a shared project, a skill, prompt, or team that you wrote is switched to the store only after the store is',
+    'pushed to its git remote. Until then it is copied and nothing else changes. Run the command again after you push.',
+    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    'After you delete the old files, run bowerloom receipt clean.',
+    'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   // Spec 08, 3.4.
   receipt: [

@@ -24,6 +24,8 @@ const gone = (path: string): boolean => { try { lstatSync(path); return false; }
 /**
  * Created items whose folder or file is gone. With `team`, only that team and the skills and prompts it gets.
  * A prompt's next step is `prompt create <id>`, which restores it; a team or skill comes back from version control.
+ * After the files were deleted on purpose (for example after `store migrate`), `bowerloom receipt clean` removes the
+ * receipt entries, and these lines go (spec 08, 3.5).
  */
 export function missingItems(project: ProjectContext, team: string | null): HeldItem[] {
   const out: HeldItem[] = [];
