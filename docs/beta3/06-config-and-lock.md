@@ -309,7 +309,7 @@ Error mapping, for `use`, `lock update`, and frozen fetch:
 | `SKILLS_ADD_HOST_REFUSED` | unchanged |
 | `SKILLS_ADD_UNSAFE_CONTENT`, or `SKILLS_ADD_NOT_FOUND` after the commit request | `LOCK_STORE_NOT_PUSHED` while proving, `LOCK_HASH_MISMATCH` while fetching |
 | `SKILLS_ADD_NOT_FOUND` on the commit request while proving | Step 4 of the proof above |
-| `SKILLS_ADD_NOT_FOUND` on the commit request while fetching (frozen apply, sync, up) | `STORE_REMOTE_PRIVATE` |
+| `SKILLS_ADD_NOT_FOUND` on the commit request while fetching (frozen apply, sync, up) | `STORE_REMOTE_PRIVATE`. Amendment, 2026-10-22, sageadvicellc/bowerloom#100: one request for `GET /repos/<o>/<r>` follows; 200 gives `LOCK_COMMIT_GONE`, 404 or a refused token keeps this code, and any other answer raises its own code or keeps this one with `Bowerloom could not check the repository: <code>.` |
 | abort | `SKILLS_SYNC_INTERRUPTED` |
 | `GITHUB_RATE_LIMITED` from the transport | `GITHUB_RATE_LIMITED` |
 
@@ -563,6 +563,8 @@ Recovery check. Run it before rules 1 and 2. Three facts make the check pass. Th
 Rules:
 
 1. Needs a config that lists the team `<id>` with `source: "store"`. Else `CONFIG_ITEM_NOT_SELECTED`.
+
+   **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** decision 1 on #80 (https://github.com/sageadvicellc/bowerloom/issues/80#issuecomment-6351449744, variant A). A store team that the config does not list, or a project with no config, is adopted too: one plan copies the team from the live store and adds `{ id, source: "project" }`, creating `bowerloom.json` as `use` does. With no store it refuses `STORE_NOT_FOUND`; a store that does not define the team refuses `STORE_ITEM_NOT_FOUND`. Store skills and prompts tagged to the team stay store items; the plan names them in one line, and names tagged items the store cannot use with a reason. A team the config lists from the project keeps `CONFIG_ITEM_NOT_SELECTED`, with the message `bowerloom.json already lists team <id> from the project.` A failure after the copy says `The team was copied. Run bowerloom team adopt <id> again to finish.`, and the next run finishes from the copy that matches its receipt pins. Each area folder of the store (`skills`, `prompts`, `teams`) must be a real folder inside the store, or every reader refuses `STORE_UNSAFE`.
 2. `.bowerloom/teams/<id>` must not exist, else `TEAM_EXISTS`. One exception applies. The pending record names team `<id>` and `pendingState` is `landed`. Then the create part is the finish of that record (`finish` set, `item` null), plus the config and lock change. `first-team` refuses `TEAM_ID_RESERVED`.
 3. Bowerloom reads the source of the bytes only. It uses no network. The source is the live store folder `teams/<id>` for a valid store that holds the team. Otherwise it is `<store-cache>/<key>` (3.11) of the lock item of the team. With neither, refuse `STORE_ITEM_MISSING`. The next step is `Run bowerloom apply --frozen, then bowerloom team adopt <id> again.`
 4. The `create` plan reads the source tree with `readTree` (`packages/project-authoring/src/files.ts:64`). The paths relative to the team folder become the planned files `teams/<id>/<path>`. It compiles the source `team.yaml` with `compileCrew(file)` (`packages/crew/src/index.ts:94`) to get `compiledCandidate`.
@@ -918,12 +920,12 @@ All messages are fixed and carry no path or name. A message can add the checked 
 
 | Code | Cause | Next step |
 |---|---|---|
-| `STORE_ITEM_NOT_FOUND` | `use` named an item the store does not define. | `bowerloom ls --global` |
+| `STORE_ITEM_NOT_FOUND` | `use` or `team adopt` named an item the store does not define (amendment, 2026-10-22, sageadvicellc/bowerloom#100: the message is `The command named an item that the store does not define.`). | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` (held) | A listed store item is not in the live store and not in the lock. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
 | `STORE_ITEM_NOT_SHAREABLE` | A store item must be locked in a shared project, and a teammate cannot fetch it. The message adds the cause (3.10). It also covers a file that a lock cannot record. | Give the store a remote and push it. `bowerloom store status` shows the commands. Or adopt a team into this project with `bowerloom team adopt`. |
 | `STORE_REMOTE_PRIVATE` | The store repository answered 404. It is private or does not exist. | Check the repository name and that the repository is public. |
 | `CONFIG_ITEM_SELECTED` | `use` named an item the config already lists from that source. | `bowerloom ls` |
-| `CONFIG_ITEM_NOT_SELECTED` | `unuse`, `lock update --item`, or `team adopt` named an item the config does not list, or there is no config. | `bowerloom ls` |
+| `CONFIG_ITEM_NOT_SELECTED` | `unuse` or `lock update --item` named an item the config does not list, or there is no config. Amendment, 2026-10-22, sageadvicellc/bowerloom#100: `team adopt` raises it only for a team the config lists from the project. | `bowerloom ls` |
 | `CONFIG_ITEM_MISSING` (held) | A listed project item has no definition in the project. | `bowerloom <kind> create <id>`, or `bowerloom unuse <kind> <id>`. |
 | `CONFIG_WRITE_UNCONFIRMED` | `bowerloom.json` was written but changed before it was read back. | `git diff bowerloom.json` |
 | `TEAM_NOT_SELECTED` | `up --team` named a team the config does not list. | `bowerloom use team <id>` |
@@ -1114,7 +1116,7 @@ Change:
 ## 8. Migration from beta.2 projects
 
 - A project with no `bowerloom.json` is in legacy mode. These commands act as in beta.2: `ls`, `status`, `skills check`, `skills sync`, `apply`, `up`, and the create commands. The new formats and the source tags are the only changes. The store and the lock are never read.
-- A project gets `bowerloom.json` only through `use`, `unuse` (which needs a config), `team adopt` (which needs a config), or `store migrate` (spec 08). No other command creates it.
+- A project gets `bowerloom.json` only through `use`, `unuse` (which needs a config), `team adopt` (which needs a config), or `store migrate` (spec 08). No other command creates it. **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** `team adopt` of a store team that is not listed creates it too.
 - The first `use` writes a config that lists every item the project defines now, with `source: "project"`, so nothing changes for installed items. The plan shows the count.
 - A project with `.bowerloom` keeps it. A project with a config and no `.bowerloom` gets one at the first install.
 - Sync and apply plan formats are `v1beta2`. A script that reads `format` must accept it. Entries gain `origin`, `via`, and `resolvedFrom`.
