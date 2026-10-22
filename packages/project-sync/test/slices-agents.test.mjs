@@ -133,3 +133,11 @@ test('an agent that names no slice is unchanged and has an empty context', async
   const f = await wikiProject(t); agentSource(f, 'first-team', 'plain.md', agentText('plain')); const a = byId((await plan(f, ['claude'])).agents).plain;
   assert.deepEqual(a.context, { slices: [], guard: null, guardRoots: [], unknown: [], beyondPreloadLimit: [], plainSkills: [], heldNeverInstalled: [], omitClaudeMd: false, beyondPreloadPositions: [], tools: null, mcpServers: false });
 });
+
+test('C1. an agent with the slices wiki and wiki-eng applies end to end (the root strings are in slice order, not string order)', async t => {
+  const f = await wikiProject(t); await createSlice(f, 'wiki-eng', { root: 'wiki' }); sliceAgent(f, 'lead', ['slice-wiki', 'slice-wiki-eng']);
+  const r = await applied(f, ['claude']); assert.deepEqual(r.result.applied.map(a => a.kind + ':' + a.id), ['slice:wiki', 'slice:wiki-eng', 'agent:lead']);
+  const args = guardArgs(f); const roots = args.filter((x, i) => args[i - 1] === '--root'); assert.deepEqual(roots.map(x => x.split(':')[0]), ['wiki', 'wiki-eng']);
+  assert.ok(roots[0] > roots[1], 'string order would put wiki-eng first');
+  assert.equal((await plan(f, ['claude'])).agents[0].action, 'none');
+});

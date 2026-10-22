@@ -86,6 +86,8 @@ function sliceNoteLines(item: SliceItem): string[] {
   for (const p of n.emptyPatterns) out.push(`  Note: slice ${id}: the pattern ${p} matches no file.`);
   if (n.notText > 0) out.push(`  Note: slice ${id} left out ${n.notText} files that are not UTF-8 text or have unusual names.`);
   if (n.oversize.length) out.push(`  Note: slice ${id} lists ${n.oversize.length} files over 1 MiB without a summary.`);
+  if (n.skippedEntries > 0) out.push(`  Note: slice ${id} skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
+  if (n.truncatedLinks > 0) out.push(`  Note: slice ${id} follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
   if (n.outsideProject) out.push(`  Note: slice ${id} reads ${sliceWhere(item)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${sliceWhere(item)}, or add the folder to permissions.additionalDirectories.`);
   if (n.wholeProject) out.push(`  Note: slice ${id} guards the whole project folder. An agent that names it reads only the slice's files there with Read, Grep, and Glob.`);
   return out;

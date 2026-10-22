@@ -62,6 +62,8 @@ test('4. requestV2 refuses an agent source without the guard key, a guard list o
   assert.throws(() => requestV2(agent({ slices: [], roots: [] })));
   assert.throws(() => requestV2(agent({ slices: ['a'], roots: ['b:' + 'a'.repeat(32)] })), 'a root names a listed slice');
   assert.throws(() => requestV2(agent({ slices: ['a'], roots: ['a:xyz'] })));
+  const h = c => c.repeat(32); assert.equal(requestV2(agent({ slices: ['wiki', 'wiki-eng'], roots: ['wiki:' + h('a'), 'wiki-eng:' + h('b')] })).item.kind, 'agent');
+  assert.throws(() => requestV2(agent({ slices: ['wiki', 'wiki-eng'], roots: ['wiki-eng:' + h('b'), 'wiki:' + h('a')] })), 'roots follow the slice list');
 });
 test('5. itemId gives slice_wiki, and 6. catalogItem tells a slice from a skill', () => {
   assert.equal(itemId({ kind: 'slice', id: 'wiki' }), 'slice_wiki');

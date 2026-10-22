@@ -192,3 +192,26 @@ test('read bytes pass 32 MiB hold with SLICE_TOO_LARGE', () => {
   const t = tree(spec); const original = t.read; t.read = p => { t.reads.push(p); return Buffer.alloc(1000000, 0x61); };
   assert.equal(resolveSlice(def({ maxFiles: 256 }), t).hold.code, 'SLICE_TOO_LARGE'); void original;
 });
+
+test('C2. maxFiles holds after links are followed and for files over 1 MiB', () => {
+  const spec = {}; for (let i = 0; i < 257; i++) spec[`big${String(i).padStart(3, '0')}.md`] = { text: '# Big', size: 2 * 1048576 };
+  assert.equal(resolveSlice(def(), tree(spec)).hold.code, 'SLICE_TOO_LARGE', '257 files over 1 MiB');
+  const linked = tree({ 'a.md': '[[b]] [[c]] [[d]]', 'b.md': '#', 'c.md': '#', 'd.md': '#' });
+  assert.equal(resolveSlice(def({ include: ['a.md'], maxFiles: 3, links: { follow: ['wikilink'], depth: 1 } }), linked).hold.code, 'SLICE_TOO_LARGE', 'links push past maxFiles');
+  assert.equal(resolveSlice(def({ include: ['a.md'], maxFiles: 4, links: { follow: ['wikilink'], depth: 1 } }), linked).hold, null);
+  const mixed = tree({ 'a.md': '[[big]]', 'big.md': { text: '# B', size: 3 * 1048576 } });
+  assert.equal(resolveSlice(def({ include: ['a.md'], maxFiles: 1, links: { follow: ['wikilink'], depth: 1 } }), mixed).hold.code, 'SLICE_TOO_LARGE', 'a linked file over 1 MiB counts');
+});
+test('C6. a link that resolves to a file already found is not added twice (a name in another case on a case-insensitive disk)', () => {
+  const t = tree({ 'a.md': '[x](A.md) [y](b.md)', 'b.md': '# B' }, { alias: { 'A.md': 'a.md', 'B.MD': 'b.md' } });
+  const r = resolveSlice(def({ include: ['a.md'], links: { follow: ['markdown'], depth: 2 } }), t);
+  assert.deepEqual(r.members.map(m => m.path), ['a.md', 'b.md']); assert.deepEqual(t.reads.filter(p => p === 'A.md'), []);
+});
+test('S7. special entries, unselected links, oversize files under where, and truncated links are counted in the notes', () => {
+  const t = tree({ 'a.md': '# A', 'l.txt': { type: 'link' }, 'fifo.pipe': { type: 'other' }, 'big.md': { text: '---\nx: 1\n---\n', size: 2 * 1048576 } });
+  const r = resolveSlice(def({ where: { x: ['1'] } }), t);
+  assert.equal(r.notes.skippedEntries, 2, 'a link that no pattern selects and a special file'); assert.deepEqual(r.notes.oversize, ['big.md'], 'where cannot read an oversize file, so it is named');
+  assert.deepEqual(r.members.map(m => m.path), []);
+  const many = tree({ 'a.md': '[[b]] '.repeat(600), 'b.md': '#' }); const m = resolveSlice(def({ include: ['a.md'], links: { follow: ['wikilink'], depth: 1 } }), many);
+  assert.equal(m.notes.truncatedLinks, 1);
+});

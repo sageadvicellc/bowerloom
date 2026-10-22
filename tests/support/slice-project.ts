@@ -36,13 +36,13 @@ export function approve(cwd: string, args: string[], home: string): void {
 export interface SliceProject { home: string; dir: string; agent: string }
 export const AGENT = (extra = ''): string => `---\nname: lead\ndescription: Leads the desk.\nskills: [slice-wiki]\n${extra}---\nDo the work.\n`;
 /** init, a wiki of three pages, `slice create wiki --root wiki`, the agent `lead`, and `apply --harness claude`. */
-export function sliceProject(t: TestContext, { apply = true, agentExtra = '' }: { apply?: boolean; agentExtra?: string } = {}): SliceProject {
+export function sliceProject(t: TestContext, { apply = true, agentExtra = '', root = 'wiki' }: { apply?: boolean; agentExtra?: string; root?: string } = {}): SliceProject {
   const home = folder(t), dir = join(home, 'studio'); mkdirSync(dir);
   const init = ['--mode', 'existing', '--target', dir, '--name', 'Studio handbook', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
   const plan = run(home, ['init', 'plan', ...init, '--json'], home); assert.equal(plan.status, 0, plan.stderr);
   const applied = run(home, ['init', 'apply', ...init, '--approve', JSON.parse(plan.stdout).revision], home); assert.equal(applied.status, 0, applied.stderr);
-  put(dir, 'wiki/a.md', '# Alpha\nbody a\n'); put(dir, 'wiki/sub/b.md', '# Beta\nbody b\n'); put(dir, 'wiki/secret.txt', 'not in the slice\n');
-  approve(dir, ['slice', 'create', 'wiki', '--root', 'wiki', '--include', '**/*.md'], home);
+  put(dir, `${root}/a.md`, '# Alpha\nbody a\n'); put(dir, `${root}/sub/b.md`, '# Beta\nbody b\n'); put(dir, `${root}/secret.txt`, 'not in the slice\n');
+  approve(dir, ['slice', 'create', 'wiki', '--root', root, '--include', '**/*.md'], home);
   const agent = put(dir, '.bowerloom/teams/first-team/agents/lead.md', AGENT(agentExtra));
   if (apply) approve(dir, ['apply', '--harness', 'claude'], home);
   return { home, dir, agent };
@@ -55,3 +55,24 @@ export function guardArgs(p: SliceProject, role = 'lead'): string[] {
 }
 export const hookInput = (tool: string, toolInput: Record<string, unknown>, cwd: string): string => JSON.stringify({ session_id: 's', hook_event_name: 'PreToolUse', tool_name: tool, tool_input: toolInput, cwd });
 export const denyJson = (reason: string): string => `${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })}\n`;
+
+/**
+ * Rewrites the catalog of an installed item and fixes the pin in its committed receipt, so that only the guard's own checks of the
+ * catalog can refuse it. `edit` gets the parsed catalog. The receipt revision is made again from the new body.
+ */
+export async function tamperCatalog(p: SliceProject, itemId: string, edit: (catalog: Record<string, unknown>) => void): Promise<void> {
+  const { surfaceV2 } = await import('../../packages/managed-skills/src/v2-observed.js');
+  const { revisionOf } = await import('../../packages/skill-sources/src/validation.js');
+  const { identityFrom, projectId } = await import('../../packages/project-context/src/discovery.js');
+  const { lstatSync, readdirSync } = await import('node:fs');
+  const catalog = join(p.dir, '.bowerloom/managed/catalog', itemId + '.json'), value = JSON.parse(readFileSync(catalog, 'utf8')) as Record<string, unknown>;
+  edit(value); writeFileSync(catalog, JSON.stringify(value) + '\n');
+  const id = projectId(p.dir, identityFrom(lstatSync(p.dir, { bigint: true }))), state = join(p.home, 'state', 'bowerloom', id, 'items', itemId);
+  for (const op of readdirSync(state).filter(n => /^op-[a-f0-9]{64}$/.test(n))) {
+    const file = join(state, op, 'receipt.json'), receipt = JSON.parse(readFileSync(file, 'utf8')) as { installed: { id: string; kind: 'file'; path: string; pins: unknown }[]; revision?: string };
+    const surface = receipt.installed.find(x => x.id === 'catalog'); if (!surface) continue;
+    surface.pins = surfaceV2('catalog', 'file', catalog).pins;
+    delete receipt.revision; receipt.revision = revisionOf(receipt);
+    writeFileSync(file, JSON.stringify(receipt));
+  }
+}

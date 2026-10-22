@@ -49,6 +49,7 @@ const MESSAGES = {
   GUARD_ROOT_MISSING: 'The read guard blocked every call, because the folder of a slice cannot be found.',
   GUARD_PROJECT_MISMATCH: 'The read guard found no record of this agent for the project its copy names.',
   GUARD_INPUT_INVALID: 'The read guard could not read its input, so it blocked the call.',
+  GUARD_INTERNAL_ERROR: 'The read guard hit an internal error, so it blocked the call.',
   REVISION_PENDING: 'A revise of this project is unfinished. Finish it first (bowerloom help advanced lists revise recover).',
   MANAGED_SKILL_LEGACY_PRESENT: 'This project still holds a skill installed by an earlier Bowerloom (.bowerloom-skills). Migrate it first: bowerloom skills migrate plan --state <v1-state-dir>.',
   MANAGED_SKILL_RECOVERY_REQUIRED: 'A managed skill operation is unfinished.',

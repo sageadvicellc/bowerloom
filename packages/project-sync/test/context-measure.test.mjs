@@ -135,3 +135,32 @@ test('showSlice names the index, the installed state, the agents, and holds noth
   const held = await wikiProject(t); rewriteSlice(held, 'wiki', x => x.replace('"**/*.md"', '"missing.md"')); const h = await showSlice({ project: held.project(), stateRoot: held.stateRoot, slice: 'wiki' });
   assert.equal(h.index, null); assert.equal(h.hold.code, 'SLICE_PATH_MISSING'); assert.equal(h.installed, 'not installed');
 });
+
+test('C3. a file counts once per column: a baseline file that is also in the instruction chain is not added again', async t => {
+  const f = await fixture(t), r = await measureContext(measureInput(f, { baseline: f.projectDir })), a = lead(r);
+  assert.equal(r.baseline.files, 3); assert.equal(r.baseline.bytes, 15 + 29, 'the folder total is every .md file once');
+  assert.equal(a.baseline.bytes, 13 + 15 + 13 + 29, 'CLAUDE.md is in the chain, so the baseline files do not count it again');
+  fs.mkdirSync(path.join(f.projectDir, 'docs'), { mode: 0o755 }); fs.linkSync(path.join(f.projectDir, 'CLAUDE.md'), path.join(f.projectDir, 'docs/same.md'));
+  const linked = await measureContext(measureInput(f, { baseline: f.projectDir })); assert.equal(lead(linked).baseline.bytes, 13 + 15 + 13 + 29, 'a hard link to a chain file is the same file');
+});
+test('S4. an unreadable, oversize, or non-regular file is named in the notes and the JSON, and an oversize SKILL.md is not "not found"', async t => {
+  const f = await fixture(t); const skill = path.join(f.projectDir, '.claude/skills/house/SKILL.md');
+  fs.writeFileSync(skill, 'x'.repeat(8 * 1024 * 1024 + 1));
+  let a = lead(await measureContext(measureInput(f)));
+  assert.deepEqual(a.start.skills.unreadable, [{ path: '.claude/skills/house/SKILL.md', reason: 'too large' }]); assert.deepEqual(a.start.skills.unresolved, []);
+  assert.ok(a.notes.includes('skill house cannot be counted: .claude/skills/house/SKILL.md is too large.'), a.notes.join('|'));
+  fs.writeFileSync(skill, 'House skill.\n'); if (process.getuid?.() !== 0) {
+    fs.chmodSync(path.join(f.projectDir, 'CLAUDE.md'), 0o000);
+    try { a = lead(await measureContext(measureInput(f))); } finally { fs.chmodSync(path.join(f.projectDir, 'CLAUDE.md'), 0o644); }
+    assert.deepEqual(a.start.instructions.unreadable, [{ path: 'CLAUDE.md', reason: 'EACCES' }]); assert.ok(a.notes.includes('CLAUDE.md cannot be counted: it cannot be read (EACCES).'), a.notes.join('|'));
+  }
+  fs.rmSync(path.join(f.projectDir, 'CLAUDE.md')); fs.mkdirSync(path.join(f.projectDir, 'CLAUDE.md'));
+  a = lead(await measureContext(measureInput(f))); assert.deepEqual(a.start.instructions.unreadable, [{ path: 'CLAUDE.md', reason: 'not a regular file' }]);
+});
+test('S6. a held agent is reported with its hold code, not as unknown, and a chosen agent with no planned item throws', async t => {
+  const f = await fixture(t); agentSource(f, 'first-team', 'broken.md', '---\nname: broken\nbogus: 1\n---\nx\n');
+  const r = await measureContext(measureInput(f, { agents: ['broken'] }));
+  assert.deepEqual(r.agents, []); assert.equal(r.held.length, 1); assert.equal(r.held[0].role, 'broken'); assert.equal(r.held[0].code, 'AGENT_KEY_UNKNOWN'); assert.match(r.held[0].next, /^Remove the key bogus from \.bowerloom\/teams\/first-team\/agents\/broken\.md/);
+  const all = await measureContext(measureInput(f)); assert.deepEqual(all.held.map(h => h.role), ['broken']); assert.deepEqual(all.agents.map(a => a.role), ['lead']);
+  await assert.rejects(measureContext(measureInput(f, { agents: ['nobody'] })), e => e.code === 'CONTEXT_AGENT_NOT_FOUND');
+});

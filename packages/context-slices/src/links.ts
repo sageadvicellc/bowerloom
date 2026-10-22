@@ -45,7 +45,8 @@ export function withoutSpans(text: string): string {
 const WIKI = /!?\[\[([^\[\]\n]+)\]\]/g;
 const MARKDOWN = /\[[^\[\]\n]*\]\((?:<([^<>\n]+)>|([^()\s<>]+))(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
 
-export function extractLinks(text: string): RawLink[] {
+/** The links of a text, and whether more than LINKS_PER_FILE were found, so the rest were not followed. */
+export function scanLinks(text: string): { links: RawLink[]; truncated: boolean } {
   const clean = withoutSpans(withoutFences(text)), found: { at: number; link: RawLink }[] = [];
   for (const m of clean.matchAll(WIKI)) {
     let target = m[1]!; const bar = target.indexOf('|'); if (bar >= 0) target = target.slice(0, bar);
@@ -57,5 +58,6 @@ export function extractLinks(text: string): RawLink[] {
     found.push({ at: m.index!, link: { kind: 'markdown', target: (m[1] ?? m[2])! } });
   }
   found.sort((a, b) => a.at - b.at);
-  return found.slice(0, LINKS_PER_FILE).map(f => f.link);
+  return { links: found.slice(0, LINKS_PER_FILE).map(f => f.link), truncated: found.length > LINKS_PER_FILE };
 }
+export function extractLinks(text: string): RawLink[] { return scanLinks(text).links; }

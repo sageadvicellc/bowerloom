@@ -188,6 +188,7 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `GUARD_SLICE_NOT_INSTALLED` | A slice of the agent is not installed, or its catalog changed. The guard blocked every call. | Run `bowerloom apply`. |
 | `GUARD_ROOT_MISSING` | The folder of a slice cannot be found, or it changed since `apply`. The guard blocked every call. | Run `bowerloom apply`. |
 | `GUARD_PROJECT_MISMATCH` | The project path or id in the agent copy matches no project that manages the agent. The guard blocked every call. | Run `bowerloom apply` in the project that holds `.claude/agents/<role>.md`. |
+| `GUARD_INTERNAL_ERROR` | The guard met an error it did not expect, such as a folder it may not read, a link loop, or a name that is too long. It blocked the call. | Run `claude --debug`, then `bowerloom apply`. |
 | `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocked the call and exited 2. | Run `claude --debug`. |
 
 ## Request-file skills refusals

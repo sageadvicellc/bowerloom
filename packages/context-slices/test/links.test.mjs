@@ -1,7 +1,7 @@
 // Spec 05, section 3.5 step 6: finding links outside code.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractLinks } from '../../../dist/packages/context-slices/src/links.js';
+import { extractLinks, scanLinks } from '../../../dist/packages/context-slices/src/links.js';
 
 test('all five forms are found in order', () => {
   const text = 'a [[one]] b [[two|alias]] c [[three#heading]] d ![[four]] e [x](five/six.md#anchor) f';
@@ -24,4 +24,7 @@ test('a title and an angle-bracket destination are read', () => {
   assert.deepEqual(extractLinks('[a](b.md "Title") [c](<d e.md>)'), [{ kind: 'markdown', target: 'b.md' }, { kind: 'markdown', target: 'd e.md' }]);
 });
 test('a code span can run across lines', () => { assert.deepEqual(extractLinks('`a\n[[x]]` [[y]]'), [{ kind: 'wikilink', target: 'y' }]); });
-test('at most 512 links are returned', () => { assert.equal(extractLinks('[[a]] '.repeat(600)).length, 512); });
+test('at most 512 links are returned, and the cut is reported', () => {
+  assert.equal(extractLinks('[[a]] '.repeat(600)).length, 512); assert.equal(scanLinks('[[a]] '.repeat(600)).truncated, true);
+  assert.equal(scanLinks('[[a]] '.repeat(512)).truncated, false); assert.equal(scanLinks('[[a]] '.repeat(513)).truncated, true);
+});

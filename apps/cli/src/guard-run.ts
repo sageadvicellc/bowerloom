@@ -54,7 +54,8 @@ export async function readLimited(stdin: AsyncIterable<unknown>, maxBytes = 1048
 }
 
 export const denyLine = (reason: string): string => `${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })}\n`;
-const FAILED = (role: string): string => `Bowerloom guard: the project does not manage agent ${role}, or the guard could not check it, so the call is blocked. Run bowerloom apply in the project that holds .claude/agents/${role}.md.`;
+/** An error the guard did not expect. It gets its own reason, so it is never read as a project mismatch. */
+export const INTERNAL_ERROR_TEXT = 'Bowerloom guard: the guard hit an internal error, so the call is blocked. Run bowerloom apply, or reinstall Bowerloom.';
 
 export interface GuardIo { stdin: AsyncIterable<unknown>; out: (text: string) => void; err: (text: string) => void; env: NodeJS.ProcessEnv; home: string; cwd: string }
 
@@ -78,7 +79,7 @@ export async function runHook(args: GuardArgs, io: GuardIo): Promise<0 | 2> {
   let decision: GuardDecision;
   try {
     decision = decideGuard({ role: args.role, project: args.project, ids: args.slices, tool: input.tool, toolInput: input.toolInput, cwd: input.cwd, home: io.home }, () => loadGuardView(args, stateRootOf(io.env, io.home)));
-  } catch { decision = { kind: 'deny', code: 'GUARD_PROJECT_MISMATCH', reason: FAILED(args.role) }; }
+  } catch { decision = { kind: 'deny', code: 'GUARD_INTERNAL_ERROR', reason: INTERNAL_ERROR_TEXT }; }
   if (decision.kind === 'invalid') { io.err(INPUT_INVALID_TEXT); return 2; }
   if (decision.kind === 'deny') io.out(denyLine(decision.reason));
   return 0;

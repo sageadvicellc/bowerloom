@@ -14,7 +14,7 @@ export function tree(spec, hooks = {}) {
   for (const [key, value] of Object.entries(spec)) {
     if (key.endsWith('/')) { dirs.set(key.slice(0, -1), { safe: true, ...(value ?? {}) }); continue; }
     const v = typeof value === 'string' || Buffer.isBuffer(value) ? { data: Buffer.from(value) } : { data: Buffer.from(value.text ?? ''), ...value };
-    files.set(key, { type: v.type ?? 'file', nlink: v.nlink ?? 1, safe: v.safe ?? true, size: v.size ?? v.data.length, data: v.data });
+    files.set(key, { type: v.type ?? 'file', nlink: v.nlink ?? 1, safe: v.safe ?? true, size: v.size ?? v.data.length, data: v.data, id: v.id ?? `1:${files.size + 1}` });
     const parts = key.split('/'); for (let i = 1; i < parts.length; i++) { const d = parts.slice(0, i).join('/'); if (!dirs.has(d)) dirs.set(d, { safe: true }); }
   }
   const listed = [], reads = [];
@@ -27,11 +27,12 @@ export function tree(spec, hooks = {}) {
     listed, reads,
     list(dir) { listed.push(dir); const names = hooks.names?.(dir) ?? children(dir); if (names.length > 1024) throw new SliceTreeError('SLICE_TOO_LARGE', dir); return names; },
     stat(path) {
-      if (files.has(path)) { const f = files.get(path); return { type: f.type, size: f.size, nlink: f.nlink, safe: f.safe }; }
+      const alias = hooks.alias?.[path]; if (alias !== undefined) path = alias;
+      if (files.has(path)) { const f = files.get(path); return { type: f.type, size: f.size, nlink: f.nlink, safe: f.safe, id: f.id }; }
       if (dirs.has(path)) return { type: dirs.get(path).type ?? 'dir', size: 0, nlink: 1, safe: dirs.get(path).safe };
       return null;
     },
-    read(path) { reads.push(path); return files.get(path).data; },
+    read(path) { reads.push(path); return files.get(hooks.alias?.[path] ?? path).data; },
     close() { hooks.close?.(); },
   };
 }

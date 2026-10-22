@@ -62,7 +62,14 @@ export function requestV2(value: unknown): ManagedItemRequest {
     if (s.guard !== null) {
       const g = schema<{ slices: string[]; roots: string[] }>(s.guard, ['slices', 'roots']);
       check(Array.isArray(g.slices) && g.slices.length >= 1 && g.slices.length <= 64 && g.slices.every((x, i) => isSliceId(x) && (i === 0 || g.slices[i - 1]! < x)));
-      check(Array.isArray(g.roots) && g.roots.length <= g.slices.length && g.roots.every((x, i) => typeof x === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{32}$/.test(x) && g.slices.includes(x.slice(0, x.lastIndexOf(':'))) && (i === 0 || g.roots[i - 1]! < x)));
+      // Each root names a listed slice, and the roots follow the slice list: by position in that list, never by string order
+      // (the string `wiki-eng:...` sorts before `wiki:...`, though the slice wiki comes first).
+      let at = -1;
+      check(Array.isArray(g.roots) && g.roots.length <= g.slices.length && g.roots.every(x => {
+        if (typeof x !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{32}$/.test(x)) return false;
+        const position = g.slices.indexOf(x.slice(0, x.lastIndexOf(':')));
+        if (position <= at) return false; at = position; return true;
+      }));
     }
   }
   else if (source.kind === 'slice') {

@@ -26,7 +26,7 @@ function run(f, tool, toolInput, { cwd = f.project, slices = [f.slice()], projec
 }
 const read = (f, p, o) => run(f, 'Read', { file_path: p }, o), grep = (f, p, o) => run(f, 'Grep', p === undefined ? { pattern: 'x' } : { pattern: 'x', path: p }, o), glob = (f, pattern, o, p) => run(f, 'Glob', p === undefined ? { pattern } : { pattern, path: p }, o);
 const denied = (d, code = 'GUARD_OUTSIDE_SLICE') => { assert.equal(d.kind, 'deny', JSON.stringify(d)); assert.equal(d.code, code, d.reason); return d; };
-const quiet = d => assert.deepEqual(d, { kind: 'silent' });
+const quiet = (d, why) => assert.deepEqual(d, { kind: 'silent' }, why);
 const caseInsensitive = (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'case-')); try { fs.writeFileSync(path.join(d, 'a'), ''); return fs.existsSync(path.join(d, 'A')); } finally { fs.rmSync(d, { recursive: true }); } })();
 after(() => assert.deepEqual([...kinds].filter(k => !['silent', 'deny', 'invalid'].includes(k)), [], 'no decision is ever allow'));
 
@@ -77,7 +77,16 @@ test('17. a tool other than the three is silent, and the view is never loaded', 
   const d = decideGuard({ role: 'lead', project: f.project, ids: ['kb'], tool: 'Bash', toolInput: { command: 'cat x' }, cwd: f.project, home: f.base }, () => { loaded = true; throw new Error('no'); });
   quiet(d); assert.equal(loaded, false);
 });
-test('18. no decision is ever allow', () => { /* checked after every test */ });
+test('18. no decision is ever allow, over many inputs', t => {
+  const f = fixture(t), seen = new Set();
+  const paths = [path.join(f.root, 'a.md'), path.join(f.root, 'b.md'), f.root, f.base, '/etc/hosts', 'rel/x', '~', '~/x', path.join(f.root, 'cov'), path.join(f.root, 'nope'), ' x', '/a/../b', '/.vol/1'];
+  const patterns = ['*', '**/*.md', 'a.md', '{a,b}', '{1..9}', '@(x)', '../x', '/etc/*', '~/x/*', 'cov/**', '\\*'];
+  for (const p of paths) { seen.add(read(f, p).kind); seen.add(grep(f, p).kind); seen.add(glob(f, '**', undefined, p).kind); }
+  for (const g of patterns) { seen.add(glob(f, g).kind); seen.add(glob(f, g, { cwd: f.root }).kind); }
+  for (const tool of ['Bash', 'Edit', 'Read', 'Grep', 'Glob', '']) seen.add(run(f, tool, {}).kind);
+  assert.ok([...seen].every(k => ['silent', 'deny', 'invalid'].includes(k)), [...seen].join()); assert.ok(seen.has('silent') && seen.has('deny') && seen.has('invalid'));
+  for (const d of [read(f, path.join(f.root, 'b.md')), grep(f, f.base)]) assert.deepEqual(Object.keys(d).sort(), ['code', 'kind', 'reason']);
+});
 test('19. with an outer and an inner guarded root, a member of the inner slice is allowed under the outer area', t => {
   const f = fixture(t), inner = f.slice({ id: 'inner', root: path.join(f.root, 'sub'), display: '../kb/sub', prefix: '../kb/sub', members: ['d.md'], covered: [] });
   quiet(read(f, path.join(f.root, 'sub/d.md'), { slices: [f.slice(), inner] })); denied(read(f, path.join(f.root, 'sub/zz.md'), { slices: [f.slice(), inner] }));
@@ -126,7 +135,7 @@ test('34. a {1..3} range expands to three results, each checked', t => {
   assert.deepEqual(expandBraces('{1..3}'), ['1', '2', '3']); assert.deepEqual(expandBraces('a{b,c{d,e}}f'), ['abf', 'acdf', 'acef']); assert.deepEqual(expandBraces('{a..c}'), ['a', 'b', 'c']);
   assert.deepEqual(expandBraces('{x,}/y'), ['x/y', '/y']); assert.deepEqual(expandBraces('{01..03}'), ['01', '02', '03']); assert.deepEqual(expandBraces('{3..1}'), ['3', '2', '1']);
   assert.deepEqual(expandBraces('a\\{b,c\\}'), ['a\\{b,c\\}']); assert.deepEqual(expandBraces('{open'), ['{open']); assert.deepEqual(expandBraces('{x}').sort(), ['\\{x\\}', 'x'].sort());
-  const f = fixture(t, { rootName: 'outside/3' }), cwd = path.join(f.base, 'outside'); fs.mkdirSync(path.join(cwd, '1')); fs.mkdirSync(path.join(cwd, '2')); denied(glob(f, '{1..3}', { cwd })); quiet(glob(f, '{1..2}', { cwd }));
+  const f = fixture(t, { rootName: 'outside/3' }), cwd = path.join(f.base, 'outside'); fs.mkdirSync(path.join(cwd, '1')); fs.mkdirSync(path.join(cwd, '2')); denied(glob(f, '{1..3}/*', { cwd })); quiet(glob(f, '{1..2}/*', { cwd }));
 });
 test('35. a value with leading white space, or a control or format character, is denied', t => {
   const f = fixture(t), c = n => String.fromCharCode(n);
@@ -160,5 +169,48 @@ test('42. form reason text', t => {
 });
 test('Glob with a path argument uses it as the base', t => {
   const f = fixture(t); denied(glob(f, '**/*.md', undefined, f.root)); quiet(glob(f, 'cov/**', undefined, f.root)); quiet(glob(f, '**/*.md', undefined, path.join(f.root, 'cov')));
-  denied(glob(f, 'sub/**', undefined, f.root)); denied(glob(f, 'b.md', undefined, f.root)); quiet(glob(f, 'a.md', undefined, f.root));
+  denied(glob(f, 'sub/**', undefined, f.root)); denied(glob(f, 'b.md', undefined, f.root));
+  // G3: a pattern without a slash matches at any depth, so it is judged as **/<pattern> from its base folder.
+  denied(glob(f, 'a.md', undefined, f.root)); quiet(glob(f, 'x.md', undefined, path.join(f.root, 'cov'))); quiet(glob(f, 'x.md', undefined, path.join(f.base, 'outside'))); quiet(glob(f, 'secret.md')); denied(glob(f, '{a,b}.md', undefined, f.root));
+  denied(glob(f, 'a.md', undefined, f.base));
+});
+const deep = (root, n, name = 'd') => path.join(root, ...Array.from({ length: n }, () => name));
+test('G1. a member and a non-member 70 levels deep: Read, Grep and Glob', t => {
+  const f = fixture(t), dir = deep(f.root, 70); write(path.join(dir, 'm.md')); write(path.join(dir, 'n.md'));
+  const slices = [f.slice({ members: ['a.md', 'sub/c.md', 'cov/x.md', 'cov/y.md', 'd/'.repeat(70) + 'm.md'], covered: ['cov/'] })], o = { slices };
+  quiet(read(f, path.join(dir, 'm.md'), o)); denied(read(f, path.join(dir, 'n.md'), o)); denied(read(f, path.join(dir, 'new.md'), o));
+  quiet(grep(f, path.join(dir, 'm.md'), o)); denied(grep(f, path.join(dir, 'n.md'), o)); denied(grep(f, dir, o));
+  denied(glob(f, 'm.md', o, dir));
+  denied(glob(f, 'n.md', o, dir)); denied(glob(f, `${'d/'.repeat(70)}n.md`, { slices, cwd: f.root })); denied(glob(f, `d/${'d/'.repeat(69)}**`, { slices, cwd: f.root }));
+  // A link that makes the real chain deeper than the text path.
+  const chain = deep(f.base, 70, 'l'); write(path.join(chain, 'n.md')); fs.symlinkSync(f.root, path.join(chain, 'root')); denied(read(f, path.join(chain, 'root', 'b.md'), o)); quiet(read(f, path.join(chain, 'root', 'a.md'), o));
+});
+test('G4. a path or a pattern over 4096 bytes or 256 parts is denied, fast', t => {
+  const f = fixture(t), long = '/' + 'a/'.repeat(300) + 'x', started = Date.now();
+  denied(read(f, long)); denied(grep(f, long)); denied(glob(f, '**', undefined, long)); denied(read(f, '/' + 'x'.repeat(4100)));
+  denied(glob(f, '{'.repeat(20000))); denied(glob(f, '{a,'.repeat(5000) + 'b' + '}'.repeat(5000))); denied(glob(f, 'a/'.repeat(300) + '*'));
+  const parts = '/' + 'a/'.repeat(450000) + 'x'; denied(read(f, parts)); denied(grep(f, parts));
+  assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+  quiet(read(f, '/etc/hosts')); quiet(read(f, '/' + 'a/'.repeat(100) + 'x'));
+});
+test('G5. a Grep or Glob of a hard link to a non-member is denied like a Read', t => {
+  const f = fixture(t); fs.linkSync(path.join(f.root, 'b.md'), path.join(f.base, 'outside/hl.md'));
+  denied(grep(f, path.join(f.base, 'outside/hl.md'))); denied(glob(f, '*', undefined, path.join(f.base, 'outside/hl.md')));
+  quiet(grep(f, path.join(f.base, 'outside/o.md'))); quiet(grep(f, path.join(f.base, 'outside')), 'a folder that holds such a link stays open (documented gap)');
+});
+test('G6. a covered folder is checked by identity, not by name text', { skip: !caseInsensitive && 'this disk is case-sensitive, so a name written in another case is another file' }, t => {
+  const f = fixture(t), slices = [f.slice({ members: ['a.md', 'sub/c.md', 'cov/X.MD', 'cov/Y.md'] })];
+  quiet(grep(f, path.join(f.root, 'cov'), { slices }));
+  write(path.join(f.root, 'cov/extra.md')); denied(grep(f, path.join(f.root, 'cov'), { slices }));
+});
+test('G4. a covered folder with many entries is denied past the visit cap and stops at the first non-member', t => {
+  const f = fixture(t); for (let i = 0; i < 3000; i++) write(path.join(f.root, 'cov', `z${i}.md`), 'x');
+  const started = Date.now(); denied(grep(f, path.join(f.root, 'cov'))); assert.ok(Date.now() - started < 1500);
+});
+test('G2. a filesystem error other than not-found is not a quiet miss', t => {
+  const f = fixture(t), locked = path.join(f.base, 'locked'); fs.mkdirSync(locked); write(path.join(locked, 'x.md')); if (process.getuid?.() === 0) return t.skip('root ignores folder modes');
+  fs.chmodSync(locked, 0o000); try { assert.throws(() => read(f, path.join(locked, 'x.md')), { code: 'EACCES' }); } finally { fs.chmodSync(locked, 0o755); }
+  fs.symlinkSync(path.join(f.base, 'ln2'), path.join(f.base, 'ln1')); fs.symlinkSync(path.join(f.base, 'ln1'), path.join(f.base, 'ln2')); assert.throws(() => read(f, path.join(f.base, 'ln1', 'x')), { code: 'ELOOP' });
+  assert.throws(() => read(f, path.join(f.base, 'n'.repeat(300), 'x')), { code: 'ENAMETOOLONG' });
+  quiet(read(f, path.join(f.base, 'outside/not-there.md'))); quiet(read(f, path.join(f.base, 'outside/o.md', 'under-a-file')));
 });

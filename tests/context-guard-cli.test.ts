@@ -2,10 +2,11 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { INPUT_INVALID_TEXT } from '../apps/cli/src/guard-run.js';
-import { denyJson, envFor, folder, guardArgs, guardMain, hookInput, run, sliceProject } from './support/slice-project.js';
+import { denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
+import { safeReference } from '../apps/cli/src/guard-view.js';
 
 const tree = (dir: string): string => JSON.stringify(readdirSync(dir, { recursive: true }).map(String).sort().map(rel => { const s = lstatSync(join(dir, rel)); return [rel, s.isFile() ? createHash('sha256').update(readFileSync(join(dir, rel))).digest('hex') : 'dir']; }));
 const guard = (p: { dir: string; home: string }, args: string[], input: string, env?: NodeJS.ProcessEnv) => run(p.dir, args, p.home, { input, ...(env ? { env } : {}) }, guardMain);
@@ -73,11 +74,12 @@ test('9. an XDG_STATE_HOME that differs from the one apply used denies every cal
   const p = sliceProject(t), other = { ...envFor(p.home), XDG_STATE_HOME: join(p.home, 'other-state') };
   for (const file of [join(p.dir, 'wiki/a.md'), '/etc/hosts']) assert.match(guard(p, guardArgs(p), read(file, p.dir), other).stdout, /does not manage agent lead|not installed/);
 });
-test('10. a non-member Read whose path holds a quote, a backslash, and U+2028 gives deny JSON that parses', t => {
+test('10. a non-member Read whose path holds a quote, a backslash, and U+2028 gives deny JSON that parses to the exact reason', t => {
   const p = sliceProject(t), odd = join(p.dir, 'wiki', 'q"uo\\te' + String.fromCharCode(0x2028) + 'x.md'), r = guard(p, guardArgs(p), read(odd, p.dir));
-  assert.equal(r.status, 0, r.stderr); const body = JSON.parse(r.stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
-  assert.equal(body.hookSpecificOutput.permissionDecision, 'deny'); assert.ok(body.hookSpecificOutput.permissionDecisionReason.includes('q"uo\\\\u'.slice(0, 5)) || body.hookSpecificOutput.permissionDecisionReason.includes('\\u2028'));
-  assert.equal(r.stdout.split('\n').length, 2, 'one line');
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout.split('\n').length, 2, 'one line');
+  const body = JSON.parse(r.stdout) as { hookSpecificOutput: { hookEventName: string; permissionDecision: string; permissionDecisionReason: string } };
+  const shown = odd.replace(String.fromCharCode(0x2028), '\\u2028');
+  assert.deepEqual(body, { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Bowerloom guard: ${shown} is under wiki, and no context slice of agent lead (wiki) lists it. Read the files that your slice skills list. To widen a slice, ask the main session to edit .bowerloom/slices/wiki.yaml and run bowerloom apply.` } });
 });
 test('11. bowerloom-guard with no arguments writes the GUARD_INPUT_INVALID text to stderr and exits 2', t => {
   const home = folder(t), r = run(home, [], home, { input: '' }, guardMain); assert.equal(r.status, 2); assert.equal(r.stdout, ''); assert.equal(r.stderr, INPUT_INVALID_TEXT);
@@ -89,4 +91,77 @@ test('12. a guard route whose dynamic import fails still prints the deny line an
   const r = run(home, ['--agent', 'lead', '--project', home, '--project-id', 'a'.repeat(32), '--slice', 'wiki'], home, { input: read('/etc/hosts', home) }, join(lone, 'guard-main.js'));
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, denyJson('Bowerloom guard: the guard could not run, so the call is blocked. Run bowerloom apply, or reinstall Bowerloom.'));
   const viaMain = run(home, ['context', 'guard', '--agent', 'lead'], home, { input: '' }); assert.equal(viaMain.status, 2); assert.equal(viaMain.stderr, INPUT_INVALID_TEXT);
+});
+
+const OUTSIDE = (p: { dir: string }, file: string): string => `Bowerloom guard: ${file} is under wiki, and no context slice of agent lead (wiki) lists it. Read the files that your slice skills list. To widen a slice, ask the main session to edit .bowerloom/slices/wiki.yaml and run bowerloom apply.`;
+const MISMATCH = (p: { dir: string }): string => `Bowerloom guard: the project at ${p.dir} does not manage agent lead, or it is not the folder that apply wrote this copy for. Run bowerloom apply in the project that holds .claude/agents/lead.md.`;
+const NOT_INSTALLED = (p: { dir: string }): string => `Bowerloom guard: slice wiki of agent lead is not installed, or its copy changed. Every read, search, and file listing of this agent is blocked. Run bowerloom apply in ${p.dir}.`;
+const ROOT_MISSING = (p: { dir: string }): string => `Bowerloom guard: the folder of slice wiki cannot be found, or it changed since apply, so every read, search, and file listing of agent lead is blocked. Run bowerloom apply in ${p.dir} to see why.`;
+const INTERNAL = 'Bowerloom guard: the guard hit an internal error, so the call is blocked. Run bowerloom apply, or reinstall Bowerloom.';
+const memberRead = (p: { dir: string }, root = 'wiki'): string => read(join(p.dir, root, 'a.md'), p.dir);
+
+test('G9a. a --slice list that the agent catalog does not hold is GUARD_PROJECT_MISMATCH', t => {
+  const p = sliceProject(t), args = [...guardArgs(p), '--slice', 'zzz'];
+  assert.equal(guard(p, args, memberRead(p)).stdout, denyJson(MISMATCH(p))); assert.equal(guard(p, guardArgs(p), memberRead(p)).stdout, '');
+});
+test('G9b. an edited --root hex is GUARD_ROOT_MISSING', t => {
+  const p = sliceProject(t), args = guardArgs(p), i = args.indexOf('--root'), hex = args[i + 1]!;
+  args[i + 1] = hex.slice(0, -1) + (hex.endsWith('0') ? '1' : '0');
+  assert.equal(guard(p, args, memberRead(p)).stdout, denyJson(ROOT_MISSING(p)));
+  const none = guardArgs(p); none.splice(none.indexOf('--root'), 2); assert.equal(guard(p, none, memberRead(p)).stdout, denyJson(ROOT_MISSING(p)), 'a slice with no --root value');
+});
+test('G9c. the root folder replaced at the same path is GUARD_ROOT_MISSING', t => {
+  const p = sliceProject(t), args = guardArgs(p); assert.equal(guard(p, args, memberRead(p)).stdout, '');
+  renameSync(join(p.dir, 'wiki'), join(p.dir, 'wiki-old')); put(p.dir, 'wiki/a.md', '# Alpha\nbody a\n');
+  assert.equal(guard(p, args, memberRead(p)).stdout, denyJson(ROOT_MISSING(p)));
+});
+test('G9d. a folder on the way to the root turned into a link is GUARD_ROOT_MISSING', t => {
+  const p = sliceProject(t, { root: 'kb/wiki' }), args = guardArgs(p); assert.equal(guard(p, args, memberRead(p, 'kb/wiki')).stdout, '');
+  renameSync(join(p.dir, 'kb'), join(p.dir, 'kb-real')); symlinkSync(join(p.dir, 'kb-real'), join(p.dir, 'kb'));
+  assert.equal(guard(p, args, memberRead(p, 'kb/wiki')).stdout, denyJson(ROOT_MISSING(p)));
+});
+test('G9e. a catalog reference with .., a backslash, or U+2028 is GUARD_SLICE_NOT_INSTALLED when only safeReference refuses it', async t => {
+  for (const bad of ['../secret.txt', 'sub\\b.md', 'a' + String.fromCharCode(0x2028) + 'b.md', '/etc/hosts', '.hidden/x.md']) {
+    const p = sliceProject(t); await tamperCatalog(p, 'slice_wiki', c => { (c.references as string[]).push(bad); });
+    assert.equal(guard(p, guardArgs(p), memberRead(p)).stdout, denyJson(NOT_INSTALLED(p)), JSON.stringify(bad));
+  }
+  const ok = sliceProject(t); await tamperCatalog(ok, 'slice_wiki', c => { (c.references as string[]).push('My Page.md'); }); assert.equal(guard(ok, guardArgs(ok), memberRead(ok)).stdout, '', 'a space is a plain name; the tamper itself is fine');
+  assert.equal(safeReference('a/b c.md'), true); assert.equal(safeReference('a/\u2028.md'), false); assert.equal(safeReference('..'), false); assert.equal(safeReference('a/'), true); assert.equal(safeReference('./'), true);
+});
+test('G9f. a catalog root path that is not a plain relative path is GUARD_SLICE_NOT_INSTALLED (G7)', async t => {
+  for (const bad of ['../outside', '/etc', 'a/../b', '.hidden', 'a\\b', '']) {
+    const p = sliceProject(t); await tamperCatalog(p, 'slice_wiki', c => { ((c.source as { root: { path: string } }).root).path = bad; });
+    assert.equal(guard(p, guardArgs(p), memberRead(p)).stdout, denyJson(NOT_INSTALLED(p)), JSON.stringify(bad));
+  }
+});
+test('G9g. a missing slice catalog is GUARD_SLICE_NOT_INSTALLED, and a missing root folder is GUARD_ROOT_MISSING, with exact reasons', t => {
+  const p = sliceProject(t), args = guardArgs(p);
+  rmSync(join(p.dir, '.bowerloom/managed/catalog/slice_wiki.json')); assert.equal(guard(p, args, read('/etc/hosts', p.dir)).stdout, denyJson(NOT_INSTALLED(p)));
+  const q = sliceProject(t); rmSync(join(q.dir, 'wiki'), { recursive: true }); assert.equal(guard(q, guardArgs(q), read('/etc/hosts', q.dir)).stdout, denyJson(ROOT_MISSING(q)));
+});
+test('G9h. a changed catalog without a fixed receipt is GUARD_SLICE_NOT_INSTALLED', t => {
+  const p = sliceProject(t), file = join(p.dir, '.bowerloom/managed/catalog/slice_wiki.json'); writeFileSync(file, readFileSync(file, 'utf8').replace('"guard":"root"', '"guard":"none"'));
+  assert.equal(guard(p, guardArgs(p), memberRead(p)).stdout, denyJson(NOT_INSTALLED(p)));
+});
+test('G2. a filesystem error other than not-found is GUARD_INTERNAL_ERROR, through the real binary', t => {
+  if (process.getuid?.() === 0) return t.skip('root ignores folder modes');
+  const p = sliceProject(t), args = guardArgs(p), locked = join(p.dir, 'locked'); put(p.dir, 'locked/x.md', 'x');
+  chmodSync(locked, 0o000);
+  try { assert.equal(guard(p, args, read(join(locked, 'x.md'), p.dir)).stdout, denyJson(INTERNAL)); } finally { chmodSync(locked, 0o755); }
+  symlinkSync(join(p.dir, 'ln2'), join(p.dir, 'ln1')); symlinkSync(join(p.dir, 'ln1'), join(p.dir, 'ln2'));
+  assert.equal(guard(p, args, read(join(p.dir, 'ln1', 'x'), p.dir)).stdout, denyJson(INTERNAL));
+  assert.equal(guard(p, args, read(join(p.dir, 'n'.repeat(300), 'x'), p.dir)).stdout, denyJson(INTERNAL));
+  assert.equal(guard(p, args, read(join(p.dir, 'not-there.md'), p.dir)).stdout, '', 'not found is still a plain miss');
+  assert.equal(guard(p, args, read(join(p.dir, 'wiki/secret.txt'), p.dir)).stdout, denyJson(OUTSIDE(p, join(p.dir, 'wiki/secret.txt'))));
+});
+test('G4. a huge path or a huge pattern is denied fast through the real binary', t => {
+  const p = sliceProject(t), args = guardArgs(p), started = Date.now();
+  const long = '/' + 'a/'.repeat(450000) + 'x', r = guard(p, args, read(long, p.dir)); assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason, /is too long or too deep for the guard to check for agent lead\. Use a shorter path\.$/);
+  const braces = guard(p, args, hookInput('Glob', { pattern: '{'.repeat(20000) }, p.dir)); assert.match(braces.stdout, /too long or too deep/);
+  assert.ok(Date.now() - started < 4000, `${Date.now() - started} ms`);
+  const deep = join(p.dir, ...Array.from({ length: 70 }, () => 'd')); put(p.dir, deep.slice(p.dir.length + 1) + '/n.md', 'x');
+  assert.equal(guard(p, args, read(join(deep, 'n.md'), p.dir)).stdout, '', 'outside the root, even 70 levels deep, is left to Claude Code');
+  put(p.dir, 'wiki/' + Array.from({ length: 70 }, () => 'd').join('/') + '/n.md', 'x');
+  assert.match(guard(p, args, read(join(p.dir, 'wiki', ...Array.from({ length: 70 }, () => 'd'), 'n.md'), p.dir)).stdout, /no context slice of agent lead \(wiki\) lists it/);
 });

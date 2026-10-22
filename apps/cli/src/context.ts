@@ -30,6 +30,8 @@ export function renderShow(r: ShowResult): string {
   for (const p of n.emptyPatterns) notes.push(`the pattern ${p} matches no file.`);
   if (n.notText > 0) notes.push(`left out ${n.notText} files that are not UTF-8 text or have unusual names.`);
   if (n.oversize.length) notes.push(`lists ${n.oversize.length} files over 1 MiB without a summary.`);
+  if (n.skippedEntries > 0) notes.push(`skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
+  if (n.truncatedLinks > 0) notes.push(`follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
   if (n.wholeProject) notes.push('guards the whole project folder. An agent that names it reads only the slice\'s files there with Read, Grep, and Glob.');
   if (notes.length) lines.push('Notes:', ...notes.map(x => `  ${x}`));
   return `${lines.join('\n')}${r.index === null ? '' : `\n\n${r.index.text}`}`;
@@ -46,6 +48,7 @@ export function renderMeasure(r: MeasureResult): string {
   const line = (cells: string[]): string => cells.map((c, i) => i === 0 ? c.padEnd(widths[i]!) : c.padStart(widths[i]!)).join('  ').trimEnd();
   const band = r.estimator.calibrated === 'user' ? 'calibrated by you' : `assumed band ${ESTIMATE_BAND.low} to ${ESTIMATE_BAND.high} bytes per token, not calibrated`;
   const notes = r.agents.flatMap(a => a.notes.map(n => `  ${a.role}: ${n}`));
+  const skippedImports = r.agents.reduce((n, a) => n + a.start.instructions.skippedImports.length, 0), skipped = r.baseline.skipped.hidden + r.baseline.skipped.links + r.baseline.skipped.notRegular;
   return [
     `Context per agent. Project: ${r.project}. Claude Code starts in: ${r.from}.`,
     `Unit: tokens, estimated as bytes / ${r.estimator.bytesPerToken} (${band}). Bytes are exact. Add --json to see them.`,
@@ -53,6 +56,8 @@ export function renderMeasure(r: MeasureResult): string {
     line(header), ...rows.map(line),
     `Baseline: each agent with every .md file under ${r.baseline.folder} (${r.baseline.files} files) loaded at start, and its CLAUDE.md or AGENTS.md files.`,
     'Not counted: Claude Code\'s own system details and tool definitions, MCP tools, git status, the task message, managed policy files, agent memory, and files an agent reads beyond its slices.',
+    ...r.held.map(h => `Held: ${h.role} is not measured (${h.code}). Next: ${h.next}`),
+    ...(skippedImports > 0 || skipped > 0 ? [`Skipped: ${skippedImports} imports that name no readable file, and ${r.baseline.skipped.hidden} hidden entries, ${r.baseline.skipped.links} links and ${r.baseline.skipped.notRegular} special entries in the baseline.`] : []),
     ...(notes.length ? ['Notes:', ...notes] : []),
   ].join('\n');
 }

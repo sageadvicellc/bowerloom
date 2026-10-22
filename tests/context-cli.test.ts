@@ -81,3 +81,13 @@ test('measure flags: a bad --bytes-per-token and a repeated flag exit 2', t => {
   for (const args of [['--bytes-per-token', '0.5'], ['--bytes-per-token', 'x'], ['--bytes-per-token'], ['--from'], ['--user', '--user'], ['--team', 'a', '--team', 'b'], ['--nothing']]) assert.equal(run(p.dir, ['context', 'measure', ...args], p.home).status, 2, args.join(' '));
   const cal = run(p.dir, ['context', 'measure', '--bytes-per-token', '3.5'], p.home); assert.match(cal.stdout, /^Unit: tokens, estimated as bytes \/ 3\.5 \(calibrated by you\)\. Bytes are exact\. Add --json to see them\.$/m);
 });
+
+test('S5 and S6. the text output names held agents, and says when imports or baseline entries were skipped', t => {
+  const p = sliceProject(t); put(p.dir, 'wiki/.obsidian/x.md', '# hidden\n'); put(p.dir, 'CLAUDE.md', '@missing-file.md\nProject rules.\n');
+  put(p.dir, '.bowerloom/teams/first-team/agents/broken.md', '---\nname: broken\nbogus: 1\n---\nx\n');
+  const r = run(p.dir, ['context', 'measure'], p.home); assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Held: broken is not measured \(AGENT_KEY_UNKNOWN\)\. Next: Remove the key bogus from \.bowerloom\/teams\/first-team\/agents\/broken\.md, then run bowerloom apply\.$/m);
+  assert.match(r.stdout, /^Skipped: 1 imports that name no readable file, and 1 hidden entries, 0 links and 0 special entries in the baseline\.$/m);
+  const json = JSON.parse(run(p.dir, ['context', 'measure', '--json'], p.home).stdout); assert.equal(json.held[0].role, 'broken'); assert.equal(json.agents.length, 1);
+  const quiet = sliceProject(t); assert.doesNotMatch(run(quiet.dir, ['context', 'measure'], quiet.home).stdout, /^Skipped:|^Held:/m);
+});

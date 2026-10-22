@@ -7,7 +7,7 @@ import { parseDocument } from 'yaml';
 import { canMatchBelow, compilePattern, isLiteral, literalPath, matchPattern } from './glob.js';
 import type { CompiledPattern } from './glob.js';
 import { splitFrontmatter } from './frontmatter.js';
-import { extractLinks } from './links.js';
+import { scanLinks } from './links.js';
 import { SLICE_LIMITS } from './slice-file.js';
 import type { SliceDefinition } from './slice-file.js';
 
@@ -18,7 +18,7 @@ export class SliceTreeError extends Error {
 }
 export type EntryType = 'file' | 'dir' | 'link' | 'other';
 /** What `lstat` says. `safe` is true when the user owns the entry and the group and others cannot write it. */
-export interface EntryInfo { type: EntryType; size: number; nlink: number; safe: boolean }
+export interface EntryInfo { type: EntryType; size: number; nlink: number; safe: boolean; /** Device and inode, when the reader can say. Two names of one file share it. */ id?: string }
 export interface TreeReader {
   /** Names in a folder; the path is relative to the root, '' for the root. Throws SliceTreeError for an unsafe folder or more than 1024 names. */
   list(dir: string): string[];
@@ -30,7 +30,13 @@ export interface TreeReader {
   close?(): void;
 }
 export interface Member { path: string; bytes: number; summary: string | null; oversize: boolean }
-export interface SliceNotes { unparsed: string[]; unresolvedLinks: number; ambiguousLinks: number; emptyPatterns: string[]; notText: number; oversize: string[] }
+export interface SliceNotes {
+  unparsed: string[]; unresolvedLinks: number; ambiguousLinks: number; emptyPatterns: string[]; notText: number; oversize: string[];
+  /** Entries that are neither files nor folders (a pipe, a socket, an unreadable entry) and links that no pattern selects. */
+  skippedEntries: number;
+  /** Files with more than 512 links, whose later links were not followed. */
+  truncatedLinks: number;
+}
 export interface SliceHold { code: HoldCode; detail: string }
 export interface SliceResolution { members: Member[]; covered: string[]; notes: SliceNotes; hold: SliceHold | null; readBytes: number }
 
@@ -77,7 +83,7 @@ interface Folder { entered: boolean; hidden: boolean; bad: boolean; subdirs: str
 
 /** Resolves a slice against a tree. Throws only what the reader's closing pass throws. */
 export function resolveSlice(def: SliceDefinition, reader: TreeReader): SliceResolution {
-  const notes: SliceNotes = { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [] };
+  const notes: SliceNotes = { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 };
   let result: SliceResolution;
   try { result = run(def, reader, notes); }
   catch (error) {
@@ -109,8 +115,8 @@ function run(def: SliceDefinition, reader: TreeReader, notes: SliceNotes): Slice
       if (name.startsWith('.')) { info.hidden = true; continue; }
       if (++entries > SLICE_LIMITS.walkEntries) tooLarge('the folder');
       const path = join(dir, name), s = reader.stat(path);
-      if (s === null || s.type === 'other') { info.bad = true; continue; }
-      if (s.type === 'link') { if (selected(path)) unsafe(path); info.bad = true; continue; }
+      if (s === null || s.type === 'other') { info.bad = true; notes.skippedEntries++; continue; }
+      if (s.type === 'link') { if (selected(path)) unsafe(path); info.bad = true; notes.skippedEntries++; continue; }
       if (s.type === 'dir') {
         info.subdirs.push(path);
         if (walkAll || includes.some(p => canMatchBelow(p, path))) visit(path, depth + 1);
@@ -135,8 +141,11 @@ function run(def: SliceDefinition, reader: TreeReader, notes: SliceNotes): Slice
   const addFile = (path: string, s: EntryInfo): boolean => {
     if (BAD_PATH.test(path) || Buffer.byteLength(path) > SLICE_LIMITS.pathBytes) { notes.notText++; return false; }
     if (s.size > SLICE_LIMITS.memberBytes) {
-      if (hasWhere) return false;
-      members.set(path, { path, bytes: s.size, summary: null, oversize: true }); notes.oversize.push(path); return true;
+      // `where` needs the frontmatter, which an oversize file does not give up: it is named, not listed.
+      if (hasWhere) { notes.oversize.push(path); return false; }
+      members.set(path, { path, bytes: s.size, summary: null, oversize: true }); notes.oversize.push(path);
+      if (members.size > def.maxFiles) tooLarge('the files');
+      return true;
     }
     const data = reader.read(path); readBytes += data.length;
     if (readBytes > SLICE_LIMITS.readBytes) tooLarge('the files');
@@ -158,6 +167,7 @@ function run(def: SliceDefinition, reader: TreeReader, notes: SliceNotes): Slice
   if (def.links !== null) followLinks(def, reader, files, members, texts, notes, excludes, addFile);
 
   // 7 and 9. Bounds, then covered folders.
+  if (members.size > def.maxFiles) tooLarge('the files');
   const list = [...members.values()].sort((a, b) => cmp(a.path, b.path));
   if (list.length === 0) throw new SliceTreeError('SLICE_EMPTY', 'the slice');
   const covered = coveredFolders(folders, new Set(list.map(m => m.path)));
@@ -186,7 +196,8 @@ function followLinks(
 ): void {
   const links = def.links!, stems = new Map<string, string[]>();
   for (const f of files.keys()) if (f.endsWith('.md')) { const stem = fold(f.slice(f.lastIndexOf('/') + 1, -3)); stems.set(stem, [...(stems.get(stem) ?? []), f]); }
-  const seen = new Set<string>(members.keys()), counted = new Set<string>();
+  const seen = new Set<string>(members.keys()), counted = new Set<string>(), seenIds = new Set<string>();
+  for (const m of members.keys()) { const id = files.get(m)?.id; if (id !== undefined) seenIds.add(id); }
   const count = (kind: 'unresolved' | 'ambiguous', from: string, target: string): void => {
     const key = `${kind}\0${from}\0${target}`; if (counted.has(key)) return; counted.add(key);
     if (kind === 'unresolved') notes.unresolvedLinks++; else notes.ambiguousLinks++;
@@ -197,7 +208,8 @@ function followLinks(
     for (const from of frontier) {
       const text = texts.get(from); if (text === undefined) continue;
       const base = from.includes('/') ? from.slice(0, from.lastIndexOf('/')).split('/') : [];
-      for (const link of extractLinks(text)) {
+      const scanned = scanLinks(text); if (scanned.truncated) notes.truncatedLinks++;
+      for (const link of scanned.links) {
         if (!links.follow.includes(link.kind)) continue;
         const target = resolveLink(link.kind, link.target, base, stems);
         if (target === 'ignore') continue;
@@ -217,6 +229,8 @@ function followLinks(
         if (s.type !== 'file') { count('unresolved', from, link.target); continue; }
         if (s.nlink !== 1 || !s.safe) unsafe(target);
         seen.add(target);
+        // The same file under another name (a name in another case on a case-insensitive disk) is already a member.
+        if (s.id !== undefined) { if (seenIds.has(s.id)) continue; seenIds.add(s.id); }
         if (excludes.some(p => matchPattern(p, target))) continue;
         if (addFile(target, s) && target.endsWith('.md') && !members.get(target)!.oversize) next.push(target);
       }

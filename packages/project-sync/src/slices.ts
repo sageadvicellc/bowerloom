@@ -45,7 +45,7 @@ export interface SliceItem {
   /** Relative to the root, each ending in `/`, sorted. `./` is the root. */
   covered: string[];
   changes: { added: number; gone: number; summaries: number; rootChanged: boolean; guardChanged: boolean };
-  notes: { unparsed: string[]; unresolvedLinks: number; ambiguousLinks: number; emptyPatterns: string[]; notText: number; oversize: string[]; outsideProject: boolean; wholeProject: boolean };
+  notes: { unparsed: string[]; unresolvedLinks: number; ambiguousLinks: number; emptyPatterns: string[]; notText: number; oversize: string[]; skippedEntries: number; truncatedLinks: number; outsideProject: boolean; wholeProject: boolean };
   /** Roles that name it, sorted. Filled once the agents are known. */
   agents: string[];
   /** A verified catalog record exists. */
@@ -62,7 +62,7 @@ const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
 const cmp = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
 const fileOf = (id: string): string => `.bowerloom/slices/${id}.yaml`;
 const NO_CHANGES: SliceItem['changes'] = Object.freeze({ added: 0, gone: 0, summaries: 0, rootChanged: false, guardChanged: false });
-const NO_NOTES: SliceItem['notes'] = Object.freeze({ unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], outsideProject: false, wholeProject: false });
+const NO_NOTES: SliceItem['notes'] = Object.freeze({ unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0, outsideProject: false, wholeProject: false });
 
 /** The registered slices, from `.bowerloom/authoring/receipt.json`, sorted by id. Reads with the authoring guards. */
 export function registeredSlices(project: string): string[] {
@@ -117,7 +117,7 @@ function readTree(read: SliceTreeHook, project: string, id: string): SliceTreeRe
     const code = (e as { code?: string } | null)?.code;
     if (code === 'MANAGED_SKILL_STALE_APPROVAL') throw stale(`A file of slice ${id} changed while Bowerloom read it. Run bowerloom apply again.`);
     if (code === 'MANAGED_SKILL_ABORTED' || code === 'MANAGED_SKILL_TIMEOUT') throw syncError(code);
-    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [] }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id) }, rootDir: null };
+    return { definition: null, file: null, resolution: { members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }, index: null, hold: { code: 'SLICE_SOURCE_UNSAFE', detail: fileOf(id) }, rootDir: null };
   }
 }
 
@@ -144,7 +144,7 @@ export function classifySlice(project: string, itemsRoot: string, id: string, re
   const def = tree.definition, res = tree.resolution;
   const notes = {
     unparsed: [...res.notes.unparsed], unresolvedLinks: res.notes.unresolvedLinks, ambiguousLinks: res.notes.ambiguousLinks, emptyPatterns: [...res.notes.emptyPatterns],
-    notText: res.notes.notText, oversize: [...res.notes.oversize], outsideProject: false, wholeProject: def !== null && def.root.kind === 'project' && def.root.path === '.' && def.guard === 'root',
+    notText: res.notes.notText, oversize: [...res.notes.oversize], skippedEntries: res.notes.skippedEntries, truncatedLinks: res.notes.truncatedLinks, outsideProject: false, wholeProject: def !== null && def.root.kind === 'project' && def.root.path === '.' && def.guard === 'root',
   };
   const rootItem = def !== null && def.root.kind === 'project' && tree.rootDir !== null ? ((): SliceItem['root'] => { try { return { kind: 'project', path: def.root.path, dir: tree.rootDir!, identity: identityFrom(lstatSync(tree.rootDir!, { bigint: true })) }; } catch { return null; } })() : null;
   const source: SliceCatalogSource | null = def === null ? null : { kind: 'slice', path: `slices/${id}.yaml`, root: def.root, guard: def.guard };

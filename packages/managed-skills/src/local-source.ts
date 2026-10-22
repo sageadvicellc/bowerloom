@@ -113,7 +113,7 @@ export interface SliceTreeResult {
   rootDir: string | null;
 }
 const staleFile = (): never => { throw new ManagedSkillError('MANAGED_SKILL_STALE_APPROVAL'); };
-const EMPTY: SliceResolution = Object.freeze({ members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [] }, hold: null, readBytes: 0 }) as SliceResolution;
+const EMPTY: SliceResolution = Object.freeze({ members: [], covered: [], notes: { unparsed: [], unresolvedLinks: 0, ambiguousLinks: 0, emptyPatterns: [], notText: 0, oversize: [], skippedEntries: 0, truncatedLinks: 0 }, hold: null, readBytes: 0 }) as SliceResolution;
 
 /** A tree reader over the real root folder. It pins what it reads, and `close` checks the pins again. */
 class RootTree implements TreeReader {
@@ -130,7 +130,7 @@ class RootTree implements TreeReader {
     this.live(); const abs = path === '' ? this.root : join(this.root, path);
     let s: fs.BigIntStats; try { s = fs.lstatSync(abs, { bigint: true }); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; return staleFile(); }
     const type = s.isSymbolicLink() ? 'link' : s.isDirectory() ? 'dir' : s.isFile() ? 'file' : 'other';
-    return { type, size: Number(s.size), nlink: Number(s.nlink), safe: owned(s) };
+    return { type, size: Number(s.size), nlink: Number(s.nlink), safe: owned(s), id: `${s.dev}:${s.ino}` };
   }
   read(path: string): Uint8Array {
     this.live();

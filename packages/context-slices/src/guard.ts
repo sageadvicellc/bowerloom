@@ -7,15 +7,18 @@
  */
 import { posix } from 'node:path';
 
-export type GuardCode = 'GUARD_OUTSIDE_SLICE' | 'GUARD_SLICE_NOT_INSTALLED' | 'GUARD_ROOT_MISSING' | 'GUARD_PROJECT_MISMATCH';
+export type GuardCode = 'GUARD_OUTSIDE_SLICE' | 'GUARD_SLICE_NOT_INSTALLED' | 'GUARD_ROOT_MISSING' | 'GUARD_PROJECT_MISMATCH' | 'GUARD_INTERNAL_ERROR';
 export type GuardDecision = { kind: 'silent' } | { kind: 'deny'; code: GuardCode; reason: string } | { kind: 'invalid' };
 export interface FsEntry { dev: string; ino: string; type: 'file' | 'dir' | 'link' | 'other'; nlink: number }
 export interface GuardFs {
   lstat(path: string): FsEntry | null;
   stat(path: string): FsEntry | null;
   realpath(path: string): string | null;
-  /** The entries of a folder with their lstat, or null when it cannot be listed. */
-  list(path: string): { name: string; entry: FsEntry }[] | null;
+  /**
+   * The entries of a folder with their lstat, one at a time, or null when it is absent or not a folder. Any other error throws.
+   * The caller may stop early.
+   */
+  list(path: string): Iterable<{ name: string; entry: FsEntry }> | null;
 }
 export interface GuardSliceView {
   id: string;
@@ -44,7 +47,20 @@ export interface GuardInput {
 }
 
 export const GUARD_TOOLS: readonly string[] = Object.freeze(['Read', 'Grep', 'Glob']);
-const MAX_RESULTS = 256, MAX_CHAIN = 64, MAX_DEPTH = 16, MAX_FILES = 256;
+const MAX_RESULTS = 256, MAX_DEPTH = 16, MAX_FILES = 256;
+/** Bounds on the work for one call. A path longer or deeper than these is refused, and a chain that passes them is incomplete. */
+export const GUARD_BOUNDS = Object.freeze({ valueBytes: 4096, parts: 256, chainParts: 2048, chainBytes: 32768, visits: 2048 });
+/** A chain of folders that the guard could not walk to the top, so it cannot say what the path is under. */
+class IncompleteChain extends Error { constructor(readonly path: string) { super('incomplete'); } }
+/** The path and every parent up to `/`. Throws IncompleteChain past the bounds; there is no other cap. */
+function walkUp(start: string): string[] {
+  if (Buffer.byteLength(start) > GUARD_BOUNDS.chainBytes) throw new IncompleteChain(start);
+  const out: string[] = [];
+  for (let p = start; ; p = posix.dirname(p)) { out.push(p); if (p === '/' || p === '.' || p === '') break; if (out.length > GUARD_BOUNDS.chainParts) throw new IncompleteChain(start); }
+  return out;
+}
+const tooBig = (value: string): boolean => Buffer.byteLength(value) > GUARD_BOUNDS.valueBytes || value.split('/').length > GUARD_BOUNDS.parts;
+const longReason = (path: string, role: string): string => `Bowerloom guard: the path ${plain(path.length > 200 ? path.slice(0, 200) + '...' : path)} is too long or too deep for the guard to check for agent ${role}. Use a shorter path.`;
 const silent: GuardDecision = Object.freeze({ kind: 'silent' });
 const nfc = (s: string): string => s.normalize('NFC');
 const idOf = (e: { dev: string; ino: string }): string => `${e.dev}:${e.ino}`;
@@ -157,13 +173,17 @@ export function decideGuard(input: GuardInput, getView: () => GuardView): GuardD
 
   // Written forms.
   const values = [raw, pattern].filter((v): v is string => typeof v === 'string');
+  for (const v of [...values, input.cwd]) if (tooBig(v)) return deny('GUARD_OUTSIDE_SLICE', longReason(v, role));
   for (const v of values) if (badForm(v)) return deny('GUARD_OUTSIDE_SLICE', formReason(v, role));
 
   const resolveAgainst = (base: string, v: string): string => v === '~' ? input.home : v.startsWith('~/') ? posix.resolve(input.home, v.slice(2)) : v.startsWith('/') ? posix.resolve(v) : posix.resolve(base, v);
   const base = raw === undefined ? input.cwd : resolveAgainst(input.cwd, raw), shown = raw ?? input.cwd;
 
   const ctx = new Context(fs, view, areas);
-  const decide = (target: string): GuardDecision => ctx.classify(tool, target, role, ids, shown);
+  const decide = (target: string): GuardDecision => {
+    try { return ctx.classify(tool, target, role, ids, shown); }
+    catch (error) { if (error instanceof IncompleteChain) return deny('GUARD_OUTSIDE_SLICE', longReason(shown, role)); throw error; }
+  };
 
   if (tool !== 'Glob') return decide(base);
 
@@ -179,8 +199,9 @@ export function decideGuard(input: GuardInput, getView: () => GuardView): GuardD
     else if (r.startsWith('/')) { at = '/'; rest = r.slice(1); }
     // A tilde anywhere but the leading ~/ is refused: a tool may expand it.
     if (rest.includes('~')) return deny('GUARD_OUTSIDE_SLICE', formReason(pat, role));
-    const prefix: string[] = [];
-    for (const seg of splitSlash(rest)) { if (hasUnescaped(seg, '*?[')) break; if (seg !== '') prefix.push(unescape(seg)); }
+    const prefix: string[] = [], segs = splitSlash(rest);
+    // A pattern with no unescaped slash matches at any depth, as if it were **/<pattern>. Its target is the base folder.
+    if (segs.length > 1) for (const seg of segs) { if (hasUnescaped(seg, '*?[')) break; if (seg !== '') prefix.push(unescape(seg)); }
     const result = decide(posix.resolve(at, ...prefix));
     if (result.kind !== 'silent') return result;
   }
@@ -197,7 +218,7 @@ class Context {
   /** The identities of a root's real chain, with the same chain through the data volume of macOS when it exists. */
   private chainOfRoot(s: GuardSliceView): string[] {
     const cached = this.rootIds.get(s.id); if (cached) return cached;
-    const out: string[] = [], walk = (start: string): void => { for (let p = start, n = 0; n < MAX_CHAIN; n++) { const e = this.stat(p); if (e) out.push(idOf(e)); if (p === '/') break; p = posix.dirname(p); } };
+    const out: string[] = [], walk = (start: string): void => { for (const p of walkUp(start)) { const e = this.stat(p); if (e) out.push(idOf(e)); } };
     walk(s.root);
     const data = posix.join('/System/Volumes/Data', s.root), here = this.lstat(data), mine = this.stat(s.root);
     if (here && mine && idOf(here) === idOf(mine)) walk(data);
@@ -212,20 +233,28 @@ class Context {
     let real = this.fs.realpath(target), exists = real !== null;
     if (real === null) {
       let anc = target; const rest: string[] = [];
-      for (let n = 0; n < MAX_CHAIN * 4 && anc !== '/'; n++) { rest.unshift(posix.basename(anc)); anc = posix.dirname(anc); const r = this.fs.realpath(anc); if (r !== null) { real = posix.join(r, ...rest); break; } }
+      for (const up of walkUp(target).slice(1)) { rest.unshift(posix.basename(anc)); anc = up; const r = this.fs.realpath(anc); if (r !== null) { real = posix.join(r, ...rest); break; } }
       if (real === null) real = target;
     }
     const idents = new Set<string>();
     for (const [start, st] of [[target, true], [real, false]] as const) {
-      let n = 0;
-      for (let p = start; n < MAX_CHAIN; n++, p = posix.dirname(p)) {
-        const e = st ? this.lstat(p) : this.stat(p); if (e) idents.add(idOf(e));
-        if (p === '/') break;
-      }
+      for (const p of walkUp(start)) { const e = st ? this.lstat(p) : this.stat(p); if (e) idents.add(idOf(e)); }
     }
     return { idents, real, exists };
   }
-  private memberPaths(s: GuardSliceView): Set<string> { return new Set(s.members.map(nfc)); }
+  private memberIdMemo = new Map<string, Set<string>>();
+  /** The identities of the members of a slice: regular files with one link, under real folders. */
+  private memberIdents(s: GuardSliceView): Set<string> {
+    const known = this.memberIdMemo.get(s.id); if (known) return known;
+    const out = new Set<string>();
+    for (const m of s.members) {
+      const parts = m.split('/'); let ok = true;
+      for (let i = 1; i < parts.length && ok; i++) { const d = this.lstat(posix.join(s.root, ...parts.slice(0, i))); ok = d !== null && d.type === 'dir'; }
+      const e = ok ? this.lstat(posix.join(s.root, m)) : null;
+      if (e !== null && e.type === 'file' && e.nlink === 1) out.add(idOf(e));
+    }
+    this.memberIdMemo.set(s.id, out); return out;
+  }
   /** True when the entry is a member of the slice: a regular file with one link, found by the member list, under real folders. */
   private isMemberOf(s: GuardSliceView, st: FsEntry, real: string): boolean {
     if (st.type !== 'file' || st.nlink !== 1) return false;
@@ -240,21 +269,21 @@ class Context {
     for (const m of s.members) if (check(m)) return true;
     return false;
   }
+  /** True when every entry below the folder is a real folder or a member, by identity. Stops at the first entry that is not, and at the visit cap. */
   private coveredOk(s: GuardSliceView, rel: string): boolean {
-    const members = this.memberPaths(s); let files = 0;
-    const walk = (abs: string, relPath: string, depth: number): boolean => {
+    const members = this.memberIdents(s); let files = 0, visits = 0;
+    const walk = (abs: string, depth: number): boolean => {
       if (depth > MAX_DEPTH) return false;
       const list = this.fs.list(abs); if (list === null) return false;
       for (const { name, entry } of list) {
-        if (name.startsWith('.')) return false;
-        const childRel = relPath === '' ? name : relPath + '/' + name;
-        if (entry.type === 'dir') { if (!walk(posix.join(abs, name), childRel, depth + 1)) return false; }
-        else if (entry.type === 'file' && entry.nlink === 1 && members.has(nfc(childRel))) { if (++files > MAX_FILES) return false; }
+        if (++visits > GUARD_BOUNDS.visits || name.startsWith('.')) return false;
+        if (entry.type === 'dir') { if (!walk(posix.join(abs, name), depth + 1)) return false; }
+        else if (entry.type === 'file' && entry.nlink === 1 && members.has(idOf(entry))) { if (++files > MAX_FILES) return false; }
         else return false;
       }
       return true;
     };
-    return walk(rel === '' ? s.root : posix.join(s.root, rel), rel, 1);
+    return walk(rel === '' ? s.root : posix.join(s.root, rel), 1);
   }
 
   classify(tool: Tool, target: string, role: string, ids: string, shown: string): GuardDecision {
@@ -299,6 +328,8 @@ class Context {
       }
       return refuse();
     }
+    // A hard link outside every area to a file on a guarded device, that no slice lists, is refused as a Read refuses it.
+    if (st !== null && st.type === 'file' && st.nlink > 1 && this.areas.some(a => this.stat(a.root)?.dev === st.dev) && !isMember()) return refuse();
     // Not inside an area: a folder that holds an area is refused, because a search would reach it.
     if (st !== null && st.type === 'dir') {
       for (const a of this.areas) if (this.chainOfRoot(a).includes(idOf(st))) return refuse();

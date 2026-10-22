@@ -381,6 +381,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   GUARD_ROOT_MISSING: { sentence: 'The guard fails closed when a slice\'s folder is gone.', next: 'bowerloom apply' },
   GUARD_PROJECT_MISMATCH: { sentence: 'A guarded copy works only in the project folder that apply wrote it for.', next: 'bowerloom apply' },
   GUARD_INPUT_INVALID: { sentence: 'The guard blocks a call it cannot check.', next: 'claude --debug' },
+  GUARD_INTERNAL_ERROR: { sentence: 'The guard blocks a call when it meets an error it cannot explain, such as a folder it may not read.', next: 'claude --debug' },
   SKILLS_OFFLINE: { sentence: 'Only bowerloom skills sync fetches, and only the pins that are not cached yet.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },

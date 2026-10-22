@@ -77,8 +77,8 @@ export interface MeasureAgent {
   role: string; team: string; omitClaudeMd: boolean; discovered: boolean;
   start: {
     prompt: number;
-    instructions: { files: { path: string; bytes: number; via: string }[]; skippedImports: { from: string; target: string }[]; bytes: number };
-    skills: { files: { name: string; path: string; bytes: number }[]; unresolved: string[]; beyondPreloadLimit: string[] };
+    instructions: { files: { path: string; bytes: number; via: string }[]; skippedImports: { from: string; target: string }[]; unreadable: { path: string; reason: string }[]; bytes: number };
+    skills: { files: { name: string; path: string; bytes: number }[]; unresolved: string[]; unreadable: { path: string; reason: string }[]; beyondPreloadLimit: string[] };
     slices: { id: string; indexBytes: number; source: 'installed' | 'live'; memberBytes: number; indexToMembersPpm: number; installed: boolean; hold: string | null }[];
     bytes: number; tokens: number; nonAsciiPpm: number;
   };
@@ -95,14 +95,27 @@ export interface MeasureResult {
   estimator: { id: 'bytes-per-token/v1'; bytesPerToken: string; band: ['3.0', '4.5']; calibrated: false | 'user' };
   baseline: { folder: string; chosenBy: 'flag' | 'slice-roots' | 'project'; include: '**/*.md'; files: number; bytes: number; skipped: { hidden: number; links: number; notRegular: number } };
   agents: MeasureAgent[];
+  /** Agents with a file that is held, so they are not measured: the code and the next step. */
+  held: { role: string; team: string; code: string; next: string }[];
   notCounted: string[]; assumptions: string[]; executionAuthorized: false;
 }
 
 const MAX_FILE = 8 * 1024 * 1024;
+const errno = (error: unknown): string => { const code = (error as NodeJS.ErrnoException | null)?.code; return typeof code === 'string' ? code : 'IO_ERROR'; };
+/** Absent is null. Present but not countable is `unreadable` with the reason: an errno code, `too large`, or `not a regular file`. */
 const fsReader: InstructionReader = {
-  read(p) { try { const s = fs.statSync(p, { bigint: true }); if (!s.isFile() || s.size > BigInt(MAX_FILE)) return null; return { text: fs.readFileSync(p, 'utf8'), id: `${s.dev}:${s.ino}` }; } catch { return null; } },
+  read(p) {
+    let s: fs.BigIntStats;
+    try { s = fs.statSync(p, { bigint: true }); } catch (e) { const c = errno(e); return c === 'ENOENT' || c === 'ENOTDIR' ? null : { unreadable: c }; }
+    if (!s.isFile()) return { unreadable: 'not a regular file' };
+    if (s.size > BigInt(MAX_FILE)) return { unreadable: 'too large' };
+    try { return { text: fs.readFileSync(p, 'utf8'), id: `${s.dev}:${s.ino}` }; } catch (e) { return { unreadable: errno(e) }; }
+  },
   list(d) { try { return fs.readdirSync(d); } catch { return null; } },
 };
+const readText = (p: string): string => { const got = fsReader.read(p); return got !== null && 'text' in got ? got.text : ''; };
+/** The words of an unreadable reason. */
+const why = (reason: string): string => reason === 'too large' ? 'is too large' : reason === 'not a regular file' ? 'is not a regular file' : `cannot be read (${reason})`;
 const nonAscii = (text: string): number => { let n = 0; for (const b of Buffer.from(text)) if (b >= 0x80) n++; return n; };
 const rel = (project: string, p: string): string => { const r = relative(project, p); return r === '' ? '.' : r; };
 const common = (paths: readonly string[]): string => {
@@ -112,8 +125,8 @@ const common = (paths: readonly string[]): string => {
 };
 
 /** Every non-hidden `.md` file under the folder, once by device and inode. Entries over BASELINE_LIMIT refuse CONTEXT_MEASURE_LIMIT. */
-function walkBaseline(folder: string): { files: number; bytes: number; skipped: { hidden: number; links: number; notRegular: number } } {
-  const seen = new Set<string>(), skipped = { hidden: 0, links: 0, notRegular: 0 }; let files = 0, bytes = 0, entries = 0;
+function walkBaseline(folder: string): { list: { id: string; bytes: number }[]; files: number; bytes: number; skipped: { hidden: number; links: number; notRegular: number } } {
+  const seen = new Set<string>(), skipped = { hidden: 0, links: 0, notRegular: 0 }, list: { id: string; bytes: number }[] = []; let files = 0, bytes = 0, entries = 0;
   const visit = (dir: string): void => {
     for (const name of fs.readdirSync(dir).sort(cmp)) {
       if (++entries > BASELINE_LIMIT) throw syncError('CONTEXT_MEASURE_LIMIT');
@@ -125,10 +138,10 @@ function walkBaseline(folder: string): { files: number; bytes: number; skipped: 
       if (!s.isFile()) { skipped.notRegular++; continue; }
       if (!name.endsWith('.md')) continue;
       const id = `${s.dev}:${s.ino}`; if (seen.has(id)) continue;
-      seen.add(id); files++; bytes += Number(s.size);
+      seen.add(id); files++; bytes += Number(s.size); list.push({ id, bytes: Number(s.size) });
     }
   };
-  visit(folder); return { files, bytes, skipped };
+  visit(folder); return { list, files, bytes, skipped };
 }
 function checkedFolder(path: string): string {
   try {
@@ -140,19 +153,21 @@ function checkedFolder(path: string): string {
 
 export async function measureContext(input: MeasureInput): Promise<MeasureResult> {
   const dir = input.project.dir, home = input.home ?? homedir(), from = resolve(input.from), milli = input.bytesPerTokenMilli ?? 4000;
-  const scan = scanAgents(dir).entries.filter(e => e.hold === null && e.parsed !== null && e.closure !== null);
-  let chosen = scan;
+  const everything = scanAgents(dir).entries, scan = everything.filter(e => e.hold === null && e.parsed !== null && e.closure !== null);
+  let chosen = scan, heldEntries = everything.filter(e => e.hold !== null);
   if (input.agents && input.agents.length) {
-    for (const role of input.agents) if (!scan.some(e => e.role === role)) throw syncError('CONTEXT_AGENT_NOT_FOUND');
-    chosen = scan.filter(e => input.agents!.includes(e.role));
+    // A held agent is a known agent: it is reported with its code, not refused as unknown.
+    for (const role of input.agents) if (!everything.some(e => e.role === role)) throw syncError('CONTEXT_AGENT_NOT_FOUND');
+    chosen = scan.filter(e => input.agents!.includes(e.role)); heldEntries = heldEntries.filter(e => input.agents!.includes(e.role));
   }
-  if (input.team) chosen = chosen.filter(e => e.team === input.team);
+  if (input.team) { chosen = chosen.filter(e => e.team === input.team); heldEntries = heldEntries.filter(e => e.team === input.team); }
+  const held = heldEntries.map(e => ({ role: e.role, team: e.team, code: e.hold!.code, next: e.hold!.next })).sort((a, b) => cmp(a.role, b.role) || cmp(a.team, b.team));
   const plan = await planProjectApply({ project: input.project, stateRoot: input.stateRoot, harnesses: ['claude'], team: null, agentsOnly: true });
-  const planned = (e: (typeof chosen)[number]) => plan.agents.find(a => a.id === e.role && a.team === e.team);
+  const planned = (e: (typeof chosen)[number]) => { const item = plan.agents.find(a => a.id === e.role && a.team === e.team); if (item === undefined) throw new Error(`context measure: the plan holds no item for agent ${e.role}`); return item; };
   const sliceOf = (id: string): SliceItem | undefined => plan.slices.find(s => s.id === id && s.state !== 'orphaned');
 
   // The baseline folder.
-  const rootsOfAgents = [...new Set(chosen.flatMap(e => (planned(e)?.context.slices ?? []).flatMap(id => { const r = sliceOf(id)?.root; return r ? [r.dir] : []; })))];
+  const rootsOfAgents = [...new Set(chosen.flatMap(e => planned(e).context.slices.flatMap(id => { const r = sliceOf(id)?.root; return r ? [r.dir] : []; })))];
   let baselineDir: string, chosenBy: MeasureResult['baseline']['chosenBy'];
   if (input.baseline) { baselineDir = checkedFolder(resolve(input.baseline)); chosenBy = 'flag'; }
   else if (rootsOfAgents.length) { baselineDir = common(rootsOfAgents); chosenBy = 'slice-roots'; }
@@ -163,24 +178,27 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
   const userOn = input.user === true;
   const agents: MeasureAgent[] = [];
   for (const e of chosen) {
-    const parsed = e.parsed!, text = e.closure!.files[0]!.text, item = planned(e), ctx = item?.context;
+    const parsed = e.parsed!, text = e.closure!.files[0]!.text, ctx = planned(e).context;
     const fm = splitFrontmatter(text), body = fm === null ? '' : fm.rest, omit = parsed.omitClaudeMd;
     const opts: InstructionOptions = { omitClaudeMd: omit, user: userOn, home };
     const atStart = instructionFiles(from, opts, fsReader), full = instructionFiles(from, { ...opts, omitClaudeMd: false }, fsReader);
     const instrBytes = atStart.files.reduce((n, f) => n + f.bytes, 0), fullBytes = full.files.reduce((n, f) => n + f.bytes, 0);
-    const counted: string[] = [body, ...atStart.files.map(f => fsReader.read(f.path)?.text ?? '')];
+    const counted: string[] = [body, ...atStart.files.map(f => readText(f.path))];
+    const chainIds = new Set<string>(full.files.map(f => f.id));
 
     // Skills: the first 32 distinct entries; a slice entry is counted under Slices.
     const entries = [...new Set(parsed.skills ?? [])];
     const preloaded = entries.slice(0, 32), beyond = entries.slice(32);
-    const sliceIds = new Set(ctx?.slices ?? []);
-    const skillFiles: { name: string; path: string; bytes: number }[] = [], unresolved: string[] = [];
+    const sliceIds = new Set(ctx.slices);
+    const skillFiles: { name: string; path: string; bytes: number }[] = [], unresolved: string[] = [], skillUnreadable: { path: string; reason: string }[] = [], skillNotes: string[] = [], skillIds = new Set<string>();
     const dirsUp: string[] = []; for (let p = from; ; p = resolve(p, '..')) { dirsUp.push(p); if (p === '/') break; }
     for (const name of preloaded) {
       if (name.startsWith('slice-') && sliceIds.has(name.slice(6))) continue;
       const candidates = [...dirsUp.map(d => join(d, '.claude/skills', name, 'SKILL.md')), ...(userOn ? [join(home, '.claude/skills', name, 'SKILL.md')] : [])];
       const found = candidates.map(c => ({ c, got: fsReader.read(c) })).find(x => x.got !== null);
-      if (found) { skillFiles.push({ name, path: rel(dir, found.c), bytes: Buffer.byteLength(found.got!.text) }); counted.push(found.got!.text); } else unresolved.push(name);
+      if (found === undefined) unresolved.push(name);
+      else if ('unreadable' in found.got!) { skillUnreadable.push({ path: rel(dir, found.c), reason: found.got.unreadable }); skillNotes.push(`skill ${name} cannot be counted: ${rel(dir, found.c)} ${why(found.got.unreadable)}.`); }
+      else if (!skillIds.has(found.got!.id)) { skillIds.add(found.got!.id); skillFiles.push({ name, path: rel(dir, found.c), bytes: Buffer.byteLength(found.got!.text) }); counted.push(found.got!.text); }
     }
     const skillBytes = skillFiles.reduce((n, f) => n + f.bytes, 0);
 
@@ -207,8 +225,12 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
     const nonAsciiPpm = ratioPpm(counted.reduce((n, t) => n + nonAscii(t), 0), Math.max(1, counted.reduce((n, t) => n + Buffer.byteLength(t), 0)));
     const memberBytesTotal = [...memberIdents.values()].reduce((n, b) => n + b, 0);
     const demand = onDemandInstructions(from, memberPaths, opts, fsReader, atStart);
-    const demandBytes = memberBytesTotal + demand.files.reduce((n, f) => n + f.bytes, 0);
-    const baselineBytes = Buffer.byteLength(body) + fullBytes + skillBytes + baselineStat.bytes;
+    // A subfolder instruction file that is also a member is one file.
+    const demandFiles = demand.files.filter(f => !memberIdents.has(f.id));
+    const demandBytes = memberBytesTotal + demandFiles.reduce((n, f) => n + f.bytes, 0);
+    // The baseline files leave out every file that the chain or the skills already count.
+    const baselineFiles = baselineStat.list.filter(f => !chainIds.has(f.id) && !skillIds.has(f.id)).reduce((n, f) => n + f.bytes, 0);
+    const baselineBytes = Buffer.byteLength(body) + fullBytes + skillBytes + baselineFiles;
     const discovered = from === dir || from.startsWith(dir + sep);
     // The notes, in the order of the spec.
     const ordered: string[] = [];
@@ -220,16 +242,18 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
       const abs = resolve(dir, candidate); let st: fs.Stats; try { st = fs.statSync(abs); } catch { continue; }
       if (st.isFile() && !mentioned.some(x => x.path === rel(dir, abs))) { mentioned.push({ path: rel(dir, abs), bytes: st.size }); ordered.push(`names ${rel(dir, abs)} in its prompt (${st.size} bytes). An agent that follows that line reads it on demand.`); }
     }
+    for (const u of atStart.unreadable) ordered.push(`${rel(dir, u.path)} cannot be counted: it ${why(u.reason)}.`);
     if (unresolved.length) ordered.push(`skills not found, so not counted: ${unresolved.join(', ')}.`);
+    ordered.push(...skillNotes);
     ordered.push(...heldNotes, ...staleNotes);
     agents.push({
       role: e.role, team: e.team, omitClaudeMd: omit, discovered,
       start: {
         prompt: Buffer.byteLength(body),
-        instructions: { files: atStart.files.map(f => ({ path: rel(dir, f.path), bytes: f.bytes, via: f.via })), skippedImports: atStart.skippedImports.map(x => ({ from: rel(dir, x.from), target: x.target })), bytes: instrBytes },
-        skills: { files: skillFiles, unresolved, beyondPreloadLimit: beyond }, slices: sliceRows, bytes: startBytes, tokens: estimateTokens(startBytes, milli), nonAsciiPpm,
+        instructions: { files: atStart.files.map(f => ({ path: rel(dir, f.path), bytes: f.bytes, via: f.via })), skippedImports: atStart.skippedImports.map(x => ({ from: rel(dir, x.from), target: x.target })), unreadable: atStart.unreadable.map(u => ({ path: rel(dir, u.path), reason: u.reason })), bytes: instrBytes },
+        skills: { files: skillFiles, unresolved, unreadable: skillUnreadable, beyondPreloadLimit: beyond }, slices: sliceRows, bytes: startBytes, tokens: estimateTokens(startBytes, milli), nonAsciiPpm,
       },
-      onDemand: { members: { files: memberIdents.size, bytes: memberBytesTotal }, instructions: demand.files.map((f: InstructionFile) => ({ path: rel(dir, f.path), bytes: f.bytes })), bytes: demandBytes, tokens: estimateTokens(demandBytes, milli) },
+      onDemand: { members: { files: memberIdents.size, bytes: memberBytesTotal }, instructions: demandFiles.map((f: InstructionFile) => ({ path: rel(dir, f.path), bytes: f.bytes })), bytes: demandBytes, tokens: estimateTokens(demandBytes, milli) },
       mentioned, listing: { descriptionBytes }, baseline: { bytes: baselineBytes, tokens: estimateTokens(baselineBytes, milli) },
       ratios: { startToBaselinePpm: ratioPpm(startBytes, baselineBytes), onDemandToBaselinePpm: ratioPpm(demandBytes, baselineBytes) },
       reference: { unslicedStartBytes: Buffer.byteLength(body) + instrBytes + skillBytes }, notes: ordered,
@@ -240,6 +264,6 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
     format: MEASURE_FORMAT, project: dir, from,
     estimator: { id: 'bytes-per-token/v1', bytesPerToken: String(milli / 1000), band: ['3.0', '4.5'], calibrated: input.bytesPerTokenMilli ? 'user' : false },
     baseline: { folder: rel(dir, baselineDir), chosenBy, include: '**/*.md', files: baselineStat.files, bytes: baselineStat.bytes, skipped: baselineStat.skipped },
-    agents, notCounted: [...NOT_COUNTED], assumptions: [...ASSUMPTIONS], executionAuthorized: false,
+    agents, held, notCounted: [...NOT_COUNTED], assumptions: [...ASSUMPTIONS], executionAuthorized: false,
   };
 }

@@ -8,8 +8,11 @@ import { splitFrontmatter } from './frontmatter.js';
 import { withoutFences, withoutSpans } from './links.js';
 
 export interface InstructionReader {
-  /** The text of a regular file and its identity (device and inode), or null for anything else. */
-  read(path: string): { text: string; id: string } | null;
+  /**
+   * The text of a regular file and its identity (device and inode); null when nothing is there; `{ unreadable }` with a reason
+   * (an errno code, `too large`, `not a regular file`) when something is there that cannot be counted.
+   */
+  read(path: string): { text: string; id: string } | { unreadable: string } | null;
   /** The names in a folder, or null when it is not a readable folder. */
   list(dir: string): string[] | null;
 }
@@ -25,6 +28,8 @@ export interface InstructionFile { path: string; bytes: number; via: Instruction
 export interface InstructionResult {
   files: InstructionFile[];
   skippedImports: { from: string; target: string }[];
+  /** Files that are there and cannot be counted, each with the reason. */
+  unreadable: { path: string; reason: string }[];
   /** True when no CLAUDE.md of any kind sits on the chain, so AGENTS.md files count. */
   usesAgents: boolean;
 }
@@ -46,26 +51,28 @@ export function instructionFiles(from: string, opts: InstructionOptions, reader:
   const dirs = chainDirs(posix.resolve(from));
   const userClaude = posix.join(opts.home, '.claude/CLAUDE.md'), userRules = posix.join(opts.home, '.claude/rules');
   const hasClaude = dirs.some(d => CLAUDE_NAMES.some(n => { const p = posix.join(d, n); return p !== userClaude && reader.read(p) !== null; }));
-  const result: InstructionResult = { files: [], skippedImports: [], usesAgents: !hasClaude };
+  const result: InstructionResult = { files: [], skippedImports: [], unreadable: [], usesAgents: !hasClaude };
   if (opts.omitClaudeMd) return result;
   const seen = new Set<string>(), skipped = new Set<string>();
   const add = (path: string, via: InstructionVia, hop: number): void => {
     const got = reader.read(path);
-    if (got === null || seen.has(got.id)) return;
+    if (got === null) return;
+    if ('unreadable' in got) { if (!result.unreadable.some(u => u.path === path)) result.unreadable.push({ path, reason: got.unreadable }); return; }
+    if (seen.has(got.id)) return;
     seen.add(got.id);
     result.files.push({ path, bytes: Buffer.byteLength(got.text), via, id: got.id });
     if (hop >= MAX_HOPS) return;
     for (const target of parseImports(got.text)) {
       const abs = target.startsWith('~/') ? posix.resolve(opts.home, target.slice(2)) : posix.resolve(posix.dirname(path), target);
       if (reader.read(abs) === null) { const key = `${path}\0${target}`; if (!skipped.has(key)) { skipped.add(key); result.skippedImports.push({ from: path, target }); } continue; }
-      add(abs, 'import', hop + 1);
+      add(abs, 'import', hop + 1); // An unreadable import is recorded by `add`.
     }
   };
   const rules = (dir: string, via: InstructionVia, depth = 0): void => {
     const names = reader.list(dir); if (names === null) return;
     for (const name of [...names].sort()) {
       const path = posix.join(dir, name);
-      if (name.endsWith('.md')) { const got = reader.read(path); if (got !== null && !hasPathsKey(got.text)) add(path, via, 0); }
+      if (name.endsWith('.md')) { const got = reader.read(path); if (got !== null && ('unreadable' in got || !hasPathsKey(got.text))) add(path, via, 0); }
       else if (depth < 4 && !name.includes('.')) rules(path, via, depth + 1);
     }
   };
@@ -80,7 +87,7 @@ export function instructionFiles(from: string, opts: InstructionOptions, reader:
 
 /** The subfolder files that load when the agent reads the members: those below the folder the chain already covers. */
 export function onDemandInstructions(from: string, members: readonly string[], _opts: InstructionOptions, reader: InstructionReader, start: Pick<InstructionResult, 'files' | 'usesAgents'>): InstructionResult {
-  const result: InstructionResult = { files: [], skippedImports: [], usesAgents: start.usesAgents };
+  const result: InstructionResult = { files: [], skippedImports: [], unreadable: [], usesAgents: start.usesAgents };
   const seen = new Set<string>(start.files.map(f => f.id)), fromSegs = posix.resolve(from).split('/').filter(Boolean);
   const dirs = new Set<string>();
   for (const m of members) {
@@ -90,8 +97,8 @@ export function onDemandInstructions(from: string, members: readonly string[], _
   }
   for (const d of [...dirs].sort()) {
     let claude = false;
-    for (const n of CLAUDE_NAMES) { const got = reader.read(posix.join(d, n)); if (got) { claude = true; if (!seen.has(got.id)) { seen.add(got.id); result.files.push({ path: posix.join(d, n), bytes: Buffer.byteLength(got.text), via: 'claude', id: got.id }); } } }
-    if (start.usesAgents && !claude) for (const n of AGENTS_NAMES) { const got = reader.read(posix.join(d, n)); if (got && !seen.has(got.id)) { seen.add(got.id); result.files.push({ path: posix.join(d, n), bytes: Buffer.byteLength(got.text), via: 'agents', id: got.id }); } }
+    for (const n of CLAUDE_NAMES) { const got = reader.read(posix.join(d, n)); if (got && 'unreadable' in got) { claude = true; result.unreadable.push({ path: posix.join(d, n), reason: got.unreadable }); } else if (got) { claude = true; if (!seen.has(got.id)) { seen.add(got.id); result.files.push({ path: posix.join(d, n), bytes: Buffer.byteLength(got.text), via: 'claude', id: got.id }); } } }
+    if (start.usesAgents && !claude) for (const n of AGENTS_NAMES) { const got = reader.read(posix.join(d, n)); if (got && 'unreadable' in got) result.unreadable.push({ path: posix.join(d, n), reason: got.unreadable }); else if (got && !seen.has(got.id)) { seen.add(got.id); result.files.push({ path: posix.join(d, n), bytes: Buffer.byteLength(got.text), via: 'agents', id: got.id }); } }
   }
   return result;
 }
