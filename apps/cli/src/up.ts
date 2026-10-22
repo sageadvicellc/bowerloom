@@ -42,7 +42,7 @@ export type UpStep = 'init' | 'team' | 'sync' | 'apply' | 'held';
 export const UP_STEP_FORMAT = 'bowerloom/up-step/v1beta1' as const;
 export const FIRST_TEAM = 'first-team';
 const START_HERE = '.bowerloom/START-HERE.md';
-const UP_USAGE = 'Use bowerloom up --team <name> [--goal <goal>] [--name <project-name>], with optional --approve <revision> and --json. A folder with no .bowerloom needs --goal.';
+const UP_USAGE = 'Use bowerloom up --team <name> [--goal <goal>] [--name <project-name>], with optional --approve <revision> and --json. A folder with no .bowerloom and no bowerloom.json needs --goal.';
 const usage = (message = UP_USAGE): never => { throw new DefinitionError('USAGE', message); };
 
 export interface UpContext {
@@ -75,7 +75,7 @@ function wrap<P extends { revision: string }>(step: Exclude<UpStep, 'held'>, tea
 }
 
 function initStep(ctx: UpContext): UpNext {
-  if (ctx.goal === null) usage('This folder has no .bowerloom yet. Run bowerloom up --team <name> --goal <goal> once to set it up.');
+  if (ctx.goal === null) usage('This folder has no .bowerloom and no bowerloom.json yet. Run bowerloom up --team <name> --goal <goal> once to set it up.');
   let target: string; try { target = realpathSync(ctx.cwd); } catch { return usage(); }
   checkProjectPath(target, ctx.home);
   const name = ctx.name ?? basename(target), team: UpTeam = { id: FIRST_TEAM, name: ctx.team };

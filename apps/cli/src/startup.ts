@@ -1,8 +1,10 @@
 import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { strictJson } from '../../../packages/codex-adapter/src/safe.js';
+import { assertNotInStore } from '../../../packages/project-context/src/index.js';
 import { planStartup, applyStartup, inspectStartup, planStartupDemo, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
 
 export { renderStartupReview, renderStartupDemoReview } from '../../../packages/startup/src/index.js';
@@ -48,6 +50,8 @@ async function dispatchStartup(args: string[]): Promise<unknown> {
     values.set(key!, value!);
   }
   if (!values.has('--target')) usage();
+  // The store holds definitions only. A relative or odd target is left to the plan, which refuses it as before.
+  if ((command === 'plan' || command === 'apply') && isAbsolute(values.get('--target')!) && !values.get('--target')!.includes('\0')) assertNotInStore(values.get('--target')!, homedir());
   if (command === 'status') return inspectStartup(values.get('--target')!);
   if (command === 'demo-plan') {
     if (!values.has('--from')) usage();

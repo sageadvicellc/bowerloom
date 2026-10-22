@@ -30,6 +30,7 @@ function firstTeamName(project: ProjectContext): string | null {
 }
 /** The pinned skills of skills.json, read with the manifest guards. An empty list when there is no skills.json. */
 function pinnedSkills(project: ProjectContext): { id: string; pin: string }[] | null {
+  if (project.bowerloomIdentity === null) return [];
   try {
     const state = readManifestState(project.dir);
     if (state.file === null) return [];

@@ -129,7 +129,7 @@ function helpText(words: readonly string[]): string | null {
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -143,6 +143,11 @@ async function main(args: string[]): Promise<void> {
   }
   if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  if (args[0] === 'store') {
+    const { runStoreCommand } = await import('./store.js');
+    process.exitCode = await runStoreCommand(args, homedir(), text => process.stdout.write(text));
+    return;
+  }
   // Review finding 6: status without a session flag is the project status, which names its own usage.
   if (args[0] === 'status' && !SESSION_FLAGS.some(flag => args.includes(flag))) {
     const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
