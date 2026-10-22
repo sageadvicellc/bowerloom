@@ -15,6 +15,14 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ## 0.7.0-beta.3
 
+- `bowerloom.json` lists what a project installs, from the project or from your store. A project without it installs everything it defines, as before.
+- `bowerloom use` and `bowerloom unuse` pick and drop items, and change only `bowerloom.json` and `bowerloom.lock.json`.
+- `bowerloom.lock.json` records where each store item comes from and a hash of its bytes, so a teammate gets the same items.
+- `bowerloom lock verify` checks the lock with no network. `bowerloom lock update` rewrites it from your store.
+- `apply --frozen` and `skills sync --frozen` install only what the lock records, as `npm ci` does.
+- `bowerloom team adopt` copies a store team into the project, and the project owns the copy.
+- A project with only `bowerloom.json` works with every command. Its first install makes `.bowerloom`, whose engine files git ignores.
+- New plan and result formats: `bowerloom/skills-sync-plan/v1beta2`, `bowerloom/skills-sync-result/v1beta2`, `bowerloom/config-change-plan/v1beta1`, `bowerloom/lock-verify/v1beta1`, `bowerloom/lock-update-result/v1beta1`, and `bowerloom/team-adopt-result/v1beta1`. Plan items name their source.
 - `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.
 - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
 - The read guard needs Claude Code 2.1.295 or later. On older versions, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
@@ -23,6 +31,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it.
 - Ids that start with `slice-` are reserved for new skills and prompts.
 - A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
+- In a project with `bowerloom.json`, a context slice stays a project item. `bowerloom.json`, the store, and the lock never hold it.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
 - A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
 - `bowerloom status` no longer reports a team's `agents/` files as edited.

@@ -6,6 +6,9 @@ import { AdapterError, strictJson } from '../../../packages/codex-adapter/src/sa
 import { inspectStore, projectRefusal, storeRootOf, verifyStorePins } from '../../../packages/project-context/src/index.js';
 import type { StoreContext } from '../../../packages/project-context/src/index.js';
 import { newCommandJson, plainText } from './human.js';
+import { readStoreRepo } from '../../../packages/project-config/src/git.js';
+import type { StoreRepo } from '../../../packages/project-config/src/git.js';
+import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 
 const STORE_STATUS_FORMAT = 'bowerloom/store-status/v1beta1';
 const USAGE = 'Use bowerloom store status [--json].';
@@ -20,7 +23,7 @@ type Problem = 'unsafe' | 'too-large' | 'invalid' | 'unreadable';
 interface Count { n: number; capped: boolean; ignored: number }
 interface Pinned { count: number | null; problem: Problem | null }
 interface Counts { skillFolders: Count; pinnedSkills: Pinned; prompts: Count; teams: Count }
-interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[] }
+interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null }
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const storeCode = (error: unknown): string | null => { const code = errno(error); return typeof code === 'string' && code.startsWith('STORE_') ? code : null; };
@@ -75,23 +78,25 @@ function report(home: string): Report {
   try { path = storeRootOf(home); } catch (error) {
     const code = storeCode(error);
     if (code === null) throw error;
-    return { state: 'refused', path: join(resolve(home), '.bowerloom'), code, message: (error as Error).message, counts: null, leftovers: [] };
+    return { state: 'refused', path: join(resolve(home), '.bowerloom'), code, message: (error as Error).message, counts: null, leftovers: [], git: null };
   }
   const leftoversIn = (dir: string): string[] => {
     try { return readdirSync(dir).filter(name => LEFTOVER_TEMP.test(name)).sort(); } catch { throw projectRefusal('STORE_UNREADABLE'); }
   };
   try {
     const found = inspectStore(home);
-    if (found.state === 'absent') return { state: 'absent', path, code: null, message: null, counts: null, leftovers: found.leftover ? leftoversIn(path) : [] };
-    if (found.state === 'foreign') return { state: 'foreign', path, code: null, message: null, counts: null, leftovers: [] };
+    if (found.state === 'absent') return { state: 'absent', path, code: null, message: null, counts: null, leftovers: found.leftover ? leftoversIn(path) : [], git: null };
+    if (found.state === 'foreign') return { state: 'foreign', path, code: null, message: null, counts: null, leftovers: [], git: null };
     const store = found.context;
     const counts: Counts = { skillFolders: countNames(store, 'skills'), pinnedSkills: pinnedSkills(store), prompts: countNames(store, 'prompts'), teams: countNames(store, 'teams') };
     const leftovers = leftoversIn(store.dir);
+    // Spec 06, 3.21: the git repository of the store, read from files only.
+    const git = readStoreRepo(store.dir, null);
     verifyStorePins(store);
-    return { state: 'store', path, code: null, message: null, counts, leftovers };
+    return { state: 'store', path, code: null, message: null, counts, leftovers, git };
   } catch (error) {
     const code = storeCode(error);
-    if (code !== null) return { state: 'refused', path, code, message: (error as Error).message, counts: null, leftovers: [] };
+    if (code !== null) return { state: 'refused', path, code, message: (error as Error).message, counts: null, leftovers: [], git: null };
     throw error;
   }
 }
@@ -106,8 +111,27 @@ function render(r: Report): string {
   const pinned = c.pinnedSkills.count === null ? `unreadable (${c.pinnedSkills.problem})` : String(c.pinnedSkills.count);
   return [
     'Store: ready', `  Path: ${plainText(r.path)}`, `  Skill folders: ${show(c.skillFolders)}`,
-    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...leftover, '',
+    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!), ...leftover, '',
   ].join('\n');
+}
+/** The commands that fix a git problem of the store (3.21). The person runs them; Bowerloom never runs git. */
+const FIX: Readonly<Record<string, (branch: string) => string[]>> = {
+  none: b => ['cd ~/.bowerloom', 'git init', 'git add -A', 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
+  'no-origin': b => ['cd ~/.bowerloom', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
+  'unsupported-remote': () => ['cd ~/.bowerloom', 'git remote set-url origin https://github.com/<owner>/<repo>.git'],
+  unpushed: b => ['cd ~/.bowerloom', `git push -u origin ${b}`],
+  unreadable: () => [],
+};
+function gitLines(git: StoreRepo): string[] {
+  const out: string[] = [];
+  if (git.problem === null) out.push(`  Git: origin ${git.remote!.slice('https://'.length)}, branch ${git.branch ?? '<branch>'}, HEAD ${git.head?.slice(0, 8) ?? 'unknown'}, pushed ${git.pushed!.slice(0, 8)}`);
+  else {
+    out.push(git.problem === 'none' ? '  Git: none' : `  Git: ${NOT_SHAREABLE[git.problem]}`);
+    const commands = FIX[git.problem]!(git.branch ?? '<branch>');
+    if (commands.length) out.push('  To fix this, run these commands yourself:', ...commands.map(c => `    ${c}`));
+  }
+  out.push('  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.');
+  return out;
 }
 
 /**
@@ -125,7 +149,8 @@ export async function runStoreCommand(args: readonly string[], home: string, wri
       ignored: { skillFolders: c.skillFolders.ignored, prompts: c.prompts.ignored, teams: c.teams.ignored },
       capped: { skillFolders: c.skillFolders.capped, prompts: c.prompts.capped, teams: c.teams.capped },
     };
-    write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git: null }));
+    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown' };
+    write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git }));
   } else write(render(r));
   return 0;
 }

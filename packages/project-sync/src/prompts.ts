@@ -8,7 +8,6 @@
  */
 import { lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { parseDocument } from 'yaml';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, stablePins } from '../../managed-skills/src/observed.js';
 import { readLocalPrompt } from '../../managed-skills/src/local-source.js';
@@ -18,49 +17,16 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
 import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold, union } from './plan.js';
 import { managedCode, syncError } from './refusal.js';
+import { faultNote, probeStoreCache } from './store-git.js';
+import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { locateV2 } from '../../managed-skills/src/v2-observed.js';
 import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
 
 export type PromptState = 'new' | 'edited' | 'harnesses-changed' | 'up-to-date' | 'drift' | 'orphaned';
-/**
- * What a Claude Code command can do beyond text (review M6 finding 5): `allowed-tools` in its frontmatter grants tools,
- * `hooks` registers hooks that keep running for the rest of the session, and `!` then a backquote, a line that starts
- * with `!`, or a fence opened with ```! runs shell commands when the command is used (Claude Code skills docs,
- * Frontmatter reference). The review names them; it never quotes the prompt.
- */
-export type PromptNotice = 'allowed-tools' | 'hooks' | 'shell-lines';
-const FENCE = /^---[ \t]*$/;
-const KEYS = ['allowed-tools', 'hooks'] as const;
-/**
- * The notice keys the frontmatter names, in any case, quoted or not. More notices are safe; a missing one is not, so
- * frontmatter the bounded parser cannot read (an alias, a merge key, a parse error, anything but a map) fails closed
- * and names every key (F' security review finding 1).
- */
-function frontmatterKeys(block: string): Set<(typeof KEYS)[number]> {
-  const found = new Set<(typeof KEYS)[number]>();
-  // Any line that names a key counts, so a block YAML refuses still counts.
-  for (const key of KEYS) if (block.split('\n').some(l => new RegExp(`^\\s*["']?${key}["']?\\s*:`, 'i').test(l))) found.add(key);
-  try {
-    const doc = parseDocument(block, { uniqueKeys: false });
-    if (doc.errors.length) throw new Error('unreadable');
-    const value: unknown = doc.toJS({ maxAliasCount: 0 });
-    if (value === null || value === undefined) return found;
-    if (typeof value !== 'object' || Array.isArray(value)) throw new Error('unreadable');
-    for (const name of Object.keys(value)) { const k = name.trim().toLowerCase(); for (const key of KEYS) if (k === key) found.add(key); }
-    return found;
-  } catch { return new Set(KEYS); }
-}
-export function promptNotices(text: string): PromptNotice[] {
-  const notices: PromptNotice[] = [], lines = text.split(/\r?\n/);
-  // The opener and closer may carry trailing spaces, as `--- ` does in files people write.
-  if (FENCE.test(lines[0] ?? '')) {
-    const end = lines.findIndex((l, i) => i > 0 && FENCE.test(l));
-    if (end > 0) { const keys = frontmatterKeys(lines.slice(1, end).join('\n')); for (const key of KEYS) if (keys.has(key)) notices.push(key); }
-  }
-  // A shell command: `!` then a backquote anywhere, a line that starts with `!`, or a code fence opened with ```!.
-  if (text.includes('!`') || lines.some(l => l.startsWith('!') || /^[ \t]*(?:`{3,}|~{3,})!/.test(l))) notices.push('shell-lines');
-  return notices;
-}
+export { promptNotices } from './notices.js';
+export type { PromptNotice } from './notices.js';
+import { promptNotices } from './notices.js';
+import type { PromptNotice } from './notices.js';
 export interface PromptItem {
   /** The prompt name, `.bowerloom/prompts/<id>.md`. */
   id: string;
@@ -77,9 +43,31 @@ export interface PromptItem {
   previousReceiptRevision: string | null;
   history: number;
   hold: { code: string; next: string } | null;
-  /** What the prompt's Claude Code command can do beyond text. Empty for an orphan. */
-  notices: PromptNotice[];
+  /**
+   * What the prompt's Claude Code command can do beyond text. Empty for an orphan. Null for a prompt from the lock that
+   * this machine does not hold yet: Bowerloom shows its notices after the fetch (spec 06, 3.16, decision A).
+   */
+  notices: PromptNotice[] | null;
+  /** Spec 06, 4.4: where the prompt is defined (null for an orphan), the teams it was picked through, and where its bytes come from. */
+  origin: 'store' | 'project' | null; via: string[]; resolvedFrom: 'store' | 'lock' | 'project';
+  lockPin: AuthoredPin | null;
+  /** For a prompt from the lock: whether the store cache holds it now. Shown, not bound. */
+  storeCache: 'held' | 'missing' | null;
 }
+/** Where a prompt of a config project comes from (spec 06, 3.12). Absent: the project, as in beta.2. */
+export interface PromptSource {
+  origin: 'store' | 'project'; via: string[]; resolvedFrom: 'store' | 'lock' | 'project';
+  /** The live store folder, for a prompt from the store. */
+  storeDir: string | null;
+  lockPin: AuthoredPin | null;
+  /** The store cache, for a prompt from the lock. */
+  storeCacheRoot: string;
+  /** Review F5: the plan notes, which name a store cache entry that fails verification. */
+  notes?: string[];
+  /** Review F5: a run that fetches nothing holds an item whose store cache entry fails verification, with that code. */
+  offline?: boolean;
+}
+const PROJECT_SOURCE = { origin: 'project' as const, via: [] as string[], resolvedFrom: 'project' as const, lockPin: null, storeCache: null };
 
 const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
 const NULL_PINS = revisionOf(null);
@@ -117,19 +105,40 @@ export const missingPromptHold = (id: string): { code: string; next: string } =>
   next: `.bowerloom/prompts/${id}.md is gone. Run bowerloom prompt create ${id} to restore it, then run bowerloom apply.`,
 });
 
-/** Classifies one registered prompt. Reads only. */
-export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[]): PromptItem {
-  let files: InventoryRow[], notices: PromptNotice[];
-  try { if (id.startsWith('prompt-')) throw new Error('reserved'); const read = readLocalPrompt(project, id, () => {}); files = [...read.inventory]; notices = promptNotices(read.files[0]!.text); }
+/** The store folder a prompt is read from now: the live store, or its store cache folder; null when it is not on this machine. */
+function promptFolder(id: string, src: PromptSource): { dir: string | null; fault: { code: string; key: string } | null } {
+  if (src.resolvedFrom === 'store') return { dir: src.storeDir, fault: null };
+  const probe = probeStoreCache(src.storeCacheRoot, 'prompt', id, src.lockPin!.hash);
+  if (probe.fault) src.notes?.push(faultNote(probe.fault.key));
+  return probe;
+}
+/** A prompt the resolver holds (CONFIG_ITEM_MISSING, STORE_ITEM_MISSING): no definition to read, and the copies stay. */
+export function heldPrompt(project: string, id: string, teams: string[], target: Harness[], hold: { code: string; next: string }, r: Pick<PromptSource, 'origin' | 'via' | 'resolvedFrom'>): PromptItem {
+  const surfaces = promptSurfaces(project, id, target);
+  return {
+    id, itemId: 'prompt-' + id, teams, state: 'drift', action: 'hold', harnesses: [...target],
+    expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before: beforePins(surfaces, project),
+    previousReceiptRevision: null, history: 0, hold, notices: [], origin: r.origin, via: [...r.via], resolvedFrom: r.resolvedFrom, lockPin: null, storeCache: null,
+  };
+}
+/** Classifies one prompt: a registered project prompt, or, in a config project, a store prompt live or from the lock. Reads only. */
+export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[], src?: PromptSource): PromptItem {
+  let files: InventoryRow[], notices: PromptNotice[] | null, storeCache: PromptItem['storeCache'] = null, fault: { code: string } | null = null;
+  const fromStore = src !== undefined && src.origin === 'store', where = fromStore ? (src.resolvedFrom === 'store' ? `~/.bowerloom/prompts/${id}.md` : `the store at ${src.lockPin!.remote.slice('https://'.length)}`) : `.bowerloom/prompts/${id}.md`;
+  const tag = src === undefined ? PROJECT_SOURCE : { origin: src.origin, via: [...src.via], resolvedFrom: src.resolvedFrom, lockPin: src.resolvedFrom === 'lock' ? src.lockPin : null, storeCache: null };
+  if (fromStore) {
+    const probe = promptFolder(id, src), folder = probe.dir; fault = probe.fault;
+    if (src.resolvedFrom === 'lock') storeCache = folder === null ? 'missing' : 'held';
+    if (folder === null && src.resolvedFrom === 'lock') { files = src.lockPin!.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })); notices = null; }
+    else {
+      try { const read = readLocalPrompt(project, id, () => {}, { bowerloom: folder!, origin: 'store' }); files = [...read.inventory]; notices = promptNotices(read.files[0]!.text); }
+      catch { throw syncError('PROMPT_INVALID', `The prompt is ${where}.`); }
+    }
+  } else try { if (id.startsWith('prompt-')) throw new Error('reserved'); const read = readLocalPrompt(project, id, () => {}); files = [...read.inventory]; notices = promptNotices(read.files[0]!.text); }
   catch {
     if (id.startsWith('prompt-') || !promptMissing(project, id)) throw syncError('PROMPT_INVALID', `The prompt is .bowerloom/prompts/${id}.md.`);
     // Held, never a refusal of the whole plan: the other skills and prompts still apply, and the copies stay.
-    const surfaces = promptSurfaces(project, id, target);
-    return {
-      id, itemId: 'prompt-' + id, teams, state: 'drift', action: 'hold', harnesses: [...target],
-      expected: { files: [], surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before: beforePins(surfaces, project),
-      previousReceiptRevision: null, history: 0, hold: missingPromptHold(id), notices: [],
-    };
+    return heldPrompt(project, id, teams, target, missingPromptHold(id), tag);
   }
   const ref: ItemRef = { kind: 'prompt', id }, itemId = 'prompt-' + id, stateDir = join(itemsRoot, itemId);
   let hold: PromptItem['hold'] = null, heldCode: string | null = null, state: PromptState = 'drift', action: SyncItem['action'] = 'hold', previous: ManagedItemReceipt | null = null;
@@ -158,7 +167,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   const surfaces = promptSurfaces(project, id, harnesses), before = beforePins(surfaces, project);
   if (heldCode !== null && hold === null) {
     const changed = heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftedPaths(project, stateDir, ref.id) : [];
-    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), `.bowerloom/prompts/${id}.md`).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') : `Run bowerloom status to see what changed in the copies of prompt ${id}.` };
+    hold = { code: heldCode, next: heldCode === 'MANAGED_SKILL_LOCAL_DRIFT' ? driftNext(changed.length ? changed : before.map(b => b.path), fromStore && src.resolvedFrom === 'lock' ? null : where).replace('bowerloom skills sync', 'bowerloom apply').replace('Sync never', 'Apply never') : `Run bowerloom status to see what changed in the copies of prompt ${id}.` };
   }
   if (action === 'install' && hold === null) {
     const taken = before.filter(b => b.stablePinsDigest !== NULL_PINS).map(b => b.path);
@@ -167,11 +176,12 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   if ((action === 'install' || action === 'update') && hold === null && ops.length >= LIMITS.history) {
     hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(itemId, previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder', 'bowerloom apply') };
   }
+  if (fault !== null && src?.offline === true && hold === null && (action === 'install' || action === 'update')) hold = { code: fault.code, next: 'Run bowerloom apply --frozen.' };
   if (hold !== null) action = 'hold';
   return {
     id, itemId, teams, state, action, harnesses,
     expected: { files, surfaces: surfaces.map(s => ({ id: s.id, path: relative(project, s.path) })) }, before,
-    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices,
+    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, ...tag, storeCache,
   };
 }
 
@@ -179,14 +189,15 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
 export function orphanPrompt(project: string, itemsRoot: string, id: string): PromptItem {
   let previous: ManagedItemReceipt | null = null;
   try { previous = currentV2(project, join(itemsRoot, 'prompt-' + id), { kind: 'prompt', id }); } catch { previous = null; }
-  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [] };
+  return { id, itemId: 'prompt-' + id, teams: [], state: 'orphaned', action: 'none', harnesses: previous ? [...previous.harnesses] : [], expected: { files: [], surfaces: [] }, before: [], previousReceiptRevision: previous?.revision ?? null, history: 0, hold: null, notices: [], origin: null, via: [], resolvedFrom: 'project', lockPin: null, storeCache: null };
 }
 
-/** The child request of one prompt. Every field comes from the plan this run computed. */
-export function promptRequest(project: string, itemsRoot: string, item: PromptItem): ManagedItemRequest {
+/** The child request of one prompt. Every field comes from the plan this run computed; `storeDir` is the store folder of a store prompt. */
+export function promptRequest(project: string, itemsRoot: string, item: PromptItem, storeDir: string | null = null): ManagedItemRequest {
+  if ((item.origin === 'store') !== (storeDir !== null)) throw stale();
   return {
     operation: item.action === 'install' ? 'install' : 'update', projectDir: project, stateDir: join(itemsRoot, item.itemId),
-    item: { kind: 'prompt', id: item.id }, harnesses: [...item.harnesses], source: { kind: 'prompt', name: item.id },
+    item: { kind: 'prompt', id: item.id }, harnesses: [...item.harnesses], source: storeDir !== null ? { kind: 'store-prompt', name: item.id, storeDir } : { kind: 'prompt', name: item.id },
     expectedPreviousRevision: item.previousReceiptRevision, minFreeBytes: MIN_FREE_BYTES, legacy: null,
   };
 }
@@ -197,7 +208,7 @@ export function checkPromptChild(dir: string, item: PromptItem, req: ManagedItem
   if (child.format !== 'bowerloom/managed-item-plan/v1beta2') throw stale(`Prompt ${item.id} changed since the plan.`);
   const c = child as ManagedItemPlan, closure = c.core.closure;
   if (!same(c.core.request, req)) throw stale();
-  if (!same(closure.inventory, item.expected.files) || !same(closure.source, { kind: 'prompt', path: `prompts/${item.id}.md` }) || closure.skill !== null) throw stale(`Prompt ${item.id} changed since the plan.`);
+  if (!same(closure.inventory, item.expected.files) || !same(closure.source, { kind: item.origin === 'store' ? 'store-prompt' : 'prompt', path: `prompts/${item.id}.md` }) || closure.skill !== null) throw stale(`Prompt ${item.id} changed since the plan.`);
   const own = c.core.before.filter(ownSurface);
   if (!same(own.map(s => ({ id: s.id, path: rel(dir, s.path) })), item.expected.surfaces)) throw stale();
   if (!same(own.map(s => ({ id: s.id, path: rel(dir, s.path), stablePinsDigest: revisionOf(stablePins(s.pins)) })), item.before)) throw stale(`Prompt ${item.id} changed since the plan.`);

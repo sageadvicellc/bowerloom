@@ -3,12 +3,18 @@
  * `.bowerloom/prompts/<name>.md`. Every read refuses a symlink, a second hard link, a foreign owner, group or
  * world write, special mode bits and oversize content, and a closing pass refuses any change during the read.
  * The result is content only, so two machines with the same authored bytes produce the same closure.
+ *
+ * Spec 06: the same readers serve a folder laid out like a store, the live store `~/.bowerloom` or a store cache folder,
+ * through `root`. A store origin adds the file rules a lock can record (`storeFileFault`): at most 126 files of 65536 bytes,
+ * 2 MiB in all, each a listed text type, not empty, no byte order mark, UTF-8, and no execute bit. Its closure source is
+ * `store` or `store-prompt`, and names no folder.
  */
 import fs from 'node:fs';
 import { join, relative } from 'node:path';
 import { relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, check, boundary, hash, same, identity, names, path as projectPath } from './observed.js';
 import { claudeCopyBytes } from './agent-copy.js';
+import { STORE_FILE_LIMITS, storeFileFault } from '../../skill-manifest/src/content.js';
 import { identityFrom, projectId } from '../../project-context/src/discovery.js';
 import { parseSlice, SLICE_LIMITS } from '../../context-slices/src/slice-file.js';
 import type { SliceDefinition } from '../../context-slices/src/slice-file.js';
@@ -24,13 +30,15 @@ export function itemName(value: unknown): asserts value is string { check(typeof
 const LOCAL = Object.freeze({ files: 128, entries: 512, bytes: 2 * 1024 * 1024, depth: 8 });
 
 interface Pin { path: string; identity: Identity; size: string; mtimeNs: string; ctimeNs: string }
+/** Where the authored item is read from: `.bowerloom` of the project (the default) or a folder laid out like a store. */
+export interface ItemRoot { bowerloom: string; origin: 'project' | 'store' }
 const owned = (s: fs.BigIntStats): boolean => Number(s.uid) === process.getuid?.() && (Number(s.mode) & 0o7022) === 0;
 const pinOf = (p: string, s: fs.BigIntStats): Pin => ({ path: p, identity: identity(s), size: String(s.size), mtimeNs: String(s.mtimeNs), ctimeNs: String(s.ctimeNs) });
 function folder(p: string): Pin { const s = fs.lstatSync(p, { bigint: true }); check(!s.isSymbolicLink() && s.isDirectory() && owned(s)); return pinOf(p, s); }
 /** One authored file: O_NOFOLLOW, one link, owner, no group or world write, bounded, unchanged across the read. */
-function authored(p: string, max: number, ignoreBOM = false): { text: string; pin: Pin } {
+function authored(p: string, max: number, ignoreBOM = false): { text: string; bytes: Buffer; pin: Pin } {
   const got = authoredBytes(p, max);
-  return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM }).decode(got.bytes), pin: got.pin };
+  return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM }).decode(got.bytes), bytes: got.bytes, pin: got.pin };
 }
 /** The bytes of `authored`, undecoded, so that a caller can count a file that is not text instead of refusing it. */
 function authoredBytes(p: string, max: number): { bytes: Buffer; pin: Pin } {
@@ -52,34 +60,44 @@ function closure(source: LocalClosure['source'], files: ItemFile[], sourceSha256
   const sorted = byPath(files), inventory: InventoryRow[] = sorted.map(f => ({ path: f.path, sha256: f.sha256, bytes: Buffer.byteLength(f.text) }));
   return freezeSkillData({ format: 'bowerloom/local-item-closure/v1beta2', source, files: sorted, inventory, references, executionAuthorized: false, ...(sourceSha256 === undefined ? {} : { sourceSha256 }) });
 }
-/** The fixed folders from the project down to `.bowerloom/<area>`. */
-function base(projectDir: string, area: 'skills' | 'prompts' | 'teams' | 'slices', pins: Pin[]): string {
+/** The fixed folders from the project down to `.bowerloom/<area>`, or from a store folder down to `<area>`. */
+function base(projectDir: string, area: 'skills' | 'prompts' | 'teams' | 'slices', pins: Pin[], root?: ItemRoot): string {
   projectPath(projectDir); const s = fs.lstatSync(projectDir, { bigint: true }); check(s.isDirectory() && !s.isSymbolicLink() && Number(s.uid) === process.getuid?.() && !(Number(s.mode) & 0o7022));
-  const bowerloom = join(projectDir, '.bowerloom'), root = join(bowerloom, area); pins.push(folder(bowerloom), folder(root)); return root;
+  const bowerloom = rootOf(projectDir, root); if (root !== undefined) projectPath(bowerloom);
+  const at = join(bowerloom, area); pins.push(folder(bowerloom), folder(at)); return at;
 }
+const rootOf = (projectDir: string, root?: ItemRoot): string => root === undefined ? join(projectDir, '.bowerloom') : root.bowerloom;
+const isStore = (root?: ItemRoot): boolean => { check(root === undefined || (root !== null && typeof root === 'object' && typeof root.bowerloom === 'string' && (root.origin === 'project' || root.origin === 'store'))); return root?.origin === 'store'; };
+/** The store file rules of one file. */
+function storeFile(path: string, bytes: Buffer, mode: number): void { check(storeFileFault(path, bytes, mode) === null); }
 
-export function readLocalSkill(projectDir: string, relPath: string, live: () => void): LocalClosure {
+export function readLocalSkill(projectDir: string, relPath: string, live: () => void, from?: ItemRoot): LocalClosure {
   try {
+    const store = isStore(from);
     check(typeof relPath === 'string' && relPath.startsWith('skills/')); const id = relPath.slice('skills/'.length); itemName(id);
-    const pins: Pin[] = []; live(); const root = join(base(projectDir, 'skills', pins), id), files: ItemFile[] = []; let bytes = 0, entries = 0;
+    const pins: Pin[] = []; live(); const root = join(base(projectDir, 'skills', pins, from), id), files: ItemFile[] = []; let bytes = 0, entries = 0;
     const visit = (abs: string, rel: string, depth: number): void => {
       live(); check(++entries <= LOCAL.entries && depth <= LOCAL.depth); const s = fs.lstatSync(abs, { bigint: true }); check(!s.isSymbolicLink());
       // A folder is never skipped silently: a hidden name refuses as a hidden file does, and so does an empty folder.
       if (s.isDirectory()) { pins.push(folder(abs)); if (rel) relativeSkillPath(rel); const children = names(abs); check(children.length > 0); for (const n of children) visit(join(abs, n), rel ? rel + '/' + n : n, depth + 1); return; }
       relativeSkillPath(rel); const got = authored(abs, LIMITS.file); pins.push(got.pin);
+      if (store) { storeFile(rel, got.bytes, got.pin.identity.mode); check(files.length < STORE_FILE_LIMITS.files && bytes + got.bytes.length <= STORE_FILE_LIMITS.totalBytes); }
       bytes += Buffer.byteLength(got.text); check(files.length < LOCAL.files && bytes <= LOCAL.bytes);
       files.push({ path: rel, text: got.text, sha256: hash(got.text), mode: 420 });
     };
     visit(root, '', 0); check(files.some(f => f.path === 'SKILL.md')); closing(pins, live); live();
-    return closure({ kind: 'local', path: relPath }, files);
+    return closure(store ? { kind: 'store', path: relPath } : { kind: 'local', path: relPath }, files);
   } catch (e) { return boundary(e); }
 }
 
-export function readLocalPrompt(projectDir: string, name: string, live: () => void): LocalClosure {
+export function readLocalPrompt(projectDir: string, name: string, live: () => void, from?: ItemRoot): LocalClosure {
   try {
-    itemName(name); const pins: Pin[] = []; live(); const file = join(base(projectDir, 'prompts', pins), name + '.md');
-    const got = authored(file, LIMITS.file); pins.push(got.pin); closing(pins, live); live();
-    return closure({ kind: 'prompt', path: 'prompts/' + name + '.md' }, [{ path: name + '.md', text: got.text, sha256: hash(got.text), mode: 420 }]);
+    const store = isStore(from);
+    itemName(name); const pins: Pin[] = []; live(); const file = join(base(projectDir, 'prompts', pins, from), name + '.md');
+    const got = authored(file, LIMITS.file); pins.push(got.pin);
+    if (store) storeFile(name + '.md', got.bytes, got.pin.identity.mode);
+    closing(pins, live); live();
+    return closure({ kind: store ? 'store-prompt' : 'prompt', path: 'prompts/' + name + '.md' }, [{ path: name + '.md', text: got.text, sha256: hash(got.text), mode: 420 }]);
   } catch (e) { return boundary(e); }
 }
 

@@ -99,6 +99,7 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
     cacheOperationId: bytesFrom === 'legacy-cache' ? null : cache.operationId, cache: bytesFrom === 'legacy-cache' ? null : cache,
     expected: { files: byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes }))), surfaces: surfaces.map(s => ({ id: s.id, path: s.path.slice(dir.length + 1) })) },
     before: beforePins(surfaces, dir), previousReceiptRevision: null, history: 0, hold: null,
+    origin: 'project', via: [], resolvedFrom: 'project', lockPin: null, storeCache: null,
   };
   const fetch = bytesFrom === 'fetch', create = [...layout.missing.filter(p => p !== layout.cacheRoot || fetch)];
   const stateDir = join(layout.itemsRoot, id); if (!exists(stateDir)) create.push(stateDir);

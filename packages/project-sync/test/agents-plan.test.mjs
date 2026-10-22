@@ -83,7 +83,7 @@ test('7. a deleted source is kept: the copy and the catalog stay', async t => {
   assert.deepEqual([a.id, a.team, a.state, a.action], ['scribe', null, 'orphaned', 'none']); assert.equal(p.actionable, false);
   assert.match(review(p), /^ {2}scribe +agent kept: no longer an agent of this project, and apply removes nothing$/m);
   const before = exactTree(path.join(f.projectDir, '.claude')), result = await applyProjectApply(f.input(['claude']), p.revision, signal());
-  assert.deepEqual(result.orphaned, [{ kind: 'agent', id: 'scribe' }]); assert.equal(exactTree(path.join(f.projectDir, '.claude')), before);
+  assert.deepEqual(result.orphaned, [{ kind: 'agent', id: 'scribe', origin: null, resolvedFrom: 'project' }]); assert.equal(exactTree(path.join(f.projectDir, '.claude')), before);
   assert.ok(exists(f, '.bowerloom/managed/catalog/agent_scribe.json'));
 });
 

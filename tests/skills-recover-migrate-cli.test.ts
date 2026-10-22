@@ -44,7 +44,7 @@ function exact(dir: string): string {
 test('skills recover --item: plan shows the recovery (exit 3), apply finishes the interrupted skill, then sync goes on', async t => {
   const p = project(t); for (const id of ['alpha', 'bravo', 'charlie']) localSkill(p.dir, id);
   writeManifest(p.dir, ['alpha', 'bravo', 'charlie'].map(id => ({ id, source: { kind: 'local', path: 'skills/' + id } })));
-  const input = { project: discoverProject(p.dir, p.home), stateRoot: p.stateRoot, team: null, offline: false };
+  const input = { project: discoverProject(p.dir, p.home), stateRoot: p.stateRoot, team: null, offline: false, home: p.home };
   const rename = fs.renameSync, target = join(p.dir, '.agents/skills/bravo');
   t.mock.method(fs, 'renameSync', (from: fs.PathLike, to: fs.PathLike) => { if (String(to) === target) throw Object.assign(new Error('injected'), { code: 'EIO' }); return rename(from, to); }); syncBuiltinESMExports();
   await assert.rejects(applySync(input, (await planSync(input)).revision, { acquirer: { npm: async () => { throw new Error('no'); }, git: async () => { throw new Error('no'); } }, signal: new AbortController().signal }),
@@ -62,7 +62,7 @@ test('skills recover --item: plan shows the recovery (exit 3), apply finishes th
   assert.ok(fs.existsSync(join(p.dir, '.agents/skills/bravo/SKILL.md')));
   const nothing = run(p, ['skills', 'recover', 'plan', '--item', 'alpha']); assert.equal(nothing.status, 1); assert.equal(errorOf(nothing.stderr).code, 'SKILLS_RECOVER_NOTHING');
   const sync = run(p, ['skills', 'sync']); assert.equal(sync.status, 3, sync.stderr);
-  assert.match(sync.stdout, /^ {2}bravo +up to date$/m); assert.match(sync.stdout, /^ {2}charlie +install +your skill/m);
+  assert.match(sync.stdout, /^ {2}bravo +up to date {2}\[project\]$/m); assert.match(sync.stdout, /^ {2}charlie +install +your skill/m);
   assert.deepEqual(p.calls(), []);
 });
 

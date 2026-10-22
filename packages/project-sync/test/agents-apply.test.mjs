@@ -42,7 +42,7 @@ test('4. the result has format v1beta2 and its items carry kind agent', async t 
   const f = await agentProject(t); await createTeam(f, 'desk'); agentSource(f, 'first-team', 'scribe.md', agentText('scribe')); agentSource(f, 'desk', 'editor.md', agentText('editor'));
   const { result } = await applied(f, ['claude']);
   assert.equal(result.format, 'bowerloom/project-apply-result/v1beta2'); assert.deepEqual(result.applied.map(x => [x.kind, x.id]), [['agent', 'editor'], ['agent', 'scribe']]);
-  const again = await applied(f, ['claude']); assert.deepEqual(again.result.upToDate, [{ kind: 'agent', id: 'editor' }, { kind: 'agent', id: 'scribe' }]);
+  const again = await applied(f, ['claude']); assert.deepEqual(again.result.upToDate, [{ kind: 'agent', id: 'editor', origin: 'project', resolvedFrom: 'project' }, { kind: 'agent', id: 'scribe', origin: 'project', resolvedFrom: 'project' }]);
   agentSource(f, 'first-team', 'scribe.md', agentText('scribe', '', 'Held.\n')); fs.appendFileSync(target(f, 'editor'), 'Mine.\n');
   assert.deepEqual((await applied(f, ['claude'])).result.held.map(h => [h.kind, h.id, h.code]), [['agent', 'editor', 'MANAGED_SKILL_LOCAL_DRIFT']]);
 });

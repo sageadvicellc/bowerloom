@@ -13,6 +13,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdir
 import type { BigIntStats } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { channel } from 'node:diagnostics_channel';
 import { refuse } from './refusal.js';
 import { inspectStoreWith, pathInsideStore } from './store.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from './types.js';
@@ -287,7 +288,11 @@ export interface AdoptExpected { readonly device: string; readonly inode: string
  * Right after a writer creates `.bowerloom` (`'folder'`) or `bowerloom.json` (`'config'`), returns the context with that
  * marker adopted. The marker must be missing from `project` (else USAGE), must be the one the writer made (`expected`; else PROJECT_UNSAFE), and everything else must still match the pins. `hooks.uid` is a test hook.
  */
+/** Published once for each adoptCreatedMarker call, with the marker and the identity the writer passed. Only tests subscribe. */
+export const ADOPT_MARKER_CHANNEL = 'bowerloom:adopt-created-marker';
+const adoptions = channel(ADOPT_MARKER_CHANNEL);
 export function adoptCreatedMarker(project: ProjectContext, marker: 'folder' | 'config', expected: AdoptExpected, hooks: { readonly uid?: number } = {}): ProjectContext {
+  if (adoptions.hasSubscribers) adoptions.publish({ marker, dir: project.dir, device: expected?.device, inode: expected?.inode });
   if (marker !== 'folder' && marker !== 'config') throw refuse('USAGE');
   if (expected === null || typeof expected !== 'object' || typeof expected.device !== 'string' || typeof expected.inode !== 'string') throw refuse('USAGE');
   if (marker === 'folder' && typeof expected.birthtimeNs !== 'string') throw refuse('USAGE');

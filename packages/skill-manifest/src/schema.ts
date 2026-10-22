@@ -169,7 +169,8 @@ export function parseManifest(bytes: Buffer, limits: ManifestLimits): Manifest {
   return validateManifest(value, limits);
 }
 
-function serializeEntry(e: Entry) {
+/** One entry in its canonical form: fixed key order, sorted arrays. The lock writer serializes a `pin` with it (spec 06). */
+export function serializeEntry(e: Entry) {
   const head = { id: e.id, ...(e.teams ? { teams: [...e.teams].sort(compare) } : {}) };
   if (e.source.kind === 'local') return { ...head, source: { kind: 'local', path: e.source.path } };
   const p = e as PinnedEntry, s = p.source;

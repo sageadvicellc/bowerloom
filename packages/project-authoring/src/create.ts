@@ -18,6 +18,11 @@ import { compileCrew } from '../../crew/src/index.js';
 import { isHeldProjectLock, verifyStorePins } from '../../project-context/src/index.js';
 import type { StoreContext } from '../../project-context/src/index.js';
 import { storeBrief } from '../../project-config/src/brief.js';
+import { CONFIG_FILE, parseConfig, serializeConfig } from '../../project-config/src/schema.js';
+import { configRefusal } from '../../project-config/src/refusal.js';
+import { writeGuardedFile } from '../../project-config/src/write.js';
+import { createBowerloomFolder } from '../../project-config/src/folder.js';
+import type { ProjectContext } from '../../project-context/src/types.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import { compilePattern } from '../../context-slices/src/glob.js';
 import { sliceTemplate } from '../../context-slices/src/render.js';
@@ -40,7 +45,7 @@ export const AUTHORING_PLAN_FORMAT = 'bowerloom/authoring-plan/v1beta2' as const
 
 /** `scope` is `project` when absent. For `store`, `project` holds the path of the store folder itself. */
 export type CreateInput =
-  | { kind: 'team'; project: string; name: string; profile?: StartupProfile; scope?: 'project' | 'store' }
+  | { kind: 'team'; project: string; name: string; profile?: StartupProfile; scope?: 'project' | 'store'; copyFrom?: { root: string } }
   | { kind: 'skill' | 'prompt'; project: string; name: string; teams: string[]; scope?: 'project' | 'store' }
   /** `root` and `includes` are null when the person gave no flag, which is how a slice file that is already there is registered. A slice belongs to its layer: it has no scope. */
   | { kind: 'slice'; project: string; name: string; root: SliceRoot | null; includes: string[] | null };
@@ -54,11 +59,17 @@ export interface CreatePlan {
   scope: 'project' | 'store';
   /** True when the store does not exist yet and this create makes it, or has just made it. Always false for a project. */
   storeCreate: boolean;
-  /** The device and inode of `.bowerloom`, as decimal strings. Null for the store: `verifyStorePins` binds its identity. */
+  /** The device and inode of `.bowerloom`, as decimal strings. Null for the store, and for a project whose `.bowerloom` this create makes. */
   bowerloom: { device: string; inode: string } | null;
+  /** Spec 06, 3.8: `create` when a config-only project has no `.bowerloom` yet; apply makes it first. `present` for the store. */
+  bowerloomFolder: 'present' | 'create';
   input: { kind: ItemKind; name: string; teams: string[]; profile: StartupProfile | null };
   /** The sha256 and size of every record this plan read, or null when it was absent or not read. */
-  reads: { brief: Read | null; receipt: Read | null; pending: Read | null; manifest: Read | null };
+  reads: { brief: Read | null; receipt: Read | null; pending: Read | null; manifest: Read | null; config: Read | null };
+  /** Spec 06, 3.8: the entry this create adds to bowerloom.json. Null for a project with no config, the store, and team adopt. */
+  config: { before: Read | null; after: Read; text: string } | null;
+  /** For team adopt: the folder the team is copied from (the store or a store cache folder). */
+  copyFrom?: { root: string };
   /** Bowerloom's own scratch names in `.bowerloom/authoring` that apply removes first. */
   scratch: string[];
   /** A pending item that never landed: apply removes its record. */
@@ -93,7 +104,7 @@ export interface CreatePlan {
   revision: string;
 }
 
-interface Normalized { kind: ItemKind; scope: 'project' | 'store'; project: string; name: string; teams: string[]; profile: StartupProfile | null; root: SliceRoot | null; includes: string[] | null }
+interface Normalized { kind: ItemKind; scope: 'project' | 'store'; project: string; name: string; teams: string[]; profile: StartupProfile | null; copyFrom: { root: string } | null; root: SliceRoot | null; includes: string[] | null }
 const usage = (): never => refuse('USAGE');
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
@@ -102,7 +113,7 @@ function normalizeInput(input: unknown): Normalized {
   const v = input as Record<string, unknown>, keys = Object.keys(v);
   const kind = v.kind;
   if (kind !== 'team' && kind !== 'skill' && kind !== 'prompt' && kind !== 'slice') return usage();
-  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile', 'scope'] : kind === 'slice' ? ['kind', 'project', 'name', 'root', 'includes'] : ['kind', 'project', 'name', 'teams', 'scope'];
+  const allowed = kind === 'team' ? ['kind', 'project', 'name', 'profile', 'scope', 'copyFrom'] : kind === 'slice' ? ['kind', 'project', 'name', 'root', 'includes'] : ['kind', 'project', 'name', 'teams', 'scope'];
   if (!keys.every(k => allowed.includes(k)) || !['kind', 'project', 'name', ...(kind === 'team' ? [] : kind === 'slice' ? ['root', 'includes'] : ['teams'])].every(k => Object.hasOwn(v, k))) return usage();
   if (v.scope !== undefined && v.scope !== 'project' && v.scope !== 'store') return usage();
   const scope: 'project' | 'store' = v.scope === 'store' ? 'store' : 'project';
@@ -127,7 +138,14 @@ function normalizeInput(input: unknown): Normalized {
     if (!Array.isArray(v.teams) || v.teams.length > 32 || !v.teams.every(t => typeof t === 'string') || new Set(v.teams).size !== v.teams.length) return usage();
     teams = [...v.teams as string[]].sort(compare);
   }
-  return { kind, scope, project, name: v.name, teams, profile, root, includes };
+  // Spec 06, 3.17: team adopt copies a team folder from `copyFrom.root`, a folder laid out like a store. Teams only, project scope only.
+  let copyFrom: { root: string } | null = null;
+  if (v.copyFrom !== undefined) {
+    const c = v.copyFrom as { root?: unknown } | null;
+    if (kind !== 'team' || scope !== 'project' || c === null || typeof c !== 'object' || Object.keys(c).length !== 1 || typeof c.root !== 'string' || !isAbsolute(c.root) || resolve(c.root) !== c.root || c.root.includes('\0')) return usage();
+    copyFrom = { root: c.root };
+  }
+  return { kind, scope, project, name: v.name, teams, profile, copyFrom, root, includes };
 }
 function checkName(input: Normalized): void {
   const { kind, name } = input;
@@ -138,6 +156,38 @@ function checkName(input: Normalized): void {
 }
 
 interface Scope { kind: 'project' | 'store'; dir: string; bowerloom: string; identity: { device: string; inode: string } | null; exists: boolean }
+/** The bytes of the project's bowerloom.json, read with the config guards (a plain file of at most 1 MiB), or null. */
+function configText(dir: string): Buffer | null {
+  const s = lstatOrNull(join(dir, CONFIG_FILE));
+  if (s === null) return null;
+  ensure(s.isFile() && !s.isSymbolicLink(), 'AUTHORING_UNSAFE_PATH');
+  return readGuarded(join(dir, CONFIG_FILE), 1048576);
+}
+/** True when the config lists this kind and id from the store: the finish path then adds no entry (3.17). */
+function finishListedFromStore(dir: string, kind: ItemKind, id: string): boolean {
+  if (kind === 'slice') return false;
+  const bytes = configText(dir);
+  if (bytes === null) return false;
+  const c = parseConfig(bytes), list = kind === 'team' ? c.teams : kind === 'skill' ? c.skills : c.prompts;
+  return list.some(e => e.id === id && e.source === 'store');
+}
+/**
+ * Spec 06, 3.8: the config step of a project create. The entry `{ id, source: "project" }` is added unless the config
+ * already lists it from the project; a store entry with the same kind and id refuses CONFIG_DUPLICATE_ID.
+ */
+function configStep(dir: string, kind: ItemKind, id: string, after?: string): CreatePlan['config'] {
+  // Spec 10, 2: a context slice is a project item only. bowerloom.json never lists it.
+  if (kind === 'slice') return null;
+  const bytes = configText(dir);
+  if (bytes === null) return null;
+  const before = { sha256: sha256(bytes), bytes: bytes.length }, config = parseConfig(after === undefined ? bytes : Buffer.from(after));
+  const list = kind === 'team' ? config.teams : kind === 'skill' ? config.skills : config.prompts, now = list.find(e => e.id === id);
+  if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists ${kind} ${id} twice: once from store and once from project.`);
+  const next = { ...config, skills: [...config.skills], prompts: [...config.prompts], teams: [...config.teams] };
+  if (!now) { const target = kind === 'team' ? next.teams : kind === 'skill' ? next.skills : next.prompts; target.push({ id, source: 'project' }); target.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))); }
+  const text = serializeConfig(next);
+  return { before, after: { sha256: sha256(text), bytes: Buffer.byteLength(text) }, text };
+}
 /** The scope's limits and manifest target. The store keeps `skills.json` directly in its folder. */
 const targetOf = (scope: Scope): ManifestTarget => scope.kind === 'store' ? storeTarget(scope.dir) : projectTarget(scope.dir);
 const LEFTOVER_TEMP = /^\.store\.json\.[a-f0-9]{16}\.tmp$/;
@@ -155,7 +205,10 @@ function openScope(input: Normalized): Scope {
   }
   let real: string; try { real = fs.realpathSync(dir); } catch { return refuse('AUTHORING_UNSAFE_PATH'); }
   ensure(real === dir, 'AUTHORING_UNSAFE_PATH');
-  const bowerloom = join(dir, '.bowerloom'), s = realFolder(bowerloom);
+  const bowerloom = join(dir, '.bowerloom');
+  // Spec 06, 3.4: a config-only project has no `.bowerloom` yet. The create makes it, first, under the project lock.
+  if (lstatOrNull(bowerloom) === null && configText(dir) !== null) return { kind: 'project', dir, bowerloom, identity: null, exists: false };
+  const s = realFolder(bowerloom);
   return { kind: 'project', dir, bowerloom, identity: { device: String(s.dev), inode: String(s.ino) }, exists: true };
 }
 function sameBowerloom(project: Scope): void {
@@ -206,7 +259,7 @@ function pendingState(project: Scope, item: AuthoredItem): 'landed' | 'absent' |
 
 function localEntry(id: string, teams: readonly string[]): Entry { return { id, ...(teams.length ? { teams: [...teams] } : {}), source: { kind: 'local', path: `skills/${id}` } } as Entry; }
 function currentManifest(project: Scope): { manifest: Manifest | null; read: Read | null } {
-  const target = targetOf(project), state = readManifestState(target, { allowAbsent: project.kind === 'store' });
+  const target = targetOf(project), state = readManifestState(target, { allowAbsent: project.kind === 'store' || !project.exists });
   return state.file ? { manifest: parseManifest(state.file.bytes, target.limits), read: { sha256: state.file.sha256, bytes: state.file.bytes.length } } : { manifest: null, read: null };
 }
 /** One skills.json step: M3's addLocalEntry on the bytes before it. Pure: it reads and writes nothing. */
@@ -302,6 +355,7 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
     if (register === null && parentStat === null) folders.push(parent);
     if (slice !== null) files = [planned(itemPath('slice', input.name), sliceTemplate({ root: slice.root, includes: slice.includes }))];
   } else if (!isFinish) {
+    if (input.copyFrom !== null) ensure(!registered.some(i => sameItem(i, request)) && lstatOrNull(join(project.bowerloom, itemPath('team', input.name))) === null, 'TEAM_EXISTS');
     const exists = input.kind === 'team' ? 'TEAM_EXISTS' : input.kind === 'skill' ? 'SKILL_EXISTS' : 'PROMPT_EXISTS';
     ensure(!registered.some(i => sameItem(i, request)), exists);
     if (input.kind === 'prompt') { if (parentStat !== null) ensure(!folderNames(join(project.bowerloom, 'prompts')).some(n => n.normalize('NFC').toLowerCase() === `${input.name}.md`), exists); }
@@ -309,9 +363,16 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
     requireTeams(project, input.teams, registered, !isStore);
     if (!state.folder) folders.push(AUTHORING_FOLDER);
     if (parentStat === null) folders.push(parent);
-    if (input.kind === 'team') {
+    if (input.kind === 'team' && input.copyFrom !== null) {
+      // Spec 06, 3.17: the files of the source team, read with the authoring guards, and its compiled candidate.
+      const root = input.copyFrom.root, rel = itemPath('team', input.name);
+      files = readTree(root, rel).map(pin => planned(pin.path, readGuarded(join(root, pin.path), LIMITS.fileBytes).toString('utf8')));
+      compiledCandidate = (await compileCrew(join(root, rel, 'team.yaml'))).candidateRevision;
+    } else if (input.kind === 'team') {
       let team: ReturnType<typeof scaffoldTeam>;
       if (isStore) team = scaffoldTeam(storeBrief(input.profile ?? undefined), input.name, input.name);
+      // Spec 06, 3.8: a project with a config and no brief.json uses the store brief.
+      else if (lstatOrNull(join(project.bowerloom, 'brief.json')) === null && configText(project.dir) !== null) team = scaffoldTeam(storeBrief(input.profile ?? undefined), input.name, input.name);
       else {
         const read = readBrief(project); brief = read.read;
         // Review M6 finding 3: up --team matches first-team by id or display name, so a team with that name could never
@@ -326,10 +387,26 @@ async function plan(input: Normalized, created = false): Promise<CreatePlan> {
     } else files = [planned(`prompts/${input.name}.md`, PROMPT_TEXT(input.name))];
   }
   if (steps.length) manifest = { before: steps[0]!.before, after: steps[steps.length - 1]!.after, steps };
+  // Spec 06, 3.8: the config step, for the new item and for a pending item this plan finishes. Never for team adopt, a
+  // restore, or an id the config lists from the store (the finish path skips that one).
+  let config = null as CreatePlan['config'];
+  if (!isStore) {
+    const ids: [ItemKind, string][] = [];
+    if (finish && !finishListedFromStore(project.dir, finish.kind, finish.id)) ids.push([finish.kind, finish.id]);
+    if (!isFinish && !restore && input.copyFrom === null) ids.push([input.kind, input.name]);
+    for (const [k, i] of ids) {
+      const step = configStep(project.dir, k, i, config?.text);
+      if (step !== null) config = { before: config?.before ?? step.before, after: step.after, text: step.text };
+    }
+    if (config !== null && config.before !== null && config.before.sha256 === config.after.sha256) config = null;
+  }
+  const configRead = isStore ? null : (() => { const b = configText(project.dir); return b === null ? null : { sha256: sha256(b), bytes: b.length }; })();
   const body: Omit<CreatePlan, 'revision'> = {
     format: AUTHORING_PLAN_FORMAT, project: project.dir, scope: project.kind, storeCreate: isStore && (!project.exists || created), bowerloom: project.identity,
+    bowerloomFolder: !isStore && !project.exists ? 'create' : 'present',
     input: { kind: input.kind, name: input.name, teams: input.teams, profile: isStore ? (input.profile ?? 'engineer') : input.profile },
-    reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead },
+    reads: { brief, receipt: state.receipt?.read ?? null, pending: state.pending?.read ?? null, manifest: manifestRead, config: configRead }, config,
+    ...(input.copyFrom !== null ? { copyFrom: { ...input.copyFrom } } : {}),
     scratch: state.scratch, discard, settled, finish,
     slice, register,
     item: isFinish || restore || register ? null : { kind: input.kind, id: input.name, teams: input.teams, files: pinsOf(files) },
@@ -346,7 +423,7 @@ export async function planCreate(input: CreateInput): Promise<CreatePlan> { retu
  * Applies the approved plan. `held` must be the live lock of this project (withProjectLock). Plans again first and
  * refuses with STALE_APPROVAL unless the revision is the approved one. Returns the authoring receipt it wrote.
  */
-export async function applyCreate(input: CreateInput, revision: string, held: HeldProjectLock, store?: { context: StoreContext; created: boolean }): Promise<AuthoringReceipt> {
+export async function applyCreate(input: CreateInput, revision: string, held: HeldProjectLock, store?: { context: StoreContext; created: boolean }, context?: ProjectContext, onProject?: (project: ProjectContext) => void): Promise<AuthoringReceipt> {
   if (!isHeldProjectLock(held)) refuse('PROJECT_LOCKED');
   const normalized = normalizeInput(input);
   // The store scope never creates the store: its caller (withStoreForWrite) did, and says so in `store.created`.
@@ -357,6 +434,12 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
   const p = await plan(normalized, store?.created ?? false);
   ensure(p.revision === revision, 'STALE_APPROVAL');
   const project: Scope = { kind: p.scope, dir: p.project, bowerloom: p.scope === 'store' ? p.project : join(p.project, '.bowerloom'), identity: p.bowerloom, exists: true };
+  // Spec 06, 3.4 and 3.8: a config-only project gets `.bowerloom` first, as the create's first write.
+  if (p.bowerloomFolder === 'create') {
+    ensure(context !== undefined && context.dir === p.project && context.bowerloomIdentity === null, 'USAGE');
+    const made = createBowerloomFolder(context, held); onProject?.(made);
+    project.identity = { device: made.bowerloomIdentity!.device, inode: made.bowerloomIdentity!.inode };
+  }
   const auth = join(project.bowerloom, AUTHORING_FOLDER);
   const live = (): void => {
     try { held.assertHeld(project.dir); } catch { refuse('PROJECT_LOCKED'); }
@@ -400,8 +483,16 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     applyManifestChange(change, change.revision, held);
   };
 
+  // Spec 06, 3.8: bowerloom.json, after the item and its skills.json entry and before the receipt. Written once.
+  let configWritten = p.config === null;
+  const writeConfig = (): void => {
+    if (configWritten || p.config === null) return;
+    live();
+    writeGuardedFile(project.dir, CONFIG_FILE, p.config.text, p.config.before?.sha256 ?? null, held, `.${CONFIG_FILE}`);
+    configWritten = true;
+  };
   // Review M2 finding 4: once anything is written, a stale plan is no longer "nothing applied".
-  let wrote = false;
+  let wrote = p.bowerloomFolder === 'create';
   try {
   // 1. Bowerloom's own scratch from an interrupted run.
   if (p.scratch.length) { live(); wrote = true; for (const name of p.scratch) removeScratch(join(auth, name)); syncFolder(auth); }
@@ -412,6 +503,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     live(); ensure(pendingState(project, finish) === 'landed', 'STALE_APPROVAL'); wrote = true;
     if (finish.kind === 'prompt' || finish.kind === 'slice') readGuarded(join(project.bowerloom, itemPath(finish.kind, finish.id)), LIMITS.fileBytes);
     if (finish.kind === 'skill' && p.manifest?.steps.some(s => s.id === finish.id)) writeManifest(finish.id);
+    writeConfig();
     writeReceipt([...items, finish]);
     removePending(p.reads.pending!.sha256);
   }
@@ -453,6 +545,7 @@ export async function applyCreate(input: CreateInput, revision: string, held: He
     syncFolder(parentFolder);
     removeScratch(stage); syncFolder(auth);
     if (item.kind === 'skill') writeManifest(item.id);
+    writeConfig();
     if (p.item) writeReceipt([...items, item]);
     removePending(pendingSha);
   }

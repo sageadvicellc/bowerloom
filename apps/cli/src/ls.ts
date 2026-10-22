@@ -16,6 +16,9 @@ import { pinOf } from '../../../packages/skill-manifest/src/check.js';
 import { parseManifest } from '../../../packages/skill-manifest/src/schema.js';
 import { readConfig } from '../../../packages/project-config/src/index.js';
 import { configLine } from './config-status.js';
+import { resolveProject } from '../../../packages/project-sync/src/index.js';
+import type { ResolvedItem } from '../../../packages/project-sync/src/index.js';
+import { lockItem } from '../../../packages/project-config/src/index.js';
 import { newCommandJson, plainText } from './human.js';
 
 const SECTIONS = ['teams', 'skills', 'prompts', 'slices'] as const;
@@ -117,7 +120,7 @@ function skillState(listing: Listing, id: string): string {
   if (listing.skillInfo === null) return 'pins-unreadable';
   return listing.skillInfo.get(id)?.kind === 'local' && listing.skillFolders !== undefined && !listing.skillFolders.has(id) ? 'missing' : 'ok';
 }
-const fixed = (source: ListSource) => ({ via: [] as string[], locked: null, resolvedFrom: source });
+const fixed = (source: ListSource) => ({ via: [] as string[], locked: null, resolvedFrom: source === 'store' ? 'store' : 'project' });
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
   // A store holds no slices, so its default text leaves the section out; `ls slices --global` still answers.
   const shown = only ? [only] : SECTIONS.filter(x => x !== 'slices' || listing.scope === 'project'), source = listing.scope, info = listing.skillInfo;
@@ -154,6 +157,41 @@ export function renderListing(listing: Listing, only: Section | null, json: bool
   return blocks.join('\n') + note + manifest;
 }
 
+/**
+ * Spec 06, 3.20: `ls` in config mode. The lists come from bowerloom.json, in id order. Each item names its source, the teams
+ * it was picked through, its state, whether the lock holds it, and where its bytes come from. A refused store leaves its
+ * items missing and is named after the sections.
+ */
+function renderConfigListing(project: ProjectContext, home: string, only: Section | null, json: boolean): string {
+  const r = resolveProject({ project, home, frozen: false, tolerateStore: true }), shown = only ? [only] : [...SECTIONS];
+  const lock = r.lockValue;
+  const row = (i: ResolvedItem) => ({
+    id: i.id, source: i.origin, via: [...i.via], locked: lock === null || i.origin === 'project' ? null : lockItem(lock, i.kind, i.id) !== null, resolvedFrom: i.resolvedFrom,
+    state: i.hold === null ? 'ok' : 'missing',
+  });
+  const skill = (i: ResolvedItem) => ({ ...row(i), kind: i.entry ? i.entry.source.kind : 'local', pin: i.entry && i.entry.source.kind !== 'local' ? pinOf(i.entry) : null });
+  // Spec 10, 2: a context slice is a project item only. bowerloom.json never selects it, and no store or lock holds it.
+  const slices = project.bowerloomIdentity === null ? [] : entries(join(project.dir, '.bowerloom'), 'slices', 'slice').names;
+  const sections: Record<Section, Record<string, unknown>[]> = { teams: r.teams.map(i => ({ ...row(i), displayName: null })), skills: r.skills.map(skill), prompts: r.prompts.map(row), slices: slices.map(id => ({ id, source: 'project', ...fixed('project'), state: 'ok' })) };
+  if (json) {
+    return newCommandJson({
+      format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'config', ...Object.fromEntries(shown.map(x => [x, sections[x]])),
+      ...(shown.includes('skills') ? { pinsReadable: true, pinsError: null } : {}), unselected: r.unselected, unlisted: 0,
+      ...(r.storeCode ? { storeCode: r.storeCode } : {}),
+      // Review F4: the lock state, so an invalid lock does not look like an unlocked list.
+      lock: { state: r.lock.state, code: r.lock.code },
+    });
+  }
+  const lines = (x: Section): string[] => {
+    const rows = sections[x] as { id: string; source: string; state: string; pin?: string | null; kind?: string }[], width = Math.max(0, ...rows.map(i => i.id.length));
+    return rows.map(i => `  ${plainText(i.id).padEnd(width)}  ${i.source}${i.state === 'missing' ? '  (missing)' : i.pin ? `  pinned: ${plainText(`${i.kind === 'npm' ? 'npm' : 'GitHub'} ${i.pin}`)}` : ''}`);
+  };
+  const blocks = shown.map(x => { const l = lines(x); return `${title(x)}\n${l.length ? l.join('\n') : '  none yet'}\n`; });
+  const defined = [...r.unselected.skills, ...r.unselected.prompts, ...r.unselected.teams];
+  const tail = [`Lock: ${r.lock.state}${r.lock.code ? ` (${plainText(r.lock.code)})` : ''}`, ...(defined.length ? [`Defined here but not listed in bowerloom.json: ${defined.map(id => plainText(id)).join(', ')}`] : []), ...(r.storeCode ? [`The store cannot be used (${plainText(r.storeCode)}). Run bowerloom store status.`] : [])];
+  return blocks.join('\n') + (tail.length ? `\n${tail.join('\n')}\n` : '');
+}
+
 /** `bowerloom ls [teams|skills|prompts|slices] [--global] [--json]`. Returns the text to print. */
 export function runLsCommand(args: readonly string[], cwd: string, home: string): string {
   const USAGE = 'Use bowerloom ls [teams|skills|prompts|slices] [--global] [--json].';
@@ -165,7 +203,9 @@ export function runLsCommand(args: readonly string[], cwd: string, home: string)
   }
   const only = (rest[0] as Section | undefined) ?? null;
   if (global) return renderListing(listStore(home), only, json);
-  const project = discoverProject(cwd, home), listing = listProject(project);
+  const project = discoverProject(cwd, home);
+  if (project.configPresent && readConfig(project).state === 'valid') { const text = renderConfigListing(project, home, only, json); return json ? text : `${configLine(readConfig(project)).join('\n')}\n\n${text}`; }
+  const listing = listProject(project);
   const text = renderListing(listing, only, json);
   // A project with a bowerloom.json says so first, as status does: valid with counts, or the code that makes it invalid.
   return json || !project.configPresent ? text : `${configLine(readConfig(project)).join('\n')}\n\n${text}`;

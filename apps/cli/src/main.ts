@@ -119,6 +119,8 @@ function helpText(words: readonly string[]): string | null {
   if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : words[0] === 'slice' || words[0] === 'folder' ? TOPICS.context! : topic(words[0]);
   if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
   if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
+  if (words.length === 2 && words[0] === 'team' && words[1] === 'adopt') return TOPICS.team!;
+  if (words.length === 2 && words[0] === 'lock' && (words[1] === 'verify' || words[1] === 'update')) return TOPICS.lock!;
   if (words.length === 2 && words[0] === 'slice' && words[1] === 'create') return TOPICS.context!;
   return null;
 }
@@ -126,7 +128,7 @@ function helpText(words: readonly string[]): string | null {
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'store', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -176,9 +178,26 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt' || args[0] === 'slice') {
-    if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    if (args.length === 3 && (args[1] === 'create' || (args[0] === 'team' && args[1] === 'adopt')) && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    if (args[0] === 'team' && args[1] === 'adopt') {
+      const { runAdoptCommand } = await import('./adopt.js');
+      process.exitCode = await runAdoptCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+      return;
+    }
     const { runCreateCommand } = await import('./create.js');
     process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // Spec 06: use and unuse change bowerloom.json and bowerloom.lock.json; lock verify and lock update read and write the lock.
+  if (args[0] === 'use' || args[0] === 'unuse') {
+    const { runUseCommand } = await import('./use.js');
+    process.exitCode = await runUseCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'lock') {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.lock!}`); return; }
+    const { runLockCommand } = await import('./lock.js');
+    process.exitCode = await runLockCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
     return;
   }
   if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {

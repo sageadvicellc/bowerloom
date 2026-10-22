@@ -15,7 +15,8 @@ const files = dir => fs.readdirSync(dir, { recursive: true, withFileTypes: true 
 
 test('1. apply writes .claude/skills/slice-<id>/SKILL.md with the rendered bytes', async t => {
   const f = await wikiProject(t), { plan: p, result } = await applied(f, ['claude']);
-  assert.deepEqual(result.applied, [{ kind: 'slice', id: 'wiki', action: 'install', receiptRevision: result.applied[0].receiptRevision }]);
+  // Spec 06: every result entry names its source; a slice is a project item.
+  assert.deepEqual(result.applied, [{ kind: 'slice', id: 'wiki', origin: 'project', resolvedFrom: 'project', action: 'install', receiptRevision: result.applied[0].receiptRevision }]);
   const text = read(f, '.claude/skills/slice-wiki/SKILL.md'), { renderSliceIndex } = await import('../../../dist/packages/context-slices/src/render.js');
   assert.equal(text, renderSliceIndex('wiki', { description: 'Describe what this slice holds and which agents use it.', guard: 'root', summary: { kind: 'heading' } }, { members: [{ path: 'a.md', summary: 'Alpha' }, { path: 'sub/b.md', summary: 'Beta' }] }, { source: 'wiki', prefix: 'wiki' }));
   assert.deepEqual(fs.readdirSync(path.join(f.projectDir, '.claude/skills/slice-wiki')), ['SKILL.md']); assert.equal(p.slices[0].expected.files[0].sha256.length, 64);
@@ -62,7 +63,7 @@ test('8. apply never removes an index when the slice is unregistered', async t =
   const f = await wikiProject(t); await applied(f, ['claude']);
   const { receiptOf, recordText } = await import('../../../dist/packages/project-authoring/src/state.js'), file = path.join(f.bowerloom, 'authoring/receipt.json'), receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
   fs.writeFileSync(file, recordText(receiptOf(receipt.items.filter(i => i.kind !== 'slice')))); const { result } = await applied(f, ['claude']);
-  assert.deepEqual(result.orphaned, [{ kind: 'slice', id: 'wiki' }]); assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), true); assert.equal(exists(f, '.bowerloom/managed/catalog/slice_wiki.json'), true);
+  assert.deepEqual(result.orphaned, [{ kind: 'slice', id: 'wiki', origin: null, resolvedFrom: 'project' }]); assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), true); assert.equal(exists(f, '.bowerloom/managed/catalog/slice_wiki.json'), true);
 });
 test('9. apply writes nothing under .agents for a slice', async t => {
   const f = await wikiProject(t); await applied(f, ['claude', 'codex']); assert.equal(exists(f, '.agents/skills/slice-wiki'), false); assert.equal(exists(f, '.codex'), false);

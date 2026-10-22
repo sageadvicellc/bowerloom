@@ -133,9 +133,10 @@ export function replaceTarget(skills: readonly Entry[], entry: Entry): Entry {
  * A replace keeps the id, the kind and the package or repository; the version or commit, the folder and the teams
  * come from the new entry. Like an add, it binds the sha256 of skills.json as it stands.
  */
-export function planManifestChange(location: string | ManifestTarget, change: ManifestChange, options: { cacheRoot?: string; storeCreate?: boolean } = {}): ManifestChangePlan {
+export function planManifestChange(location: string | ManifestTarget, change: ManifestChange, options: { cacheRoot?: string; storeCreate?: boolean; allowAbsentFolder?: boolean } = {}): ManifestChangePlan {
   const target = targetOf(location), project = target.lockDir, limits = target.limits;
-  const state = readManifestState(target, { allowAbsent: target.scope === 'store' });
+  // Spec 06, 3.8 rule 9: a config-only project has no `.bowerloom` yet; its caller creates the folder before the write.
+  const state = readManifestState(target, { allowAbsent: target.scope === 'store' || options.allowAbsentFolder === true });
   const storeCreate = options?.storeCreate === true && target.scope === 'store';
   const cacheRoot = options?.cacheRoot;
   requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
