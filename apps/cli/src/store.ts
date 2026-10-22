@@ -150,9 +150,17 @@ function folderLines(folders: FoldersCheck): string[] {
 const shellQuote = (line: string): string => `'${line.replaceAll("'", "'\\''")}'`;
 /** The command that adds the missing .gitignore lines, run in ~/.bowerloom. An empty first word ends a last line that has no line break. */
 const gitignoreStep = (g: StoreGitignoreStatus): string => `printf '%s\\n' ${[...(g.endsWithNewline ? [] : ['']), ...g.missing].map(shellQuote).join(' ')} >> .gitignore`;
+/**
+ * Round 3 of the reviews of PR 100, L1: the printed steps leave folders/ out by themselves, so a .gitignore that is missing,
+ * a link, or shared never lets the records into a commit. `git add -A` is followed by `git rm --cached` of folders, which
+ * exits 0 whether or not folders/ was added. An exclude pathspec does not serve: git 2.39 exits 1 when the path it
+ * excludes is also ignored, and that stops a pasted chain of commands.
+ */
+const ADD_ALL = ['git add -A', 'git rm -r -q --cached --ignore-unmatch folders'];
+const UNSAFE_GITIGNORE = '~/.bowerloom/.gitignore is a link, or not a plain file that you own, so Bowerloom cannot check its lines.';
 /** The commands that fix a git problem of the store (3.21). The person runs them; Bowerloom never runs git. */
 const FIX: Readonly<Record<string, (branch: string) => string[]>> = {
-  none: b => ['cd ~/.bowerloom', 'git init', 'git add -A', 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
+  none: b => ['cd ~/.bowerloom', 'git init', ...ADD_ALL, 'git commit -m "Store"', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
   'no-origin': b => ['cd ~/.bowerloom', 'git remote add origin https://github.com/<owner>/<repo>.git', `git push -u origin ${b}`],
   'unsupported-remote': () => ['cd ~/.bowerloom', 'git remote set-url origin https://github.com/<owner>/<repo>.git'],
   unpushed: b => ['cd ~/.bowerloom', `git push -u origin ${b}`],
@@ -168,13 +176,15 @@ function gitLines(git: StoreRepo, token: TokenState, gitignore: StoreGitignoreSt
     const commands = FIX[git.problem]!(git.branch ?? '<branch>');
     // Round 2 of PR 100, H1: the .gitignore lines go in first, so the git add -A below never takes folders/.
     if (commands.length && missing) commands.splice(1, 0, gitignoreStep(gitignore));
+    // Round 3, L1: a .gitignore Bowerloom cannot use is named first, so the person fixes it before the commands.
+    if (commands.length && gitignore.state === 'unsafe') out.push(`  Fix ${UNSAFE_GITIGNORE.replace(' is a link', ' first: it is a link')}`);
     if (commands.length) out.push('  To fix this, run these commands yourself:', ...commands.map(c => `    ${c}`));
   }
   if (missing) {
     out.push("  Warning: ~/.bowerloom/.gitignore misses lines that keep this machine's files, folders/ among them, out of git.");
     if (!out.some(l => l.startsWith('    printf '))) out.push('  To add them, run these commands yourself:', '    cd ~/.bowerloom', `    ${gitignoreStep(gitignore)}`);
   }
-  if (gitignore.state === 'unsafe') out.push('  Warning: ~/.bowerloom/.gitignore is a link, or not a plain file that you own, so Bowerloom cannot check its lines.');
+  if (gitignore.state === 'unsafe' && !out.some(l => l.startsWith('  Fix ~/.bowerloom/.gitignore first'))) out.push(`  Warning: ${UNSAFE_GITIGNORE}`);
   out.push('  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.');
   return out;
 }

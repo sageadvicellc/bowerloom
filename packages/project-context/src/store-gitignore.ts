@@ -62,11 +62,30 @@ function readPlain(file: string, uid: number): { bytes: Buffer; stat: BigIntStat
 }
 /** The lines of the file as git splits them, each byte kept (latin1 maps each byte to one character). */
 const linesOf = (bytes: Buffer): string[] => bytes.toString('latin1').split('\n');
-/** True when `line` is in effect: an exact line, with no later `!` line that names it (for `/folders/`, any that names folders). */
+/**
+ * Round 3 of the reviews of PR 100, L2: true when a `!` line could take the top folder `folders` back in. It names folders,
+ * or it is one path segment (a leading or trailing `/` aside) whose glob matches `folders`, such as `!*\/` or `!**`.
+ */
+function undoesFolders(later: string): boolean {
+  const pattern = later.slice(1);
+  if (pattern.includes('folders')) return true;
+  const core = pattern.replace(/^\//, '').replace(/\/$/, '');
+  if (core === '' || core.includes('/')) return false;
+  let source = '';
+  for (let i = 0; i < core.length; i++) {
+    const c = core[i]!;
+    if (c === '*') { source += '.*'; while (core[i + 1] === '*') i++; }
+    else if (c === '?') source += '.';
+    else if (c === '[') { const end = core.indexOf(']', i + 2); if (end < 0) return true; source += `[${core.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`; i = end; }
+    else source += c.replace(/[.+^${}()|\\]/g, '\\$&');
+  }
+  try { return new RegExp(`^${source}$`).test('folders'); } catch { return true; }
+}
+/** True when `line` is in effect: an exact line, with no later `!` line that names it (for `/folders/`, any that could match the folder). */
 function inEffect(lines: readonly string[], line: string): boolean {
   const at = lines.lastIndexOf(line);
   if (at < 0) return false;
-  return !lines.slice(at + 1).some(later => later.startsWith('!') && (later.slice(1) === line || (line === '/folders/' && later.includes('folders'))));
+  return !lines.slice(at + 1).some(later => later.startsWith('!') && (later.slice(1) === line || (line === '/folders/' && undoesFolders(later))));
 }
 const missingLines = (bytes: Buffer): string[] => { const lines = linesOf(bytes); return STORE_GITIGNORE_LINES.filter(l => !inEffect(lines, l)); };
 /** The bytes the file has after the append: the person's bytes as they are, a line break when the last line has none, and ours. */

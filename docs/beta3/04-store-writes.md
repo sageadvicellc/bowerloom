@@ -141,7 +141,7 @@ If the store is absent, or is a leftover folder (spec 03, rule 6), the first `--
 Create the store at ~/.bowerloom (store.json). It holds definitions only.
 ```
 
-**Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** the store-create line now reads `Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.` The write that makes the store also writes `~/.bowerloom/.gitignore` (fix 3 of the beta.3 docs review).
+**Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** the store-create line now reads `Create the store at ~/.bowerloom (store.json, and a .gitignore that leaves out the files of this machine). It holds definitions only.` The write that makes the store also writes `~/.bowerloom/.gitignore` (fix 3 of the beta.3 docs review). Every later store write also adds the lines the file misses, after its own work succeeds. No plan line names that later write: only the store-create line, and the plans of `folder add` and `folder allow`, name the file.
 
 If `~/.bowerloom` exists and is `foreign`, the command refuses `STORE_INVALID` at plan time. Bowerloom never takes over a folder it did not make. If any safety rule of spec 03 refuses, the command refuses with that `STORE_*` code at plan time. `inspectStore` also applies the cloud-folder rule to an absent store (spec 03, rule 2). So an iCloud home refuses `STORE_IN_CLOUD_FOLDER` at plan time, before any write.
 

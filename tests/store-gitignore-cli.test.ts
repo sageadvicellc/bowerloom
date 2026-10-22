@@ -11,6 +11,8 @@ import { world, run, mustApprove, git, gitRaw, shell } from './support/config-cl
 const WARNING = '  Warning: folders/ is tracked by git. In ~/.bowerloom, run git rm -r --cached folders and commit. Records already pushed stay in git history.';
 const UNREADABLE = "  Warning: Bowerloom could not read the store's git index, so it cannot tell whether folders/ is tracked. Run git -C ~/.bowerloom ls-files folders.";
 const OUTER = '  Warning: ~/.bowerloom is inside another git repository, so Bowerloom cannot tell whether folders/ is tracked. Run git -C ~/.bowerloom ls-files folders.';
+/** Round 3 of PR 100, L1: every printed git add is followed by a step that takes folders/ out, whatever the .gitignore holds. */
+const ADD = 'git add -A', UNSTAGE = 'git rm -r -q --cached --ignore-unmatch folders';
 const MISSING = "  Warning: ~/.bowerloom/.gitignore misses lines that keep this machine's files, folders/ among them, out of git.";
 const status = (w: ReturnType<typeof world>) => {
   const text = run(w.home, ['store', 'status'], w.env), json = run(w.home, ['store', 'status', '--json'], w.env);
@@ -58,14 +60,14 @@ test('H1. a store with no .gitignore (as beta.2 made it): status warns, and its 
   const lines = s.text.split('\n'), start = lines.indexOf('  To fix this, run these commands yourself:');
   assert.ok(start > 0, s.text);
   const steps = lines.slice(start + 1).filter(l => l.startsWith('    ')).map(l => l.trim());
-  const write = steps.findIndex(c => c.startsWith('printf ')), add = steps.indexOf('git add -A');
-  assert.ok(write > 0 && write < add, steps.join('\n'));
+  const write = steps.findIndex(c => c.startsWith('printf ')), add = steps.indexOf(ADD);
+  assert.ok(write > 0 && write < add, steps.join('\n')); assert.equal(steps[add + 1], UNSTAGE);
   for (const command of steps) if (!command.startsWith('cd ') && !command.startsWith('git remote') && !command.startsWith('git push')) shell(w.store, command, w);
   assert.deepEqual(git(w.store, ['ls-files'], w).stdout.split('\n').filter(Boolean).sort(), ['.gitignore', 'store.json']);
   assert.equal(status(w).gitignore, 'ok');
   // A .gitignore that is a link: status says it cannot check it.
   unlinkSync(join(w.store, '.gitignore')); writeFileSync(join(w.base, 'theirs'), '/folders/\n'); shell(w.store, `ln -s ${JSON.stringify(join(w.base, 'theirs'))} .gitignore`, w);
-  const linked = status(w); assert.equal(linked.gitignore, 'unsafe'); assert.match(linked.text, /Warning: ~\/\.bowerloom\/\.gitignore is a link, or not a plain file that you own/);
+  const linked = status(w); assert.equal(linked.gitignore, 'unsafe'); assert.match(linked.text, /^ {2}Fix ~\/\.bowerloom\/\.gitignore first: it is a link, or not a plain file that you own/m);
 });
 
 test('S3 and S4. git reads the lines as Bowerloom wrote them: an indented line and a later ! line are fixed; item files ending .tmp stay', t => {
@@ -100,4 +102,42 @@ test('M4, M5, L1 and C4. an index Bowerloom cannot read, a split index, a store 
   // A sha256 repository: its index is read with 32-byte object names.
   const wide = storeWithFolder(t); git(wide.store, ['init', '-q', '--object-format=sha256'], wide); git(wide.store, ['add', '-f', 'folders'], wide);
   s = status(wide); assert.equal(s.tracked, true); assert.equal(s.check, 'checked');
+});
+
+// --- Round 3 of the reviews of PR 100. ---
+/** The commands of the first "To fix this" block of a status text, as printed. */
+function fixSteps(text: string): string[] {
+  const lines = text.split('\n'), start = lines.indexOf('  To fix this, run these commands yourself:');
+  assert.ok(start > 0, text);
+  const out: string[] = []; for (const l of lines.slice(start + 1)) { if (!l.startsWith('    ')) break; out.push(l.trim()); }
+  return out;
+}
+test('L1. a .gitignore Bowerloom cannot use (mode 0664, or a link): the block says to fix it first, and its git add never takes folders/', t => {
+  for (const kind of ['0664', 'link'] as const) {
+    const w = storeWithFolder(t), file = join(w.store, '.gitignore');
+    unlinkSync(file);
+    if (kind === '0664') { writeFileSync(file, 'node_modules/\n'); shell(w.store, 'chmod 664 .gitignore', w); }
+    else { writeFileSync(join(w.base, 'theirs'), 'node_modules/\n'); shell(w.store, `ln -s ${JSON.stringify(join(w.base, 'theirs'))} .gitignore`, w); }
+    const s = status(w); assert.equal(s.gitignore, 'unsafe', kind);
+    assert.ok(s.text.split('\n').includes('  Fix ~/.bowerloom/.gitignore first: it is a link, or not a plain file that you own, so Bowerloom cannot check its lines.'), s.text);
+    const steps = fixSteps(s.text);
+    assert.equal(steps[steps.indexOf(ADD) + 1], UNSTAGE, steps.join('\n')); assert.equal(steps.some(c => c.startsWith('printf ')), false);
+    // The block, run as printed, in a sandbox repository with no remote.
+    for (const command of steps) if (!command.startsWith('cd ') && !command.startsWith('git remote') && !command.startsWith('git push')) shell(w.store, command, w);
+    const tracked = git(w.store, ['ls-files'], w).stdout.split('\n').filter(Boolean);
+    assert.equal(tracked.some(p => p.startsWith('folders/')), false, `${kind}: ${tracked.join(', ')}`);
+  }
+});
+
+test('L2. a later broad ! line, such as !*/, undoes /folders/: status reports update, and the next write puts it back', t => {
+  const w = storeWithFolder(t); mkdirSync(join(w.home, 'notes', 'wiki'), { recursive: true, mode: 0o755 });
+  git(w.store, ['init', '-q'], w);
+  writeFileSync(join(w.store, '.gitignore'), `${readFileSync(join(w.store, '.gitignore'), 'utf8')}!*/\n`);
+  assert.equal(ignored(w, 'folders/kb.json'), false, 'git takes the folder back in');
+  assert.equal(status(w).gitignore, 'update');
+  mustApprove(w.home, ['folder', 'add', 'wiki', '~/notes/wiki'], w.env);
+  assert.equal(ignored(w, 'folders/kb.json'), true); assert.equal(status(w).gitignore, 'ok');
+  // A ! line that cannot match the folder leaves /folders/ in effect.
+  writeFileSync(join(w.store, '.gitignore'), `${readFileSync(join(w.store, '.gitignore'), 'utf8')}!skills/a/keep.md\n!notes\n`);
+  assert.equal(status(w).gitignore, 'ok'); assert.equal(ignored(w, 'folders/kb.json'), true);
 });

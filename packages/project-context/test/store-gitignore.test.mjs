@@ -187,3 +187,12 @@ test('M3. a .gitignore write that fails when the store is made does not fail the
   assert.ok(fs.existsSync(path.join(w.store, 'store.json'))); assert.equal(fs.existsSync(w.ignore), false);
   assert.equal(takeStoreGitignoreFailure(), null, 'the note is given once');
 });
+
+test('L2 (round 3). a later ! line that could match the folder undoes /folders/; one that cannot does not', async t => {
+  const w = world(t); w.make('notes/kb'); w.make('notes/wiki');
+  await withStoreForWriteWith(w.home, signal(), async () => {}, w.hooks);
+  for (const [negation, undoes] of [['!*/', true], ['!*', true], ['!**', true], ['!fold*', true], ['!/folders', true], ['!**/folders/', true], ['!skills/a.md', false], ['!notes', false], ['!/skills/', false]]) {
+    fs.writeFileSync(w.ignore, `${OURS}${negation}\n`, { mode: 0o644 });
+    assert.equal(planFolderAddWith(w.home, w.home, 'kb', '~/notes/kb', w.hooks).gitignore, undoes ? 'update' : 'ok', negation);
+  }
+});
