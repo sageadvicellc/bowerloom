@@ -37,10 +37,10 @@ export function putInCache(npmCache,bytes,integrity=integrityOf(bytes)) {
  const file=cachePath(npmCache,integrity);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,bytes);return integrity;
 }
 // A small package tarball whose first folder is `first` (npm tarballs use package/, others differ).
-export function packageTarball(name,version,{first='package',extra=[],deps}={}) {
+export function packageTarball(name,version,{first='package',extra=[],deps,manifestExtra}={}) {
  return tarBytes([
   {path:first+'/',type:'5'},
-  {path:first+'/package.json',data:JSON.stringify({name,version,license:'MIT',main:'index.js',...(deps?{dependencies:deps}:{})})},
+  {path:first+'/package.json',data:JSON.stringify({name,version,license:'MIT',main:'index.js',...(deps?{dependencies:deps}:{}),...manifestExtra})},
   {path:first+'/index.js',data:`module.exports='${name}';\n`},
   ...extra.map(e=>({...e,path:first+'/'+e.path})),
  ]);
@@ -50,7 +50,7 @@ export function syntheticClosure(npmCache,paths) {
  const packages={};
  for(const [path,spec] of Object.entries(paths)) {
   const name=path.slice(path.lastIndexOf('node_modules/')+'node_modules/'.length);
-  const bytes=packageTarball(name,spec.version,{first:spec.first,extra:spec.extra,deps:spec.deps});
+  const bytes=packageTarball(name,spec.version,{first:spec.first,extra:spec.extra,deps:spec.deps,manifestExtra:spec.manifestExtra});
   packages[path]={version:spec.version,resolved:`https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${spec.version}.tgz`,integrity:putInCache(npmCache,bytes),license:spec.license??'MIT',...(spec.deps?{dependencies:spec.deps}:{})};
  }
  return packages;

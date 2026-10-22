@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, statfsSync, statSync, chmodSync, rmSync } from 'node:fs';
+import { constants as fsConstants, openSync, closeSync, fstatSync, readSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, statfsSync, statSync, chmodSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
-import { UnpackSync } from 'tar';
+import { UnpackSync, list as listTar } from 'tar';
 export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-authoring','skill-manifest','project-sync','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 export const CANONICAL_URLS = Object.freeze({site:'https://bowerloom.ai',docs:'https://bowerloom.ai/docs/',repository:'https://github.com/sageadvicellc/bowerloom'});
@@ -82,6 +82,9 @@ export function lockedDependencies(lock, dependencies, manifest) {
 }
 // Every top-level lock entry becomes an exact pin, because npm ignores a packed shrinkwrap when it installs a tarball.
 const EXACT = /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/;
+// A top-level lock path ends in one package name. The name comes from the anchored end of the path, never from a search inside it.
+const TOP_PATH_RE = /^node_modules\/((?:@[^/]+\/)?[^/]+)$/, NESTED_PATH_RE = /^node_modules\/(?:@[^/]+\/)?[^/]+(?:\/node_modules\/(?:@[^/]+\/)?[^/]+)+$/;
+const PACKAGE_NAME_RE = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)$/;
 export function flatDependencies(packages, direct) {
   for (const [name,version] of Object.entries(direct)) {
     const entry = packages['node_modules/'+name];
@@ -89,10 +92,10 @@ export function flatDependencies(packages, direct) {
   }
   const dependencies = {}, optionalDependencies = {};
   for (const path of Object.keys(packages).sort(byName)) {
-    if (path === '' || path.split('node_modules/').length > 2) continue;
-    const entry = packages[path];
-    if (!path.startsWith('node_modules/')) fail('Unpinnable dependency: '+path);
-    const name = path.slice('node_modules/'.length);
+    if (path === '') continue;
+    const entry = packages[path], top = TOP_PATH_RE.exec(path);
+    if (!top) { if (NESTED_PATH_RE.test(path)) continue; fail('Unpinnable dependency: '+path); }
+    const name = top[1];
     if ((entry.name !== undefined && entry.name !== name) || entry.link || typeof entry.version !== 'string' || !EXACT.test(entry.version)) fail('Unpinnable dependency: '+path);
     (entry.optional === true ? optionalDependencies : dependencies)[name] = entry.version;
   }
@@ -237,9 +240,11 @@ function newDestination(destination, boundBytes=STAGING_BOUND) {
 }
 export const defaultNpmCache = () => join(process.env.npm_config_cache ?? join(homedir(),'.npm'),'_cacache');
 const ALLOWED_TYPES = new Set(['File','OldFile','ContiguousFile','Directory']);
-const MAX_PACKAGE_ENTRIES = 8192, MAX_BUNDLE_ENTRIES = 50000, MIN_ENTRY_COST = 4096, MAX_CACHE_FILE = 256 * 2 ** 20;
+const MAX_PACKAGE_ENTRIES = 8192, MAX_BUNDLE_ENTRIES = 50000, MIN_ENTRY_COST = 4096, MAX_CACHE_FILE = 256 * 2 ** 20, MAX_DEPTH = 32;
 // Files that npm-packlist drops by its default rules, so a staged copy of one may be absent from the tarball.
 const DEFAULT_OMITTED = /^(?:\.npmignore|\.gitignore|\.npmrc|\.DS_Store|\._.*|.*\.orig|npm-debug\.log|\.lock-wscript|\.wafpickle-.*)$/;
+// npm always keeps these, so a tarball without one is wrong whatever the package files list says.
+const ALWAYS_KEPT = /^(?:README|LICENSE|LICENCE)/i;
 export function checkMaxBundleBytes(value) {
   if(value === undefined) return GIB;
   if(!Number.isSafeInteger(value) || value <= 0 || value > GIB) fail('maxBundleBytes must be a positive integer of at most 1 GiB');
@@ -255,6 +260,23 @@ function modeWalk(directory, base, modes, onFile) {
     else fail('Bundle tarball unsafe: '+relative(base,full));
   }
 }
+// Open a cache file without following a link or waiting on a pipe, and read only what the opened file holds.
+function readCacheFile(file, path) {
+  let fd;
+  try { fd=openSync(file,fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK); }
+  catch(error) {
+    if(error?.code === 'ENOENT') fail('Bundle cache entry missing: '+path);
+    if(['ELOOP','ENXIO','EISDIR','EMLINK'].includes(error?.code)) fail('Bundle cache entry unsafe: '+path);
+    throw error;
+  }
+  try {
+    const info=fstatSync(fd);
+    if(!info.isFile() || info.size > MAX_CACHE_FILE) fail('Bundle cache entry unsafe: '+path);
+    const data=Buffer.alloc(info.size); let offset=0;
+    while(offset < info.size) { const count=readSync(fd,data,offset,info.size-offset,offset); if(count === 0) break; offset+=count; }
+    return data.subarray(0,offset);
+  } finally { closeSync(fd); }
+}
 // Extract each locked package from the npm cache into <stage>/<lock path>. The cache file is named by the lock integrity value.
 // Every package is then checked against the lock: its own package.json names the same package and version, its license passes
 // the gate, and it has no install script.
@@ -266,15 +288,12 @@ export function extractBundle({stageDir, packages, npmCache, maxBundleBytes}) {
   let total=0, entryTotal=0, bytes=0;
   for(const path of Object.keys(packages).filter(Boolean).sort(byName)) {
     if(!LOCK_PATH_RE.test(path)) fail('Bundle path unsafe: '+path);
-    const item=packages[path], name=path.slice(path.lastIndexOf('node_modules/')+'node_modules/'.length);
+    const item=packages[path], name=PACKAGE_NAME_RE.exec(path)[1];
     if(item.resolved !== `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${item.version}.tgz`) fail('Bundle resolved URL mismatch: '+path);
     const integrity=item.integrity;
     if(typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) fail('Bundle integrity mismatch: '+path);
     const hex=Buffer.from(integrity.slice(7),'base64').toString('hex'), file=join(npmCache,'content-v2','sha512',hex.slice(0,2),hex.slice(2,4),hex.slice(4));
-    const info=lstatSync(file,{throwIfNoEntry:false});
-    if(!info) fail('Bundle cache entry missing: '+path);
-    if(!info.isFile() || info.size > MAX_CACHE_FILE) fail('Bundle cache entry unsafe: '+path);
-    const data=readFileSync(file);
+    const data=readCacheFile(file,path);
     if('sha512-'+createHash('sha512').update(data).digest('base64') !== integrity) fail('Bundle integrity mismatch: '+path);
     const target=join(realStage,path), rootInfo=lstatSync(modulesRoot,{throwIfNoEntry:false});
     if(rootInfo && !rootInfo.isDirectory()) fail('Bundle path unsafe: '+path);
@@ -286,21 +305,39 @@ export function extractBundle({stageDir, packages, npmCache, maxBundleBytes}) {
     // Folders made here take the umask of the user, so set them now. They are real folders inside the stage.
     for(let folder=target; folder !== modulesRoot; folder=dirname(folder)) chmodSync(folder,0o755);
     let entries=0, unsafe=null, oversize=false, tooMany=false;
-    const modes=new Map(), refuse=raw => { unsafe ??= 'Bundle tarball unsafe: '+path+'/'+raw; };
-    const filter=(raw,entry) => {
-      const text=String(raw), segments=text.replace(/\/$/,'').split('/');
-      if(!ALLOWED_TYPES.has(entry.type) || text.startsWith('/') || /^[A-Za-z]:/.test(text) || segments.some(part => part === '' || part === '.' || part === '..') || segments[1] === 'node_modules') { refuse(raw); return false; }
-      if(++entries > MAX_PACKAGE_ENTRIES) { refuse(raw); return false; }
+    const modes=new Map(), folders=new Set(), refuse=raw => { unsafe ??= 'Bundle tarball unsafe: '+path+'/'+raw; };
+    // Each entry, and each folder that tar makes on its own for a deep path, costs at least 4096 bytes and one entry of the cap.
+    const charge=cost => {
       if(++entryTotal > MAX_BUNDLE_ENTRIES) { tooMany=true; return false; }
-      total+=Math.max(entry.size ?? 0, MIN_ENTRY_COST); if(total > max) { oversize=true; return false; }
-      if(entry.type !== 'Directory') modes.set(segments.slice(1).join('/'),entry.mode ?? 0);
+      total+=cost; if(total > max) { oversize=true; return false; }
+      return true;
+    };
+    const filter=(raw,entry) => {
+      const text=String(raw), segments=text.replace(/\/$/,'').split('/'), inner=segments.slice(1);
+      if(!ALLOWED_TYPES.has(entry.type) || text.startsWith('/') || /^[A-Za-z]:/.test(text) || segments.some(part => part === '' || part === '.' || part === '..')
+        || inner.some(part => part.normalize('NFC').toLowerCase() === 'node_modules')) { refuse(raw); return false; }
+      if(inner.length === 0) return true;
+      if(inner.length > MAX_DEPTH) { refuse(raw); return false; }
+      if(++entries > MAX_PACKAGE_ENTRIES) { refuse(raw); return false; }
+      const folderCount=entry.type === 'Directory' ? inner.length : inner.length-1;
+      for(let depth=1; depth <= folderCount; depth++) {
+        const key=inner.slice(0,depth).join('/');
+        if(!folders.has(key)) {
+          folders.add(key); if(!charge(MIN_ENTRY_COST)) return false;
+          // Make the folder here with fixed modes, so tar never makes it under the umask of the user.
+          const folder=join(target,key); mkdirSync(folder,{recursive:true}); chmodSync(folder,0o755);
+        }
+      }
+      if(entry.type === 'Directory') { entry.mode=0o755; return true; }
+      if(!charge(Math.max(entry.size ?? 0, MIN_ENTRY_COST))) return false;
+      // Modes are set here and by tar's own chmod, so the user umask never decides them.
+      const executable=((entry.mode ?? 0) & 0o111) !== 0;
+      modes.set(inner.join('/'),executable ? 0o755 : 0o644); entry.mode=executable ? 0o755 : 0o644;
       return true;
     };
     // strict mode sends every tar warning through the throw, with the tar message in the error, so no warning handler is needed.
-    const unpack=new UnpackSync({cwd:target,strip:1,strict:true,preserveOwner:false,noMtime:true,filter});
-    // The process umask changes the folders tar makes, so fix it for this synchronous call only.
-    const previousUmask=process.umask(0o022);
-    let thrown=null; try { unpack.end(data); } catch(error) { thrown=error; } finally { process.umask(previousUmask); }
+    const unpack=new UnpackSync({cwd:target,strip:1,strict:true,preserveOwner:false,noMtime:true,maxDepth:MAX_DEPTH,chmod:true,processUmask:0o022,dmode:0o755,filter});
+    let thrown=null; try { unpack.end(data); } catch(error) { thrown=error; }
     if(unsafe) fail(unsafe);
     if(tooMany) fail('Bundle exceeds 50000 entries');
     if(oversize) fail('Bundle exceeds 1 GiB');
@@ -311,9 +348,14 @@ export function extractBundle({stageDir, packages, npmCache, maxBundleBytes}) {
     if(!licenseAllowed(pkg.license)) fail('Bundled license not allowed: '+name+' '+(typeof pkg.license === 'string' ? pkg.license : '(none)'));
     if(['preinstall','install','postinstall'].some(key => pkg.scripts && typeof pkg.scripts === 'object' && Object.hasOwn(pkg.scripts,key)) || lstatSync(join(target,'binding.gyp'),{throwIfNoEntry:false})) fail('Bundle package has an install script: '+path);
     const restricted=Array.isArray(pkg.files) || ['.npmignore','.gitignore'].some(n => lstatSync(join(target,n),{throwIfNoEntry:false}));
+    const kept=new Set(['package.json']);
+    const clean=value => typeof value === 'string' ? posix.normalize(value).replace(/^\.\//,'') : null;
+    kept.add(clean(pkg.main));
+    for(const value of typeof pkg.bin === 'string' ? [pkg.bin] : pkg.bin && typeof pkg.bin === 'object' ? Object.values(pkg.bin) : []) kept.add(clean(value));
     modeWalk(target,target,modes,(full,size) => {
       const rel=relative(realStage,full).split(sep).join('/'), base=relative(target,full).split(sep).join('/');
-      bundleFiles.set(rel,{sha256:fileHash(full),mayOmit:base !== 'package.json' && (restricted || DEFAULT_OMITTED.test(full.slice(full.lastIndexOf(sep)+1)))}); bytes+=size;
+      const always=kept.has(base) || (!base.includes('/') && ALWAYS_KEPT.test(base));
+      bundleFiles.set(rel,{sha256:fileHash(full),mayOmit:!always && (restricted || DEFAULT_OMITTED.test(full.slice(full.lastIndexOf(sep)+1)))}); bytes+=size;
     });
   }
   return {files:bundleFiles.size,bytes,bundleFiles};
@@ -324,6 +366,16 @@ export function verifyBundleFiles(stageDir, bundleFiles) {
     let actual; try { actual=fileHash(join(stageDir,path)); } catch { actual=null; }
     if(actual !== expected) fail('Bundle file changed before pack: '+path);
   }
+}
+// The sha256 of every bundled file in a packed tarball, keyed by its stage path.
+function packedBundleHashes(file) {
+  const hashes=new Map();
+  listTar({file,sync:true,onReadEntry:entry => {
+    if(!entry.path.startsWith('package/node_modules/') || entry.type !== 'File') { entry.resume(); return; }
+    const hash=createHash('sha256'), path=entry.path.slice('package/'.length);
+    entry.on('data',chunk => hash.update(chunk)); entry.on('end',() => hashes.set(path,hash.digest('hex')));
+  }});
+  return hashes;
 }
 function stageBundle(options) {
   const bundle=options.bundle === true, max=checkMaxBundleBytes(options.maxBundleBytes);
@@ -350,19 +402,34 @@ export function pack(options) {
   const {record,manifest,bundleFiles}=stageBundle(options);
   newDestination(output, bundle ? max+STAGING_BOUND : STAGING_BOUND); mkdirSync(output,{mode:0o700});
   writeFileSync(join(output,'.empty-npmrc'),'',{flag:'wx',mode:0o600});
-  if(bundle) verifyBundleFiles(options.stageDir,bundleFiles);
-  const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',output],{cwd:options.stageDir,encoding:'utf8',timeout:600000,maxBuffer:64*2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true',npm_config_update_notifier:'false'}});
-  if(result.error?.code==='ENOBUFS') fail('npm pack output exceeds 64 MiB');
-  if(result.status!==0) fail('npm pack failed: '+(result.stderr||result.error?.message));
-  let info; try { info=JSON.parse(result.stdout)[0]; if(!info || !Array.isArray(info.files)) throw new Error('shape'); } catch { fail('npm pack output is not JSON'); }
+  const run=dryRun => {
+    const result=spawnSync('npm',['pack','--ignore-scripts','--offline','--json',...(dryRun ? ['--dry-run'] : ['--pack-destination',output])],{cwd:options.stageDir,encoding:'utf8',timeout:600000,maxBuffer:64*2**20,env:{PATH:process.env.PATH,HOME:process.env.HOME,TMPDIR:process.env.TMPDIR,npm_config_userconfig:'/dev/null',npm_config_globalconfig:join(output,'.empty-npmrc'),npm_config_ignore_scripts:'true',npm_config_offline:'true',npm_config_update_notifier:'false'}});
+    if(result.error?.code==='ENOBUFS') fail('npm pack output exceeds 64 MiB');
+    if(result.status!==0) fail('npm pack failed: '+(result.stderr||result.error?.message));
+    let info; try { info=JSON.parse(result.stdout)[0]; if(!info || !Array.isArray(info.files)) throw new Error('shape'); } catch { fail('npm pack output is not JSON'); }
+    return info;
+  };
+  const counts = info => { const bundled=info.files.filter(f=>f.path.startsWith('node_modules/')); return {files:bundled.length,bytes:bundled.reduce((sum,f)=>sum+f.size,0)}; };
+  let planned;
+  if(bundle) {
+    verifyBundleFiles(options.stageDir,bundleFiles);
+    // A dry run lists what npm will pack, so the record inside the tarball holds the packed counts and not the staged ones.
+    planned=counts(run(true));
+    record.bundle.extractedFiles=planned.files; record.bundle.extractedBytes=planned.bytes;
+    writeFileSync(join(options.stageDir,'DISTRIBUTION.json'),json(record));
+  }
+  const info=run(false);
   const all=info.files.map(f=>f.path), own=all.filter(p=>!p.startsWith('node_modules/')).sort(), bundled=info.files.filter(f=>f.path.startsWith('node_modules/')),expected=[...record.files.map(f=>f.path),'DISTRIBUTION.json'].sort();
   if(JSON.stringify(own)!==JSON.stringify(expected)) fail('npm tarball contents differ from explicit inventory');
+  const tarball=join(output,info.filename);
   if(bundle) {
-    const listed=new Set(all), lockPaths=record.bundle.entries.map(e=>e.path);
+    const listed=new Set(all), lockPaths=record.bundle.entries.map(e=>e.path), actual=counts(info), packedHashes=packedBundleHashes(tarball);
     if(bundled.some(f=>!bundleFiles.has(f.path)) || [...bundleFiles].some(([path,{mayOmit}])=>!mayOmit && !listed.has(path)) || lockPaths.some(p=>!listed.has(p+'/package.json'))
+      || actual.files!==planned.files || actual.bytes!==planned.bytes
+      || [...packedHashes].some(([path,hash])=>bundleFiles.get(path)?.sha256!==hash) || [...bundleFiles].some(([path,{mayOmit}])=>!mayOmit && !packedHashes.has(path))
       || JSON.stringify([...(info.bundled??[])].sort(byName))!==JSON.stringify([...manifest.bundleDependencies].sort(byName))) fail('Bundle packed files differ from the staged bundle');
   }
-  return {file:join(output,info.filename),sha256:sha256(readFileSync(join(output,info.filename))),bytes:info.size,unpackedBytes:info.unpackedSize,files:own.length,...(bundle?{bundle:{packages:(info.bundled??[]).length,files:bundled.length,bytes:bundled.reduce((sum,f)=>sum+f.size,0)}}:{}),record};
+  return {file:tarball,sha256:sha256(readFileSync(tarball)),bytes:info.size,unpackedBytes:info.unpackedSize,files:own.length,...(bundle?{bundle:{packages:(info.bundled??[]).length,...counts(info)}}:{}),record};
 }
 if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const raw=process.argv.slice(2), releaseCandidate=raw.includes('--release-candidate');

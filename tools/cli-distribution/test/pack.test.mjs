@@ -361,7 +361,9 @@ const DIRECT=['@dbos-inc/dbos-sdk','@langchain/langgraph','@langchain/langgraph-
 // A fixture copy of the repository whose lock is synthetic: the ten direct dependencies, one nested path, and tiny tarballs in a temporary cache.
 function bundledRepo(t) {
  const root=fixture(t),cache=join(area(t),'cache'),versions=collect({repoDir:repo}).manifest.dependencies,paths={};
- for(const name of DIRECT)paths['node_modules/'+name]={version:versions[name],...(name==='pg'?{deps:{inner:'4.0.0'}}:{})};
+ for(const name of DIRECT)paths['node_modules/'+name]={version:versions[name],...(name==='pg'?{deps:{inner:'4.0.0'}}:{}),
+  // jose declares a files list and carries a bin, a readme, a license, and a changelog: npm keeps the first four and drops the changelog.
+  ...(name==='jose'?{manifestExtra:{files:['index.js'],bin:{jose:'bin/x.js'}},extra:[{path:'bin/x.js',data:'#!/usr/bin/env node\n',mode:0o755},{path:'README.md',data:'readme'},{path:'LICENSE',data:'license'},{path:'CHANGELOG.md',data:'changes'}]}:{})};
  paths['node_modules/pg/node_modules/inner']={version:'4.0.0'};
  const packages=syntheticClosure(cache,paths);
  const lock=lockOf(packages);writeFileSync(join(root,'package-lock.json'),JSON.stringify(lock,null,2)+'\n');
@@ -554,6 +556,51 @@ test('stage with a bundle refuses a relative npm cache path',t=>{
  const {root}=bundledRepo(t),options=run1(t,{repoDir:root,bundle:true,npmCache:'relative/cache'});
  assert.throws(()=>stage(options),/^Error: npmCache must be an absolute path$/);assert.equal(existsSync(options.stageDir),false);
 });
+test('a tarball whose few entries create many folders is charged for every folder',t=>{
+ const root=area(t),cache=join(root,'cache'),entries=[manifestEntry('p')];
+ for(let i=0;i<40;i++)entries.push({path:`package/d${i}/a/b/c/d/e/f/g/h/i/j.txt`,data:'x'});
+ const item=entryFor(cache,'p',entries);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/p':item},npmCache:cache,maxBundleBytes:2**20}),e=>e.message==='Bundle exceeds 1 GiB');
+ extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/p':item},npmCache:cache,maxBundleBytes:2**23});
+});
+test('folders count toward the 50000 entry cap and a path deeper than 32 folders is refused',t=>{
+ const root=area(t),cache=join(root,'cache');
+ const deep=entryFor(cache,'p',[manifestEntry('p'),{path:'package/'+Array.from({length:40},()=>'a').join('/')+'/x.txt',data:'x'}]);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/p':deep},npmCache:cache}),/^Error: Bundle tarball unsafe: node_modules\/p\//);
+ const packages={};
+ for(let i=0;i<7;i++){const name='q'+i;packages['node_modules/'+name]=entryFor(cache,name,[manifestEntry(name),...Array.from({length:4000},(_,k)=>({path:`package/d${k}/f`}))]);}
+ assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages,npmCache:cache}),/^Error: Bundle exceeds 50000 entries$/);
+});
+test('a lock key that hides node_modules inside a scope name takes its package name from the end',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'bar',[manifestEntry('bar')]);
+ assert.throws(()=>extractBundle({stageDir:join(root,'stage'),packages:{'node_modules/@x-node_modules/bar':item},npmCache:cache}),/^Error: Bundle resolved URL mismatch: node_modules\/@x-node_modules\/bar$/);
+ const packages={'node_modules/@x-node_modules/bar':{version:'1.0.0'},'node_modules/zeta/node_modules/inner':{version:'2.0.0'}};
+ assert.deepEqual(flatDependencies(packages,{}).dependencies,{'@x-node_modules/bar':'1.0.0'});
+ assert.throws(()=>flatDependencies({'node_modules/x/y':{version:'1.0.0'}},{}),/^Error: Unpinnable dependency: node_modules\/x\/y$/);
+});
+test('extractBundle refuses a cache entry that is a symbolic link or a FIFO without reading it',t=>{
+ const root=area(t),cache=join(root,'cache'),good=tarBytes([manifestEntry('p')]),integrity=integrityOf(good),file=cachePath(cache,integrity);
+ mkdirSync(dirname(file),{recursive:true});
+ const item={version:'1.0.0',resolved:registryUrl('p','1.0.0'),integrity};
+ symlinkSync('/dev/zero',file);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s1'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
+ rmSync(file);fs.writeFileSync(join(root,'real'),good);symlinkSync(join(root,'real'),file);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s2'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
+ rmSync(file);assert.equal(spawnSync('mkfifo',[file]).status,0);
+ assert.throws(()=>extractBundle({stageDir:join(root,'s3'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
+});
+test('a node_modules folder at any depth and in any case is refused',t=>{
+ const root=area(t),cache=join(root,'cache');let n=0;
+ for(const path of ['package/NODE_MODULES/x/index.js','package/lib/node_modules/y/index.js','package/lib/Node_Modules/','package/node_modules'])
+  assert.throws(()=>extractBundle({stageDir:join(root,'s'+n++),packages:{'node_modules/p':entryFor(cache,'p',[manifestEntry('p'),{path,...(path.endsWith('/')?{type:'5'}:{data:'x'})}])},npmCache:cache}),e=>e.message==='Bundle tarball unsafe: node_modules/p/'+path,path);
+});
+test('extraction never changes the process umask',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),{path:'package/bin/run.js',data:'x',mode:0o755}]),original=process.umask,calls=[];
+ process.umask=(...args)=>{calls.push(args);return original.apply(process,args);};
+ try{extractBundle({stageDir:join(root,'stage'),packages:{'node_modules/p':item},npmCache:cache});}finally{process.umask=original;}
+ assert.deepEqual(calls.filter(args=>args.length>0),[]);
+ assert.equal(statSync(join(root,'stage/node_modules/p/bin/run.js')).mode&0o777,0o755);
+});
 test('pack with a bundle holds every lock package, matches bundleDependencies, and is byte-deterministic',t=>{
  const {root,cache,lock}=bundledRepo(t),one=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache}),two=run1(t,{repoDir:root,bundle:true,maxBundleBytes:2**20,npmCache:cache});
  const a=pack(one),b=pack(two);assert.equal(a.sha256,b.sha256);
@@ -574,6 +621,26 @@ test('pack refuses an npm pack result that lists a bundled file the stage lacks'
 });
 const bundledOptions=(t,ctx)=>run1(t,{repoDir:ctx.root,bundle:true,maxBundleBytes:2**20,npmCache:ctx.cache});
 const rewriteList=(t,change)=>stubSpawn(t,r=>{if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);change(info[0]);return {...r,stdout:JSON.stringify(info)};}return r;});
+test('pack refuses a tarball that lacks the main file, a bin target, the readme, or the license of a package',t=>{
+ for(const missing of ['node_modules/jose/index.js','node_modules/jose/bin/x.js','node_modules/jose/README.md','node_modules/jose/LICENSE']) {
+  const ctx=bundledRepo(t),original=childProcess.spawnSync;
+  childProcess.spawnSync=(...args)=>{const r=original(...args);if(r.stdout&&r.stdout.startsWith('[')){const info=JSON.parse(r.stdout);info[0].files=info[0].files.filter(f=>f.path!==missing);return {...r,stdout:JSON.stringify(info)};}return r;};syncBuiltinESMExports();
+  try{assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/,missing);}finally{childProcess.spawnSync=original;syncBuiltinESMExports();}
+ }
+});
+test('pack accepts a package that npm drops a changelog from, and records the packed counts',t=>{
+ const ctx=bundledRepo(t),result=pack(bundledOptions(t,ctx)),staged=Object.keys(ctx.lock.packages).length;
+ const listing=spawnSync('tar',['-tzf',result.file],{encoding:'utf8',maxBuffer:2**24}).stdout.split('\n');
+ assert.ok(!listing.includes('package/node_modules/jose/CHANGELOG.md'));assert.ok(listing.includes('package/node_modules/jose/README.md'));
+ const inTar=listing.filter(p=>p.startsWith('package/node_modules/')&&!p.endsWith('/')).length;
+ assert.equal(result.bundle.files,inTar);assert.equal(result.record.bundle.extractedFiles,inTar);assert.equal(result.record.bundle.extractedBytes,result.bundle.bytes);
+ assert.ok(staged>0);
+});
+test('pack refuses a bundled file that changes after the staged files were verified',t=>{
+ const ctx=bundledRepo(t),original=childProcess.spawnSync;
+ childProcess.spawnSync=(...args)=>{if(args[0]==='npm'&&!args[1].includes('--dry-run'))writeFileSync(join(args[2].cwd,'node_modules/jose/index.js'),"module.exports='changed';\n");return original(...args);};syncBuiltinESMExports();
+ try{assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/);}finally{childProcess.spawnSync=original;syncBuiltinESMExports();}
+});
 test('pack refuses an npm pack result that lacks the package.json of a lock package',t=>{
  const ctx=bundledRepo(t);rewriteList(t,info=>{info.files=info.files.filter(f=>f.path!=='node_modules/jose/package.json');});
  assert.throws(()=>pack(bundledOptions(t,ctx)),/^Error: Bundle packed files differ from the staged bundle$/);
