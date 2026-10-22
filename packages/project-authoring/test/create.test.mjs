@@ -39,7 +39,7 @@ test('plan is read-only and deterministic, and apply writes exactly the planned 
   const input = { kind: 'team', project: p.dir, name: 'research-desk', profile: 'research' };
   const plan = await planCreate(input), again = await planCreate(input);
   assert.deepEqual(plan, again); assert.deepEqual(tree(p.dir), before);
-  assert.equal(plan.format, 'bowerloom/authoring-plan/v1beta1'); assert.match(plan.revision, /^[a-f0-9]{64}$/);
+  assert.equal(plan.format, 'bowerloom/authoring-plan/v1beta2'); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal(plan.writesAuthorized, false); assert.equal(plan.executionAuthorized, false);
   assert.equal(plan.item.kind, 'team'); assert.equal(plan.item.id, 'research-desk'); assert.deepEqual(plan.item.teams, []);
   assert.equal(plan.finish, null); assert.equal(plan.discard, null);
