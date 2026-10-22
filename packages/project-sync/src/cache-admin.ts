@@ -241,6 +241,11 @@ function storeReferences(home: string): ReferenceSet | null {
     if (found.state === 'absent') return emptySet();
     // A folder at ~/.bowerloom that is not a store may hold what a person thinks of as their store: unknown, not empty.
     if (found.state === 'foreign') return null;
+    // Review S1 of PR 98: an area folder of the store is never read through a link. A linked area makes the store unknown.
+    for (const area of ['skills', 'prompts', 'teams']) {
+      let s: fs.Stats | null = null; try { s = fs.lstatSync(join(found.context.dir, area)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null; }
+      if (s !== null && (!s.isDirectory() || s.isSymbolicLink())) return null;
+    }
     const defs = readStoreDefinitions(found.context), set = emptySet();
     for (const entry of defs.skills.values()) {
       if (entry.source.kind !== 'local') { addPin(set, entry); continue; }
