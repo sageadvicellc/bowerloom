@@ -8,14 +8,14 @@ import { discoverProject, privateStateRoot } from '../../../packages/project-con
 import { measureContext, showSlice } from '../../../packages/project-sync/src/context-measure.js';
 import type { MeasureAgent, MeasureResult, ShowResult } from '../../../packages/project-sync/src/context-measure.js';
 import { ESTIMATE_BAND, formatPercent, formatThousands, parseBytesPerToken } from '../../../packages/context-slices/src/estimate.js';
-import { newCommandJson, plainText } from './human.js';
+import { newCommandJson, plainText, shellWord } from './human.js';
 
 const SHOW_USAGE = 'Use bowerloom context show <slice> [--json].';
 const MEASURE_USAGE = 'Use bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json].';
 const usage = (text: string): never => { throw new DefinitionError('USAGE', text); };
 
 export function renderShow(r: ShowResult): string {
-  const where = r.root === '.' ? 'the project folder' : r.root;
+  const where = r.registered !== null ? `registered folder ${r.registered} (${r.root ?? 'unknown'})` : r.root === null ? 'an unknown folder' : r.root === '.' ? 'the project folder' : r.root;
   const lines = [
     `Slice ${r.id}: ${r.members.length} files from ${where}`,
     `Index: .claude/skills/slice-${r.id}/SKILL.md, ${r.index === null ? 'not built' : `${r.index.bytes} bytes`} (${r.installed})`,
@@ -32,6 +32,11 @@ export function renderShow(r: ShowResult): string {
   if (n.oversize.length) notes.push(`lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) notes.push(`skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) notes.push(`follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
+  if (n.outsideProject) notes.push(`reads ${r.root}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${shellWord(r.folder ?? r.root ?? '')}, or add the folder to permissions.additionalDirectories.`);
+  if (r.copies !== null) {
+    const c = r.copies;
+    notes.push(c.summary === 'none' ? `copies no text from ${c.folder}, only the paths of ${c.count} files.` : c.summary === 'heading' ? `copies the first heading of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.` : `copies frontmatter key ${c.key} of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.`);
+  }
   if (n.wholeProject) notes.push('guards the whole project folder. An agent that names it reads only the slice\'s files there with Read, Grep, and Glob.');
   if (notes.length) lines.push('Notes:', ...notes.map(x => `  ${x}`));
   return `${lines.join('\n')}${r.index === null ? '' : `\n\n${r.index.text}`}`;
@@ -72,7 +77,7 @@ export async function runContextCommand(args: readonly string[], cwd: string, ho
   if (sub === 'show') {
     const json = words.includes('--json'), rest = words.filter(w => w !== '--json');
     if (words.filter(w => w === '--json').length > 1 || rest.length !== 1 || rest[0]!.startsWith('-')) usage(SHOW_USAGE);
-    const project = discoverProject(cwd, home), result = await showSlice({ project, stateRoot: privateStateRoot(env, home), slice: rest[0]! });
+    const project = discoverProject(cwd, home), result = await showSlice({ project, stateRoot: privateStateRoot(env, home), slice: rest[0]!, home });
     write(json ? newCommandJson(result) : `${plainText(renderShow(result), true)}\n`); return 0;
   }
   if (sub === 'measure') {

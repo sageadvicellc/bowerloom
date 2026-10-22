@@ -23,9 +23,10 @@ Make a context slice named wiki over the folder wiki in this project. Run bowerl
 
 ```sh
 bowerloom slice create wiki --root wiki --include 'research/**/*.md'
+bowerloom slice create kb-wiki --registered knowledge-base --root wiki
 ```
 
-The command shows a plan, then writes `.bowerloom/slices/wiki.yaml` and lists it in `.bowerloom/authoring/receipt.json`. `--root` is the folder the patterns start from. The default is the project folder. `--include` adds a path pattern and repeats up to 64 times. The default is `**/*.md`. If `.bowerloom/slices/wiki.yaml` is already there and not registered, `slice create wiki` registers the file and keeps its bytes. A slice id is lower-case letters and digits in words joined by single hyphens, at most 57 characters, and it does not start with `prompt-`. Ids that start with `slice-` are reserved for new skills and prompts.
+The command shows a plan, then writes `.bowerloom/slices/wiki.yaml` and lists it in `.bowerloom/authoring/receipt.json`. `--root` is the folder the patterns start from. The default is the project folder. `--registered <folder-name>` makes the root a folder inside a [registered folder](#registered-folders) outside the project. `--include` adds a path pattern and repeats up to 64 times. The default is `**/*.md`. If `.bowerloom/slices/wiki.yaml` is already there and not registered, `slice create wiki` registers the file and keeps its bytes. A slice id is lower-case letters and digits in words joined by single hyphens, at most 57 characters, and it does not start with `prompt-`. Ids that start with `slice-` are reserved for new skills and prompts.
 
 ### The slice file
 
@@ -37,7 +38,7 @@ format, description, root, include, exclude, where, links, summary, maxFiles, gu
 
 - `format` is required and is `bowerloom/context-slice/v1beta1`.
 - `description` is required, from 1 to 1024 characters. It becomes the description of the index skill.
-- `root` is a folder inside the project, written relative to it. The default is `.`. A map with `registered` names a registered folder outside the project. This beta has no command to register one, so such a slice is held with `SLICE_ROOT_MISSING`.
+- `root` is a folder inside the project, written relative to it. The default is `.`. A map with `registered` and an optional `path` names a folder inside a registered folder outside the project, such as `root: { registered: knowledge-base, path: wiki }`.
 - `include` is required: 1 to 64 patterns. `exclude` is a list of 0 to 64 patterns.
 - `where` keeps a `.md` file only when its frontmatter matches. Every key must match, and a key matches when its value equals one of the listed strings. A list value matches when any element matches.
 - `links` follows `[[wikilinks]]` and relative markdown links from the files it selects: `follow` takes `wikilink` and `markdown`, and `depth` is 1 or 2.
@@ -148,7 +149,31 @@ The measure does not count Claude Code's own system details and tool definitions
 
 ### Registered folders
 
-A slice can later name a folder outside the project, such as a knowledge base, through a registered folder. This beta has no command to register one, and a slice that names one is held with `SLICE_ROOT_MISSING`. Use a root inside the project.
+A slice can select from a folder outside the project, such as the knowledge base of a workbench, through a registered folder. Register it once, in your store, then allow each project that may read it:
+
+```sh
+bowerloom folder add knowledge-base ~/Sage\ Advice/knowledge-base
+cd ~/Projects/my-project && bowerloom folder allow knowledge-base
+bowerloom folder list
+bowerloom folder deny knowledge-base
+bowerloom folder remove knowledge-base
+```
+
+`folder add` shows a plan, then writes `~/.bowerloom/folders/knowledge-base.json`, which holds the folder as a path below your home folder. The first write makes the store, and the plan says so first. `add`, `list`, and `remove` work from any folder and never look for a project. `folder remove` deletes the record and the grants of that folder. The folder stays, and Bowerloom never writes it. `folder list` shows each folder as `ready`, `missing` when the folder is gone, or `refused` with the code that failed. It skips the grants folders (`<name>.grants`), a leftover `.folder-<name>.<hex>.tmp` file from an interrupted write, and `.DS_Store`.
+
+**A registration is not shared with every project.** `folder allow <name>`, run inside a project, shows a plan that prints the project and the absolute folder. After you approve it, Bowerloom writes `~/.bowerloom/folders/<name>.grants/<project id>`. The grant holds the hash of the folder record and the birth time of the project folder. The record holds a registration id that is new on every `folder add`, so a name that you point at another folder, or add again after the record was lost, needs a new grant, and a project folder that took the place of the old one is not allowed. `folder add` removes the leftover grants of an earlier registration of the name, and its plan says how many. `folder remove` removes the grants of the folder and refuses, before it deletes anything, when the grants folder holds an entry that is not a grant. A project without a grant cannot read the folder: a slice that names it is held with `FOLDER_NOT_ALLOWED`, and `apply`, `context show`, `context measure`, `status`, and the read guard all follow that rule. `folder deny <name>` takes the grant back. A project without a grant still sees the name and the recorded path of a folder, through `folder list` and `slice create --registered`, and it reads no file or folder of it. This protects you from a repository you clone: its slice file can name any registered folder, and without a grant it copies nothing.
+
+A folder must exist, be yours, and sit below your home folder, not in it. Every folder from your home folder down must be a real folder, not a link, and no other user may be able to write in it. Bowerloom reads the mode of each folder. It does not read access control list entries, because that needs a program that this build never starts, so a folder that an access control list opens to other users passes the check. Check `ls -led <folder>` yourself; the plan of `folder allow` repeats this. No folder on the path may start with a dot or be named `library` or `node_modules`, and the path must be in Unicode normal form C, because the managed path rule rejects those at apply. The folder cannot be the store or hold it, cannot be, hold, or sit inside the private state folder, and cannot be in or hold an iCloud or other cloud-synced folder, where sync changes file times and moves files. A path reached through a link is recorded by its real path.
+
+A slice names the folder with `root: { registered: <folder-name> }` or `--registered` on `slice create`. `slice create` checks that the folder is recorded and usable, after its own checks. The checks run again on every `apply`, on the folder and on the root inside it. A name that the store does not record, or a folder that is gone, holds the slice with `SLICE_ROOT_MISSING`, and an installed index stays. A link, a folder that others can write in, a record that is not valid, a path that the managed rule rejects, or a store that cannot be read holds it with `SLICE_ROOT_UNSAFE`. A registered folder that lies inside the project also holds it, because it would be a project root with a second name: use a project root. Bowerloom compares folders by device and inode, so a link or a differently spelled path does not hide it. A registered folder that holds the project is allowed, and hidden folders such as `.bowerloom` are never members.
+
+The plan binds the identity of the root folder and the record of the folder. A folder replaced after you saw the plan makes `apply` refuse with `STALE_APPROVAL`. A folder replaced after `apply` shows as `root changed` in the next plan, and it blocks every call of a guarded agent until then.
+
+**The index copies text out of the folder.** For a registered folder the plan says what it copies: `copies the first heading of N files from <absolute folder> into .claude/skills/slice-<id>/SKILL.md`, or `copies frontmatter key <key> of N files`, or that it copies paths only (`summary: none`). That file is untracked in your project. When Bowerloom finds no `.gitignore` line that keeps `.claude/skills` out of git, the plan says so. It reads `.gitignore` files and `.git/info/exclude`, not the global excludes file of git, so the note can appear for a folder that git ignores.
+
+The read guard resolves the folder through your store on every call, as `apply` did. A project that has no grant, a record that is gone or points elsewhere, or a root that is no longer the folder `apply` saw blocks every call of the agent. A store or record that cannot be read ends the call as `GUARD_INTERNAL_ERROR`, and `context guard --explain` names the system error. The index names the files from the project folder, such as `../knowledge-base/wiki/index.md`, and never holds an absolute path. The store can sync to another machine, and its records name folders below your home folder, so a machine without the folder holds the slice with `SLICE_ROOT_MISSING`, and grants do not follow a project to another path.
+
+Claude Code may ask before an agent reads outside the project. The plan prints a note with the absolute folder, quoted for the shell when it holds a space or a special character. Start Claude Code with `--add-dir <folder>`, or add the folder to `permissions.additionalDirectories`. A registered folder that holds the project needs neither.
 
 ### Codex
 

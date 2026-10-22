@@ -208,8 +208,8 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `SLICE_EXISTS` | Each slice needs its own id and its own skill name. The project already has a slice with that id, a file that differs only in case, or a skill `slice-<id>`. | Run `bowerloom ls slices`. |
 | `SLICE_LIMIT` | This beta applies at most 64 slices. Nothing was changed. | Run `bowerloom ls slices`, then remove slices. |
 | `SLICE_PATH_MISSING` | The folder or the file that a slice names is gone. The slice is held back and an installed index stays. | Fix the path in the slice file, or restore the file, then run `bowerloom apply`. |
-| `SLICE_ROOT_MISSING` | A registered folder cannot be found. This beta has no command to register a folder, so any slice that names one is held back. | Use a root inside the project, then run `bowerloom apply`. |
-| `SLICE_ROOT_UNSAFE` | The root is a link, is not yours, or other users can write in it. The slice is held back. | Run `ls -ld <folder>`. |
+| `SLICE_ROOT_MISSING` | A registered folder is not recorded in your store, the store is absent, or its folder is gone. A registered folder must be recorded in your store and must exist. The slice is held back and an installed index stays. | Run `bowerloom folder list`, or register the folder with `bowerloom folder add <folder-name> <path>`, then run `bowerloom apply`. |
+| `SLICE_ROOT_UNSAFE` | The root or a folder above it is a link, is not yours, other users can write in it, or a folder record or grant is not valid. A registered root inside the project, one that is or holds the private state folder, one that the managed path rule rejects, and a store that cannot be read are held too. The slice is held back. | Run `ls -ld <folder>`, or follow the `Next:` line, which names the project root to use. |
 | `SLICE_SOURCE_UNSAFE` | A selected file or a folder on its path is a link, has more than one link, is not yours, can be written by others, or two names differ only in case. The slice is held back. | Run `ls -l <path>`. |
 | `SLICE_EMPTY` | The slice selects no file, and an empty index would give an agent nothing. The slice is held back. | Widen `include`, then run `bowerloom apply`. |
 | `SLICE_TOO_LARGE` | The slice selects more than `maxFiles` files, reads more than 32 MiB, walks more than 8,192 entries or 16 levels, or its index passes 64 KiB. The slice is held back. | Narrow the slice, or set `summary: none`, then run `bowerloom apply`. |
@@ -225,6 +225,13 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `GUARD_ROOT_MISSING` | The folder of a slice cannot be found, or it changed since `apply`. The guard blocked every call. | Run `bowerloom apply`. |
 | `GUARD_PROJECT_MISMATCH` | The project path or id in the agent copy matches no project that manages the agent. The guard blocked every call. | Run `bowerloom apply` in the project that holds `.claude/agents/<role>.md`. |
 | `GUARD_INTERNAL_ERROR` | The guard met an error it did not expect, such as a folder it may not read, a link loop, or a name that is too long. It blocked the call. | Run `claude --debug`, then `bowerloom apply`. |
+| `FOLDER_NAME_INVALID` | A folder name is lower-case letters and digits in words joined by single hyphens, at most 64 characters. The name becomes a file name in your store. | Run `bowerloom help context`. |
+| `FOLDER_EXISTS` | Your store already has a folder with that name, or one that differs only in case. Each registered folder needs its own name. | Run `bowerloom folder list`. |
+| `FOLDER_NOT_FOUND` | The store or the record is absent. Only a registered folder can be used or removed. | Run `bowerloom folder list`. |
+| `FOLDER_UNSAFE` | The folder is missing, is not below your home folder, is your home folder, is a link, is not yours, can be written by others, has a hidden segment, touches the store, or its record is not a plain file. Bowerloom reads only folders that you own and that no other user can change. | Run `ls -ld <folder>`. |
+| `FOLDER_IN_CLOUD` | The folder is in an iCloud or cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe. | Move the folder, for example `mv <folder> ~/Projects/`. |
+| `FOLDER_NOT_ALLOWED` | This project is not allowed to read registered folder `<name>`. A registered folder is shared with the projects you allow, one by one. A slice that names it is held back, and `folder deny` refuses when the project has no grant. | Run `bowerloom folder allow <folder-name>` inside the project. |
+| `FOLDER_INVALID` | A folder record in your store has wrong content. Bowerloom reads folder records strictly, so a hand edit can break one. | Run `bowerloom folder list`. |
 | `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocked the call and exited 2. | Run `claude --debug`. |
 
 ## Request-file skills refusals

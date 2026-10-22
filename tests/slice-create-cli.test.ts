@@ -9,7 +9,7 @@ import { sliceTemplate } from '../packages/context-slices/src/render.js';
 import { folder, run, sliceProject, revisionIn } from './support/slice-project.js';
 
 const errorOf = (stderr: string) => (JSON.parse(stderr) as { error: { code: string; message: string } }).error;
-const USAGE = 'Use bowerloom slice create <name> [--root <folder>] [--include <pattern>]..., with optional --approve <revision> and --json.';
+const USAGE = 'Use bowerloom slice create <name> [--root <folder>] [--registered <folder-name>] [--include <pattern>]..., with optional --approve <revision> and --json.';
 const heading = (() => { const r = readInstalledRelease(); return `Bowerloom ${r.version}: open beta\n${r.execution}\n\n`; })();
 
 test('1. slice create wiki prints the plan and exits 3', t => {
@@ -44,8 +44,8 @@ test('5. slice create wiki --team a exits 2, and so do a repeated flag and a bad
   for (const args of [['--team', 'a'], ['--global'], ['--root', 'a', '--root', 'b'], ['--root', '../x'], ['--root', '.hidden'], ['--include', '[x]'], ['--include', '/abs'], ['--root'], ['--include']]) {
     const r = run(p.dir, ['slice', 'create', 'other', ...args], p.home); assert.equal(r.status, 2, args.join(' ') + r.stdout); assert.equal(errorOf(r.stderr).code, 'USAGE');
   }
-  const r = run(p.dir, ['slice', 'create', 'other', '--registered', 'kb'], p.home); assert.equal(r.status, 2);
-  assert.equal(errorOf(r.stderr).message, '--registered needs bowerloom folder add, which this build does not have yet.');
+  const r = run(p.dir, ['slice', 'create', 'other', '--registered', 'kb'], p.home); assert.equal(r.status, 1, 'a name the store does not hold');
+  assert.equal(errorOf(r.stderr).code, 'FOLDER_NOT_FOUND');
   assert.equal(run(p.dir, ['slice', 'create', 'prompt-x'], p.home).status, 1);
 });
 test('6. help slice prints TOPICS.context', t => {

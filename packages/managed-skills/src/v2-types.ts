@@ -23,13 +23,26 @@ export interface ItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: str
  * listed slice whose root resolves. Null when no slice of the agent is guarded.
  */
 export interface AgentGuardSource { slices: string[]; roots: string[] }
-/** Where a slice reads from. Registered folders outside the project arrive with the second part of spec 05. */
-export type SliceRequestRoot = { kind: 'project' };
+/** The device, inode, and birth time of a folder, as decimal strings. */
+export interface RootIdentity { device: string; inode: string; birthtimeNs: string }
+/**
+ * Where a slice reads from: the project, or a registered folder outside it (spec 05, Part B). A registered root names the
+ * real path of the root folder (the registered folder joined with the slice's path) and its identity, so the plan binds
+ * the folder it read.
+ */
+export type SliceRequestRoot = { kind: 'project' } | { kind: 'registered'; name: string; dir: string; identity: RootIdentity };
+/**
+ * How the planner finds a registered root: the store lookup of project-context, passed in because managed-skills reads no
+ * store. It returns the root, or the hold of the slice.
+ */
+export type RegisteredLookup = (name: string, path: string) =>
+  | { ok: true; dir: string; identity: RootIdentity; recordSha256: string }
+  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string };
 export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string }
   | { kind: 'agent'; team: string; name: string; guard: AgentGuardSource | null } | { kind: 'slice'; name: string; root: SliceRequestRoot }
   | { kind: 'store'; path: string; storeDir: string } | { kind: 'store-prompt'; name: string; storeDir: string };
 /** The root and guard mode a slice's catalog records. It holds no absolute path. */
-export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string };
+export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string; id: string };
 export interface LegacyRef { stateDir: string; operationKey: string }
 export interface ManagedItemRequest {
   operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef; harnesses: Harness[];

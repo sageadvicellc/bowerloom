@@ -100,7 +100,7 @@ bowerloom team create <name> [--profile engineer|founder|research] [--global] [-
 bowerloom skill create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
 bowerloom prompt create <name> [--team <team>]... [--global] [--approve <revision>] [--json]
 bowerloom team adopt <id> [--approve <revision>] [--json]
-bowerloom slice create <name> [--root <folder>] [--include <pattern>]... [--approve <revision>] [--json]
+bowerloom slice create <name> [--root <folder>] [--registered <folder-name>] [--include <pattern>]... [--approve <revision>] [--json]
 ```
 
 `team adopt` copies a team from your store into this project, at `.bowerloom/teams/<id>`, and switches `bowerloom.json` to the project copy. The project then owns the copy; later store changes do not reach it. In a project with `bowerloom.json`, the create commands also add the new skill, prompt, or team to it. A context slice is a project item only: `bowerloom.json`, the store, and the lock never hold it.
@@ -109,7 +109,7 @@ Agents use these commands most. They write inside `.bowerloom` only, or inside y
 
 `--global` creates the item in your store, `~/.bowerloom`, and not in a project. It works from any folder and never looks for a project. The first `--global` write makes the store, and the plan says so first. The store holds definitions only, and a project picks store items with `bowerloom use`. With `--global`, `--team` names a team in the store. A team made with `--global` is built from a fixed store brief and the profile you choose, and it does not read a project brief. A store that Bowerloom did not make refuses with `STORE_INVALID`, and Bowerloom never takes it over. [Create teams, skills, and prompts](/docs/guides/create-items/) explains each one.
 
-`slice create` writes `.bowerloom/slices/<name>.yaml`, or registers that file when it is already there. A slice belongs to its project, so it takes no `--global`. [Context slices for agents](/docs/guides/context-slices/) explains slices.
+`slice create` writes `.bowerloom/slices/<name>.yaml`, or registers that file when it is already there. A slice belongs to its project, so it takes no `--global`. With `--registered <folder-name>`, `--root` is a folder inside that registered folder, and a name that the store does not hold refuses `FOLDER_NOT_FOUND`. [Context slices for agents](/docs/guides/context-slices/) explains slices.
 
 ## Context
 
@@ -120,6 +120,18 @@ bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] 
 ```
 
 `context show` prints the files a slice selects and the index skill that `apply` writes for it. `context measure` compares what each agent loads at start with the same agent loaded with every `.md` file of a baseline folder. Bytes are exact and tokens are an estimate. Both read only and use no network. `context guard` is the read guard that `apply` adds to an agent with slices. Claude Code runs it as `bowerloom-guard`, a second command of the package, before each Read, Grep, and Glob of that agent. The hook form reads the hook input on standard input and prints a deny line or nothing. With `--explain` it prints what the guard decides for one path. See [Context slices for agents](/docs/guides/context-slices/#the-read-guard).
+
+## Registered folders
+
+```text
+bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]
+bowerloom folder allow <folder-name> [--approve <revision>] [--json]
+bowerloom folder deny <folder-name> [--approve <revision>] [--json]
+bowerloom folder list [--json]
+bowerloom folder remove <folder-name> [--approve <revision>] [--json]
+```
+
+A registered folder is a folder outside the project, such as a knowledge base, that a slice can select from. The record lives in your store, at `~/.bowerloom/folders/<folder-name>.json`, and names the folder as a path below your home folder. `add`, `list`, and `remove` work from any folder and never look for a project. `allow` and `deny` run inside a project: `allow` shows a plan that prints the project and the absolute folder, then records a grant for that project only, and a slice in a project without a grant is held with `FOLDER_NOT_ALLOWED`. `add`, `allow`, `deny`, and `remove` show a plan first and write only the store. `folder list` reads only and prints `ready`, `missing`, or `refused (<code>)` for each folder; with `--json` it prints the format `bowerloom/folder-list/v1beta1`. Bowerloom reads a registered folder and never writes it. [Context slices for agents](/docs/guides/context-slices/#registered-folders) lists the rules a folder must meet.
 
 ## Apply
 

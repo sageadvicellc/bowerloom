@@ -16,14 +16,14 @@ export const hash = b => createHash('sha256').update(b).digest('hex');
 export const signal = () => new AbortController().signal;
 
 /** A startup project plus a private state root, both under a fresh folder in HOME. */
-export async function agentProject(t) {
-  const home = fs.realpathSync(os.homedir()), base = fs.mkdtempSync(path.join(home, '.bowerloom-agents-')); fs.chmodSync(base, 0o700);
+export async function agentProject(t, prefix = '.bowerloom-agents-') {
+  const home = fs.realpathSync(os.homedir()), base = fs.mkdtempSync(path.join(home, prefix)); fs.chmodSync(base, 0o700);
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const projectDir = path.join(base, 'project'); fs.mkdirSync(projectDir, { mode: 0o755 });
   const startup = { mode: 'existing', targetDir: projectDir, brief: { projectName: 'Studio handbook', goal: 'Prepare a fictional onboarding kit for an independent design studio.', profile: 'founder' } };
   await applyStartup(startup, (await planStartup(startup)).revision);
   const stateRoot = path.join(base, 'state', 'bowerloom'), project = () => discoverProject(projectDir, home);
-  const input = (harnesses = ['claude', 'codex'], extra = {}) => ({ project: project(), stateRoot, harnesses, team: null, ...extra });
+  const input = (harnesses = ['claude', 'codex'], extra = {}) => ({ project: project(), stateRoot, harnesses, team: null, home, ...extra });
   const itemsRoot = path.join(stateRoot, project().projectId, 'items');
   return { home, base, projectDir, stateRoot, project, input, itemsRoot, bowerloom: path.join(projectDir, '.bowerloom') };
 }
