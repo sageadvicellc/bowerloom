@@ -77,12 +77,12 @@ test('the short help lists only commands that exist at this commit, and each has
   const root = folder(t);
   const listed = [...short.matchAll(/^ {2}bowerloom (\w+)/gm)].map(m => m[1]!);
   assert.deepEqual([...new Set(listed)].sort(), ['apply', 'help', 'ls', 'prompt', 'skill', 'skills', 'status', 'team', 'up']);
-  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
+  for (const name of ['init', 'ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store', 'lock', 'unuse', 'use']) { const r = run(root, ['help', name]); assert.equal(r.status, 0, name + r.stderr); assert.match(r.stdout, new RegExp(`bowerloom ${name}`)); }
 });
 
 test('help <command> and <command> --help agree, and an unknown topic is a usage error', t => {
   const root = folder(t);
-  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
+  for (const name of ['ls', 'status', 'skills', 'team', 'skill', 'prompt', 'up', 'apply', 'store', 'lock', 'unuse', 'use']) { const a = run(root, ['help', name]), b = run(root, [name, '--help']); assert.equal(a.status, 0); assert.equal(a.stdout, b.stdout, name); assert.ok(a.stdout.startsWith(`Bowerloom ${release.version}:`)); }
   assert.equal(run(root, ['help', 'init']).stdout, run(root, ['init', '--help']).stdout);
   const unknown = run(root, ['help', 'nonsense']); assert.equal(unknown.status, 2); assert.equal(unknown.stdout, '');
   assert.equal(JSON.parse(unknown.stderr).error.code, 'USAGE');

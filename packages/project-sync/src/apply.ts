@@ -28,6 +28,7 @@ import type { GitAcquisitionPlan } from '../../skill-sources/src/git.js';
 import { ManagedSkillError, absent, directory, exists, stablePins } from '../../managed-skills/src/observed.js';
 import type { Identity } from '../../managed-skills/src/observed-types.js';
 import { ownSurface } from '../../managed-skills/src/v2-observed.js';
+import { readLocalPrompt, readLocalSkill } from '../../managed-skills/src/local-source.js';
 import type { ItemSource, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { withCacheLock, withProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
@@ -39,15 +40,23 @@ import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
 import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
+import { fetchStoreGit, readStoreCache } from './store-git.js';
+import { declaredAllowedTools } from './notices.js';
+import { createBowerloomFolder } from '../../project-config/src/folder.js';
+import type { ProjectContext } from '../../project-context/src/types.js';
 
-export const SYNC_RESULT_FORMAT = 'bowerloom/skills-sync-result/v1beta1' as const;
+export const SYNC_RESULT_FORMAT = 'bowerloom/skills-sync-result/v1beta2' as const;
+/** Spec 06, 4.8: each applied, held and up-to-date entry names where it is defined and where its bytes came from. */
+export interface ResultOrigin { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }
 export interface SyncResult {
   format: typeof SYNC_RESULT_FORMAT; planRevision: string;
-  applied: { id: string; action: 'install' | 'update'; receiptRevision: string }[];
-  held: { id: string; code: string; next: string }[];
-  upToDate: string[]; orphaned: string[]; fetched: string[];
+  applied: ({ id: string; action: 'install' | 'update'; receiptRevision: string } & ResultOrigin)[];
+  held: ({ id: string; code: string; next: string } & ResultOrigin)[];
+  upToDate: ({ id: string } & ResultOrigin)[]; orphaned: string[]; fetched: string[];
   executionAuthorized: false;
 }
+/** The hold of a lock-fetched item whose bytes give a notice (spec 06, 3.16, decision A). */
+export const reviewHold = (): { code: string; next: string } => ({ code: 'ITEM_REVIEW_REQUIRED', next: 'Run bowerloom apply --frozen again to review it.' });
 const HEX64 = /^[a-f0-9]{64}$/;
 const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
 const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
@@ -58,7 +67,7 @@ const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The 
  * A shared folder (the state root, a folder above it, or the machine cache) that another project's run created
  * meanwhile is taken as it is, once it passes the same check: a real folder of this user, mode 0700.
  */
-export function createPrivateFolders(plan: Pick<SyncPlan, 'privateState'>, held: HeldProjectLock, dir: string): void {
+export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string): void {
   try {
     const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
     for (const p of plan.privateState.create) {
@@ -69,7 +78,7 @@ export function createPrivateFolders(plan: Pick<SyncPlan, 'privateState'>, held:
       directory(p, true);
       const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     }
-    const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot]);
+    const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot, ...(plan.privateState.storeCacheRoot ? [plan.privateState.storeCacheRoot] : [])]);
     for (const pin of plan.privateState.pins) if (!same(directory(pin.path, own.has(pin.path)), pin.identity)) throw syncError('SKILLS_STATE_UNSAFE');
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
@@ -134,6 +143,26 @@ export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup:
   return { root, operationId, expectedSnapshotRevision: inspected.snapshotRevision, expectedReceiptRevision: inspected.receipt.revision };
 }
 
+/** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
+export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps): Promise<{ dir: string; fetched: boolean }> {
+  const pin = item.lockPin;
+  if (pin === null) throw stale();
+  let cached: { dir: string } | null = null;
+  try { cached = readStoreCache(privateState.storeCacheRoot, item.kind, item.id, pin.hash); } catch { cached = null; }
+  if (cached !== null) return { dir: cached.dir, fetched: false };
+  return fetchStoreGit({ kind: item.kind, id: item.id, requestDigest: item.requestDigest, lockPin: pin }, privateState, hosts, { signal: deps.signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}) });
+}
+/** The text of one file of a store cache folder, read with the store reader. */
+function storeText(project: string, kind: 'skill' | 'prompt', id: string, dir: string): string {
+  const read = kind === 'skill' ? readLocalSkill(project, 'skills/' + id, () => {}, { bowerloom: dir, origin: 'store' }) : readLocalPrompt(project, id, () => {}, { bowerloom: dir, origin: 'store' });
+  return read.files.find(f => f.path === (kind === 'skill' ? 'SKILL.md' : `${id}.md`))?.text ?? '';
+}
+/** True when a skill fetched in this run declares allowed-tools that the approved plan did not show (decision A). */
+export function needsReview(project: string, item: SyncItem, dir: string): boolean {
+  return item.allowedTools === undefined && declaredAllowedTools(storeText(project, 'skill', item.id, dir)) !== undefined;
+}
+export { storeText };
+
 /** The child request of one item. Every field comes from the plan this run computed. */
 export function childRequest(plan: SyncPlan, item: SyncItem, source: ItemSource): ManagedItemRequest {
   return {
@@ -154,7 +183,7 @@ export function checkChild(dir: string, item: SyncItem, pinned: PinnedRequest | 
   if (pinned) {
     const r = pinned.request;
     if (!same(closure.skill, r.skill) || !same(closure.license, r.license) || !same(closure.references, r.references) || !receiptMatches(pinned, { source: closure.source, skill: closure.skill, inventory: r.files, license: closure.license, references: closure.references } as unknown as AcquiredSkillCacheReceipt)) throw mismatch(item.id);
-  } else if (!same(closure.source, { kind: 'local', path: 'skills/' + item.id }) || closure.skill !== null) throw mismatch(item.id);
+  } else if (!same(closure.source, { kind: item.origin === 'store' ? 'store' : 'local', path: 'skills/' + item.id }) || closure.skill !== null) throw mismatch(item.id);
   for (const m of c.material) if (m.id === 'canonical' || m.id === 'projection-claude' || m.id === 'projection-codex') {
     if (!same(m.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: Buffer.byteLength(f.text) })), item.expected.files)) throw mismatch(item.id);
   }
@@ -199,20 +228,31 @@ function childFailure(error: unknown, id: string, done: string[], rerun: Rerun):
 /** One child of a locked run: the item (its id names its private folder), its request and its phase B plan. */
 export interface Child { item: { id: string; action: SyncItem['action'] }; req: ManagedItemRequest; plan: ManagedItemPlan }
 
+/** What phase A gives phase B: the source of each actionable skill, what was fetched, and the items held for review. */
+export interface SkillSources { sources: Map<string, ItemSource>; pins: Map<string, PinnedRequest>; fetched: string[]; review: string[] }
 /**
- * Phases A and B for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching
- * into the private cache, then build and check every child plan. Neither phase writes in the project.
+ * Phase A for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching into the
+ * private caches. No project write. A lock-fetched authored skill whose SKILL.md declares allowed-tools that the plan did
+ * not show is held for review (ITEM_REVIEW_REQUIRED) and gets no child.
  */
-export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<{ children: Child[]; fetched: string[] }> {
+export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = 'bowerloom skills sync'): Promise<SkillSources> {
   const dir = plan.project.dir, work = plan.items.filter(isActionable);
-  // Phase A: fetch into the private cache. No project write.
-  const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [];
+  const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [], review: string[] = [];
   for (const item of work) {
     const entry = entries.get(item.id);
     if (!entry) throw stale();
-    if (entry.source.kind === 'local') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
-    const pinned = entryRequest(entry as PinnedEntry); pins.set(item.id, pinned);
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
+    if (entry.source.kind === 'local') {
+      if (item.origin === 'project') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
+      if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: plan.store.dir }); continue; }
+      held.assertHeld(dir);
+      const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps);
+      if (got.fetched) fetched.push(item.id);
+      if (got.fetched && needsReview(dir, item, got.dir)) { review.push(item.id); continue; }
+      sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: got.dir });
+      continue;
+    }
+    const pinned = entryRequest(entry as PinnedEntry); pins.set(item.id, pinned);
     if (item.cache === null) throw stale();
     let found = item.cache;
     if (found.status === 'needs-fetch') {
@@ -222,15 +262,34 @@ export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<
     }
     sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found) });
   }
-  // Phase B: every child plan, checked against the bindings. No project write.
-  const children: Child[] = [];
+  return { sources, pins, fetched, review };
+}
+/** Phase B: every child plan of the skills phase A gave a source, checked against the bindings. No project write. */
+export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<Child[]> {
+  const work = plan.items.filter(isActionable).filter(i => got.sources.has(i.id)), children: Child[] = [];
   for (const item of work) {
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
-    const req = childRequest(plan, item, sources.get(item.id)!);
+    const req = childRequest(plan, item, got.sources.get(item.id)!);
     let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) { if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun); throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`); }
-    children.push({ item, req, plan: checkChild(plan.project.dir, item, pins.get(item.id) ?? null, req, child) });
+    children.push({ item, req, plan: checkChild(plan.project.dir, item, got.pins.get(item.id) ?? null, req, child) });
   }
-  return { children, fetched };
+  return children;
+}
+/**
+ * Phases A and B for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching
+ * into the private cache, then build and check every child plan. Neither phase writes in the project.
+ */
+export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<{ children: Child[]; fetched: string[]; review: string[] }> {
+  const got = await fetchSkillSources(plan, entries, held, deps, rerun);
+  return { children: await planSkillChildren(plan, got, deps, managed, rerun), fetched: got.fetched, review: got.review };
+}
+/**
+ * Spec 06, 3.4: a config-only project gets `.bowerloom` after phase A and before phase B, under the project lock, when the
+ * run has work. Returns the context to use for the rest of the run.
+ */
+export function bowerloomBeforePhaseB(project: ProjectContext, plan: { bowerloomFolder: 'present' | 'create' }, held: HeldProjectLock, work: boolean): ProjectContext {
+  if (plan.bowerloomFolder !== 'create' || !work) return project;
+  return createBowerloomFolder(project, held);
 }
 
 /**
@@ -238,8 +297,9 @@ export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<
  * person's interrupt is read only here, between children. `ignoreExact` is true when the shared ignore file was in
  * place when the run planned.
  */
-export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = 'bowerloom skills sync'): Promise<SyncResult['applied']> {
-  const applied: SyncResult['applied'] = [], created = new Map<string, Identity>(); let ignoreCreated = ignoreExact;
+export interface AppliedChild { id: string; action: 'install' | 'update'; receiptRevision: string }
+export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = 'bowerloom skills sync'): Promise<AppliedChild[]> {
+  const applied: AppliedChild[] = [], created = new Map<string, Identity>(); let ignoreCreated = ignoreExact;
   for (const [index, child] of children.entries()) {
     if (signal.aborted) throw interrupted(applied.map(a => a.id), children.slice(index).map(c => c.item.id), rerun);
     held.assertHeld(dir);
@@ -259,6 +319,19 @@ export async function applyChildren(children: readonly Child[], held: HeldProjec
   return applied;
 }
 
+/** The origin fields of a plan item, for a result entry. */
+export const originOf = (i: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }): ResultOrigin => ({ origin: i.origin, resolvedFrom: i.resolvedFrom });
+/** Fetches the authored lock items a plan puts in the store cache only (3.16): prompts for skills sync, teams for a frozen run. */
+export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[] }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps): Promise<string[]> {
+  const fetched: string[] = [];
+  for (const f of plan.storeFetch) {
+    held.assertHeld(plan.project.dir);
+    const got = await authoredFolder({ kind: f.kind, id: f.id, requestDigest: f.lockPin.hash, lockPin: f.lockPin }, plan.privateState, plan.network.hosts, deps);
+    if (got.fetched) fetched.push(`${f.kind} ${f.id}`);
+  }
+  return fetched;
+}
+
 /** Applies an approved sync plan. `revision` must be the revision this run computes again under the lock. */
 export async function applySync(input: SyncInput, revision: string, deps: SyncDeps): Promise<SyncResult> {
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw stale();
@@ -274,13 +347,19 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
       createPrivateFolders(plan, held, dir);
-      const { children, fetched } = await prepareSkillChildren(plan, entries, held, deps, managed);
+      // Phase A: the private caches only.
+      const got = await fetchSkillSources(plan, entries, held, deps);
+      const stored = await fetchStoreOnly(plan, held, deps);
+      bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
+      const children = await planSkillChildren(plan, got, deps, managed);
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, deps.signal);
+      const byId = new Map(plan.items.map(i => [i.id, i]));
       return {
-        format: SYNC_RESULT_FORMAT, planRevision: plan.revision, applied,
-        held: plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next })),
-        upToDate: plan.items.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => i.id),
-        orphaned: plan.items.filter(i => i.state === 'orphaned').map(i => i.id), fetched, executionAuthorized: false,
+        format: SYNC_RESULT_FORMAT, planRevision: plan.revision,
+        applied: applied.map(a => ({ ...a, ...originOf(byId.get(a.id)!) })),
+        held: [...plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...got.review.map(id => ({ id, ...reviewHold(), ...originOf(byId.get(id)!) }))],
+        upToDate: plan.items.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ id: i.id, ...originOf(i) })),
+        orphaned: plan.items.filter(i => i.state === 'orphaned').map(i => i.id), fetched: [...got.fetched, ...stored], executionAuthorized: false,
       };
     });
   } catch (e) { throw outward(e); }

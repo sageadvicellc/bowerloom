@@ -62,6 +62,7 @@ export function renderCreateReview(plan: CreatePlan): string {
   const store = plan.scope === 'store', root = store ? '~/.bowerloom' : '.bowerloom';
   const where = (kind: string, id: string) => kind === 'prompt' ? `${root}/prompts/${id}.md` : `${root}/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
   if (plan.storeCreate) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  if (plan.bowerloomFolder === 'create') lines.push('Create .bowerloom (records of the copies). Its contents are git-ignored.');
   if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in ${root}/authoring`);
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);
@@ -86,6 +87,7 @@ export function renderCreateReview(plan: CreatePlan): string {
     if (store) { const added = plan.manifest.steps.at(-1); if (added) lines.push(`  skills.json: adds a local entry for ${added.id}`); }
     else lines.push(`  skills.json: adds a local entry; ${plan.manifest.before === null ? 'a new file' : `replaces the file with sha256 ${plan.manifest.before.sha256}`}`);
   }
+  if (plan.config && plan.item) lines.push(`bowerloom.json adds: ${plan.item.kind} ${plan.item.id} (project)`);
   lines.push('You and your agents own these files and can edit them.', store ? 'This writes the store only. It changes no project, and it installs nothing.' : 'This writes inside .bowerloom only. It starts no workers and runs nothing.');
   return lines.join('\n');
 }
@@ -114,7 +116,7 @@ export function createChange(project: ProjectContext, input: CreateInput): Plann
     revision: plan => plan.revision,
     review: renderCreateReview,
     async apply(revision: string): Promise<AuthoringReceipt> {
-      return withProjectLock(project.dir, controller.signal, async held => { verifyProjectPins(project); return applyCreate(input, revision, held); });
+      return withProjectLock(project.dir, controller.signal, async held => { verifyProjectPins(project); return applyCreate(input, revision, held, undefined, project); });
     },
   };
 }

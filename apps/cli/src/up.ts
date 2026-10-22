@@ -25,7 +25,11 @@ import { readAuthoringState } from '../../../packages/project-authoring/src/stat
 import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer } from '../../../packages/project-sync/src/index.js';
 import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
-import { readManifestState } from '../../../packages/skill-manifest/src/add.js';
+import { lstatSync } from 'node:fs';
+import { inspectStore } from '../../../packages/project-context/src/index.js';
+import { configRefusal, readConfig } from '../../../packages/project-config/src/index.js';
+import type { ProjectConfig } from '../../../packages/project-config/src/index.js';
+import { readStoreDefinitions, resolveProject } from '../../../packages/project-sync/src/index.js';
 import type { StartupPlan } from '../../../packages/startup/src/index.js';
 import { confirmAllowances, renderApplyReview, requireTerminal } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
@@ -110,6 +114,21 @@ function firstTeamName(project: ProjectContext): string {
   } catch { /* Refused below. */ }
   throw new DefinitionError('PROJECT_BRIEF_INVALID', 'The project brief, .bowerloom/brief.json, cannot be read, so Bowerloom cannot tell whether the team is first-team.');
 }
+/**
+ * Spec 06, 3.19: in a config project a team must be listed in bowerloom.json. A store team or a project team that is
+ * not listed refuses TEAM_NOT_SELECTED with its next step; a name no team has gets the team step.
+ */
+function configTeam(project: ProjectContext, home: string, value: string, config: ProjectConfig): UpTeam | null {
+  const listed = config.teams.find(t => t.id === value);
+  if (listed) return { id: value, name: value === FIRST_TEAM && lstatOk(join(project.dir, '.bowerloom', 'brief.json')) ? firstTeamName(project) : value };
+  const projectTeam = value === FIRST_TEAM ? lstatOk(join(project.dir, '.bowerloom', 'teams', FIRST_TEAM)) : (project.bowerloomIdentity !== null && (readAuthoringState(join(project.dir, '.bowerloom')).receipt?.value.items ?? []).some(i => i.kind === 'team' && i.id === value));
+  if (projectTeam) throw new DefinitionError('TEAM_NOT_SELECTED', `${configRefusal('TEAM_NOT_SELECTED').message} Next: bowerloom use team ${value} --project`);
+  let storeTeam = false;
+  try { const found = inspectStore(home); storeTeam = found.state === 'store' && readStoreDefinitions(found.context).teams.has(value); } catch { storeTeam = false; }
+  if (storeTeam) throw new DefinitionError('TEAM_NOT_SELECTED', `${configRefusal('TEAM_NOT_SELECTED').message} Next: bowerloom use team ${value}`);
+  return null;
+}
+const lstatOk = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
 /** The team the --team value names, or null when it names no team of this project yet. */
 function resolveTeam(project: ProjectContext, value: string): UpTeam | null {
   const display = value === FIRST_TEAM ? null : firstTeamName(project);
@@ -122,7 +141,8 @@ function resolveTeam(project: ProjectContext, value: string): UpTeam | null {
 export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   let project: ProjectContext;
   try { project = discoverProject(ctx.cwd, ctx.home); } catch (e) { if (codeOf(e) === 'PROJECT_NOT_FOUND') return initStep(ctx); throw e; }
-  const team = resolveTeam(project, ctx.team);
+  const read = readConfig(project);
+  const team = read.state === 'valid' ? configTeam(project, ctx.home, ctx.team, read.config) : resolveTeam(project, ctx.team);
   if (team === null) {
     const created: UpTeam = { id: ctx.team, name: ctx.team };
     return { step: 'team', team: created, change: wrap('team', created, createChange(project, { kind: 'team', project: project.dir, name: ctx.team }), () => `Next step: team. Create team ${ctx.team} for this project.`) };
@@ -131,8 +151,10 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   // F' code review A: a created team whose folder is gone stops here, with its restore step. The sync planner would
   // refuse it TEAM_NOT_FOUND, and team create would refuse TEAM_EXISTS, so no other step can help.
   if (held.some(i => i.kind === 'team' && i.id === team.id)) return { step: 'held', team, change: null, held };
-  if (readManifestState(project.dir).file !== null) {
-    const input = () => ({ project, stateRoot, team: team.id, offline: false });
+  // Spec 06, 3.19: the sync step runs when the effective skill list is not empty.
+  const resolved = resolveProject({ project, home: ctx.home, frozen: false });
+  if (resolved.manifest !== null && resolved.manifest.skills.length > 0) {
+    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false });
     const plan = await planSync(input());
     held.push(...planHolds(plan.items));
     if (plan.items.some(i => i.action === 'install' || i.action === 'update')) {
@@ -143,7 +165,7 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, home: ctx.home, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
   if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
@@ -225,6 +247,8 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   if (parsed.allow.length) requireTerminal(io, approval.json);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
+  // Spec 06, 3.19: one note for a missing or disagreeing lock.
+  if (!approval.json) { try { const project = discoverProject(cwd, home), r = resolveProject({ project, home, frozen: false }); if (r.lock.state === 'absent') write('Note: bowerloom.lock.json is missing.\n'); else if (r.lock.state === 'mismatch') write('Note: bowerloom.lock.json does not match bowerloom.json.\n'); } catch { /* No project yet, or the step names the refusal. */ } }
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.
   if (next.step !== 'init' && (ctx.goal !== null || ctx.name !== null) && !approval.json) write('Note: this project is set up already, so up does not use --goal or --name. The project brief keeps its goal and name.\n');
   if (approval.approve !== undefined) {

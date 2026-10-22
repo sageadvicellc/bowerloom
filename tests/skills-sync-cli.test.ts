@@ -66,13 +66,13 @@ test('skills sync: exit 3 shows the plan and writes nothing; --approve installs 
   assert.equal(shown.status, 3, shown.stderr); assert.equal(shown.stderr, '');
   if (EXIT3_OUTPUT_FILE) writeFileSync(EXIT3_OUTPUT_FILE, shown.stdout);
   assert.match(shown.stdout, /^Sync skills from \.bowerloom\/skills\.json for Claude Code and Codex$/m);
-  assert.match(shown.stdout, /^ {2}synthetic-db-collections +install npm @synthetic\/db-skills@0\.0\.1:skills\/synthetic-db\/collections, fetched from registry\.npmjs\.org$/m);
-  assert.match(shown.stdout, /^ {2}house-style +install +your skill in \.bowerloom\/skills\/house-style$/m);
-  assert.match(shown.stdout, /^Network: reads api\.github\.com and registry\.npmjs\.org for 2 skills, public and without credentials\./m);
+  assert.match(shown.stdout, /^ {2}synthetic-db-collections +install npm @synthetic\/db-skills@0\.0\.1:skills\/synthetic-db\/collections, fetched from registry\.npmjs\.org {2}\[project\]$/m);
+  assert.match(shown.stdout, /^ {2}house-style +install +your skill in \.bowerloom\/skills\/house-style {2}\[project\]$/m);
+  assert.match(shown.stdout, /^Network: reads api\.github\.com and registry\.npmjs\.org for 2 items, public and without credentials\. Bytes must match their pins or bowerloom\.lock\.json\./m);
   const revision = revisionIn(shown.stdout);
   assert.ok(shown.stdout.endsWith(`Approval required. Run the same command again with --approve ${revision}\n`));
   const json = run(p.dir, ['skills', 'sync', '--json'], p.serve); assert.equal(json.status, 3);
-  const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/skills-sync-plan/v1beta1');
+  const body = JSON.parse(json.stdout); assert.equal(body.code, 'APPROVAL_REQUIRED'); assert.equal(body.revision, revision); assert.equal(body.plan.format, 'bowerloom/skills-sync-plan/v1beta2');
   assert.equal(tree(p.dir), before); assert.equal(p.served().length, served, 'planning reads no network');
   const applied = run(p.dir, ['skills', 'sync', '--approve', revision], p.serve);
   assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, new RegExp(`^Applied plan ${revision}\\.$`, 'm'));

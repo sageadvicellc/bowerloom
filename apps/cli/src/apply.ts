@@ -16,9 +16,9 @@ import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
-import { harnessWords, itemLine, withInterrupt } from './sync.js';
+import { harnessWords, itemLine, sourceTag, withInterrupt } from './sync.js';
 
-const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]..., with optional --approve <revision> and --json.';
+const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
 const HARNESSES: Readonly<Record<string, Harness[]>> = { claude: ['claude'], codex: ['codex'], both: ['claude', 'codex'] };
 const NULL_PINS = revisionOf(null);
@@ -35,21 +35,24 @@ function skillLine(item: SyncItem, width: number): string[] {
 /** Review M6 finding 5: a prompt whose Claude Code command can grant tools or run shell lines is named, never quoted. */
 function noticeLine(item: PromptItem): string[] {
   const copies = item.action === 'install' || item.action === 'update';
-  if (!copies || !item.notices.length || !item.expected.surfaces.some(s => s.id === 'command-claude')) return [];
-  const what = [item.notices.includes('allowed-tools') ? 'sets allowed-tools in its frontmatter' : null,
-    item.notices.includes('hooks') ? 'registers hooks that keep running for the rest of the session' : null,
-    item.notices.includes('shell-lines') ? 'runs shell commands marked with !' : null].filter((w): w is string => w !== null)
+  const notices = item.notices;
+  if (!copies || notices === null || !notices.length || !item.expected.surfaces.some(s => s.id === 'command-claude')) return [];
+  const what = [notices.includes('allowed-tools') ? 'sets allowed-tools in its frontmatter' : null,
+    notices.includes('hooks') ? 'registers hooks that keep running for the rest of the session' : null,
+    notices.includes('shell-lines') ? 'runs shell commands marked with !' : null].filter((w): w is string => w !== null)
     .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
-  return [`  Note: prompt ${item.id} ${what}. Claude Code applies them when the command runs. Review .bowerloom/prompts/${item.id}.md.`];
+  const where = item.origin === 'store' ? (item.resolvedFrom === 'lock' && item.lockPin ? item.lockPin.remote.slice('https://'.length) : `~/.bowerloom/prompts/${item.id}.md`) : `.bowerloom/prompts/${item.id}.md`;
+  return [`  Note: prompt ${item.id} ${what}. Claude Code applies them when the command runs. Review ${where}.`];
 }
 function promptLine(item: PromptItem, width: number): string[] {
-  return [...promptState(item, width), ...noticeLine(item)];
+  const state = promptState(item, width), tag = item.origin == null ? '' : sourceTag({ ...item, lockPin: item.lockPin ?? null, kind: null, pin: null });
+  return [...(state.length ? [`${state[0]}${tag}`, ...state.slice(1)] : state), ...noticeLine(item)];
 }
 function promptState(item: PromptItem, width: number): string[] {
   const id = item.id.padEnd(width), where = ['command-claude', 'projection-codex'].flatMap(id => item.expected.surfaces.filter(s => s.id === id).map(s => s.path)).join(' and ');
   if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
   switch (item.state) {
-    case 'new': return [`  ${id} install prompt: ${where}`];
+    case 'new': return [`  ${id} install prompt: ${where}${item.notices === null ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
     case 'edited': return [`  ${id} update prompt: ${where}`];
     case 'harnesses-changed': return [`  ${id} add ${harnessWords(added(item.before))} copies`];
     case 'orphaned': return [`  ${id} kept: no longer a prompt of this project, and apply removes nothing`];
@@ -102,13 +105,18 @@ function places(harnesses: readonly Harness[]): string {
 export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude');
-  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width, terminal))];
+  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width, terminal)), ...(plan.storeFetch ?? []).map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`)];
+  const fetching = [...skills.filter(i => (i.action === 'install' || i.action === 'update') && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing')), ...plan.prompts.filter(p => (p.action === 'install' || p.action === 'update') && p.storeCache === 'missing'), ...(plan.storeFetch ?? []).filter(f => f.storeCache === 'missing')].length;
+  const network = !plan.frozen ? 'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.'
+    : fetching ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetching} ${fetching === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.` : 'Network: none now. Every item is on this machine.';
   return [
+    ...(plan.bowerloomFolder === 'create' && plan.actionable ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
     `${claude ? 'Apply skills, prompts, and agents for' : 'Apply skills and prompts for'} ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
-    ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    ...(lines.length ? lines : [plan.config != null ? '  Nothing is selected to apply yet.' : claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    ...(plan.notes ?? []),
     ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
     ...(plan.codexAgentsSkipped ? ['Codex agents are not projected in this beta. See the capability model design.'] : []),
-    'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.',
+    network,
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
@@ -125,15 +133,16 @@ function resultWords(result: ApplyResult): string {
 }
 
 /** Takes `--harness <claude|codex|both>` out of the words; the rest goes to the approval wrapper. */
-export function parseHarness(words: readonly string[]): { harnesses: Harness[]; rest: string[] } {
-  let harnesses: Harness[] | null = null; const rest: string[] = [];
+export function parseHarness(words: readonly string[]): { harnesses: Harness[]; rest: string[]; frozen: boolean } {
+  let harnesses: Harness[] | null = null, frozen = false; const rest: string[] = [];
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
-    if (word === '--harness') { const value = words[++i]; if (harnesses !== null || value === undefined || !Object.hasOwn(HARNESSES, value)) usage(); harnesses = [...HARNESSES[value!]!]; }
+    if (word === '--frozen') { if (frozen) usage(); frozen = true; }
+    else if (word === '--harness') { const value = words[++i]; if (harnesses !== null || value === undefined || !Object.hasOwn(HARNESSES, value)) usage(); harnesses = [...HARNESSES[value!]!]; }
     else if (word.startsWith('--harness=')) usage();
     else rest.push(word);
   }
-  return { harnesses: harnesses ?? [...HARNESSES.both!], rest };
+  return { harnesses: harnesses ?? [...HARNESSES.both!], rest, frozen };
 }
 
 /** Takes every `--allow-agent <role>:<64 hex>` out of the words (it repeats); the rest goes on. */
@@ -176,7 +185,7 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
-  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow });
+  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow });
   const first = await planProjectApply(input());
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {

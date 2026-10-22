@@ -16,3 +16,12 @@ export { planProjectApply, applyProjectApply, observeApply, APPLY_PLAN_FORMAT, A
 export type { ApplyInput, ApplyPlan, ApplyResult, ApplyItemRef } from './apply-project.js';
 export type { PromptItem, PromptState } from './prompts.js';
 export type { AgentItem, AgentState } from './agents.js';
+// Spec 06: the resolver, the config and lock changes, team adopt, and the store cache.
+export { resolveProject, readStoreDefinitions } from './resolve.js';
+export type { Resolved, ResolvedItem, StoreView, LockState } from './resolve.js';
+export { planConfigChange, applyConfigChange, planLockUpdate, applyLockUpdate, lockUpdateIsNoop, localItemRows, initialConfig, CONFIG_CHANGE_FORMAT, CONFIG_CHANGE_RESULT_FORMAT, LOCK_UPDATE_FORMAT, LOCK_UPDATE_RESULT_FORMAT } from './change.js';
+export type { ConfigChangePlan, ConfigChangeResult, LockUpdatePlan, LockUpdateResult, LockChange } from './change.js';
+export { planAdopt, applyAdopt, ADOPT_PLAN_FORMAT, ADOPT_RESULT_FORMAT, ADOPT_MISSING_NEXT } from './adopt.js';
+export type { AdoptPlan, AdoptResult } from './adopt.js';
+export { fetchStoreGit, writeStoreCache, readStoreCache, storeCacheKey, pruneName, PRUNE_NAME } from './store-git.js';
+export type { StoreFetch, StorePlanBinding } from './plan.js';

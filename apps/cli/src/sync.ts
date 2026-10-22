@@ -21,7 +21,7 @@ import { newCommandJson, plainText } from './human.js';
 import { allowedToolsLine, terminalIo } from './manifest.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
-const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>], with optional --approve <revision> and --json.';
+const SYNC_USAGE = 'Use bowerloom skills sync [--offline] [--team <team>] [--frozen], with optional --approve <revision> and --json.';
 const RECOVER_USAGE = 'Use bowerloom skills recover plan|apply --item <id> [--action resume|rollback|abandon], with optional --approve <revision> (apply only) and --json.';
 const MIGRATE_USAGE = 'Use bowerloom skills migrate plan|apply --state <earlier-state-folder>, with optional --approve <revision> (apply only) and --json.';
 const HARNESS_NAMES: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
@@ -39,9 +39,18 @@ function takeFlags(words: readonly string[], valued: readonly string[], plain: r
   return { values, flags, rest };
 }
 
+/** The source tag of 3.18: `[store]`, `[project]`, or `[store, from the lock: ...]`. Empty for an orphan. */
+export function sourceTag(item: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project'; lockPin: { remote: string } | null; kind?: string | null; pin?: string | null }): string {
+  if (item.origin === null || item.origin === undefined) return '';
+  if (item.origin === 'project') return '  [project]';
+  if (item.resolvedFrom !== 'lock') return '  [store]';
+  if (item.lockPin) return `  [store, from the lock: ${item.lockPin.remote.slice('https://'.length)}]`;
+  const pin = item.pin ?? '';
+  return item.kind === 'npm' ? `  [store, from the lock: npm ${pin.split(':')[0]}]` : `  [store, from the lock: github.com/${pin.split('@')[0]}]`;
+}
 /** One sync item in plain words, its id padded to `width`. `apply` (M6) reuses it. */
 export function itemLine(item: SyncItem, width: number): string[] {
-  const lines = itemLineBase(item, width);
+  const base = itemLineBase(item, width), lines = base.length ? [`${base[0]}${sourceTag(item)}`, ...base.slice(1)] : base;
   return item.allowedTools !== undefined && item.action !== 'hold' && item.state !== 'up-to-date' ? [...lines, `  ${''.padEnd(width)} ${allowedToolsLine(item.allowedTools).trim()}`] : lines;
 }
 function itemLineBase(item: SyncItem, width: number): string[] {
@@ -51,19 +60,27 @@ function itemLineBase(item: SyncItem, width: number): string[] {
   switch (item.state) {
     case 'up-to-date': return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
     case 'orphaned': return [`  ${id} kept: no longer in skills.json, and sync removes nothing`];
-    case 'local': return [`  ${id} ${item.action} your skill in .bowerloom/skills/${item.id}`];
+    case 'local': return [`  ${id} ${item.action} ${item.origin === 'store' ? (item.resolvedFrom === 'lock' ? `a skill from the store at ${item.lockPin!.remote.slice('https://'.length)}` : `your skill in ~/.bowerloom/skills/${item.id}`) : `your skill in .bowerloom/skills/${item.id}`}`];
     case 'pin-changed': return [`  ${id} update to ${pin}${how}`];
     case 'harnesses-changed': return [item.action === 'update' ? `  ${id} add ${harnessWords(item.harnesses)} copies` : `  ${id} kept for ${harnessWords(item.harnesses)}: removing a harness is not supported yet`];
-    default: return [`  ${id} install ${item.kind} ${pin}${how}`];
+    default:
+      // An authored skill from the lock: its places, and whether it is on this machine yet (3.16).
+      if (item.lockPin) return [`  ${id} install skill: ${item.expected.surfaces.filter(s => s.id === 'projection-claude' || s.id === 'projection-codex').map(s => s.path).join(' and ')}${item.storeCache === 'missing' ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
+      return [`  ${id} install ${item.kind} ${pin}${how}`];
   }
 }
 /** The sync plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderSyncReview(plan: SyncPlan): string {
-  const fetch = plan.items.filter(i => (i.action === 'install' || i.action === 'update') && i.cache?.status === 'needs-fetch');
+  const fetch = plan.items.filter(i => (i.action === 'install' || i.action === 'update') && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing'));
+  const stored = (plan.storeFetch ?? []).filter(f => f.storeCache === 'missing'), config = plan.config != null, n = fetch.length + stored.length;
+  const width = Math.max(0, ...plan.items.map(x => x.id.length), ...plan.storeFetch.map(f => f.id.length)) + 1;
   return [
-    `Sync skills from .bowerloom/skills.json for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
-    ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, Math.max(...plan.items.map(x => x.id.length)) + 1)) : ['  skills.json names no skill for this sync.']),
-    fetch.length ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetch.length} ${fetch.length === 1 ? 'skill' : 'skills'}, public and without credentials. Bytes must match their pins.`
+    ...(plan.bowerloomFolder === 'create' && plan.items.some(i => i.action === 'install' || i.action === 'update') ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
+    `${config ? 'Sync skills' : 'Sync skills from .bowerloom/skills.json'} for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
+    ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, width)) : [config ? '  Nothing is selected to sync yet.' : '  skills.json names no skill for this sync.']),
+    ...plan.storeFetch.map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),
+    ...plan.notes,
+    n ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.`
       : plan.network.hosts.length ? `Network: none now. Every pinned skill is in this machine's cache. Only if one is gone when this applies does sync read ${plan.network.hosts.join(' and ')} for it.` : 'Network: none.',
     `Skills cache: ${plan.privateState.cacheRoot}, shared by every project on this machine.`,
     `Private state: ${plan.privateState.root}${plan.privateState.create.length ? ' (new folders get mode 0700)' : ''}`,
@@ -125,12 +142,12 @@ function contextOf(cwd: string, home: string, env: NodeJS.ProcessEnv): { project
 
 /** `skills sync`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
 export async function runSyncCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: SyncDeps['acquirer'] = productionAcquirer): Promise<number> {
-  const { values, flags, rest } = takeFlags(args.slice(2), ['--team'], ['--offline'], SYNC_USAGE);
+  const { values, flags, rest } = takeFlags(args.slice(2), ['--team'], ['--offline', '--frozen'], SYNC_USAGE);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage(SYNC_USAGE);
   const team = values.get('--team') ?? null; if (team !== null && !isId(team)) usage(SYNC_USAGE);
-  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, team, offline: flags.has('--offline') });
+  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen') });
   const first = await planSync(input());
-  if (!actionable(first) && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
+  if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;
   const change: PlannedChange<SyncPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planSync(input()); },

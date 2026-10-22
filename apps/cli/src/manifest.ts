@@ -40,6 +40,8 @@ import { syncError } from '../../../packages/project-sync/src/refusal.js';
 import { readAuthoringState } from '../../../packages/project-authoring/src/state.js';
 import type { SeedResult } from '../../../packages/project-sync/src/seed.js';
 import { manifestRefusal } from '../../../packages/skill-manifest/src/refusal.js';
+import { configRefusal, readConfig, serializeConfig, writeGuardedFile } from '../../../packages/project-config/src/index.js';
+import { createHash } from 'node:crypto';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText, promptStopped } from './human.js';
@@ -154,6 +156,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
     `  skills.json: ${plan.before === null ? 'a new file' : `replaces the file with sha256 ${plan.before.sha256}`}`,
     ...(plan.cache ? [`  Cache: ${plan.cache.root} keeps the bytes checked here, so skills sync need not fetch them again.`] : []),
     ...(plan.scope === 'store' ? ['  Scope: store. A project picks this skill with bowerloom use.'] : []),
+    ...((plan as { config?: ConfigStep }).config ? [`bowerloom.json adds: skill ${entry.id} (project)`] : []),
     replace ? 'This records the new pin only. Nothing is installed or run. Run bowerloom skills sync to update the installed copies.' : 'This records the pin only. Nothing is installed or run.',
   ].join('\n');
 }
@@ -203,17 +206,26 @@ async function runAdd(words: readonly string[], cwd: string, home: string, io: A
     const next = { id, ...(teams.length ? { teams: [...teams] } : {}), ...content } as Entry;
     return args.replace ? { replace: next } : { add: next };
   };
+  // Spec 06, 3.8 item 9: in a project with bowerloom.json, the new id is added to it in the same plan. --replace leaves it.
+  const withConfig = (plan: ManifestChangePlan): ManifestChangePlan & { config?: ConfigStep } => {
+    if (args.replace || !project.configPresent || !('add' in plan.change)) return plan;
+    const config = configAddStep(project, plan.change.add.id);
+    return config === null ? plan : { ...plan, config, revision: sha256Hex(`${plan.revision}\n${config.after.sha256}`) };
+  };
   const change: PlannedChange<ManifestChangePlan> = {
-    async plan() { const add = await entry(); verifyProjectPins(project); return planManifestChange(project.dir, add, { cacheRoot }); },
+    async plan() { const add = await entry(); verifyProjectPins(project); return withConfig(planManifestChange(project.dir, add, { cacheRoot })); },
     revision: plan => plan.revision,
     review: renderAddReview,
     async apply(revision: string): Promise<ManifestChangeReceipt & { cache: SeedResult }> {
       const add = await entry();
       const { receipt, written } = await withProjectLock(project.dir, controller.signal, async held => {
         verifyProjectPins(project);
-        const again = planManifestChange(project.dir, add, { cacheRoot });
+        const inner = planManifestChange(project.dir, add, { cacheRoot }), again = withConfig(inner);
         if (again.revision !== revision) throw manifestRefusal('STALE_APPROVAL');
-        return { receipt: applyManifestChange(again, revision, held), written: ('replace' in again.change ? again.change.replace.to : again.change.add) as PinnedEntry };
+        const receipt = applyManifestChange(inner, inner.revision, held);
+        const cfg = (again as { config?: ConfigStep }).config;
+        if (cfg) writeGuardedFile(project.dir, 'bowerloom.json', cfg.text, cfg.before.sha256, held, '.bowerloom.json');
+        return { receipt, written: ('replace' in again.change ? again.change.replace.to : again.change.add) as PinnedEntry };
       });
       // The pin is written. The seed only adds to the cache, outside the project lock, and reports a failure.
       seed = await seedPin({ project, stateRoot }, written, (await resolved!).bytes, controller.signal);
@@ -298,6 +310,7 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
     verifyStorePins(found.context);
   } else {
     const project = discoverProject(cwd, home);
+    if (project.configPresent) return checkConfigMode(project, home, json, write);
     check = checkManifest(project.dir);
     verifyProjectPins(project);
   }
@@ -311,6 +324,52 @@ function runCheck(words: readonly string[], cwd: string, home: string, write: (t
     '',
   ].join('\n'));
   return 0;
+}
+
+/**
+ * `skills check` in a project with bowerloom.json (spec 06, 3.20): the project skills.json, if any, and the pinned store
+ * entries the config selects, offline. Each row ends with its source tag. No skills.json and no store pin is 0 skills.
+ */
+function checkConfigMode(project: ProjectContext, home: string, json: boolean, write: (text: string) => void): number {
+  const read = readConfig(project);
+  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  const state = readManifestState(project.dir, { allowAbsent: true });
+  const own = state.file ? checkManifest(project.dir) : null;
+  const rows = (own?.skills ?? []).map(s => ({ ...s, source: 'project' }));
+  const storeIds = read.config.skills.filter(e => e.source === 'store').map(e => e.id);
+  if (storeIds.length) {
+    const found = inspectStore(home);
+    if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
+    if (found.state === 'store') {
+      verifyStorePins(found.context);
+      const store = checkManifest(storeTarget(found.context.dir));
+      verifyStorePins(found.context);
+      rows.push(...store.skills.filter(s => storeIds.includes(s.id) && s.kind !== 'local').map(s => ({ ...s, source: 'store' })));
+    }
+  }
+  rows.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)));
+  const harnesses = [...read.config.harnesses];
+  const check = { format: own?.format ?? 'bowerloom/skills-manifest-check/v1beta2', valid: true, harnesses, skills: rows };
+  if (json) { write(newCommandJson(check)); return 0; }
+  const width = Math.max(0, ...rows.map(s => s.id.length)), harness: Readonly<Record<string, string>> = { claude: 'Claude Code', codex: 'Codex' };
+  write([
+    rows.length ? `skills.json is valid: ${rows.length} ${rows.length === 1 ? 'skill' : 'skills'}, for ${harnesses.map(h => harness[h] ?? h).join(' and ')}.` : 'skills.json is valid: 0 skills',
+    ...rows.map(s => `  ${s.id.padEnd(width)}  ${s.kind} ${s.pin}${s.teams ? `  (teams: ${s.teams.join(', ')})` : ''}  [${s.source}]`), '',
+  ].join('\n'));
+  return 0;
+}
+
+interface ConfigStep { before: { sha256: string; bytes: number }; after: { sha256: string; bytes: number }; text: string }
+const sha256Hex = (v: string): string => createHash('sha256').update(v).digest('hex');
+/** The config step of `skills add` (3.8 item 9): `{ id, source: "project" }`, with the duplicate and limit refusals. Null when already listed. */
+function configAddStep(project: ProjectContext, id: string): ConfigStep | null {
+  const read = readConfig(project);
+  if (read.state !== 'valid') throw configRefusal(read.state === 'invalid' ? read.code : 'CONFIG_INVALID');
+  const now = read.config.skills.find(e => e.id === id);
+  if (now?.source === 'store') throw configRefusal('CONFIG_DUPLICATE_ID', `bowerloom.json lists skill ${id} twice: once from store and once from project.`);
+  if (now) return null;
+  const text = serializeConfig({ ...read.config, skills: [...read.config.skills, { id, source: 'project' as const }].sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id))) });
+  return { before: { sha256: read.sha256, bytes: read.bytes }, after: { sha256: sha256Hex(text), bytes: Buffer.byteLength(text) }, text };
 }
 
 /** Runs `skills add` or `skills check` and returns the exit code: 0 done, 3 approval required. A refusal throws. */

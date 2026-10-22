@@ -25,13 +25,21 @@ import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { DefinitionError } from '../../contracts/src/index.js';
-import { applyChildren, createPrivateFolders, interrupted, prepareSkillChildren } from './apply.js';
+import { applyChildren, createPrivateFolders, interrupted } from './apply.js';
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
-import { bindPrivateState, checkProjectAncestry, ignoreCarrier, isActionable, observeSync, pendingRefusal, stateLayout } from './plan.js';
-import type { SyncItem, SyncPlan } from './plan.js';
-import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, registeredPrompts } from './prompts.js';
+import type { PublicTransport } from '../../skill-manifest/src/public-get.js';
+import { bindPrivateState, checkProjectAncestry, ignoreCarrier, isActionable, observeSync, offlineHold, pendingRefusal, requireReadableLock, stateLayout, storeBinding, storeCacheStatus } from './plan.js';
+import type { StoreFetch, StorePlanBinding, SyncItem, SyncPlan } from './plan.js';
+import { checkPromptChild, classifyPrompt, heldPrompt, orphanPrompt, promptRequest, registeredPrompts } from './prompts.js';
+import { promptNotices } from './notices.js';
+import { resolveProject } from './resolve.js';
+import type { Resolved } from './resolve.js';
+import { authoredFolder, bowerloomBeforePhaseB, fetchSkillSources, fetchStoreOnly, originOf, planSkillChildren, reviewHold, storeText } from './apply.js';
+import { productionAcquirer } from './deps.js';
+import { readConfig } from '../../project-config/src/config.js';
+import { homedir } from 'node:os';
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
@@ -63,6 +71,10 @@ export const APPLY_POINTER = applyPointer(['claude', 'codex']);
 
 export interface ApplyInput {
   project: ProjectContext; stateRoot: string;
+  /** The home folder: the store is `<home>/.bowerloom` (spec 06). */
+  home?: string;
+  /** `--frozen`: only what bowerloom.lock.json records; fetches what this machine lacks (spec 06, 3.16). */
+  frozen?: boolean;
   /** Sorted, unique, not empty: the harnesses to add copies for. */
   harnesses: Harness[];
   /** Only this team's skills and prompts (`up --team`). Null or absent: every skill and prompt. */
@@ -75,6 +87,15 @@ export interface ApplyInput {
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
   project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
+  /** Spec 06, 4.4. */
+  bowerloomFolder: 'present' | 'create'; frozen: boolean;
+  config: { sha256: string; bytes: number } | null; lock: { sha256: string; bytes: number } | null;
+  store: StorePlanBinding | null;
+  /** The hosts this run may contact: those of the skills sub-plan, and api.github.com for a locked authored prompt or team it fetches. */
+  network: { hosts: string[] };
+  /** Locked authored teams a frozen apply puts in the store cache, so that team adopt can read them. */
+  storeFetch: StoreFetch[];
+  notes: string[];
   harnesses: Harness[]; team: string | null;
   /** The offline `skills sync` plan of the same skills for these harnesses; null when there is no skills.json. */
   skills: SyncPlan | null;
@@ -85,14 +106,14 @@ export interface ApplyPlan {
   allow: string[];
   /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
-  privateState: { root: string; projectId: string; cacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
+  privateState: { root: string; projectId: string; cacheRoot: string; storeCacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
   managed: { ignore: 'absent' | 'exact' };
-  /** True when at least one skill, prompt or agent is installed or updated. */
+  /** True when at least one skill, prompt or agent is installed or updated, or a locked team is fetched. */
   actionable: boolean;
   pointer: string;
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
-export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent'; id: string }
+export interface ApplyItemRef { kind: 'skill' | 'prompt' | 'agent'; id: string; origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }
 export interface ApplyResult {
   format: typeof APPLY_RESULT_FORMAT; planRevision: string; harnesses: Harness[];
   applied: (ApplyItemRef & { action: 'install' | 'update'; receiptRevision: string })[];
@@ -126,46 +147,72 @@ function checkNames(skills: SyncItem[], prompts: PromptItem[], agents: AgentItem
   }
 }
 
-interface Observed { plan: ApplyPlan; entries: ReadonlyMap<string, Entry> }
+interface Observed { plan: ApplyPlan; entries: ReadonlyMap<string, Entry>; skillsPlan: SyncPlan | null }
+const FROZEN_LINE = 'Frozen: installing only what bowerloom.lock.json records.';
+/** The project teams `bowerloom.json` selects, for the agent projection (spec 06, 3.16 step 7). Null in legacy mode. */
+function selectedTeams(project: ProjectContext, resolved: Resolved | null): Set<string> | null {
+  if (resolved !== null) return resolved.mode === 'legacy' ? null : new Set(resolved.teams.filter(t => t.origin === 'project' && t.hold === null).map(t => t.id));
+  const read = readConfig(project);
+  return read.state === 'valid' ? new Set(read.config.teams.filter(t => t.source === 'project').map(t => t.id)) : read.state === 'absent' ? null : new Set();
+}
 /** Plans the apply. Reads only, and never the network. Every refusal here comes before any write anywhere. */
 export async function observeApply(input: ApplyInput): Promise<Observed> {
   try {
-    const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir;
+    const harnesses = harnessSet(input?.harnesses), team = input.team ?? null, project = input.project, dir = project.dir, frozen = input.frozen === true;
     if (team !== null && !isId(team)) throw manifestRefusal('TEAM_NOT_FOUND');
     checkProjectAncestry(project);
-    const agentsOnly = input.agentsOnly === true;
+    const agentsOnly = input.agentsOnly === true, home = input.home ?? homedir();
     if (!agentsOnly && legacyPresent(dir)) throw syncError('MANAGED_SKILL_LEGACY_PRESENT');
     if (!agentsOnly && (exists(join(dir, MARKER_V2)) || exists(temporary(join(dir, MARKER_V2))))) throw pendingRefusal(dir);
     if (!agentsOnly && exists(join(dir, '.bowerloom-revision.json'))) throw syncError('REVISION_PENDING');
     let ignore: 'absent' | 'exact' = 'exact';
     if (!agentsOnly) try { ignore = ignoreState(dir); } catch (e) { throw syncError(managedCode(e), 'The file .bowerloom/managed/.gitignore must hold exactly one line, a single *.'); }
     const layout = stateLayout(input);
-    // Skills: the sync planner, offline, for the chosen harnesses.
+    const resolved = agentsOnly ? null : resolveProject({ project, home, frozen });
+    if (resolved !== null) requireReadableLock(resolved);
+    // Skills: the sync planner, for the chosen harnesses. Offline unless frozen: a plain apply never fetches.
     let skills: SyncPlan | null = null, entries: ReadonlyMap<string, Entry> = new Map();
-    if (!agentsOnly && readManifestState(dir).file !== null) {
-      const observed = await observeSync({ project, stateRoot: input.stateRoot, team, offline: true, apply: { harnesses } });
+    if (resolved !== null && resolved.manifest !== null && (resolved.mode === 'legacy' || resolved.skills.length > 0)) {
+      const observed = await observeSync({ project, stateRoot: input.stateRoot, home, frozen, team, offline: !frozen, apply: { harnesses } }, resolved);
       skills = observed.plan; entries = observed.entries;
     }
-    // Prompts: every registered prompt of the team, then catalogs of prompts that are no longer registered.
-    const registered = agentsOnly ? [] : registeredPrompts(dir), prompts: PromptItem[] = registered
-      .filter(p => team === null || p.teams.length === 0 || p.teams.includes(team))
-      .map(p => classifyPrompt(dir, layout.itemsRoot, p.id, p.teams, harnesses));
+    // Prompts: legacy, every registered prompt of the team; config, every listed prompt of the team, from where it resolves.
+    const inTeam = (teams: readonly string[]) => team === null || teams.length === 0 || teams.includes(team);
+    const prompts: PromptItem[] = [];
+    let listedPrompts: string[] = [];
+    if (resolved !== null && resolved.mode === 'legacy') {
+      const registered = registeredPrompts(dir); listedPrompts = registered.map(p => p.id);
+      prompts.push(...registered.filter(p => inTeam(p.teams)).map(p => classifyPrompt(dir, layout.itemsRoot, p.id, p.teams, harnesses)));
+    } else if (resolved !== null) {
+      listedPrompts = resolved.prompts.map(p => p.id);
+      for (const r of resolved.prompts) {
+        if (!inTeam(r.teams)) continue;
+        if (r.hold !== null) { prompts.push(heldPrompt(dir, r.id, r.teams, harnesses, r.hold, r)); continue; }
+        const item = classifyPrompt(dir, layout.itemsRoot, r.id, r.teams, harnesses, { origin: r.origin, via: r.via, resolvedFrom: r.resolvedFrom, storeDir: resolved.store.context?.dir ?? null, lockPin: r.lockPin, storeCacheRoot: layout.storeCacheRoot });
+        // A plain apply never fetches: a prompt from the lock that this machine does not hold is held, and the others install.
+        if (!frozen && item.storeCache === 'missing' && (item.action === 'install' || item.action === 'update')) { item.action = 'hold'; item.hold = offlineHold('prompt', item.id); }
+        prompts.push(item);
+      }
+    }
     const catalogs = join(dir, MANAGED_ROOT, 'catalog');
     if (!agentsOnly && exists(catalogs)) for (const n of names(catalogs)) {
       const ref = catalogItem(n);
-      if (ref.kind === 'prompt' && !registered.some(p => p.id === ref.id)) prompts.push(orphanPrompt(dir, layout.itemsRoot, ref.id));
+      if (ref.kind === 'prompt' && !listedPrompts.includes(ref.id)) prompts.push(orphanPrompt(dir, layout.itemsRoot, ref.id));
     }
-    // Agents: every team folder is listed and checked whatever the harness and team say (spec 01a, section 3.6).
+    // Agents: every team folder is listed and checked whatever the harness and team say (spec 01a, section 3.6). In config
+    // mode only the project teams bowerloom.json selects project agents; a store team projects none in beta.3.
     const allow = [...new Set(input.allow ?? [])].sort();
     if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<the 64 hex characters of the agent file\'s sha256>.');
+    const selected = selectedTeams(project, resolved);
     const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
+    const scanned = scan.entries.filter(e => selected === null || (e.team !== null && selected.has(e.team)));
     if (claude) {
-      const planned = scan.entries.filter(e => team === null || e.team === team);
+      const planned = scanned.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
       agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
-        if (ref.kind === 'agent' && !scan.entries.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
+        if (ref.kind === 'agent' && !scanned.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
       }
       agents.sort((a, b) => Buffer.compare(Buffer.from(a.id), Buffer.from(b.id)) || Buffer.compare(Buffer.from(a.team ?? ''), Buffer.from(b.team ?? '')));
     }
@@ -178,23 +225,35 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       if (first) prompts.find(p => p.id === first.id)!.action = 'update';
       else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
     }
+    // A frozen run fetches each locked team the store cache lacks into the store cache, so that team adopt can read it.
+    const storeFetch: StoreFetch[] = frozen && resolved !== null ? resolved.teams.filter(t => t.resolvedFrom === 'lock' && t.lockPin !== null).map(t => ({ kind: 'team' as const, id: t.id, lockPin: t.lockPin!, storeCache: storeCacheStatus(layout, 'team', t.id, t.lockPin!.hash) })) : [];
     const promptWork = prompts.filter(promptActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
-    if (skillWork.length || promptWork.length || agentWork.length) {
-      create.push(...layout.missing.filter(p => p !== layout.cacheRoot));
+    const lockPrompts = promptWork.filter(p => p.resolvedFrom === 'lock');
+    const authoredFetch = (skills?.items ?? []).some(i => isActionable(i) && i.storeCache === 'missing') || lockPrompts.some(p => p.storeCache === 'missing') || storeFetch.some(f => f.storeCache === 'missing');
+    const needsFetch = (skills?.network.required ?? false) || authoredFetch;
+    if (skillWork.length || promptWork.length || agentWork.length || storeFetch.length) {
+      create.push(...layout.missing.filter(p => p === layout.cacheRoot ? needsFetch : p === layout.storeCacheRoot ? authoredFetch : true));
       for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
     }
+    const hosts = [...new Set([...(skills?.network.hosts ?? []), ...(frozen && (lockPrompts.length || storeFetch.length) ? ['api.github.com'] : [])])].sort();
+    const fromStore = (skills?.store ?? null) !== null || prompts.some(p => p.origin === 'store' && p.resolvedFrom === 'store');
     const body = {
       format: APPLY_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
+      bowerloomFolder: project.bowerloomIdentity === null ? 'create' as const : 'present' as const, frozen,
+      config: resolved?.config ?? null, lock: resolved && resolved.lock.sha256 !== null ? { sha256: resolved.lock.sha256, bytes: resolved.lock.bytes! } : null,
+      store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts }, storeFetch,
+      notes: [...(resolved?.notes ?? []), ...(frozen ? [FROZEN_LINE] : [])],
       harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
-      privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0, pointer: applyPointer(harnesses),
+      privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
+      managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     // The skills part is bound through its own revision (syncBinding) and the shared folders by path only, so a
-    // sync in another project that fills the machine cache, or creates a shared folder, does not stale this plan.
-    const binding = { ...body, agentsOnly, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState) };
-    return { plan: freezeSkillData({ ...body, revision: revisionOf(binding) }) as ApplyPlan, entries };
+    // sync in another project that fills the machine cache, or creates a shared folder, does not stale this plan. Whether
+    // the store cache holds a locked prompt or team now is dropped too; its hash stays.
+    const binding = { ...body, agentsOnly, skills: skills ? skills.revision : null, privateState: bindPrivateState(body.privateState), prompts: body.prompts.map(p => ({ ...p, storeCache: null })), storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })), actionable: null };
+    return { plan: freezeSkillData({ ...body, revision: revisionOf(binding) }) as ApplyPlan, entries, skillsPlan: skills };
   } catch (e) { throw outward(e); }
 }
 
@@ -207,15 +266,19 @@ const NO_FETCH: Acquirer = Object.freeze({
   git: async () => { throw syncError('SKILLS_OFFLINE', 'bowerloom apply never fetches. Run bowerloom skills sync first.'); },
 });
 
+/** What applyProjectApply takes beside the plan input: test ports. `acquirer` and `storeTransport` serve a frozen apply only. */
+export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTransport?: () => PublicTransport & { close(): void } }
 /**
  * Applies an approved apply plan. `revision` must equal the revision this run computes again under the lock.
- * `signal` is the person's interrupt: it is read between children, never inside one. `deps.managed` is for tests.
+ * `signal` is the person's interrupt: it is read between children, never inside one. A plain apply uses NO_FETCH; a frozen
+ * apply fetches what this machine lacks, from the hosts the plan names.
  */
-export async function applyProjectApply(input: ApplyInput, revision: string, signal: AbortSignal, deps: { managed?: ManagedPort } = {}): Promise<ApplyResult> {
+export async function applyProjectApply(input: ApplyInput, revision: string, signal: AbortSignal, deps: ApplyDeps = {}): Promise<ApplyResult> {
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw stale();
   if (input?.agentsOnly === true) throw usage();
   if (!(signal instanceof AbortSignal)) throw new TypeError('applyProjectApply needs a signal.');
   const managed = deps.managed ?? managedPort, lock = new AbortController();
+  const syncDeps = { acquirer: input.frozen === true ? deps.acquirer ?? productionAcquirer : NO_FETCH, signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}) };
   try {
     return await withProjectLock(input.project.dir, lock.signal, async held => {
       const { plan, entries } = await observeApply(input);
@@ -223,11 +286,26 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
       if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
       createPrivateFolders(plan, held, dir);
-      // Phases A (cache reads only) and B for the skills, then phase B for the prompts, then for the agents. No project write.
-      const children: Child[] = plan.skills ? (await prepareSkillChildren(plan.skills, entries, held, { acquirer: NO_FETCH, signal }, managed, 'bowerloom apply')).children : [];
+      // Phase A: the private caches only. Skills; locked prompts; locked teams. A lock-fetched item with a notice the plan
+      // did not show is held for review and gets no child.
+      const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, 'bowerloom apply') : null;
+      const promptDirs = new Map<string, string>(), review: ApplyResult['held'] = [];
       for (const item of prompts) {
+        if (item.origin !== 'store') continue;
+        if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); promptDirs.set(item.id, plan.store.dir); continue; }
+        held.assertHeld(dir);
+        const folder = await authoredFolder({ kind: 'prompt', id: item.id, requestDigest: item.lockPin?.hash ?? null, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, syncDeps);
+        if (item.notices === null && promptNotices(storeText(dir, 'prompt', item.id, folder.dir)).length) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(), ...originOf(item) }); continue; }
+        promptDirs.set(item.id, folder.dir);
+      }
+      await fetchStoreOnly(plan, held, syncDeps);
+      const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
+      bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + agents.length > 0);
+      // Phase B for the skills, then the prompts, then the agents. No project write.
+      const children: Child[] = plan.skills && got ? await planSkillChildren(plan.skills, got, syncDeps, managed, 'bowerloom apply') : [];
+      for (const item of promptChildren) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
-        const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item);
+        const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item, promptDirs.get(item.id) ?? null);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           // Review M6 finding 6: an interrupt here is an interrupt, as it is for a skill (apply.ts phase B).
           if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
@@ -246,17 +324,19 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       }
       // Phase C: every child, in order, with a revision planned right before it in this run.
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, 'bowerloom apply');
+      const project = { origin: 'project' as const, resolvedFrom: 'project' as const };
       const refOf = (id: string): ApplyItemRef => {
-        const p = plan.prompts.find(x => x.itemId === id); if (p) return { kind: 'prompt', id: p.id };
-        const a = plan.agents.find(x => x.itemId === id && agentActionable(x)); return a ? { kind: 'agent', id: a.id } : { kind: 'skill', id };
+        const p = plan.prompts.find(x => x.itemId === id); if (p) return { kind: 'prompt', id: p.id, ...originOf(p) };
+        const a = plan.agents.find(x => x.itemId === id && agentActionable(x)); if (a) return { kind: 'agent', id: a.id, ...project };
+        const s = plan.skills?.items.find(x => x.id === id); return { kind: 'skill', id, ...(s ? originOf(s) : project) };
       };
       const skills = plan.skills?.items ?? [];
       return {
         format: APPLY_RESULT_FORMAT, planRevision: plan.revision, harnesses: plan.harnesses,
         applied: applied.map(a => ({ ...refOf(a.id), action: a.action, receiptRevision: a.receiptRevision })),
-        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next }))],
-        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id }))],
-        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id }))],
+        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
+        upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id, ...project }))],
+        orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id, origin: null, resolvedFrom: 'project' as const }))],
         pointer: plan.pointer, executionAuthorized: false,
       };
     });
