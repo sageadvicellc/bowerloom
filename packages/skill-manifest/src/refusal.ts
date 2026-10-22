@@ -33,6 +33,8 @@ const MESSAGES = {
   // Spec 07, section 5.
   GITHUB_TOKEN_INVALID: 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.',
   STORE_REMOTE_AUTH_FAILED: 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.',
+  // Review F1 of PR 97.
+  GITHUB_TOKEN_SSO_REQUIRED: "GitHub needs this token authorized for the organization's single sign-on.",
 } as const;
 
 export type ManifestRefusalCode = keyof typeof MESSAGES;

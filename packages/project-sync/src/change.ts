@@ -12,7 +12,7 @@ import type { HeldProjectLock, ProjectContext } from '../../project-context/src/
 import { readConfig } from '../../project-config/src/config.js';
 import { CONFIG_FORMAT, serializeConfig } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
-import { configRefusal, honestShared, notShareable } from '../../project-config/src/refusal.js';
+import { configRefusal, honestShared, notShareable, refusalWithNext } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
@@ -189,9 +189,9 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
   proof.credentials = token !== null ? credentialsFor([repo.remote!]) : null;
   const make = () => (input.storeTransport ?? createPublicTransport)(options);
   for (const n of authored) {
-    const transport = make();
-    let outcome;
-    try { outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, make); }
+    // Review F4 of PR 97: the transport is made inside the try, so a failure to make it is mapped like any other.
+    let outcome, transport: ReturnType<typeof make> | null = null;
+    try { transport = make(); outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, make); }
     catch (error) {
       if (signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
       // Review F3: only a network failure of the transport is offline; any other error keeps its code, or is rethrown.
@@ -199,9 +199,10 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
       if (code === 'SKILLS_ADD_NETWORK') throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
       if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND') throw configRefusal('LOCK_STORE_NOT_PUSHED');
       throw error;
-    } finally { transport.close(); }
+    } finally { transport?.close(); }
     // Spec 07, 3.7: a commit of the ref that GitHub does not show, with a token, is a refused token or a wrong repository.
-    if (outcome.outcome === 'commit-missing') throw commit !== null ? configRefusal('LOCK_COMMIT_UNREACHABLE') : token !== null ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
+    // Review F2 of PR 97: with a token, an unreachable --commit may be a token that cannot read the repository.
+    if (outcome.outcome === 'commit-missing') throw commit !== null ? (token !== null ? refusalWithNext('LOCK_COMMIT_UNREACHABLE', 'Push the store, or pass --commit <sha> of a pushed commit, or check that BOWERLOOM_GITHUB_TOKEN can read the repository.') : configRefusal('LOCK_COMMIT_UNREACHABLE')) : token !== null ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
     if (outcome.outcome === 'not-pushed') throw configRefusal('LOCK_STORE_NOT_PUSHED');
     out.set(`${n.kind} ${n.id}`, { id: n.id, from: 'store', authored: outcome.pin });
   }

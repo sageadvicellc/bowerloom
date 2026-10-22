@@ -84,4 +84,6 @@ export interface PlannedChange<P> {
   revision(plan: P): string;
   review(plan: P): string;
   apply(revision: string): Promise<unknown>;
+  /** A sentence a STALE_APPROVAL adds for this plan, or null: a cause the plan alone cannot show (review F5 of PR 97). */
+  staleNote?(plan: P): string | null;
 }

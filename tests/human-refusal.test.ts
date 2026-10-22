@@ -212,13 +212,22 @@ test('every agent refusal and hold code has a row in the errors reference', () =
 // Spec 07, section 5: the two token codes, and the new next step of STORE_REMOTE_PRIVATE. Each has a row in the errors reference.
 test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE_REMOTE_PRIVATE next step', () => {
   const rows: ReadonlyArray<readonly [string, string, string]> = [
-    ['GITHUB_TOKEN_INVALID', 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.', 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.'],
-    ['STORE_REMOTE_AUTH_FAILED', 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.', 'Check that the token can read the repository, and that the repository name is right.'],
+    // Review R2 of PR 97 (option C): each sentence says why, and does not repeat the message.
+    ['GITHUB_TOKEN_INVALID', "Bowerloom checks the token's shape before any network call and never shows the value.", 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.'],
+    ['STORE_REMOTE_AUTH_FAILED', 'GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist.', 'Check that the token can read the repository, and that the repository name is right.'],
+    // Review F1 of PR 97.
+    ['GITHUB_TOKEN_SSO_REQUIRED', 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', "Authorize the token for the organization on GitHub, under the token's settings, then run the command again."],
   ];
   for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
   assert.match(renderRefusal('STORE_REMOTE_PRIVATE', 'm.'), /\nNext: Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public\.\n$/);
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
-  for (const code of ['GITHUB_TOKEN_INVALID', 'STORE_REMOTE_AUTH_FAILED', 'STORE_REMOTE_PRIVATE']) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  for (const code of ['GITHUB_TOKEN_INVALID', 'STORE_REMOTE_AUTH_FAILED', 'STORE_REMOTE_PRIVATE', 'GITHUB_TOKEN_SSO_REQUIRED']) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  // The errors reference row of each new code says what the terminal sentence says (review R2).
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` |`) && l.replace(/`/g, '').includes(sentence.replace(/`/g, ''))), code);
+  // Review F6 and F5: the request-failed next step names the token, and the STALE_APPROVAL row says a token change stales a plan.
+  assert.match(renderRefusal('GITHUB_REQUEST_FAILED', 'm.'), /\nNext: Run the command again later\. If the status is 401 or 403, make sure that the store repository is public, or set BOWERLOOM_GITHUB_TOKEN\.\n$/);
+  assert.match(page, /^\| `STALE_APPROVAL` \|.*BOWERLOOM_GITHUB_TOKEN.*\|$/m);
+  assert.match(page, /^\| `GITHUB_REQUEST_FAILED` \|.*or set `BOWERLOOM_GITHUB_TOKEN`\. \|$/m);
   assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
   // The JSON envelope of a pipe keeps the fixed message of each code.
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);

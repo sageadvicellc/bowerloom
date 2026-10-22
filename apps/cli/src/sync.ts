@@ -15,6 +15,7 @@ import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery,
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
 import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-git.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
+import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
@@ -56,6 +57,14 @@ function takeFlags(words: readonly string[], valued: readonly string[], plain: r
 export function githubTokenReader(env: NodeJS.ProcessEnv): () => GithubToken | null {
   let read = false, token: GithubToken | null = null;
   return () => { if (!read) { token = GithubToken.fromEnv(env); read = true; } return token; };
+}
+/**
+ * Review F5 of PR 97: the STALE_APPROVAL of a sync plan names the token when the plan fetches an authored lock item,
+ * because only then can setting or removing BOWERLOOM_GITHUB_TOKEN have changed it.
+ */
+export function syncStaleNote(plan: SyncPlan): string | null {
+  const needs = !plan.offline && (plan.network?.credentials != null || plan.items.some(i => (i.action === 'install' || i.action === 'update') && i.lockPin !== null) || plan.storeFetch.length > 0);
+  return needs ? TOKEN_STALE_NOTE : null;
 }
 /** Spec 07, 3.5: the tail every token form of the Network: line ends its store part with. */
 export const TOKEN_TAIL = 'Store items use your GitHub token for the repositories above.';
@@ -209,7 +218,7 @@ export async function runSyncCommand(args: readonly string[], cwd: string, home:
   let pending: SyncPlan | null = first, result: SyncResult | null = null;
   const change: PlannedChange<SyncPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planSync(input()); },
-    revision: plan => plan.revision, review: renderSyncReview,
+    revision: plan => plan.revision, review: renderSyncReview, staleNote: syncStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applySync(input(), revision, { acquirer, signal, managed })); return result;
     },

@@ -91,10 +91,10 @@ If `STORE_REMOTE_PRIVATE` appears, GitHub did not show the store repository with
 
 1. Make a GitHub token that can read the store repository. Read access to that one repository is enough. See [Trust and security boundaries](/docs/security/#the-github-token-for-a-private-store).
 2. Set it in the shell that runs Bowerloom, and keep it out of your shell history: run `read -rs BOWERLOOM_GITHUB_TOKEN`, paste the token, press Return, then run `export BOWERLOOM_GITHUB_TOKEN`. Do not put it in a file in the project.
-3. Run `bowerloom store status`. It prints `GitHub token: BOWERLOOM_GITHUB_TOKEN is set`.
+3. If your store has a git remote, `bowerloom store status` prints `GitHub token: BOWERLOOM_GITHUB_TOKEN is set`.
 4. Run the command again without `--approve`. The plan shows a `Credentials:` line. Read it, then approve.
 
-If `GITHUB_TOKEN_INVALID` appears, the variable holds something that is not a token, such as a space or a quote. If `STORE_REMOTE_AUTH_FAILED` appears, GitHub refused the token: check that it can read the repository and that the repository name is right.
+If `GITHUB_TOKEN_INVALID` appears, the variable holds something that is not a token, such as a space or a quote. If `STORE_REMOTE_AUTH_FAILED` appears, GitHub refused the token: check that it can read the repository and that the repository name is right. If `GITHUB_TOKEN_SSO_REQUIRED` appears, the organization uses single sign-on: authorize the token for that organization on GitHub, in the token's settings.
 
 ## Existing setup
 

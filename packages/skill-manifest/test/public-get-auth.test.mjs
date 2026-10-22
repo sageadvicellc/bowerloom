@@ -29,19 +29,21 @@ function network(t, respond = () => ({}), address = '104.16.25.34') {
   t.mock.method(dns, 'lookup', async () => (Array.isArray(address) ? address : [{ address, family: address.includes(':') ? 6 : 4 }]));
   t.mock.method(https, 'request', (url, options, callback) => {
     const req = new EventEmitter(); req.destroyed = false; req.destroy = () => { req.destroyed = true; return req; };
+    const set = {};
+    req.setHeader = (name, value) => { set[name] = value; };
     req.end = () => {
-      calls.push({ url, options });
+      calls.push({ url, options, set });
       const chosen = respond(calls.length, url) ?? {};
       options.lookup(new URL(url).hostname, { all: true }, () => {});
       queueMicrotask(() => {
         if (req.destroyed) return;
         const body = chosen.body ?? Buffer.from('{"ok":true}');
         const res = new EventEmitter(); res.destroyed = false; res.destroy = () => { res.destroyed = true; return res; };
-        res.statusCode = chosen.status ?? 200; res.complete = true; res.rawHeaders = chosen.headers ?? ['Content-Length', String(body.length)];
+        res.statusCode = chosen.status ?? 200; res.complete = chosen.complete ?? true; res.rawHeaders = chosen.headers ?? ['Content-Length', String(body.length)];
         res.headers = Object.fromEntries((chosen.headers ?? []).reduce((pairs, v, i, all) => i % 2 ? pairs : [...pairs, [all[i].toLowerCase(), all[i + 1]]], []));
         callback(res);
-        if (!res.destroyed) res.emit('data', chosen.chunk ?? body);
-        if (!res.destroyed) res.emit('end');
+        for (const chunk of chosen.chunks ?? [chosen.chunk ?? body]) if (!res.destroyed) res.emit('data', chunk);
+        if (!res.destroyed && !chosen.noEnd) res.emit('end');
       });
       return req;
     };
@@ -50,7 +52,10 @@ function network(t, respond = () => ({}), address = '104.16.25.34') {
   syncBuiltinESMExports();
   return { calls };
 }
-const header = call => Object.entries(call.options.headers).find(([k]) => k.toLowerCase() === 'authorization')?.[1];
+// Review H1 of PR 97: the header is set on the request with setHeader, never in the request options, because Node's
+// https debug output prints the options. `header` reads where it was set; `inOptions` must stay undefined.
+const header = call => Object.entries(call.set).find(([k]) => k.toLowerCase() === 'authorization')?.[1];
+const inOptions = call => Object.keys(call.options.headers).find(k => k.toLowerCase() === 'authorization');
 
 test('1. with no githubAuth, no request has an Authorization header', async t => {
   for (const options of [{}, { githubAuth: null }, undefined]) {
@@ -94,8 +99,9 @@ test('2, 3, 4, 5, 6 and 6a. the header goes only to the git endpoints of an appr
     const call = n.calls.at(-1);
     assert.equal(call.url, url);
     if (expected) assert.equal(header(call), `Bearer ${CANARY}`, url); else assert.equal(header(call), undefined, url);
+    assert.equal(inOptions(call), undefined, url); assert.equal(JSON.stringify(call.options).includes(CANARY), false, url);
     // The other headers are the ones of spec 06, unchanged.
-    const names = Object.keys(call.options.headers).filter(k => k !== 'Authorization').sort();
+    const names = Object.keys(call.options.headers).sort();
     assert.deepEqual(names, url.startsWith('https://api.github.com/') ? ['Accept', 'Accept-Encoding', 'User-Agent', 'X-GitHub-Api-Version'] : ['Accept', 'Accept-Encoding', 'User-Agent'], url);
     assert.equal(call.options.auth, undefined);
   }
@@ -161,7 +167,8 @@ test('10. createPublicTransport refuses a githubAuth that is not a GithubToken, 
     { token: token(), repositories: 'owner/repo' }, { token: token() }, { repositories: ['owner/repo'] },
     { token: token(), repositories: ['owner/repo'], extra: true }, 'githubAuth', 1,
   ];
-  for (const githubAuth of bad) assert.throws(() => createPublicTransport({ githubAuth }), code('SKILLS_ADD_NETWORK'), util.inspect(githubAuth).slice(0, 80));
+  // Review F4 of PR 97: a malformed githubAuth is a fault of the caller, not a refusal a person can act on.
+  for (const githubAuth of bad) assert.throws(() => createPublicTransport({ githubAuth }), e => e instanceof TypeError && clean(e), util.inspect(githubAuth).slice(0, 80));
   const eight = createPublicTransport({ githubAuth: { token: token(), repositories: Array.from({ length: 8 }, (_, i) => `owner/repo.${i}`) } }); eight.close();
   const one = createPublicTransport({ githubAuth: { token: token(), repositories: ['a/b'] } }); one.close();
 });
@@ -198,4 +205,47 @@ test('12. the old guards hold with a token: a non-public or IPv6 address, a non-
   const { options } = n.calls[0];
   assert.equal(options.rejectUnauthorized, true); assert.equal(options.minVersion, 'TLSv1.2'); assert.deepEqual(options.agent.options.proxyEnv, {}); assert.equal(options.agent.options.keepAlive, false);
   transport.close();
+});
+
+// Review F1 of PR 97. A 403 to a request that carried the token: an x-github-sso header is GITHUB_TOKEN_SSO_REQUIRED.
+test('7b. a 403 with x-github-sso and the header gives GITHUB_TOKEN_SSO_REQUIRED, and no header value is shown', async t => {
+  const url = `https://api.github.com/repos/owner/repo/git/commits/${SHA}`;
+  for (const value of ['required; url=https://github.com/orgs/x/sso?authorization_request=SECRETVALUE', 'partial-results; organizations=1,2']) {
+    const n = network(t, () => ({ status: 403, headers: ['X-GitHub-SSO', value, 'Content-Length', '2'] })), transport = createPublicTransport(auth());
+    const error = await transport.get(url, 1024, signal()).then(() => null, e => e);
+    assert.equal(error?.code, 'GITHUB_TOKEN_SSO_REQUIRED'); assert.equal(error.message, "GitHub needs this token authorized for the organization's single sign-on.");
+    assert.ok(clean(error)); assert.equal(`${error.message} ${error.stack}`.includes('SECRETVALUE'), false);
+    assert.equal(n.calls.length, 1); transport.close(); t.mock.restoreAll();
+  }
+  // Without the header on the request, an SSO 403 keeps the result of spec 06.
+  const n = network(t, () => ({ status: 403, headers: ['X-GitHub-SSO', 'required', 'Content-Length', '2'] })), transport = createPublicTransport({});
+  await assert.rejects(transport.get(url, 1024, signal()), code('GITHUB_REQUEST_FAILED')); assert.equal(n.calls.length, 1); transport.close();
+});
+
+// Review F1 of PR 97: a 403 with neither rate header whose small body names a rate limit is GITHUB_RATE_LIMITED.
+test('7c. a 403 with the header and a body that names a rate limit gives GITHUB_RATE_LIMITED; any other body STORE_REMOTE_AUTH_FAILED', async t => {
+  const url = `https://api.github.com/repos/owner/repo/git/commits/${SHA}`;
+  const body = text => ({ status: 403, body: Buffer.from(text), headers: ['Content-Length', String(Buffer.byteLength(text))] });
+  const cases = [
+    [body('{"message":"You have exceeded a secondary rate limit. SECRETVALUE"}'), 'GITHUB_RATE_LIMITED'],
+    [body('{"message":"API RATE LIMIT exceeded for user ID 1."}'), 'GITHUB_RATE_LIMITED'],
+    [body('{"message":"Resource not accessible by personal access token SECRETVALUE"}'), 'STORE_REMOTE_AUTH_FAILED'],
+    [body(''), 'STORE_REMOTE_AUTH_FAILED'],
+    [body('ratelimit'), 'STORE_REMOTE_AUTH_FAILED'],
+    // A body split over chunks is read whole; a body past the bound is not read past it, and the words after it do not count.
+    [{ status: 403, headers: [], chunks: [Buffer.from('{"message":"secondary rate'), Buffer.from(' limit"}')] }, 'GITHUB_RATE_LIMITED'],
+    [{ status: 403, headers: [], chunks: [Buffer.alloc(8192, 0x61), Buffer.from('rate limit')] }, 'STORE_REMOTE_AUTH_FAILED'],
+    // A body that never ends is still settled by the request limit, as a refused token, never left open.
+    [{ status: 403, headers: [], chunks: [Buffer.from('x')], noEnd: true }, 'STORE_REMOTE_AUTH_FAILED'],
+  ];
+  for (const [response, expected] of cases) {
+    const n = network(t, () => response), transport = createPublicTransport({ ...auth(), requestMs: 200 });
+    const error = await transport.get(url, 1024, signal()).then(() => null, e => e);
+    assert.equal(error?.code, expected, JSON.stringify(response).slice(0, 80)); assert.ok(clean(error));
+    assert.equal(`${error.message} ${error.stack}`.includes('SECRETVALUE'), false);
+    assert.equal(n.calls.length, 1); transport.close(); t.mock.restoreAll();
+  }
+  // Without the header on the request, a rate-limit body keeps the result of spec 06.
+  const n = network(t, () => body('secondary rate limit')), transport = createPublicTransport({});
+  await assert.rejects(transport.get(url, 1024, signal()), code('GITHUB_REQUEST_FAILED')); assert.equal(n.calls.length, 1); transport.close();
 });

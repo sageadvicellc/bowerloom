@@ -218,8 +218,8 @@ test('spec 07. a token transport sends the header on every request of a walk of 
     const r = buildFakeRepo(owner, 'store', FILES, COMMIT, fs.mkdtempSync(`${process.env.HOME}/store-repo-`)), seen = [];
     t.mock.method(dns, 'lookup', async () => [{ address: '104.16.25.34', family: 4 }]);
     t.mock.method(https, 'request', (url, options, callback) => {
-      seen.push({ url, auth: Object.keys(options.headers).some(h => h.toLowerCase() === 'authorization') });
-      const req = new EventEmitter(); req.destroy = () => req;
+      const entry = { url, auth: Object.keys(options.headers).some(h => h.toLowerCase() === 'authorization') }; seen.push(entry);
+      const req = new EventEmitter(); req.destroy = () => req; req.setHeader = name => { if (String(name).toLowerCase() === 'authorization') entry.auth = true; };
       req.end = () => { queueMicrotask(() => { const body = r.responses.get(url) ?? Buffer.from('{}'); const res = new EventEmitter(); res.destroy = () => res; res.statusCode = r.responses.has(url) ? 200 : 404; res.complete = true; res.rawHeaders = ['Content-Length', String(body.length)]; res.headers = { 'content-length': String(body.length) }; callback(res); res.emit('data', body); res.emit('end'); }); return req; };
       return req;
     });

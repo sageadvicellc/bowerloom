@@ -14,7 +14,7 @@ import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { githubTokenReader } from './sync.js';
-import { tokenNotes } from './use.js';
+import { proofStaleNote, tokenNotes } from './use.js';
 
 const USAGE = 'Use bowerloom lock verify [--json], or bowerloom lock update [--item <kind>:<id>]... [--commit <sha>], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', USAGE); };
@@ -65,7 +65,7 @@ async function update(words: readonly string[], cwd: string, home: string, write
   let pending: LockUpdatePlan | null = first, result: LockUpdateResult | null = null;
   const change: PlannedChange<LockUpdatePlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } const p = await plan(); plans.set(p.revision, p); return p; },
-    revision: p => p.revision, review: renderLockUpdate,
+    revision: p => p.revision, review: renderLockUpdate, staleNote: proofStaleNote,
     async apply(revision: string) {
       const p = plans.get(revision); if (!p) throw new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
       result = await withProjectLock(project.dir, controller.signal, async held => applyLockUpdate(p, revision, held, project, home)); return result;

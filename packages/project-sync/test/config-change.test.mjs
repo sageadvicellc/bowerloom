@@ -260,3 +260,19 @@ test('spec 07. lock update with a token proves through githubAuth and binds the 
   const lazy = await planLockUpdate({ project: ctx2, home: w.home, items: null, commit: null, storeTransport: storeTransport(repo2), githubToken: () => { reads++; return tokenOf(CANARY); } });
   assert.ok(reads >= 1); assert.equal(lazy.revision, p.revision);
 });
+
+// --- Round 2 of the review of PR 97. ---
+test('F2. LOCK_COMMIT_UNREACHABLE with a token names the token in its next step; without one it keeps its words', async t => {
+  const { w } = await sharedWorld(t), empty = storeTransport({ responses: new Map() });
+  const withToken = await plan(w, 'use', 'skill', 'house-style', { storeTransport: empty, githubToken: tokenOf(CANARY), commit: 'e'.repeat(40) }).then(() => null, e => e);
+  assert.equal(withToken?.code, 'LOCK_COMMIT_UNREACHABLE');
+  assert.equal(withToken.next, 'Push the store, or pass --commit <sha> of a pushed commit, or check that BOWERLOOM_GITHUB_TOKEN can read the repository.');
+  const bare = await plan(w, 'use', 'skill', 'house-style', { storeTransport: empty, commit: 'e'.repeat(40) }).then(() => null, e => e);
+  assert.equal(bare?.code, 'LOCK_COMMIT_UNREACHABLE'); assert.equal(bare.next, undefined);
+});
+
+test('F4. a transport that cannot be made is reported as the proof failure, inside the proof', async t => {
+  const { w } = await sharedWorld(t);
+  const { manifestRefusal } = await import('../../../dist/packages/skill-manifest/src/refusal.js');
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); }, githubToken: tokenOf(CANARY) }), code('SKILLS_OFFLINE'));
+});

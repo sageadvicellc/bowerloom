@@ -45,6 +45,8 @@ Bowerloom sends the token to one host, `api.github.com`, and only for the reposi
 
 `skills add` and the fetch of pinned skills send no credentials. The fetch of store items sends a token. It does so only after you set `BOWERLOOM_GITHUB_TOKEN`.
 
+In a project you did not write, read the `Credentials:` line before you approve. The lock of that project names the repositories, and the token goes to each one it names. Do not script `--approve` in a loop, in CI or anywhere else: a script that approves every plan it sees also approves a repository it has never seen.
+
 Give the token read access to the store repository and nothing more. We advise a fine-grained token limited to that one repository. A classic token needs the `repo` scope, which grants write access to every private repository you can reach. This is advice: Bowerloom does not check the scope of the token.
 
 <a id="installed-security-acceptance"></a>

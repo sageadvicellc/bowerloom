@@ -258,3 +258,50 @@ test('spec 07. no error of a token fetch holds any part of the token', async t =
     for (let i = 0; i + 8 <= CANARY.length; i++) assert.equal(all.includes(CANARY.slice(i, i + 8)), false, thrown);
   }
 });
+
+// --- Round 2 of the review of PR 97. ---
+const { readTokenSource, repositoryOf, storeTransportOptions } = await import('../../../dist/packages/project-sync/src/store-git.js');
+const { normalizeRemote } = await import('../../../dist/packages/project-config/src/git.js');
+const { createPublicTransport } = await import('../../../dist/packages/skill-manifest/src/public-get.js');
+
+test('F3. readTokenSource takes null, undefined, a token, or a reader of one; anything else is a TypeError', () => {
+  const t = token();
+  assert.equal(readTokenSource(undefined), null); assert.equal(readTokenSource(null), null);
+  assert.equal(readTokenSource(t), t); assert.equal(readTokenSource(() => t), t); assert.equal(readTokenSource(() => null), null);
+  for (const bad of ['ghp_' + 'g'.repeat(36), 1, true, {}, { authorization: () => 'Bearer x' }, Object.create(GithubToken.prototype)]) assert.throws(() => readTokenSource(bad), TypeError, String(bad));
+  for (const bad of [() => 'ghp_' + 'g'.repeat(36), () => undefined, () => ({}), () => 0]) assert.throws(() => readTokenSource(bad), TypeError);
+  // A refusal the reader throws, such as GITHUB_TOKEN_INVALID, passes through as it is.
+  assert.throws(() => readTokenSource(() => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'abc' })), e => e.code === 'GITHUB_TOKEN_INVALID');
+});
+
+test('F4. every remote normalizeRemote gives passes repositoryOf and the transport check; anything else is a TypeError', () => {
+  const owners = ['a', 'A', '0', 'sageadvicellc', 'Sage-Advice', 'a'.repeat(39), 'x-y-z', '9a'];
+  const names = ['r', 'R', 'repo.js', 'my_repo', 'a-b', 'x'.repeat(100), '.github', 'a.b.c', '-', '_', '..x', 'x..'];
+  const forms = (o, n) => [`https://github.com/${o}/${n}`, `https://github.com/${o}/${n}.git`, `https://github.com/${o}/${n}/`, `git@github.com:${o}/${n}`, `git@github.com:${o}/${n}.git`, `ssh://git@github.com/${o}/${n}`, `ssh://git@GitHub.com/${o}/${n}.git`];
+  let checked = 0;
+  for (const o of owners) for (const n of names) for (const remote of forms(o, n)) {
+    const normal = normalizeRemote(remote);
+    if (normal === null) continue;
+    const repository = repositoryOf(normal);
+    assert.equal(`https://github.com/${repository}`, normal, remote);
+    const transport = createPublicTransport({ githubAuth: { token: token(), repositories: [repository] } }); transport.close();
+    checked++;
+  }
+  assert.ok(checked > 400, `checked ${checked}`);
+  for (const bad of ['https://github.com/a', 'https://gitlab.com/a/b', 'https://github.com/A/b', 'https://github.com/a/..', 'https://github.com/-a/b', 1, null]) assert.throws(() => repositoryOf(bad), TypeError, String(bad));
+});
+
+test('F5. a token set or removed between the plan and the fetch gives STALE_APPROVAL that names BOWERLOOM_GITHUB_TOKEN', () => {
+  for (const [credentials, t] of [[CREDENTIALS, null], [null, token()]]) {
+    assert.throws(() => storeTransportOptions(credentials, t, REMOTE), e => e.code === 'STALE_APPROVAL' && /BOWERLOOM_GITHUB_TOKEN/.test(e.message) && !e.message.includes(CANARY.slice(4, 12)));
+  }
+});
+
+test('S3. with two repositories in the plan, each fetch gets a transport for exactly its own repository', async t => {
+  const s = state(t), l = locked(t), made = [];
+  const two = { ...CREDENTIALS, repositories: ['a-org/tools', 'sageadvicellc/store'] };
+  await fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: recording(l.repo.responses, made), githubToken: token() }, two);
+  assert.ok(made.length >= 1);
+  for (const options of made) assert.deepEqual(options.githubAuth.repositories, ['sageadvicellc/store']);
+  assert.deepEqual(storeTransportOptions(two, token(), 'https://github.com/a-org/tools').githubAuth.repositories, ['a-org/tools']);
+});

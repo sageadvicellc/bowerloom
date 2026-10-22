@@ -21,6 +21,7 @@ import { STORE_FILE_LIMITS, fetchBytes, fetchedJson, sha256, skillFilePath, text
 import { isManifestRefusal, manifestRefusal, refuse, requireManifest } from './refusal.js';
 import { compare, isCommit } from './schema.js';
 import type { PublicTransport } from './public-get.js';
+import { GITHUB_REMOTE as REMOTE } from './github-repository.js';
 
 /** Where an authored store item's bytes come from, and the hash that proves them (spec 06, 4.1). */
 export interface AuthoredPin {
@@ -42,7 +43,6 @@ export interface AuthoredTarget { remote: string; commit: string; kind: Authored
 /** The object id the item must have at the commit (the lock's `tree`), and the refusal of another one. */
 export interface ExpectedTree { sha: string; refuse: () => never }
 
-const REMOTE = /^https:\/\/github\.com\/([a-z0-9][a-z0-9-]{0,38})\/([a-z0-9._-]{1,100})$/;
 /** The path of an item in the store repository, relative to its root. */
 export const authoredPath = (kind: AuthoredKind, id: string): string => kind === 'prompt' ? `prompts/${id}.md` : `${kind}s/${id}`;
 /** The inventory rows of an item's files, sorted by path in byte order, and their hash: revisionOf(rows). */

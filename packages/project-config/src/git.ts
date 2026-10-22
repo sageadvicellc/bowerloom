@@ -6,6 +6,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { join } from 'node:path';
+import { GITHUB_NAME_ANY_CASE, GITHUB_OWNER_ANY_CASE } from '../../skill-manifest/src/github-repository.js';
 
 export type StoreRepoProblem = 'none' | 'no-origin' | 'unsupported-remote' | 'unreadable' | 'unpushed';
 export interface StoreRepo {
@@ -21,7 +22,8 @@ export interface StoreRepo {
 /** Test hook: the owner every file must have. Product code passes nothing. */
 export interface StoreRepoHooks { readonly uid?: number }
 
-const OWNER = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/, REPO = /^[A-Za-z0-9._-]{1,100}$/, HEX40 = /^[a-f0-9]{40}$/;
+// Review F4 of PR 97: the owner and name patterns are the shared ones, so every remote this accepts passes the store fetch.
+const OWNER = GITHUB_OWNER_ANY_CASE, REPO = GITHUB_NAME_ANY_CASE, HEX40 = /^[a-f0-9]{40}$/;
 const FORMS = [
   /^https:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git|\/)?$/,
   /^git@([^:/]+):([^/]+)\/([^/]+?)(?:\.git)?$/,

@@ -23,6 +23,9 @@ import { plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, TOKEN_TAIL } from './sync.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
+import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
+/** Review F5 of PR 97: a plan that proves an authored item on api.github.com names the token in its STALE_APPROVAL. */
+export const proofStaleNote = (plan: { network: { hosts: string[] } }): string | null => plan.network.hosts.includes('api.github.com') ? TOKEN_STALE_NOTE : null;
 
 const USE_USAGE = 'Use bowerloom use skill|prompt|team <id> [--project] [--commit <sha>], with optional --approve <revision> and --json.';
 const UNUSE_USAGE = 'Use bowerloom unuse skill|prompt|team <id>, with optional --approve <revision> and --json.';
@@ -138,7 +141,7 @@ export async function runUseCommand(args: readonly string[], cwd: string, home: 
       return plan;
     },
     revision: plan => plan.revision,
-    review: plan => { const p = plans.get(plan.revision); return renderConfigChange(plan, p?.places ?? [], p?.cache ?? null); },
+    review: plan => { const p = plans.get(plan.revision); return renderConfigChange(plan, p?.places ?? [], p?.cache ?? null); }, staleNote: proofStaleNote,
     async apply(revision: string) {
       const p = plans.get(revision); if (!p) throw new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
       const done = await withProjectLock(project.dir, controller.signal, async held => applyConfigChange(p.plan, revision, held, project, home));

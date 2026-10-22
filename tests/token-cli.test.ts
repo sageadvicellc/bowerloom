@@ -8,7 +8,7 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSy
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
-import { world, run, approve, mustApprove, errorCode, project, pushStore, network, NETWORK, shared, EMPTY_CONFIG, STORE_COMMIT } from './support/config-cli.js';
+import { world, run, approve, mustApprove, errorCode, errorMessage, project, pushStore, network, NETWORK, shared, EMPTY_CONFIG, STORE_COMMIT } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
 
 const CANARY = 'ghp_' + ('ghijklmnopqrstuvwxyz' + 'zyxwvutsrqponmlkjh').slice(0, 36);
@@ -122,9 +122,13 @@ test('3. an invalid value refuses GITHUB_TOKEN_INVALID with no network call, in 
     const net = network(o.w, repo.routes), r = run(o.dir, args, { ...net.env, ...TOKEN('abc') }, NETWORK);
     assert.equal(errorCode(r.stderr), 'GITHUB_TOKEN_INVALID', args.join(' ')); assert.deepEqual(logOf(net.log), [], args.join(' '));
   }
-  // A plain apply never reads the variable.
-  const plain = run(dir, ['apply', '--json'], { ...network(mate, {}).env, ...TOKEN(bad) }, NETWORK);
-  assert.equal(plain.stderr.includes('GITHUB_TOKEN_INVALID'), false, plain.stderr);
+  // A plain apply never reads the variable: it plans, with no credentials, and holds the items it would have to fetch.
+  const plainNet = network(mate, {}), plain = run(dir, ['apply', '--json'], { ...plainNet.env, ...TOKEN(bad) }, NETWORK);
+  assert.ok(plain.status === 0 || plain.status === 3, `${plain.status} ${plain.stderr}`); assert.equal(plain.stderr, '');
+  const plainBody = JSON.parse(plain.stdout) as { plan: { network: { credentials: unknown }; skills: { items: { id: string; action: string; hold: { code: string } | null }[] } } };
+  assert.equal(plainBody.plan.network.credentials, null);
+  assert.equal(plainBody.plan.skills.items.find(i => i.id === 'house-style')?.hold?.code, 'SKILLS_OFFLINE');
+  assert.deepEqual(logOf(plainNet.log), []);
 });
 
 test('4. a 401 from GitHub with the token gives STORE_REMOTE_AUTH_FAILED and installs nothing; the variable removed after the plan gives STALE_APPROVAL', t => {
@@ -136,9 +140,13 @@ test('4. a 401 from GitHub with the token gives STORE_REMOTE_AUTH_FAILED and ins
   const planned = run(dir, ['apply', '--frozen', '--json'], { ...fresh.env, ...TOKEN(CANARY) }, NETWORK);
   assert.equal(planned.status, 3, planned.stderr);
   const revision = (JSON.parse(planned.stdout) as { revision: string }).revision;
-  assert.equal(errorCode(run(dir, ['apply', '--frozen', '--approve', revision], fresh.env, NETWORK).stderr), 'STALE_APPROVAL');
+  const removed = run(dir, ['apply', '--frozen', '--approve', revision], fresh.env, NETWORK);
+  assert.equal(errorCode(removed.stderr), 'STALE_APPROVAL');
+  // Review F5 of PR 97: the refusal names the variable, because a token set or removed is a cause a person can miss.
+  assert.match(errorMessage(removed.stderr), /BOWERLOOM_GITHUB_TOKEN/);
   const bare = JSON.parse(run(dir, ['apply', '--frozen', '--json'], fresh.env, NETWORK).stdout) as { revision: string };
-  assert.equal(errorCode(run(dir, ['apply', '--frozen', '--approve', bare.revision], { ...fresh.env, ...TOKEN(CANARY) }, NETWORK).stderr), 'STALE_APPROVAL');
+  const added = run(dir, ['apply', '--frozen', '--approve', bare.revision], { ...fresh.env, ...TOKEN(CANARY) }, NETWORK);
+  assert.equal(errorCode(added.stderr), 'STALE_APPROVAL'); assert.match(errorMessage(added.stderr), /BOWERLOOM_GITHUB_TOKEN/); clean('stale', added.stderr);
   assert.deepEqual(requests(fresh.log), [], 'a stale approval fetches nothing');
 });
 
@@ -187,6 +195,9 @@ test('6. store status prints each of the three token lines and the JSON git.toke
   }
 });
 
+// The fake network replaces https.request, so Node's own https and http code never runs in this test, and NODE_DEBUG
+// cannot print what that code would print. The NODE_DEBUG runs here cover Bowerloom's own output and the net debug of
+// the project lock. tests/token-debug.test.ts runs the real transport under NODE_DEBUG for Node's https and http lines.
 test('7. the leak scan: a full flow with a canary token leaves no part of it in any output or file, also under NODE_DEBUG', t => {
   for (const debug of [false, true]) {
     const extra: Record<string, string> = { ...TOKEN(CANARY), ...(debug ? { NODE_DEBUG: 'http,https,net,tls' } : {}) };
@@ -206,10 +217,15 @@ test('7. the leak scan: a full flow with a canary token leaves no part of it in 
     for (const args of [['team', 'create', 'research', '--global'], ['skill', 'create', 'house-style', '--global'], ['prompt', 'create', 'weekly-update', '--global']]) exercise(o.home, args, oEnv);
     exercise(o.work, ['skills', 'add', NPM_SPEC, '--global'], { ...oEnv, ...network(o, NPM_ROUTES).env });
     let repo = pushStore(o);
-    for (const [kind, id] of [['skill', 'house-style'], ['team', 'research'], ['prompt', 'weekly-update'], ['skill', NPM_ID]]) exercise(dir, ['use', kind!, id!], { ...oEnv, ...network(o, repo.routes).env });
+    const useNet = network(o, repo.routes);
+    for (const [kind, id] of [['skill', 'house-style'], ['team', 'research'], ['prompt', 'weekly-update'], ['skill', NPM_ID]]) exercise(dir, ['use', kind!, id!], { ...oEnv, ...useNet.env });
+    // The use steps proved each authored item with the token on every request.
+    assert.ok(requests(useNet.log).length > 0 && requests(useNet.log).every(r => r.authorization === true), JSON.stringify(requests(useNet.log)));
     writeFileSync(join(o.store, 'skills/house-style/SKILL.md'), '---\nname: house-style\ndescription: Changed.\n---\nx\n');
     repo = pushStore(o);
-    exercise(dir, ['lock', 'update'], { ...oEnv, ...network(o, repo.routes).env });
+    const lockNet = network(o, repo.routes);
+    exercise(dir, ['lock', 'update'], { ...oEnv, ...lockNet.env });
+    assert.ok(requests(lockNet.log).length > 0 && requests(lockNet.log).every(r => r.authorization === true), JSON.stringify(requests(lockNet.log)));
     exercise(dir, ['store', 'status'], { ...oEnv, ...network(o, {}).env });
     // The teammate's clone.
     const mate = world(t), copy = project(mate, 'app');
@@ -247,4 +263,19 @@ test('8. skills add and skills sync of a pinned GitHub skill with the variable s
   const sent = requests(net.log);
   assert.ok(sent.length > 0 && sent.every(r => r.target.startsWith('https://api.github.com/repos/synthetic-owner/')), JSON.stringify(sent));
   assert.ok(sent.every(r => r.authorization === false), JSON.stringify(sent));
+});
+
+// Review S2 of PR 97: --offline approves no host, so it never reads the variable, even an invalid one.
+test('S2. skills sync --offline with an invalid variable and an authored item to install plans with no refusal and no Credentials line', t => {
+  const { mate, dir, routes } = clone(t), net = network(mate, { ...routes, ...NPM_ROUTES });
+  // Codex copies only: the store cache and the machine cache now hold every item, and the Claude Code copies are missing.
+  assert.equal(approve(dir, ['apply', '--frozen', '--harness', 'codex'], { ...net.env, ...TOKEN(CANARY) }, NETWORK).applied.status, 0);
+  const offNet = network(mate, {}), env = { ...offNet.env, ...TOKEN(`${CANARY}!`) };
+  const text = run(dir, ['skills', 'sync', '--offline'], env, NETWORK);
+  assert.equal(text.status, 3, text.stderr + text.stdout); assert.doesNotMatch(text.stdout + text.stderr, /Credentials:|GITHUB_TOKEN_INVALID/);
+  assert.match(text.stdout, /^ {2}house-style +/m);
+  const json = JSON.parse(run(dir, ['skills', 'sync', '--offline', '--json'], env, NETWORK).stdout) as { plan: { network: { credentials: unknown; hosts: string[] }; items: { id: string; action: string; lockPin: unknown }[] } };
+  assert.equal(json.plan.network.credentials, null); assert.deepEqual(json.plan.network.hosts, []);
+  assert.ok(json.plan.items.some(i => i.id === 'house-style' && i.lockPin !== null && (i.action === 'install' || i.action === 'update')), JSON.stringify(json.plan.items.map(i => [i.id, i.action])));
+  assert.deepEqual(logOf(offNet.log), []); clean('offline', text.stdout + text.stderr);
 });

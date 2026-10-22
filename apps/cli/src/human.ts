@@ -59,7 +59,6 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'A project picks store items with bowerloom use and stops with bowerloom unuse. bowerloom.lock.json records where a',
     'teammate gets them, with bowerloom lock verify and bowerloom lock update. See bowerloom help use and bowerloom help lock.',
     'A store that is a git repository with a github.com remote can be shared. store status shows the Git: line and the commands to set it up.',
-    'A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.',
     'A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read',
     'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.',
     'Add --json for one machine-readable object.', '',
@@ -384,8 +383,11 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.' },
   STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It may be private or may not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
   // Spec 07, section 5: the sentence is the fixed message, and the next step the table's.
-  GITHUB_TOKEN_INVALID: { sentence: 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.', next: 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.' },
-  STORE_REMOTE_AUTH_FAILED: { sentence: 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.', next: 'Check that the token can read the repository, and that the repository name is right.' },
+  // Review R2 of PR 97 (option C): each sentence says why, instead of repeating the message.
+  GITHUB_TOKEN_INVALID: { sentence: "Bowerloom checks the token's shape before any network call and never shows the value.", next: 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.' },
+  STORE_REMOTE_AUTH_FAILED: { sentence: 'GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist.', next: 'Check that the token can read the repository, and that the repository name is right.' },
+  // Review F1 of PR 97.
+  GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
@@ -401,7 +403,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   LOCK_STORE_NOT_PUSHED: { sentence: 'A teammate can fetch only what you pushed, and your store differs from the pushed copy.', next: 'Commit and push the store, then run the command again.' },
   LOCK_COMMIT_UNREACHABLE: { sentence: 'The lock needs a commit that GitHub has, and GitHub does not have this one.', next: 'Push the store, or pass --commit <sha> of a pushed commit.' },
   LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.lock.json' },
-  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public.' },
+  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public, or set BOWERLOOM_GITHUB_TOKEN.' },
   GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'bowerloom lock verify' },
   STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
   GITHUB_RATE_LIMITED: { sentence: 'GitHub allows about 60 requests an hour without a token and about 5,000 with one.', next: 'Wait until the limit resets, at most an hour. Without a token, set BOWERLOOM_GITHUB_TOKEN to raise the limit (see bowerloom help store).' },

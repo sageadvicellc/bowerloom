@@ -312,3 +312,22 @@ test('spec 07, 6. with a token, the authored fetch gets githubAuth for its repos
   assert.ok(applyTransport.made.every(o => o.githubAuth?.repositories?.[0] === 'sageadvicellc/store'));
   noCanary(JSON.stringify(done), 'apply result');
 });
+
+// --- Round 2 of the review of PR 97. ---
+test('S2. --offline never reads the token: an invalid one, with an authored lock item that installs from the store cache, plans with no refusal and no credentials', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] });
+  const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style')] }); dropStore(w);
+  // Fill the store cache only, as another project's run would, so the item installs offline.
+  const online = await planSync(input(w)), item = byId(online)['house-style'];
+  const { fetchStoreGit } = await import('../../../dist/packages/project-sync/src/store-git.js');
+  fs.mkdirSync(online.privateState.cacheRoot, { recursive: true, mode: 0o700 });
+  await fetchStoreGit({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, online.privateState, ['api.github.com'], { signal: new AbortController().signal, storeTransport: storeTransport(repo) });
+  let reads = 0;
+  const offline = await planSync(input(w, { offline: true, githubToken: () => { reads++; return GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'abc' }); } }));
+  const planned = byId(offline)['house-style'];
+  assert.equal(planned.action, 'install'); assert.equal(planned.storeCache, 'held'); assert.notEqual(planned.lockPin, null);
+  assert.equal(reads, 0); assert.equal(offline.network.credentials, null); assert.deepEqual(offline.network.hosts, []);
+  // The same plan online reads the token, and the invalid value refuses: the offline result is the gate, not the item.
+  await assert.rejects(planSync(input(w, { githubToken: () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'abc' }) })), code('GITHUB_TOKEN_INVALID'));
+});

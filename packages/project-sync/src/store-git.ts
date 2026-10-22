@@ -20,6 +20,7 @@ import { LIMITS } from '../../project-authoring/src/files.js';
 import { createPublicTransport } from '../../skill-manifest/src/public-get.js';
 import type { PublicGetOptions, PublicTransport } from '../../skill-manifest/src/public-get.js';
 import { GithubToken, GITHUB_TOKEN_VARIABLE } from '../../skill-manifest/src/github-token.js';
+import { isGithubRepository, repositoryOfRemote } from '../../skill-manifest/src/github-repository.js';
 import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/src/resolve-store-git.js';
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
@@ -44,14 +45,17 @@ export interface StoreGitDeps { signal: AbortSignal; storeTransport?: StoreTrans
 export interface Credentials { variable: typeof GITHUB_TOKEN_VARIABLE; host: typeof GITHUB_HOST; repositories: string[] }
 /** Where a plan input takes the token from: the token, none, or a reader the CLI made over its `env` argument. */
 export type TokenSource = GithubToken | null | undefined | (() => GithubToken | null);
-const GITHUB_REMOTE = /^https:\/\/github\.com\/([a-z0-9][a-z0-9-]{0,38})\/([a-z0-9._-]{1,100})$/;
-const REPOSITORY = /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/;
-/** `owner/repo` of a normal github.com remote, in lower case. A lock remote that is not one refuses STALE_APPROVAL. */
+/**
+ * `owner/repo` of a normal github.com remote. Every remote here has already passed the lock or the remote normalizer,
+ * so another value is a fault of the calling code: a TypeError, not a refusal (review F4 of PR 97).
+ */
 export function repositoryOf(remote: string): string {
-  const m = typeof remote === 'string' ? GITHUB_REMOTE.exec(remote) : null;
-  if (m === null || m[2] === '.' || m[2] === '..') throw syncError('STALE_APPROVAL');
-  return `${m[1]}/${m[2]}`.toLowerCase();
+  const repository = repositoryOfRemote(remote);
+  if (repository === null) throw new TypeError('repositoryOf takes a normal https://github.com/<owner>/<repo> remote.');
+  return repository;
 }
+/** Review F5 of PR 97: the sentence a STALE_APPROVAL adds when the token may be what changed. */
+export const TOKEN_STALE_NOTE = 'Setting or removing BOWERLOOM_GITHUB_TOKEN between the plan and --approve also changes the plan.';
 /** The credentials field for these remotes: sorted, no repeats. Null for no remote. */
 export function credentialsFor(remotes: Iterable<string>): Credentials | null {
   const repositories = [...new Set([...remotes].map(repositoryOf))].sort();
@@ -59,11 +63,17 @@ export function credentialsFor(remotes: Iterable<string>): Credentials | null {
 }
 /**
  * Reads a token source once (spec 07, 3.2): call it only when a repository needs the token. A reader may throw
- * GITHUB_TOKEN_INVALID. Anything that is not a token is no token.
+ * GITHUB_TOKEN_INVALID. Review F3 of PR 97: a source, or a reader's answer, that is neither null nor a token is a fault
+ * of the calling code and throws a TypeError, so a wrong value never passes as "no token".
  */
 export function readTokenSource(source: TokenSource): GithubToken | null {
-  const value = typeof source === 'function' ? source() : source;
-  return GithubToken.isToken(value) ? value : null;
+  if (source === undefined || source === null) return null;
+  if (GithubToken.isToken(source)) return source;
+  if (typeof source !== 'function') throw new TypeError('A token source is null, a GithubToken, or a function that returns one or null.');
+  const value: unknown = source();
+  if (value === null) return null;
+  if (!GithubToken.isToken(value)) throw new TypeError('A token reader returns a GithubToken or null.');
+  return value;
 }
 /** A source that reads its token at most once, so a plan and its re-plan in one run see the same value. */
 export function onceTokenSource(source: TokenSource): () => GithubToken | null {
@@ -74,7 +84,7 @@ function validCredentials(value: unknown): value is Credentials {
   if (value === null || typeof value !== 'object') return false;
   const c = value as Partial<Credentials>;
   return Object.keys(c).length === 3 && c.variable === GITHUB_TOKEN_VARIABLE && c.host === GITHUB_HOST && Array.isArray(c.repositories) && c.repositories.length >= 1 && c.repositories.length <= 8
-    && c.repositories.every((r, i, all) => typeof r === 'string' && REPOSITORY.test(r) && (i === 0 || Buffer.compare(Buffer.from(all[i - 1]!), Buffer.from(r)) < 0));
+    && c.repositories.every((r, i, all) => isGithubRepository(r) && (i === 0 || Buffer.compare(Buffer.from(all[i - 1]!), Buffer.from(r)) < 0));
 }
 /**
  * The transport options of one authored fetch or proof (spec 07, section 6). A plan with credentials needs the token and
@@ -82,8 +92,9 @@ function validCredentials(value: unknown): value is Credentials {
  */
 export function storeTransportOptions(credentials: unknown, token: GithubToken | null | undefined, remote: string): PublicGetOptions {
   const tokenSet = GithubToken.isToken(token);
-  if (credentials === null || credentials === undefined) { if (tokenSet) throw syncError('STALE_APPROVAL'); return {}; }
-  if (!tokenSet || !validCredentials(credentials)) throw syncError('STALE_APPROVAL');
+  if (credentials === null || credentials === undefined) { if (tokenSet) throw syncError('STALE_APPROVAL', TOKEN_STALE_NOTE); return {}; }
+  if (!tokenSet) throw syncError('STALE_APPROVAL', TOKEN_STALE_NOTE);
+  if (!validCredentials(credentials)) throw syncError('STALE_APPROVAL');
   const repository = repositoryOf(remote);
   if (!credentials.repositories.includes(repository)) throw syncError('STALE_APPROVAL');
   return { githubAuth: { token: token!, repositories: [repository] } };

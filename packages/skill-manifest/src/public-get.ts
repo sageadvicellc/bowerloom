@@ -31,6 +31,7 @@ import { publicIPv4 } from '../../skill-sources/src/public-address.js';
 import { githubRequestFailed, isManifestRefusal, manifestRefusal, requireManifest } from './refusal.js';
 import type { ManifestRefusalCode } from './refusal.js';
 import { GithubToken } from './github-token.js';
+import { isGithubRepository } from './github-repository.js';
 
 export const PUBLIC_HOSTS: readonly string[] = Object.freeze(['registry.npmjs.org', 'api.github.com']);
 // Review M3 finding 3: GIT_LIMITS, except the total. npm reads its metadata (512 KiB) and its archive (8 MiB) in one
@@ -44,16 +45,20 @@ export interface PublicTransport { get(url: string, maxBytes: number, signal: Ab
 export interface PublicGetOptions { requests?: number; durationMs?: number; requestMs?: number; githubAuth?: { token: GithubToken; repositories: readonly string[] } | null }
 /** The one URL shape that may carry the header (spec 07, section 6): a git object of one repository on api.github.com. */
 const AUTH_URL = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/git\/(commits|trees|blobs)\/[0-9a-f]{40}(\?recursive=1)?$/;
-const AUTH_REPOSITORY = /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/;
-/** The approved repositories of a githubAuth option, checked (4.2), or null for none. Anything else refuses. */
+/**
+ * The approved repositories of a githubAuth option, checked (4.2), or null for none. A malformed option is a fault of
+ * the calling code, not something a person can fix, so it throws a TypeError (review F4 of PR 97).
+ */
 function approvedAuth(value: unknown): { token: GithubToken; repositories: ReadonlySet<string> } | null {
   if (value === undefined || value === null) return null;
-  requireManifest(typeof value === 'object' && Object.keys(value).every(k => k === 'token' || k === 'repositories'), 'SKILLS_ADD_NETWORK');
+  const fault = (): never => { throw new TypeError('githubAuth must be { token: GithubToken, repositories: 1 to 8 owner/name strings }.'); };
+  if (typeof value !== 'object' || !Object.keys(value).every(k => k === 'token' || k === 'repositories')) fault();
   const { token, repositories } = value as { token?: unknown; repositories?: unknown };
-  requireManifest(GithubToken.isToken(token) && Array.isArray(repositories) && repositories.length >= 1 && repositories.length <= 8, 'SKILLS_ADD_NETWORK');
-  requireManifest(repositories.every(r => typeof r === 'string' && AUTH_REPOSITORY.test(r)), 'SKILLS_ADD_NETWORK');
-  return { token, repositories: new Set(repositories as string[]) };
+  if (!GithubToken.isToken(token) || !Array.isArray(repositories) || repositories.length < 1 || repositories.length > 8 || !repositories.every(isGithubRepository)) fault();
+  return { token: token as GithubToken, repositories: new Set(repositories as string[]) };
 }
+/** Review F1 of PR 97: at most this much of a 403 body is read, only to look for the words "rate limit". */
+const FORBIDDEN_BODY_BYTES = 4096;
 
 const URL_SHAPE = /^https:\/\/(registry\.npmjs\.org|api\.github\.com)\/[A-Za-z0-9._~@%/-]+(\?recursive=1)?$/;
 /** The one public IPv4 test of skill-sources npm.ts and git.ts (review M3 finding 4). */
@@ -115,9 +120,11 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
     const m = AUTH_URL.exec(url);
     return m !== null && githubAuth.repositories.has(`${m[1]!.toLowerCase()}/${m[2]!.toLowerCase()}`);
   }
-  function headersFor(host: string, url: string, withToken: boolean): Record<string, string> {
+  function headersFor(host: string, url: string): Record<string, string> {
     const common = { 'Accept-Encoding': 'identity', 'User-Agent': 'bowerloom-skills-add/1' };
-    if (host === 'api.github.com') return { Accept: 'application/vnd.github+json', ...common, 'X-GitHub-Api-Version': '2026-03-10', ...(withToken ? { Authorization: githubAuth!.token.authorization() } : {}) };
+    // Review H1 of PR 97: the token is never in these options. Node's https debug output (NODE_DEBUG=https) prints the
+    // request options, so the Authorization header is set on the request itself, after it is made (see get).
+    if (host === 'api.github.com') return { Accept: 'application/vnd.github+json', ...common, 'X-GitHub-Api-Version': '2026-03-10' };
     return { Accept: url.endsWith('.tgz') ? 'application/octet-stream' : 'application/json', ...common };
   }
 
@@ -140,13 +147,15 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
         if (failure === undefined) resolve(Buffer.concat(chunks, bytes));
         else reject(typeof failure === 'string' ? manifestRefusal(failure) : isManifestRefusal(failure) ? failure : manifestRefusal('SKILLS_ADD_NETWORK'));
       };
-      const stop = () => settle('SKILLS_ADD_NETWORK');
+      // Once a 403 to the token has arrived, a stop while its body is read still reports the refused token.
+      let forbidden: ManifestRefusalCode | null = null;
+      const stop = () => settle(forbidden ?? 'SKILLS_ADD_NETWORK');
       const timeout = setTimeout(stop, limit.requestMs); timeout.unref();
       live.add(stop); signal.addEventListener('abort', stop, { once: true });
       const guard = () => { usable(signal); requireManifest(performance.now() < requestDeadline, 'SKILLS_ADD_NETWORK'); };
       try {
         request = https.request(url, {
-          method: 'GET', agent, rejectUnauthorized: true, minVersion: 'TLSv1.2', maxHeaderSize: PUBLIC_GET_LIMITS.headerBytes, headers: headersFor(host, url, withToken),
+          method: 'GET', agent, rejectUnauthorized: true, minVersion: 'TLSv1.2', maxHeaderSize: PUBLIC_GET_LIMITS.headerBytes, headers: headersFor(host, url),
           lookup: (_host, lookupOptions, callback) => {
             try { guard(); if (lookupOptions.all) callback(null, [{ address, family: 4 }]); else callback(null, address, 4); }
             catch (error) { settle(error as Error); callback(new Error('SKILLS_ADD_NETWORK'), '', 4); }
@@ -161,7 +170,23 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
             // guardedResponseHeaders returns only the guarded names. Every other status keeps its result.
             if (host === 'api.github.com' && (incoming.statusCode === 429 || (incoming.statusCode === 403 && (incoming.headers?.['x-ratelimit-remaining'] === '0' || incoming.headers?.['retry-after'] !== undefined)))) { settle('GITHUB_RATE_LIMITED'); return; }
             // Spec 07: GitHub refused the token. Only a request that carried it; without it, spec 06 decides below.
-            if (withToken && (incoming.statusCode === 401 || incoming.statusCode === 403)) { settle('STORE_REMOTE_AUTH_FAILED'); return; }
+            if (withToken && incoming.statusCode === 401) { settle('STORE_REMOTE_AUTH_FAILED'); return; }
+            // Review F1 of PR 97: a 403 to the token names its cause where GitHub shows one. The SSO header, or the words
+            // "rate limit" in at most FORBIDDEN_BODY_BYTES of the body. No header value and no body text is ever reported.
+            if (withToken && incoming.statusCode === 403) {
+              if (incoming.headers?.['x-github-sso'] !== undefined) { settle('GITHUB_TOKEN_SSO_REQUIRED'); return; }
+              forbidden = 'STORE_REMOTE_AUTH_FAILED';
+              const seen: Buffer[] = []; let size = 0;
+              const decide = () => settle(/rate limit/i.test(Buffer.concat(seen, size).toString('latin1')) ? 'GITHUB_RATE_LIMITED' : 'STORE_REMOTE_AUTH_FAILED');
+              incoming.on('data', (chunk: Buffer) => {
+                if (!Buffer.isBuffer(chunk)) return;
+                const room = FORBIDDEN_BODY_BYTES - size, part = chunk.subarray(0, Math.max(0, room));
+                seen.push(part); size += part.length;
+                if (chunk.length >= room) decide();
+              });
+              incoming.on('end', decide); incoming.on('error', stop); incoming.on('aborted', stop); incoming.on('close', () => { if (!done) stop(); });
+              return;
+            }
             if (incoming.statusCode === 404 || incoming.statusCode === 410 || incoming.statusCode === 422 && host === 'api.github.com') { settle('SKILLS_ADD_NOT_FOUND'); return; }
             // Review F3: any other refusal of GitHub (401, 403, 5xx) names its status instead of passing as a network failure.
             const status = incoming.statusCode ?? 0;
@@ -178,6 +203,8 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
           } catch (error) { settle(error as Error); }
         });
         request.on('error', stop); request.on('close', () => { if (!done) stop(); });
+        // Review H1 of PR 97: the header is set here, never in the request options that Node's debug output prints.
+        if (withToken) request.setHeader('Authorization', githubAuth!.token.authorization());
         guard(); request.end();
       } catch (error) { settle(error as Error); }
     });
