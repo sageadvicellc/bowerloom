@@ -119,7 +119,8 @@ function skillState(listing: Listing, id: string): string {
 }
 const fixed = (source: ListSource) => ({ via: [] as string[], locked: null, resolvedFrom: source });
 export function renderListing(listing: Listing, only: Section | null, json: boolean): string {
-  const shown = only ? [only] : [...SECTIONS], source = listing.scope, info = listing.skillInfo;
+  // A store holds no slices, so its default text leaves the section out; `ls slices --global` still answers.
+  const shown = only ? [only] : SECTIONS.filter(x => x !== 'slices' || listing.scope === 'project'), source = listing.scope, info = listing.skillInfo;
   if (json) {
     const sections: Record<string, unknown> = {
       teams: listing.teams.map(id => ({ id, source, ...fixed(source), displayName: id === 'first-team' && source === 'project' ? listing.firstTeamName ?? null : null, state: 'ok' })),
