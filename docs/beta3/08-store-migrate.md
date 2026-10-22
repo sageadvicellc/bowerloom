@@ -195,7 +195,7 @@ After `store migrate` and before the person deletes files, `status` is unchanged
 ```ts
 export interface StoreMigratePlan {
   format: 'bowerloom/store-migrate-plan/v1beta1';
-  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity };
+  project: { dir: string; identity: DirectoryIdentity; ancestry: readonly PinnedDirectory[]; bowerloomIdentity: DirectoryIdentity | null };
   store: { create: boolean; dir: string; skills: Read | null; authoring: Read | null };
   shared: boolean;
   items: {
@@ -222,7 +222,7 @@ export interface StoreMigratePlan {
 export interface Read { sha256: string; bytes: number }
 ```
 
-The revision is `sha256(canonicalJson(body))` (`packages/contracts/src/index.ts:137`). Items are sorted by kind (skill, prompt, team) and then by id.
+The revision is `sha256(canonicalJson(body))` (`packages/contracts/src/index.ts:137`). Items are sorted by kind (skill, prompt, team) and then by id. The field `project.bowerloomIdentity` is null for a project with no `.bowerloom` folder. Rule 4 of 3.1 stops such a project before any plan exists, so the plan carries a non-null value in practice. The type allows null so that it matches `ProjectContext` (spec 03).
 
 ### 4.2 Migrate result, `bowerloom/store-migrate-result/v1beta1`
 

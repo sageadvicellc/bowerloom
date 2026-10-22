@@ -561,7 +561,7 @@ Other lines:
 `ls` (format `bowerloom/ls/v1beta2`, defined in spec 04):
 
 - In config mode, `listedBy` is `config`. The lists come from the config entries, in id order. Each item has `source`, `via`, and `state`: `ok`, `missing` (the definition is not found), or `duplicate` (not produced by a valid config, reserved for the pair named by `CONFIG_DUPLICATE_ID`).
-- Add two fields to skills, prompts, and teams. `locked` is a boolean or null. It is null for project items and for a project with no lock. `resolvedFrom` is `store`, `lock`, or `project`.
+- Spec 04 already gives every item the fields `locked` and `resolvedFrom`. This spec adds values only. `locked` is a boolean or null. It is null for project items and for a project with no lock. `resolvedFrom` is `store`, `lock`, or `project`.
 - `unselected` lists ids that the project defines and the config does not list.
 - If the config lists store entries and the store is refused (a `STORE_*` code), `ls` does not refuse. Every store item gets state `missing`, and `ls` prints `The store cannot be used (<CODE>). Run bowerloom store status.` after the sections. The exit code is 0.
 - Text output keeps the shape of spec 04. Add `  (missing)` after the source of a missing item. After the sections, add a line for a non-empty `unselected`: `Defined here but not listed in bowerloom.json: <ids>`.
@@ -579,7 +579,7 @@ Other lines:
 
 New drift kinds: `lock-invalid` (the lock is present and fails reading) and `lock-orphan`. Both go in `Drift.kind` (`packages/startup/src/index.ts:58`).
 
-`skills check` in config mode checks the project `skills.json` (if any) and the store pinned entries that the config selects (offline). Each row ends with `  [store]` or `  [project]`. The format is `bowerloom/skills-manifest-check/v1beta2` with `source` on each skill. With no `skills.json` and no selected store pins in a config project, print `skills.json is valid: 0 skills` instead of refusing `MANIFEST_NOT_FOUND`. In legacy mode `MANIFEST_NOT_FOUND` stays.
+`skills check` in config mode checks the project `skills.json` (if any) and the store pinned entries that the config selects (offline). Each row ends with `  [store]` or `  [project]`. The format stays `bowerloom/skills-manifest-check/v1beta2`. Spec 04 already gives each skill the field `source`. This spec adds the value `store` for a selected store entry. With no `skills.json` and no selected store pins in a config project, print `skills.json is valid: 0 skills` instead of refusing `MANIFEST_NOT_FOUND`. In legacy mode `MANIFEST_NOT_FOUND` stays.
 
 ### 3.21 `store status` (extends spec 03)
 
@@ -937,7 +937,7 @@ Change:
 - `apps/cli/src/create.ts:56-82, 95-105`: the config plan lines.
 - `apps/cli/src/manifest.ts:181-196` (`runCheck`): config mode.
 - `apps/cli/src/main.ts:132`: add `'use'`, `'unuse'`, `'lock'` to `COMMANDS`. After the create branch (line 152-157), add a branch for `use`/`unuse` that imports `./use.js`, and one for `lock` that imports `./lock.js`. `help use`, `help unuse`, `help lock`, `use --help`, and so on print the topics. `team adopt` is a new word of the `team` command: `parseCreateArgs` (`create.ts:30`) must accept `adopt` as the second word for `team` only and route to the adopt flow. `helpText` (`main.ts:121-127`) maps `team adopt` to `TOPICS.team`.
-- `apps/cli/src/human.ts`: `SECTIONS` (line 13): add `bowerloom use <skill|prompt|team> <id>   Pick a store item for this project.` and `bowerloom lock verify | update   Check or refresh bowerloom.lock.json.` under `Skills and setup`. `TOPICS` (line 45): add `use`, `unuse`, `lock`, and extend `apply`, `skills`, `team`, `ls`, `status`, `store`. `REFUSALS` (line 224): every new code with its sentence and next step. `tests/help-human.test.ts:20-45` holds the first screen.
+- `apps/cli/src/human.ts`: `SECTIONS` (line 13): add `bowerloom use <skill|prompt|team> <id>   Pick a store item for this project.` and `bowerloom lock verify | update   Check or refresh bowerloom.lock.json.` under `Skills and setup`. `TOPICS` (line 45): add `use`, `unuse`, `lock`, and extend `apply`, `skills`, `team`, `ls`, `status`, `store`. `REFUSALS` (line 224): every new code with its sentence and next step. `tests/help-human.test.ts:20-45` holds the first screen. Spec 03 already raised the limit at line 71 to 27 and added `store`. This spec adds two lines, `use` and `lock`. Add them to the constant `short`. Add `'lock'` and `'use'` to the sorted list at line 78 and to the help loop at line 79.
 - `package.json:30`: no change. Every new test file sits in a folder that the `test` glob already lists: `packages/project-config/test` (added by spec 03), `packages/project-sync/test`, `packages/skill-manifest/test`, `packages/managed-skills/test`, `packages/project-authoring/test`, `packages/project-context/test`, and `packages/startup/test`.
 
 ## 7. Edge cases
