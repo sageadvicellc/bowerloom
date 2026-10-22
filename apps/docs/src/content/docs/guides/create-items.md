@@ -126,6 +126,8 @@ bowerloom prompt create weekly-update --global
 
 Each command shows the plan and its revision. Run it again with `--approve <revision>` to write. A team in the store is built from a fixed store brief and the profile you choose, and it does not read a project brief. `--team <team>` on a skill or prompt names a team in the store. `bowerloom ls --global` lists what the store holds. A store that Bowerloom did not make refuses with `STORE_INVALID`.
 
+To move items that a project already defines into your store, run `bowerloom store migrate`. See [Move your items to the store](/docs/guides/existing-project/#move-your-items-to-the-store).
+
 ## Pick an item from your store
 
 A project lists what it installs in `bowerloom.json`. `bowerloom use skill <id>` picks a store skill, and `bowerloom use team <id>` picks a store team with the store skills and prompts that name it. `bowerloom unuse` drops an item and keeps any copy in place. `bowerloom team adopt <id>` copies a store team into the project, so you can change it there.

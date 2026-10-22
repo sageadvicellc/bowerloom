@@ -68,3 +68,18 @@ If inputs or binding change, prepare another plan and obtain exact approval. Do 
 If a revision is pending, preserve its transaction records. Use [revision recovery](/docs/guides/recover-revision/).
 
 Continue with [Read and review your setup](/docs/learn/review-your-setup/). Compare its team specification and handoff map with your current workflow.
+
+## Move your items to the store
+
+A project from 0.7.0-beta.2 keeps its skills, prompts, and teams in `.bowerloom`. `bowerloom store migrate` copies them to your store, `~/.bowerloom`, and lists them in `bowerloom.json` with the source `store`. It creates `bowerloom.json` when the project has none. It deletes nothing, and no state moves by itself.
+
+1. Run `bowerloom store migrate --all`. Read the plan, then run it again with `--approve <revision>`.
+2. Check the result with `bowerloom ls`.
+3. Run `bowerloom skills sync` and `bowerloom apply`. The copies are up to date, because the bytes are equal.
+4. Delete the old files with the `git rm` lines that the command printed.
+5. Remove the `skills.json` lines that the result names.
+6. Run `bowerloom receipt clean`. It removes the records of the items you deleted, so `bowerloom status` no longer names them as missing.
+
+In a shared project, the first run copies the items that you wrote, and it does not switch them. Commit and push the store: `bowerloom store status` shows the commands. Then run `bowerloom store migrate --all` again, and commit `bowerloom.json` and `bowerloom.lock.json`.
+
+Installed copies do not change. A skill that moves to the store keeps its catalog until the next update.
