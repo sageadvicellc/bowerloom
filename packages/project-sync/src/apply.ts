@@ -18,6 +18,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { DefinitionError } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { inspectSkillCache, observeSkillCacheRoot, refusalSummary } from '../../skill-sources/src/cache.js';
 import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
@@ -136,16 +137,28 @@ export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: Cac
  * The selector of a completed cache operation, read again now. A pin found cached, or just fetched, must still be
  * the very same bytes: its snapshot and receipt, when known, are compared.
  */
-export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup: CacheLookup): Promise<AcquiredSkillCacheSelector> {
+export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup: CacheLookup, rerun: string = 'bowerloom skills sync'): Promise<AcquiredSkillCacheSelector> {
   const { root, operationId } = lookup;
   let inspected;
-  try { inspected = await inspectSkillCache({ root, operationId }); } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`); }
-  if (inspected.status !== 'COMPLETED' || inspected.receipt === null || inspected.activeOwner) throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} is not complete.`);
+  try { inspected = await inspectSkillCache({ root, operationId }); } catch { throw prunedPin(item.id, root, operationId, rerun) ?? syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`); }
+  if (inspected.status !== 'COMPLETED' || inspected.receipt === null || inspected.activeOwner) throw prunedPin(item.id, root, operationId, rerun) ?? syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} is not complete.`);
   if (!receiptMatches(pinned, inspected.receipt)) throw mismatch(item.id);
   if ((lookup.snapshotRevision !== null && inspected.snapshotRevision !== lookup.snapshotRevision) || (lookup.receiptRevision !== null && inspected.receipt.revision !== lookup.receiptRevision)) throw stale();
   return { root, operationId, expectedSnapshotRevision: inspected.snapshotRevision, expectedReceiptRevision: inspected.receipt.revision };
 }
 
+/**
+ * Review M2 of PR 99 (a departure from spec 09, which left sync unchanged): the cached pin of an item whose operation
+ * folder is gone was deleted after the fetch, for example by cache prune. Nothing in the project changed, and a rerun
+ * fetches it again. Null when the folder is still there, so its own refusal stands.
+ */
+export function prunedPin(id: string, root: string, operationId: string, rerun: string): DefinitionError | null {
+  try { fs.lstatSync(join(root, 'op-' + operationId)); return null; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+    return Object.assign(syncError('STALE_APPROVAL', `The cached pin of ${id} was deleted after the fetch, for example by bowerloom cache prune. Run ${rerun} again.`), { next: rerun });
+  }
+}
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
 export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
@@ -268,7 +281,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
       const done = await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps); found = done.lookup;
       if (done.fetched) fetched.push(item.id);
     }
-    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found) });
+    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found, rerun) });
   }
   return { sources, pins, fetched, review };
 }
@@ -278,7 +291,12 @@ export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps:
   for (const item of work) {
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
     const req = childRequest(plan, item, got.sources.get(item.id)!);
-    let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) { if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun); throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`); }
+    let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) {
+      if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
+      const source = got.sources.get(item.id)!, gone = source.kind === 'cache' ? prunedPin(item.id, source.selector.root, source.selector.operationId, rerun) : null;
+      if (gone !== null) throw gone;
+      throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`);
+    }
     children.push({ item, req, plan: checkChild(plan.project.dir, item, got.pins.get(item.id) ?? null, req, child) });
   }
   return children;

@@ -10,7 +10,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
-import { observeSkillCacheRoot, seedSkillCache, removeCacheEntry } from '../../../dist/packages/skill-sources/src/cache.js';
+import { observeSkillCacheRoot, seedSkillCache, removeCacheEntry, cacheEntryProblem } from '../../../dist/packages/skill-sources/src/cache.js';
 
 const sha = b => createHash('sha256').update(b).digest('hex');
 const OP = 'a'.repeat(32), PROJECT = 'c'.repeat(32), HASH = 'd'.repeat(64);
@@ -138,7 +138,7 @@ test('7. held.assertHeld runs before the rename and before the delete; a lost lo
   assert.deepEqual(seen, [['original'], ['renamed']]);
   entry(w.cacheRoot, 'op-' + OP);
   const lost = { assertHeld() { const e = new Error('lost'); e.code = 'PROJECT_LOCK_UNAVAILABLE'; throw e; } };
-  assert.throws(() => removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, 'op-' + OP, lost));
+  assert.throws(() => removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, 'op-' + OP, lost), e => e.code === 'PROJECT_LOCK_UNAVAILABLE' && e.message === 'lost', 'a lost lock passes through as itself');
   assert.deepEqual(names(w.cacheRoot), ['op-' + OP]); assert.ok(fs.existsSync(path.join(dir, 'note.md')));
 });
 
@@ -186,4 +186,44 @@ test('8. a .prune- name skips the rename; a name that fails step 0 refuses; an u
 test('a missing entry refuses CACHE_PRUNE_FAILED', t => {
   const w = stateWorld(t);
   assert.throws(() => removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, 'op-' + OP, held()), refused);
+});
+
+// Review H2 of PR 99: a refusal names the folder, the step, and the check or the system code, and keeps the cause.
+const FIXED = 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.';
+const says = text => e => { refused(e); assert.equal(e.message, `${FIXED} ${text}`); return true; };
+test('9. each refusal says which folder failed which check, and the system code is the cause', t => {
+  const w = stateWorld(t), dir = entry(w.cacheRoot, 'op-' + OP), machine = { scope: 'machine', projectId: null };
+  fs.chmodSync(dir, 0o755);
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'op-' + OP, held()), says(`Could not delete cache/op-${OP}: its mode is 0755, not 0700.`));
+  fs.chmodSync(dir, 0o770);
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'op-' + OP, held()), says(`Could not delete cache/op-${OP}: its mode is 0770, not 0700.`));
+  fs.chmodSync(dir, 0o700); fs.rmSync(dir, { recursive: true });
+  fs.symlinkSync(w.base, path.join(w.cacheRoot, 'op-' + OP));
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'op-' + OP, held()), says(`Could not delete cache/op-${OP}: it is a link.`));
+  fs.unlinkSync(path.join(w.cacheRoot, 'op-' + OP));
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'op-' + OP, held()), e => says(`Could not delete cache/op-${OP}: it is not there (ENOENT).`)(e) && e.cause === 'ENOENT');
+  fs.writeFileSync(path.join(w.cacheRoot, 'op-' + OP), 'x\n', { mode: 0o600 });
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'op-' + OP, held()), says(`Could not delete cache/op-${OP}: it is not a folder.`));
+  assert.throws(() => removeCacheEntry(w.stateRoot, machine, 'stray', held()), says('Could not delete cache/stray: the name is not a cache entry name.'));
+  entry(w.legacyRoot, 'op-' + OP); fs.chmodSync(w.legacyRoot, 0o750);
+  assert.throws(() => removeCacheEntry(w.stateRoot, { scope: 'project-legacy', projectId: PROJECT }, 'op-' + OP, held()), says(`Could not delete ${PROJECT}/cache/op-${OP}: the folder ${PROJECT}/cache has mode 0750, not 0700.`));
+  fs.chmodSync(w.legacyRoot, 0o700);
+  // A failed rename names its step and keeps the system code as the cause.
+  const rename = fs.renameSync; fs.renameSync = () => { throw Object.assign(new Error('injected'), { code: 'EXDEV' }); };
+  try { assert.throws(() => removeCacheEntry(w.stateRoot, { scope: 'project-legacy', projectId: PROJECT }, 'op-' + OP, held()), e => says(`Could not delete ${PROJECT}/cache/op-${OP} at the rename step (EXDEV).`)(e) && e.cause === 'EXDEV'); }
+  finally { fs.renameSync = rename; }
+});
+
+test('10. cacheEntryProblem runs the checks of steps 0, 0a and 2 without the lock, and agrees with removeCacheEntry', t => {
+  const w = stateWorld(t), machine = { scope: 'machine', projectId: null };
+  entry(w.cacheRoot, 'op-' + OP); assert.equal(cacheEntryProblem(w.stateRoot, machine, 'op-' + OP), null);
+  const bad = entry(w.cacheRoot, 'op-' + 'b'.repeat(32)); fs.chmodSync(bad, 0o755);
+  assert.equal(cacheEntryProblem(w.stateRoot, machine, 'op-' + 'b'.repeat(32)), 'its mode is 0755, not 0700');
+  fs.symlinkSync(w.base, path.join(w.storeCacheRoot, `skill-a-${HASH}`));
+  assert.equal(cacheEntryProblem(w.stateRoot, { scope: 'store', projectId: null }, `skill-a-${HASH}`), 'it is a link');
+  assert.equal(cacheEntryProblem(w.stateRoot, machine, 'junk'), 'the name is not a cache entry name');
+  fs.chmodSync(w.cacheRoot, 0o755);
+  assert.equal(cacheEntryProblem(w.stateRoot, machine, 'op-' + OP), 'the folder cache has mode 0755, not 0700');
+  fs.chmodSync(w.cacheRoot, 0o700);
+  assert.deepEqual(names(w.cacheRoot), ['op-' + OP, 'op-' + 'b'.repeat(32)], 'it reads only');
 });

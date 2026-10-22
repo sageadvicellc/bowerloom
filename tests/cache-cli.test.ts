@@ -11,6 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { world, run, approve, mustApprove, errorCode, errorMessage, network, NETWORK, project } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
 import { TOPICS } from '../apps/cli/src/human.js';
+import { renderCacheList, renderCachePrune, renderNothingToPrune, renderPruneResult, renderStopped } from '../apps/cli/src/cache.js';
+import { cacheLockSlot, lockHolder } from '../packages/project-context/src/index.js';
+import { spawn } from 'node:child_process';
+import { cli, baseEnv } from './support/config-cli.js';
+import type { CacheList, CachePrunePlan, PickedEntry } from '../packages/project-sync/src/index.js';
 import { readInstalledRelease } from '../apps/cli/src/release.js';
 import { STORE_MANIFEST_LIMITS, serializeManifest, validateManifest } from '../packages/skill-manifest/src/schema.js';
 
@@ -64,11 +69,12 @@ test('2. after skills add --global, cache list shows one entry with [store]', t 
 test('3. cache list --json matches 4.1 field by field', t => {
   const w = world(t); pinnedInStore(w);
   const j = listJson(w);
-  assert.deepEqual(Object.keys(j), ['format', 'stateRoot', 'entries', 'totals', 'unlisted', 'truncated', 'unreadableSources']);
+  assert.deepEqual(Object.keys(j), ['format', 'stateRoot', 'entries', 'totals', 'unlisted', 'truncated', 'unreadableSources', 'unlistedNames', 'unreadable']);
+  assert.deepEqual(j.unlistedNames, []); assert.deepEqual(j.unreadable, []);
   assert.equal(j.format, 'bowerloom/cache-list/v1beta1'); assert.equal(j.stateRoot, stateOf(w));
   assert.equal(j.unlisted, 0); assert.equal(j.truncated, false); assert.deepEqual(j.unreadableSources, []);
   const [e] = j.entries as unknown as Record<string, unknown>[];
-  assert.deepEqual(Object.keys(e!), ['scope', 'id', 'projectId', 'status', 'name', 'active', 'stale', 'kind', 'label', 'skillName', 'files', 'bytes', 'key', 'references']);
+  assert.deepEqual(Object.keys(e!), ['scope', 'id', 'projectId', 'status', 'name', 'active', 'stale', 'kind', 'label', 'skillName', 'files', 'bytes', 'key', 'references', 'partialReason']);
   assert.equal(e!.scope, 'machine'); assert.match(String(e!.id), /^[a-f0-9]{32}$/); assert.equal(e!.projectId, null); assert.equal(e!.status, 'completed');
   assert.equal(e!.name, `op-${String(e!.id)}`); assert.equal(e!.active, false); assert.equal(e!.stale, false); assert.equal(e!.kind, 'npm');
   assert.equal(e!.label, '@synthetic/db-skills@0.0.1:skills/synthetic-db/collections'); assert.equal(typeof e!.skillName, 'string');
@@ -117,7 +123,8 @@ test('9. prune --legacy deletes a hand-made legacy cache entry and leaves the pr
   for (const p of [w.state, stateOf(w), join(stateOf(w), pid), join(stateOf(w), pid, 'cache'), join(stateOf(w), pid, 'cache', `op-${op}`), join(stateOf(w), pid, 'items')]) { mkdirSync(p, { mode: 0o700 }); chmodSync(p, 0o700); }
   writeFileSync(join(stateOf(w), pid, 'cache', `op-${op}`, 'leftover.json'), '{}\n', { mode: 0o600 });
   const list = run(w.work, ['cache', 'list'], w.env);
-  assert.match(list.stdout, new RegExp(`^Earlier per-project caches: 1 entries in 1 projects\\n {2}${pid.slice(0, 8)}/${op.slice(0, 8)} {2}partial {4}unfinished fetch\\nTotal: 1 entries, 0 B\\n$`));
+  // Review L1 and L3: an inspection that fails is an unreadable entry, and an unknown size never prints as 0 B.
+  assert.equal(list.stdout, `Earlier per-project caches: 1 entries in 1 projects\n  ${pid.slice(0, 8)}/${op.slice(0, 8)}  partial    unreadable entry  (size unknown)\nTotal: 1 entries, size unknown\n`);
   const { planned, applied } = approve(w.work, ['cache', 'prune', '--legacy'], w.env);
   assert.match(JSON.parse(planned.stdout).revision, /^[a-f0-9]{64}$/);
   assert.equal(applied.status, 0, applied.stderr);
@@ -165,4 +172,118 @@ test('a state folder inside the store refuses STORE_STATE_NESTED; a state folder
   mkdirSync(w.state, { mode: 0o700 }); mkdirSync(stateOf(w), { mode: 0o700 }); mkdirSync(join(stateOf(w), 'cache'), { mode: 0o700 }); chmodSync(join(stateOf(w), 'cache'), 0o755);
   const unsafe = run(w.work, ['cache', 'prune', '--all'], w.env);
   assert.equal(unsafe.status, 1); assert.equal(errorCode(unsafe.stderr), 'SKILLS_STATE_UNSAFE');
+});
+
+// --- Round 2 of the reviews of PR 99 ---
+
+/** Many unreadable operation folders, each with a few files, so a prune takes a while. */
+function manyEntries(w: World, n: number): string {
+  const cache = join(stateOf(w), 'cache');
+  for (const p of [w.state, stateOf(w), cache]) { mkdirSync(p, { mode: 0o700 }); chmodSync(p, 0o700); }
+  for (let i = 0; i < n; i++) {
+    const op = join(cache, `op-${i.toString(16).padStart(32, '0')}`); mkdirSync(op, { mode: 0o700 }); chmodSync(op, 0o700);
+    for (let f = 0; f < 8; f++) writeFileSync(join(op, `f${f}.md`), 'x\n', { mode: 0o600 });
+  }
+  return cache;
+}
+function runAsync(cwd: string, args: string[], env: Record<string, string>, onSpawn: (child: ReturnType<typeof spawn>) => void): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, [cli, ...args], { cwd, env: { ...baseEnv(), ...env } as NodeJS.ProcessEnv });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => { stdout += d; }); child.stderr.on('data', d => { stderr += d; });
+    child.on('close', status => resolve({ status, stdout, stderr }));
+    onSpawn(child);
+  });
+}
+/** Starts an approved prune of every entry, waits until it has deleted some, checks the lock answers, then sends SIGINT. */
+async function interrupted(w: World, json: boolean) {
+  const n = 2500, cache = manyEntries(w, n);
+  const planned = run(w.work, ['cache', 'prune', '--partial', '--json'], w.env); assert.equal(planned.status, 3, planned.stderr);
+  const revision = (JSON.parse(planned.stdout) as { revision: string }).revision;
+  let holder = '';
+  const result = await runAsync(w.work, ['cache', 'prune', '--partial', '--approve', revision, ...(json ? ['--json'] : [])], w.env, child => {
+    const poll = async (): Promise<void> => {
+      for (;;) {
+        await new Promise(r => setTimeout(r, 5));
+        const left = readdirSync(cache).length;
+        if (left < n - 20) { holder = await lockHolder(cacheLockSlot(cache), 1000); child.kill('SIGINT'); return; }
+      }
+    };
+    void poll();
+  });
+  return { result, n, left: readdirSync(cache).length, holder };
+}
+
+test('H1. Ctrl-C stops a long prune between two deletes with exit 130, and the lock is served while it runs', async t => {
+  const w = world(t), { result, n, left, holder } = await interrupted(w, false);
+  assert.equal(holder, 'this', 'the cache lock answered during the prune');
+  assert.equal(result.status, 130, result.stderr);
+  const m = /^Stopped\. Deleted (\d+) of (\d+) entries\. It stopped at cache [a-f0-9]{8}\. Run bowerloom cache list to see what is left\.\n$/.exec(result.stdout);
+  assert.ok(m, result.stdout); assert.equal(Number(m![2]), n); assert.ok(Number(m![1]) > 0 && Number(m![1]) < n);
+  assert.equal(left, n - Number(m![1]), 'it deleted exactly what it reported');
+});
+
+test('L7. exit 130 keeps --json', async t => {
+  const w = world(t), { result, n } = await interrupted(w, true);
+  assert.equal(result.status, 130, result.stderr);
+  const body = JSON.parse(result.stdout) as { stopped: boolean; deleted: number; of: number; stoppedAt: string };
+  assert.equal(body.stopped, true); assert.equal(body.of, n); assert.ok(body.deleted > 0 && body.deleted < n); assert.match(body.stoppedAt, /^cache [a-f0-9]{8}$/);
+});
+
+test('E (tech lead). inside ~/.bowerloom or in a home folder with bowerloom.json, the project counts as none, not unknown', t => {
+  const w = world(t); mustApprove(w.work, ['team', 'create', 'studio', '--global'], w.env);
+  for (const cwd of [w.store, join(w.store, 'teams')]) assert.deepEqual(listJson(w, cwd).unreadableSources, [], cwd);
+  writeFileSync(join(w.home, 'bowerloom.json'), '{}\n', { mode: 0o644 });
+  assert.deepEqual(listJson(w, w.home).unreadableSources, [], 'PROJECT_ROOT_REFUSED');
+});
+
+const entry = (over: Partial<CacheList['entries'][number]>): CacheList['entries'][number] => ({ scope: 'machine', id: 'a'.repeat(32), projectId: null, status: 'completed', name: `op-${'a'.repeat(32)}`, active: false, stale: false, kind: 'npm', label: '@s/x@1.0.0:skills/x', skillName: 'x', files: 3, bytes: 2048, key: null, references: { store: false, project: false }, partialReason: null, ...over });
+const list = (over: Partial<CacheList>): CacheList => ({ format: 'bowerloom/cache-list/v1beta1', stateRoot: '/s', entries: [], totals: { entries: 0, bytes: 0 }, unlisted: 0, truncated: false, unreadableSources: [], unlistedNames: [], unreadable: [], ...over });
+const plan = (over: Partial<CachePrunePlan>): CachePrunePlan => ({ format: 'bowerloom/cache-prune-plan/v1beta1', stateRoot: '/s', selectors: { unreferenced: false, partial: false, legacy: false, all: true, entries: [] }, picked: [], skipped: [], freed: 0, projectChecked: true, truncated: false, unreadableSources: [], unreadable: [], writesAuthorized: false, executionAuthorized: false, revision: 'f'.repeat(64), ...over });
+
+test('M3, L1 and M1. cache list words: unlisted names, unknown sizes, the truncation, and the cause of an unread source', () => {
+  assert.equal(renderCacheList(list({})), 'The cache is empty.\n');
+  assert.equal(renderCacheList(list({ unlisted: 1, unlistedNames: [{ place: 'cache', name: 'op-x', reason: 'its mode is 0755, not 0700' }] })),
+    'The cache holds no entries.\nNot listed: 1 names that cache prune never deletes.\n  cache/op-x: its mode is 0755, not 0700\n');
+  const partial = entry({ id: 'b'.repeat(32), name: `op-${'b'.repeat(32)}`, status: 'partial', label: null, files: null, bytes: null, kind: null, partialReason: 'unfinished-fetch' });
+  const text = renderCacheList(list({ entries: [entry({}), partial], totals: { entries: 2, bytes: 2048 }, truncated: true, unreadableSources: ['store'], unreadable: [{ source: 'store', code: 'MANIFEST_INVALID', item: 'skills.json' }] }));
+  assert.equal(text, [
+    'Skills cache: /s/cache',
+    '  aaaaaaaa  completed  @s/x@1.0.0:skills/x  (3 files, 2.0 KiB)',
+    '  bbbbbbbb  partial    unfinished fetch  (size unknown)',
+    'Total: 2 entries, 2.0 KiB and 1 of unknown size',
+    'More entries exist. Only the first 4096 are shown.',
+    'Some references were not checked: store (MANIFEST_INVALID, skills.json). Next: bowerloom store status',
+    '',
+  ].join('\n'));
+  const labels = [['changed', 'skill x, changed since it was written'], ['unreadable', 'unreadable entry'], ['prune-leftover', 'left by a stopped prune'], ['write-leftover', 'left by a stopped write']] as const;
+  for (const [reason, words] of labels) assert.match(renderCacheList(list({ entries: [entry({ status: 'partial', partialReason: reason, label: reason === 'changed' ? 'skill x' : null, files: null, bytes: null })], totals: { entries: 1, bytes: 0 } })), new RegExp(`  partial    ${words}  \\(size unknown\\)\\n`), reason);
+});
+
+test('M3, L1, L4 and L9. prune words: the notes on every path, unknown sizes, and store-remote entries', () => {
+  const unread = { unreadableSources: ['project' as const], unreadable: [{ source: 'project' as const, code: 'LOCK_INVALID', item: 'bowerloom.lock.json' }] };
+  const unreferenced = { unreferenced: true, partial: false, legacy: false, all: false, entries: [] };
+  assert.equal(renderNothingToPrune(plan({ ...unread, selectors: unreferenced, truncated: true, skipped: [{ scope: 'machine', id: 'c'.repeat(32), projectId: null, reason: 'active', label: null }] })), [
+    'Some references were not checked: project (LOCK_INVALID, bowerloom.lock.json). --unreferenced picks nothing. Next: bowerloom status',
+    'More entries exist. Only the first 4096 are listed. Run the command again after this one.',
+    'Skipped 1 entries that another command is using.',
+    'Nothing to prune.', '',
+  ].join('\n'));
+  assert.equal(renderNothingToPrune(plan({ ...unread })), 'Nothing to prune.\n', 'L4: the note only with --unreferenced');
+  const store = { scope: 'store' as const, id: 'd'.repeat(64), name: `skill-x-${'d'.repeat(64)}`, projectId: null, status: 'completed' as const, label: 'skill x', files: 1, bytes: 10, references: { store: false, project: null }, stale: false, partialReason: null as PickedEntry['partialReason'], bound: { snapshotRevision: null, receiptRevision: null, contentHash: 'd'.repeat(64) } };
+  const unknown = { ...store, scope: 'machine' as const, id: 'e'.repeat(32), name: `op-${'e'.repeat(32)}`, status: 'partial' as const, label: null, files: null, bytes: null, partialReason: 'unreadable' as const, bound: { snapshotRevision: null, receiptRevision: null, contentHash: null } };
+  const words = renderCachePrune(plan({ picked: [unknown, store], freed: 10, selectors: unreferenced, projectChecked: false }));
+  assert.equal(words, [
+    'Prune the skills cache',
+    '  delete  unreadable entry  cache eeeeeeee',
+    '  delete  skill x  (1 files, 10 B)  store-cache dddddddd',
+    'Frees about 10 B, plus 1 entries of unknown size.',
+    'Store cache entries come from your store remote. Fetching one again needs the network, and a private store needs BOWERLOOM_GITHUB_TOKEN.',
+    'Other projects on this machine are not checked.',
+    'This deletes cached skill bytes only. It deletes no project file and no installed copy.',
+  ].join('\n'));
+  assert.match(renderCachePrune(plan({ picked: [unknown], selectors: unreferenced })), /\nFrees an unknown amount: 1 entries of unknown size\.\n/);
+  assert.equal(renderPruneResult({ format: 'bowerloom/cache-prune-result/v1beta1', planRevision: 'f'.repeat(64), deleted: [{ scope: 'machine', id: 'e'.repeat(32), projectId: null }, { scope: 'store', id: 'd'.repeat(64), projectId: null }], skipped: [], freed: 10, executionAuthorized: false }, plan({ picked: [unknown, store], freed: 10 })),
+    'Deleted 2 entries, about 10 B, plus 1 of unknown size.\n');
+  assert.equal(renderStopped({ deleted: 0, of: 3, stoppedAt: 'cache eeeeeeee' }), 'Stopped. Deleted 0 of 3 entries. It stopped at cache eeeeeeee. Run bowerloom cache list to see what is left.\n');
 });

@@ -140,9 +140,9 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 
 | Code | Meaning | Next action |
 | --- | --- | --- |
-| `CACHE_ENTRY_NOT_FOUND` | `--entry` matched no entry of `bowerloom cache list`. | `bowerloom cache list` |
-| `CACHE_ENTRY_BUSY` | `--entry` named an entry that another command is using. | When the other command is done, run this one again. |
-| `CACHE_PRUNE_FAILED` | A delete step failed. The message says how many entries were deleted. Those stay deleted. | Run `bowerloom cache list`, then run the command again. |
+| `CACHE_ENTRY_NOT_FOUND` | `cache prune --entry` deletes only an entry that `cache list` shows, so the text must start one of its ids. | `bowerloom cache list` |
+| `CACHE_ENTRY_BUSY` | Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count. | When the other command is done, run this one again. |
+| `CACHE_PRUNE_FAILED` | Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete. | Run `bowerloom cache list`, then run the command again without `--approve`. The message names the folder, the step, and how many entries were deleted. |
 
 ## Lock refusals
 

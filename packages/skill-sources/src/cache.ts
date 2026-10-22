@@ -489,46 +489,85 @@ export async function readAcquiredSkillCache(value: unknown, options: { signal: 
 
 /** Spec 09, 4.4: the names a cache entry or a leftover can have. Anything else is not removed. */
 const ENTRY_NAMES = [/^op-[a-f0-9]{32}$/, /^(?:skill|prompt|team)-[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{64}$/, /^\.tmp-.{1,200}$/, /^\.prune-.{1,200}$/];
-const pruneFailed = (): never => { throw new DefinitionError('CACHE_PRUNE_FAILED', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.'); };
-function prunable(ok: unknown): asserts ok { if (!ok) pruneFailed(); }
-/** A real folder, not a link, that this user owns with mode exactly 0700. */
-function privateFolder(path: string): void {
-  let s: fs.Stats; try { s = fs.lstatSync(path); } catch { return pruneFailed(); }
-  prunable(s.isDirectory() && !s.isSymbolicLink() && s.uid === process.getuid?.() && (s.mode & 0o7777) === 0o700);
+const PRUNE_FAILED = 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.';
+export type CachePlace = { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null };
+/** A refusal of removeCacheEntry: why it stopped, in words, and the system code, if any, as the cause. */
+export class CachePruneRefusal extends DefinitionError {
+  constructor(readonly where: string, readonly reason: string, cause?: string) {
+    super('CACHE_PRUNE_FAILED', `${PRUNE_FAILED} Could not delete ${where}${reason.startsWith('at the ') ? ' ' : ': '}${reason}.`);
+    if (cause !== undefined) Object.defineProperty(this, 'cause', { value: cause, enumerable: false });
+  }
 }
+const errnoOf = (error: unknown): string => { const code = (error as { code?: unknown } | null)?.code; return typeof code === 'string' ? code : (error as { name?: unknown } | null)?.name === undefined ? 'Error' : String((error as { name: unknown }).name); };
+/**
+ * Why `path` is not a private folder of this user (a real folder, not a link, mode exactly 0700), in words, or null.
+ * `subject` is `it` for the entry, or `the folder <relative path>` for a root.
+ */
+function folderProblem(path: string, subject: string): { reason: string; cause?: string } | null {
+  let s: fs.Stats;
+  try { s = fs.lstatSync(path); } catch (error) { const code = errnoOf(error); return { reason: code === 'ENOENT' ? `${subject} is not there (ENOENT)` : `${subject} cannot be read (${code})`, cause: code }; }
+  if (s.isSymbolicLink()) return { reason: `${subject} is a link` };
+  if (!s.isDirectory()) return { reason: `${subject} is not a folder` };
+  if (s.uid !== process.getuid?.()) return { reason: `${subject} belongs to another user` };
+  const mode = (s.mode & 0o7777).toString(8).padStart(4, '0');
+  if ((s.mode & 0o7777) !== 0o700) return { reason: subject === 'it' ? `its mode is ${mode}, not 0700` : `${subject} has mode ${mode}, not 0700` };
+  return null;
+}
+/** The root of a place, relative to the state root, or null for a place that is not one of the three. */
+function placeRoot(place: CachePlace): string | null {
+  if (place === null || typeof place !== 'object') return null;
+  if (place.scope === 'machine' && place.projectId === null) return 'cache';
+  if (place.scope === 'store' && place.projectId === null) return 'store-cache';
+  if (place.scope === 'project-legacy' && typeof place.projectId === 'string' && /^[a-f0-9]{32}$/.test(place.projectId)) return `${place.projectId}/cache`;
+  return null;
+}
+/** Step 0a: why the root of a place cannot be used, or null. */
+function rootProblem(stateRoot: string, place: CachePlace): { reason: string; cause?: string } | null {
+  if (typeof stateRoot !== 'string' || !isAbsolute(stateRoot) || resolve(stateRoot) !== stateRoot || stateRoot.includes('\0')) return { reason: 'the state folder is not an absolute path' };
+  const rel = placeRoot(place); if (rel === null) return { reason: 'the place is not a cache folder' };
+  if (place.scope === 'project-legacy') { const p = folderProblem(join(stateRoot, place.projectId!), `the folder ${place.projectId}`); if (p) return p; }
+  const root = join(stateRoot, rel), p = folderProblem(root, `the folder ${rel}`); if (p) return p;
+  let real: string; try { real = fs.realpathSync(root); } catch (error) { return { reason: `the folder ${rel} cannot be read (${errnoOf(error)})`, cause: errnoOf(error) }; }
+  return real === root ? null : { reason: `the folder ${rel} is not at its real path` };
+}
+const nameOk = (name: unknown): name is string => typeof name === 'string' && !name.includes('/') && !name.includes('\0') && name !== '.' && name !== '..' && ENTRY_NAMES.some(shape => shape.test(name));
+const whereOf = (place: CachePlace, name: string): string => `${placeRoot(place) ?? 'cache'}/${String(name).replace(/[\p{Cc}\p{Cf}]/gu, '?')}`;
+function problemOf(stateRoot: string, place: CachePlace, name: string): { reason: string; cause?: string } | null {
+  if (!nameOk(name)) return { reason: 'the name is not a cache entry name' };
+  return rootProblem(stateRoot, place) ?? folderProblem(join(stateRoot, placeRoot(place)!, name), 'it');
+}
+/**
+ * Review H2 of PR 99: the checks of removeCacheEntry before the lock (steps 0, 0a and 2), as words, or null when the
+ * entry can be removed. It reads only. `cache list` runs it, so no plan picks an entry the delete would refuse.
+ */
+export function cacheEntryProblem(stateRoot: string, place: CachePlace, name: string): string | null { return problemOf(stateRoot, place, name)?.reason ?? null; }
+/** Step 0a alone: why the root of a place cannot be used, as words, or null. */
+export function cacheRootProblem(stateRoot: string, place: CachePlace): string | null { return rootProblem(stateRoot, place)?.reason ?? null; }
 /**
  * Spec 09, 4.4: deletes one entry of the skills cache, the store cache, or a per-project cache of an earlier beta. The
  * caller holds the cache lock. The entry is first renamed to `.prune-<name>-<8 hex>`, so a crash leaves a leftover that
- * `cache prune --partial` finds, then removed without following any link. The contents are never read. Every refusal is
- * CACHE_PRUNE_FAILED.
+ * `cache prune --partial` finds, then removed without following any link. The contents are never read. A refusal is a
+ * CachePruneRefusal (CACHE_PRUNE_FAILED) that names the folder and the step; a lost lock passes through as itself.
  */
-export function removeCacheEntry(stateRoot: string, place: { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null }, name: string, held: { assertHeld(): void }): void {
-  // Step 0: the name is one of the four shapes, one path segment.
-  prunable(typeof name === 'string' && !name.includes('/') && !name.includes('\0') && name !== '.' && name !== '..' && ENTRY_NAMES.some(shape => shape.test(name)));
-  // Step 0a: the root is one of the three places, at its real path, a private folder of this user.
-  prunable(typeof stateRoot === 'string' && isAbsolute(stateRoot) && resolve(stateRoot) === stateRoot && !stateRoot.includes('\0') && place !== null && typeof place === 'object');
-  let root: string;
-  if (place.scope === 'machine' && place.projectId === null) root = join(stateRoot, 'cache');
-  else if (place.scope === 'store' && place.projectId === null) root = join(stateRoot, 'store-cache');
-  else if (place.scope === 'project-legacy' && typeof place.projectId === 'string' && /^[a-f0-9]{32}$/.test(place.projectId)) { privateFolder(join(stateRoot, place.projectId)); root = join(stateRoot, place.projectId, 'cache'); }
-  else return pruneFailed();
-  let real: string; try { real = fs.realpathSync(root); } catch { return pruneFailed(); }
-  prunable(real === root); privateFolder(root);
+export function removeCacheEntry(stateRoot: string, place: CachePlace, name: string, held: { assertHeld(): void }): void {
+  const where = whereOf(place, name);
+  // Steps 0 and 0a: the name, then the root.
+  if (!nameOk(name)) throw new CachePruneRefusal(where, 'the name is not a cache entry name');
+  const root0 = rootProblem(stateRoot, place); if (root0) throw new CachePruneRefusal(where, root0.reason, root0.cause);
+  const root = join(stateRoot, placeRoot(place)!);
   // Steps 1 and 2: the lock, then the entry itself: a real private folder, never a link.
   held.assertHeld();
-  const entry = join(root, name); privateFolder(entry);
+  const entry = join(root, name), p = folderProblem(entry, 'it'); if (p) throw new CachePruneRefusal(where, p.reason, p.cause);
   let doomed = entry;
-  try {
-    // Step 3: the rename, unless the entry is already a leftover. The new name must not exist.
-    if (!name.startsWith('.prune-')) {
-      doomed = join(root, `.prune-${name}-${randomBytes(4).toString('hex')}`);
-      prunable(!fs.existsSync(doomed) && !isLink(doomed));
-      fs.renameSync(entry, doomed); syncDir(root);
-    }
-  } catch (error) { if (error instanceof DefinitionError) throw error; return pruneFailed(); }
+  // Step 3: the rename, unless the entry is already a leftover. The new name must not exist.
+  if (!name.startsWith('.prune-')) {
+    doomed = join(root, `.prune-${name}-${randomBytes(4).toString('hex')}`);
+    if (fs.existsSync(doomed) || isLink(doomed)) throw new CachePruneRefusal(where, 'at the rename step (EEXIST)', 'EEXIST');
+    try { fs.renameSync(entry, doomed); syncDir(root); } catch (error) { throw new CachePruneRefusal(where, `at the rename step (${errnoOf(error)})`, errnoOf(error)); }
+  }
   // Step 4: the lock again, before anything is deleted.
   held.assertHeld();
   // Step 5: rmSync unlinks a link inside the entry as a name and never follows it.
-  try { fs.rmSync(doomed, { recursive: true, force: false }); syncDir(root); } catch { return pruneFailed(); }
+  try { fs.rmSync(doomed, { recursive: true, force: false }); syncDir(root); } catch (error) { throw new CachePruneRefusal(where, `at the delete step (${errnoOf(error)})`, errnoOf(error)); }
 }
 function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }

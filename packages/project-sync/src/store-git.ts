@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { revisionOf } from '../../skill-sources/src/validation.js';
+import { removeCacheEntry } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { withCacheLock } from '../../project-context/src/index.js';
 import type { HeldCacheLock } from '../../project-context/src/index.js';
@@ -174,11 +175,11 @@ function writeHeld(held: HeldCacheLock, roots: StoreCacheRoots, kind: AuthoredKi
   if (authoredRows(files).hash !== hash) throw configRefusal('LOCK_HASH_MISMATCH');
   held.assertHeld();
   storeCacheFolder(roots.storeCacheRoot);
-  // A crash leaves a `.tmp-<key>-*` folder. Under the lock, any such folder is this writer's to remove.
+  // A crash leaves a `.tmp-<key>-*` folder. Under the lock, any such folder is this writer's to remove. Review L10 of PR 99
+  // (spec 09: one delete path): it goes through removeCacheEntry, which refuses a link or a folder that is not private.
   for (const name of fs.readdirSync(roots.storeCacheRoot)) if (leftover(key).test(name)) {
-    const s = fs.lstatSync(join(roots.storeCacheRoot, name));
-    if (s.isSymbolicLink() || s.uid !== process.getuid?.()) throw unsafe();
-    fs.rmSync(join(roots.storeCacheRoot, name), { recursive: s.isDirectory(), force: false });
+    try { removeCacheEntry(dirname(roots.storeCacheRoot), { scope: 'store', projectId: null }, name, held); }
+    catch (error) { if ((error as { code?: unknown } | null)?.code === 'PROJECT_LOCK_UNAVAILABLE') throw error; throw unsafe(); }
   }
   if (!missing(target)) {
     let ok = false;

@@ -7,15 +7,17 @@ import { join } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { ProjectContext, PlannedChange } from '../../../packages/project-context/src/types.js';
-import { applyCachePrune, listCache, planCachePrune, CACHE_LIST_LIMIT, CACHE_USAGE } from '../../../packages/project-sync/src/index.js';
-import type { CacheEntry, CacheList, CachePruneInput, CachePrunePlan, CachePruneResult, CachePruneSelectors, PickedEntry, PruneInterrupt } from '../../../packages/project-sync/src/index.js';
+import { applyCachePrune, cacheUsage, listCache, planCachePrune, CACHE_LIST_LIMIT, CACHE_USAGE } from '../../../packages/project-sync/src/index.js';
+import type { CacheEntry, CacheList, CachePruneInput, CachePrunePlan, CachePruneResult, CachePruneSelectors, PartialReason, PickedEntry, PruneInterrupt, Unreadable } from '../../../packages/project-sync/src/index.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, orderedJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 
-const usage = (): never => { throw new DefinitionError('USAGE', CACHE_USAGE); };
+const usage = (): never => { throw cacheUsage(CACHE_USAGE); };
 const IN_USE = '(another command is using it)', OLD_LOCK = '(its owner lock is older than a day)';
+/** How many unlisted names the text shows. `cache list --json` holds up to 256. */
+const UNLISTED_SHOWN = 8;
 
 /** A size in words (3.3): bytes below 1024, then KiB, then MiB, with one decimal. */
 export function humanBytes(n: number): string {
@@ -29,27 +31,53 @@ const tags = (r: { store: boolean | null; project: boolean | null }): string => 
   const t = [...(r.store === true ? ['[store]'] : []), ...(r.project === true ? ['[project]'] : [])];
   return t.length ? `  ${t.join(' ')}` : '';
 };
-const sized = (files: number | null, bytes: number | null): string => files !== null && bytes !== null ? `  (${files} files, ${humanBytes(bytes)})` : '';
-const what = (e: { label: string | null }): string => e.label ?? 'unfinished fetch';
-const sources = (names: readonly string[]): string => names.join(' and ');
+const sized = (files: number | null, bytes: number | null): string => files !== null && bytes !== null ? `  (${files} files, ${humanBytes(bytes)})` : '  (size unknown)';
+/** Review L3 of PR 99: what an entry holds, or why it is partial. */
+function what(e: { label: string | null; status: string; partialReason: PartialReason | null }): string {
+  if (e.status === 'completed') return e.label ?? 'unknown entry';
+  switch (e.partialReason) {
+    case 'changed': return `${e.label ?? 'store item'}, changed since it was written`;
+    case 'unreadable': return 'unreadable entry';
+    case 'prune-leftover': return 'left by a stopped prune';
+    case 'write-leftover': return 'left by a stopped write';
+    default: return 'unfinished fetch';
+  }
+}
+const NEXT: Readonly<Record<string, string>> = { store: 'bowerloom store status', project: 'bowerloom status' };
+/** Review M1 of PR 99: each unread source with its code and item, and the next step. */
+function notChecked(unreadable: readonly Unreadable[], unreferenced: boolean): string {
+  const why = unreadable.map(u => `${u.source} (${u.code}${u.item ? `, ${u.item}` : ''})`).join(' and ');
+  const next = [...new Set(unreadable.map(u => NEXT[u.source]!))].join(' and ');
+  return `Some references were not checked: ${why}.${unreferenced ? ' --unreferenced picks nothing.' : ''} Next: ${next}`;
+}
+const unknownCount = (items: readonly { bytes: number | null }[]): number => items.filter(i => i.bytes === null).length;
 
 function listLine(e: CacheEntry): string {
   const head = e.scope === 'project-legacy' ? `${e.projectId!.slice(0, 8)}/${id8(e)}` : id8(e);
   const note = e.active ? `  ${e.stale ? OLD_LOCK : IN_USE}` : '';
-  return `  ${head}  ${e.status.padEnd(9)}  ${what(e)}${e.status === 'completed' ? sized(e.files, e.bytes) : ''}${e.scope === 'project-legacy' ? '' : tags(e.references)}${note}`;
+  return `  ${head}  ${e.status.padEnd(9)}  ${what(e)}${e.status === 'completed' ? sized(e.files, e.bytes) : sized(null, null)}${e.scope === 'project-legacy' ? '' : tags(e.references)}${note}`;
 }
-/** `cache list` in words (3.3). */
+/** `cache list` in words (3.3, with review M3 and L1 of PR 99). */
 export function renderCacheList(list: CacheList): string {
-  if (list.entries.length === 0) return 'The cache is empty.\n';
+  if (list.entries.length === 0 && list.unlisted === 0) return 'The cache is empty.\n';
   const lines: string[] = [];
   const of = (scope: CacheEntry['scope']) => list.entries.filter(e => e.scope === scope);
   const machine = of('machine'), store = of('store'), legacy = of('project-legacy');
   if (machine.length) lines.push(`Skills cache: ${join(list.stateRoot, 'cache')}`, ...machine.map(listLine));
   if (store.length) lines.push(`Store cache: ${join(list.stateRoot, 'store-cache')}`, ...store.map(listLine));
   if (legacy.length) lines.push(`Earlier per-project caches: ${legacy.length} entries in ${new Set(legacy.map(e => e.projectId)).size} projects`, ...legacy.map(listLine));
-  lines.push(`Total: ${list.totals.entries} entries, ${humanBytes(list.totals.bytes)}`);
+  if (list.entries.length === 0) lines.push('The cache holds no entries.');
+  else {
+    const unknown = unknownCount(list.entries), n = list.totals.entries;
+    lines.push(`Total: ${n} entries, ${unknown === 0 ? humanBytes(list.totals.bytes) : unknown === n ? 'size unknown' : `${humanBytes(list.totals.bytes)} and ${unknown} of unknown size`}`);
+  }
+  if (list.unlisted > 0) {
+    lines.push(`Not listed: ${list.unlisted} names that cache prune never deletes.`);
+    for (const u of list.unlistedNames.slice(0, UNLISTED_SHOWN)) lines.push(`  ${u.place === 'legacy' ? `legacy ${u.name}` : `${u.place}/${u.name}`}: ${u.reason}`);
+    if (list.unlisted > UNLISTED_SHOWN) lines.push(`  and ${list.unlisted - UNLISTED_SHOWN} more. bowerloom cache list --json lists up to 256 of them.`);
+  }
   if (list.truncated) lines.push(`More entries exist. Only the first ${CACHE_LIST_LIMIT} are shown.`);
-  if (list.unreadableSources.length) lines.push(`Some references were not checked: ${sources(list.unreadableSources)}.`);
+  if (list.unreadable.length) lines.push(notChecked(list.unreadable, false));
   return plainText(`${lines.join('\n')}\n`, true);
 }
 
@@ -58,29 +86,50 @@ function deleteLine(p: PickedEntry): string {
   const body = p.status === 'completed' ? `${what(p)}${sized(p.files, p.bytes)}` : what(p);
   return `  delete  ${body}  ${place(p)} ${id8(p)}${tags(p.references)}${p.stale ? `  ${OLD_LOCK}` : ''}`;
 }
+/** The notes that every prune path prints when they apply (review M3 and L4 of PR 99). */
+function pruneNotes(plan: CachePrunePlan): string[] {
+  return [
+    ...(plan.selectors.unreferenced && plan.unreadable.length ? [notChecked(plan.unreadable, true)] : []),
+    ...(plan.truncated ? [`More entries exist. Only the first ${CACHE_LIST_LIMIT} are listed. Run the command again after this one.`] : []),
+  ];
+}
 /** The prune plan in words (3.4). */
 export function renderCachePrune(plan: CachePrunePlan): string {
   const lines = ['Prune the skills cache', ...plan.picked.map(deleteLine)];
   for (const s of plan.skipped) lines.push(`  skip    ${s.label ?? 'unfinished fetch'}  ${place(s)} ${s.id.slice(0, 8)}  ${IN_USE}`);
-  if (plan.unreadableSources.length) lines.push(`Some references were not checked: ${sources(plan.unreadableSources)}. --unreferenced picks nothing.`);
-  if (plan.truncated) lines.push(`More entries exist. Only the first ${CACHE_LIST_LIMIT} are listed. Run the command again after this one.`);
-  lines.push(`Frees about ${humanBytes(plan.freed)}.`);
+  lines.push(...pruneNotes(plan));
+  const unknown = unknownCount(plan.picked);
+  lines.push(unknown === 0 ? `Frees about ${humanBytes(plan.freed)}.` : unknown === plan.picked.length ? `Frees an unknown amount: ${unknown} entries of unknown size.` : `Frees about ${humanBytes(plan.freed)}, plus ${unknown} entries of unknown size.`);
   if (plan.picked.some(p => p.references.store === true || p.references.project === true)) lines.push('When a command needs an entry that this project or your store still lists, Bowerloom fetches it again.');
+  // Review L9 of PR 99.
+  if (plan.picked.some(p => p.scope === 'store')) lines.push('Store cache entries come from your store remote. Fetching one again needs the network, and a private store needs BOWERLOOM_GITHUB_TOKEN.');
   lines.push('Other projects on this machine are not checked.', 'This deletes cached skill bytes only. It deletes no project file and no installed copy.');
   return lines.join('\n');
 }
-const entries = (n: number): string => `${n} entries`;
+/** What a prune prints when it picks nothing (3.4, with review M3 of PR 99). */
+export function renderNothingToPrune(plan: CachePrunePlan): string {
+  const lines = [...pruneNotes(plan), ...(plan.skipped.length ? [`Skipped ${plan.skipped.length} entries that another command is using.`] : []), 'Nothing to prune.'];
+  return plainText(`${lines.join('\n')}\n`, true);
+}
 /** The words of a finished prune (3.4). */
 export function renderPruneResult(result: CachePruneResult, plan: CachePrunePlan): string {
-  return `Deleted ${entries(result.deleted.length)}, about ${humanBytes(plan.freed)}.\n${result.skipped.length ? `Skipped ${entries(result.skipped.length)} that another command is using.\n` : ''}`;
+  const unknown = unknownCount(plan.picked), n = result.deleted.length;
+  const size = unknown === 0 ? `, about ${humanBytes(plan.freed)}` : unknown === plan.picked.length ? ' of unknown size' : `, about ${humanBytes(plan.freed)}, plus ${unknown} of unknown size`;
+  return `Deleted ${n} entries${size}.\n${result.skipped.length ? `Skipped ${result.skipped.length} entries that another command is using.\n` : ''}`;
+}
+/** Review H1 of PR 99: the words of a prune that Ctrl-C stopped between two deletes. */
+export function renderStopped(at: { deleted: number; of: number; stoppedAt: string }): string {
+  return plainText(`Stopped. Deleted ${at.deleted} of ${at.of} entries. It stopped at ${at.stoppedAt}. Run bowerloom cache list to see what is left.\n`, true);
 }
 
+/** Decision E (tech lead): these discovery refusals mean that the folder is no project, not that the project is unknown. */
+const NO_PROJECT = new Set(['PROJECT_NOT_FOUND', 'STORE_NOT_A_PROJECT', 'PROJECT_ROOT_REFUSED']);
 /** The project of the current folder: null outside one, and the code of any other discovery refusal (3.2). */
 function projectOf(cwd: string, home: string): { project: ProjectContext | null; projectError: string | null } {
   try { return { project: discoverProject(cwd, home), projectError: null }; }
   catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
-    if (code === 'PROJECT_NOT_FOUND') return { project: null, projectError: null };
+    if (typeof code === 'string' && NO_PROJECT.has(code)) return { project: null, projectError: null };
     if (error instanceof DefinitionError && typeof code === 'string') return { project: null, projectError: code };
     throw error;
   }
@@ -119,11 +168,7 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
   const input: CachePruneInput = { stateRoot, ...projectOf(cwd, home), home, env, selectors };
   const first = await planCachePrune(input);
   if (first.picked.length === 0) {
-    const notes = [
-      ...(first.unreadableSources.length ? [`Some references were not checked: ${sources(first.unreadableSources)}. --unreferenced picks nothing.`] : []),
-      ...(first.skipped.length ? [`Skipped ${entries(first.skipped.length)} that another command is using.`] : []),
-    ];
-    write(flags.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : plainText(`${[...notes, 'Nothing to prune.'].join('\n')}\n`, true));
+    write(flags.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : renderNothingToPrune(first));
     return 0;
   }
   let pending: CachePrunePlan | null = first, approved: CachePrunePlan = first, result: CachePruneResult | null = null;
@@ -133,6 +178,7 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
     review: renderCachePrune,
     async apply(revision: string) { result = await applyCachePrune(input, revision, controller.signal); return result; },
   };
+  // Ctrl-C stops the prune between two deletes; apply yields before each one, so this listener runs (review H1).
   const stop = (): void => controller.abort();
   process.once('SIGINT', stop);
   try {
@@ -142,7 +188,9 @@ export async function runCacheCommand(args: readonly string[], cwd: string, home
   } catch (error) {
     if ((error as { name?: unknown } | null)?.name !== 'AbortError') throw error;
     const at = error as Partial<PruneInterrupt>;
-    write(typeof at.deleted === 'number' ? `Stopped. Deleted ${at.deleted} of ${at.of} entries. Run bowerloom cache list to see what is left.\n` : 'Stopped before anything was deleted.\n');
+    const stopped = typeof at.deleted === 'number' ? { deleted: at.deleted, of: at.of!, stoppedAt: at.stoppedAt! } : { deleted: 0, of: approved.picked.length, stoppedAt: null };
+    // Review L7 of PR 99: exit 130 keeps --json.
+    write(flags.json ? newCommandJson({ stopped: true, ...stopped }) : stopped.stoppedAt === null ? 'Stopped before anything was deleted.\n' : renderStopped(stopped as { deleted: number; of: number; stoppedAt: string }));
     return 130;
   } finally { process.removeListener('SIGINT', stop); }
 }

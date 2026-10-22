@@ -449,10 +449,10 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MIGRATE_RESERVED: { sentence: 'Setup made these items for this project, so they stay in it.', next: 'bowerloom store migrate --all skips them.' },
   MIGRATE_TEAM_MISSING: { sentence: 'The store keeps the team tag, so that team must be in the store.', next: 'Add --team <name> to move that team too.' },
   MIGRATE_LIMIT: { sentence: 'This beta keeps the store record small: 512 items and 1 MiB at most.', next: 'Remove items from the store, or move fewer items.' },
-  // Spec 09, section 5: the sentence is the fixed message, the next step is the Next step cell.
-  CACHE_ENTRY_NOT_FOUND: { sentence: 'No cache entry starts with that text.', next: 'bowerloom cache list' },
-  CACHE_ENTRY_BUSY: { sentence: 'Another Bowerloom command is using that cache entry.', next: 'When the other command is done, run this one again.' },
-  CACHE_PRUNE_FAILED: { sentence: 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.', next: 'bowerloom cache list, then run the command again.' },
+  // Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why.
+  CACHE_ENTRY_NOT_FOUND: { sentence: 'cache prune --entry deletes only an entry that cache list shows, so the text must start one of its ids.', next: 'bowerloom cache list' },
+  CACHE_ENTRY_BUSY: { sentence: 'Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count.', next: 'When the other command is done, run this one again.' },
+  CACHE_PRUNE_FAILED: { sentence: 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', next: 'bowerloom cache list, then run the command again without --approve' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
   CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },

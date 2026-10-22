@@ -261,20 +261,22 @@ test('spec 08: the MIGRATE_* codes have their words and a row in the errors refe
   assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);
 });
 
-// Spec 09, section 5: the three cache prune codes. The sentence is the fixed message and the next step the Next step cell.
-test('spec 09: the CACHE_* codes have their words, their fixed messages, and a row in the errors reference', () => {
-  const rows: ReadonlyArray<readonly [string, string, string]> = [
-    ['CACHE_ENTRY_NOT_FOUND', 'No cache entry starts with that text.', 'bowerloom cache list'],
-    ['CACHE_ENTRY_BUSY', 'Another Bowerloom command is using that cache entry.', 'When the other command is done, run this one again.'],
-    ['CACHE_PRUNE_FAILED', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.', 'bowerloom cache list, then run the command again.'],
+// Spec 09, section 5, with review M4 of PR 99 (Hanna's choice C on #97): each sentence says why, and the errors row
+// says the same words. The fixed message of the code stays the message of section 5.
+test('spec 09: the CACHE_* codes have their words, their fixed messages, and the same words in the errors reference', () => {
+  const rows: ReadonlyArray<readonly [string, string, string, string]> = [
+    ['CACHE_ENTRY_NOT_FOUND', 'cache prune --entry deletes only an entry that cache list shows, so the text must start one of its ids.', 'bowerloom cache list', 'No cache entry starts with that text.'],
+    ['CACHE_ENTRY_BUSY', 'Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count.', 'When the other command is done, run this one again.', 'Another Bowerloom command is using that cache entry.'],
+    ['CACHE_PRUNE_FAILED', 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', 'bowerloom cache list, then run the command again without --approve', 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.'],
   ];
-  for (const [code, sentence, next] of rows) {
+  for (const [code, sentence, next, message] of rows) {
     assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
-    assert.equal(syncError(code as SyncCode).message, sentence, code);
+    assert.equal(syncError(code as SyncCode).message, message, code);
   }
   assert.equal(syncError('CACHE_PRUNE_FAILED', 'Deleted 2 of 5 entries.').message, 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted. Deleted 2 of 5 entries.');
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
-  for (const [code] of rows) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  const tick = (words: string): string => words.replace('cache prune --entry', '`cache prune --entry`').replace('cache list', '`cache list`');
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` | ${tick(sentence)} |`)), code);
 });
 
 // Second security review of PR 98, M1 and L2: a refusal after a partial write never says that nothing was applied or
