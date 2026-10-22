@@ -11,7 +11,8 @@ import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
 import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
 import type { Lifetime } from './observed.js';
-import { readLocalSkill, readLocalPrompt, readLocalAgent, itemName, ITEM_ID } from './local-source.js';
+import { readLocalSkill, readLocalPrompt, readLocalAgent, readLocalSlice, itemName, ITEM_ID } from './local-source.js';
+import { isSliceId } from '../../context-slices/src/slice-file.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin } from './observed-types.js';
@@ -38,9 +39,10 @@ export function boundaryV2(error: unknown, fallback = 'MANAGED_SKILL_REFUSED'): 
   return passThrough(error, MANAGED_ITEM_CODES, fallback);
 }
 /** The private folder and catalog name of an item. An agent's underscore cannot be part of a skill id, so no skill collides. */
-export const itemId = (item: ItemRef): string => item.kind === 'prompt' ? 'prompt-' + item.id : item.kind === 'agent' ? 'agent_' + item.id : item.id;
+export const itemId = (item: ItemRef): string => item.kind === 'prompt' ? 'prompt-' + item.id : item.kind === 'agent' ? 'agent_' + item.id : item.kind === 'slice' ? 'slice_' + item.id : item.id;
 export function itemRef(value: unknown): ItemRef {
-  const item = schema<ItemRef>(value, ['kind', 'id']); check(item.kind === 'skill' || item.kind === 'prompt' || item.kind === 'agent'); itemName(item.id);
+  const item = schema<ItemRef>(value, ['kind', 'id']); check(item.kind === 'skill' || item.kind === 'prompt' || item.kind === 'agent' || item.kind === 'slice');
+  if (item.kind === 'slice') check(isSliceId(item.id)); else itemName(item.id);
   if (item.kind === 'skill') check(!item.id.startsWith('prompt-')); return item;
 }
 /** v1 `request`, generalized from one harness and one cache selector to a harness list and an item source. */
@@ -55,8 +57,19 @@ export function requestV2(value: unknown): ManagedItemRequest {
   else if (source.kind === 'local') { const s = schema<{ path: string }>(source, ['kind', 'path']); check(item.kind === 'skill' && s.path === 'skills/' + item.id); }
   else if (source.kind === 'prompt') { const s = schema<{ name: string }>(source, ['kind', 'name']); check(item.kind === 'prompt' && s.name === item.id); }
   else if (source.kind === 'agent') {
-    const s = schema<{ team: string; name: string }>(source, ['kind', 'team', 'name']);
+    const s = schema<{ team: string; name: string; guard: unknown }>(source, ['kind', 'team', 'name', 'guard']);
     check(item.kind === 'agent' && s.name === item.id && typeof s.team === 'string' && s.team.length <= 64 && ITEM_ID.test(s.team) && v.harnesses.length === 1 && v.harnesses[0] === 'claude');
+    if (s.guard !== null) {
+      const g = schema<{ slices: string[]; roots: string[] }>(s.guard, ['slices', 'roots']);
+      check(Array.isArray(g.slices) && g.slices.length >= 1 && g.slices.length <= 64 && g.slices.every((x, i) => isSliceId(x) && (i === 0 || g.slices[i - 1]! < x)));
+      check(Array.isArray(g.roots) && g.roots.length <= g.slices.length && g.roots.every((x, i) => typeof x === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{32}$/.test(x) && g.slices.includes(x.slice(0, x.lastIndexOf(':'))) && (i === 0 || g.roots[i - 1]! < x)));
+    }
+  }
+  else if (source.kind === 'slice') {
+    // The second part of spec 05 adds registered folders. Until then a slice reads from the project only.
+    const s = schema<{ name: string; root: unknown }>(source, ['kind', 'name', 'root']);
+    check(item.kind === 'slice' && s.name === item.id && v.harnesses.length === 1 && v.harnesses[0] === 'claude');
+    schema(s.root, ['kind']); check((s.root as { kind: string }).kind === 'project');
   }
   else fail('MANAGED_SKILL_REFUSED');
   if (v.operation === 'migrate') {
@@ -87,7 +100,8 @@ export function locateV2(v: ManagedItemRequest, closure: ItemClosure, extra: { i
   if (extra.ignore) out.push({ id: 'ignore', kind: 'file', path: join(managed, '.gitignore') });
   if (item.kind === 'skill') out.push({ id: 'canonical', kind: 'directory', path: join(managed, 'skills', item.id) });
   if (item.kind === 'skill' && v.harnesses.includes('claude')) out.push({ id: 'projection-claude', kind: 'directory', path: join(p, projectionFor('claude')!.skillRoot, name) });
-  if (item.kind !== 'agent' && v.harnesses.includes('codex')) out.push({ id: 'projection-codex', kind: 'directory', path: join(p, projectionFor('codex')!.skillRoot, item.kind === 'prompt' ? 'prompt-' + name : name) });
+  if (item.kind === 'slice') out.push({ id: 'projection-claude', kind: 'directory', path: join(p, projectionFor('claude')!.skillRoot, 'slice-' + name) });
+  if (item.kind !== 'agent' && item.kind !== 'slice' && v.harnesses.includes('codex')) out.push({ id: 'projection-codex', kind: 'directory', path: join(p, projectionFor('codex')!.skillRoot, item.kind === 'prompt' ? 'prompt-' + name : name) });
   if (item.kind === 'prompt' && v.harnesses.includes('claude')) out.push({ id: 'command-claude', kind: 'file', path: join(p, '.claude/commands', name + '.md') });
   if (item.kind === 'agent' && v.harnesses.includes('claude')) out.push({ id: 'agent-claude', kind: 'file', path: join(p, '.claude/agents', name + '.md') });
   out.push({ id: 'catalog', kind: 'file', path: join(managed, 'catalog', itemId(item) + '.json') });
@@ -110,8 +124,8 @@ export function cacheClosure(c: Readonly<AcquiredSkillClosure>, item: ItemRef): 
 export async function readClosure(v: ManagedItemRequest, life: Lifetime): Promise<{ closure: ItemClosure; acquired: Readonly<AcquiredSkillClosure> | null }> {
   const s = v.source;
   if (s.kind === 'cache') { const acquired = await readAcquiredSkillCache(s.selector, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); return { closure: cacheClosure(acquired, v.item), acquired }; }
-  const local = s.kind === 'local' ? readLocalSkill(v.projectDir, s.path, () => life.check()) : s.kind === 'agent' ? readLocalAgent(v.projectDir, s.team, s.name, () => life.check()) : readLocalPrompt(v.projectDir, s.name, () => life.check()); life.check();
-  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: [], inventory: local.inventory, files: local.files, name: v.item.id, ...(local.sourceSha256 === undefined ? {} : { sourceSha256: local.sourceSha256 }) }), acquired: null };
+  const local = s.kind === 'local' ? readLocalSkill(v.projectDir, s.path, () => life.check()) : s.kind === 'agent' ? readLocalAgent(v.projectDir, s.team, s.name, () => life.check(), s.guard) : s.kind === 'slice' ? readLocalSlice(v.projectDir, s.name, s.root, () => life.check()) : readLocalPrompt(v.projectDir, s.name, () => life.check()); life.check();
+  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: local.references, inventory: local.inventory, files: local.files, name: v.item.id, ...(local.sourceSha256 === undefined ? {} : { sourceSha256: local.sourceSha256 }) }), acquired: null };
 }
 const wrapper = (name: string, text: string): string => `---\nname: prompt-${name}\ndescription: Bowerloom prompt ${name}, wrapped as a skill for Codex. Edit .bowerloom/prompts/${name}.md, not this file.\n---\n${text}`;
 const fileOf = (path: string, text: string) => ({ path, text, sha256: hash(text), mode: 420 });
@@ -244,7 +258,7 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
     const incoming = closure.source as typeof catalog.source, was = catalog.source;
     // An agent may move to another team, so its path may change. The planner (project-sync classifyAgent) plans an update for a moved
     // agent, and checkAgentChild binds the path of the plan; this check only keeps the kind (tests: v2-agent 'moves to another team').
-    const sameSource = incoming.kind === was.kind && (incoming.kind === 'agent' ? true : incoming.kind === 'npm' ? was.package === incoming.package && was.registry === incoming.registry : incoming.kind === 'git' ? was.host === incoming.host && was.repository === incoming.repository : same(was, incoming));
+    const sameSource = incoming.kind === was.kind && (incoming.kind === 'agent' || incoming.kind === 'slice' ? true : incoming.kind === 'npm' ? was.package === incoming.package && was.registry === incoming.registry : incoming.kind === 'git' ? was.host === incoming.host && was.repository === incoming.repository : same(was, incoming));
     check(sameSource && same(catalog.skill, closure.skill));
     // Same commit or same npm version with changed contents or provenance is not an update.
     if ((incoming.kind === 'git' && was.commit === incoming.commit) || (incoming.kind === 'npm' && was.version === incoming.version)) check(same(was, incoming) && same(catalog.inventory, closure.inventory));
@@ -260,10 +274,10 @@ export function readPending(project: string): PendingV2 {
   const m = parsed<PendingV2>(join(project, MARKER_V2), pendingKeys, true); itemRef(m.item); path(m.stateDir);
   check(m.format === PENDING_FORMAT && HEX64.test(m.operationKey) && HEX64.test(m.intentSha256)); return m;
 }
-/** Item refs from catalog file names: `<id>.json` for a skill, `prompt-<id>.json` for a prompt, `agent_<id>.json` for an agent. */
+/** Item refs from catalog file names: `<id>.json` for a skill, `prompt-<id>.json` for a prompt, `agent_<id>.json` for an agent, `slice_<id>.json` for a slice. */
 export function catalogItem(name: string): ItemRef {
-  const m = /^(?:(prompt-)|(agent_))?([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/.exec(name); check(m !== null);
-  return itemRef(m[1] ? { kind: 'prompt', id: m[3]! } : m[2] ? { kind: 'agent', id: m[3]! } : { kind: 'skill', id: m[3]! });
+  const m = /^(?:(prompt-)|(agent_)|(slice_))?([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/.exec(name); check(m !== null);
+  return itemRef(m[1] ? { kind: 'prompt', id: m[4]! } : m[2] ? { kind: 'agent', id: m[4]! } : m[3] ? { kind: 'slice', id: m[4]! } : { kind: 'skill', id: m[4]! });
 }
 /** Status of every managed item and of the project's markers. Reads only. */
 export function inspectManagedProject(projectDir: string, itemsRoot: string): ManagedProjectInspection {

@@ -44,7 +44,7 @@ export type ManifestChangeReceipt = { manifest: typeof MANIFEST_PATH; sha256: st
 
 /** Adds a local skill entry to a manifest, or starts one for both harnesses. Pure: the input is not changed. */
 export function addLocalEntry(m: Manifest | null, id: string, teams: string[]): Manifest {
-  requireManifest(isEntryId(id), 'MANIFEST_INVALID');
+  requireManifest(isEntryId(id) && !id.startsWith('slice-'), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(teams) && teams.every(isId) && new Set(teams).size === teams.length, 'MANIFEST_INVALID');
   const base = m === null ? { format: MANIFEST_FORMAT, harnesses: [...HARNESSES], skills: [] as Entry[] } : validateManifest(JSON.parse(serializeManifest(m)));
   requireManifest(!base.skills.some(s => s.id === id), 'MANIFEST_DUPLICATE_ID');
@@ -135,6 +135,8 @@ export function planManifestChange(project: string, change: ManifestChange, opti
     requireManifest(!current!.skills.some(s => sourceKey(s) === sourceKey(entry)), 'SKILLS_ADD_EXISTS');
     skills = current!.skills.map(s => s.id === entry.id ? entry : s);
   } else {
+    // The slice- prefix is reserved for the index skills of context slices. Entries that already use it keep working.
+    requireManifest(!entry.id.startsWith('slice-'), 'MANIFEST_INVALID');
     if (current) requireManifest(!current.skills.some(s => s.id === entry.id || sourceKey(s) === sourceKey(entry)), 'SKILLS_ADD_EXISTS');
     requireManifest((current?.skills.length ?? 0) < MANIFEST_LIMITS.skills, 'MANIFEST_LIMIT');
     skills = [...(current?.skills ?? []), entry];

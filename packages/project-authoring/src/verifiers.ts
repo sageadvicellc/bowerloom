@@ -10,6 +10,7 @@ import { parseManifest } from '../../skill-manifest/src/schema.js';
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { LIMITS, folderNames, lstatOrNull, readGuarded, readTree, realFolder, sha256 } from './files.js';
 import { AGENT_STEM, AGENT_STEM_MAX, parseAgentOrRefuse, skippedAgentName } from './agent-file.js';
+import { isSliceId, parseSlice } from '../../context-slices/src/slice-file.js';
 import { isAuthoringRefusal, refuse } from './refusal.js';
 import { AUTHORING_FOLDER, isPromptId, isSkillId, isTeamId, itemPath, readAuthoringState, sameItem } from './state.js';
 import type { AuthoredItem, ItemKind } from './state.js';
@@ -58,7 +59,7 @@ export function authoringVerifier(project: string): OwnerVerifier {
   projectPath(project);
   const bowerloom = join(project, '.bowerloom');
   const claims = (path: string, kind: OwnedEntryKind): boolean =>
-    typeof path === 'string' && kind === 'directory' && (path === AUTHORING_FOLDER || path === 'prompts' || path === FIRST_TEAM_AGENTS || claimedItem(path) !== null);
+    typeof path === 'string' && kind === 'directory' && (path === AUTHORING_FOLDER || path === 'prompts' || path === 'slices' || path === FIRST_TEAM_AGENTS || claimedItem(path) !== null);
   async function check(path: string, kind: OwnedEntryKind, signal: AbortSignal): Promise<OwnerVerdict> {
     if (!claims(path, kind) || !(signal instanceof AbortSignal) || signal.aborted) refuse('AUTHORING_UNSAFE_PATH');
     realFolder(bowerloom);
@@ -84,6 +85,24 @@ export function authoringVerifier(project: string): OwnerVerifier {
         if (sha256(bytes) !== pin.sha256 || bytes.length !== pin.bytes) changed = true;
       }
       // A registered prompt that is gone is AUTHORING_ITEM_MISSING on `authoring`, not an edit here.
+      return changed ? edited : verified;
+    }
+    if (path === 'slices') {
+      // Each name must be a registered slice file that parses. A name that is not `<id>.yaml`, or not registered, is unregistered.
+      let changed = false;
+      const slices = folderNames(join(bowerloom, 'slices'));
+      // A link or any other entry that is not a plain file is unsafe, whatever its name.
+      for (const name of slices) { const s = lstatOrNull(join(bowerloom, 'slices', name)); if (s === null || s.isSymbolicLink() || !s.isFile()) return refused('AUTHORING_UNSAFE_PATH'); }
+      for (const name of slices) {
+        const id = name.endsWith('.yaml') ? name.slice(0, -5) : '';
+        const item = isSliceId(id) ? lookup('slice', id) : null;
+        if (item === null) return refused('AUTHORING_UNREGISTERED');
+        if (item === 'pending') return refused('AUTHORING_PENDING');
+        const bytes = readGuarded(join(bowerloom, 'slices', name), LIMITS.fileBytes), pin = item.files[0]!;
+        let text: string; try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch { return refused('SLICE_INVALID'); }
+        if (!parseSlice(text, id).ok) return refused('SLICE_INVALID');
+        if (sha256(bytes) !== pin.sha256 || bytes.length !== pin.bytes) changed = true;
+      }
       return changed ? edited : verified;
     }
     if (path === FIRST_TEAM_AGENTS) return agentsVerdict(join(bowerloom, path), 'first-team') ?? verified;

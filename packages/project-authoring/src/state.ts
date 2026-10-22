@@ -5,6 +5,7 @@
  */
 import { join } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
+import { isSliceId } from '../../context-slices/src/slice-file.js';
 import { LIMITS, folderNames, lstatOrNull, readGuarded, realFolder, sha256 } from './files.js';
 import type { FilePin } from './files.js';
 import { ensure, refuse } from './refusal.js';
@@ -19,8 +20,8 @@ export const SCRATCH = /^\.(?:stage-[a-f0-9]{64}|tmp-[a-f0-9]{64}-(?:receipt|pen
 export const stageName = (planRevision: string): string => `.stage-${planRevision}`;
 export const tempName = (planRevision: string, record: 'receipt' | 'pending'): string => `.tmp-${planRevision}-${record}`;
 
-export type ItemKind = 'team' | 'skill' | 'prompt';
-export const KINDS: readonly ItemKind[] = ['team', 'skill', 'prompt'];
+export type ItemKind = 'team' | 'skill' | 'prompt' | 'slice';
+export const KINDS: readonly ItemKind[] = ['team', 'skill', 'prompt', 'slice'];
 export const FIRST_TEAM = 'first-team';
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -32,9 +33,9 @@ export const isPromptId = (v: unknown): v is string => isId(v) && v.length <= 57
 export const isRevision = (v: unknown): v is string => typeof v === 'string' && HEX64.test(v);
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
-/** Where an item lives, relative to `.bowerloom`: a folder for a team or a skill, one file for a prompt. */
+/** Where an item lives, relative to `.bowerloom`: a folder for a team or a skill, one file for a prompt or a slice. */
 export function itemPath(kind: ItemKind, id: string): string {
-  return kind === 'team' ? `teams/${id}` : kind === 'skill' ? `skills/${id}` : `prompts/${id}.md`;
+  return kind === 'team' ? `teams/${id}` : kind === 'skill' ? `skills/${id}` : kind === 'slice' ? `slices/${id}.yaml` : `prompts/${id}.md`;
 }
 
 export interface AuthoredItem { kind: ItemKind; id: string; teams: string[]; files: FilePin[]; planRevision: string }
@@ -49,7 +50,7 @@ const SEGMENT = /^[^\0/\\\p{Cc}\p{Cf}]{1,255}$/u;
 /** A file path of an item: inside the item's own path, with plain segments only. */
 function itemFile(kind: ItemKind, id: string, path: unknown): boolean {
   if (typeof path !== 'string' || Buffer.byteLength(path) > 1024) return false;
-  if (kind === 'prompt') return path === itemPath(kind, id);
+  if (kind === 'prompt' || kind === 'slice') return path === itemPath(kind, id);
   const root = `${itemPath(kind, id)}/`, rest = path.startsWith(root) ? path.slice(root.length).split('/') : [];
   return rest.length >= 1 && rest.length <= LIMITS.depth && rest.every(s => SEGMENT.test(s) && s !== '.' && s !== '..');
 }
@@ -59,8 +60,8 @@ export function validItem(value: unknown, code: AuthoringRefusalCode): AuthoredI
   const { kind, id, teams, files, planRevision } = value;
   ensure(KINDS.includes(kind as ItemKind), code);
   const k = kind as ItemKind;
-  ensure(k === 'team' ? isTeamId(id) : k === 'skill' ? isSkillId(id) : isPromptId(id), code);
-  ensure(Array.isArray(teams) && teams.length <= 32 && teams.every(isId) && (k !== 'team' || teams.length === 0), code);
+  ensure(k === 'team' ? isTeamId(id) : k === 'skill' ? isSkillId(id) : k === 'slice' ? isSliceId(id) : isPromptId(id), code);
+  ensure(Array.isArray(teams) && teams.length <= 32 && teams.every(isId) && ((k !== 'team' && k !== 'slice') || teams.length === 0), code);
   ensure(teams.every((t, i) => i === 0 || compare(teams[i - 1] as string, t as string) < 0), code);
   ensure(Array.isArray(files) && files.length >= 1 && files.length <= LIMITS.itemEntries, code);
   const pins = files.map(f => {
