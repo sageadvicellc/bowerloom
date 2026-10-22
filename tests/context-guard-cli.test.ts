@@ -180,3 +180,9 @@ test('G10. the guide and the release notes state the 2.1.295 requirement and wha
   assert.match(guide, /On Claude Code 2\.1\.295 or later, a guard that cannot start, crashes, or runs longer than 10 seconds blocks the call\. Before 2\.1\.295, such a guard lets the call through\./);
   assert.match(guide, /A hard link outside the root to a file under the root reads that file/); assert.match(releases, /untrusted folder skips it/);
 });
+
+test('G9. a root folder moved aside and replaced by a link to it is refused, though its identity is unchanged', t => {
+  const p = sliceProject(t); renameSync(join(p.dir, 'wiki'), join(p.dir, 'wiki-real')); symlinkSync('wiki-real', join(p.dir, 'wiki'));
+  const r = guard(p, guardArgs(p), read(join(p.dir, 'wiki/a.md'), p.dir)); assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /"permissionDecision":"deny"/, 'a link in the chain to the root denies the call');
+});
