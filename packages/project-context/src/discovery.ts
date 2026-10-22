@@ -29,7 +29,7 @@ export interface DiscoveryHooks {
 interface Id { readonly dev: bigint; readonly ino: bigint }
 const same = (a: Id, b: Id): boolean => a.dev === b.dev && a.ino === b.ino;
 // Case-insensitive APFS also folds `ſ` to `s`, which toLowerCase alone does not; upper then lower case does.
-const fold = (value: string): string => value.normalize('NFC').toUpperCase().toLowerCase();
+export const fold = (value: string): string => value.normalize('NFC').toUpperCase().toLowerCase();
 const parts = (path: string): string[] => path.split(sep).filter(Boolean);
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const absent = (error: unknown): boolean => errno(error) === 'ENOENT' || errno(error) === 'ENOTDIR';
@@ -43,7 +43,7 @@ function folderId(path: string): Id | null {
 /** As folderId, for a reference folder such as HOME/Library/CloudStorage: any failure means "no folder to compare with". */
 function referenceId(path: string): Id | null { try { return folderId(path); } catch { return null; } }
 
-function homesOf(home: string, hooks: DiscoveryHooks): string[] {
+export function homesOf(home: string, hooks: DiscoveryHooks): string[] {
   let account: string | null | undefined = hooks.accountHome;
   if (account === undefined) { try { account = userInfo().homedir; } catch { account = null; } }
   return [...new Set([resolve(home), ...(usable(account) ? [resolve(account)] : [])])];
@@ -129,10 +129,10 @@ export function projectId(root: string, identity: DirectoryIdentity): string {
   return createHash('sha256').update(JSON.stringify([root, identity.device, identity.inode])).digest('hex').slice(0, 32);
 }
 
-const identityFrom = (stat: BigIntStats): DirectoryIdentity =>
+export const identityFrom = (stat: BigIntStats): DirectoryIdentity =>
   ({ device: stat.dev.toString(), inode: stat.ino.toString(), birthtimeNs: stat.birthtimeNs.toString(), uid: Number(stat.uid), mode: Number(stat.mode) & 0o777 });
 /** One lstat of a folder: a real folder (not a link) or PROJECT_UNSAFE; PROJECT_UNREADABLE when lstat fails. */
-function pin(path: string): DirectoryIdentity {
+export function pin(path: string): DirectoryIdentity {
   let stat: BigIntStats; try { stat = lstatSync(path, { bigint: true }); } catch { throw refuse('PROJECT_UNREADABLE'); }
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw refuse('PROJECT_UNSAFE');
   return identityFrom(stat);
@@ -168,6 +168,13 @@ export function discoverProjectWith(cwd: string, home: string, hooks: DiscoveryH
   }
 }
 
+/** Every folder from `/` down to the parent of `dir`, each pinned by one lstat (device, inode, birth time). */
+export function pinAncestry(dir: string): readonly PinnedDirectory[] {
+  const names = parts(dirname(dir)), ancestry: PinnedDirectory[] = [{ path: sep, identity: pin(sep) }];
+  for (let i = 0; i < names.length; i++) { const path = sep + names.slice(0, i + 1).join(sep); ancestry.push({ path, identity: pin(path) }); }
+  return Object.freeze(ancestry);
+}
+
 function build(dir: string, aliases: string[], uid: number, home: string, hooks: DiscoveryHooks): ProjectContext {
   checkProjectPathWith(dir, home, hooks);
   if (aliases.length !== 1 || aliases[0] !== '.bowerloom') throw refuse('PROJECT_UNSAFE');
@@ -175,9 +182,7 @@ function build(dir: string, aliases: string[], uid: number, home: string, hooks:
   let stat: BigIntStats; try { stat = lstatSync(join(dir, '.bowerloom'), { bigint: true }); } catch { throw refuse('PROJECT_UNSAFE'); }
   if (stat.isSymbolicLink() || !stat.isDirectory() || Number(stat.uid) !== uid || (Number(stat.mode) & 0o022) !== 0) throw refuse('PROJECT_UNSAFE');
   const bowerloomIdentity = identityFrom(stat), identity = pin(dir);
-  const names = parts(dirname(dir)), ancestry: PinnedDirectory[] = [{ path: sep, identity: pin(sep) }];
-  for (let i = 0; i < names.length; i++) { const path = sep + names.slice(0, i + 1).join(sep); ancestry.push({ path, identity: pin(path) }); }
-  return Object.freeze({ dir, identity, ancestry: Object.freeze(ancestry), bowerloomIdentity, projectId: projectId(dir, identity) });
+  return Object.freeze({ dir, identity, ancestry: pinAncestry(dir), bowerloomIdentity, projectId: projectId(dir, identity) });
 }
 
 /**

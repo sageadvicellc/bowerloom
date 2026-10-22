@@ -14,10 +14,14 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { DefinitionError } from '../../contracts/src/index.js';
 import { refuse } from './refusal.js';
 import { checkProjectPathWith, discoverProjectWith } from './discovery.js';
+import { inspectStoreWith, openStoreWith, pathInsideStore as pathInsideStoreWith } from './store.js';
+import type { StoreContext, StoreInspection } from './store.js';
 import type { HeldProjectLock, ProjectContext } from './types.js';
 
 export type { DirectoryIdentity, HeldProjectLock, OwnedEntryKind, OwnerName, OwnerVerdict, OwnerVerifier, PinnedDirectory, PlannedChange, ProjectContext } from './types.js';
 export { projectId, verifyProjectPins } from './discovery.js';
+export type { StoreContext, StoreInspection } from './store.js';
+export { assertNotInStore, storeRootOf, verifyStorePins } from './store.js';
 
 const hex = (value: string): string => createHash('sha256').update(value).digest('hex');
 
@@ -38,6 +42,13 @@ export function privateStateRoot(env: NodeJS.ProcessEnv, home: string): string {
  * No attribute is read and no process starts.
  */
 export function checkProjectPath(path: string, home: string): void { checkProjectPathWith(path, home); }
+
+/** The store at `<home>/.bowerloom`: `absent`, `foreign`, or `store` with a pinned context. Throws only STORE_* or USAGE. Takes no test hooks. */
+export function inspectStore(home: string = homedir()): StoreInspection { return inspectStoreWith(home); }
+/** The pinned store. STORE_NOT_FOUND when there is none and STORE_INVALID when the folder is not a store. Takes no test hooks. */
+export function openStore(home: string = homedir()): StoreContext { return openStoreWith(home); }
+/** True for a path at or below the store of HOME or of the account home. Takes no test hooks. */
+export function pathInsideStore(path: string, home: string = homedir()): boolean { return pathInsideStoreWith(path, home); }
 
 /**
  * Finds the project the way git finds `.git`: the nearest parent folder that holds a real, owned, non-symlinked,
