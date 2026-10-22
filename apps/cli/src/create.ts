@@ -4,9 +4,12 @@
  * each with `[--approve <revision>] [--json]` (build plan 01, M2).
  *
  * The command finds the project, plans, and writes only through the approval wrapper, under the project lock.
+ *
+ * With `--global` the command works on the store, `~/.bowerloom`, from any folder. It never looks for a project, and the
+ * first `--global` write makes the store (spec 04, 3.3). The store holds definitions only.
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, verifyProjectPins, withProjectLock } from '../../../packages/project-context/src/index.js';
+import { discoverProject, inspectStore, projectRefusal, storeRootOf, verifyProjectPins, verifyStorePins, withProjectLock, withStoreForWrite } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange, ProjectContext } from '../../../packages/project-context/src/types.js';
 import { applyCreate, planCreate } from '../../../packages/project-authoring/src/index.js';
 import type { AuthoringReceipt, CreateInput, CreatePlan } from '../../../packages/project-authoring/src/index.js';
@@ -19,24 +22,25 @@ import { terminalIo } from './manifest.js';
 export const CREATE_NOUNS = ['team', 'skill', 'prompt'] as const;
 type Noun = typeof CREATE_NOUNS[number];
 const USAGE: Readonly<Record<Noun, string>> = {
-  team: 'Use bowerloom team create <name> [--profile engineer|founder|research], with optional --approve <revision> and --json.',
-  skill: 'Use bowerloom skill create <name> [--team <team>]..., with optional --approve <revision> and --json.',
-  prompt: 'Use bowerloom prompt create <name> [--team <team>]..., with optional --approve <revision> and --json.',
+  team: 'Use bowerloom team create <name> [--profile engineer|founder|research], with optional --global, --approve <revision> and --json.',
+  skill: 'Use bowerloom skill create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.',
+  prompt: 'Use bowerloom prompt create <name> [--team <team>]..., with optional --global, --approve <revision> and --json.',
 };
 const usage = (noun: Noun): never => { throw new DefinitionError('USAGE', USAGE[noun]); };
 
-export interface CreateArgs { noun: Noun; name: string; profile: StartupProfile | null; teams: string[]; approval: string[] }
-/** Splits a create command line into its name, --profile or --team, and the approval flags for the wrapper. */
+export interface CreateArgs { noun: Noun; name: string; profile: StartupProfile | null; teams: string[]; global: boolean; approval: string[] }
+/** Splits a create command line into its name, --profile or --team, --global, and the approval flags for the wrapper. */
 export function parseCreateArgs(args: readonly string[]): CreateArgs {
   const noun = args[0] as Noun;
   if (!(CREATE_NOUNS as readonly string[]).includes(noun)) throw new DefinitionError('USAGE', USAGE.team);
   if (args[1] !== 'create') usage(noun);
-  let name: string | null = null, profile: StartupProfile | null = null; const teams: string[] = [], approval: string[] = [];
+  let name: string | null = null, profile: StartupProfile | null = null, global = false; const teams: string[] = [], approval: string[] = [];
   const words = args.slice(2);
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
     if (word === '--approve') { approval.push(word); if (i + 1 < words.length) approval.push(words[++i]!); }
     else if (word === '--json') approval.push(word);
+    else if (word === '--global') { if (global) throw new DefinitionError('USAGE', 'Use --global once.'); global = true; }
     else if (word === '--profile' && noun === 'team') {
       const value = words[++i];
       if (profile !== null || value === undefined || !Object.hasOwn(startupProfiles, value)) usage(noun);
@@ -49,14 +53,16 @@ export function parseCreateArgs(args: readonly string[]): CreateArgs {
     else name = word;
   }
   if (name === null) usage(noun);
-  return { noun, name: name!, profile, teams, approval };
+  return { noun, name: name!, profile, teams, global, approval };
 }
 
 /** The plan in plain words. The wrapper escapes control characters before it prints. */
 export function renderCreateReview(plan: CreatePlan): string {
   const lines: string[] = [];
-  const where = (kind: string, id: string) => kind === 'prompt' ? `.bowerloom/prompts/${id}.md` : `.bowerloom/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
-  if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in .bowerloom/authoring`);
+  const store = plan.scope === 'store', root = store ? '~/.bowerloom' : '.bowerloom';
+  const where = (kind: string, id: string) => kind === 'prompt' ? `${root}/prompts/${id}.md` : `${root}/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
+  if (plan.storeCreate) lines.push('Create the store at ~/.bowerloom (store.json). It holds definitions only.');
+  if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in ${root}/authoring`);
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);
   if (plan.finish) lines.push(`Finish ${plan.finish.kind} ${plan.finish.id} from an interrupted create. Its ${plan.finish.files.length === 1 ? 'file is' : 'files are'} already in ${where(plan.finish.kind, plan.finish.id)}, with the recorded bytes.`);
@@ -68,22 +74,31 @@ export function renderCreateReview(plan: CreatePlan): string {
   }
   if (plan.item) {
     const item = plan.item;
-    lines.push(`Create ${item.kind} ${item.id} in ${where(item.kind, item.id)}`);
+    lines.push(`Create ${item.kind} ${item.id} in ${store ? 'the store at ' : ''}${where(item.kind, item.id)}`);
     if (item.kind === 'team') {
       const brief = plan.files.find(f => f.path.endsWith('/assets/brief.json'));
       const profile = brief ? (JSON.parse(brief.text) as { profile?: string }).profile ?? 'engineer' : 'engineer';
-      lines.push(`  Profile: ${profile}`, '  Built from the project brief, with the lead, maker and reviewer templates.');
+      lines.push(`  Profile: ${profile}`, store ? '  Built from a fixed store brief, with the lead, maker and reviewer templates.' : '  Built from the project brief, with the lead, maker and reviewer templates.');
     } else lines.push(`  Teams: ${item.teams.length ? item.teams.join(', ') : 'every team'}`);
     lines.push(`  Files: ${item.files.length}`);
   }
-  if (plan.manifest) lines.push(`  skills.json: adds a local entry; ${plan.manifest.before === null ? 'a new file' : `replaces the file with sha256 ${plan.manifest.before.sha256}`}`);
-  lines.push('You and your agents own these files and can edit them.', 'This writes inside .bowerloom only. It starts no workers and runs nothing.');
+  if (plan.manifest) {
+    if (store) { const added = plan.manifest.steps.at(-1); if (added) lines.push(`  skills.json: adds a local entry for ${added.id}`); }
+    else lines.push(`  skills.json: adds a local entry; ${plan.manifest.before === null ? 'a new file' : `replaces the file with sha256 ${plan.manifest.before.sha256}`}`);
+  }
+  lines.push('You and your agents own these files and can edit them.', store ? 'This writes the store only. It changes no project, and it installs nothing.' : 'This writes inside .bowerloom only. It starts no workers and runs nothing.');
   return lines.join('\n');
 }
 
 /** Runs one create command and returns the exit code: 0 done, 3 approval required. A refusal throws. */
 export async function runCreateCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo()): Promise<number> {
   const parsed = parseCreateArgs(args);
+  if (parsed.global) {
+    const input: CreateInput = parsed.noun === 'team'
+      ? { kind: 'team', scope: 'store', project: storeRootOf(home), name: parsed.name, ...(parsed.profile !== null ? { profile: parsed.profile } : {}) }
+      : { kind: parsed.noun, scope: 'store', project: storeRootOf(home), name: parsed.name, teams: parsed.teams };
+    return runApprovalCommand(parsed.approval, createStoreChange(home, input), io, write);
+  }
   const project = discoverProject(cwd, home);
   const input: CreateInput = parsed.noun === 'team'
     ? { kind: 'team', project: project.dir, name: parsed.name, ...(parsed.profile !== null ? { profile: parsed.profile } : {}) }
@@ -100,6 +115,29 @@ export function createChange(project: ProjectContext, input: CreateInput): Plann
     review: renderCreateReview,
     async apply(revision: string): Promise<AuthoringReceipt> {
       return withProjectLock(project.dir, controller.signal, async held => { verifyProjectPins(project); return applyCreate(input, revision, held); });
+    },
+  };
+}
+
+/**
+ * One create in the store as a change for the approval wrapper. The plan reads only, and checks the store pins before and
+ * after its reads. Apply runs inside `withStoreForWrite`, which makes the store when it is absent and holds its lock.
+ */
+export function createStoreChange(home: string, input: CreateInput): PlannedChange<CreatePlan> {
+  const controller = new AbortController();
+  return {
+    async plan() {
+      const found = inspectStore(home);
+      if (found.state === 'foreign') throw projectRefusal('STORE_INVALID');
+      if (found.state === 'store') verifyStorePins(found.context);
+      const plan = await planCreate(input);
+      if (found.state === 'store') verifyStorePins(found.context);
+      return plan;
+    },
+    revision: plan => plan.revision,
+    review: renderCreateReview,
+    async apply(revision: string): Promise<AuthoringReceipt> {
+      return withStoreForWrite(home, controller.signal, (context, held, created) => applyCreate(input, revision, held, { context, created }));
     },
   };
 }
