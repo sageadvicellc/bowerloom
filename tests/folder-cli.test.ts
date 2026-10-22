@@ -39,7 +39,7 @@ test('1. folder add <name> <path> prints the plan and exits 3, from a folder tha
 test('2. --approve writes the record, exits 0, and a relative path or ~/ resolves; no store line once the store is there', t => {
   const w = world(t), done = add(w, 'kb', '../kb');
   assert.match(done.stdout, /^Applied plan [a-f0-9]{64}\.\n$/);
-  assert.equal(readFileSync(join(w.folders, 'kb.json'), 'utf8'), '{"format":"bowerloom/store-folder/v1beta1","path":"kb"}\n');
+  assert.match(readFileSync(join(w.folders, 'kb.json'), 'utf8'), /^\{"format":"bowerloom\/store-folder\/v1beta1","path":"kb","id":"[a-f0-9]{32}"\}\n$/);
   mkdirSync(join(w.home, 'two'), { mode: 0o755 }); chmodSync(join(w.home, 'two'), 0o755);
   const second = run(w.work, ['folder', 'add', 'two', '~/two'], w.home); assert.equal(second.status, 3, second.stderr);
   assert.doesNotMatch(second.stdout, /Create the store/); assert.match(second.stdout, /^Register folder two in the store at ~\/\.bowerloom\/folders\/two\.json\n  Folder: ~\/two\n/);
@@ -108,7 +108,7 @@ test('8. the refusals reach the command line with their codes', t => {
 });
 test('9. a folder reached through a link is recorded by its real path', t => {
   const w = world(t); symlinkSync(w.kb, join(w.home, 'alias')); add(w, 'kb', join(w.home, 'alias'));
-  assert.equal(readFileSync(join(w.folders, 'kb.json'), 'utf8'), '{"format":"bowerloom/store-folder/v1beta1","path":"kb"}\n');
+  assert.match(readFileSync(join(w.folders, 'kb.json'), 'utf8'), /^\{"format":"bowerloom\/store-folder\/v1beta1","path":"kb","id":"[a-f0-9]{32}"\}\n$/);
 });
 test('10. a folder add refuses STALE_APPROVAL when the folder was replaced after the plan', t => {
   const w = world(t), planned = run(w.work, ['folder', 'add', 'kb', w.kb], w.home);
@@ -140,7 +140,7 @@ test('13. folder allow <name> run in a project plans the absolute folder, writes
   const p = sliceProject(t, { apply: false, registered: true });
   add({ home: p.home, kb: p.kb!, work: p.dir, folders: join(p.home, '.bowerloom/folders') }, 'two', p.kb!, p.dir); // a second name for the same folder is allowed
   const planned = run(p.dir, ['folder', 'allow', 'two'], p.home); assert.equal(planned.status, 3, planned.stderr);
-  assert.match(planned.stdout, new RegExp(`^Allow this project to read registered folder two\\n  Project: ${p.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n  Folder: ${p.kb!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(~/kb\\)\\n  A slice of this project that names it can copy text from it into \\.claude/skills\\. Bowerloom never writes the folder\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\.`));
+  assert.match(planned.stdout, new RegExp(`^Allow this project to read registered folder two\\n  Project: ${p.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n  Folder: ${p.kb!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(~/kb\\)\\n  Bowerloom reads the mode of the folder only\\. To see access control entries, run ls -led [^\\n]+\\.\\n  A slice of this project that names it can copy text from it into \\.claude/skills\\. Bowerloom never writes the folder\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\.`));
   assert.equal(existsSync(join(p.home, '.bowerloom/folders/two.grants')), false);
   const done = run(p.dir, ['folder', 'allow', 'two', '--approve', revisionIn(planned.stdout)], p.home); assert.equal(done.status, 0, done.stderr);
   assert.equal(readdirSync(join(p.home, '.bowerloom/folders/two.grants')).length, 1);
@@ -184,4 +184,12 @@ test('17. C2: slice create --registered checks the folder after the create check
   const gone = run(p.dir, ['slice', 'create', 'other', '--registered', 'kb'], p.home); assert.equal(gone.status, 1); const e = errorOf(gone.stderr);
   assert.deepEqual([e.code, /does not exist/.test(e.message)], ['FOLDER_UNSAFE', true]);
   assert.equal(existsSync(join(p.dir, '.bowerloom/slices/other.yaml')), false);
+});
+test('18. L1: adding a lost folder again says it removes the old grants, and the old project is held until it is allowed again', t => {
+  const p = sliceProject(t, { apply: true, registered: true }), record = join(p.home, '.bowerloom/folders/kb.json');
+  rmSync(record);
+  const planned = run(p.dir, ['folder', 'add', 'kb', p.kb!], p.home); assert.equal(planned.status, 3, planned.stderr); assert.match(planned.stdout, /\n {2}Removes 1 old grant for kb\.\n/);
+  assert.equal(run(p.dir, ['folder', 'add', 'kb', p.kb!, '--approve', revisionIn(planned.stdout)], p.home).status, 0);
+  const apply = run(p.dir, ['apply', '--harness', 'claude'], p.home); assert.match(apply.stdout, /slice held \(FOLDER_NOT_ALLOWED\)/);
+  approve(p.dir, ['folder', 'allow', 'kb'], p.home); assert.match(run(p.dir, ['apply', '--harness', 'claude'], p.home).stdout, /slice up to date/);
 });

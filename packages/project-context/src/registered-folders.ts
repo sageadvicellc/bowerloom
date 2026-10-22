@@ -32,10 +32,13 @@ const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 /** The test hooks of discovery, and the private state folder, which no registered folder may be, hold, or sit in. */
 export interface FolderHooks extends DiscoveryHooks { readonly stateRoot?: string }
 /** Who asks for a registered root: the project, by its id, and the private state folder of this machine. A grant is for one project. */
-export interface RootAccess { readonly projectId: string; readonly stateRoot?: string }
+export interface RootAccess { readonly projectId: string; /** The birth time of the project folder, in nanoseconds. A grant is for the folder that ran `folder allow`, not for another that took its inode. */ readonly birthtimeNs: string; readonly stateRoot?: string }
 export const GRANT_FORMAT = 'bowerloom/store-folder-grant/v1beta1';
 const GRANTS = /^[a-z0-9]+(?:-[a-z0-9]+)*\.grants$/;
 const PROJECT_ID = /^[a-f0-9]{32}$/;
+const REGISTRATION_ID = /^[a-f0-9]{32}$/;
+const BIRTH = /^[0-9]{1,24}$/;
+const GRANT_TEMP = /^\.grant-[a-f0-9]{32}\.[a-f0-9]{16}\.tmp$/;
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const missing = (error: unknown): boolean => errno(error) === 'ENOENT' || errno(error) === 'ENOTDIR';
@@ -74,6 +77,51 @@ function realHome(home: string): string {
 
 // ---------------------------------------------------------------------------------------------------- the folders folder
 
+/** A name for a message: plain characters only, short. */
+const plainName = (name: string): string => name.replace(/[^A-Za-z0-9._-]/g, '?').slice(0, 64);
+interface GrantEntries { identity: DirectoryIdentity | null; ids: string[]; temps: string[] }
+/**
+ * The grants folder of a registered folder, read strictly: absent, or a real folder of this user whose every entry is a
+ * grant (a 32-hex name, a plain file or a link, never followed) or a leftover temporary grant. Any other entry refuses
+ * FOLDER_UNSAFE and names itself, so nothing is deleted from a folder that holds something else.
+ */
+function grantsEntries(store: StoreContext, name: string, hooks: { readonly uid?: number }): GrantEntries {
+  const dir = join(store.dir, FOLDERS_DIR, name + '.grants');
+  let stat: BigIntStats;
+  try { stat = lstatSync(dir, { bigint: true }); } catch (error) { if (missing(error)) return { identity: null, ids: [], temps: [] }; throw unreadable(error); }
+  if (!ownedFolder(stat, uidOf(hooks))) throw refuse('FOLDER_UNSAFE');
+  let entries: string[];
+  try { entries = readdirSync(dir); } catch (error) { throw unreadable(error); }
+  const ids: string[] = [], temps: string[] = [];
+  for (const entry of entries.sort(cmp)) {
+    let kind: BigIntStats;
+    try { kind = lstatSync(join(dir, entry), { bigint: true }); } catch (error) { throw missing(error) ? refuse('FOLDER_UNSAFE', `The grants folder changed while it was read: ${plainName(entry)}.`) : unreadable(error); }
+    const odd = kind.isDirectory() || !(kind.isFile() || kind.isSymbolicLink());
+    if (!odd && PROJECT_ID.test(entry)) ids.push(entry);
+    else if (!odd && GRANT_TEMP.test(entry) && kind.isFile()) temps.push(entry);
+    else throw refuse('FOLDER_UNSAFE', `The grants folder holds an unexpected entry: ${plainName(entry)}.`);
+  }
+  return { identity: identityFrom(stat), ids, temps };
+}
+/**
+ * Removes every entry of a grants folder and the folder, never following a link. The folder must still be the one that was
+ * planned: it is looked at again just before it is listed, and an entry that is a folder stops the removal.
+ */
+function removeGrantsFolder(dir: string, planned: DirectoryIdentity | null): void {
+  if (planned === null) return;
+  let stat: BigIntStats;
+  try { stat = lstatSync(dir, { bigint: true }); } catch (error) { throw missing(error) ? refuse('STALE_APPROVAL') : unreadable(error); }
+  if (!stat.isDirectory() || stat.isSymbolicLink() || stat.dev.toString() !== planned.device || stat.ino.toString() !== planned.inode || stat.birthtimeNs.toString() !== planned.birthtimeNs) throw refuse('STALE_APPROVAL');
+  let entries: string[];
+  try { entries = readdirSync(dir); } catch (error) { throw unreadable(error); }
+  for (const entry of entries) {
+    let kind: BigIntStats;
+    try { kind = lstatSync(join(dir, entry), { bigint: true }); } catch (error) { throw missing(error) ? refuse('STALE_APPROVAL') : unreadable(error); }
+    if (kind.isDirectory()) throw refuse('STALE_APPROVAL');
+  }
+  writing(() => { for (const entry of entries) unlinkSync(join(dir, entry)); rmdirSync(dir); syncFolder(dirname(dir)); });
+}
+
 interface FoldersState { identity: DirectoryIdentity | null; names: string[] }
 /** The `folders` folder of a store: absent, or a real folder that the user owns with no group or world write. */
 function foldersState(store: StoreContext, hooks: { readonly uid?: number }): FoldersState {
@@ -90,6 +138,8 @@ function foldersState(store: StoreContext, hooks: { readonly uid?: number }): Fo
 
 export interface FolderRecord {
   readonly name: string;
+  /** The registration id: 16 random bytes in hex, new on every `folder add`, so the record hash is never the same twice. */
+  readonly id: string;
   /** The folder relative to the real home folder. */
   readonly path: string;
   readonly sha256: string;
@@ -132,9 +182,9 @@ export function readFolderRecord(store: StoreContext, name: string, hooks: { rea
   let value: unknown;
   try { value = strictJson(text, RECORD_LIMIT); } catch { throw refuse('FOLDER_INVALID'); }
   const keys = value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
-  const record = value as { format?: unknown; path?: unknown };
-  if (keys.length !== 2 || !keys.includes('format') || !keys.includes('path') || record.format !== FOLDER_FORMAT || !validRel(record.path)) throw refuse('FOLDER_INVALID');
-  return Object.freeze({ name, path: record.path, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, fileIdentity: Object.freeze({ device: before.dev.toString(), inode: before.ino.toString() }) });
+  const record = value as { format?: unknown; path?: unknown; id?: unknown };
+  if (keys.length !== 3 || !keys.includes('format') || !keys.includes('path') || !keys.includes('id') || record.format !== FOLDER_FORMAT || !validRel(record.path) || typeof record.id !== 'string' || !REGISTRATION_ID.test(record.id)) throw refuse('FOLDER_INVALID');
+  return Object.freeze({ name, id: record.id, path: record.path, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length, fileIdentity: Object.freeze({ device: before.dev.toString(), inode: before.ino.toString() }) });
 }
 
 // ---------------------------------------------------------------------------------------------------------- the checks
@@ -254,6 +304,9 @@ export interface FolderAddPlan {
   readonly storeCreate: boolean;
   readonly store: StorePins | null;
   readonly folders: { readonly identity: DirectoryIdentity | null; readonly names: readonly string[] };
+  /** The grants of an earlier registration of this name, which the add removes, so that they never apply to the new record. */
+  readonly oldGrants: number;
+  readonly oldGrantsIdentity: DirectoryIdentity | null;
   readonly writesAuthorized: false;
   readonly revision: string;
 }
@@ -265,6 +318,7 @@ export interface FolderRemovePlan {
   readonly record: { readonly sha256: string; readonly bytes: number; readonly device: string; readonly inode: string };
   /** The grants of projects that go with the record. */
   readonly grants: readonly string[];
+  readonly grantsIdentity: DirectoryIdentity | null;
   readonly writesAuthorized: false;
   readonly revision: string;
 }
@@ -299,12 +353,13 @@ function buildAdd(home: string, cwd: string, name: string, argument: string, hoo
   const wanted = fold(name + '.json');
   if (folders.names.some(n => fold(n) === wanted)) throw refuse('FOLDER_EXISTS');
   const store = view.state === 'store' ? pinsOf(view.context) : STORE_ABSENT;
+  const old = view.state === 'store' ? grantsEntries(view.context, name, hooks) : { identity: null, ids: [], temps: [] };
   const body = {
     format: 'bowerloom/folder-add-plan/v1beta1' as const, name, path: rel, folder: identity, storeCreate: view.state === 'absent', store,
-    folders: { identity: folders.identity, names: folders.names }, writesAuthorized: false as const,
+    folders: { identity: folders.identity, names: folders.names }, oldGrants: old.ids.length, oldGrantsIdentity: old.identity, writesAuthorized: false as const,
   };
   const revision = digest([body.format, name, rel, identityKey(identity), body.storeCreate, store === null ? null : [identityKey(store.identity), store.file.device, store.file.inode, store.file.size, store.file.ctimeNs],
-    folders.identity === null ? null : identityKey(folders.identity), folders.names]);
+    folders.identity === null ? null : identityKey(folders.identity), folders.names, old.ids, old.identity === null ? null : identityKey(old.identity)]);
   return Object.freeze({ ...body, revision });
 }
 
@@ -339,6 +394,8 @@ export async function applyFolderAddWith(home: string, cwd: string, name: string
       if (plan.folders.identity === null) { mkdirSync(dir, { mode: 0o700 }); chmodOwn(dir); }
     });
     removeLeftovers(dir);
+    // The grants of an earlier registration go first, and a new registration id makes the record hash new.
+    removeGrantsFolder(grantsPath(store, name), plan.oldGrantsIdentity);
     const temp = join(dir, `.folder-${name}.${randomBytes(8).toString('hex')}.tmp`);
     let exists = false;
     writing(() => {
@@ -347,7 +404,7 @@ export async function applyFolderAddWith(home: string, cwd: string, name: string
         const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
         try {
           fchmodSync(fd, 0o644);
-          const data = Buffer.from(`{"format":"${FOLDER_FORMAT}","path":${JSON.stringify(plan.path)}}\n`);
+          const data = Buffer.from(`{"format":"${FOLDER_FORMAT}","path":${JSON.stringify(plan.path)},"id":"${randomBytes(16).toString('hex')}"}\n`);
           let at = 0; while (at < data.length) at += writeSync(fd, data, at);
           fsyncSync(fd);
         } finally { closeSync(fd); }
@@ -372,9 +429,9 @@ function buildRemove(home: string, name: string, hooks: FolderHooks, inside?: St
     if (found.state === 'foreign') throw refuse('STORE_INVALID');
     store = found.context;
   }
-  const record = readFolderRecord(store, name, hooks), pins = pinsOf(store), grants = grantsState(store, name, hooks).names;
-  const body = { format: 'bowerloom/folder-remove-plan/v1beta1' as const, name, path: record.path, store: pins, record: { sha256: record.sha256, bytes: record.bytes, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants, writesAuthorized: false as const };
-  const revision = digest([body.format, name, record.path, identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs, record.sha256, record.bytes, record.fileIdentity.device, record.fileIdentity.inode, grants]);
+  const record = readFolderRecord(store, name, hooks), pins = pinsOf(store), held = grantsEntries(store, name, hooks), grants = held.ids;
+  const body = { format: 'bowerloom/folder-remove-plan/v1beta1' as const, name, path: record.path, store: pins, record: { sha256: record.sha256, bytes: record.bytes, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants, grantsIdentity: held.identity, writesAuthorized: false as const };
+  const revision = digest([body.format, name, record.path, identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs, record.sha256, record.bytes, record.fileIdentity.device, record.fileIdentity.inode, grants, held.identity === null ? null : identityKey(held.identity)]);
   return Object.freeze({ ...body, revision });
 }
 
@@ -395,12 +452,8 @@ export async function applyFolderRemoveWith(home: string, name: string, revision
     const dir = join(store.dir, FOLDERS_DIR);
     removeLeftovers(dir);
     // The grants go first: a record that came back with the same bytes must not bring old grants with it.
+    removeGrantsFolder(grantsPath(store, name), plan.grantsIdentity);
     writing(() => {
-      const grantsDir = grantsPath(store, name);
-      if (plan.grants.length > 0 || existsGrants(grantsDir)) {
-        for (const grant of readdirSync(grantsDir)) unlinkSync(join(grantsDir, grant));
-        rmdirSync(grantsDir);
-      }
       unlinkSync(join(dir, name + '.json')); syncFolder(dir);
     });
     verifyStorePins(store, hooks);
@@ -415,6 +468,7 @@ export function renderFolderAddReview(plan: FolderAddPlan): string {
     `Register folder ${plan.name} in the store at ~/.bowerloom/folders/${plan.name}.json`,
     `  Folder: ~/${plan.path}`,
     `  A slice names it with root: { registered: ${plan.name} }. Bowerloom reads this folder and never writes it.`,
+    ...(plan.oldGrants > 0 ? [`  Removes ${plan.oldGrants} old grant${plan.oldGrants === 1 ? '' : 's'} for ${plan.name}.`] : []),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');
 }
@@ -476,7 +530,7 @@ function grantsState(store: StoreContext, name: string, hooks: { readonly uid?: 
   return { identity: identityFrom(stat), names: names.sort(cmp) };
 }
 /** Reads `<name>.grants/<projectId>`: true only for a plain file of this user whose record hash is the hash of the record now. */
-function readGrant(store: StoreContext, name: string, projectId: string, recordSha256: string, hooks: { readonly uid?: number }): boolean {
+function readGrant(store: StoreContext, name: string, projectId: string, birthtimeNs: string, recordSha256: string, hooks: { readonly uid?: number }): boolean {
   if (grantsState(store, name, hooks).identity === null) return false;
   const file = join(grantsPath(store, name), projectId), uid = uidOf(hooks);
   let before: BigIntStats;
@@ -502,20 +556,21 @@ function readGrant(store: StoreContext, name: string, projectId: string, recordS
   let value: unknown;
   try { value = strictJson(text, RECORD_LIMIT); } catch { throw refuse('FOLDER_INVALID'); }
   const keys = value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
-  const grant = value as { format?: unknown; record?: unknown };
-  if (keys.length !== 2 || !keys.includes('format') || !keys.includes('record') || grant.format !== GRANT_FORMAT || typeof grant.record !== 'string' || !HEX64.test(grant.record)) throw refuse('FOLDER_INVALID');
-  return grant.record === recordSha256;
+  const grant = value as { format?: unknown; record?: unknown; birth?: unknown };
+  if (keys.length !== 3 || !keys.includes('format') || !keys.includes('record') || !keys.includes('birth') || typeof grant.birth !== 'string' || !BIRTH.test(grant.birth) || grant.format !== GRANT_FORMAT || typeof grant.record !== 'string' || !HEX64.test(grant.record)) throw refuse('FOLDER_INVALID');
+  return grant.record === recordSha256 && grant.birth === birthtimeNs;
 }
 
 /**
  * The root of a slice in a registered folder (spec 05, section 3.4, steps 2 to 5 and 7). Throws `Gone` when the store,
  * the record, or a folder on the way is absent, and `NotAllowed` when `access` names a project without a grant. Any other
  * fault is a FOLDER_* or STORE_* refusal. With `access` null no grant is asked for: only `folder allow` and `folder list` do that.
- * The grant is asked for before the folder is looked at, so a project that is not allowed learns nothing about it.
+ * The grant is asked for before the folder is looked at, so a project that is not allowed reads no file or folder of it. It still sees the
+ * name and the recorded path of the folder, through `slice create --registered` and `folder list`, because those read the record only.
  */
 function resolveRoot(home: string, store: StoreContext, name: string, path: string, hooks: FolderHooks, access: RootAccess | null): ResolvedRoot {
   const record = readFolderRecord(store, name, hooks), homeDir = realHome(home);
-  if (access !== null && (!PROJECT_ID.test(access.projectId) || !readGrant(store, name, access.projectId, record.sha256, hooks))) throw new NotAllowed();
+  if (access !== null && (!PROJECT_ID.test(access.projectId) || !BIRTH.test(access.birthtimeNs) || !readGrant(store, name, access.projectId, access.birthtimeNs, record.sha256, hooks))) throw new NotAllowed();
   const checks: FolderHooks = access?.stateRoot !== undefined ? { ...hooks, stateRoot: access.stateRoot } : hooks;
   const folderDir = join(homeDir, record.path), dir = path === '.' ? folderDir : join(folderDir, path);
   checkBelowHome(dir, homeDir, checks, () => { throw new Gone(); });
@@ -564,12 +619,15 @@ export interface GrantProject {
   readonly dir: string;
   /** The 32 hex characters of the project id. */
   readonly projectId: string;
+  /** The birth time of the project folder, in nanoseconds. */
+  readonly birthtimeNs: string;
 }
 export interface FolderAllowPlan {
   readonly format: 'bowerloom/folder-allow-plan/v1beta1';
   readonly name: string;
   readonly project: string;
   readonly projectId: string;
+  readonly birthtimeNs: string;
   /** The folder relative to the real home folder. */
   readonly path: string;
   /** The absolute real path of the folder. */
@@ -593,7 +651,7 @@ export interface FolderDenyPlan {
   readonly revision: string;
 }
 function checkProject(project: GrantProject): void {
-  if (project === null || typeof project !== 'object' || typeof project.dir !== 'string' || !isAbsolute(project.dir) || project.dir.includes('\0') || typeof project.projectId !== 'string' || !PROJECT_ID.test(project.projectId)) throw refuse('USAGE');
+  if (project === null || typeof project !== 'object' || typeof project.dir !== 'string' || !isAbsolute(project.dir) || project.dir.includes('\0') || typeof project.projectId !== 'string' || !PROJECT_ID.test(project.projectId) || typeof project.birthtimeNs !== 'string' || !BIRTH.test(project.birthtimeNs)) throw refuse('USAGE');
 }
 function existingStore(home: string, hooks: FolderHooks, inside?: StoreContext): StoreContext {
   if (inside !== undefined) return inside;
@@ -610,10 +668,10 @@ function buildAllow(home: string, project: GrantProject, name: string, hooks: Fo
   try { root = resolveRoot(home, store, name, '.', hooks, null); } catch (error) { throw isGone(error) ? refuse('FOLDER_UNSAFE', 'The folder does not exist.') : error; }
   const grants = grantsState(store, name, hooks);
   const body = {
-    format: 'bowerloom/folder-allow-plan/v1beta1' as const, name, project: project.dir, projectId: project.projectId, path: record.path, folderDir: root.dir, folder: root.identity, store: pins,
+    format: 'bowerloom/folder-allow-plan/v1beta1' as const, name, project: project.dir, projectId: project.projectId, birthtimeNs: project.birthtimeNs, path: record.path, folderDir: root.dir, folder: root.identity, store: pins,
     record: { sha256: record.sha256, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants: { identity: grants.identity, names: grants.names }, writesAuthorized: false as const,
   };
-  const revision = digest([body.format, name, project.dir, project.projectId, record.path, root.dir, identityKey(root.identity), identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs,
+  const revision = digest([body.format, name, project.dir, project.projectId, project.birthtimeNs, record.path, root.dir, identityKey(root.identity), identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs,
     record.sha256, record.fileIdentity.device, record.fileIdentity.inode, grants.identity === null ? null : identityKey(grants.identity), grants.names]);
   return Object.freeze({ ...body, revision });
 }
@@ -631,7 +689,7 @@ function writeGrant(store: StoreContext, plan: FolderAllowPlan): void {
       const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
       try {
         fchmodSync(fd, 0o644);
-        const data = Buffer.from(`{"format":"${GRANT_FORMAT}","record":"${plan.record.sha256}"}\n`);
+        const data = Buffer.from(`{"format":"${GRANT_FORMAT}","record":"${plan.record.sha256}","birth":"${plan.birthtimeNs}"}\n`);
         let at = 0; while (at < data.length) at += writeSync(fd, data, at);
         fsyncSync(fd);
       } finally { closeSync(fd); }
@@ -689,11 +747,13 @@ export async function applyFolderDenyWith(home: string, project: GrantProject, n
     return { name };
   }, hooks);
 }
+const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
 export function renderFolderAllowReview(plan: FolderAllowPlan): string {
   return [
     `Allow this project to read registered folder ${plan.name}`,
     `  Project: ${plan.project}`,
     `  Folder: ${plan.folderDir} (~/${plan.path})`,
+    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led ${shellWord(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');

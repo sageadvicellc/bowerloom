@@ -27,17 +27,19 @@ function world(t) {
   const hooks = { accountHome: path.join(base, 'nobody') };
   const store = path.join(home, '.bowerloom'), folders = path.join(store, 'folders');
   const make = (rel, mode = 0o755) => { const dir = path.join(home, rel); fs.mkdirSync(dir, { recursive: true, mode }); for (let p = dir; p !== home; p = path.dirname(p)) fs.chmodSync(p, mode); return dir; };
-  const project = { dir: path.join(base, 'project'), projectId: 'a'.repeat(32) }, access = { projectId: project.projectId };
+  const project = { dir: path.join(base, 'project'), projectId: 'a'.repeat(32), birthtimeNs: '111' }, access = { projectId: project.projectId, birthtimeNs: '111' };
   const allow = async (name, as = project) => { const plan = planFolderAllowWith(home, as, name, hooks); return applyFolderAllowWith(home, as, name, plan.revision, signal(), hooks); };
-  const grantNow = (name, pid = project.projectId) => {
+  const grantNow = (name, pid = project.projectId, birth = project.birthtimeNs) => {
     const dir = path.join(folders, name + '.grants'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const sha = createHash('sha256').update(fs.readFileSync(path.join(folders, name + '.json'))).digest('hex');
-    fs.writeFileSync(path.join(dir, pid), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`, { mode: 0o644 });
+    fs.writeFileSync(path.join(dir, pid), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${birth}"}\n`, { mode: 0o644 });
   };
   const add = async (name, target) => { const plan = planFolderAddWith(home, home, name, target, hooks); return applyFolderAddWith(home, home, name, target, plan.revision, signal(), hooks); };
   return { base, home, hooks, store, folders, make, add, allow, grantNow, project, access, record: name => path.join(folders, name + '.json') };
 }
-const BODY = rel => `{"format":"bowerloom/store-folder/v1beta1","path":${JSON.stringify(rel)}}\n`;
+const ID = 'a'.repeat(32);
+const BODY = (rel, id = ID) => `{"format":"bowerloom/store-folder/v1beta1","path":${JSON.stringify(rel)},"id":"${id}"}\n`;
+const RECORD = rel => new RegExp(`^\\{"format":"bowerloom/store-folder/v1beta1","path":${JSON.stringify(rel).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')},"id":"[a-f0-9]{32}"\\}\\n$`);
 
 test('1. folder add plans the exact lines, and the store-create line only when the store is absent', t => {
   const w = world(t); w.make('Sage Advice/knowledge-base');
@@ -60,7 +62,7 @@ test('2. apply writes the exact record bytes with mode 0644, in a 0700 folders f
   const w = world(t); w.make('kb');
   const out = await w.add('kb', '~/kb');
   assert.deepEqual(out, { name: 'kb', path: 'kb' });
-  assert.equal(fs.readFileSync(w.record('kb'), 'utf8'), BODY('kb'));
+  assert.match(fs.readFileSync(w.record('kb'), 'utf8'), RECORD('kb'));
   assert.equal(fs.statSync(w.record('kb')).mode & 0o777, 0o644); assert.equal(fs.statSync(w.folders).mode & 0o777, 0o700);
   assert.equal(fs.lstatSync(w.record('kb')).nlink, 1);
   assert.deepEqual(fs.readdirSync(w.folders), ['kb.json'], 'no temporary name is left');
@@ -118,7 +120,7 @@ test('11. a record with an extra key, a duplicate key, a bad path, or a BOM read
   const store = inspectStoreWith(w.home, w.hooks).context;
   const bad = [`{"format":"bowerloom/store-folder/v1beta1","path":"kb","extra":1}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"kb","path":"kb"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"../kb"}\n`,
     `{"format":"bowerloom/store-folder/v1beta1","path":".kb"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"/kb"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"a//b"}\n`, `{"format":"other","path":"kb"}\n`,
-    '﻿' + BODY('kb'), `{"format":"bowerloom/store-folder/v1beta1"}\n`, '[]\n', 'not json\n', `{"format":"bowerloom/store-folder/v1beta1","path":"${'a'.repeat(1025)}"}\n`];
+    '﻿' + BODY('kb'), `{"format":"bowerloom/store-folder/v1beta1"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"kb"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"kb","id":"short"}\n`, `{"format":"bowerloom/store-folder/v1beta1","path":"kb","id":"${'A'.repeat(32)}"}\n`, '[]\n', 'not json\n', `{"format":"bowerloom/store-folder/v1beta1","path":"${'a'.repeat(1025)}"}\n`];
   for (const text of bad) { fs.writeFileSync(w.record('kb'), text, { mode: 0o644 }); assert.throws(() => readFolderRecord(store, 'kb'), code('FOLDER_INVALID'), text.slice(0, 60)); }
   fs.writeFileSync(w.record('kb'), 'x'.repeat(4097), { mode: 0o644 }); assert.throws(() => readFolderRecord(store, 'kb'), code('FOLDER_INVALID'));
   fs.writeFileSync(w.record('kb'), BODY('kb'), { mode: 0o644 });
@@ -212,7 +214,7 @@ test('18. a store that is absent, or a record that is invalid, holds the slice r
 test('19. folder add records the real path of a folder reached through a link', async t => {
   const w = world(t); w.make('real/kb'); fs.symlinkSync(path.join(w.home, 'real'), path.join(w.home, 'alias'));
   await w.add('kb', '~/alias/kb'); await w.allow('kb');
-  assert.equal(fs.readFileSync(w.record('kb'), 'utf8'), BODY('real/kb'));
+  assert.match(fs.readFileSync(w.record('kb'), 'utf8'), RECORD('real/kb'));
   fs.rmSync(path.join(w.home, 'real/kb'), { recursive: true }); fs.symlinkSync(path.join(w.home, 'elsewhere'), path.join(w.home, 'real/kb'));
   fs.mkdirSync(path.join(w.home, 'elsewhere'), { mode: 0o755 });
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE', 'a link at the recorded path');
@@ -294,6 +296,7 @@ test('30. folder allow plans the absolute folder and the project, and writes a g
     'Allow this project to read registered folder kb',
     `  Project: ${w.project.dir}`,
     `  Folder: ${path.join(w.home, 'Sage Advice/kb')} (~/Sage Advice/kb)`,
+    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led '${path.join(w.home, 'Sage Advice/kb')}'.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n'));
@@ -301,7 +304,7 @@ test('30. folder allow plans the absolute folder and the project, and writes a g
   await applyFolderAllowWith(w.home, w.project, 'kb', plan.revision, signal(), w.hooks);
   const sha = createHash('sha256').update(fs.readFileSync(w.record('kb'))).digest('hex');
   const grant = path.join(isAllowedDir(w, 'kb'), w.project.projectId);
-  assert.equal(fs.readFileSync(grant, 'utf8'), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`);
+  assert.equal(fs.readFileSync(grant, 'utf8'), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"111"}\n`);
   assert.equal(fs.statSync(grant).mode & 0o777, 0o644); assert.equal(fs.statSync(isAllowedDir(w, 'kb')).mode & 0o777, 0o700);
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
 });
@@ -310,11 +313,11 @@ test('31. a project without a grant is held with FOLDER_NOT_ALLOWED, before the 
   assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' });
   fs.rmSync(path.join(w.home, 'kb'), { recursive: true });
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED', 'a project that is not allowed learns nothing about the folder');
-  assert.equal(resolveRegisteredRootWith(w.home, 'kb', 'wiki', { projectId: 'b'.repeat(32) }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', 'wiki', { projectId: 'b'.repeat(32), birthtimeNs: '111' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
 });
 test('32. a grant is for one project: another project id is not allowed', async t => {
   const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
-  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { projectId: 'b'.repeat(32) }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { projectId: 'b'.repeat(32), birthtimeNs: '111' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
 });
 test('33. a grant is for one record: a name pointed at another folder is not allowed again', async t => {
@@ -351,7 +354,7 @@ test('36. folder allow refuses an unknown name, a folder that is gone or unsafe,
   const w = world(t); w.make('kb');
   assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_NOT_FOUND'));
   await w.add('kb', '~/kb');
-  const plan = planFolderAllowWith(w.home, w.project, 'kb', w.hooks), other = { dir: path.join(w.base, 'other'), projectId: 'c'.repeat(32) };
+  const plan = planFolderAllowWith(w.home, w.project, 'kb', w.hooks), other = { dir: path.join(w.base, 'other'), projectId: 'c'.repeat(32), birthtimeNs: '111' };
   await assert.rejects(applyFolderAllowWith(w.home, other, 'kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL'));
   fs.rmSync(path.join(w.home, 'kb'), { recursive: true });
   assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_UNSAFE'));
@@ -412,4 +415,119 @@ test('43. F4: a store that cannot be searched fails closed', { skip: process.get
   try { assert.throws(() => holdsStore(path.join(w.home, 'kb'), w.home, { accountHome: path.join(w.home, 'acct') }), code('FOLDER_UNSAFE')); }
   finally { fs.chmodSync(path.join(w.home, 'acct'), 0o755); }
   void acct;
+});
+
+// ------------------------------------------------------------------------------------------------ Part B round 3
+const HEXID = (n = 1) => String(n).padStart(32, '0');
+const foreignLstat = (t, suffix) => {
+  const real = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (p, ...rest) => {
+    const stat = real.call(fs, p, ...rest);
+    return String(p).endsWith(suffix) && rest[0]?.bigint ? new Proxy(stat, { get: (target, key) => key === 'uid' ? target.uid + 1n : typeof target[key] === 'function' ? target[key].bind(target) : target[key] }) : stat;
+  });
+  syncBuiltinESMExports();
+};
+const restoreAll = t => { t.mock.restoreAll(); syncBuiltinESMExports(); };
+test('44. L1: a record that is lost and added again does not bring the old grants back, and the plan says it removes them', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  fs.unlinkSync(w.record('kb'));
+  const plan = planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks);
+  assert.equal(plan.oldGrants, 1);
+  assert.match(renderFolderAddReview(plan), /\n {2}Removes 1 old grant for kb\.\n/);
+  await applyFolderAddWith(w.home, w.home, 'kb', '~/kb', plan.revision, signal(), w.hooks);
+  assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  assert.doesNotMatch(renderFolderAddReview(planFolderAddWith(w.home, w.home, 'two', '~/kb', w.hooks)), /old grant/);
+});
+test('45. L1: the record holds a registration id that is new on every add, so the record hash changes', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); const first = fs.readFileSync(w.record('kb'), 'utf8');
+  const plan = planFolderRemoveWith(w.home, 'kb', w.hooks); await applyFolderRemoveWith(w.home, 'kb', plan.revision, signal(), w.hooks); await w.add('kb', '~/kb');
+  const second = fs.readFileSync(w.record('kb'), 'utf8'); assert.notEqual(second, first);
+  assert.notEqual(JSON.parse(second).id, JSON.parse(first).id); assert.match(JSON.parse(second).id, /^[a-f0-9]{32}$/);
+});
+test('46. L1: leftover grants are removed without following a link, and a leftover that is a link or has an odd entry refuses the add', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); const dir = isAllowedDir(w, 'kb'); fs.mkdirSync(dir, { mode: 0o700 });
+  const victim = path.join(w.base, 'victim.txt'); fs.writeFileSync(victim, 'keep'); fs.unlinkSync(w.record('kb'));
+  fs.symlinkSync(victim, path.join(dir, HEXID(1)));
+  const plan = planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks); assert.equal(plan.oldGrants, 1);
+  await applyFolderAddWith(w.home, w.home, 'kb', '~/kb', plan.revision, signal(), w.hooks);
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'keep'); assert.equal(fs.existsSync(dir), false);
+  // An entry that is not a grant id refuses the add before anything is removed.
+  fs.unlinkSync(w.record('kb')); fs.mkdirSync(dir, { mode: 0o700 }); fs.writeFileSync(path.join(dir, 'odd'), 'x');
+  assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks), error => error.code === 'FOLDER_UNSAFE' && /odd/.test(error.message));
+  // A grants folder that is a link is never followed.
+  fs.rmSync(dir, { recursive: true }); const other = path.join(w.base, 'other'); fs.mkdirSync(other); fs.writeFileSync(path.join(other, HEXID(2)), 'keep'); fs.symlinkSync(other, dir);
+  assert.throws(() => planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks), code('FOLDER_UNSAFE'));
+  assert.equal(fs.readFileSync(path.join(other, HEXID(2)), 'utf8'), 'keep');
+});
+test('47. L2: folder remove refuses an unexpected entry in the grants folder, naming it, before it deletes anything', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb'); const dir = isAllowedDir(w, 'kb');
+  fs.symlinkSync(path.join(w.base, 'victim'), path.join(dir, 'evil'));
+  assert.throws(() => planFolderRemoveWith(w.home, 'kb', w.hooks), error => error.code === 'FOLDER_UNSAFE' && /evil/.test(error.message));
+  fs.unlinkSync(path.join(dir, 'evil')); fs.mkdirSync(path.join(dir, HEXID(3)));
+  assert.throws(() => planFolderRemoveWith(w.home, 'kb', w.hooks), code('FOLDER_UNSAFE'), 'a folder named like a grant');
+  fs.rmdirSync(path.join(dir, HEXID(3))); fs.mkdirSync(path.join(dir, 'sub'));
+  assert.throws(() => planFolderRemoveWith(w.home, 'kb', w.hooks), error => error.code === 'FOLDER_UNSAFE' && /sub/.test(error.message));
+  fs.rmdirSync(path.join(dir, 'sub'));
+  assert.equal(planFolderRemoveWith(w.home, 'kb', w.hooks).grants.length, 1);
+  assert.equal(fs.existsSync(w.record('kb')), true, 'a refused plan deleted nothing');
+});
+test('48. L2: a grants folder swapped after the plan is a stale approval, and nothing is deleted', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb'); const dir = isAllowedDir(w, 'kb');
+  const plan = planFolderRemoveWith(w.home, 'kb', w.hooks);
+  const entries = fs.readdirSync(dir).map(n => [n, fs.readFileSync(path.join(dir, n))]); fs.rmSync(dir, { recursive: true }); fs.mkdirSync(dir, { mode: 0o700 }); for (const [n, b] of entries) fs.writeFileSync(path.join(dir, n), b, { mode: 0o644 });
+  await assert.rejects(applyFolderRemoveWith(w.home, 'kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL'));
+  assert.equal(fs.existsSync(w.record('kb')), true); assert.equal(fs.readdirSync(dir).length, 1);
+  const again = planFolderRemoveWith(w.home, 'kb', w.hooks); await applyFolderRemoveWith(w.home, 'kb', again.revision, signal(), w.hooks); assert.equal(fs.existsSync(dir), false);
+});
+test('49. L2: a leftover temporary grant is removed with the grants and is not counted', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb'); const dir = isAllowedDir(w, 'kb');
+  fs.writeFileSync(path.join(dir, `.grant-${'a'.repeat(32)}.0123456789abcdef.tmp`), 'half');
+  const plan = planFolderRemoveWith(w.home, 'kb', w.hooks); assert.equal(plan.grants.length, 1);
+  await applyFolderRemoveWith(w.home, 'kb', plan.revision, signal(), w.hooks); assert.equal(fs.existsSync(dir), false);
+});
+test('50. L3: a grant binds the birth time of the project folder: a folder with another birth time is not allowed', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, birthtimeNs: '222' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
+  const grant = path.join(isAllowedDir(w, 'kb'), w.project.projectId); fs.writeFileSync(grant, fs.readFileSync(grant, 'utf8').replace(',"birth":"111"', ''), { mode: 0o644 });
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE', 'a grant with no birth time is not valid');
+});
+test('51. L3: the allow plan binds the birth time of the project', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  const a = planFolderAllowWith(w.home, w.project, 'kb', w.hooks), b = planFolderAllowWith(w.home, { ...w.project, birthtimeNs: '222' }, 'kb', w.hooks);
+  assert.notEqual(a.revision, b.revision);
+  await assert.rejects(applyFolderAllowWith(w.home, { ...w.project, birthtimeNs: '222' }, 'kb', a.revision, signal(), w.hooks), code('STALE_APPROVAL'));
+});
+test('52. M1: a folder owned by another user is refused by the owner check alone', async t => {
+  const w = world(t); w.make('kb'); w.make('two');
+  foreignLstat(t, '/two');
+  try { assert.throws(() => planFolderAddWith(w.home, w.home, 'two', '~/two', w.hooks), code('FOLDER_UNSAFE')); } finally { restoreAll(t); }
+  assert.equal(planFolderAddWith(w.home, w.home, 'two', '~/two', w.hooks).path, 'two');
+});
+test('53. M1: a grant file owned by another user is refused by the owner check alone', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb');
+  foreignLstat(t, '/' + w.project.projectId);
+  try { assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'SLICE_ROOT_UNSAFE'); } finally { restoreAll(t); }
+  assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true);
+});
+test('54. M1: a record file owned by another user is refused', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  const store = inspectStoreWith(w.home, w.hooks).context; foreignLstat(t, '/kb.json');
+  try { assert.throws(() => readFolderRecord(store, 'kb'), code('FOLDER_UNSAFE')); } finally { restoreAll(t); }
+});
+test('55. D1: the allow review repeats the hint about access control entries', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  assert.match(renderFolderAllowReview(planFolderAllowWith(w.home, w.project, 'kb', w.hooks)), new RegExp(`\\n {2}Bowerloom reads the mode of the folder only\\. To see access control entries, run ls -led ${path.join(w.home, 'kb').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.\\n`));
+});
+test('56. L2: a grants folder swapped between the second plan and the removal is looked at again and is a stale approval', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb'); await w.allow('kb'); const dir = isAllowedDir(w, 'kb');
+  const plan = planFolderRemoveWith(w.home, 'kb', w.hooks), real = fs.readdirSync; let swapped = false;
+  t.mock.method(fs, 'readdirSync', (p, ...rest) => {
+    const out = real.call(fs, p, ...rest);
+    if (!swapped && String(p) === dir) { swapped = true; const copy = out.map(n => [n, fs.readFileSync(path.join(dir, n))]); fs.rmSync(dir, { recursive: true }); fs.mkdirSync(dir, { mode: 0o700 }); for (const [n, b] of copy) fs.writeFileSync(path.join(dir, n), b, { mode: 0o644 }); }
+    return out;
+  }); syncBuiltinESMExports();
+  try { await assert.rejects(applyFolderRemoveWith(w.home, 'kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL')); } finally { restoreAll(t); }
+  assert.equal(swapped, true); assert.equal(fs.existsSync(w.record('kb')), true);
 });

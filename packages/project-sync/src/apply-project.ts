@@ -240,7 +240,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     // Slices (spec 05): the listing and the limit are checked whatever the harness says; the trees are read for Claude Code only.
     const catalogNames = exists(catalogs) ? names(catalogs) : [];
     const listing = listSlices(dir);
-    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames, registeredLookup(home, project.projectId, input.stateRoot)) : { items: [] as SliceItem[], unregistered: listing.unregistered };
+    const sliceScan = claude ? scanSlices(dir, layout.itemsRoot, input.sliceTree ?? readSliceTree, catalogNames, registeredLookup(home, project.projectId, project.identity.birthtimeNs, input.stateRoot)) : { items: [] as SliceItem[], unregistered: listing.unregistered };
     const registeredSliceCount = listing.ids.length;
     const plain = plainSkillIds(dir);
     if (claude) {

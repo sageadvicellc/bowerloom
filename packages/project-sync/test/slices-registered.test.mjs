@@ -132,7 +132,7 @@ test('R10. the record of the folder is in the plan revision: a record that point
   const { f, kb } = await registeredProject(t), p = await plan(f, ['claude']);
   const other = path.join(f.home, 'folder-other'); fs.mkdirSync(path.join(other, 'wiki'), { recursive: true, mode: 0o755 }); fs.chmodSync(other, 0o755); fs.chmodSync(path.join(other, 'wiki'), 0o755);
   t.after(() => fs.rmSync(other, { recursive: true, force: true })); fs.writeFileSync(path.join(other, 'wiki/a.md'), '# Alpha\nbody a\n'); fs.writeFileSync(path.join(other, 'wiki/c.md'), '# Gamma\n');
-  fs.writeFileSync(kb.record, `{"format":"bowerloom/store-folder/v1beta1","path":"folder-other"}\n`, { mode: 0o644 });
+  fs.writeFileSync(kb.record, `{"format":"bowerloom/store-folder/v1beta1","path":"folder-other","id":"${'b'.repeat(32)}"}\n`, { mode: 0o644 });
   const q = await plan(f, ['claude']); assert.notEqual(q.revision, p.revision); assert.equal(slice(q).hold.code, 'FOLDER_NOT_ALLOWED', 'the grant was for the other record');
   await allowFolder(f, kb.name);
   const r = await plan(f, ['claude']); assert.deepEqual(slice(r).members, ['a.md', 'c.md']); assert.notEqual(slice(r).root.recordSha256, slice(p).root.recordSha256);
@@ -194,7 +194,7 @@ test('N1. a project without a grant: the slice is held with FOLDER_NOT_ALLOWED, 
 test('N2. a grant for another project does not let this project in, and deny puts it back', async t => {
   const { f, kb } = await registeredProject(t);
   const { planFolderDeny, applyFolderDeny } = await import('../../../dist/packages/project-context/src/index.js');
-  const project = { dir: f.projectDir, projectId: f.project().projectId }, d = planFolderDeny(f.home, project, kb.name); await applyFolderDeny(f.home, project, kb.name, d.revision, signal());
+  const project = { dir: f.projectDir, projectId: f.project().projectId, birthtimeNs: f.project().identity.birthtimeNs }, d = planFolderDeny(f.home, project, kb.name); await applyFolderDeny(f.home, project, kb.name, d.revision, signal());
   assert.equal(slice(await plan(f, ['claude'])).hold.code, 'FOLDER_NOT_ALLOWED');
 });
 test('N3. the plan names what it copies: first heading, or a frontmatter key, from the absolute folder', async t => {
@@ -278,4 +278,12 @@ test('F7. an agent whose guarded registered root holds the project gets the note
   const holder = await registeredFolderOf(f, t, f.base); fs.writeFileSync(path.join(f.projectDir, 'README.md'), '# Readme\n');
   await createSlice(f, 'wiki', { registered: holder.name, root: '.', includes: ['*/*.md'] }); sliceAgent(f, 'lead', ['slice-wiki']);
   assert.match(review(await plan(f, ['claude'], extra)), /^ {2}Note: agent lead must pass a path to Grep and Glob\. A search of the whole project reaches the guarded folder \.\.\.$/m);
+});
+
+test('L1. a record that is lost and added again does not let an old project install without folder allow', async t => {
+  const { f, kb } = await registeredProject(t); await applied(f, ['claude']);
+  fs.unlinkSync(kb.record);
+  const add = planFolderAdd(f.home, f.home, kb.name, kb.dir); assert.equal(add.oldGrants, 1); await applyFolderAdd(f.home, f.home, kb.name, kb.dir, add.revision, signal());
+  const p = await plan(f, ['claude']); assert.deepEqual([slice(p).action, slice(p).hold.code, slice(p).installed], ['hold', 'FOLDER_NOT_ALLOWED', true]);
+  await allowFolder(f, kb.name); assert.equal(slice(await plan(f, ['claude'])).state, 'up-to-date');
 });

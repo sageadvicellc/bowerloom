@@ -118,9 +118,9 @@ const qualified = (root: string, member: string): string => root === '' ? member
 export type SliceTreeHook = (projectDir: string, name: string, root: SliceRequestRoot, live: () => void, registered?: RegisteredLookup) => SliceTreeResult;
 
 /** The store lookup of registered folders, for `readSliceTree`: the project-context resolver with the identity cut to what a request carries. */
-export function registeredLookup(home: string, projectId: string, stateRoot?: string): RegisteredLookup {
+export function registeredLookup(home: string, projectId: string, birthtimeNs: string, stateRoot?: string): RegisteredLookup {
   return (name, path) => {
-    const found = resolveRegisteredRoot(home, name, path, { projectId, ...(stateRoot !== undefined ? { stateRoot } : {}) });
+    const found = resolveRegisteredRoot(home, name, path, { projectId, birthtimeNs, ...(stateRoot !== undefined ? { stateRoot } : {}) });
     if (!found.ok) return found;
     return { ok: true, dir: found.dir, identity: { device: found.identity.device, inode: found.identity.inode, birthtimeNs: found.identity.birthtimeNs }, recordSha256: found.recordSha256 };
   };

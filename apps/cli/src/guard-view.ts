@@ -42,7 +42,7 @@ function installedCatalog(project: string, itemsRoot: string, ref: { kind: 'agen
   return value.item?.kind === ref.kind && value.item?.id === ref.id ? value : null;
 }
 
-function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot: string | undefined, home: string, stateRoot: string): GuardSliceView {
+function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot: string | undefined, home: string, stateRoot: string, projectBirth: string): GuardSliceView {
   const lost = (state: 'not-installed' | 'root-missing' | 'not-allowed', mode: 'root' | 'none' = 'root', folder?: string): GuardSliceView => ({ id, mode, state, root: '', display: '', prefix: '', members: [], covered: [], ...(folder !== undefined ? { folder } : {}) });
   let catalog: Record<string, any> | null, mode: 'root' | 'none', rootPath: string, registered: string | null, members: string[], covered: string[];
   try {
@@ -59,7 +59,7 @@ function sliceView(args: GuardArgs, itemsRoot: string, id: string, expectedRoot:
     // Either way the root's id must be the one the copy names, so a folder that was replaced since apply denies every call.
     let real: string, display: string;
     if (registered !== null) {
-      const found = resolveRegisteredRoot(home, registered, rootPath, { projectId: args.projectId, stateRoot });
+      const found = resolveRegisteredRoot(home, registered, rootPath, { projectId: args.projectId, birthtimeNs: projectBirth, stateRoot });
       if (!found.ok) {
         if (found.code === 'FOLDER_NOT_ALLOWED') return lost('not-allowed', mode, registered);
         // A fault of the system, such as a record that cannot be read, is not a verdict about the folder: it ends the call as an internal error.
@@ -89,6 +89,6 @@ export function loadGuardView(args: GuardArgs, stateRoot: string, options: { exp
     const itemsRoot = join(stateRoot, args.projectId, 'items'), agent = installedCatalog(args.project, itemsRoot, { kind: 'agent', id: args.role });
     if (agent === null || (options.explain !== true && (!Array.isArray(agent.source?.guard) || !same(agent.source.guard, args.slices)))) return { projectOk: false, slices: [], fs: fsView };
     const roots = new Map(args.roots.map(r => [r.slice(0, r.lastIndexOf(':')), r.slice(r.lastIndexOf(':') + 1)] as const));
-    return { projectOk: true, slices: args.slices.map(id => sliceView(args, itemsRoot, id, roots.get(id), options.home ?? homedir(), stateRoot)), fs: fsView };
+    return { projectOk: true, slices: args.slices.map(id => sliceView(args, itemsRoot, id, roots.get(id), options.home ?? homedir(), stateRoot, String(s.birthtimeNs))), fs: fsView };
   } catch (error) { unexpected(error); return { projectOk: false, slices: [], fs: fsView }; }
 }

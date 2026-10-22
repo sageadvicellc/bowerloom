@@ -286,8 +286,8 @@ test('B10. a registered folder that became unsafe, or whose record points into a
   const record = join(p.home, '.bowerloom/folders/kb.json');
   mkdirSync(join(p.home, 'Library/CloudStorage/y/wiki'), { recursive: true, mode: 0o755 }); for (const d of ['Library', 'Library/CloudStorage', 'Library/CloudStorage/y', 'Library/CloudStorage/y/wiki']) chmodSync(join(p.home, d), 0o755);
   writeFileSync(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), '# Alpha\n');
-  writeFileSync(record, '{"format":"bowerloom/store-folder/v1beta1","path":"Library/CloudStorage/y"}\n', { mode: 0o644 });
-  const sha = createHash('sha256').update(readFileSync(record)).digest('hex'); writeFileSync(join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p)), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}"}\n`, { mode: 0o644 });
+  writeFileSync(record, `{"format":"bowerloom/store-folder/v1beta1","path":"Library/CloudStorage/y","id":"${'c'.repeat(32)}"}\n`, { mode: 0o644 });
+  const sha = createHash('sha256').update(readFileSync(record)).digest('hex'); writeFileSync(join(p.home, '.bowerloom/folders/kb.grants', projectIdOf(p)), `{"format":"bowerloom/store-folder-grant/v1beta1","record":"${sha}","birth":"${statSync(p.dir, { bigint: true }).birthtimeNs}"}\n`, { mode: 0o644 });
   assert.match(guard(p, args, read(join(p.home, 'Library/CloudStorage/y/wiki/a.md'), p.dir)).stdout, ROOT, 'a record into a cloud folder, with a grant that matches it');
 });
 test('N-G1. a project without a grant: the guard denies every call with its own reason, and --explain says the same', t => {

@@ -63,7 +63,7 @@ export async function runFolderCommand(args: readonly string[], cwd: string, hom
     // A grant is for the project that runs the command, found from the working folder.
     const { flags, positional } = words(args.slice(2));
     if (positional.length !== 1) usage();
-    const name = positional[0]!, controller = new AbortController(), stateRoot = privateStateRoot(env, home), found = discoverProject(cwd, home), project = { dir: found.dir, projectId: found.projectId };
+    const name = positional[0]!, controller = new AbortController(), stateRoot = privateStateRoot(env, home), found = discoverProject(cwd, home), project = { dir: found.dir, projectId: found.projectId, birthtimeNs: found.identity.birthtimeNs };
     if (sub === 'allow') {
       const change: PlannedChange<FolderAllowPlan> = {
         async plan() { return planFolderAllow(home, project, name, stateRoot); },

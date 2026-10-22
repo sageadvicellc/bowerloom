@@ -59,6 +59,6 @@ export async function registeredFolder(f, t, { name = `kb${++folders}`, pages = 
 
 /** `folder allow <name>` for the project of the fixture, through the product. */
 export async function allowFolder(f, name) {
-  const project = { dir: f.projectDir, projectId: f.project().projectId }, plan = planFolderAllow(f.home, project, name);
+  const project = { dir: f.projectDir, projectId: f.project().projectId, birthtimeNs: f.project().identity.birthtimeNs }, plan = planFolderAllow(f.home, project, name);
   await applyFolderAllow(f.home, project, name, plan.revision, signal());
 }
