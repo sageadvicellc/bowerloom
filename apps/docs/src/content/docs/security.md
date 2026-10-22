@@ -41,7 +41,7 @@ No parser here guarantees that arbitrary prose contains no secret. Inspect selec
 
 A store in a private GitHub repository needs a token. Set the environment variable `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the store repository. It is the only setting: there is no file, no flag, and no stored value. Without it, Bowerloom works as before and a private store refuses with `STORE_REMOTE_PRIVATE`.
 
-Bowerloom sends the token to one host, `api.github.com`, and only for the repository of your store remote, or the repositories your lock names for its store items. Each plan that uses the token shows a `Credentials:` line that names those repositories. Bowerloom never stores the token and never prints it. It never writes it to a plan, a lock, a receipt, a log, or any other file. It refuses every redirect, so the token cannot travel to another host.
+Bowerloom sends the token to one host, `api.github.com`, and only for the repository of your store remote, or the repositories your lock names for its store items. Each plan that uses the token shows a `Credentials:` line that names those repositories. Bowerloom never stores the token and never prints it. It never writes it to a plan, a lock, a receipt, a log, or any other file. It refuses every redirect, so the token cannot travel to another host. Code that is loaded into the Bowerloom process, for example through `NODE_OPTIONS=--require`, can read the variable, as it can read any environment variable.
 
 `skills add` and the fetch of pinned skills send no credentials. The fetch of store items sends a token. It does so only after you set `BOWERLOOM_GITHUB_TOKEN`.
 
