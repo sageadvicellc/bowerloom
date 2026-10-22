@@ -266,3 +266,11 @@ test('28. a folder or a record owned by another user refuses FOLDER_UNSAFE (the 
   assert.throws(() => readFolderRecord(store, 'kb', other), code('FOLDER_UNSAFE'));
   const again = resolveRegisteredRootWith(w.home, 'kb', '.', other); assert.equal(again.ok, false);
 });
+test('29. the checks run again on a recorded folder: a record that points into a cloud folder holds the slice root, and list names the code', async t => {
+  const w = world(t); w.make('kb'); w.make('Library/CloudStorage/y/wiki'); await w.add('kb', '~/kb');
+  fs.writeFileSync(w.record('kb'), BODY('Library/CloudStorage/y'), { mode: 0o644 });
+  assert.deepEqual([resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks).ok, resolveRegisteredRootWith(w.home, 'kb', 'wiki', w.hooks).code], [false, 'SLICE_ROOT_UNSAFE']);
+  assert.equal(listFoldersWith(w.home, w.hooks).folders[0].code, 'FOLDER_IN_CLOUD', 'list names the code that failed');
+  fs.writeFileSync(w.record('kb'), BODY('kb'), { mode: 0o644 });
+  assert.equal(resolveRegisteredRootWith(w.home, 'kb', '.', w.hooks).ok, true);
+});
