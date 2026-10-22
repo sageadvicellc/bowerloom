@@ -313,9 +313,12 @@ export function extractBundle({stageDir, packages, npmCache, maxBundleBytes}) {
       return true;
     };
     const filter=(raw,entry) => {
+      // Decision (tech lead): refuse node_modules directly under the package folder only, in any case and form. A lock path has
+      // node_modules only there (<pkg>/node_modules/<name>), so a deeper folder such as dist/node_modules/.pnpm/... can never collide
+      // with another lock package, and the hash comparison after npm pack covers its files.
       const text=String(raw), segments=text.replace(/\/$/,'').split('/'), inner=segments.slice(1);
       if(!ALLOWED_TYPES.has(entry.type) || text.startsWith('/') || /^[A-Za-z]:/.test(text) || segments.some(part => part === '' || part === '.' || part === '..')
-        || inner.some(part => part.normalize('NFC').toLowerCase() === 'node_modules')) { refuse(raw); return false; }
+        || (inner.length > 0 && inner[0].normalize('NFKC').toLowerCase() === 'node_modules')) { refuse(raw); return false; }
       if(inner.length === 0) return true;
       if(inner.length > MAX_DEPTH) { refuse(raw); return false; }
       if(++entries > MAX_PACKAGE_ENTRIES) { refuse(raw); return false; }

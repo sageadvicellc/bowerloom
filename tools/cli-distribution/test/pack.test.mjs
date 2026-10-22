@@ -589,10 +589,15 @@ test('extractBundle refuses a cache entry that is a symbolic link or a FIFO with
  rmSync(file);assert.equal(spawnSync('mkfifo',[file]).status,0);
  assert.throws(()=>extractBundle({stageDir:join(root,'s3'),packages:{'node_modules/p':item},npmCache:cache}),/^Error: Bundle cache entry unsafe: node_modules\/p$/);
 });
-test('a node_modules folder at any depth and in any case is refused',t=>{
+test('a node_modules folder directly under the package, in any case or form, is refused; a deeper one is kept',t=>{
  const root=area(t),cache=join(root,'cache');let n=0;
- for(const path of ['package/NODE_MODULES/x/index.js','package/lib/node_modules/y/index.js','package/lib/Node_Modules/','package/node_modules'])
+ for(const path of ['package/NODE_MODULES/x/index.js','package/Node_Modules/x/index.js','package/node_moduleſ/x/index.js','package/node_modules/','package/node_modules'])
   assert.throws(()=>extractBundle({stageDir:join(root,'s'+n++),packages:{'node_modules/p':entryFor(cache,'p',[manifestEntry('p'),{path,...(path.endsWith('/')?{type:'5'}:{data:'x'})}])},npmCache:cache}),e=>e.message==='Bundle tarball unsafe: node_modules/p/'+path,path);
+});
+test('a node_modules folder deeper inside a package passes',t=>{
+ const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),{path:'package/dist/node_modules/x/index.js',data:'x'}]);
+ extractBundle({stageDir:join(root,'stage'),packages:{'node_modules/p':item},npmCache:cache});
+ assert.ok(existsSync(join(root,'stage/node_modules/p/dist/node_modules/x/index.js')));
 });
 test('extraction never changes the process umask',t=>{
  const root=area(t),cache=join(root,'cache'),item=entryFor(cache,'p',[manifestEntry('p'),{path:'package/bin/run.js',data:'x',mode:0o755}]),original=process.umask,calls=[];
