@@ -262,6 +262,11 @@ test('spec 07. a frozen apply with only a locked prompt and team still names the
   const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, ...extra });
   const frozen = await planProjectApply(applyInput({ frozen: true, githubToken: tokenOf(CANARY) }));
   assert.deepEqual(frozen.network.credentials, CREDENTIALS(['sageadvicellc/store']));
+  // The apply plan binds the field itself: no skill sub-plan carries it here, and the token still changes the revision.
+  assert.equal(frozen.skills === null || frozen.skills.network.credentials === null, true);
+  const bare = await planProjectApply(applyInput({ frozen: true }));
+  assert.equal(bare.network.credentials, null); assert.notEqual(bare.revision, frozen.revision);
+  assert.equal((await planProjectApply(applyInput({ frozen: true, githubToken: tokenOf(OTHER_CANARY) }))).revision, frozen.revision);
   let reads = 0;
   const plain = await planProjectApply(applyInput({ githubToken: () => { reads++; return tokenOf(CANARY); } }));
   assert.equal(plain.network.credentials, null); assert.equal(reads, 0);
