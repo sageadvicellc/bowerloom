@@ -131,6 +131,9 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
           try {
             guard();
             const headers = guardedResponseHeaders(incoming.rawHeaders); requireManifest(headers !== null, 'SKILLS_ADD_NETWORK');
+            // Spec 06, 3.10: GitHub's request limit keeps its own code. Both headers are read from incoming.headers, because
+            // guardedResponseHeaders returns only the guarded names. Every other status keeps its result.
+            if (host === 'api.github.com' && (incoming.statusCode === 429 || (incoming.statusCode === 403 && (incoming.headers?.['x-ratelimit-remaining'] === '0' || incoming.headers?.['retry-after'] !== undefined)))) { settle('GITHUB_RATE_LIMITED'); return; }
             if (incoming.statusCode === 404 || incoming.statusCode === 410 || incoming.statusCode === 422 && host === 'api.github.com') { settle('SKILLS_ADD_NOT_FOUND'); return; }
             const length = headers.get('content-length');
             requireManifest(incoming.statusCode === 200 && !headers.has('location') && (!headers.has('content-encoding') || headers.get('content-encoding') === 'identity') && (length === undefined || /^(0|[1-9]\d*)$/.test(length)), 'SKILLS_ADD_NETWORK');
