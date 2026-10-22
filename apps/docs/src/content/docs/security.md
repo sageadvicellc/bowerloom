@@ -11,6 +11,10 @@ Treat repository content, retrieved pages, tool descriptions, and model proposal
 
 `bowerloom apply --allow-agent` holds back an agent that sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers`. It works only in a terminal, and you type the role name. That stops a pipe, `--json`, and a CI job from allowing an agent by accident. It is not a boundary against an agent that has a shell or can write files. Such an agent can drive a pseudo-terminal, or write `.claude/agents` itself. Read what you allow.
 
+## The read guard limits context, not access
+
+An agent that names a context slice gets a read guard. Claude Code runs it before each Read, Grep, and Glob of that agent. It limits what those three tools reach under the folder of the slice. Shell tools, MCP tools, `LSP`, nested agents, `claude -p` runs, and an untrusted folder are not checked. The guard is not a security boundary. [Context slices for agents](/docs/guides/context-slices/#what-the-guard-does-not-stop) lists every way that stays open.
+
 ## Read a refusal as a boundary
 
 An actual refusal identifies a stopped effect. Find its meaning in [Status and error reference](/docs/reference/errors/).

@@ -280,6 +280,7 @@ After any refusal, run the command again without `--approve` and read the new pl
 - `MANAGED_SKILL_RECOVERY_REQUIRED` means a change stopped inside one skill. Run `bowerloom skills recover plan --item <id>`.
 - `MANAGED_SKILL_LEGACY_PRESENT` means an earlier Bowerloom installed skills here. Run `skills migrate`.
 - `APPLY_NAME_COLLISION` means two items share one place, or something Bowerloom did not install is there. Bowerloom never overwrites it.
+- Ids that start with `slice-` are reserved for the index skills of context slices. `skills add` refuses a new entry with such an id, and the slice codes are listed in [the errors](/docs/reference/errors/#context-slice-refusals). A `slice-` entry that `skills.json` already holds keeps working.
 - `AGENT_INVALID`, `AGENT_KEY_UNKNOWN`, `AGENT_NAME_MISMATCH`, `APPLY_AGENT_DUPLICATE`, `AGENT_GRANT_REVIEW_REQUIRED`, `AGENT_TEAM_UNREGISTERED`, and `AGENT_TARGET_OCCUPIED` hold one agent back, and the rest of `apply` goes on. `AGENT_LIMIT` and `APPLY_AGENTS_FOLDER_UNSAFE` stop the whole `apply`. [Project agents for Claude Code](/docs/guides/agents/) says how to fix each one.
 
 ### Recover an unfinished change

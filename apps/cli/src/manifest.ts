@@ -60,7 +60,7 @@ export function parseAddArgs(words: readonly string[]): AddArgs {
     else if (word === '--id' || word === '--team') {
       const value = words[++i];
       if (value === undefined || value.startsWith('-') || !isId(value)) usage(`${word} takes a lower-case id, such as first-team.`);
-      if (word === '--id') { if (id !== null || !isEntryId(value)) usage('Use --id once, with an id that is not personal-assistant and does not start with prompt-.'); id = value!; }
+      if (word === '--id') { if (id !== null || !isEntryId(value)) usage('Use --id once, with an id that is not personal-assistant and does not start with prompt- or slice-.'); id = value!; }
       else { if (teams.includes(value!) || teams.length >= 32) usage('Name each team once.'); teams.push(value!); }
     } else if (word.startsWith('-') || spec !== null) usage(ADD_USAGE);
     else spec = word;

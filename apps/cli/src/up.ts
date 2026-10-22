@@ -150,9 +150,9 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: p => renderApplyReview(p, ctx.terminal === true),
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
-    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, and agents of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
+    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, agents, and context slices of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
   }
-  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents));
+  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents, applyPlan.slices));
   return { step: 'held', team, change: null, held: uniqueHolds(held) };
 }
 
@@ -175,7 +175,7 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',
-      `  Team: ${teamWords(team)}, with skills, prompts, and agents in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills, prompts, agents, and context slices in place for ${harnessWords(ctx.harnesses)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);

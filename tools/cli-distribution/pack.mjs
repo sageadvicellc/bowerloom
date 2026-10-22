@@ -8,10 +8,10 @@ import { spawnSync } from 'node:child_process';
 import { isBuiltin } from 'node:module';
 import { parseAst } from 'rolldown/parseAst';
 import { UnpackSync, list as listTar } from 'tar';
-export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-config','project-authoring','skill-manifest','project-sync','startup','workbench','workspace-effects']);
+export const MODULES = Object.freeze(['admission','authoring','broker','broker-postgres','codex-adapter','connections','contracts','controlled-tests','crew','graph','harness-portability','linux-browser','local-backend','local-control','mcp-connections','portable','recipes','roots','routines','runtime','runtime-bridge','skill-sources','managed-skills','project-context','project-config','project-authoring','skill-manifest','project-sync','context-slices','startup','workbench','workspace-effects']);
 export const ASSETS = Object.freeze(['release/beta.json','packages/linux-browser/assets/runner.cjs','packages/linux-browser/assets/seccomp.json','packages/linux-browser/assets/runtime-manifest.json','packages/linux-browser/assets/craft-shop-contract.md','packages/linux-browser/PLAYWRIGHT-LICENSE.txt','packages/linux-browser/IMPORT-MANIFEST.json','packages/local-backend/THIRD_PARTY_NOTICES.md','packages/local-backend/licenses/supabase-Apache-2.0.txt']);
 export const CANONICAL_URLS = Object.freeze({site:'https://bowerloom.ai',docs:'https://bowerloom.ai/docs/',repository:'https://github.com/sageadvicellc/bowerloom'});
-const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js'];
+const ENTRY = ['dist/apps/cli/src/main.js','dist/apps/mcp/src/main.js','dist/apps/cli/src/guard-main.js'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const fail = message => { throw new Error(message); };
@@ -174,7 +174,7 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false, bund
   for (const path of ['package.json',...['apps/cli','apps/mcp',...MODULES.map(n=>'packages/'+n)].map(n=>n+'/package.json')]) {
     // These explicit internal modules belong to the root MIT package; no standalone workspace is claimed.
     // If present, either manifest must undergo the normal license/dependency checks below.
-    if (['packages/connections/package.json', 'packages/routines/package.json', 'packages/skill-sources/package.json', 'packages/managed-skills/package.json', 'packages/project-context/package.json', 'packages/project-config/package.json', 'packages/project-authoring/package.json', 'packages/skill-manifest/package.json', 'packages/project-sync/package.json'].includes(path)) {
+    if (['packages/connections/package.json', 'packages/routines/package.json', 'packages/skill-sources/package.json', 'packages/managed-skills/package.json', 'packages/project-context/package.json', 'packages/project-config/package.json', 'packages/project-authoring/package.json', 'packages/skill-manifest/package.json', 'packages/project-sync/package.json', 'packages/context-slices/package.json'].includes(path)) {
       try { lstatSync(join(repo,path)); } catch(error) { if(error?.code === 'ENOENT') continue; throw error; }
     }
     const bytes=regular(repo,path), manifest=JSON.parse(bytes);
@@ -204,7 +204,7 @@ export function collect({repoDir, name='bowerloom', releaseCandidate=false, bund
     }
   }
   for (const path of [...ASSETS,'LICENSE','docs/beta/license-boundary.md']) files.set(path,regular(repo,path));
-  const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{repository:{type:'git',url:'git+'+release.urls.repository+'.git'},homepage:release.urls.site,bugs:{url:release.urls.repository+'/issues'},publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
+  const manifest={name,version:rootPackage.version,private:!releaseCandidate,description:releaseCandidate?'An agent environment manager. Set up the skills, prompts, and teams your agents use, and approve every change.':'Private Bowerloom CLI distribution proof; not a published beta release',...(releaseCandidate?{repository:{type:'git',url:'git+'+release.urls.repository+'.git'},homepage:release.urls.site,bugs:{url:release.urls.repository+'/issues'},publishConfig:{access:'public',tag:release.npm.distTag,registry:release.npm.registry}}:{}),type:'module',license:rootPackage.license,engines:rootPackage.engines,bin:{bowerloom:ENTRY[0],'bowerloom-mcp':ENTRY[1],'bowerloom-guard':ENTRY[2]},files:['dist/apps/cli/src','dist/apps/mcp/src','dist/packages',...ASSETS,'LICENSE','docs/beta/license-boundary.md','npm-shrinkwrap.json','DISTRIBUTION.json','DISTRIBUTION-NOTICE.md','README.md'],dependencies:Object.fromEntries(Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b)))};
   // One walk of the lock gives the shrinkwrap. Its top-level entries then become exact pins, and the root entry follows the final manifest.
   const direct=manifest.dependencies, shrink=lockedDependencies(JSON.parse(regular(repo,'package-lock.json')),direct,manifest), flat=flatDependencies(shrink.packages,direct);
   if(bundle) for(const path of Object.keys(shrink.packages).filter(Boolean).sort(byName)) {

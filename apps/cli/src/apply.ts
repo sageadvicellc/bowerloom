@@ -9,7 +9,7 @@ import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
-import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SyncItem } from '../../../packages/project-sync/src/index.js';
+import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
@@ -73,7 +73,67 @@ function agentNoticeLine(item: AgentItem): string[] {
     .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
   return [`  Note: agent ${item.id} ${what}. Claude Code applies them when the agent runs. Review .bowerloom/teams/${item.team}/agents/${item.id}.md.`];
 }
-function agentLine(item: AgentItem, width: number, terminal: boolean): string[] {
+/** `a`, `a and b`, `a, b and c`: the join of the plan's lists. */
+const andList = (list: readonly string[]): string => list.length <= 1 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+/** Up to three paths, then `, and <k> more`. */
+const someOf = (list: readonly string[]): string => `${andList(list.slice(0, 3))}${list.length > 3 ? `, and ${list.length - 3} more` : ''}`;
+const sliceWhere = (item: SliceItem): string => item.root === null || item.root.path === '.' ? 'the project folder' : item.root.path;
+/** The notes of a slice the plan installs or updates (spec 05, section 3.7.3), in their fixed order. */
+export function sliceNoteLines(item: SliceItem): string[] {
+  const n = item.notes, id = item.id, out: string[] = [];
+  if (n.unparsed.length) out.push(`  Note: slice ${id} left out ${n.unparsed.length} files whose frontmatter does not parse: ${someOf(n.unparsed)}.`);
+  if (n.unresolvedLinks > 0 || n.ambiguousLinks > 0) out.push(`  Note: slice ${id} has ${n.unresolvedLinks} links that point to no file and ${n.ambiguousLinks} links that point to more than one file.`);
+  for (const p of n.emptyPatterns) out.push(`  Note: slice ${id}: the pattern ${p} matches no file.`);
+  if (n.notText > 0) out.push(`  Note: slice ${id} left out ${n.notText} files that are not UTF-8 text or have unusual names.`);
+  if (n.oversize.length) out.push(`  Note: slice ${id} lists ${n.oversize.length} files over 1 MiB without a summary.`);
+  if (n.skippedEntries > 0) out.push(`  Note: slice ${id} skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
+  if (n.truncatedLinks > 0) out.push(`  Note: slice ${id} follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
+  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${sliceWhere(item)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${sliceWhere(item)}, or add the folder to permissions.additionalDirectories.`);
+  if (n.wholeProject) out.push(`  Note: slice ${id} guards the whole project folder. An agent that names it reads only the slice's files there with Read, Grep, and Glob.`);
+  return out;
+}
+function sliceLine(item: SliceItem, width: number): string[] {
+  const id = item.id.padEnd(width), pad = ''.padEnd(width), where = `.claude/skills/slice-${item.id}/SKILL.md`;
+  if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
+  const c = item.changes;
+  switch (item.state) {
+    case 'new': return [`  ${id} install slice: ${where} (${item.members.length} files from ${sliceWhere(item)})`, ...sliceNoteLines(item)];
+    case 'edited': return [`  ${id} update slice: ${where} (${c.added} added, ${c.gone} gone, ${c.summaries} summaries changed${c.rootChanged ? ', root changed' : ''}${c.guardChanged ? ', guard changed' : ''})`, ...sliceNoteLines(item)];
+    case 'orphaned': return [`  ${id} slice kept: no longer a slice of this project, and apply removes nothing`];
+    default: return [`  ${id} slice up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
+  }
+}
+/** What an agent with the read guard can still read with: the ways of section 3.7.3, in their fixed order. */
+function readGaps(item: AgentItem): string[] {
+  const t = item.context.tools, has = (...names: string[]): boolean => t === null || t.some(x => names.includes(x));
+  return [
+    ...(has('Bash', 'PowerShell', 'Monitor') ? ['shell tools'] : []), ...(has('LSP') ? ['LSP'] : []), ...(has('Agent', 'Task') ? ['nested agents'] : []),
+    ...(t === null || t.some(x => x.startsWith('mcp__') || x === 'ReadMcpResourceTool') || item.context.mcpServers ? ['MCP tools'] : []),
+  ];
+}
+function agentContextWarnings(item: AgentItem, pad: string): string[] {
+  const c = item.context;
+  return [
+    ...c.unknown.map(x => `  ${pad} Warning: agent ${item.id} names slice-${x}, and no slice ${x} is registered. Claude Code skips a preloaded skill it cannot find.`),
+    ...c.beyondPreloadLimit.map((x, i) => `  ${pad} Warning: slice-${x} is skill ${c.beyondPreloadPositions[i]} in the skills list of agent ${item.id}. Claude Code preloads the first 32 only.`),
+    ...c.heldNeverInstalled.map(x => `  ${pad} Warning: agent ${item.id} names slice ${x}, which is held and was never installed. Its read guard blocks every Read, Grep, and Glob until the slice installs.`),
+    ...c.heldAfterInstalled.map(x => `  ${pad} Warning: agent ${item.id} names slice ${x}, which is held, so its read guard blocks every Read, Grep, and Glob until the slice installs.`),
+  ];
+}
+function agentContextNotes(item: AgentItem, slices: readonly SliceItem[]): string[] {
+  const c = item.context, out: string[] = [];
+  if (c.slices.length > 0 && !c.omitClaudeMd) out.push(`  Note: agent ${item.id} names slices and also loads the CLAUDE.md or AGENTS.md files at start. Set omitClaudeMd: true to start it with its slices only. bowerloom context measure shows the difference.`);
+  if (c.guard !== null) {
+    out.push(`  Note: agent ${item.id} gets the Bowerloom read guard for slices ${andList(c.guard)}. Claude Code runs it only in a folder you trusted, never in a claude -p run, and only when bowerloom-guard is on your PATH. It needs Claude Code 2.1.295 or later.`);
+    const ways = readGaps(item); if (ways.length) out.push(`  Note: agent ${item.id} can still read files with ${andList(ways)}. The guard checks Read, Grep, and Glob only.`);
+    if (c.tools === null || c.tools.includes('Grep') || c.tools.includes('Glob')) {
+      const roots = [...new Set(c.guard.flatMap(id => { const s = slices.find(x => x.id === id); return s && s.guard === 'root' && s.root !== null && s.root.path !== '.' ? [s.root.path] : []; }))].sort();
+      for (const root of roots) out.push(`  Note: agent ${item.id} must pass a path to Grep and Glob. A search of the whole project reaches the guarded folder ${root}.`);
+    }
+  }
+  return out;
+}
+function agentLine(item: AgentItem, width: number, terminal: boolean, slices: readonly SliceItem[] = []): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = item.expected.surfaces.filter(s => s.id === 'agent-claude').map(s => s.path).join(' and ');
   if (item.action === 'hold') {
     // The plan holds no flag text, so a terminal and a pipe see one revision. At a terminal the text names the exact flag.
@@ -86,11 +146,11 @@ function agentLine(item: AgentItem, width: number, terminal: boolean): string[] 
     ...(item.userCopy && copies ? [`  ${pad} Warning: ${item.id} also exists in ~/.claude/agents. This project's agent takes precedence in this project.`] : []),
   ];
   switch (item.state) {
-    case 'new': return [`  ${id} install agent: ${where}`, ...warning, ...agentNoticeLine(item)];
-    case 'adopt': return [`  ${id} adopt agent: ${where}`, ...warning, ...agentNoticeLine(item)];
-    case 'edited': return [`  ${id} update agent: ${where}`, ...warning, ...agentNoticeLine(item)];
+    case 'new': return [`  ${id} install agent: ${where}`, ...warning, ...agentContextWarnings(item, pad), ...agentNoticeLine(item), ...agentContextNotes(item, slices)];
+    case 'adopt': return [`  ${id} adopt agent: ${where}`, ...warning, ...agentContextWarnings(item, pad), ...agentNoticeLine(item), ...agentContextNotes(item, slices)];
+    case 'edited': return [`  ${id} update agent: ${where}`, ...warning, ...agentContextWarnings(item, pad), ...agentNoticeLine(item), ...agentContextNotes(item, slices)];
     case 'orphaned': return [`  ${id} agent kept: no longer an agent of this project, and apply removes nothing`];
-    default: return [`  ${id} agent up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
+    default: return [`  ${id} agent up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`, ...agentContextWarnings(item, pad)];
   }
 }
 /** Where copies go, for the chosen harnesses only (review freeze finding 9). */
@@ -100,14 +160,18 @@ function places(harnesses: readonly Harness[]): string {
 }
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
-  const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.agents.map(a => a.id.length)) + 1;
-  const claude = plan.harnesses.includes('claude');
-  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...plan.agents.flatMap(a => agentLine(a, width, terminal))];
+  const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
+  const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
+  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
+  const guarded = plan.agents.filter(a => (a.action === 'install' || a.action === 'update') && a.context.guard !== null).map(a => a.id);
+  const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...slicesBlock, ...plan.agents.flatMap(a => agentLine(a, width, terminal, plan.slices)),
+    ...(plan.agentsMayBeTracked && guarded.length ? [`  Note: the read guard in the copies of agents ${andList(guarded)} names this project's folder, ${plan.project.dir}. Bowerloom found no .gitignore line that keeps .claude/agents out of git. A committed copy carries a path from this machine. On another machine its guard blocks every read, and apply holds the copy until it is moved aside.`] : [])];
+  const title = !claude ? 'Apply skills and prompts for' : codex ? 'Apply skills, prompts, and agents for' : 'Apply skills, prompts, agents, and context slices for';
   return [
-    `${claude ? 'Apply skills, prompts, and agents for' : 'Apply skills and prompts for'} ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
-    ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    `${title} ${harnessWords(plan.harnesses)}${codex && claude ? ', and context slices for Claude Code' : ''}${plan.team ? `, team ${plan.team}` : ''}`,
+    ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, .bowerloom/teams/*/agents, or .bowerloom/slices to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
     ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
-    ...(plan.codexAgentsSkipped ? ['Codex agents are not projected in this beta. See the capability model design.'] : []),
+    ...(plan.codexAgentsSkipped || plan.codexSlicesSkipped ? ['Codex agents and context slices are not projected in this beta. See the capability model design.'] : []),
     'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.',
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
@@ -115,7 +179,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
   ].join('\n');
 }
 function resultWords(result: ApplyResult): string {
-  const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.kind === 'agent' ? `agent ${r.id}` : r.id;
+  const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.kind === 'agent' ? `agent ${r.id}` : r.kind === 'slice' ? `slice ${r.id}` : r.id;
   return plainText([
     ...result.applied.map(a => `  ${name(a)}: ${a.action === 'install' ? 'installed' : 'updated'}`),
     ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${h.next}`),

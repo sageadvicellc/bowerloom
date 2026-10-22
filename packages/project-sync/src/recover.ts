@@ -15,8 +15,8 @@ import { checkProjectAncestry } from './plan.js';
 import { outward, syncError } from './refusal.js';
 
 export interface RecoverInput { project: ProjectContext; stateRoot: string; item: string; action: RecoveryAction | null }
-/** Skill ids, `prompt-<name>` for a prompt, and `agent_<role>` for an agent, as the private state folders are named. */
-export const ITEM_ID = /^(?:prompt-|agent_)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Skill ids, `prompt-<name>` for a prompt, `agent_<role>` for an agent, and `slice_<id>` for a slice, as the private state folders are named. */
+export const ITEM_ID = /^(?:prompt-|agent_|slice_)?[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const RECOVERY_ACTIONS: readonly RecoveryAction[] = Object.freeze(['resume', 'abandon', 'rollback']);
 
 function operationOf(input: RecoverInput): { stateDir: string; operationKey: string } {

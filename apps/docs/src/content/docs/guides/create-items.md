@@ -93,6 +93,14 @@ bowerloom apply
 
 A skill goes to `.claude/skills` and `.agents/skills`. A prompt becomes the Claude Code command `.claude/commands/weekly-update.md` and the Codex skill `.agents/skills/prompt-weekly-update`. `apply` never edits `AGENTS.md` or `CLAUDE.md`. It prints a line for you to add. See [Apply the skills](/docs/guides/add-skills/#apply-the-skills).
 
+### Create a context slice
+
+```sh
+bowerloom slice create wiki --root wiki
+```
+
+A slice selects files from one folder, and `apply` turns it into a short list of paths that an agent loads at start. The file lands in `.bowerloom/slices/wiki.yaml`. See [Context slices for agents](/docs/guides/context-slices/). An id that starts with `slice-` is reserved, so `skill create` and `prompt create` refuse it.
+
 ### If a command refuses
 
 - `TEAM_EXISTS`, `SKILL_EXISTS`, and `PROMPT_EXISTS` mean the id is taken. Run `bowerloom ls teams`, `ls skills`, or `ls prompts`, and choose another id.
