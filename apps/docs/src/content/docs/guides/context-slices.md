@@ -105,9 +105,9 @@ A slice and its guard limit context. They are not a security boundary. These way
 8. Claude Code before 2.1.295 ignores `onFailure`. A guard that cannot start, crashes, or runs longer than 10 seconds then lets the call through. On 2.1.295 or later, each of these blocks the call.
 9. A Claude Code process with a different `XDG_STATE_HOME` from the shell that ran apply finds no receipts. Every call is then denied.
 10. MCP tools read files without the guard. The plan notes them.
-11. A hard link outside the root to a file under the root reads that file, whether it was made before or after apply. The guard denies such a Read only when the file has more than one link, sits on the device of a guarded root, and is not a member.
+11. A hard link outside the root to a file under the root reads that file, whether it was made before or after apply. The guard denies a Read or a Grep of such a file when the file has more than one link, sits on the device of a guarded root, and is not a member. A Grep of a folder is denied when the folder holds such a file within 2048 entries and 16 levels, when it holds more entries than that, or when it cannot be listed. A Glob lists names only and is not checked.
 12. Any change between the guard's check and the tool's run, such as a swapped link or a file added to a covered folder, is not seen.
-13. Glob may follow links below its target.
+13. Glob may follow links below its target. Grep does not: Claude Code 2.1.292 runs ripgrep for Grep with `--hidden` and without `--follow` or `-L` (read from the strings of the installed program), so a link inside a searched folder is not followed. Recheck this on a new Claude Code version.
 14. The Skill tool can load another agent's slice index.
 15. A copy of a guarded file elsewhere is outside every area and is read freely. That includes a git worktree, a clone, a backup, a snapshot, or a search index.
 16. Another mount of the same folder, such as a bind mount or a network share, is not seen.

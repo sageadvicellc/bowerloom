@@ -61,6 +61,7 @@ function walkUp(start: string): string[] {
 }
 const tooBig = (value: string): boolean => Buffer.byteLength(value) > GUARD_BOUNDS.valueBytes || value.split('/').length > GUARD_BOUNDS.parts;
 const longReason = (path: string, role: string): string => `Bowerloom guard: the path ${plain(path.length > 200 ? path.slice(0, 200) + '...' : path)} is too long or too deep for the guard to check for agent ${role}. Use a shorter path.`;
+const unreadableReason = (path: string, role: string): string => `Bowerloom guard: the path ${plain(path.length > 200 ? path.slice(0, 200) + '...' : path)} is not readable by the guard for agent ${role}, so the call is blocked. Check the permissions of its folders.`;
 const silent: GuardDecision = Object.freeze({ kind: 'silent' });
 const nfc = (s: string): string => s.normalize('NFC');
 const idOf = (e: { dev: string; ino: string }): string => `${e.dev}:${e.ino}`;
@@ -182,7 +183,14 @@ export function decideGuard(input: GuardInput, getView: () => GuardView): GuardD
   const ctx = new Context(fs, view, areas);
   const decide = (target: string): GuardDecision => {
     try { return ctx.classify(tool, target, role, ids, shown); }
-    catch (error) { if (error instanceof IncompleteChain) return deny('GUARD_OUTSIDE_SLICE', longReason(shown, role)); throw error; }
+    catch (error) {
+      if (error instanceof IncompleteChain) return deny('GUARD_OUTSIDE_SLICE', longReason(shown, role));
+      // A path that the system calls too long or a loop of links is too long for the guard. A folder it may not open is not readable.
+      const errno = (error as { code?: unknown } | null)?.code;
+      if (errno === 'ENAMETOOLONG' || errno === 'ELOOP') return deny('GUARD_OUTSIDE_SLICE', longReason(shown, role));
+      if (errno === 'EACCES' || errno === 'EPERM') return deny('GUARD_OUTSIDE_SLICE', unreadableReason(shown, role));
+      throw error;
+    }
   };
 
   if (tool !== 'Glob') return decide(base);
@@ -292,6 +300,25 @@ class Context {
     return walk(rel === '' ? s.root : posix.join(s.root, rel), 1);
   }
 
+  /** True when a folder holds, within the visit cap, a regular file with more than one link on the device of a guarded root. Past the cap it answers true. */
+  private holdsHardLink(folder: string): boolean {
+    const devices = new Set(this.areas.map(a => this.stat(a.root)?.dev)); let visits = 0;
+    const walk = (abs: string, depth: number): boolean => {
+      if (depth > MAX_DEPTH) return true;
+      // A folder that cannot be listed cannot be checked, so the search is refused.
+      try {
+        const list = this.list(abs); if (list === null) return false;
+        for (const { name, entry } of list) {
+          if (++visits > GUARD_BOUNDS.visits) return true;
+          if (entry.type === 'dir') { if (walk(posix.join(abs, name), depth + 1)) return true; }
+          else if (entry.type === 'file' && entry.nlink > 1 && devices.has(entry.dev)) return true;
+        }
+        return false;
+      } catch (error) { if (error instanceof IncompleteChain) throw error; return true; }
+    };
+    return walk(folder, 1);
+  }
+
   classify(tool: Tool, target: string, role: string, ids: string, shown: string): GuardDecision {
     if (posix.resolve(target).split('/')[1]?.startsWith('.')) return deny('GUARD_OUTSIDE_SLICE', formReason(shown, role));
     const folderOnly = tool !== 'Read', exists = this.chains(target).exists;
@@ -308,10 +335,12 @@ class Context {
     };
     const area = inside[0] ?? this.areas[0]!;
     const readReason = (): GuardDecision => deny('GUARD_OUTSIDE_SLICE', `Bowerloom guard: ${plain(shown)} is under ${plain(area.display)}, and no context slice of agent ${role} (${ids}) lists it. Read the files that your slice skills list. To widen a slice, ask the main session to edit .bowerloom/slices/${area.id}.yaml and run bowerloom apply.`);
+    // A file with more than one link that no slice lists may be a second name of a file under a root. It lies outside every area, so no area is named.
+    const linkReason = (what: 'read' | 'search'): GuardDecision => deny('GUARD_OUTSIDE_SLICE', `Bowerloom guard: ${what === 'read' ? plain(shown) : `a search of ${plain(shown)} would reach a file that`} has more than one link, and no context slice of agent ${role} (${ids}) lists it, so it may be another name of a guarded file. Read a file that your slice skills list.`);
     if (tool === 'Read') {
       if (inside.length > 0) return isMember() ? silent : readReason();
       // A hard link outside every area to a file on a guarded device, that no slice lists, may be a second name of a file under a root.
-      if (st !== null && st.type === 'file' && st.nlink > 1 && this.areas.some(a => this.stat(a.root)?.dev === st.dev) && !isMember()) return readReason();
+      if (st !== null && st.type === 'file' && st.nlink > 1 && this.areas.some(a => this.stat(a.root)?.dev === st.dev) && !isMember()) return linkReason('read');
       return silent;
     }
     const folders = (): string => {
@@ -335,11 +364,13 @@ class Context {
       return refuse();
     }
     // A hard link outside every area to a file on a guarded device, that no slice lists, is refused as a Read refuses it.
-    if (st !== null && st.type === 'file' && st.nlink > 1 && this.areas.some(a => this.stat(a.root)?.dev === st.dev) && !isMember()) return refuse();
+    if (st !== null && st.type === 'file' && st.nlink > 1 && this.areas.some(a => this.stat(a.root)?.dev === st.dev) && !isMember()) return linkReason('search');
     // Not inside an area: a folder that holds an area is refused, because a search would reach it.
     if (st !== null && st.type === 'dir') {
       for (const a of this.areas) if (this.chainOfRoot(a).includes(idOf(st))) return refuse();
     }
+    // A Grep of a folder reads every file below it, and a hard link there may be a second name of a file under a root.
+    if (tool === 'Grep' && st !== null && st.type === 'dir' && this.areas.some(x => this.stat(x.root)?.dev === st.dev) && this.holdsHardLink(subject)) return linkReason('search');
     return silent;
   }
 }

@@ -196,7 +196,7 @@ test('G4. a path or a pattern over 4096 bytes or 256 parts is denied, fast', t =
 test('G5. a Grep or Glob of a hard link to a non-member is denied like a Read', t => {
   const f = fixture(t); fs.linkSync(path.join(f.root, 'b.md'), path.join(f.base, 'outside/hl.md'));
   denied(grep(f, path.join(f.base, 'outside/hl.md'))); denied(glob(f, '*', undefined, path.join(f.base, 'outside/hl.md')));
-  quiet(grep(f, path.join(f.base, 'outside/o.md'))); quiet(grep(f, path.join(f.base, 'outside')), 'a folder that holds such a link stays open (documented gap)');
+  quiet(grep(f, path.join(f.base, 'outside/o.md'))); denied(grep(f, path.join(f.base, 'outside')));
 });
 test('G6. a covered folder is checked by identity, not by name text', { skip: !caseInsensitive && 'this disk is case-sensitive, so a name written in another case is another file' }, t => {
   const f = fixture(t), slices = [f.slice({ members: ['a.md', 'sub/c.md', 'cov/X.MD', 'cov/Y.md'] })];
@@ -207,11 +207,11 @@ test('G4. a covered folder with many entries is denied past the visit cap and st
   const f = fixture(t); for (let i = 0; i < 3000; i++) write(path.join(f.root, 'cov', `z${i}.md`), 'x');
   const started = Date.now(); denied(grep(f, path.join(f.root, 'cov'))); assert.ok(Date.now() - started < 1500);
 });
-test('G2. a filesystem error other than not-found is not a quiet miss', t => {
+test('G2. a filesystem error other than not-found is never a quiet miss', t => {
   const f = fixture(t), locked = path.join(f.base, 'locked'); fs.mkdirSync(locked); write(path.join(locked, 'x.md')); if (process.getuid?.() === 0) return t.skip('root ignores folder modes');
-  fs.chmodSync(locked, 0o000); try { assert.throws(() => read(f, path.join(locked, 'x.md')), { code: 'EACCES' }); } finally { fs.chmodSync(locked, 0o755); }
-  fs.symlinkSync(path.join(f.base, 'ln2'), path.join(f.base, 'ln1')); fs.symlinkSync(path.join(f.base, 'ln1'), path.join(f.base, 'ln2')); assert.throws(() => read(f, path.join(f.base, 'ln1', 'x')), { code: 'ELOOP' });
-  assert.throws(() => read(f, path.join(f.base, 'n'.repeat(300), 'x')), { code: 'ENAMETOOLONG' });
+  fs.chmodSync(locked, 0o000); try { assert.match(denied(read(f, path.join(locked, 'x.md'))).reason, /is not readable by the guard/); } finally { fs.chmodSync(locked, 0o755); }
+  fs.symlinkSync(path.join(f.base, 'ln2'), path.join(f.base, 'ln1')); fs.symlinkSync(path.join(f.base, 'ln1'), path.join(f.base, 'ln2')); assert.match(denied(read(f, path.join(f.base, 'ln1', 'x'))).reason, /too long or too deep/);
+  assert.match(denied(read(f, path.join(f.base, 'n'.repeat(300), 'x'))).reason, /too long or too deep/);
   quiet(read(f, path.join(f.base, 'outside/not-there.md'))); quiet(read(f, path.join(f.base, 'outside/o.md', 'under-a-file')));
 });
 
@@ -222,4 +222,36 @@ test('R1. one call spends at most 8192 file system operations and then denies as
   const slow = Array(3).fill('{a,b,c,d}').join('/') + '/{a,b,c}/' + Array(225).fill('z').join('/') + '/*';
   const d = decideGuard({ role: 'lead', project: f.project, ids: ['kb'], tool: 'Glob', toolInput: { pattern: slow }, cwd: o, home: f.base }, () => ({ projectOk: true, slices: [f.slice()], fs: counted }));
   denied(d); assert.match(d.reason, /too long or too deep/); assert.ok(counts.n <= 8192 + 2, `used ${counts.n}`);
+});
+
+test('R2. a Grep of a folder outside every area that holds a hard link to a non-member is denied, and so is a folder past the visit cap', t => {
+  const f = fixture(t), outside = path.join(f.base, 'outside');
+  quiet(grep(f, outside), 'a folder of plain files');
+  fs.mkdirSync(path.join(outside, 'deep/er'), { recursive: true }); write(path.join(outside, 'deep/er/p.md')); quiet(grep(f, outside));
+  fs.linkSync(path.join(f.root, 'b.md'), path.join(outside, 'deep/er/hl.md'));
+  denied(grep(f, outside)); denied(grep(f, path.join(outside, 'deep'))); quiet(grep(f, path.join(outside, 'o.md')), 'one plain file');
+  fs.rmSync(path.join(outside, 'deep/er/hl.md'));
+  const big = path.join(f.base, 'big'); fs.mkdirSync(big);
+  for (let i = 0; i < 2048; i++) fs.writeFileSync(path.join(big, `f${i}.md`), '');
+  quiet(grep(f, big), '2048 entries are within the cap');
+  fs.writeFileSync(path.join(big, 'one-more.md'), ''); denied(grep(f, big));
+});
+
+test('R4. a hard-linked file outside every area gets its own reason, which names no area', t => {
+  const f = fixture(t), hl = path.join(f.base, 'outside/hl.md'); fs.linkSync(path.join(f.root, 'b.md'), hl);
+  for (const d of [read(f, hl), grep(f, hl), grep(f, path.join(f.base, 'outside'))]) {
+    denied(d); assert.match(d.reason, /has more than one link, and no context slice of agent lead \(kb\) lists it, so it may be another name of a guarded file\./);
+    assert.doesNotMatch(d.reason, /is under|\.\.\/kb|bowerloom apply/, d.reason);
+  }
+  assert.match(read(f, hl).reason, /^Bowerloom guard: .*outside\/hl\.md has more than one link/);
+  assert.match(grep(f, path.join(f.base, 'outside')).reason, /^Bowerloom guard: a search of .*outside would reach a file that has more than one link/);
+});
+
+test('R5. ENAMETOOLONG and ELOOP read as too long, and EACCES reads as not readable, not as an internal error', t => {
+  const f = fixture(t);
+  const failing = code => ({ ...FS, realpath: () => { throw Object.assign(new Error(code), { code }); } });
+  const go = code => decideGuard({ role: 'lead', project: f.project, ids: ['kb'], tool: 'Read', toolInput: { file_path: path.join(f.base, 'outside/o.md') }, cwd: f.project, home: f.base }, () => ({ projectOk: true, slices: [f.slice()], fs: failing(code) }));
+  for (const code of ['ENAMETOOLONG', 'ELOOP']) { const d = denied(go(code)); assert.match(d.reason, /is too long or too deep for the guard to check for agent lead\. Use a shorter path\.$/); }
+  const d = denied(go('EACCES')); assert.match(d.reason, /is not readable by the guard for agent lead, so the call is blocked\. Check the permissions of its folders\.$/);
+  assert.throws(() => go('EIO'), /EIO/, 'an unexpected error still ends as an internal error in the caller');
 });

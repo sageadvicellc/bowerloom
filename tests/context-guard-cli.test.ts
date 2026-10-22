@@ -143,14 +143,14 @@ test('G9h. a changed catalog without a fixed receipt is GUARD_SLICE_NOT_INSTALLE
   const p = sliceProject(t), file = join(p.dir, '.bowerloom/managed/catalog/slice_wiki.json'); writeFileSync(file, readFileSync(file, 'utf8').replace('"guard":"root"', '"guard":"none"'));
   assert.equal(guard(p, guardArgs(p), memberRead(p)).stdout, denyJson(NOT_INSTALLED(p)));
 });
-test('G2. a filesystem error other than not-found is GUARD_INTERNAL_ERROR, through the real binary', t => {
+test('G2 and R5. a filesystem error other than not-found is a deny with its own reason, through the real binary', t => {
   if (process.getuid?.() === 0) return t.skip('root ignores folder modes');
   const p = sliceProject(t), args = guardArgs(p), locked = join(p.dir, 'locked'); put(p.dir, 'locked/x.md', 'x');
   chmodSync(locked, 0o000);
-  try { assert.equal(guard(p, args, read(join(locked, 'x.md'), p.dir)).stdout, denyJson(INTERNAL)); } finally { chmodSync(locked, 0o755); }
+  try { assert.equal(guard(p, args, read(join(locked, 'x.md'), p.dir)).stdout, denyJson(`Bowerloom guard: the path ${join(locked, 'x.md')} is not readable by the guard for agent lead, so the call is blocked. Check the permissions of its folders.`)); } finally { chmodSync(locked, 0o755); }
   symlinkSync(join(p.dir, 'ln2'), join(p.dir, 'ln1')); symlinkSync(join(p.dir, 'ln1'), join(p.dir, 'ln2'));
-  assert.equal(guard(p, args, read(join(p.dir, 'ln1', 'x'), p.dir)).stdout, denyJson(INTERNAL));
-  assert.equal(guard(p, args, read(join(p.dir, 'n'.repeat(300), 'x'), p.dir)).stdout, denyJson(INTERNAL));
+  assert.equal(guard(p, args, read(join(p.dir, 'ln1', 'x'), p.dir)).stdout, denyJson(`Bowerloom guard: the path ${join(p.dir, 'ln1', 'x')} is too long or too deep for the guard to check for agent lead. Use a shorter path.`));
+  assert.match(guard(p, args, read(join(p.dir, 'n'.repeat(300), 'x'), p.dir)).stdout, /is too long or too deep for the guard to check for agent lead\. Use a shorter path\."/);
   assert.equal(guard(p, args, read(join(p.dir, 'not-there.md'), p.dir)).stdout, '', 'not found is still a plain miss');
   assert.equal(guard(p, args, read(join(p.dir, 'wiki/secret.txt'), p.dir)).stdout, denyJson(OUTSIDE(p, join(p.dir, 'wiki/secret.txt'))));
 });
@@ -194,4 +194,10 @@ test('R1. a Glob with many brace results and a deep missing path completes fast,
   const one = timed(slow); assert.equal(one.r.status, 0, one.r.stderr); assert.ok(one.ms < 1000, `took ${one.ms} ms`);
   const two = timed('{' + slow + ',' + join(p.dir, 'wiki') + '/*}'); assert.equal(two.r.status, 0, two.r.stderr); assert.ok(two.ms < 1000, `took ${two.ms} ms`);
   assert.match(two.r.stdout, /"permissionDecision":"deny"/, 'the wiki alternative denies');
+});
+
+test('R2 and R3. the guide says what a Grep of a folder with a hard link does, and that Grep does not follow links', () => {
+  const guide = readFileSync(new URL('../../apps/docs/src/content/docs/guides/context-slices.md', import.meta.url), 'utf8');
+  assert.match(guide, /A Grep of a folder is denied when the folder holds such a file within 2048 entries and 16 levels/);
+  assert.match(guide, /Grep does not: Claude Code 2\.1\.292 runs ripgrep for Grep with `--hidden` and without `--follow` or `-L`/);
 });
