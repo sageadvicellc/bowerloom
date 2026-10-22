@@ -192,7 +192,6 @@ function renderConfigListing(project: ProjectContext, home: string, only: Sectio
   return blocks.join('\n') + (tail.length ? `\n${tail.join('\n')}\n` : '');
 }
 
-/** `bowerloom ls [teams|skills|prompts] [--global] [--json]`. Returns the text to print. */
 /** `bowerloom ls [teams|skills|prompts|slices] [--global] [--json]`. Returns the text to print. */
 export function runLsCommand(args: readonly string[], cwd: string, home: string): string {
   const USAGE = 'Use bowerloom ls [teams|skills|prompts|slices] [--global] [--json].';

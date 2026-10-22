@@ -46,7 +46,8 @@ test('a slice is never in bowerloom.json, the store, or the lock', async t => {
   const r = resolveProject({ project: f.project(), home: f.home, frozen: false });
   assert.equal([...r.skills, ...r.prompts, ...r.teams].some(i => i.id.includes('notes')), false);
   assert.equal(Object.hasOwn(r.unselected, 'slices'), false);
-  await assert.rejects(planConfigChange({ project: f.project(), home: f.home, op: 'use', kind: 'slice', id: 'notes' }), e => typeof e?.code === 'string');
+  await assert.rejects(planConfigChange({ project: f.project(), home: f.home, op: 'use', kind: 'slice', id: 'notes' }), e => e?.code === 'USAGE');
+  for (const op of ['unuse', 'adopt']) await assert.rejects(planConfigChange({ project: f.project(), home: f.home, op, kind: 'slice', id: 'notes' }), e => e?.code === 'USAGE');
   assert.equal(readLock(f.project()).state, 'absent');
   assert.equal(fs.existsSync(path.join(f.home, '.bowerloom', 'slices')), false);
   // ls in config mode lists the slice as a project item.

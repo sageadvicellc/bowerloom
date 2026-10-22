@@ -215,6 +215,8 @@ const pairsOf = (lock: ProjectLock | null): Map<string, LockItem> => new Map(loc
 /** Plans `use`, `unuse`, or the config part of `team adopt`. Reads only; `use` may read api.github.com for a lock proof. */
 export async function planConfigChange(input: ChangeInput): Promise<ConfigChangePlan> {
   const { project, op, kind, id } = input, source = op === 'use' ? input.source ?? 'store' : op === 'adopt' ? 'store' : 'store';
+  // bowerloom.json lists skills, prompts and teams only. A context slice is a project item (spec 10, 2), and any other kind is no item.
+  if (kind !== 'skill' && kind !== 'prompt' && kind !== 'team') throw new DefinitionError('USAGE', 'Use bowerloom use or unuse with skill, prompt, or team.');
   if (input.commit !== undefined && input.commit !== null && !HEX40.test(input.commit)) throw new DefinitionError('USAGE', 'Use --commit with the 40 lower-case hex characters of a pushed commit.');
   verifyProjectPins(project);
   const read = readConfig(project);

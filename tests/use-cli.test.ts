@@ -54,3 +54,12 @@ test('7 and 8. use with no store refuses STORE_NOT_FOUND; --commit with a bad va
   const bad = run(dir, ['use', 'skill', 'house-style', '--commit', 'abc123', '--json'], w.env); assert.equal(bad.status, 2); assert.equal(errorCode(bad.stderr), 'USAGE');
   const unuse = run(dir, ['unuse', 'skill', 'house-style', '--json'], w.env); assert.equal(errorCode(unuse.stderr), 'CONFIG_ITEM_NOT_SELECTED');
 });
+
+test('use slice refuses USAGE: a context slice is a project item only, and bowerloom.json never lists it', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mkdirSync(join(dir, '.bowerloom'), { mode: 0o755 });
+  const before = readFileSync(join(dir, 'bowerloom.json'), 'utf8');
+  const r = run(dir, ['use', 'slice', 'notes', '--json'], w.env);
+  assert.equal(errorCode(r.stderr), 'USAGE', r.stderr);
+  assert.equal(readFileSync(join(dir, 'bowerloom.json'), 'utf8'), before); assert.equal(existsSync(join(dir, 'bowerloom.lock.json')), false);
+});
