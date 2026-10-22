@@ -65,6 +65,8 @@ bowerloom status [--json]
 bowerloom store status [--json]
 bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [--all] [--commit <sha>] [--approve <revision>] [--json]
 bowerloom receipt clean [--global] [--approve <revision>] [--json]
+bowerloom cache list [--json]
+bowerloom cache prune [--unreferenced] [--partial] [--legacy] [--all] [--entry <id-prefix>]... [--approve <revision>] [--json]
 bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]
 bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]
 bowerloom lock verify [--json]
@@ -100,6 +102,27 @@ For a store with a git remote, `store status` adds one line after `Git:`: `GitHu
 `receipt clean` removes entries from the record of created items when the files of those items are gone. Run it after you delete old files, for example after `store migrate`. Then `bowerloom status` no longer names them as missing. `--global` cleans the record of your store, `~/.bowerloom`, and works from any folder. It also removes the local entry of a gone skill from `skills.json`, and the project entry from `bowerloom.json`. It deletes no file and no installed copy, and it never changes `bowerloom.lock.json`. Copies that sync or apply made stay where they are. It shows the plan first, and prints `Nothing to clean.` when no file is gone.
 
 `bowerloom status --installation <private.json>` still reads a prepared session. See [Historical demo and session](#historical-demo).
+
+## Cache
+
+Bowerloom keeps the skill bytes it downloads in a cache on this machine, outside your projects and your store. The cache sits in the private state folder. If `XDG_STATE_HOME` is an absolute path, that folder is `$XDG_STATE_HOME/bowerloom`. Otherwise it is `~/.local/state/bowerloom`. These commands work from any folder.
+
+```text
+bowerloom cache list [--json]
+bowerloom cache prune [--unreferenced] [--partial] [--legacy] [--all] [--entry <id-prefix>]... [--approve <revision>] [--json]
+```
+
+`cache list` shows what is there. It reads only, takes no lock, and writes nothing. It lists the skills cache, the store cache of items that come from a store remote, and the per-project caches of earlier betas. Each entry shows its id, `completed` or `partial`, what it holds, and its size. `[store]` means your store lists it, and `[project]` means this project lists it. With `--json` it prints one object in the format `bowerloom/cache-list/v1beta1`. If your store or this project cannot be read, it says `Some references were not checked`, with the refusal code, the file, and the next step. A partial entry says why: an unfinished fetch, an unreadable entry, a store item that changed since it was written, or a folder that a stopped prune or write left. Its size is unknown. A name that `cache prune` would refuse to delete, such as a link or a folder whose mode is not 0700, is not an entry: `cache list` counts it under `Not listed` and says why.
+
+`cache prune` deletes entries after you approve a plan. Nothing is deleted by itself. Give at least one selector:
+
+- `--unreferenced` picks entries that your store and this project do not list. Other projects are not checked. If your store or this project cannot be read, it picks nothing.
+- `--partial` picks unfinished fetches. `--legacy` picks the per-project caches of earlier betas. `--all` picks everything, and goes alone.
+- `--entry <id-prefix>` picks one entry by the first 8 or more characters of its id from `cache list`, or by its full store folder name. For a per-project cache of an earlier beta, `<projectId>/<id-prefix>` picks it, as `cache list` prints it. If a prefix matches more than one entry, the refusal names each match.
+
+An entry that another command is using is skipped, and `--entry` refuses it with `CACHE_ENTRY_BUSY`. An entry whose owner lock is older than a day counts as not in use. If `bowerloom skills sync` or `apply --frozen` needs a deleted pin, it fetches the pin again. `cache prune` shows the plan first. Agents pass `--approve <revision>` or `--json`. If a picked entry changed between the plan and the approval, it refuses with `STALE_APPROVAL` and deletes nothing. A new entry that is not in the plan stays. It waits up to 60 seconds for another command that holds the cache, then refuses with `PROJECT_LOCK_UNAVAILABLE`.
+
+`cache prune` never touches project files, installed copies, `.bowerloom/managed`, the private item folders of a project, or the store. It deletes only the folders its plan lists, and a link is removed as a name and never followed. A delete that fails refuses with `CACHE_PRUNE_FAILED`. The message names the folder, the step, and how many entries it deleted. Run `bowerloom cache list`, then the same command again: `--partial` removes what a stopped delete left. If a folder inside an entry cannot be deleted, the refusal names the leftover `.prune-` folder and the path that failed, and its `Next:` line is a `chmod -R -- u+rwx` command. Run that command, then run the prune again. Each path in a printed command is in single quotes, after `--`, so you can paste it into a shell as it is. For a name that holds control characters, Bowerloom prints no command: find the folder with `ls -i` and rename or remove it by hand. The next prune deletes every other entry first, and `cache list` shows the same line under the leftover. Ctrl-C stops `cache prune` between two entries with exit code 130, and it prints how many entries it deleted. A stop waits for the current entry. Real entries are small: a skills-cache operation holds at most 1200 files and folders and 12 MiB, and a store item at most 126 files and 2 MiB. A leftover that someone else put in the cache can be larger and take longer. During that time, other cache commands wait for the cache lock, and they can refuse with `PROJECT_LOCK_SLOT_COLLISION`.
 
 ## Create commands
 

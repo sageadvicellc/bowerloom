@@ -224,7 +224,8 @@ test('6. a shared project: the first run copies and prints Not switched; after t
 test('7. help store and help receipt print the topics; store migrate --help prints the store topic', t => {
   const w = world(t);
   for (const args of [['help', 'store'], ['store', '--help'], ['store', 'migrate', '--help']]) { const r = run(w.base, args, w.env); assert.equal(r.status, 0, args.join(' ')); assert.equal(r.stdout, heading + TOPICS.store, args.join(' ')); }
-  assert.match(TOPICS.store!, /^ {2}bowerloom store migrate \[--skill <id>\]\.\.\. \[--prompt <id>\]\.\.\. \[--team <id>\]\.\.\. \[--all\] \[--commit <sha>\] \[--approve <revision>\] \[--json\]\n {2}bowerloom receipt clean \[--global\] \[--approve <revision>\] \[--json\]\n\n/m);
+  // Spec 09 appends the two cache lines after these, in the same Usage: block.
+  assert.match(TOPICS.store!, /^ {2}bowerloom store migrate \[--skill <id>\]\.\.\. \[--prompt <id>\]\.\.\. \[--team <id>\]\.\.\. \[--all\] \[--commit <sha>\] \[--approve <revision>\] \[--json\]\n {2}bowerloom receipt clean \[--global\] \[--approve <revision>\] \[--json\]\n {2}bowerloom cache list \[--json\]\n {2}bowerloom cache prune .*\n\n/m);
   assert.match(TOPICS.store!, /\nAdd --json for one machine-readable object\.\n\nstore migrate copies skills, prompts, and teams from this project/);
   assert.match(TOPICS.store!, /^store status reads only and writes nothing\. No store command starts workers\.$/m);
 });

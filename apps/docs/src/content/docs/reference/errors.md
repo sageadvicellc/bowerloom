@@ -136,6 +136,14 @@ These codes come from `bowerloom store migrate`. It also raises the store, confi
 | `MIGRATE_TEAM_MISSING` | The store keeps the team tag, so that team must be in the store. | Add `--team <name>` to move that team too. |
 | `MIGRATE_LIMIT` | This beta keeps the store record small: 512 items and 1 MiB at most. | Remove items from the store, or move fewer items. |
 
+These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, `PROJECT_LOCK_UNAVAILABLE`, `STORE_STATE_NESTED`, and `SKILLS_STATE_UNSAFE`.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `CACHE_ENTRY_NOT_FOUND` | `cache prune --entry` deletes only an entry that `cache list` shows, so the text must start one of its ids. | `bowerloom cache list` |
+| `CACHE_ENTRY_BUSY` | Bowerloom never deletes an entry while another command holds it. An owner lock older than a day does not count. | When the other command is done, run this one again. |
+| `CACHE_PRUNE_FAILED` | Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete. | Run `bowerloom cache list`, then run the command again without `--approve`. The message names the folder, the step, and how many entries were deleted. If it gives a `chmod` line, run that first. |
+
 ## Lock refusals
 
 `bowerloom.lock.json` records where each store item of a project comes from. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file.

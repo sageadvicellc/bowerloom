@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { types as utilTypes } from 'node:util';
 import { dirname, isAbsolute, resolve, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
+import { DefinitionError } from '../../contracts/src/index.js';
 import { SkillSourceError, closed, captureSkillData, freezeSkillData, revisionOf } from './validation.js';
 import { NPM_LIMITS, NpmAcquisitionError, npmCheck, npmRefuse, sha256, validateNpmPlan, verifyNpmPayload } from './npm.js';
 import type { NpmAcquisitionPlan, ObservedNpmPayload, ExpectedSkillFile } from './npm.js';
@@ -485,3 +486,170 @@ export async function readAcquiredSkillCache(value: unknown, options: { signal: 
   } catch (error) { return readRefusal(error, 'NPM_CACHE_PROMOTION_REFUSED'); }
   finally { if (timer) clearTimeout(timer); if (signal && abort) signal.removeEventListener('abort', abort); controller.abort(); }
 }
+
+/** Spec 09, 4.4: the names a cache entry or a leftover can have. Anything else is not removed. */
+const ENTRY_NAMES = [/^op-[a-f0-9]{32}$/, /^(?:skill|prompt|team)-[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{64}$/, /^\.tmp-.{1,200}$/, /^\.prune-.{1,200}$/];
+/** The private folder hint of a leftover tree: the first folder its owner cannot fully use, or null (round 3, M-A). */
+export function leftoverBlocked(path: string, limit = 4096): string | null {
+  let seen = 0;
+  const visit = (p: string): string | null => {
+    if (++seen > limit) return null;
+    let s: fs.Stats; try { s = fs.lstatSync(p); } catch { return null; }
+    if (!s.isDirectory()) return null;
+    if ((s.mode & 0o700) !== 0o700) return p;
+    let names: string[]; try { names = fs.readdirSync(p); } catch { return p; }
+    for (const n of names) { const hit = visit(join(p, n)); if (hit !== null) return hit; }
+    return null;
+  };
+  return visit(path);
+}
+/** The command that clears a leftover name the delete refuses: `chmod 700` for a folder, `rm` for a file or a link (round 3, M-C). */
+/**
+ * Round 4 of the reviews of PR 99, M2: a path as one POSIX shell word. Control and format characters become visible
+ * \uXXXX text, as the list prints them; then the path is single-quoted, with each ' written as '\''. A command puts
+ * `--` before its operands (`chmod -- 700 <path>`, because BSD chmod ends its options at the mode), so no path is an option.
+ */
+export function shellPath(path: string): string {
+  const visible = path.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
+  return `'${visible.replaceAll("'", "'\\''")}'`;
+}
+/** Round 5 of the reviews of PR 99, L-3: a path with a control character gets this guidance in place of a command. */
+export const NO_COMMAND = 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
+const CONTROL = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+/** The command that lets a stuck leftover tree be deleted (round 3, M-A), or null for a name that no command can name. */
+export const leftoverTreeFix = (path: string): string | null => CONTROL.test(path) ? null : `chmod -R -- u+rwx ${shellPath(path)}`;
+/** The command that clears a leftover name, or the guidance for a name with a control character. */
+export function leftoverFix(path: string): string { if (CONTROL.test(path)) return NO_COMMAND; let dir = false; try { const s = fs.lstatSync(path); dir = s.isDirectory() && !s.isSymbolicLink(); } catch { dir = false; } return dir ? `chmod -- 700 ${shellPath(path)}` : `rm -- ${shellPath(path)}`; }
+const PRUNE_FAILED = 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.';
+export type CachePlace = { scope: 'machine' | 'store' | 'project-legacy'; projectId: string | null };
+/** A refusal of removeCacheEntry: why it stopped, in words, and the system code, if any, as the cause. */
+/** `Could not delete <where>: <reason>.`, or `Could not delete <where> at the <step> step (...)`. */
+/** Round 5, L-1: the rerun sentence that goes with a fix command. The command itself is the whole Next line. */
+export const RUN_FIX = ' Run the command in Next, then run this command again.';
+export const couldNot = (where: string, reason: string): string => `Could not delete ${where}${reason.startsWith('at the ') ? ' ' : ': '}${reason}.`;
+export class CachePruneRefusal extends DefinitionError {
+  /** The bare command that fixes the cause, when there is one. `next` adds the rerun. */
+  readonly fix: string | undefined;
+  constructor(readonly where: string, readonly reason: string, cause?: string, readonly next?: string, fix?: string) {
+    super('CACHE_PRUNE_FAILED', `${PRUNE_FAILED} ${couldNot(where, reason)}${fix ? RUN_FIX : ''}`);
+    if (cause !== undefined) Object.defineProperty(this, 'cause', { value: cause, enumerable: false });
+    if (next === undefined) Object.defineProperty(this, 'next', { value: undefined, enumerable: false });
+    this.fix = fix;
+  }
+}
+const errnoOf = (error: unknown): string => { const code = (error as { code?: unknown } | null)?.code; return typeof code === 'string' ? code : (error as { name?: unknown } | null)?.name === undefined ? 'Error' : String((error as { name: unknown }).name); };
+/**
+ * Why `path` is not a private folder of this user (a real folder, not a link, mode exactly 0700), in words, or null.
+ * `subject` is `it` for the entry, or `the folder <relative path>` for a root.
+ */
+function folderProblem(path: string, subject: string): { reason: string; cause?: string } | null {
+  let s: fs.Stats;
+  try { s = fs.lstatSync(path); } catch (error) { const code = errnoOf(error); return { reason: code === 'ENOENT' ? `${subject} is not there (ENOENT)` : `${subject} cannot be read (${code})`, cause: code }; }
+  if (s.isSymbolicLink()) return { reason: `${subject} is a link` };
+  if (!s.isDirectory()) return { reason: `${subject} is not a folder` };
+  if (s.uid !== process.getuid?.()) return { reason: `${subject} belongs to another user` };
+  const mode = (s.mode & 0o7777).toString(8).padStart(4, '0');
+  if ((s.mode & 0o7777) !== 0o700) return { reason: subject === 'it' ? `its mode is ${mode}, not 0700` : `${subject} has mode ${mode}, not 0700` };
+  return null;
+}
+/** The root of a place, relative to the state root, or null for a place that is not one of the three. */
+function placeRoot(place: CachePlace): string | null {
+  if (place === null || typeof place !== 'object') return null;
+  if (place.scope === 'machine' && place.projectId === null) return 'cache';
+  if (place.scope === 'store' && place.projectId === null) return 'store-cache';
+  if (place.scope === 'project-legacy' && typeof place.projectId === 'string' && /^[a-f0-9]{32}$/.test(place.projectId)) return `${place.projectId}/cache`;
+  return null;
+}
+/** Step 0a: why the root of a place cannot be used, or null. */
+function rootProblem(stateRoot: string, place: CachePlace): { reason: string; cause?: string } | null {
+  if (typeof stateRoot !== 'string' || !isAbsolute(stateRoot) || resolve(stateRoot) !== stateRoot || stateRoot.includes('\0')) return { reason: 'the state folder is not an absolute path' };
+  const rel = placeRoot(place); if (rel === null) return { reason: 'the place is not a cache folder' };
+  if (place.scope === 'project-legacy') { const p = folderProblem(join(stateRoot, place.projectId!), `the folder ${place.projectId}`); if (p) return p; }
+  const root = join(stateRoot, rel), p = folderProblem(root, `the folder ${rel}`); if (p) return p;
+  let real: string; try { real = fs.realpathSync(root); } catch (error) { return { reason: `the folder ${rel} cannot be read (${errnoOf(error)})`, cause: errnoOf(error) }; }
+  return real === root ? null : { reason: `the folder ${rel} is not at its real path` };
+}
+const nameOk = (name: unknown): name is string => typeof name === 'string' && !name.includes('/') && !name.includes('\0') && name !== '.' && name !== '..' && ENTRY_NAMES.some(shape => shape.test(name));
+const whereOf = (place: CachePlace, name: string): string => `${placeRoot(place) ?? 'cache'}/${String(name).replace(/[\p{Cc}\p{Cf}]/gu, '?')}`;
+function problemOf(stateRoot: string, place: CachePlace, name: string): { reason: string; cause?: string } | null {
+  if (!nameOk(name)) return { reason: 'the name is not a cache entry name' };
+  return rootProblem(stateRoot, place) ?? folderProblem(join(stateRoot, placeRoot(place)!, name), 'it');
+}
+/**
+ * Review H2 of PR 99: the checks of removeCacheEntry before the lock (steps 0, 0a and 2), as words, or null when the
+ * entry can be removed. It reads only. `cache list` runs it, so no plan picks an entry the delete would refuse.
+ */
+export function cacheEntryProblem(stateRoot: string, place: CachePlace, name: string): string | null { return problemOf(stateRoot, place, name)?.reason ?? null; }
+/** Step 0a alone: why the root of a place cannot be used, as words, or null. */
+export function cacheRootProblem(stateRoot: string, place: CachePlace): string | null { return rootProblem(stateRoot, place)?.reason ?? null; }
+/** The pinned identity of the renamed entry: still a real folder, not a link, with the same device and inode. */
+function samePinned(path: string, pin: { dev: bigint; ino: bigint }): boolean {
+  try { const s = fs.lstatSync(path, { bigint: true }); return s.isDirectory() && !s.isSymbolicLink() && s.dev === pin.dev && s.ino === pin.ino; } catch { return false; }
+}
+/**
+ * Round 4 of the reviews of PR 99 (M1, decision B): deletes the renamed entry with one rmSync, right after the entry path is
+ * checked against the device and inode pinned after the rename, in one synchronous turn. rmSync unlinks a link inside the
+ * entry and never follows it. Node has no openat or unlinkat, so a same-user process that swaps the entry for a link in the
+ * moment between the check and rmSync's first step is not stopped; that one window per entry is all that remains (a
+ * delete of each top-level child, with a check before each, opened one such window per child and lost the race under load).
+ * A failure names the inner path: rmSync reports the outer ENOTEMPTY, so the first folder its owner cannot change is found.
+ */
+function removePinned(doomed: string): void {
+  const changed = (): never => { throw Object.assign(new Error('The entry changed during the delete.'), { code: 'ECHANGED', path: doomed }); };
+  let pin: { dev: bigint; ino: bigint };
+  { const s = fs.lstatSync(doomed, { bigint: true }); if (!s.isDirectory() || s.isSymbolicLink()) changed(); pin = { dev: s.dev, ino: s.ino }; }
+  if (!samePinned(doomed, pin!)) changed();
+  try { fs.rmSync(doomed, { recursive: true, force: false }); }
+  catch (error) {
+    const code = (error as { code?: unknown }).code;
+    // The inner path is named only while the entry is still the pinned folder, and a child only when lstat finds it there.
+    if ((code === 'ENOTEMPTY' || code === 'EACCES' || code === 'EPERM') && samePinned(doomed, pin!)) {
+      const blocked = leftoverBlocked(doomed);
+      if (blocked !== null) {
+        let first: string | undefined; try { first = fs.readdirSync(blocked)[0]; } catch { first = undefined; }
+        if (first !== undefined) { try { fs.lstatSync(join(blocked, first)); } catch { first = undefined; } }
+        if (!samePinned(doomed, pin!)) throw error;
+        throw Object.assign(new Error('blocked'), { code: 'EACCES', path: first === undefined ? blocked : join(blocked, first) });
+      }
+    }
+    throw error;
+  }
+}
+/** A lost lock is reported as itself, before any refusal of the entry (round 3, L-d). */
+function lockFirst(held: { assertHeld(): void }, refusal: CachePruneRefusal): never { held.assertHeld(); throw refusal; }
+/**
+ * Spec 09, 4.4: deletes one entry of the skills cache, the store cache, or a per-project cache of an earlier beta. The
+ * caller holds the cache lock. The entry is first renamed to `.prune-<name>-<8 hex>`, so a crash leaves a leftover that
+ * `cache prune --partial` finds, then removed without following any link. The contents are never read. A refusal is a
+ * CachePruneRefusal (CACHE_PRUNE_FAILED) that names the folder and the step; a lost lock passes through as itself.
+ */
+export async function removeCacheEntry(stateRoot: string, place: CachePlace, name: string, held: { assertHeld(): void }): Promise<void> {
+  const where = whereOf(place, name);
+  // Steps 0 and 0a: the name, then the root.
+  if (!nameOk(name)) throw new CachePruneRefusal(where, 'the name is not a cache entry name');
+  const root0 = rootProblem(stateRoot, place); if (root0) lockFirst(held, new CachePruneRefusal(where, root0.reason, root0.cause));
+  const root = join(stateRoot, placeRoot(place)!);
+  // Steps 1 and 2: the lock, then the entry itself: a real private folder, never a link.
+  held.assertHeld();
+  const entry = join(root, name), p = folderProblem(entry, 'it'); if (p) throw new CachePruneRefusal(where, p.reason, p.cause);
+  let doomed = entry;
+  // Step 3: the rename, unless the entry is already a leftover. The new name must not exist.
+  if (!name.startsWith('.prune-')) {
+    doomed = join(root, `.prune-${name}-${randomBytes(4).toString('hex')}`);
+    if (fs.existsSync(doomed) || isLink(doomed)) throw new CachePruneRefusal(where, 'at the rename step (EEXIST)', 'EEXIST');
+    try { fs.renameSync(entry, doomed); syncDir(root); } catch (error) { lockFirst(held, new CachePruneRefusal(where, `at the rename step (${errnoOf(error)})`, errnoOf(error))); }
+  }
+  // Step 4: the lock again, before anything is deleted.
+  held.assertHeld();
+  // Step 5: one rmSync, right after the pinned entry is checked again (removePinned).
+  try { removePinned(doomed); syncDir(root); }
+  catch (error) {
+    const code = errnoOf(error), at = (error as { path?: unknown }).path;
+    if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(doomed, 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
+    // Round 5, L-1: next is the bare command (or, for a name no command can name, plain guidance), never both.
+    const fix = leftoverTreeFix(doomed);
+    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
+  }
+}
+function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }
+

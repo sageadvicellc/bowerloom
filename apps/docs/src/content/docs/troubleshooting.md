@@ -96,6 +96,16 @@ If `STORE_REMOTE_PRIVATE` appears, GitHub did not show the store repository with
 
 If `GITHUB_TOKEN_INVALID` appears, the variable holds something that is not a token, such as a space or a quote. If `STORE_REMOTE_AUTH_FAILED` appears, GitHub refused the token: check that it can read the repository and that the repository name is right. If `GITHUB_TOKEN_SSO_REQUIRED` appears, the organization uses single sign-on: authorize the token for that organization on GitHub, in the token's settings.
 
+## My disk is filling up
+
+Bowerloom keeps the skill bytes it downloads in a cache on this machine, and it never deletes them by itself.
+
+1. Run `bowerloom cache list`. It shows each entry, its size, and whether your store or this project lists it.
+2. Run `bowerloom cache prune --unreferenced` in the project. It plans to delete the entries that your store and this project do not list. Other projects on this machine are not checked. A project that needs a deleted pin fetches it again at its next sync.
+3. Read the plan, then run the same command with `--approve <revision>`.
+
+If a fetch stopped part way, `bowerloom cache prune --partial` deletes what it left. If `cache prune` cannot delete a folder, run the `chmod` line that it prints, then run it again. If `bowerloom skills sync` refuses with `STALE_APPROVAL` because the cached pin of a skill was deleted after the fetch, run `bowerloom skills sync` again. It fetches the pin again. [CLI reference](/docs/cli/#cache) lists every selector.
+
 ## Existing setup
 
 If `.bowerloom/` exists, inspect it before any change. Use [revision](/docs/revision/) for an installed goal or profile.

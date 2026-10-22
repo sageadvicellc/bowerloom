@@ -34,3 +34,6 @@ export type { ReceiptCleanPlan, ReceiptCleanResult, ReceiptCleanInput, ReceiptCl
 // Spec 08: store migrate.
 export { planStoreMigrate, applyStoreMigrate, checkMigrateSelectors, migrateIsNoop, STORE_MIGRATE_PLAN_FORMAT, STORE_MIGRATE_RESULT_FORMAT, NEW_IN_STORE } from './migrate-store.js';
 export type { StoreMigratePlan, StoreMigrateResult, MigrateItem, MigrateInput as StoreMigrateInput, MigrateHooks, MigrateDeps } from './migrate-store.js';
+// Spec 09: cache list and cache prune.
+export { listCache, planCachePrune, applyCachePrune, referenceSets, checkSelectors, cacheUsage, lineName, CACHE_LIST_FORMAT, CACHE_PRUNE_PLAN_FORMAT, CACHE_PRUNE_RESULT_FORMAT, CACHE_LIST_LIMIT, CACHE_USAGE } from './cache-admin.js';
+export type { CacheEntry, CacheList, CachePrunePlan, CachePruneResult, CachePruneSelectors, CacheAdminInput, CachePruneInput, CacheAdminHooks, CacheScope, PickedEntry, SkippedEntry, PruneInterrupt, ReferenceSets, PartialReason, Unreadable, UnlistedName } from './cache-admin.js';

@@ -18,6 +18,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { DefinitionError } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { inspectSkillCache, observeSkillCacheRoot, refusalSummary } from '../../skill-sources/src/cache.js';
 import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
@@ -31,6 +32,7 @@ import { ownSurface } from '../../managed-skills/src/v2-observed.js';
 import { readLocalPrompt, readLocalSkill } from '../../managed-skills/src/local-source.js';
 import type { ItemSource, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { withCacheLock, withProjectLock } from '../../project-context/src/index.js';
+import { cacheRootProblem } from '../../skill-sources/src/cache.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
 import { entryRequest, lookupCache, receiptMatches } from './cache-index.js';
@@ -136,16 +138,61 @@ export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: Cac
  * The selector of a completed cache operation, read again now. A pin found cached, or just fetched, must still be
  * the very same bytes: its snapshot and receipt, when known, are compared.
  */
-export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup: CacheLookup): Promise<AcquiredSkillCacheSelector> {
+export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup: CacheLookup, context: PruneContext | null = null): Promise<AcquiredSkillCacheSelector> {
   const { root, operationId } = lookup;
   let inspected;
-  try { inspected = await inspectSkillCache({ root, operationId }); } catch { throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`); }
+  try { inspected = await inspectSkillCache({ root, operationId }); }
+  catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    const gone = context !== null && typeof code === 'string' && INSPECT_SOURCE_CODES.includes(code) ? prunedPin(item.id, root, operationId, context) : null;
+    throw gone ?? syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} could not be read back.`);
+  }
   if (inspected.status !== 'COMPLETED' || inspected.receipt === null || inspected.activeOwner) throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The cached pin of ${item.id} is not complete.`);
   if (!receiptMatches(pinned, inspected.receipt)) throw mismatch(item.id);
   if ((lookup.snapshotRevision !== null && inspected.snapshotRevision !== lookup.snapshotRevision) || (lookup.receiptRevision !== null && inspected.receipt.revision !== lookup.receiptRevision)) throw stale();
   return { root, operationId, expectedSnapshotRevision: inspected.snapshotRevision, expectedReceiptRevision: inspected.receipt.revision };
 }
 
+/** What prunedPin checks a missing pin against: the state root, the skills cache folder that the plan pinned, and the rerun. */
+export interface PruneContext { rerun: string; stateRoot: string; cacheIdentity: { device: string; inode: string } | null }
+/** The inspection codes of an operation folder that is not there: the source-read refusals of selectorFor. */
+export const INSPECT_SOURCE_CODES: readonly string[] = Object.freeze(['NPM_CACHE_DIRECTORY', 'GIT_CACHE_DIRECTORY', 'NPM_CACHE_PATH', 'GIT_CACHE_PATH']);
+/**
+ * The code that managed.plan gives when it cannot read a cache source. The managed layer folds every source-read
+ * refusal of readAcquiredSkillCache into this fallback (managed-skills v2-observed.ts, boundaryV2), so the folder checks
+ * of prunedPin decide the rest.
+ */
+export const PLAN_SOURCE_CODES: readonly string[] = Object.freeze(['MANAGED_SKILL_REFUSED']);
+/** The context of a sync plan: its state root, its pin of the skills cache folder (if it was there), and the rerun. */
+export function pruneContext(plan: { privateState: { cacheRoot: string; pins: readonly { path: string; identity: { device: string; inode: string } }[] } }, rerun: string): PruneContext {
+  const pin = plan.privateState.pins.find(p => p.path === plan.privateState.cacheRoot);
+  if (pin) return { rerun, stateRoot: dirname(plan.privateState.cacheRoot), cacheIdentity: { device: pin.identity.device, inode: pin.identity.inode } };
+  // Round 4, L4: a cache folder that this run made after the plan is pinned here, before phase A fetches into it.
+  let cacheIdentity: PruneContext['cacheIdentity'] = null;
+  try { const s = fs.lstatSync(plan.privateState.cacheRoot, { bigint: true }); if (s.isDirectory() && !s.isSymbolicLink()) cacheIdentity = { device: String(s.dev), inode: String(s.ino) }; } catch { cacheIdentity = null; }
+  return { rerun, stateRoot: dirname(plan.privateState.cacheRoot), cacheIdentity };
+}
+/**
+ * Review M2 of PR 99 (a departure from spec 09, which left sync unchanged), narrowed in round 3 (M-B): the caller has a
+ * source-read refusal of a pin in the machine cache. When that cache folder is still the private folder the plan pinned
+ * and only the pin's operation folder is gone, the pin was deleted after the fetch, for example by cache prune:
+ * STALE_APPROVAL, and a rerun fetches it again. When the cache folder itself changed, SKILLS_STATE_UNSAFE. Otherwise null,
+ * and the caller keeps its own refusal.
+ */
+export function prunedPin(id: string, root: string, operationId: string, context: PruneContext): DefinitionError | null {
+  if (root !== join(context.stateRoot, 'cache')) return null;
+  const problem = cacheRootProblem(context.stateRoot, { scope: 'machine', projectId: null });
+  if (problem !== null) return syncError('SKILLS_STATE_UNSAFE', `The skills cache folder changed during the run: ${problem}.`);
+  try { fs.lstatSync(join(root, 'op-' + operationId)); return null; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+    // Round 4, L4: a pin is pruned only from the very folder the plan pinned. Without that pin, a replaced folder looks the same.
+    if (context.cacheIdentity === null) return syncError('SKILLS_STATE_UNSAFE', 'The plan did not pin the skills cache folder, so Bowerloom cannot tell a pruned pin from a replaced folder. Run the command again.');
+    let s: fs.BigIntStats; try { s = fs.lstatSync(root, { bigint: true }); } catch { return syncError('SKILLS_STATE_UNSAFE', 'The skills cache folder changed during the run.'); }
+    if (String(s.dev) !== context.cacheIdentity.device || String(s.ino) !== context.cacheIdentity.inode) return syncError('SKILLS_STATE_UNSAFE', 'The skills cache folder was replaced during the run.');
+    return Object.assign(syncError('STALE_APPROVAL', `The cached pin of ${id} was deleted after the fetch, for example by bowerloom cache prune. Run ${context.rerun} again.`), { next: context.rerun });
+  }
+}
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
 export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
@@ -237,14 +284,14 @@ function childFailure(error: unknown, id: string, done: string[], rerun: Rerun):
 export interface Child { item: { id: string; action: SyncItem['action'] }; req: ManagedItemRequest; plan: ManagedItemPlan }
 
 /** What phase A gives phase B: the source of each actionable skill, what was fetched, and the items held for review. */
-export interface SkillSources { sources: Map<string, ItemSource>; pins: Map<string, PinnedRequest>; fetched: string[]; review: string[] }
+export interface SkillSources { sources: Map<string, ItemSource>; pins: Map<string, PinnedRequest>; fetched: string[]; review: string[]; prune?: PruneContext }
 /**
  * Phase A for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching into the
  * private caches. No project write. A lock-fetched authored skill whose SKILL.md declares allowed-tools that the plan did
  * not show is held for review (ITEM_REVIEW_REQUIRED) and gets no child.
  */
 export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = 'bowerloom skills sync'): Promise<SkillSources> {
-  const dir = plan.project.dir, work = plan.items.filter(isActionable);
+  const dir = plan.project.dir, work = plan.items.filter(isActionable), prune = pruneContext(plan, rerun);
   const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [], review: string[] = [];
   for (const item of work) {
     const entry = entries.get(item.id);
@@ -268,9 +315,9 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
       const done = await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps); found = done.lookup;
       if (done.fetched) fetched.push(item.id);
     }
-    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found) });
+    sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found, prune) });
   }
-  return { sources, pins, fetched, review };
+  return { sources, pins, fetched, review, prune };
 }
 /** Phase B: every child plan of the skills phase A gave a source, checked against the bindings. No project write. */
 export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<Child[]> {
@@ -278,7 +325,13 @@ export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps:
   for (const item of work) {
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
     const req = childRequest(plan, item, got.sources.get(item.id)!);
-    let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) { if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun); throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`); }
+    let child; try { child = await managed.plan(req, { signal: deps.signal }); } catch (e) {
+      if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
+      const source = got.sources.get(item.id)!, code = (e as { code?: unknown } | null)?.code;
+      const gone = source.kind === 'cache' && typeof code === 'string' && PLAN_SOURCE_CODES.includes(code) ? prunedPin(item.id, source.selector.root, source.selector.operationId, got.prune ?? pruneContext(plan, rerun)) : null;
+      if (gone !== null) throw gone;
+      throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to ${item.id}; nothing was changed.`);
+    }
     children.push({ item, req, plan: checkChild(plan.project.dir, item, got.pins.get(item.id) ?? null, req, child) });
   }
   return children;

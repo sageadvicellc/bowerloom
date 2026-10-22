@@ -189,6 +189,9 @@ function nested(project: ProjectContext, stateRoot: string, statePins: readonly 
   return [project.identity, ...project.ancestry.map(a => a.identity)].some(id => below.has(key(id)));
 }
 
+/** Spec 09: `nested`, for `cache list` and `cache prune`, which check the state root against the current project. */
+export function stateProjectNested(project: ProjectContext, stateRoot: string, statePins: readonly { path: string; identity: Identity }[]): boolean { return nested(project, stateRoot, statePins); }
+
 /**
  * As `nested`, for the store: true when the private state root and the store are inside one another, by path or by
  * device and inode along the ancestry. With a null store (none yet) only the paths are compared.

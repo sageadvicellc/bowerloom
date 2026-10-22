@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { revisionOf } from '../../skill-sources/src/validation.js';
+import { CachePruneRefusal, couldNot, leftoverFix, removeCacheEntry } from '../../skill-sources/src/cache.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { withCacheLock } from '../../project-context/src/index.js';
 import type { HeldCacheLock } from '../../project-context/src/index.js';
@@ -169,16 +170,22 @@ function newFile(path: string, bytes: Buffer): void {
 function newFolder(path: string): void { fs.mkdirSync(path, { mode: 0o700 }); fs.chmodSync(path, 0o700); }
 
 /** writeStoreCache, for a caller that already holds the cache lock. */
-function writeHeld(held: HeldCacheLock, roots: StoreCacheRoots, kind: AuthoredKind, id: string, hash: string, files: Files): { status: 'written' | 'present'; dir: string } {
+async function writeHeld(held: HeldCacheLock, roots: StoreCacheRoots, kind: AuthoredKind, id: string, hash: string, files: Files): Promise<{ status: 'written' | 'present'; dir: string }> {
   const key = storeCacheKey(kind, id, hash), target = join(roots.storeCacheRoot, key);
   if (authoredRows(files).hash !== hash) throw configRefusal('LOCK_HASH_MISMATCH');
   held.assertHeld();
   storeCacheFolder(roots.storeCacheRoot);
-  // A crash leaves a `.tmp-<key>-*` folder. Under the lock, any such folder is this writer's to remove.
+  // A crash leaves a `.tmp-<key>-*` folder. Under the lock, any such folder is this writer's to remove. Review L10 of PR 99
+  // (spec 09: one delete path): it goes through removeCacheEntry, which refuses a link or a folder that is not private.
   for (const name of fs.readdirSync(roots.storeCacheRoot)) if (leftover(key).test(name)) {
-    const s = fs.lstatSync(join(roots.storeCacheRoot, name));
-    if (s.isSymbolicLink() || s.uid !== process.getuid?.()) throw unsafe();
-    fs.rmSync(join(roots.storeCacheRoot, name), { recursive: s.isDirectory(), force: false });
+    try { await removeCacheEntry(dirname(roots.storeCacheRoot), { scope: 'store', projectId: null }, name, held); }
+    catch (error) {
+      if ((error as { code?: unknown } | null)?.code === 'PROJECT_LOCK_UNAVAILABLE') throw error;
+      // Round 3 of the reviews of PR 99, M-C: the words name the leftover and why, and the next step fixes it.
+      // Round 4, L3: after a delete-step failure the fix names the .prune- folder the leftover became.
+      if (error instanceof CachePruneRefusal) throw Object.defineProperty(Object.assign(syncError('SKILLS_STATE_UNSAFE', couldNot(error.where, error.reason)), { next: error.fix ?? error.next ?? leftoverFix(join(roots.storeCacheRoot, name)) }), 'cause', { value: error, enumerable: false });
+      throw unsafe();
+    }
   }
   if (!missing(target)) {
     let ok = false;
@@ -293,7 +300,7 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       finally { commitMissing = seen.commitMissing; transport.close(); }
       const { rows, hash } = authoredRows(fetched.files);
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');
-      return { dir: writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files).dir, fetched: true };
+      return { dir: (await writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files)).dir, fetched: true };
     });
   } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken) as Error; }
 }
