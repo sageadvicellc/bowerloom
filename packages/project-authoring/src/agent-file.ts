@@ -115,7 +115,7 @@ function validate(text: string, stem: string, team: string): ParsedAgent {
   const map = value as Record<string, unknown>, keys = Object.keys(map);
   let merge = false; visit(doc, { Pair(_key, pair) { if (isScalar(pair.key) && pair.key.value === '<<') merge = true; } });
   if (merge) invalid('the frontmatter uses a merge key, which is not allowed');
-  for (const key of keys) if (!ALLOWED_AGENT_KEYS.includes(key)) throw new Failure('AGENT_KEY_UNKNOWN', `${keyWords(key)} is not a subagent key`);
+  for (const key of keys) if (!ALLOWED_AGENT_KEYS.includes(key)) throw new Failure('AGENT_KEY_UNKNOWN', PLAIN_KEY.test(key) ? key : 'a key with unsupported characters');
   const get = (k: string): unknown => Object.hasOwn(map, k) ? map[k] : undefined;
   // Name and description are required. A key whose value is null is invalid, here and below.
   const name = get('name');
