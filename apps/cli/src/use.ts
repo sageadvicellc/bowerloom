@@ -21,6 +21,8 @@ import { runWithApproval, parseApprovalFlags } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { plainText } from './human.js';
 import { terminalIo } from './manifest.js';
+import { credentialsLines, githubTokenReader, TOKEN_TAIL } from './sync.js';
+import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
 
 const USE_USAGE = 'Use bowerloom use skill|prompt|team <id> [--project] [--commit <sha>], with optional --approve <revision> and --json.';
 const UNUSE_USAGE = 'Use bowerloom unuse skill|prompt|team <id>, with optional --approve <revision> and --json.';
@@ -61,6 +63,14 @@ export function copyPlaces(project: ProjectContext, kind: Kind, id: string): str
   return surfaces.filter(s => s.id !== 'catalog').map(s => relative(project.dir, s.path));
 }
 const list = (items: readonly string[]): string => items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+/**
+ * Spec 07, 3.5: with credentials, the Network: note of a proof gets the token tail and the Credentials: line before it.
+ * `lock.ts` shows its notes the same way.
+ */
+export function tokenNotes(notes: readonly string[], credentials: Credentials | null | undefined): string[] {
+  if (!credentials) return [...notes];
+  return notes.flatMap(n => n.startsWith('Network: reads api.github.com, to check the pushed copy') ? [...credentialsLines(credentials), `${n} ${TOKEN_TAIL}`] : [n]);
+}
 
 /** The plan in plain words (3.5 and 3.7). `cache` is the cache line of a pinned store skill, computed before the review. */
 export function renderConfigChange(plan: ConfigChangePlan, places: readonly string[], cache: string | null): string {
@@ -85,7 +95,7 @@ export function renderConfigChange(plan: ConfigChangePlan, places: readonly stri
       for (const pair of plan.lock.adds) { const [k, i] = pair.split(' ') as [Kind, string], item = lockItem(lock, k, i); lines.push(`bowerloom.lock.json: adds ${pair}${item ? ` (${lockSourceLabel(item)})` : ''}`); }
       for (const pair of plan.lock.removes) lines.push(`bowerloom.lock.json removes: ${pair}`);
     }
-    lines.push(...plan.notes, 'This changes bowerloom.json and bowerloom.lock.json only. Then run bowerloom skills sync and bowerloom apply.');
+    lines.push(...tokenNotes(plan.notes, plan.network.credentials), 'This changes bowerloom.json and bowerloom.lock.json only. Then run bowerloom skills sync and bowerloom apply.');
     return lines.join('\n');
   }
   lines.push(`Stop using ${c.kind} ${c.id}`);
@@ -118,10 +128,12 @@ export async function runUseCommand(args: readonly string[], cwd: string, home: 
   if (approval.rest.length) throw new DefinitionError('USAGE', parsed.op === 'use' ? USE_USAGE : UNUSE_USAGE);
   let project = discoverProject(cwd, home);
   const controller = new AbortController(), plans = new Map<string, { plan: ConfigChangePlan; cache: string | null; places: string[] }>();
+  // Spec 07: the planner reads the token through this reader only for the proof of an authored store item.
+  const githubToken = githubTokenReader(env);
   let result: ConfigChangeResult | null = null;
   const change: PlannedChange<ConfigChangePlan> = {
     async plan() {
-      const plan = await planConfigChange({ project, home, op: parsed.op, kind: parsed.kind, id: parsed.id, source: parsed.project ? 'project' : 'store', commit: parsed.commit, signal: controller.signal });
+      const plan = await planConfigChange({ project, home, op: parsed.op, kind: parsed.kind, id: parsed.id, source: parsed.project ? 'project' : 'store', commit: parsed.commit, signal: controller.signal, githubToken });
       plans.set(plan.revision, { plan, cache: await cacheLine(plan, home, env), places: parsed.op === 'unuse' ? copyPlaces(project, parsed.kind, parsed.id) : [] });
       return plan;
     },

@@ -183,3 +183,80 @@ test('19. unuse never adds a lock item and never reads the network, and drops an
   assert.deepEqual(p.lock.adds, []); assert.deepEqual(p.lock.removes, ['skill tanstack-db', 'skill zz-left']); assert.deepEqual(p.network.hosts, []);
   assert.deepEqual(readLock(ctx(w)).lock.skills, []);
 });
+
+// --- Spec 07: the token of a private store remote in use and lock update. ---
+const { GithubToken } = await import('../../../dist/packages/skill-manifest/src/github-token.js');
+const { planLockUpdate } = await import('../../../dist/packages/project-sync/src/index.js');
+const { writeConfig: writeConfigAgain } = await import('./config-fixture.mjs');
+const CANARY = 'ghp_' + ('ghijklmnopqrstuvwxyz' + 'zyxwvutsrqponmlkjh').slice(0, 36);
+const tokenOf = value => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: value });
+const CREDENTIALS = { variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories: ['sageadvicellc/store'] };
+const recording = (repo, made = []) => { const inner = storeTransport(repo); const f = options => { made.push(options); return inner(); }; f.made = made; return f; };
+/** A shared project and a store with one skill, pushed to its github.com remote. */
+async function sharedWorld(t) {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); originProject(w);
+  const repo = pushStore(w); gitStore(w, repo);
+  return { w, repo };
+}
+
+test('spec 07, 1. with a token, commit-missing for the commit of the ref gives STORE_REMOTE_AUTH_FAILED; for --commit, LOCK_COMMIT_UNREACHABLE', async t => {
+  const { w } = await sharedWorld(t), empty = storeTransport({ responses: new Map() });
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: empty, githubToken: tokenOf(CANARY) }), code('STORE_REMOTE_AUTH_FAILED'));
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: empty, githubToken: tokenOf(CANARY), commit: 'e'.repeat(40) }), code('LOCK_COMMIT_UNREACHABLE'));
+});
+
+test('spec 07, 2. without a token, commit-missing for the commit of the ref gives STORE_REMOTE_PRIVATE', async t => {
+  const { w } = await sharedWorld(t), empty = storeTransport({ responses: new Map() });
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: empty }), code('STORE_REMOTE_PRIVATE'));
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: empty, githubToken: null }), code('STORE_REMOTE_PRIVATE'));
+});
+
+test('spec 07. use with a token proves through githubAuth and names the repository; without one the field is null; the revision ignores the token value', async t => {
+  const { w, repo } = await sharedWorld(t), made = [];
+  const p = await plan(w, 'use', 'skill', 'house-style', { storeTransport: recording(repo, made), githubToken: tokenOf(CANARY) });
+  assert.deepEqual(p.network.credentials, CREDENTIALS);
+  assert.ok(made.length >= 1); for (const o of made) { assert.deepEqual(Object.keys(o), ['githubAuth']); assert.deepEqual(o.githubAuth.repositories, ['sageadvicellc/store']); }
+  const again = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo), githubToken: tokenOf('ghp_' + 'z'.repeat(36)) });
+  assert.equal(again.revision, p.revision);
+  const plainMade = [], bare = await plan(w, 'use', 'skill', 'house-style', { storeTransport: recording(repo, plainMade) });
+  assert.equal(bare.network.credentials, null); assert.notEqual(bare.revision, p.revision);
+  assert.ok(plainMade.every(o => JSON.stringify(o) === '{}'));
+  // With a token, the note about the 60 requests an hour is not shown.
+  assert.equal(p.notes.some(n => n.startsWith('Without a token')), false);
+  const text = JSON.stringify(p);
+  for (let i = 0; i + 8 <= CANARY.length; i++) assert.equal(text.includes(CANARY.slice(i, i + 8)), false);
+  assert.equal(text.includes('[redacted]'), false);
+});
+
+test('spec 07. the token source is read only for a proof: unuse, a project item, and a pinned store skill never read it; an invalid one refuses before any request', async t => {
+  const { w, repo } = await sharedWorld(t);
+  let reads = 0; const never = () => { reads++; throw new Error('read'); };
+  storePin(w, (await import('./sync-fixture.mjs')).npmPackage('tanstack-db').entry);
+  const pinned = await plan(w, 'use', 'skill', 'tanstack-db', { githubToken: never });
+  assert.equal(pinned.network.credentials, null); assert.equal(reads, 0);
+  const made = [];
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: recording(repo, made), githubToken: () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'abc' }) }), code('GITHUB_TOKEN_INVALID'));
+  assert.equal(made.length, 0);
+  writeConfigAgain(w, { skills: [{ id: 'house-style', source: 'store' }] });
+  const unuse = await plan(w, 'unuse', 'skill', 'house-style', { githubToken: never });
+  assert.equal(unuse.network.credentials, null); assert.equal(reads, 0);
+});
+
+test('spec 07. lock update with a token proves through githubAuth and binds the repository; a 401 gives STORE_REMOTE_AUTH_FAILED', async t => {
+  const { w, repo } = await sharedWorld(t);
+  await change(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo), githubToken: tokenOf(CANARY) });
+  editStore(w, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: Changed.\n---\nx\n');
+  const repo2 = pushStore(w); gitStore(w, repo2);
+  const made = [], ctx2 = discoverProject(w.projectDir, w.home);
+  const p = await planLockUpdate({ project: ctx2, home: w.home, items: null, commit: null, storeTransport: recording(repo2, made), githubToken: tokenOf(CANARY) });
+  assert.deepEqual(p.network.credentials, CREDENTIALS); assert.ok(made.every(o => o.githubAuth?.repositories?.[0] === 'sageadvicellc/store'));
+  const bare = await planLockUpdate({ project: ctx2, home: w.home, items: null, commit: null, storeTransport: storeTransport(repo2) });
+  assert.equal(bare.network.credentials, null); assert.notEqual(bare.revision, p.revision);
+  const { manifestRefusal } = await import('../../../dist/packages/skill-manifest/src/refusal.js');
+  await assert.rejects(planLockUpdate({ project: ctx2, home: w.home, items: null, commit: null, storeTransport: () => ({ get: async () => { throw manifestRefusal('STORE_REMOTE_AUTH_FAILED'); }, close() {} }), githubToken: tokenOf(CANARY) }), code('STORE_REMOTE_AUTH_FAILED'));
+  // A lazy source is read for the proof, and gives the same plan as the token itself.
+  let reads = 0;
+  const lazy = await planLockUpdate({ project: ctx2, home: w.home, items: null, commit: null, storeTransport: storeTransport(repo2), githubToken: () => { reads++; return tokenOf(CANARY); } });
+  assert.ok(reads >= 1); assert.equal(lazy.revision, p.revision);
+});

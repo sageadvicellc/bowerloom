@@ -29,8 +29,9 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import { readStoreDefinitions } from './resolve.js';
 import type { StoreDefinitions } from './resolve.js';
 import { localItemRows } from './store-items.js';
-import type { StoreTransport } from './store-git.js';
-import { requireRequestBudget } from './store-git.js';
+import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
+import { credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
+import type { GithubToken } from '../../skill-manifest/src/github-token.js';
 import { syncError } from './refusal.js';
 import { join } from 'node:path';
 export { localItemRows } from './store-items.js';
@@ -65,7 +66,8 @@ export interface ConfigChangePlan {
   scratch: string[];
   store: StoreBindingRead | null;
   projectManifest: Read | null;
-  network: { hosts: string[] };
+  /** `credentials` (spec 07, 4.3): the store repository when a token proves an authored item; else null. Bound. */
+  network: { hosts: string[]; credentials: Credentials | null };
   /** The hash of each added authored item's live bytes, which apply reads again. */
   authored: { kind: Kind; id: string; hash: string }[];
   /** What the review shows of the picked item: its source line, teams, and cache. Null for unuse and adopt. */
@@ -82,9 +84,11 @@ export interface ChangeInput {
   source?: 'store' | 'project';
   /** `--commit <sha>`: the commit of the store remote a lock records. */
   commit?: string | null;
-  signal?: AbortSignal; storeTransport?: () => StoreTransport;
-  /** Test hook: true when a token is set (spec 07 adds it). */
+  signal?: AbortSignal; storeTransport?: StoreTransportFactory;
+  /** Test hook: true when a token is set. A token in `githubToken` sets it too. */
   tokenSet?: boolean;
+  /** Spec 07: the token of a private store remote, or the CLI's reader. Read only when an authored item is proved. */
+  githubToken?: TokenSource;
 }
 export interface ChangeHooks { readonly afterConfig?: () => void }
 
@@ -168,9 +172,10 @@ export const NO_TOKEN_LINE = 'Without a token GitHub allows about 60 requests an
 
 /**
  * Proves the authored needs against the store remote (3.10) and returns their lock items. The commit is `commit`
- * (`--commit`), else the pushed commit of the current branch. Network refusals follow the table of 3.10.
+ * (`--commit`), else the pushed commit of the current branch. Network refusals follow the table of 3.10, and with a
+ * token the table of spec 07, 3.7. `proof.credentials` gets the repository the token goes to.
  */
-async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit: string | null, input: Pick<ChangeInput, 'signal' | 'storeTransport'>, notes: string[]): Promise<Map<string, LockItem>> {
+async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit: string | null, input: Pick<ChangeInput, 'signal' | 'storeTransport'>, notes: string[], token: GithubToken | null = null, proof: { credentials: Credentials | null } = { credentials: null }): Promise<Map<string, LockItem>> {
   const out = new Map<string, LockItem>();
   for (const n of needs) if (n.pin !== null) out.set(`${n.kind} ${n.id}`, { id: n.id, from: 'store', pin: n.pin });
   const authored = needs.filter(n => n.local !== null);
@@ -179,10 +184,14 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
   if (repo.problem !== null) throw notShareable(repo.problem);
   if (commit === null && repo.head !== null && repo.head !== repo.pushed) notes.push(`Your store has commits that are not pushed (HEAD differs from origin/${repo.branch}). The lock records the pushed commit ${repo.pushed!.slice(0, 8)}.`);
   const signal = input.signal ?? new AbortController().signal, ids = authored.map(n => `${n.kind} ${n.id}`).join(', ');
+  // Spec 07, section 6: with a token, every transport of the proof gets it for the store repository only.
+  const repository = repositoryOf(repo.remote!), options = token !== null ? { githubAuth: { token, repositories: [repository] } } : {};
+  proof.credentials = token !== null ? credentialsFor([repo.remote!]) : null;
+  const make = () => (input.storeTransport ?? createPublicTransport)(options);
   for (const n of authored) {
-    const transport = (input.storeTransport ?? createPublicTransport)();
+    const transport = make();
     let outcome;
-    try { outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, () => (input.storeTransport ?? createPublicTransport)()); }
+    try { outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, make); }
     catch (error) {
       if (signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
       // Review F3: only a network failure of the transport is offline; any other error keeps its code, or is rethrown.
@@ -191,7 +200,8 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
       if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND') throw configRefusal('LOCK_STORE_NOT_PUSHED');
       throw error;
     } finally { transport.close(); }
-    if (outcome.outcome === 'commit-missing') throw configRefusal(commit !== null ? 'LOCK_COMMIT_UNREACHABLE' : 'STORE_REMOTE_PRIVATE');
+    // Spec 07, 3.7: a commit of the ref that GitHub does not show, with a token, is a refused token or a wrong repository.
+    if (outcome.outcome === 'commit-missing') throw commit !== null ? configRefusal('LOCK_COMMIT_UNREACHABLE') : token !== null ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
     if (outcome.outcome === 'not-pushed') throw configRefusal('LOCK_STORE_NOT_PUSHED');
     out.set(`${n.kind} ${n.id}`, { id: n.id, from: 'store', authored: outcome.pin });
   }
@@ -280,6 +290,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   // Review C4: a lock is created only when the new config has a store entry; an existing lock is always kept up to date.
   const writeLock = current.lock !== null || (op === 'use' && shared && storeEntries(next).length > 0);
   let lock: ConfigChangePlan['lock'] = null, authored: ConfigChangePlan['authored'] = [], hosts: string[] = [];
+  const proof: { credentials: Credentials | null } = { credentials: null }, tokenOnce = onceTokenSource(input.githubToken);
   if (writeLock) try {
     const items = pairsOf(current.lock), wanted = new Set(storeEntries(next)), lockRemoves: string[] = [], lockAdds: string[] = [];
     for (const pair of [...items.keys()]) if (!wanted.has(pair)) { items.delete(pair); lockRemoves.push(pair); }
@@ -290,11 +301,13 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
         defs ??= openStoreDefinitions(input.home);
         const needs = missing.map(p => { const [k, i] = p.split(' ') as [Kind, string]; return lockNeed(defs!, k, i); });
         const authoredNeeds = needs.filter(n => n.local !== null);
+        // Spec 07, 3.2: the token is read only for a proof, before any network read.
+        const token = authoredNeeds.length ? tokenOnce() : null;
         if (authoredNeeds.length) {
-          const r = requestCount(authoredNeeds); requireRequestBudget(r); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
+          const r = requestCount(authoredNeeds); requireRequestBudget(r); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (r > 60 && !input.tokenSet && token === null) notes.push(NO_TOKEN_LINE);
           hosts = ['api.github.com']; authored = authoredNeeds.map(n => ({ kind: n.kind, id: n.id, hash: n.local!.hash }));
         }
-        for (const [pair, item] of await prove(defs, needs, input.commit ?? null, input, notes)) { items.set(pair, item); lockAdds.push(pair); }
+        for (const [pair, item] of await prove(defs, needs, input.commit ?? null, input, notes, token, proof)) { items.set(pair, item); lockAdds.push(pair); }
       }
     }
     const lockText = serializeLock(lockFrom(items));
@@ -307,7 +320,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     bowerloomFolder: op === 'adopt' && project.bowerloomIdentity === null ? 'create' : 'present',
     adds, removes, direct, config: { before: read.state === 'valid' ? { sha256: read.sha256, bytes: read.bytes } : null, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text },
     lock, lockBefore: current.read, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, projectManifest: initial?.manifest ?? null,
-    network: { hosts }, authored, detail, listed: initial?.listed ?? 0, notes, writesAuthorized: false, executionAuthorized: false,
+    network: { hosts, credentials: proof.credentials }, authored, detail, listed: initial?.listed ?? 0, notes, writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: sha(canonicalJson(body)) };
 }
@@ -364,12 +377,12 @@ export interface LockUpdatePlan {
   scratch: string[];
   store: StoreBindingRead | null;
   authored: { kind: Kind; id: string; hash: string }[];
-  network: { hosts: string[] };
+  network: { hosts: string[]; credentials: Credentials | null };
   notes: string[];
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
 export interface LockUpdateResult { format: typeof LOCK_UPDATE_RESULT_FORMAT; planRevision: string; updated: { kind: Kind; id: string; change: LockChange }[]; sha256: string; bytes: number; executionAuthorized: false }
-export interface LockUpdateInput { project: ProjectContext; home: string; items: { kind: Kind; id: string }[] | null; commit: string | null; signal?: AbortSignal; storeTransport?: () => StoreTransport; tokenSet?: boolean }
+export interface LockUpdateInput { project: ProjectContext; home: string; items: { kind: Kind; id: string }[] | null; commit: string | null; signal?: AbortSignal; storeTransport?: StoreTransportFactory; tokenSet?: boolean; githubToken?: TokenSource }
 
 /** Plans `lock update` (3.15). Reads the store and, for a changed authored item or with --commit, its pushed copy. */
 export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdatePlan> {
@@ -394,6 +407,7 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   if (rebuilt) notes.push('bowerloom.lock.json could not be read (LOCK_INVALID); it is rebuilt from your store. The old pins are dropped.');
   for (const pair of [...items.keys()]) if (!wanted.includes(pair)) { const [k, i] = pair.split(' ') as [Kind, string]; updated.push({ kind: k, id: i, change: 'removed', from: lockSourceLabel(items.get(pair)!), to: null }); items.delete(pair); }
   let defs: StoreDefinitions | null = null, authored: LockUpdatePlan['authored'] = [], hosts: string[] = [];
+  const proof: { credentials: Credentials | null } = { credentials: null };
   if (wanted.length) {
     defs = openStoreDefinitions(input.home);
     const selected = input.items === null ? wanted : input.items.map(x => `${x.kind} ${x.id}`);
@@ -419,9 +433,11 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
       prove.push(need);
     }
     if (prove.length) {
-      const r = requestCount(prove); requireRequestBudget(r); notes.push(NETWORK_LINE(prove.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
+      // Spec 07, 3.2: the token is read only for a proof, before any network read.
+      const token = onceTokenSource(input.githubToken)();
+      const r = requestCount(prove); requireRequestBudget(r); notes.push(NETWORK_LINE(prove.length, r)); if (r > 60 && !input.tokenSet && token === null) notes.push(NO_TOKEN_LINE);
       hosts = ['api.github.com']; authored = prove.map(n => ({ kind: n.kind, id: n.id, hash: n.local!.hash }));
-      for (const [pair, item] of await (async () => { const out = new Map<string, LockItem>(); const got = await proveNeeds(defs!, prove, input, notes); for (const [p, it] of got) out.set(p, it); return out; })()) {
+      for (const [pair, item] of await (async () => { const out = new Map<string, LockItem>(); const got = await proveNeeds(defs!, prove, input, notes, token, proof); for (const [p, it] of got) out.set(p, it); return out; })()) {
         const [k, i] = pair.split(' ') as [Kind, string], old = items.get(pair) ?? null;
         const change: LockChange = old === null ? 'added' : 'authored' in old && 'authored' in item && old.authored.commit !== item.authored.commit ? 'commit' : 'authored' in old && 'authored' in item && old.authored.hash === item.authored.hash && canonicalJson(old.authored.teams ?? []) !== canonicalJson(item.authored.teams ?? []) ? 'teams' : canonicalJson(old) === canonicalJson(item) ? 'unchanged' : 'commit';
         updated.push({ kind: k, id: i, change, from: old ? lockSourceLabel(old) : null, to: lockSourceLabel(item) }); items.set(pair, item);
@@ -433,11 +449,11 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   const body: Omit<LockUpdatePlan, 'revision'> = {
     format: LOCK_UPDATE_FORMAT, project: { dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
     config: { sha256: read.sha256, bytes: read.bytes }, nothing: empty, lock: { before: current.read, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text, rebuilt },
-    updated, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, authored, network: { hosts }, notes, writesAuthorized: false, executionAuthorized: false,
+    updated, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, authored, network: { hosts, credentials: proof.credentials }, notes, writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: sha(canonicalJson(body)) };
 }
-const proveNeeds = (defs: StoreDefinitions, needs: LockNeed[], input: LockUpdateInput, notes: string[]) => prove(defs, needs, input.commit, input, notes);
+const proveNeeds = (defs: StoreDefinitions, needs: LockNeed[], input: LockUpdateInput, notes: string[], token: GithubToken | null, proof: { credentials: Credentials | null }) => prove(defs, needs, input.commit, input, notes, token, proof);
 /** True when the plan changes nothing: the lock's bytes stay and no item changes. */
 export const lockUpdateIsNoop = (plan: LockUpdatePlan): boolean => plan.nothing || (plan.lock.before?.sha256 === plan.lock.after.sha256 && plan.updated.every(u => u.change === 'unchanged'));
 

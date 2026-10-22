@@ -14,6 +14,8 @@ import { isId } from '../../../packages/skill-manifest/src/schema.js';
 import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
 import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-git.js';
+import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
+import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
@@ -46,6 +48,24 @@ function takeFlags(words: readonly string[], valued: readonly string[], plain: r
   return { values, flags, rest };
 }
 
+/**
+ * Spec 07, 3.2 and 3.8 property 1: the token is read in the CLI layer only, from the `env` argument, and only when a plan
+ * needs a store repository. The planner calls this reader at that point; it reads the variable once per command.
+ * A value outside the token shape throws GITHUB_TOKEN_INVALID, before any network call.
+ */
+export function githubTokenReader(env: NodeJS.ProcessEnv): () => GithubToken | null {
+  let read = false, token: GithubToken | null = null;
+  return () => { if (!read) { token = GithubToken.fromEnv(env); read = true; } return token; };
+}
+/** Spec 07, 3.5: the tail every token form of the Network: line ends its store part with. */
+export const TOKEN_TAIL = 'Store items use your GitHub token for the repositories above.';
+/** Spec 07, 3.5: the one Credentials: line of a plan with credentials, or none. */
+export function credentialsLines(credentials: Credentials | null | undefined): string[] {
+  if (!credentials) return [];
+  const names = credentials.repositories.map(r => `github.com/${r}`);
+  const joined = names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return [`Credentials: BOWERLOOM_GITHUB_TOKEN is set. It is sent to api.github.com for ${joined} only.`];
+}
 /** The source tag of 3.18: `[store]`, `[project]`, or `[store, from the lock: ...]`. Empty for an orphan. */
 export function sourceTag(item: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project'; lockPin: { remote: string } | null; kind?: string | null; pin?: string | null }): string {
   if (item.origin === null || item.origin === undefined) return '';
@@ -112,7 +132,9 @@ export function renderSyncReview(plan: SyncPlan): string {
     ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, width)) : [config ? '  Nothing is selected to sync yet.' : '  skills.json names no skill for this sync.']),
     ...plan.storeFetch.map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),
     ...plan.notes,
-    n ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.`
+    ...credentialsLines(plan.network.credentials),
+    n && plan.network.credentials ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}.${plan.network.hosts.includes('registry.npmjs.org') ? ' Pins are fetched without credentials.' : ''} ${TOKEN_TAIL}`
+      : n ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.`
       : plan.network.hosts.length ? `Network: none now. Every pinned skill is in this machine's cache. Only if one is gone when this applies does sync read ${plan.network.hosts.join(' and ')} for it.` : 'Network: none.',
     ...requestLine(plan.network),
     `Skills cache: ${plan.privateState.cacheRoot}, shared by every project on this machine.`,
@@ -179,7 +201,9 @@ export async function runSyncCommand(args: readonly string[], cwd: string, home:
   const max = maxRequestsFlag(values.get('--max-github-requests'), SYNC_USAGE);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage(SYNC_USAGE);
   const team = values.get('--team') ?? null; if (team !== null && !isId(team)) usage(SYNC_USAGE);
-  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen'), ...(max !== undefined ? { maxGithubRequests: max } : {}) });
+  // Spec 07: the planner reads the token through this reader only when an authored lock item needs its repository.
+  const githubToken = githubTokenReader(env);
+  const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen'), githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   const first = await planSync(input());
   if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;

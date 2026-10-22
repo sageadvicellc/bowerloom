@@ -40,7 +40,7 @@ import { missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 import { terminalIo } from './manifest.js';
 import { runStartupCommand } from './startup.js';
-import { harnessWords, renderSyncReview } from './sync.js';
+import { githubTokenReader, harnessWords, renderSyncReview } from './sync.js';
 
 export type UpStep = 'init' | 'team' | 'sync' | 'apply' | 'held';
 export const UP_STEP_FORMAT = 'bowerloom/up-step/v1beta1' as const;
@@ -156,7 +156,9 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   // Spec 06, 3.19: the sync step runs when the effective skill list is not empty.
   const resolved = resolveProject({ project, home: ctx.home, frozen: false });
   if (resolved.manifest !== null && resolved.manifest.skills.length > 0) {
-    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false });
+    // Spec 07: the sync step reads the token only when an authored lock item needs its repository.
+    const githubToken = githubTokenReader(ctx.env);
+    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false, githubToken });
     const plan = await planSync(input());
     held.push(...planHolds(plan.items));
     if (plan.items.some(i => i.action === 'install' || i.action === 'update')) {

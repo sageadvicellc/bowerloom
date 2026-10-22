@@ -18,10 +18,11 @@ import type { HeldCacheLock } from '../../project-context/src/index.js';
 import { folderNames, readGuarded, readTree, realFolder } from '../../project-authoring/src/files.js';
 import { LIMITS } from '../../project-authoring/src/files.js';
 import { createPublicTransport } from '../../skill-manifest/src/public-get.js';
-import type { PublicTransport } from '../../skill-manifest/src/public-get.js';
+import type { PublicGetOptions, PublicTransport } from '../../skill-manifest/src/public-get.js';
+import { GithubToken, GITHUB_TOKEN_VARIABLE } from '../../skill-manifest/src/github-token.js';
 import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/src/resolve-store-git.js';
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
-import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
+import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 import { syncError } from './refusal.js';
 import { DefinitionError } from '../../contracts/src/index.js';
@@ -31,7 +32,62 @@ export const GITHUB_HOST = 'api.github.com';
 /** The machine cache (its lock covers the store cache) and the store cache itself. */
 export interface StoreCacheRoots { cacheRoot: string; storeCacheRoot: string }
 export type StoreTransport = PublicTransport & { close(): void };
-export interface StoreGitDeps { signal: AbortSignal; storeTransport?: () => StoreTransport }
+/** Makes the transport of an authored store fetch. The default is createPublicTransport (spec 07, section 6). */
+export type StoreTransportFactory = (options: PublicGetOptions) => StoreTransport;
+/** `githubToken` is the token the CLI read for this run, or null (spec 07). */
+export interface StoreGitDeps { signal: AbortSignal; storeTransport?: StoreTransportFactory; githubToken?: GithubToken | null }
+
+/**
+ * Spec 07, 4.3: `network.credentials` of a plan. It names the variable, the one host, and the repositories that get the
+ * token, never the token. Null when no token is used.
+ */
+export interface Credentials { variable: typeof GITHUB_TOKEN_VARIABLE; host: typeof GITHUB_HOST; repositories: string[] }
+/** Where a plan input takes the token from: the token, none, or a reader the CLI made over its `env` argument. */
+export type TokenSource = GithubToken | null | undefined | (() => GithubToken | null);
+const GITHUB_REMOTE = /^https:\/\/github\.com\/([a-z0-9][a-z0-9-]{0,38})\/([a-z0-9._-]{1,100})$/;
+const REPOSITORY = /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/;
+/** `owner/repo` of a normal github.com remote, in lower case. A lock remote that is not one refuses STALE_APPROVAL. */
+export function repositoryOf(remote: string): string {
+  const m = typeof remote === 'string' ? GITHUB_REMOTE.exec(remote) : null;
+  if (m === null || m[2] === '.' || m[2] === '..') throw syncError('STALE_APPROVAL');
+  return `${m[1]}/${m[2]}`.toLowerCase();
+}
+/** The credentials field for these remotes: sorted, no repeats. Null for no remote. */
+export function credentialsFor(remotes: Iterable<string>): Credentials | null {
+  const repositories = [...new Set([...remotes].map(repositoryOf))].sort();
+  return repositories.length ? { variable: GITHUB_TOKEN_VARIABLE, host: GITHUB_HOST, repositories } : null;
+}
+/**
+ * Reads a token source once (spec 07, 3.2): call it only when a repository needs the token. A reader may throw
+ * GITHUB_TOKEN_INVALID. Anything that is not a token is no token.
+ */
+export function readTokenSource(source: TokenSource): GithubToken | null {
+  const value = typeof source === 'function' ? source() : source;
+  return GithubToken.isToken(value) ? value : null;
+}
+/** A source that reads its token at most once, so a plan and its re-plan in one run see the same value. */
+export function onceTokenSource(source: TokenSource): () => GithubToken | null {
+  let read = false, value: GithubToken | null = null;
+  return () => { if (!read) { value = readTokenSource(source); read = true; } return value; };
+}
+function validCredentials(value: unknown): value is Credentials {
+  if (value === null || typeof value !== 'object') return false;
+  const c = value as Partial<Credentials>;
+  return Object.keys(c).length === 3 && c.variable === GITHUB_TOKEN_VARIABLE && c.host === GITHUB_HOST && Array.isArray(c.repositories) && c.repositories.length >= 1 && c.repositories.length <= 8
+    && c.repositories.every((r, i, all) => typeof r === 'string' && REPOSITORY.test(r) && (i === 0 || Buffer.compare(Buffer.from(all[i - 1]!), Buffer.from(r)) < 0));
+}
+/**
+ * The transport options of one authored fetch or proof (spec 07, section 6). A plan with credentials needs the token and
+ * names the item's repository; a plan without needs no token. Any other case refuses STALE_APPROVAL before a transport.
+ */
+export function storeTransportOptions(credentials: unknown, token: GithubToken | null | undefined, remote: string): PublicGetOptions {
+  const tokenSet = GithubToken.isToken(token);
+  if (credentials === null || credentials === undefined) { if (tokenSet) throw syncError('STALE_APPROVAL'); return {}; }
+  if (!tokenSet || !validCredentials(credentials)) throw syncError('STALE_APPROVAL');
+  const repository = repositoryOf(remote);
+  if (!credentials.repositories.includes(repository)) throw syncError('STALE_APPROVAL');
+  return { githubAuth: { token: token!, repositories: [repository] } };
+}
 /** One authored lock item to fetch: its kind, id, the content key the plan bound (its hash), and its lock pin. */
 export interface StoreGitItem { kind: AuthoredKind; id: string; requestDigest: string | null; lockPin: AuthoredPin | null }
 type Files = readonly { path: string; bytes: Buffer }[];
@@ -164,14 +220,17 @@ function watched(transport: PublicTransport): PublicTransport & { commitMissing:
   };
   return out;
 }
-/** A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. */
-function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string): unknown {
+/**
+ * A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. With a token
+ * (spec 07, 3.7), a 404 on the commit request is STORE_REMOTE_AUTH_FAILED.
+ */
+function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean): unknown {
   if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
   // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
   if (!(error instanceof DefinitionError)) return error;
   const code = error.code;
   if (code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
-  if (code === 'SKILLS_ADD_NOT_FOUND') return configRefusal(commitMissing ? 'STORE_REMOTE_PRIVATE' : 'STORE_ITEM_GONE_AT_COMMIT');
+  if (code === 'SKILLS_ADD_NOT_FOUND') return !commitMissing ? configRefusal('STORE_ITEM_GONE_AT_COMMIT') : withToken ? manifestRefusal('STORE_REMOTE_AUTH_FAILED') : configRefusal('STORE_REMOTE_PRIVATE');
   if (code === 'SKILLS_ADD_UNSAFE_CONTENT') return configRefusal('LOCK_HASH_MISMATCH');
   return error;
 }
@@ -199,13 +258,16 @@ export function missingRequests(storeCacheRoot: string, items: readonly { kind: 
 /**
  * Phase A for one authored lock item (3.16 step 5): under the cache lock for this item only, reuse a store cache folder
  * that re-verifies; else check the bound content key and the approved host, fetch the item at its lock commit with one
- * transport, require its rows and hash to equal the lock pin, and write it into the store cache.
+ * transport, require its rows and hash to equal the lock pin, and write it into the store cache. `credentials` is the
+ * plan's `network.credentials` (spec 07): the token in `deps` must agree with it, or the fetch refuses STALE_APPROVAL.
  */
-export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, approvedHosts: readonly string[], deps: StoreGitDeps): Promise<{ dir: string; fetched: boolean }> {
+export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, approvedHosts: readonly string[], deps: StoreGitDeps, credentials: Credentials | null = null): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
   if (pin === null || item.requestDigest !== pin.hash || pin.path !== authoredPath(item.kind, item.id)) throw syncError('STALE_APPROVAL');
   // The approval names each host the run may contact. A fetch it did not approve never starts.
   if (!approvedHosts.includes(GITHUB_HOST)) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom apply --frozen without --offline.`);
+  const options = storeTransportOptions(credentials, deps.githubToken, pin.remote), withToken = options.githubAuth !== undefined;
+  const make = (): StoreTransport => (deps.storeTransport ?? createPublicTransport)(options);
   let commitMissing = false;
   try {
     return await withCacheLock(roots.cacheRoot, deps.signal, async held => {
@@ -213,14 +275,14 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       try { cached = readStoreCache(roots.storeCacheRoot, item.kind, item.id, pin.hash); } catch { cached = null; }
       if (cached !== null) return { dir: cached.dir, fetched: false };
       held.assertHeld();
-      const transport = (deps.storeTransport ?? createPublicTransport)(), seen = watched(transport);
+      const transport = make(), seen = watched(transport);
       let fetched;
-      const next = () => { const more = (deps.storeTransport ?? createPublicTransport)(), w = watched(more); return { get: w.get, close: () => more.close() }; };
+      const next = () => { const more = make(), w = watched(more); return { get: w.get, close: () => more.close() }; };
       try { fetched = await fetchAuthored(seen, { remote: pin.remote, commit: pin.commit, kind: item.kind, id: item.id }, deps.signal, next, { sha: pin.tree, refuse: () => { throw configRefusal('LOCK_HASH_MISMATCH'); } }); }
       finally { commitMissing = seen.commitMissing; transport.close(); }
       const { rows, hash } = authoredRows(fetched.files);
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');
       return { dir: writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files).dir, fetched: true };
     });
-  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id) as Error; }
+  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken) as Error; }
 }

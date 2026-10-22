@@ -206,3 +206,55 @@ test('L1. a pin listing 1 file at a 126-file tree is refused by the tree id befo
   assert.ok(urls.length <= fetchRequests(lockPin), `${urls.length} requests, estimate ${fetchRequests(lockPin)}`);
   assert.deepEqual(cacheEntries(s), []);
 });
+
+// --- Spec 07: the token of a private store remote. ---
+const { GithubToken } = await import('../../../dist/packages/skill-manifest/src/github-token.js');
+const CANARY = 'ghp_' + ('ghijklmnopqrstuvwxyz' + 'zyxwvutsrqponmlkjh').slice(0, 36);
+const token = () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: CANARY });
+const CREDENTIALS = { variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories: ['sageadvicellc/store'] };
+/** A transport factory that records the options of every transport it makes. */
+const recording = (responses, made = []) => (options => { made.push(options); return { ...fakeTransport(responses), close() {} }; });
+
+test('spec 07, 0. with a token a 404 on the commit request gives STORE_REMOTE_AUTH_FAILED; without one, STORE_REMOTE_PRIVATE', async t => {
+  const s = state(t), l = locked(t), missing = async () => { throw manifestRefusal('SKILLS_ADD_NOT_FOUND'); };
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { ...failing(missing), githubToken: token() }, CREDENTIALS), code('STORE_REMOTE_AUTH_FAILED'));
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(missing), null), code('STORE_REMOTE_PRIVATE'));
+  // The transport's own refusal of the token passes through as it is.
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { ...failing(async () => { throw manifestRefusal('STORE_REMOTE_AUTH_FAILED'); }), githubToken: token() }, CREDENTIALS), code('STORE_REMOTE_AUTH_FAILED'));
+});
+
+test('spec 07. a plan with credentials gives every transport githubAuth for the item repository; a plan without gives {}', async t => {
+  const s = state(t), l = locked(t), made = [];
+  await fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: recording(l.repo.responses, made), githubToken: token() }, CREDENTIALS);
+  assert.equal(made.length, 1);
+  assert.deepEqual(Object.keys(made[0]), ['githubAuth']); assert.deepEqual(made[0].githubAuth.repositories, ['sageadvicellc/store']);
+  assert.ok(GithubToken.isToken(made[0].githubAuth.token));
+  const s2 = state(t), plain = [];
+  await fetchStoreGit(l.item, s2.roots, ['api.github.com'], { signal: signal(), storeTransport: recording(l.repo.responses, plain) }, null);
+  assert.deepEqual(plain, [{}]);
+});
+
+test('spec 07, 4. fetchStoreGit refuses STALE_APPROVAL when the token and the plan disagree, before any transport', async t => {
+  const s = state(t), l = locked(t), made = [];
+  const deps = githubToken => ({ signal: signal(), storeTransport: recording(l.repo.responses, made), ...(githubToken !== undefined ? { githubToken } : {}) });
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(null), CREDENTIALS), code('STALE_APPROVAL'));
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(undefined), CREDENTIALS), code('STALE_APPROVAL'));
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(token()), null), code('STALE_APPROVAL'));
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(token())), code('STALE_APPROVAL'));
+  // The item's repository must be one the plan names.
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(token()), { ...CREDENTIALS, repositories: ['other/store'] }), code('STALE_APPROVAL'));
+  // A malformed credentials field is stale too.
+  for (const bad of [{ ...CREDENTIALS, variable: 'GITHUB_TOKEN' }, { ...CREDENTIALS, host: 'registry.npmjs.org' }, { ...CREDENTIALS, repositories: [] }, {}]) await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], deps(token()), bad), code('STALE_APPROVAL'));
+  assert.equal(made.length, 0);
+});
+
+test('spec 07. no error of a token fetch holds any part of the token', async t => {
+  const s = state(t), l = locked(t);
+  for (const thrown of ['SKILLS_ADD_NOT_FOUND', 'STORE_REMOTE_AUTH_FAILED', 'GITHUB_RATE_LIMITED', 'SKILLS_ADD_NETWORK', 'SKILLS_ADD_UNSAFE_CONTENT']) {
+    const error = await fetchStoreGit(l.item, s.roots, ['api.github.com'], { ...failing(async () => { throw manifestRefusal(thrown); }), githubToken: token() }, CREDENTIALS).then(() => null, e => e);
+    const util = await import('node:util');
+    const all = `${error?.code} ${error?.message} ${error?.stack} ${util.inspect(error, { showHidden: true, depth: 8 })}`;
+    assert.ok(error, thrown);
+    for (let i = 0; i + 8 <= CANARY.length; i++) assert.equal(all.includes(CANARY.slice(i, i + 8)), false, thrown);
+  }
+});

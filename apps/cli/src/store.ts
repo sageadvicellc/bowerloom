@@ -9,6 +9,7 @@ import { newCommandJson, plainText } from './human.js';
 import { readStoreRepo } from '../../../packages/project-config/src/git.js';
 import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
+import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 
 const STORE_STATUS_FORMAT = 'bowerloom/store-status/v1beta1';
 const USAGE = 'Use bowerloom store status [--json].';
@@ -101,7 +102,14 @@ function report(home: string): Report {
   }
 }
 
-function render(r: Report): string {
+/** Spec 07, 3.6: whether BOWERLOOM_GITHUB_TOKEN is set, as store status says it. Never the value or its length. */
+type TokenState = 'set' | 'not-set' | 'invalid';
+const TOKEN_LINE: Readonly<Record<TokenState, string>> = {
+  set: '  GitHub token: BOWERLOOM_GITHUB_TOKEN is set',
+  'not-set': '  GitHub token: BOWERLOOM_GITHUB_TOKEN is not set',
+  invalid: '  GitHub token: BOWERLOOM_GITHUB_TOKEN is set but is not a valid token',
+};
+function render(r: Report, token: TokenState): string {
   const leftover = r.leftovers.map(name => `  Leftover: ${name} (the next --global write removes it)`);
   if (r.state === 'absent') return ['Store: none yet', '  Create one with bowerloom skill create <name> --global.', ...leftover, ''].join('\n');
   if (r.state === 'foreign') return `Store: not a store\n  ${plainText(r.path)} exists, but it has no store.json. Bowerloom will not use it.\n  Move it somewhere else first. Then run bowerloom skill create <name> --global.\n`;
@@ -111,7 +119,7 @@ function render(r: Report): string {
   const pinned = c.pinnedSkills.count === null ? `unreadable (${c.pinnedSkills.problem})` : String(c.pinnedSkills.count);
   return [
     'Store: ready', `  Path: ${plainText(r.path)}`, `  Skill folders: ${show(c.skillFolders)}`,
-    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!), ...leftover, '',
+    `  Pinned skills: ${pinned}`, `  Prompts: ${show(c.prompts)}`, `  Teams: ${show(c.teams)}`, ...gitLines(r.git!, token), ...leftover, '',
   ].join('\n');
 }
 /** The commands that fix a git problem of the store (3.21). The person runs them; Bowerloom never runs git. */
@@ -122,11 +130,13 @@ const FIX: Readonly<Record<string, (branch: string) => string[]>> = {
   unpushed: b => ['cd ~/.bowerloom', `git push -u origin ${b}`],
   unreadable: () => [],
 };
-function gitLines(git: StoreRepo): string[] {
+function gitLines(git: StoreRepo, token: TokenState): string[] {
   const out: string[] = [];
-  if (git.problem === null) out.push(`  Git: origin ${git.remote!.slice('https://'.length)}, branch ${git.branch ?? '<branch>'}, HEAD ${git.head?.slice(0, 8) ?? 'unknown'}, pushed ${git.pushed!.slice(0, 8)}`);
+  // Spec 07, 3.6: the token line follows the Git: line of a store with a git remote.
+  const tokenLine = git.remote !== null ? [TOKEN_LINE[token]] : [];
+  if (git.problem === null) out.push(`  Git: origin ${git.remote!.slice('https://'.length)}, branch ${git.branch ?? '<branch>'}, HEAD ${git.head?.slice(0, 8) ?? 'unknown'}, pushed ${git.pushed!.slice(0, 8)}`, ...tokenLine);
   else {
-    out.push(git.problem === 'none' ? '  Git: none' : `  Git: ${NOT_SHAREABLE[git.problem]}`);
+    out.push(git.problem === 'none' ? '  Git: none' : `  Git: ${NOT_SHAREABLE[git.problem]}`, ...tokenLine);
     const commands = FIX[git.problem]!(git.branch ?? '<branch>');
     if (commands.length) out.push('  To fix this, run these commands yourself:', ...commands.map(c => `    ${c}`));
   }
@@ -138,10 +148,10 @@ function gitLines(git: StoreRepo): string[] {
  * `bowerloom store status [--json]`. Reads only. Every STORE_* refusal is reported as state `refused` and exits 0; USAGE
  * passes through. `home` is the HOME folder, and the store is always `<home>/.bowerloom`.
  */
-export async function runStoreCommand(args: readonly string[], home: string, write: (text: string) => unknown): Promise<number> {
+export async function runStoreCommand(args: readonly string[], home: string, write: (text: string) => unknown, env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const words = args.slice(1);
   if (words[0] !== 'status' || words.length > 2 || (words.length === 2 && words[1] !== '--json')) throw new DefinitionError('USAGE', USAGE);
-  const r = report(home);
+  const r = report(home), token = GithubToken.status(env);
   if (words[1] === '--json') {
     const c = r.counts;
     const counts = c === null ? null : {
@@ -149,8 +159,8 @@ export async function runStoreCommand(args: readonly string[], home: string, wri
       ignored: { skillFolders: c.skillFolders.ignored, prompts: c.prompts.ignored, teams: c.teams.ignored },
       capped: { skillFolders: c.skillFolders.capped, prompts: c.prompts.capped, teams: c.teams.capped },
     };
-    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown' };
+    const g = r.git, git = r.state !== 'store' || g === null ? null : { present: g.problem !== 'none', problem: g.problem, remote: g.remote, branch: g.branch, head: g.head, pushed: g.pushed, ahead: g.head !== null && g.pushed !== null ? (g.head === g.pushed ? 'no' : 'yes') : 'unknown', token };
     write(newCommandJson({ format: STORE_STATUS_FORMAT, state: r.state, path: r.path, code: r.code, counts, leftoverTemps: r.leftovers.length, git }));
-  } else write(render(r));
+  } else write(render(r, token));
   return 0;
 }

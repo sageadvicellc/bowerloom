@@ -177,3 +177,133 @@ test('a team filter in config mode needs a listed team, and the store items of o
   assert.deepEqual((await planSync(input(w, { team: 'research' }))).items.map(i => i.id), ['notes', 'other']);
   await assert.rejects(planSync(input(w, { team: 'ops' })), code('TEAM_NOT_FOUND'));
 });
+
+// --- Spec 07: the token of a private store remote, in the sync and the frozen apply plans. ---
+const { GithubToken } = await import('../../../dist/packages/skill-manifest/src/github-token.js');
+const { planProjectApply, applyProjectApply } = await import('../../../dist/packages/project-sync/src/index.js');
+const { authoredLockItem } = await import('./config-fixture.mjs');
+const CANARY = 'ghp_' + ('ghijklmnopqrstuvwxyz' + 'zyxwvutsrqponmlkjh').slice(0, 36);
+const OTHER_CANARY = 'ghp_' + 'zyxwvutsrqponmlkjihgzyxwvutsrqponmlkji'.slice(0, 36);
+const tokenOf = value => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: value });
+const CREDENTIALS = repositories => ({ variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories });
+const noCanary = (text, label) => { for (let i = 0; i + 8 <= CANARY.length; i++) assert.equal(text.includes(CANARY.slice(i, i + 8)), false, label); assert.equal(text.includes('[redacted]'), false, label); };
+/** A teammate's clone: a store skill, prompt, and team, and an npm pin, pushed, locked, then the store moved away. */
+async function tokenClone(t) {
+  const w = configWorld(t, { folder: true }), npm = npmPackage('tanstack-db');
+  await storeItem(w, 'team', 'research'); await storeItem(w, 'skill', 'house-style'); await storeItem(w, 'prompt', 'weekly-update'); storePin(w, npm.entry);
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
+  const repo = pushStore(w);
+  writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style'), { id: 'tanstack-db', from: 'store', pin: npm.entry }], prompts: [lockOfRepo(w, repo, 'prompt', 'weekly-update')], teams: [lockOfRepo(w, repo, 'team', 'research')] });
+  dropStore(w);
+  return { w, npm, repo };
+}
+/** A transport factory that records the options of each transport it makes. */
+const recordingTransport = (repo, made = []) => { const inner = storeTransport(repo); const factory = options => { made.push(options); return inner(); }; factory.made = made; factory.urls = inner.urls; return factory; };
+
+test('spec 07, 1. with a token and an authored lock item that installs, the sync plan names its repository; with no token, or no such item, the field is null', async t => {
+  const { w } = await tokenClone(t);
+  const withToken = await planSync(input(w, { githubToken: tokenOf(CANARY) }));
+  assert.deepEqual(withToken.network.credentials, CREDENTIALS(['sageadvicellc/store']));
+  assert.equal((await planSync(input(w))).network.credentials, null);
+  assert.equal((await planSync(input(w, { githubToken: null }))).network.credentials, null);
+  // A lazy source is read only when a repository needs it.
+  let reads = 0;
+  const lazy = await planSync(input(w, { githubToken: () => { reads++; return tokenOf(CANARY); } }));
+  assert.deepEqual(lazy.network.credentials, CREDENTIALS(['sageadvicellc/store'])); assert.ok(reads >= 1);
+  // A project whose only store skill is an npm pin needs no repository: the source is never read.
+  const plain = configWorld(t, { folder: true }), npm = npmPackage('tanstack-db');
+  await storeItem(plain, 'skill', 'seed'); storePin(plain, npm.entry);
+  writeConfig(plain, { skills: [{ id: 'tanstack-db', source: 'store' }] });
+  let plainReads = 0;
+  const none = await planSync(input(plain, { githubToken: () => { plainReads++; throw new Error('read'); } }));
+  assert.equal(none.network.credentials, null); assert.equal(plainReads, 0);
+  // --offline approves no host, so it needs no token either.
+  const { w: off } = await tokenClone(t);
+  await assert.rejects(planSync(input(off, { offline: true, githubToken: () => { throw new Error('read'); } })), code('SKILLS_OFFLINE'));
+});
+
+test('spec 07, 1. two remotes are listed sorted, without repeats; an invalid lazy token refuses GITHUB_TOKEN_INVALID before any fetch', async t => {
+  const { w } = await tokenClone(t);
+  const lock = JSON.parse(fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8'));
+  const other = authoredLockItem(w, 'skill', 'zz-tools', { files: [{ path: 'SKILL.md', bytes: Buffer.from('---\nname: zz-tools\ndescription: x.\n---\nx\n') }] });
+  other.authored.remote = 'https://github.com/a-org/tools';
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }, { id: 'zz-tools', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
+  writeLock(w, { ...lock, skills: [...lock.skills, other] });
+  const both = await planSync(input(w, { githubToken: tokenOf(CANARY) }));
+  assert.deepEqual(both.network.credentials, CREDENTIALS(['a-org/tools', 'sageadvicellc/store']));
+  await assert.rejects(planSync(input(w, { githubToken: () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'abc' }) })), e => e.code === 'GITHUB_TOKEN_INVALID' && !e.message.includes('abc'));
+});
+
+test('spec 07, 2 and 3. a new repository list gives a new revision, a new token value the same one; the plan holds no part of the token', async t => {
+  const { w } = await tokenClone(t);
+  const a = await planSync(input(w, { githubToken: tokenOf(CANARY) })), b = await planSync(input(w, { githubToken: tokenOf(OTHER_CANARY) })), none = await planSync(input(w));
+  assert.equal(a.revision, b.revision); assert.notEqual(a.revision, none.revision);
+  noCanary(JSON.stringify(a), 'sync plan');
+  const lock = JSON.parse(fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8'));
+  const other = authoredLockItem(w, 'skill', 'zz-tools', { files: [{ path: 'SKILL.md', bytes: Buffer.from('---\nname: zz-tools\ndescription: x.\n---\nx\n') }] });
+  other.authored.remote = 'https://github.com/a-org/tools';
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }, { id: 'zz-tools', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
+  writeLock(w, { ...lock, skills: [...lock.skills, other] });
+  assert.notEqual((await planSync(input(w, { githubToken: tokenOf(CANARY) }))).revision, a.revision);
+  // The frozen apply plan: the union of the skills sub-plan and the locked prompt and team, and no part of the token.
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const fa = await planProjectApply(applyInput({ githubToken: tokenOf(CANARY) })), fb = await planProjectApply(applyInput({ githubToken: tokenOf(OTHER_CANARY) }));
+  assert.deepEqual(fa.network.credentials, CREDENTIALS(['a-org/tools', 'sageadvicellc/store'])); assert.equal(fa.revision, fb.revision);
+  assert.equal((await planProjectApply(applyInput({}))).network.credentials, null);
+  assert.notEqual((await planProjectApply(applyInput({}))).revision, fa.revision);
+  noCanary(JSON.stringify(fa), 'apply plan');
+});
+
+test('spec 07. a frozen apply with only a locked prompt and team still names the repository; a plain apply never reads the token', async t => {
+  const { w } = await tokenClone(t);
+  writeConfig(w, { skills: [{ id: 'tanstack-db', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] });
+  const lock = JSON.parse(fs.readFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), 'utf8'));
+  writeLock(w, { ...lock, skills: lock.skills.filter(s => s.id === 'tanstack-db') });
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, ...extra });
+  const frozen = await planProjectApply(applyInput({ frozen: true, githubToken: tokenOf(CANARY) }));
+  assert.deepEqual(frozen.network.credentials, CREDENTIALS(['sageadvicellc/store']));
+  let reads = 0;
+  const plain = await planProjectApply(applyInput({ githubToken: () => { reads++; return tokenOf(CANARY); } }));
+  assert.equal(plain.network.credentials, null); assert.equal(reads, 0);
+});
+
+test('spec 07, 4. apply refuses STALE_APPROVAL when the token is missing and the plan has credentials, or present and the plan has none', async t => {
+  const { w, repo } = await tokenClone(t);
+  const planned = await planSync(input(w, { githubToken: tokenOf(CANARY) })), transport = recordingTransport(repo);
+  await assert.rejects(applySync(input(w), planned.revision, deps(noAcquirer(), { storeTransport: transport })), code('STALE_APPROVAL'));
+  const bare = await planSync(input(w));
+  await assert.rejects(applySync(input(w, { githubToken: tokenOf(CANARY) }), bare.revision, deps(noAcquirer(), { storeTransport: transport })), code('STALE_APPROVAL'));
+  assert.equal(transport.made.length, 0, 'nothing was fetched');
+  const applyInput = extra => ({ project: w.project(), stateRoot: w.stateRoot, home: w.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const fa = await planProjectApply(applyInput({ githubToken: tokenOf(CANARY) }));
+  await assert.rejects(applyProjectApply(applyInput({}), fa.revision, new AbortController().signal, { acquirer: noAcquirer(), storeTransport: transport }), code('STALE_APPROVAL'));
+  const fb = await planProjectApply(applyInput({}));
+  await assert.rejects(applyProjectApply(applyInput({ githubToken: tokenOf(CANARY) }), fb.revision, new AbortController().signal, { acquirer: noAcquirer(), storeTransport: transport }), code('STALE_APPROVAL'));
+  assert.equal(transport.made.length, 0, 'nothing was fetched');
+});
+
+test('spec 07, 6. with a token, the authored fetch gets githubAuth for its repository and the npm acquisition gets no token', async t => {
+  const { w, npm, repo } = await tokenClone(t);
+  const acquirer = fakeAcquirer([npm]), transport = recordingTransport(repo), token = tokenOf(CANARY);
+  const planned = await planSync(input(w, { githubToken: token }));
+  const result = await applySync(input(w, { githubToken: token }), planned.revision, deps(acquirer, { storeTransport: transport }));
+  assert.deepEqual(result.applied.map(a => a.id).sort(), ['house-style', 'tanstack-db']);
+  assert.ok(transport.made.length >= 2);
+  for (const options of transport.made) { assert.deepEqual(Object.keys(options), ['githubAuth']); assert.deepEqual(options.githubAuth.repositories, ['sageadvicellc/store']); assert.ok(GithubToken.isToken(options.githubAuth.token)); }
+  assert.equal(acquirer.calls.length, 1); noCanary(JSON.stringify(acquirer.calls), 'npm acquisition');
+  noCanary(JSON.stringify(result), 'sync result');
+  // Without a token, every transport is made with {}.
+  const { w: w2, npm: npm2, repo: repo2 } = await tokenClone(t), plainTransport = recordingTransport(repo2);
+  const plan2 = await planSync(input(w2));
+  await applySync(input(w2), plan2.revision, deps(fakeAcquirer([npm2]), { storeTransport: plainTransport }));
+  assert.ok(plainTransport.made.length >= 2); assert.ok(plainTransport.made.every(o => JSON.stringify(o) === '{}'));
+  // A frozen apply passes the token to its prompt and team fetches as well.
+  const { w: w3, npm: npm3, repo: repo3 } = await tokenClone(t), applyTransport = recordingTransport(repo3);
+  const applyInput = extra => ({ project: w3.project(), stateRoot: w3.stateRoot, home: w3.home, harnesses: ['claude', 'codex'], team: null, frozen: true, ...extra });
+  const fa = await planProjectApply(applyInput({ githubToken: token }));
+  const done = await applyProjectApply(applyInput({ githubToken: token }), fa.revision, new AbortController().signal, { acquirer: fakeAcquirer([npm3]), storeTransport: applyTransport });
+  assert.ok(done.applied.some(a => a.kind === 'prompt' && a.id === 'weekly-update'));
+  assert.ok(applyTransport.made.length >= 3, JSON.stringify(applyTransport.made.length));
+  assert.ok(applyTransport.made.every(o => o.githubAuth?.repositories?.[0] === 'sageadvicellc/store'));
+  noCanary(JSON.stringify(done), 'apply result');
+});

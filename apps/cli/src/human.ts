@@ -60,6 +60,8 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'teammate gets them, with bowerloom lock verify and bowerloom lock update. See bowerloom help use and bowerloom help lock.',
     'A store that is a git repository with a github.com remote can be shared. store status shows the Git: line and the commands to set it up.',
     'A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.',
+    'A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read',
+    'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.',
     'Add --json for one machine-readable object.', '',
   ].join('\n'),
   use: [
@@ -94,7 +96,9 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'A pinned skill needs no network. A skill, prompt, or team written in the store is checked against its pushed copy on github.com.',
     'Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file.',
     'To raise the limit, set BOWERLOOM_GITHUB_TOKEN (see bowerloom help store).',
-    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.', '',
+    '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    'A store in a private GitHub repository needs a token. Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read',
+    'the repository. Bowerloom sends it only to api.github.com, only for that repository. It never stores or prints it.', '',
   ].join('\n'),
   ls: [
     'Usage:', '  bowerloom ls [teams|skills|prompts|slices] [--global] [--json]', '',
