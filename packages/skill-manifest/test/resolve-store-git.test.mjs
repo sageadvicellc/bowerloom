@@ -179,11 +179,11 @@ function statusNetwork(t, status, headers) {
   });
   syncBuiltinESMExports();
 }
-test('13. in the transport, a 429, a 403 with x-ratelimit-remaining 0, and a 403 with retry-after give GITHUB_RATE_LIMITED; a 403 with requests left gives SKILLS_ADD_NETWORK', async t => {
+test('13. in the transport, a 429, a 403 with x-ratelimit-remaining 0, and a 403 with retry-after give GITHUB_RATE_LIMITED; a 403 with requests left, or a 5xx, gives GITHUB_REQUEST_FAILED with its status (review F3)', async t => {
   const url = `https://api.github.com/repos/sageadvicellc/store/git/commits/${COMMIT}`;
   for (const [status, headers, expected] of [
     [429, {}, 'GITHUB_RATE_LIMITED'], [403, { 'X-RateLimit-Remaining': '0' }, 'GITHUB_RATE_LIMITED'], [403, { 'Retry-After': '60' }, 'GITHUB_RATE_LIMITED'],
-    [403, { 'X-RateLimit-Remaining': '5' }, 'SKILLS_ADD_NETWORK'], [403, {}, 'SKILLS_ADD_NETWORK'], [500, { 'Retry-After': '60' }, 'SKILLS_ADD_NETWORK'],
+    [403, { 'X-RateLimit-Remaining': '5' }, 'GITHUB_REQUEST_FAILED'], [403, {}, 'GITHUB_REQUEST_FAILED'], [500, { 'Retry-After': '60' }, 'GITHUB_REQUEST_FAILED'],
   ]) {
     statusNetwork(t, status, headers);
     const transport = createPublicTransport();

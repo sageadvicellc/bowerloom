@@ -173,6 +173,8 @@ function renderConfigListing(project: ProjectContext, home: string, only: Sectio
       format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'config', ...Object.fromEntries(shown.map(x => [x, sections[x]])),
       ...(shown.includes('skills') ? { pinsReadable: true, pinsError: null } : {}), unselected: r.unselected, unlisted: 0,
       ...(r.storeCode ? { storeCode: r.storeCode } : {}),
+      // Review F4: the lock state, so an invalid lock does not look like an unlocked list.
+      lock: { state: r.lock.state, code: r.lock.code },
     });
   }
   const lines = (x: Section): string[] => {
@@ -181,7 +183,7 @@ function renderConfigListing(project: ProjectContext, home: string, only: Sectio
   };
   const blocks = shown.map(x => { const l = lines(x); return `${title(x)}\n${l.length ? l.join('\n') : '  none yet'}\n`; });
   const defined = [...r.unselected.skills, ...r.unselected.prompts, ...r.unselected.teams];
-  const tail = [...(defined.length ? [`Defined here but not listed in bowerloom.json: ${defined.map(id => plainText(id)).join(', ')}`] : []), ...(r.storeCode ? [`The store cannot be used (${plainText(r.storeCode)}). Run bowerloom store status.`] : [])];
+  const tail = [`Lock: ${r.lock.state}${r.lock.code ? ` (${plainText(r.lock.code)})` : ''}`, ...(defined.length ? [`Defined here but not listed in bowerloom.json: ${defined.map(id => plainText(id)).join(', ')}`] : []), ...(r.storeCode ? [`The store cannot be used (${plainText(r.storeCode)}). Run bowerloom store status.`] : [])];
   return blocks.join('\n') + (tail.length ? `\n${tail.join('\n')}\n` : '');
 }
 

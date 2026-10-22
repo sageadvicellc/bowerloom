@@ -45,6 +45,8 @@ test('1. six lock codes refuse at plan time with zero acquirer calls and zero ne
     setUp();
     await assert.rejects(planProjectApply(input(w)), code(expected), expected);
     await assert.rejects(planSync({ ...input(w), offline: false }), code(expected), expected);
+    // Apply plans again under the lock and refuses there too, before any fetch: the acquirer and the transport see nothing.
+    await assert.rejects(applyProjectApply(input(w), 'a'.repeat(64), signal(), { acquirer, storeTransport: () => ({ get: async u => { urls.push(u); throw new Error('no'); }, close() {} }) }), code(expected), expected);
   }
   fs.rmSync(path.join(w.projectDir, 'bowerloom.json'));
   await assert.rejects(planProjectApply(input(w)), code('LOCK_CONFIG_MISSING'));
@@ -79,22 +81,25 @@ test('3. frozen ignores a live store that differs', async t => {
   assert.doesNotMatch(fs.readFileSync(path.join(w.projectDir, '.claude/skills/house-style/SKILL.md'), 'utf8'), /Live and different/);
 });
 
-test('4 and 6 and 14. a fetched authored item with another hash, a failed fetch, a rate limit and an abort change nothing in the project', async t => {
-  const { w, npm, repo } = await clone(t);
-  const before = exactTree(w.projectDir);
-  const other = configWorld(t); await storeItem(other, 'skill', 'house-style'); editStore(other, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: Other bytes.\n---\nx\n');
-  const wrong = pushStore(other);
-  // Each run plans again: a run that stopped has made its private folders, which a plan binds.
-  const run = async d => applyProjectApply(input(w), (await planProjectApply(input(w))).revision, signal(), { acquirer: fakeAcquirer([npm]), ...d });
-  await assert.rejects(run({ storeTransport: storeTransport(wrong) }), code('LOCK_HASH_MISMATCH'));
-  assert.equal(exactTree(w.projectDir), before);
-  const failing = codeName => () => ({ get: async () => { throw manifestRefusal(codeName); }, close() {} });
-  await assert.rejects(run({ storeTransport: failing('SKILLS_ADD_NETWORK') }), code('SKILLS_OFFLINE'));
-  await assert.rejects(run({ storeTransport: failing('GITHUB_RATE_LIMITED') }), code('GITHUB_RATE_LIMITED'));
-  assert.equal(exactTree(w.projectDir), before);
-  const controller = new AbortController(); controller.abort();
-  await assert.rejects(applyProjectApply(input(w), (await planProjectApply(input(w))).revision, controller.signal, { acquirer: fakeAcquirer([npm]), storeTransport: storeTransport(repo) }), code('SKILLS_SYNC_INTERRUPTED'));
-  assert.equal(exactTree(w.projectDir), before);
+async function failedRun(t, d) {
+  const { w, npm } = await clone(t), before = exactTree(w.projectDir);
+  await d(w, npm, async extra => applyProjectApply(input(w), (await planProjectApply(input(w))).revision, extra.signal ?? signal(), { acquirer: fakeAcquirer([npm]), ...extra }));
+  assert.equal(exactTree(w.projectDir), before, 'nothing in the project changed');
+}
+test('4. a fetched authored item with another hash gives LOCK_HASH_MISMATCH and changes nothing', async t => {
+  await failedRun(t, async (w, npm, run) => {
+    const other = configWorld(t); await storeItem(other, 'skill', 'house-style'); editStore(other, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: Other bytes.\n---\nx\n');
+    await assert.rejects(run({ storeTransport: storeTransport(pushStore(other)) }), code('LOCK_HASH_MISMATCH'));
+  });
+});
+test('6. a failed network read gives SKILLS_OFFLINE and changes nothing', async t => {
+  await failedRun(t, async (w, npm, run) => assert.rejects(run({ storeTransport: () => ({ get: async () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); }, close() {} }) }), code('SKILLS_OFFLINE')));
+});
+test('14. a rate limit from the transport keeps GITHUB_RATE_LIMITED and changes nothing', async t => {
+  await failedRun(t, async (w, npm, run) => assert.rejects(run({ storeTransport: () => ({ get: async () => { throw manifestRefusal('GITHUB_RATE_LIMITED'); }, close() {} }) }), code('GITHUB_RATE_LIMITED')));
+});
+test('14. an abort gives SKILLS_SYNC_INTERRUPTED and changes nothing', async t => {
+  await failedRun(t, async (w, npm, run) => { const c = new AbortController(); c.abort(); await assert.rejects(run({ signal: c.signal, storeTransport: () => ({ get: async () => { throw new Error('never'); }, close() {} }) }), code('SKILLS_SYNC_INTERRUPTED')); });
 });
 
 test('5. a fetched pin that differs gives SKILLS_SYNC_CONTENT_MISMATCH', async t => {

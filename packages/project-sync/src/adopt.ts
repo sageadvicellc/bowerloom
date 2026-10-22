@@ -14,7 +14,7 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import { lstatOrNull, readTree } from '../../project-authoring/src/files.js';
 import { authoringRefusal } from '../../project-authoring/src/refusal.js';
 import { readConfig } from '../../project-config/src/config.js';
-import { configRefusal } from '../../project-config/src/refusal.js';
+import { configRefusal, refusalWithNext } from '../../project-config/src/refusal.js';
 import { lockItem, readLock } from '../../project-config/src/lock.js';
 import { applyConfigChange, planConfigChange } from './change.js';
 import type { ConfigChangePlan, ConfigChangeResult } from './change.js';
@@ -51,7 +51,7 @@ function sourceRoot(input: AdoptInput): { root: string; from: 'store' | 'store-c
     const cached = readStoreCache(join(input.stateRoot, 'store-cache'), 'team', input.id, item.authored.hash);
     if (cached !== null) return { root: cached.dir, from: 'store-cache' };
   }
-  throw new DefinitionError('STORE_ITEM_MISSING', `${configRefusal('STORE_ITEM_MISSING').message} Next: ${ADOPT_MISSING_NEXT(input.id)}`);
+  throw refusalWithNext('STORE_ITEM_MISSING', ADOPT_MISSING_NEXT(input.id));
 }
 /** The recovery check (3.17): the receipt registers the team, its folder matches the receipt pins, and the config still lists it from the store. */
 function recovering(project: ProjectContext, id: string): boolean {

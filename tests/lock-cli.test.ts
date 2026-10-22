@@ -3,10 +3,10 @@
 import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { renderRefusal } from '../apps/cli/src/human.js';
 import { join } from 'node:path';
-import { world, run, approve, mustApprove, errorCode, errorMessage, project, pushStore, network, NETWORK, shared, EMPTY_CONFIG, STORE_COMMIT } from './support/config-cli.js';
+import { world, run, mustApprove, errorCode, errorMessage, project, pushStore, network, NETWORK, shared, EMPTY_CONFIG, STORE_COMMIT } from './support/config-cli.js';
 
 const lockText = (dir: string) => readFileSync(join(dir, 'bowerloom.lock.json'), 'utf8');
 
@@ -70,23 +70,57 @@ test('6. lock update adds, changes, and removes items as the store changes', t =
   const removed = run(dir, ['lock', 'update'], w.env); assert.match(removed.stdout, /^ {2}skill house-style {2}removed$/m);
 });
 
-test('7. status --json shows the lock states not-used, absent, valid, stale, invalid, mismatch and orphan', t => {
+/** A project whose config lists a store skill, with a store that defines it. */
+function lockWorld(t: Parameters<typeof world>[0]) {
   const w = world(t), dir = project(w, 'app', { ...EMPTY_CONFIG, skills: [{ id: 'house-style', source: 'store' }] });
-  const state = () => JSON.parse(run(dir, ['status', '--json'], w.env).stdout).config.lock.state;
   mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
-  assert.equal(state(), 'not-used');
-  shared(dir); assert.equal(state(), 'absent');
-  mustApprove(dir, ['lock', 'update'], network(w, pushStore(w).routes).env, NETWORK);
-  assert.equal(state(), 'valid');
-  appendFileSync(join(w.store, 'skills/house-style/SKILL.md'), 'Changed.\n'); assert.equal(state(), 'stale');
-  const good = lockText(dir);
-  writeFileSync(join(dir, 'bowerloom.lock.json'), `<<<<<<<\n${good}`); assert.equal(state(), 'invalid');
-  writeFileSync(join(dir, 'bowerloom.lock.json'), good);
-  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(EMPTY_CONFIG, null, 2)}\n`); assert.equal(state(), 'mismatch');
-  // A lock and no config, in a project with .bowerloom: drift lock-orphan.
+  const status = () => JSON.parse(run(dir, ['status', '--json'], w.env).stdout) as { config: { lock: { state: string; code: string | null } } | null; drift: { kind: string; code?: string }[] };
+  const locked = () => { shared(dir); mustApprove(dir, ['lock', 'update'], network(w, pushStore(w).routes).env, NETWORK); return lockText(dir); };
+  return { w, dir, status, locked };
+}
+test('7. status: lock not-used in a project that is not shared', t => {
+  const { status } = lockWorld(t); assert.deepEqual(status().config!.lock.state, 'not-used');
+});
+test('7. status: lock absent in a shared project with store items and no lock', t => {
+  const { dir, status } = lockWorld(t); shared(dir); assert.equal(status().config!.lock.state, 'absent');
+});
+test('7. status: lock valid after lock update', t => {
+  const { status, locked } = lockWorld(t); locked(); assert.equal(status().config!.lock.state, 'valid');
+});
+test('7. status: lock stale after a store edit, with the stale note', t => {
+  const { w, dir, status, locked } = lockWorld(t); locked();
+  appendFileSync(join(w.store, 'skills/house-style/SKILL.md'), 'Changed.\n');
+  assert.equal(status().config!.lock.state, 'stale');
+  assert.match(run(dir, ['status'], w.env).stdout, /^ {2}The lock is out of date for skill house-style\. Run bowerloom lock update\.$/m);
+});
+test('7. status: lock invalid with its code and a lock-invalid drift; ls shows the lock state', t => {
+  const { w, dir, status, locked } = lockWorld(t); writeFileSync(join(dir, 'bowerloom.lock.json'), `<<<<<<<\n${locked()}`);
+  const s = status(); assert.deepEqual(s.config!.lock.state, 'invalid'); assert.equal(s.config!.lock.code, 'LOCK_INVALID');
+  assert.ok(s.drift.some(d => d.kind === 'lock-invalid' && d.code === 'LOCK_INVALID'), JSON.stringify(s.drift));
+  assert.match(run(dir, ['ls'], w.env).stdout, /^Lock: invalid \(LOCK_INVALID\)$/m);
+  assert.deepEqual((JSON.parse(run(dir, ['ls', '--json'], w.env).stdout) as { lock: unknown }).lock, { state: 'invalid', code: 'LOCK_INVALID' });
+});
+test('7. status: lock mismatch with LOCK_CONFIG_MISMATCH and its note', t => {
+  const { w, dir, status, locked } = lockWorld(t); locked();
+  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(EMPTY_CONFIG, null, 2)}\n`);
+  const s = status(); assert.equal(s.config!.lock.state, 'mismatch'); assert.equal(s.config!.lock.code, 'LOCK_CONFIG_MISMATCH');
+  assert.match(run(dir, ['status'], w.env).stdout, /bowerloom\.lock\.json and bowerloom\.json list different store items: skill house-style\. Run bowerloom lock update\./);
+});
+test('7. status: a lock with no config is drift lock-orphan', t => {
+  const { w, dir, status, locked } = lockWorld(t); locked();
   mkdirSync(join(dir, '.bowerloom'), { mode: 0o755 }); rmSync(join(dir, 'bowerloom.json'));
-  const orphan = JSON.parse(run(dir, ['status', '--json'], w.env).stdout);
-  assert.ok(orphan.drift.some((d: { kind: string }) => d.kind === 'lock-orphan'), JSON.stringify(orphan.drift));
+  assert.ok(status().drift.some(d => d.kind === 'lock-orphan')); void w;
+});
+test('F4. status with an invalid config still reports the lock file', t => {
+  const { dir, status, locked } = lockWorld(t); locked();
+  writeFileSync(join(dir, 'bowerloom.json'), '{"format":"nope"}\n');
+  const lock = status().config!.lock; assert.equal(lock.state, 'mismatch'); assert.equal(lock.code, 'CONFIG_INVALID');
+});
+test('F4. status names a refusal of the resolver as a resolve-error drift', t => {
+  const { dir, status } = lockWorld(t);
+  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify({ ...EMPTY_CONFIG, skills: [{ id: 'house-style', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'project' }] }, null, 2)}\n`);
+  mkdirSync(join(dir, '.bowerloom', 'authoring'), { recursive: true, mode: 0o755 }); writeFileSync(join(dir, '.bowerloom', 'authoring', 'receipt.json'), '{}');
+  assert.ok(status().drift.some(d => d.kind === 'resolve-error' && d.code === 'AUTHORING_RECEIPT_INVALID'), JSON.stringify(status().drift));
 });
 
 test('9. store status shows the Git: line and the commands for a store with no remote, and the git.ahead values', t => {
@@ -110,5 +144,18 @@ test('GITHUB_RATE_LIMITED: a 403 with no requests left keeps its code', t => {
   const repo = pushStore(w), url = `https://api.github.com/repos/sageadvicellc/store/git/commits/${STORE_COMMIT}`;
   const r = run(dir, ['use', 'skill', 'house-style', '--json'], network(w, { ...repo.routes, [url]: { status: 403, headers: { 'X-RateLimit-Remaining': '0' }, file: null } }).env, NETWORK);
   assert.equal(errorCode(r.stderr), 'GITHUB_RATE_LIMITED');
-  void approve;
+});
+
+test('F6. up --team with an unsafe store names the store code, not a missing team', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env); chmodSync(w.store, 0o777);
+  try { assert.equal(errorCode(run(dir, ['up', '--team', 'research', '--json'], w.env).stderr), 'STORE_UNSAFE'); } finally { chmodSync(w.store, 0o700); }
+});
+test('C5. TEAM_NOT_SELECTED carries one next step, and the words print one Next: line', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(w.home, ['team', 'create', 'research', '--global'], w.env);
+  const r = run(dir, ['up', '--team', 'research', '--json'], w.env), error = JSON.parse(r.stderr) as { error: { code: string; message: string; next?: string } };
+  assert.equal(error.error.code, 'TEAM_NOT_SELECTED'); assert.doesNotMatch(error.error.message, /Next:/); assert.equal(error.error.next, 'bowerloom use team research');
+  const words = renderRefusal('TEAM_NOT_SELECTED', error.error.message, { next: 'bowerloom use team research' });
+  assert.equal(words.match(/Next/g)?.length, 1); assert.match(words, /bowerloom use team research/);
 });

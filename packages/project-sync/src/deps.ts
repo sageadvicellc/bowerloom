@@ -32,6 +32,8 @@ export interface SyncDeps {
   acquirer: Acquirer; signal: AbortSignal; managed?: ManagedPort;
   /** The transport of an authored store fetch (spec 06, 3.11). Tests pass a fake. The default is createPublicTransport. */
   storeTransport?: () => PublicTransport & { close(): void };
+  /** Test hook: runs before phase A reads the store cache for an authored item, so a test can fill it as another run would. */
+  beforeStoreRead?: (item: { kind: 'skill' | 'prompt' | 'team'; id: string }) => void | Promise<void>;
 }
 
 /** The production Acquirer: the existing guarded npm and GitHub acquisitions, nothing else. */

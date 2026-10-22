@@ -164,7 +164,7 @@ test('11. status in a config-only project with an invalid config prints drift co
   const { store: _s, storeCode: _c, items: _i, unselected: _u, lock: _l, ...invalidBase } = j.config;
   assert.deepEqual({ ...invalidBase, sha256: 'x', bytes: 0 }, { path: 'bowerloom.json', sha256: 'x', bytes: 0, state: 'invalid', code: 'CONFIG_INVALID', harnesses: [], counts: { skills: 0, prompts: 0, teams: 0 } });
   const r = run(dir, ['status'], w.env);
-  assert.equal(r.status, 0); assert.match(r.stdout, /Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\nSetup: drifted \(no startup setup/); assert.match(r.stdout, /\n  config-invalid: bowerloom\.json \(CONFIG_INVALID\)\n/);
+  assert.equal(r.status, 0); assert.match(r.stdout, /Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\nLock: not-used\nSetup: drifted \(no startup setup/); assert.match(r.stdout, /\n  config-invalid: bowerloom\.json \(CONFIG_INVALID\)\n/);
   const big = configProject(w, { ...CONFIG, skills: Array.from({ length: 129 }, (_, i) => ({ id: `s-${String(i).padStart(4, '0')}`, source: 'project' })) }, 'big');
   assert.equal(JSON.parse(run(big, ['status', '--json'], w.env).stdout).config.code, 'CONFIG_LIMIT');
 });
@@ -211,12 +211,12 @@ test('13. status in a project with .bowerloom, a config, and no receipt reports 
 test('14. ls in a config-only project lists three empty sections, and ls --json has pinned []', t => {
   const w = world(t), dir = configProject(w), r = run(dir, ['ls'], w.env);
   // Spec 06, 3.20: in config mode the lists come from bowerloom.json; an item with no definition is missing.
-  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  research  store  (missing)\n\nSkills\n  house-style  store  (missing)\n\nPrompts\n  none yet\n');
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'Config: bowerloom.json (1 skills, 0 prompts, 1 teams)\n\nTeams\n  research  store  (missing)\n\nSkills\n  house-style  store  (missing)\n\nPrompts\n  none yet\n\nLock: not-used\n');
   const bad = configProject(w, '{}\n', 'bad'); assert.match(run(bad, ['ls'], w.env).stdout, /^Config: bowerloom\.json \(invalid, CONFIG_INVALID\)\n\nTeams\n/);
   assert.deepEqual(JSON.parse(run(dir, ['ls', '--json'], w.env).stdout), { format: 'bowerloom/ls/v1beta2', scope: 'project', listedBy: 'config',
     teams: [{ id: 'research', source: 'store', via: [], locked: null, resolvedFrom: 'store', state: 'missing', displayName: null }],
     skills: [{ id: 'house-style', source: 'store', via: [], locked: null, resolvedFrom: 'store', state: 'missing', kind: 'local', pin: null }],
-    prompts: [], pinsReadable: true, pinsError: null, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0 });
+    prompts: [], pinsReadable: true, pinsError: null, unselected: { skills: [], prompts: [], teams: [] }, unlisted: 0, lock: { state: 'not-used', code: null } });
 });
 
 test('15. help store and store --help print the store topic, and the first screen names it', t => {

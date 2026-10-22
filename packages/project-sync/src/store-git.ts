@@ -15,7 +15,7 @@ import { revisionOf } from '../../skill-sources/src/validation.js';
 import { directory } from '../../managed-skills/src/observed.js';
 import { withCacheLock } from '../../project-context/src/index.js';
 import type { HeldCacheLock } from '../../project-context/src/index.js';
-import { readGuarded, readTree, realFolder } from '../../project-authoring/src/files.js';
+import { folderNames, readGuarded, readTree, realFolder } from '../../project-authoring/src/files.js';
 import { LIMITS } from '../../project-authoring/src/files.js';
 import { createPublicTransport } from '../../skill-manifest/src/public-get.js';
 import type { PublicTransport } from '../../skill-manifest/src/public-get.js';
@@ -24,6 +24,7 @@ import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
 import { syncError } from './refusal.js';
+import { DefinitionError } from '../../contracts/src/index.js';
 
 export const STORE_CACHE_FOLDER = 'store-cache';
 export const GITHUB_HOST = 'api.github.com';
@@ -61,9 +62,12 @@ export function readStoreCache(storeCacheRoot: string, kind: AuthoredKind, id: s
   let files: { path: string; bytes: Buffer }[];
   try {
     realFolder(dir);
+    // Review F10: the folder holds exactly the one item, laid out as a store lays it out, and nothing else.
+    const area = kind === 'prompt' ? 'prompts' : kind === 'skill' ? 'skills' : 'teams';
+    if (folderNames(dir).join('/') !== area || folderNames(join(dir, area)).join('/') !== (kind === 'prompt' ? `${id}.md` : id)) throw unsafe();
     if (kind === 'prompt') { realFolder(join(dir, 'prompts')); files = [{ path: `${id}.md`, bytes: readGuarded(join(dir, 'prompts', `${id}.md`), LIMITS.fileBytes) }]; }
     else {
-      const area = kind === 'skill' ? 'skills' : 'teams', prefix = `${area}/${id}/`;
+      const prefix = `${area}/${id}/`;
       realFolder(join(dir, area));
       files = readTree(dir, `${area}/${id}`).map(pin => ({ path: pin.path.slice(prefix.length), bytes: readGuarded(join(dir, pin.path), LIMITS.fileBytes) }));
     }
@@ -73,6 +77,15 @@ export function readStoreCache(storeCacheRoot: string, kind: AuthoredKind, id: s
   return { dir, rows };
 }
 
+/**
+ * The store cache folder of an item as a plan sees it: `dir` when it re-verifies, null when it is not there, and a `fault`
+ * when it is there and fails verification (review F5): the run replaces it, and the plan says so.
+ */
+export function probeStoreCache(storeCacheRoot: string, kind: AuthoredKind, id: string, hash: string): { dir: string | null; fault: { code: string; key: string } | null } {
+  try { return { dir: readStoreCache(storeCacheRoot, kind, id, hash)?.dir ?? null, fault: null }; }
+  catch (error) { const code = (error as { code?: unknown } | null)?.code; return { dir: null, fault: { code: typeof code === 'string' ? code : 'SKILLS_STATE_UNSAFE', key: storeCacheKey(kind, id, hash) } }; }
+}
+export const faultNote = (key: string): string => `store cache entry ${key} failed verification; it will be replaced`;
 /** The store cache folder, made private when it is missing; its parent must be the existing private state chain. */
 function storeCacheFolder(root: string): void {
   try {
@@ -152,15 +165,22 @@ function watched(transport: PublicTransport): PublicTransport & { commitMissing:
   return out;
 }
 /** A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. */
-function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string): Error {
+function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string): unknown {
   if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
-  const code = (error as { code?: unknown } | null)?.code;
-  if (code === 'GITHUB_RATE_LIMITED' || code === 'SKILLS_ADD_HOST_REFUSED') return error as Error;
-  if (code === 'SKILLS_ADD_NOT_FOUND' && commitMissing) return configRefusal('STORE_REMOTE_PRIVATE');
-  if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND' || code === 'LOCK_HASH_MISMATCH') return configRefusal('LOCK_HASH_MISMATCH');
-  if (code === 'SKILLS_STATE_UNSAFE' || code === 'PROJECT_LOCK_UNAVAILABLE' || code === 'PROJECT_LOCK_SLOT_COLLISION') return error as Error;
-  return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+  // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
+  if (!(error instanceof DefinitionError)) return error;
+  const code = error.code;
+  if (code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+  if (code === 'SKILLS_ADD_NOT_FOUND') return configRefusal(commitMissing ? 'STORE_REMOTE_PRIVATE' : 'STORE_ITEM_GONE_AT_COMMIT');
+  if (code === 'SKILLS_ADD_UNSAFE_CONTENT') return configRefusal('LOCK_HASH_MISMATCH');
+  return error;
 }
+/** At most this many GitHub requests in one run (review L2). */
+export const GITHUB_REQUEST_LIMIT = 1000;
+/** The requests the fetch of one authored item takes: 4, plus one per distinct blob for a skill or a team (3.10). */
+export const fetchRequests = (pin: AuthoredPin): number => 4 + new Set(pin.files.map(f => f.sha256)).size;
+/** Refuses GITHUB_REQUEST_BUDGET when a run would make more than GITHUB_REQUEST_LIMIT requests. */
+export function requireRequestBudget(requests: number): void { if (requests > GITHUB_REQUEST_LIMIT) throw configRefusal('GITHUB_REQUEST_BUDGET'); }
 
 /**
  * Phase A for one authored lock item (3.16 step 5): under the cache lock for this item only, reuse a store cache folder
@@ -188,5 +208,5 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');
       return { dir: writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files).dir, fetched: true };
     });
-  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id); }
+  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id) as Error; }
 }

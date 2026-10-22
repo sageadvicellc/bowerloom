@@ -44,7 +44,8 @@ test('7 and 7a. adopt copies from the store cache when there is no store; with n
   writeLock(w, { teams: [item] }); writeConfig(w, { teams: [{ id: 'research', source: 'store' }] });
   const files = Object.entries(repo.responses).length ? null : null;
   dropStore(w);
-  await assert.rejects(planAdopt(input(w)), e => e.code === 'STORE_ITEM_MISSING' && e.message.includes(ADOPT_MISSING_NEXT('research')));
+  // Review C5: the next step is the error's own property, never a second Next: in its message.
+  await assert.rejects(planAdopt(input(w)), e => e.code === 'STORE_ITEM_MISSING' && e.next === ADOPT_MISSING_NEXT('research') && !e.message.includes('Next:'));
   // Put the team in the store cache, as apply --frozen does.
   const moved = fs.readdirSync(w.base).find(n => n.startsWith('store-moved-')), root = path.join(w.base, moved, 'teams/research');
   const read = rel => { const out = []; for (const n of fs.readdirSync(path.join(root, rel)).sort()) { const r = rel ? `${rel}/${n}` : n; if (fs.statSync(path.join(root, r)).isDirectory()) out.push(...read(r)); else out.push({ path: r, bytes: fs.readFileSync(path.join(root, r)) }); } return out; };

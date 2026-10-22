@@ -30,6 +30,7 @@ import { readStoreDefinitions } from './resolve.js';
 import type { StoreDefinitions } from './resolve.js';
 import { localItemRows } from './store-items.js';
 import type { StoreTransport } from './store-git.js';
+import { requireRequestBudget } from './store-git.js';
 import { syncError } from './refusal.js';
 import { join } from 'node:path';
 export { localItemRows } from './store-items.js';
@@ -59,6 +60,8 @@ export interface ConfigChangePlan {
   direct: { kind: string; id: string; via: string[] }[];
   config: { before: Read | null; after: Read; text: string };
   lock: { before: Read | null; after: Read; text: string; adds: string[]; removes: string[] } | null;
+  /** The lock file as the plan read it, bound even when the plan writes no lock: one that appears before apply is stale (review C3). */
+  lockBefore: Read | null;
   scratch: string[];
   store: StoreBindingRead | null;
   projectManifest: Read | null;
@@ -181,11 +184,12 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
     let outcome;
     try { outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, () => (input.storeTransport ?? createPublicTransport)()); }
     catch (error) {
-      const code = (error as { code?: unknown } | null)?.code;
       if (signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
-      if (code === 'GITHUB_RATE_LIMITED' || code === 'SKILLS_ADD_HOST_REFUSED') throw error;
+      // Review F3: only a network failure of the transport is offline; any other error keeps its code, or is rethrown.
+      const code = error instanceof DefinitionError ? error.code : null;
+      if (code === 'SKILLS_ADD_NETWORK') throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
       if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND') throw configRefusal('LOCK_STORE_NOT_PUSHED');
-      throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
+      throw error;
     } finally { transport.close(); }
     if (outcome.outcome === 'commit-missing') throw configRefusal(commit !== null ? 'LOCK_COMMIT_UNREACHABLE' : 'STORE_REMOTE_PRIVATE');
     if (outcome.outcome === 'not-pushed') throw configRefusal('LOCK_STORE_NOT_PUSHED');
@@ -271,7 +275,8 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   const text = serializeConfig(next);
   // The lock: kept up to date in a shared project and in a project with a lock (3.9, 3.13).
   const current = lockFor(project), shared = isSharedProject(project).shared;
-  const writeLock = current.lock !== null || (op === 'use' && shared);
+  // Review C4: a lock is created only when the new config has a store entry; an existing lock is always kept up to date.
+  const writeLock = current.lock !== null || (op === 'use' && shared && storeEntries(next).length > 0);
   let lock: ConfigChangePlan['lock'] = null, authored: ConfigChangePlan['authored'] = [], hosts: string[] = [];
   if (writeLock) {
     const items = pairsOf(current.lock), wanted = new Set(storeEntries(next)), lockRemoves: string[] = [], lockAdds: string[] = [];
@@ -284,7 +289,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
         const needs = missing.map(p => { const [k, i] = p.split(' ') as [Kind, string]; return lockNeed(defs!, k, i); });
         const authoredNeeds = needs.filter(n => n.local !== null);
         if (authoredNeeds.length) {
-          const r = requestCount(authoredNeeds); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
+          const r = requestCount(authoredNeeds); requireRequestBudget(r); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
           hosts = ['api.github.com']; authored = authoredNeeds.map(n => ({ kind: n.kind, id: n.id, hash: n.local!.hash }));
         }
         for (const [pair, item] of await prove(defs, needs, input.commit ?? null, input, notes)) { items.set(pair, item); lockAdds.push(pair); }
@@ -299,7 +304,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     change: { op, kind, id, source }, created: read.state === 'absent',
     bowerloomFolder: op === 'adopt' && project.bowerloomIdentity === null ? 'create' : 'present',
     adds, removes, direct, config: { before: read.state === 'valid' ? { sha256: read.sha256, bytes: read.bytes } : null, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text },
-    lock, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, projectManifest: initial?.manifest ?? null,
+    lock, lockBefore: current.read, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, projectManifest: initial?.manifest ?? null,
     network: { hosts }, authored, detail, listed: initial?.listed ?? 0, notes, writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: sha(canonicalJson(body)) };
@@ -332,7 +337,7 @@ export function applyConfigChange(plan: ConfigChangePlan, revision: string, held
   held.assertHeld(project.dir);
   if (typeof revision !== 'string' || revision !== plan.revision) throw stale();
   const { revision: _r, ...body } = plan;
-  recheck(project, home, plan, plan.config.before, plan.lock?.before ?? (plan.lock === null ? undefined : null), body);
+  recheck(project, home, plan, plan.config.before, plan.lockBefore, body);
   serializeConfig(JSON.parse(plan.config.text) as ProjectConfig);
   if (plan.lock) serializeLock(JSON.parse(plan.lock.text) as ProjectLock);
   removeScratch(project.dir, plan.scratch);
@@ -383,6 +388,8 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   }
   const empty = !wanted.length && current.read === null;
   const items = pairsOf(current.lock), updated: LockUpdatePlan['updated'] = [], notes: string[] = [];
+  // Review F2: a rebuilt lock says so; nothing of the old file is kept.
+  if (rebuilt) notes.push('bowerloom.lock.json could not be read (LOCK_INVALID); it is rebuilt from your store. The old pins are dropped.');
   for (const pair of [...items.keys()]) if (!wanted.includes(pair)) { const [k, i] = pair.split(' ') as [Kind, string]; updated.push({ kind: k, id: i, change: 'removed', from: lockSourceLabel(items.get(pair)!), to: null }); items.delete(pair); }
   let defs: StoreDefinitions | null = null, authored: LockUpdatePlan['authored'] = [], hosts: string[] = [];
   if (wanted.length) {
@@ -410,7 +417,7 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
       prove.push(need);
     }
     if (prove.length) {
-      const r = requestCount(prove); notes.push(NETWORK_LINE(prove.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
+      const r = requestCount(prove); requireRequestBudget(r); notes.push(NETWORK_LINE(prove.length, r)); if (r > 60 && !input.tokenSet) notes.push(NO_TOKEN_LINE);
       hosts = ['api.github.com']; authored = prove.map(n => ({ kind: n.kind, id: n.id, hash: n.local!.hash }));
       for (const [pair, item] of await (async () => { const out = new Map<string, LockItem>(); const got = await proveNeeds(defs!, prove, input, notes); for (const [p, it] of got) out.set(p, it); return out; })()) {
         const [k, i] = pair.split(' ') as [Kind, string], old = items.get(pair) ?? null;

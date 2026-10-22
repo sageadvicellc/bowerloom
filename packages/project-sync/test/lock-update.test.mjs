@@ -96,3 +96,13 @@ test('11. a changed teams tag shows a teams change and counts as stale', async t
   const p = await plan(w, { storeTransport: storeTransport(repo) });
   assert.deepEqual(changes(p), ['skill house-style teams']); assert.equal(p.updated[0].from, 'research'); assert.equal(p.updated[0].to, 'every team');
 });
+
+test('F2. a lock that cannot be read is rebuilt, and the plan says the old pins are dropped', async t => {
+  const w = configWorld(t, { folder: true }), npm = npmPackage('tanstack-db');
+  await storeItem(w, 'skill', 'seed'); storePin(w, npm.entry); writeConfig(w, { skills: [{ id: 'tanstack-db', source: 'store' }] });
+  fs.writeFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), '<<<<<<< HEAD\n');
+  const p = await plan(w);
+  assert.ok(p.notes.includes('bowerloom.lock.json could not be read (LOCK_INVALID); it is rebuilt from your store. The old pins are dropped.'), p.notes.join('\n'));
+  const { renderLockUpdate } = await import('../../../dist/apps/cli/src/lock.js');
+  assert.match(renderLockUpdate(p), /could not be read \(LOCK_INVALID\); it is rebuilt from your store\. The old pins are dropped\./);
+});

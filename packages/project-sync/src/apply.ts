@@ -40,8 +40,9 @@ import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
 import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
-import { fetchStoreGit, readStoreCache } from './store-git.js';
-import { declaredAllowedTools } from './notices.js';
+import { fetchStoreGit, readStoreCache, requireRequestBudget } from './store-git.js';
+import { promptNotices } from './notices.js';
+import { verifyProjectPins } from '../../project-context/src/index.js';
 import { createBowerloomFolder } from '../../project-config/src/folder.js';
 import type { ProjectContext } from '../../project-context/src/types.js';
 
@@ -147,6 +148,7 @@ export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup:
 export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
   if (pin === null) throw stale();
+  await deps.beforeStoreRead?.({ kind: item.kind, id: item.id });
   let cached: { dir: string } | null = null;
   try { cached = readStoreCache(privateState.storeCacheRoot, item.kind, item.id, pin.hash); } catch { cached = null; }
   if (cached !== null) return { dir: cached.dir, fetched: false };
@@ -157,9 +159,13 @@ function storeText(project: string, kind: 'skill' | 'prompt', id: string, dir: s
   const read = kind === 'skill' ? readLocalSkill(project, 'skills/' + id, () => {}, { bowerloom: dir, origin: 'store' }) : readLocalPrompt(project, id, () => {}, { bowerloom: dir, origin: 'store' });
   return read.files.find(f => f.path === (kind === 'skill' ? 'SKILL.md' : `${id}.md`))?.text ?? '';
 }
-/** True when a skill fetched in this run declares allowed-tools that the approved plan did not show (decision A). */
+/**
+ * True when a lock-fetched skill can do more than text (allowed-tools, hooks, or shell lines) and the approved plan did not
+ * show exactly that (decision A, widened by review H1). It reads the bytes phase A has, fetched or put there by another run.
+ */
 export function needsReview(project: string, item: SyncItem, dir: string): boolean {
-  return item.allowedTools === undefined && declaredAllowedTools(storeText(project, 'skill', item.id, dir)) !== undefined;
+  const notices = promptNotices(storeText(project, 'skill', item.id, dir));
+  return notices.length > 0 && revisionOf(notices) !== revisionOf(item.notices ?? null);
 }
 export { storeText };
 
@@ -248,7 +254,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
       held.assertHeld(dir);
       const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps);
       if (got.fetched) fetched.push(item.id);
-      if (got.fetched && needsReview(dir, item, got.dir)) { review.push(item.id); continue; }
+      if (needsReview(dir, item, got.dir)) { review.push(item.id); continue; }
       sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: got.dir });
       continue;
     }
@@ -347,11 +353,15 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
       createPrivateFolders(plan, held, dir);
+      // Review L2: a run never makes more GitHub requests than the budget, checked again before any fetch.
+      requireRequestBudget(plan.network.requests);
       // Phase A: the private caches only.
       const got = await fetchSkillSources(plan, entries, held, deps);
       const stored = await fetchStoreOnly(plan, held, deps);
-      bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
+      // Review C2: the context that names the folder this run made, checked again before phase C writes.
+      const project = bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
       const children = await planSkillChildren(plan, got, deps, managed);
+      verifyProjectPins(project);
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, deps.signal);
       const byId = new Map(plan.items.map(i => [i.id, i]));
       return {

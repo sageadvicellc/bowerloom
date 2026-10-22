@@ -90,7 +90,8 @@ test('4. readStoreCache returns the rows; it refuses a link, a foreign owner, an
 function locked(t, files = { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Notes\n' }) {
   const dir = fs.mkdtempSync(path.join(testHome, 'store-repo-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const repo = buildFakeRepo('sageadvicellc', 'store', files, COMMIT, dir), { rows, hash } = authoredRows(FILES);
-  let tree; try { tree = repo.treeAt('skills/house-style'); } catch { tree = 'f'.repeat(40); }
+  // A repository without the item keeps a fixed tree id in the lock: the fixture names that case, nothing is caught.
+  const tree = files['skills/house-style/SKILL.md'] === undefined ? 'f'.repeat(40) : repo.treeAt('skills/house-style');
   const lockPin = { remote: REMOTE, commit: COMMIT, path: 'skills/house-style', tree, files: rows, hash };
   return { repo, lockPin, item: { kind: 'skill', id: 'house-style', requestDigest: hash, lockPin } };
 }
@@ -130,17 +131,64 @@ test('5. fetchStoreGit refuses a host outside the approved list, a changed hash,
   assert.deepEqual(fs.existsSync(s.roots.storeCacheRoot) ? fs.readdirSync(s.roots.storeCacheRoot).filter(n => !n.startsWith('.')) : [], []);
 });
 
-test('the fetch error table: network, a missing commit, unsafe content, a missing item, a rate limit, and an abort', async t => {
+const failing = fn => ({ signal: signal(), storeTransport: () => ({ get: fn, close() {} }) });
+const cacheEntries = s => fs.existsSync(s.roots.storeCacheRoot) ? fs.readdirSync(s.roots.storeCacheRoot) : [];
+test('fetch errors: a network failure gives SKILLS_OFFLINE', async t => {
   const s = state(t), l = locked(t);
-  const failing = (fn) => ({ signal: signal(), storeTransport: () => ({ get: fn, close() {} }) });
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(async () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); })), code('SKILLS_OFFLINE'));
+});
+test('fetch errors: a 404 on the commit request gives STORE_REMOTE_PRIVATE', async t => {
+  const s = state(t), l = locked(t);
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(async () => { throw manifestRefusal('SKILLS_ADD_NOT_FOUND'); })), code('STORE_REMOTE_PRIVATE'));
+});
+test('fetch errors: a rate limit keeps GITHUB_RATE_LIMITED', async t => {
+  const s = state(t), l = locked(t);
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(async () => { throw manifestRefusal('GITHUB_RATE_LIMITED'); })), code('GITHUB_RATE_LIMITED'));
+});
+test('fetch errors: a refused host keeps SKILLS_ADD_HOST_REFUSED', async t => {
+  const s = state(t), l = locked(t);
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(async () => { throw manifestRefusal('SKILLS_ADD_HOST_REFUSED'); })), code('SKILLS_ADD_HOST_REFUSED'));
-  const gone = locked(t, { 'skills/other/SKILL.md': SKILL });
-  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ ...fakeTransport(gone.repo.responses), close() {} }) }), code('LOCK_HASH_MISMATCH'));
-  const unsafe = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Notes\n', 'skills/house-style/x.png': 'x' });
-  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ ...fakeTransport(unsafe.repo.responses), close() {} }) }), code('LOCK_HASH_MISMATCH'));
-  const controller = new AbortController(); controller.abort();
+});
+test('fetch errors: an item the locked commit does not hold gives STORE_ITEM_GONE_AT_COMMIT', async t => {
+  const s = state(t), l = locked(t), gone = locked(t, { 'skills/other/SKILL.md': SKILL });
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ ...fakeTransport(gone.repo.responses), close() {} }) }), code('STORE_ITEM_GONE_AT_COMMIT'));
+});
+test('fetch errors: unsafe content is refused by the content check, before any blob is read', async t => {
+  const s = state(t), l = locked(t), unsafe = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Notes\n', 'skills/house-style/x.png': 'x' });
+  const urls = [], transport = fakeTransport(unsafe.repo.responses);
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
+  assert.equal(urls.some(u => u.includes('/blobs/')), false, 'the content check refused it, not the hash');
+});
+test('fetch errors: safe bytes with another hash are refused by the hash, after the blobs are read', async t => {
+  const s = state(t), l = locked(t), other = locked(t, { 'skills/house-style/SKILL.md': SKILL, 'skills/house-style/references/notes.md': '# Other\n' });
+  const urls = [], transport = fakeTransport(other.repo.responses);
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ get: (u, m, g) => { urls.push(u); return transport.get(u, m, g); }, close() {} }) }), code('LOCK_HASH_MISMATCH'));
+  assert.equal(urls.some(u => u.includes('/blobs/')), true);
+});
+test('fetch errors: an abort gives SKILLS_SYNC_INTERRUPTED', async t => {
+  const s = state(t), l = locked(t), controller = new AbortController(); controller.abort();
   await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: controller.signal, storeTransport: () => ({ ...fakeTransport(l.repo.responses), close() {} }) }), code('SKILLS_SYNC_INTERRUPTED'));
+});
+test('T2. a failure in the middle of the blobs leaves no store cache entry and no .tmp folder', async t => {
+  const s = state(t), l = locked(t), transport = fakeTransport(l.repo.responses); let blobs = 0;
+  await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], failing(async (u, m, g) => { if (u.includes('/blobs/') && ++blobs === 2) throw manifestRefusal('SKILLS_ADD_NETWORK'); return transport.get(u, m, g); })), code('SKILLS_OFFLINE'));
+  assert.deepEqual(cacheEntries(s), []);
+});
+test('T2. a failing rename into the store cache leaves no entry and no .tmp folder', async t => {
+  const s = state(t), l = locked(t), rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => { if (String(from).includes('/.tmp-skill-house-style-')) throw Object.assign(new Error('injected'), { code: 'EIO' }); return rename(from, to); });
+  syncBuiltinESMExports();
+  try { await assert.rejects(fetchStoreGit(l.item, s.roots, ['api.github.com'], { signal: signal(), storeTransport: () => ({ ...fakeTransport(l.repo.responses), close() {} }) })); }
+  finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.deepEqual(cacheEntries(s), []);
+});
+test('F10. readStoreCache refuses a prompt entry with an extra file or another top-level entry', async t => {
+  const s = state(t), files = [{ path: 'weekly-update.md', bytes: Buffer.from('Summarize.\n') }], { hash } = authoredRows(files);
+  const { dir } = await writeStoreCache(s.roots, 'prompt', 'weekly-update', hash, files, signal());
+  fs.writeFileSync(path.join(dir, 'prompts', 'other.md'), 'x\n', { mode: 0o600 });
+  assert.throws(() => readStoreCache(s.roots.storeCacheRoot, 'prompt', 'weekly-update', hash), code('SKILLS_STATE_UNSAFE'));
+  fs.rmSync(path.join(dir, 'prompts', 'other.md')); fs.mkdirSync(path.join(dir, 'skills'), { mode: 0o700 });
+  assert.throws(() => readStoreCache(s.roots.storeCacheRoot, 'prompt', 'weekly-update', hash), code('SKILLS_STATE_UNSAFE'));
+  fs.rmdirSync(path.join(dir, 'skills'));
+  assert.deepEqual(readStoreCache(s.roots.storeCacheRoot, 'prompt', 'weekly-update', hash).rows, authoredRows(files).rows);
 });

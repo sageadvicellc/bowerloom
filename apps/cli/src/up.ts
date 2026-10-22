@@ -27,7 +27,7 @@ import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sy
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { lstatSync } from 'node:fs';
 import { inspectStore } from '../../../packages/project-context/src/index.js';
-import { configRefusal, readConfig } from '../../../packages/project-config/src/index.js';
+import { readConfig, refusalWithNext } from '../../../packages/project-config/src/index.js';
 import type { ProjectConfig } from '../../../packages/project-config/src/index.js';
 import { readStoreDefinitions, resolveProject } from '../../../packages/project-sync/src/index.js';
 import type { StartupPlan } from '../../../packages/startup/src/index.js';
@@ -122,10 +122,12 @@ function configTeam(project: ProjectContext, home: string, value: string, config
   const listed = config.teams.find(t => t.id === value);
   if (listed) return { id: value, name: value === FIRST_TEAM && lstatOk(join(project.dir, '.bowerloom', 'brief.json')) ? firstTeamName(project) : value };
   const projectTeam = value === FIRST_TEAM ? lstatOk(join(project.dir, '.bowerloom', 'teams', FIRST_TEAM)) : (project.bowerloomIdentity !== null && (readAuthoringState(join(project.dir, '.bowerloom')).receipt?.value.items ?? []).some(i => i.kind === 'team' && i.id === value));
-  if (projectTeam) throw new DefinitionError('TEAM_NOT_SELECTED', `${configRefusal('TEAM_NOT_SELECTED').message} Next: bowerloom use team ${value} --project`);
+  if (projectTeam) throw refusalWithNext('TEAM_NOT_SELECTED', `bowerloom use team ${value} --project`);
   let storeTeam = false;
-  try { const found = inspectStore(home); storeTeam = found.state === 'store' && readStoreDefinitions(found.context).teams.has(value); } catch { storeTeam = false; }
-  if (storeTeam) throw new DefinitionError('TEAM_NOT_SELECTED', `${configRefusal('TEAM_NOT_SELECTED').message} Next: bowerloom use team ${value}`);
+  // Review F6: a store that cannot be read is named by its own code, never reported as a team that is missing.
+  try { const found = inspectStore(home); storeTeam = found.state === 'store' && readStoreDefinitions(found.context).teams.has(value); }
+  catch (e) { const c = codeOf(e); if (typeof c === 'string' && c.startsWith('STORE_')) throw e; storeTeam = false; }
+  if (storeTeam) throw refusalWithNext('TEAM_NOT_SELECTED', `bowerloom use team ${value}`);
   return null;
 }
 const lstatOk = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
@@ -248,7 +250,7 @@ export async function runUpCommand(args: readonly string[], cwd: string, home: s
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Spec 06, 3.19: one note for a missing or disagreeing lock.
-  if (!approval.json) { try { const project = discoverProject(cwd, home), r = resolveProject({ project, home, frozen: false }); if (r.lock.state === 'absent') write('Note: bowerloom.lock.json is missing.\n'); else if (r.lock.state === 'mismatch') write('Note: bowerloom.lock.json does not match bowerloom.json.\n'); } catch { /* No project yet, or the step names the refusal. */ } }
+  if (!approval.json) { try { const project = discoverProject(cwd, home), r = resolveProject({ project, home, frozen: false }); if (r.lock.state === 'absent') write('Note: bowerloom.lock.json is missing.\n'); else if (r.lock.state === 'mismatch') write('Note: bowerloom.lock.json does not match bowerloom.json.\n'); } catch (e) { /* Review F4: a refusal (no project yet) is named by the step; anything else is not hidden. */ if (!(e instanceof DefinitionError)) throw e; } }
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.
   if (next.step !== 'init' && (ctx.goal !== null || ctx.name !== null) && !approval.json) write('Note: this project is set up already, so up does not use --goal or --name. The project brief keeps its goal and name.\n');
   if (approval.approve !== undefined) {

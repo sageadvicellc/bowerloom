@@ -149,12 +149,13 @@ test('12. a plan with a stale lock carries the note; a shared project with store
   const w = configWorld(t, { folder: true });
   await storeItem(w, 'skill', 'house-style'); writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] });
   const repo = pushStore(w); writeLock(w, { skills: [lockOfRepo(w, repo, 'skill', 'house-style')] });
-  assert.deepEqual((await planSync(input(w))).notes, []);
+  const named = '  skill house-style comes from your store; this project asks for it';
+  assert.deepEqual((await planSync(input(w))).notes, [named]);
   editStore(w, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: Changed.\n---\nx\n');
-  assert.deepEqual((await planSync(input(w))).notes, ['The lock is out of date for skill house-style. Run bowerloom lock update.']);
+  assert.deepEqual((await planSync(input(w))).notes, ['The lock is out of date for skill house-style. Run bowerloom lock update.', named]);
   fs.rmSync(path.join(w.projectDir, 'bowerloom.lock.json'));
   fs.mkdirSync(path.join(w.projectDir, '.git'), { mode: 0o755 }); fs.writeFileSync(path.join(w.projectDir, '.git', 'config'), '[remote "origin"]\n\turl = https://github.com/o/app.git\n');
-  assert.deepEqual((await planSync(input(w))).notes, ['This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.']);
+  assert.deepEqual((await planSync(input(w))).notes, ['This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.', named]);
 });
 
 test('13. a local skill moved from the project to the store with equal bytes is up to date, and the catalog keeps local', async t => {

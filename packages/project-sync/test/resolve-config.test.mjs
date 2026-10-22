@@ -101,6 +101,7 @@ test('4 and 5. with no store, store entries resolve from the lock (a pinned item
   assert.equal(skill['house-style'].lockPin.hash.length, 64); assert.deepEqual(skill['house-style'].teams, ['ops']);
   assert.deepEqual(skill['missing-one'].hold, { code: 'STORE_ITEM_MISSING', next: 'Create it with bowerloom skill create missing-one --global, or run bowerloom unuse skill missing-one.' });
   assert.equal(r.lock.state, 'mismatch'); assert.equal(r.lock.code, 'LOCK_CONFIG_MISMATCH');
+  assert.ok(r.notes.includes('bowerloom.lock.json and bowerloom.json list different store items: skill missing-one. Run bowerloom lock update.'), r.notes.join('\n'));
 });
 
 test('6. a frozen run never reads the store: a store that refuses has no effect, and a live store that differs does not win', async t => {
@@ -162,10 +163,12 @@ test('11. a live item that differs from its lock item gives the stale-lock note,
   writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }] });
   writeLock(w, { skills: [authoredLockItem(w, 'skill', 'house-style')], prompts: [authoredLockItem(w, 'prompt', 'weekly-update')] });
   const fresh = resolveProject({ project: w.project(), home: w.home, frozen: false });
-  assert.deepEqual(fresh.notes, []); assert.equal(fresh.lock.state, 'valid');
+  // Review L3: a shared project names each store item its config asks for.
+  const named = ['  skill house-style comes from your store; this project asks for it', '  prompt weekly-update comes from your store; this project asks for it'];
+  assert.deepEqual(fresh.notes, named); assert.equal(fresh.lock.state, 'valid');
   editStore(w, 'skills/house-style/SKILL.md', '---\nname: house-style\ndescription: changed\n---\nchanged\n');
   const r = resolveProject({ project: w.project(), home: w.home, frozen: false });
-  assert.deepEqual(r.notes, ['The lock is out of date for skill house-style. Run bowerloom lock update.']);
+  assert.deepEqual(r.notes, ['The lock is out of date for skill house-style. Run bowerloom lock update.', ...named]);
   assert.equal(r.lock.state, 'stale');
   assert.equal(r.skills[0].resolvedFrom, 'store', 'the live store item installs');
 });

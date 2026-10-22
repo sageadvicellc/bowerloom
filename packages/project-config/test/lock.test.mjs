@@ -254,3 +254,10 @@ test('lists are sorted by id in byte order with one item per id, and ids follow 
   const reserved = example(); reserved.teams = [{ ...reserved.teams[0], id: 'first-team', authored: { ...reserved.teams[0].authored, path: 'teams/first-team' } }];
   assert.throws(() => parse(reserved), code('LOCK_INVALID'));
 });
+
+test('T6. lockAgrees reports a lock item the config does not list as removed', () => {
+  const lock = parse(example());
+  const config = parseConfig(Buffer.from(JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'],
+    skills: [{ id: 'house-style', source: 'store' }, { id: 'tanstack-db', source: 'store' }], prompts: [{ id: 'weekly-update', source: 'store' }], teams: [{ id: 'research', source: 'store' }] })));
+  assert.deepEqual(lockAgrees(lock, config), { agrees: false, added: [], removed: ['skill verification-loop'] });
+});

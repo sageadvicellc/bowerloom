@@ -38,6 +38,9 @@ import { resolveProject } from './resolve.js';
 import type { Resolved } from './resolve.js';
 import { authoredFolder, bowerloomBeforePhaseB, fetchSkillSources, fetchStoreOnly, originOf, planSkillChildren, reviewHold, storeText } from './apply.js';
 import { productionAcquirer } from './deps.js';
+import type { SyncDeps } from './deps.js';
+import { fetchRequests, requireRequestBudget } from './store-git.js';
+import { verifyProjectPins } from '../../project-context/src/index.js';
 import { readConfig } from '../../project-config/src/config.js';
 import { homedir } from 'node:os';
 import type { PromptItem } from './prompts.js';
@@ -92,7 +95,7 @@ export interface ApplyPlan {
   config: { sha256: string; bytes: number } | null; lock: { sha256: string; bytes: number } | null;
   store: StorePlanBinding | null;
   /** The hosts this run may contact: those of the skills sub-plan, and api.github.com for a locked authored prompt or team it fetches. */
-  network: { hosts: string[] };
+  network: { hosts: string[]; requests: number };
   /** Locked authored teams a frozen apply puts in the store cache, so that team adopt can read them. */
   storeFetch: StoreFetch[];
   notes: string[];
@@ -178,7 +181,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     }
     // Prompts: legacy, every registered prompt of the team; config, every listed prompt of the team, from where it resolves.
     const inTeam = (teams: readonly string[]) => team === null || teams.length === 0 || teams.includes(team);
-    const prompts: PromptItem[] = [];
+    const prompts: PromptItem[] = [], cacheNotes: string[] = [];
     let listedPrompts: string[] = [];
     if (resolved !== null && resolved.mode === 'legacy') {
       const registered = registeredPrompts(dir); listedPrompts = registered.map(p => p.id);
@@ -188,7 +191,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       for (const r of resolved.prompts) {
         if (!inTeam(r.teams)) continue;
         if (r.hold !== null) { prompts.push(heldPrompt(dir, r.id, r.teams, harnesses, r.hold, r)); continue; }
-        const item = classifyPrompt(dir, layout.itemsRoot, r.id, r.teams, harnesses, { origin: r.origin, via: r.via, resolvedFrom: r.resolvedFrom, storeDir: resolved.store.context?.dir ?? null, lockPin: r.lockPin, storeCacheRoot: layout.storeCacheRoot });
+        const item = classifyPrompt(dir, layout.itemsRoot, r.id, r.teams, harnesses, { origin: r.origin, via: r.via, resolvedFrom: r.resolvedFrom, storeDir: resolved.store.context?.dir ?? null, lockPin: r.lockPin, storeCacheRoot: layout.storeCacheRoot, notes: cacheNotes, offline: !frozen });
         // A plain apply never fetches: a prompt from the lock that this machine does not hold is held, and the others install.
         if (!frozen && item.storeCache === 'missing' && (item.action === 'install' || item.action === 'update')) { item.action = 'hold'; item.hold = offlineHold('prompt', item.id); }
         prompts.push(item);
@@ -226,7 +229,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       else { const agent = ignoreCarrier(agents.map(a => ({ ...a, kind: 'agent' }))); if (agent) agents.find(a => a.itemId === agent.itemId)!.action = 'update'; }
     }
     // A frozen run fetches each locked team the store cache lacks into the store cache, so that team adopt can read it.
-    const storeFetch: StoreFetch[] = frozen && resolved !== null ? resolved.teams.filter(t => t.resolvedFrom === 'lock' && t.lockPin !== null).map(t => ({ kind: 'team' as const, id: t.id, lockPin: t.lockPin!, storeCache: storeCacheStatus(layout, 'team', t.id, t.lockPin!.hash) })) : [];
+    const storeFetch: StoreFetch[] = frozen && resolved !== null ? resolved.teams.filter(t => t.resolvedFrom === 'lock' && t.lockPin !== null).map(t => ({ kind: 'team' as const, id: t.id, lockPin: t.lockPin!, storeCache: storeCacheStatus(layout, 'team', t.id, t.lockPin!.hash, cacheNotes) })) : [];
     const promptWork = prompts.filter(promptActionable), agentWork = agents.filter(agentActionable), create: string[] = [];
     const lockPrompts = promptWork.filter(p => p.resolvedFrom === 'lock');
     const authoredFetch = (skills?.items ?? []).some(i => isActionable(i) && i.storeCache === 'missing') || lockPrompts.some(p => p.storeCache === 'missing') || storeFetch.some(f => f.storeCache === 'missing');
@@ -236,14 +239,17 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       for (const id of [...skillWork.map(i => i.id), ...promptWork.map(p => p.itemId), ...agentWork.map(a => a.itemId)]) { const p = join(layout.itemsRoot, id); if (!exists(p)) create.push(p); }
     }
     const hosts = [...new Set([...(skills?.network.hosts ?? []), ...(frozen && (lockPrompts.length || storeFetch.length) ? ['api.github.com'] : [])])].sort();
+    // Review L2: the GitHub requests this run makes at most; a frozen run only fetches.
+    const requests = (skills?.network.requests ?? 0) + (frozen ? [...lockPrompts.flatMap(p => p.lockPin ? [p.lockPin] : []), ...storeFetch.map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0) : 0);
     const fromStore = (skills?.store ?? null) !== null || prompts.some(p => p.origin === 'store' && p.resolvedFrom === 'store');
     const body = {
       format: APPLY_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
       bowerloomFolder: project.bowerloomIdentity === null ? 'create' as const : 'present' as const, frozen,
       config: resolved?.config ?? null, lock: resolved && resolved.lock.sha256 !== null ? { sha256: resolved.lock.sha256, bytes: resolved.lock.bytes! } : null,
-      store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts }, storeFetch,
-      notes: [...(resolved?.notes ?? []), ...(frozen ? [FROZEN_LINE] : [])],
+      store: resolved !== null ? storeBinding(resolved, fromStore) : null, network: { hosts, requests }, storeFetch,
+      // Review F5: the skills planner's own notes (a store cache entry that fails verification) join the resolver's.
+      notes: [...new Set([...(resolved?.notes ?? []), ...(skills?.notes ?? []).filter(n => n !== FROZEN_LINE), ...cacheNotes])].concat(frozen ? [FROZEN_LINE] : []),
       harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0 || storeFetch.some(f => f.storeCache === 'missing'), pointer: applyPointer(harnesses),
@@ -267,7 +273,7 @@ const NO_FETCH: Acquirer = Object.freeze({
 });
 
 /** What applyProjectApply takes beside the plan input: test ports. `acquirer` and `storeTransport` serve a frozen apply only. */
-export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTransport?: () => PublicTransport & { close(): void } }
+export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTransport?: () => PublicTransport & { close(): void }; beforeStoreRead?: SyncDeps['beforeStoreRead'] }
 /**
  * Applies an approved apply plan. `revision` must equal the revision this run computes again under the lock.
  * `signal` is the person's interrupt: it is read between children, never inside one. A plain apply uses NO_FETCH; a frozen
@@ -278,7 +284,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
   if (input?.agentsOnly === true) throw usage();
   if (!(signal instanceof AbortSignal)) throw new TypeError('applyProjectApply needs a signal.');
   const managed = deps.managed ?? managedPort, lock = new AbortController();
-  const syncDeps = { acquirer: input.frozen === true ? deps.acquirer ?? productionAcquirer : NO_FETCH, signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}) };
+  const syncDeps = { acquirer: input.frozen === true ? deps.acquirer ?? productionAcquirer : NO_FETCH, signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}), ...(deps.beforeStoreRead ? { beforeStoreRead: deps.beforeStoreRead } : {}) };
   try {
     return await withProjectLock(input.project.dir, lock.signal, async held => {
       const { plan, entries } = await observeApply(input);
@@ -286,6 +292,8 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
       if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
       createPrivateFolders(plan, held, dir);
+      // Review L2: checked again before any fetch.
+      requireRequestBudget(plan.network.requests);
       // Phase A: the private caches only. Skills; locked prompts; locked teams. A lock-fetched item with a notice the plan
       // did not show is held for review and gets no child.
       const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, 'bowerloom apply') : null;
@@ -295,12 +303,15 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
         if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); promptDirs.set(item.id, plan.store.dir); continue; }
         held.assertHeld(dir);
         const folder = await authoredFolder({ kind: 'prompt', id: item.id, requestDigest: item.lockPin?.hash ?? null, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, syncDeps);
-        if (item.notices === null && promptNotices(storeText(dir, 'prompt', item.id, folder.dir)).length) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(), ...originOf(item) }); continue; }
+        // Decision A, widened by review H1: held when its notices are not exactly the ones the approved plan showed.
+        const notices = promptNotices(storeText(dir, 'prompt', item.id, folder.dir));
+        if (notices.length && revisionOf(notices) !== revisionOf(item.notices)) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(), ...originOf(item) }); continue; }
         promptDirs.set(item.id, folder.dir);
       }
       await fetchStoreOnly(plan, held, syncDeps);
       const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
-      bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + agents.length > 0);
+      // Review C2: the context that names the folder this run made, checked again before phase C writes.
+      const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + agents.length > 0);
       // Phase B for the skills, then the prompts, then the agents. No project write.
       const children: Child[] = plan.skills && got ? await planSkillChildren(plan.skills, got, syncDeps, managed, 'bowerloom apply') : [];
       for (const item of promptChildren) {
@@ -322,6 +333,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkAgentChild(dir, item, req, child, plan.allow) });
       }
+      verifyProjectPins(context);
       // Phase C: every child, in order, with a revision planned right before it in this run.
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, 'bowerloom apply');
       const project = { origin: 'project' as const, resolvedFrom: 'project' as const };

@@ -26,7 +26,7 @@ import { readConfig } from '../../project-config/src/config.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, lockAgrees, lockItem, readLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
-import { isSharedProject } from '../../project-config/src/shared.js';
+import { isSharedProject, unknownSharedNote } from '../../project-config/src/shared.js';
 import { localItemRows } from './store-items.js';
 
 export type ItemKind = 'skill' | 'prompt' | 'team';
@@ -134,7 +134,9 @@ function differs(defs: StoreDefinitions, kind: ItemKind, id: string, item: LockI
   return liveAuthoredDiffers(storeDir, kind, id, kind === 'team' ? [] : live.teams, item.authored);
 }
 function liveAuthoredDiffers(storeDir: string, kind: ItemKind, id: string, teams: readonly string[], pin: AuthoredPin): boolean {
-  let hash: string; try { hash = localItemRows(storeDir, kind, id).hash; } catch { return true; }
+  // Review F8: only an item that is not there differs quietly; any other failure to read it is reported.
+  if (lstatOrNull(join(storeDir, kind === 'prompt' ? `prompts/${id}.md` : `${kind}s/${id}`)) === null) return true;
+  const hash = localItemRows(storeDir, kind, id).hash;
   return hash !== pin.hash || canonicalJson([...teams].sort(compare)) !== canonicalJson(pin.teams ?? []);
 }
 
@@ -212,17 +214,22 @@ export function resolveProject(input: ResolveInput): Resolved {
       const teams = fromLock.authored.teams ?? [];
       return { ...base, resolvedFrom: 'lock', entry: kind === 'skill' ? localEntry(e.id, teams) : null, teams: [...teams], lockPin: fromLock.authored, hold: null };
     }
-    return { ...base, resolvedFrom: 'store', entry: null, teams: [], hold: { code: 'STORE_ITEM_MISSING', next: storeMissingNext(kind, e.id) } };
+    // Review F7: when the store refused, the store is what to look at first.
+    return { ...base, resolvedFrom: 'store', entry: null, teams: [], hold: { code: 'STORE_ITEM_MISSING', next: storeCode !== null ? 'Run bowerloom store status.' : storeMissingNext(kind, e.id) } };
   };
   const skills = config.skills.map(e => resolveEntry('skill', e)), prompts = config.prompts.map(e => resolveEntry('prompt', e)), teams = config.teams.map(e => resolveEntry('team', e));
 
-  const shared = isSharedProject(project).shared, notes: string[] = [];
+  const sharedState = isSharedProject(project), shared = sharedState.shared, notes: string[] = [];
   if (lock !== null && lockInfo.state === 'valid') {
     if (!lockAgrees(lock, config).agrees) lockInfo = { ...lockInfo, state: 'mismatch', code: 'LOCK_CONFIG_MISMATCH' };
     else if (stale.length) lockInfo = { ...lockInfo, state: 'stale' };
   } else if (lock === null && lockInfo.state !== 'invalid') lockInfo = { ...lockInfo, state: needStore && shared ? 'absent' : 'not-used' };
   if (stale.length) notes.push(STALE_NOTE(stale));
   if (lockInfo.state === 'absent') notes.push(SHARED_NO_LOCK_NOTE);
+  if (lockInfo.state === 'mismatch' && lock !== null) { const a = lockAgrees(lock, config); notes.push(`bowerloom.lock.json and bowerloom.json list different store items: ${[...a.added, ...a.removed].join(', ')}. Run bowerloom lock update.`); }
+  if (sharedState.unknown !== undefined) notes.push(unknownSharedNote(sharedState.unknown));
+  // Review L3: in a shared project, each store item the config asks for is named, so private store content entering a clone shows.
+  if (shared) for (const [name, kind] of KINDS) for (const e of config[name]) if (e.source === 'store') notes.push(`  ${kind} ${e.id} comes from your store; this project asks for it`);
 
   const listed = (name: 'skills' | 'prompts' | 'teams') => new Set(config[name].filter(e => e.source === 'project').map(e => e.id));
   const unselected = {

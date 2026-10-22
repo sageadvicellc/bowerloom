@@ -32,5 +32,6 @@ test('a recovery plan finishes an adopt whose config write was lost; with neithe
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')).teams, [{ id: 'research', source: 'project' }]);
   const other = project(w, 'other', config); renameSync(w.store, join(w.base, 'store-moved'));
   const missing = run(other, ['team', 'adopt', 'research', '--json'], w.env);
-  assert.equal(errorCode(missing.stderr), 'STORE_ITEM_MISSING'); assert.match(errorMessage(missing.stderr), /Run bowerloom apply --frozen, then bowerloom team adopt research again\./);
+  assert.equal(errorCode(missing.stderr), 'STORE_ITEM_MISSING'); assert.doesNotMatch(errorMessage(missing.stderr), /Next:/);
+  assert.equal((JSON.parse(missing.stderr) as { error: { next?: string } }).error.next, 'Run bowerloom apply --frozen, then bowerloom team adopt research again.');
 });

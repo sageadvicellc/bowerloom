@@ -352,6 +352,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   LOCK_STORE_NOT_PUSHED: { sentence: 'A teammate can fetch only what you pushed, and your store differs from the pushed copy.', next: 'Commit and push the store, then run the command again.' },
   LOCK_COMMIT_UNREACHABLE: { sentence: 'The lock needs a commit that GitHub has, and GitHub does not have this one.', next: 'Push the store, or pass --commit <sha> of a pushed commit.' },
   LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.lock.json' },
+  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public.' },
+  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'bowerloom lock verify' },
+  STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
   GITHUB_RATE_LIMITED: { sentence: 'GitHub allows about 60 requests an hour without a token and about 5,000 with one.', next: 'Wait until the limit resets, at most an hour. Without a token, set BOWERLOOM_GITHUB_TOKEN to raise the limit (see bowerloom help store).' },
   ITEM_REVIEW_REQUIRED: { sentence: 'Bowerloom shows what an item can do before it installs it.', next: 'Run bowerloom apply --frozen again to review it.' },
   CONFIG_UNSAFE: { sentence: 'Bowerloom will not trust a bowerloom.json that other people or links can change.', next: 'ls -l bowerloom.json' },
@@ -450,6 +453,8 @@ export interface RefusalDetail {
   readonly raisedByNewCommand?: boolean;
   /** A fixed hint name the error carries, for words that are more exact than its code alone. */
   readonly hint?: typeof LEFTOVER_TEMP_LINK | typeof STORE_LIMIT;
+  /** Review C5: the error's own next step, which replaces the generic one of its code. */
+  readonly next?: string;
 }
 /** The hint of a MANIFEST_UNSAFE whose second link is a leftover `.skills.json.*.tmp` (skill-manifest/src/add.ts). */
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
@@ -458,6 +463,7 @@ const STORE_LIMIT = 'store-limit';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
 function wordsFor(code: string, detail: RefusalDetail): Words {
+  if (typeof detail.next === 'string' && detail.next.length > 0 && Object.hasOwn(REFUSALS, code)) return { sentence: REFUSALS[code]!.sentence, next: detail.next };
   if (Object.hasOwn(GATE_REFUSALS, code)) return detail.raisedByNewCommand === true ? GATE_REFUSALS[code as GateCode] : code === 'APPROVAL_REQUIRED' ? PLUMBING_APPROVAL : GENERIC;
   if (code === 'MANIFEST_LIMIT' && detail.hint === STORE_LIMIT) return { sentence: 'This beta keeps the store skills.json small: 256 skills and 4 MiB at most.', next: 'bowerloom skills check --global' };
   if (code === 'MANIFEST_UNSAFE' && detail.hint === LEFTOVER_TEMP_LINK) {
@@ -489,7 +495,9 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}) };
+  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
+  const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
-  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message } })}\n`, exitCode };
+  // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
+  return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}) } })}\n`, exitCode };
 }

@@ -51,7 +51,17 @@ export function sourceTag(item: { origin: 'store' | 'project' | null; resolvedFr
 /** One sync item in plain words, its id padded to `width`. `apply` (M6) reuses it. */
 export function itemLine(item: SyncItem, width: number): string[] {
   const base = itemLineBase(item, width), lines = base.length ? [`${base[0]}${sourceTag(item)}`, ...base.slice(1)] : base;
-  return item.allowedTools !== undefined && item.action !== 'hold' && item.state !== 'up-to-date' ? [...lines, `  ${''.padEnd(width)} ${allowedToolsLine(item.allowedTools).trim()}`] : lines;
+  const tools = item.allowedTools !== undefined && item.action !== 'hold' && item.state !== 'up-to-date' ? [`  ${''.padEnd(width)} ${allowedToolsLine(item.allowedTools).trim()}`] : [];
+  return [...lines, ...tools, ...skillNoticeLine(item)];
+}
+const SKILL_NOTICE_WORDS: Record<string, string> = { 'allowed-tools': 'sets allowed-tools in its frontmatter', hooks: 'registers hooks that keep running for the rest of the session', 'shell-lines': 'runs shell commands marked with !' };
+/** Review H1: a store skill that can do more than text is named, as a prompt is; allowed-tools a pin shows is not repeated. */
+function skillNoticeLine(item: SyncItem): string[] {
+  const notices = (item.notices ?? []).filter(n => !(n === 'allowed-tools' && item.allowedTools !== undefined));
+  if (item.origin !== 'store' || !notices.length || (item.action !== 'install' && item.action !== 'update')) return [];
+  const what = notices.map(n => SKILL_NOTICE_WORDS[n] ?? n).reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
+  const where = item.resolvedFrom === 'lock' && item.lockPin ? item.lockPin.remote.slice('https://'.length) : `~/.bowerloom/skills/${item.id}`;
+  return [`  Note: skill ${item.id} ${what}. Review ${where}.`];
 }
 function itemLineBase(item: SyncItem, width: number): string[] {
   const id = item.id.padEnd(width), pin = item.pin ?? '';

@@ -31,6 +31,9 @@ const MESSAGES = {
   LOCK_STORE_NOT_PUSHED: 'The pushed copy of an item differs from the item in your store.',
   LOCK_COMMIT_UNREACHABLE: 'The commit is not on the store remote.',
   LOCK_WRITE_UNCONFIRMED: 'bowerloom.lock.json was written, but it changed before it was read back.',
+  // Review of PR 94.
+  STORE_ITEM_GONE_AT_COMMIT: 'The locked commit does not hold this item.',
+  GITHUB_REQUEST_BUDGET: 'This run would make more GitHub requests than Bowerloom allows in one run.',
 } as const;
 
 export type ConfigRefusalCode = keyof typeof MESSAGES;
@@ -63,6 +66,15 @@ export function notShareable(cause: NotShareableCause): DefinitionError {
 export function lockMismatch(pairs: readonly string[]): DefinitionError {
   const shown = pairs.filter(p => KIND_ID.test(p)), head = shown.slice(0, 8).join(', '), more = shown.length > 8 ? `, and ${shown.length - 8} more` : '';
   const error = new DefinitionError('LOCK_CONFIG_MISMATCH', shown.length ? `${MESSAGES.LOCK_CONFIG_MISMATCH} ${head}${more}.` : MESSAGES.LOCK_CONFIG_MISMATCH); own.add(error); return error;
+}
+/**
+ * Review C5: the refusal for `code` with its own next step, carried as the property `next` and never in the message, so
+ * the plain words print one Next: line, as SKILLS_OFFLINE's held items do.
+ */
+export function refusalWithNext(code: ConfigRefusalCode, next: string): DefinitionError {
+  const error = configRefusal(code);
+  Object.defineProperty(error, 'next', { value: next, enumerable: false });
+  return error;
 }
 export function refuse(code: ConfigRefusalCode, message?: string): never { throw configRefusal(code, message); }
 export const isConfigRefusal = (error: unknown): error is DefinitionError & { code: ConfigRefusalCode } =>

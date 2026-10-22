@@ -29,6 +29,7 @@ const MESSAGES = {
   PROJECT_LOCKED: 'Another Bowerloom command is changing this project. Wait for it to finish, then run the command again.',
   TEAM_NOT_FOUND: 'This project has no team with that id. Run bowerloom ls teams to see the teams.',
   GITHUB_RATE_LIMITED: 'api.github.com answered 429, or 403 with no requests left.',
+  GITHUB_REQUEST_FAILED: 'api.github.com refused the request.',
 } as const;
 
 export type ManifestRefusalCode = keyof typeof MESSAGES;
@@ -50,6 +51,11 @@ export function limitRefusal(limits: { readonly skills: number }): DefinitionErr
   const error = new DefinitionError('MANIFEST_LIMIT', 'The manifest is too large. It holds at most 256 skills and 4 MiB.'); own.add(error);
   Object.defineProperty(error, 'hint', { value: 'store-limit', enumerable: false });
   return error;
+}
+/** GITHUB_REQUEST_FAILED naming the HTTP status: a 401 or 403 that is not the request limit, or a 5xx (spec 06 review F3). */
+export function githubRequestFailed(status: number): DefinitionError {
+  const shown = Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0;
+  const error = new DefinitionError('GITHUB_REQUEST_FAILED', `${MESSAGES.GITHUB_REQUEST_FAILED} HTTP status ${shown}.`); own.add(error); return error;
 }
 /** Refuses with the scope-aware MANIFEST_LIMIT unless `ok`. */
 export function requireLimit(ok: unknown, limits: { readonly skills: number }): asserts ok { if (!ok) throw limitRefusal(limits); }

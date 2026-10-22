@@ -37,7 +37,9 @@ import type { CacheLookup, PinnedRequest } from './cache-index.js';
 import { managedCode, outward, syncError } from './refusal.js';
 import { resolveProject } from './resolve.js';
 import type { Resolved, ResolvedItem } from './resolve.js';
-import { readStoreCache } from './store-git.js';
+import { fetchRequests, faultNote, probeStoreCache } from './store-git.js';
+import { promptNotices } from './notices.js';
+import type { PromptNotice } from './notices.js';
 import { declaredAllowedTools } from './notices.js';
 import { projectRefusal } from '../../project-context/src/index.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
@@ -91,6 +93,8 @@ export interface SyncItem {
   lockPin: AuthoredPin | null;
   /** For an authored item from the lock: whether the store cache holds it now. Shown, not bound. */
   storeCache: 'held' | 'missing' | null;
+  /** Review H1: what a store skill's SKILL.md can do beyond text, as a prompt's notices. Null until a lock-fetched skill is on this machine. Bound. */
+  notices?: PromptNotice[] | null;
 }
 /** An authored lock item a run fetches into the store cache and does not install (3.16): a prompt for `skills sync`, a team for a frozen run. */
 export interface StoreFetch { kind: 'prompt' | 'team'; id: string; lockPin: AuthoredPin; storeCache: 'held' | 'missing' | null }
@@ -119,7 +123,7 @@ export interface SyncPlan {
    * `required`: true when a pin is not in the cache now, so the run will read the network unless another project
    * fills the cache first. Shown, not bound.
    */
-  network: { required: boolean; hosts: string[] };
+  network: { required: boolean; hosts: string[]; requests: number };
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
 export interface StorePlanBinding { dir: string; identity: DirectoryIdentity; skills: { sha256: string; bytes: number } | null; authoring: { sha256: string; bytes: number } | null }
@@ -296,7 +300,9 @@ export const driftNext = (paths: string[], source: string | null = null) => sour
   ? `Undo your edits in ${paths.join(', ')} (to keep them, put them in ${source}, the source of the copies), then run bowerloom skills sync. Sync never overwrites a changed copy.`
   : `Undo your edits in ${paths.join(', ')} (or copy them into a skill of your own with bowerloom skill create <name>), then run bowerloom skills sync. Sync never overwrites a changed copy.`;
 
-interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: Harness[]; storeDir: string | null }
+interface ItemContext { input: SyncInput; manifest: Manifest; layout: StateLayout; ignore: 'absent' | 'exact'; target: Harness[]; storeDir: string | null; notes: string[]; offline: boolean }
+/** The hold of an item whose store cache entry failed verification in a run that cannot fetch (review F5). */
+const faultHold = (code: string): { code: string; next: string } => ({ code, next: 'Run bowerloom apply --frozen, or bowerloom skills sync.' });
 /** The paths of the item surfaces that differ from the closest committed receipt: what a person changed. */
 export function driftedPaths(project: string, stateDir: string, id: string): string[] {
   let best: string[] | null = null;
@@ -312,13 +318,12 @@ export function driftedPaths(project: string, stateDir: string, id: string): str
 }
 interface Classified { item: SyncItem; pinned: PinnedRequest | null }
 /** Where an item's bytes are read at plan time: the project, the live store, or a store cache folder (null: not on this machine). */
-function sourceOf(r: ResolvedItem, ctx: ItemContext): { origin: 'project' | 'store'; dir: string | null } {
-  if (r.origin === 'project') return { origin: 'project', dir: null };
-  if (r.resolvedFrom === 'store') return { origin: 'store', dir: ctx.storeDir };
-  const pin = r.lockPin!;
-  let cached: { dir: string } | null = null;
-  try { cached = readStoreCache(ctx.layout.storeCacheRoot, 'skill', r.id, pin.hash); } catch { cached = null; }
-  return { origin: 'store', dir: cached?.dir ?? null };
+function sourceOf(r: ResolvedItem, ctx: ItemContext): { origin: 'project' | 'store'; dir: string | null; fault: { code: string; key: string } | null } {
+  if (r.origin === 'project') return { origin: 'project', dir: null, fault: null };
+  if (r.resolvedFrom === 'store') return { origin: 'store', dir: ctx.storeDir, fault: null };
+  const probe = probeStoreCache(ctx.layout.storeCacheRoot, 'skill', r.id, r.lockPin!.hash);
+  if (probe.fault) ctx.notes.push(faultNote(probe.fault.key));
+  return { origin: 'store', ...probe };
 }
 /** The words for the source of a store skill's copies, for drift and read holds. */
 const storeWhere = (r: ResolvedItem): string | null => r.origin === 'project' ? null : r.resolvedFrom === 'store' ? `~/.bowerloom/skills/${r.id}` : null;
@@ -328,19 +333,21 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   const pinned = kind === 'local' ? null : entryRequest(entry as PinnedEntry);
   const authoredLock = kind === 'local' && r.resolvedFrom === 'lock' && r.lockPin !== null;
   let hold: SyncItem['hold'] = null, heldCode: string | null = null, state: ItemState = 'drift', action: ItemAction = 'hold', previous: ManagedItemReceipt | null = null;
-  let harnesses = [...ctx.target], allowedTools: string | undefined, storeCache: SyncItem['storeCache'] = null;
+  let harnesses = [...ctx.target], allowedTools: string | undefined, storeCache: SyncItem['storeCache'] = null, notices: PromptNotice[] | null | undefined, fault: { code: string; key: string } | null = null;
   // The material every copy gets: the pinned inventory, what the authored folder holds now, or the rows of the lock.
   let files: InventoryRow[] = [];
   if (pinned) files = byPath(pinned.request.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })));
   else {
     const src = sourceOf(r, ctx), where = storeWhere(r) ?? `.bowerloom/skills/${id}`;
+    fault = src.fault;
     if (authoredLock) storeCache = src.dir === null ? 'missing' : 'held';
-    if (authoredLock && src.dir === null) files = byPath(r.lockPin!.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })));
+    // Review H1: what a lock-fetched skill can do shows only once its bytes are on this machine; until then it is null.
+    if (authoredLock && src.dir === null) { files = byPath(r.lockPin!.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes }))); notices = null; }
     else {
       try {
         const read = src.origin === 'store' ? readLocalSkill(dir, 'skills/' + id, () => {}, { bowerloom: src.dir!, origin: 'store' }) : readLocalSkill(dir, 'skills/' + id, () => {});
         files = [...read.inventory];
-        if (src.origin === 'store') { const skill = read.files.find(f => f.path === 'SKILL.md'); if (skill) allowedTools = declaredAllowedTools(skill.text); }
+        if (src.origin === 'store') { const skill = read.files.find(f => f.path === 'SKILL.md'); if (skill) { allowedTools = declaredAllowedTools(skill.text); notices = promptNotices(skill.text); } }
       } catch (e) { hold = { code: managedCode(e), next: `Check ${where}: it must be a folder with a SKILL.md, of plain text files you own, with no links or hidden files. Then run bowerloom skills sync.` }; }
     }
   }
@@ -389,6 +396,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
     const keep = previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder';
     hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(id, keep, 'bowerloom skills sync') };
   }
+  if (fault !== null && ctx.offline && hold === null && (action === 'install' || action === 'update')) hold = faultHold(fault.code);
   if (hold !== null) action = 'hold';
   const tools = kind !== 'local' ? (entry as PinnedEntry).skill.allowedTools : allowedTools;
   return {
@@ -399,6 +407,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
       previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold,
       ...(tools !== undefined ? { allowedTools: tools } : {}),
       origin: r.origin, via: [...r.via], resolvedFrom: r.resolvedFrom, lockPin: authoredLock ? r.lockPin : null, storeCache,
+      ...(notices !== undefined ? { notices } : {}),
     },
   };
 }
@@ -459,7 +468,7 @@ export function bindPrivateState<T extends { root: string; create: string[]; pin
  */
 export function syncBinding(body: Omit<SyncPlan, 'revision'>): unknown {
   return {
-    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts },
+    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts, requests: body.network.requests },
     // Spec 06, 4.4: whether the store cache holds an authored item now is dropped too; its hash stays.
     items: body.items.map(i => ({ ...i, state: i.state === 'cached' ? 'needs-fetch' : i.state, cacheOperationId: null, cache: null, storeCache: null })),
     storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })),
@@ -477,8 +486,10 @@ export function requireReadableLock(resolved: Resolved): void {
   if (resolved.mode === 'config' && resolved.lock.state === 'invalid') throw configRefusal((resolved.lock.code ?? 'LOCK_INVALID') as 'LOCK_INVALID');
 }
 /** The store cache status of an authored lock item: `held` when its folder re-verifies, else `missing`. */
-export function storeCacheStatus(layout: { storeCacheRoot: string }, kind: 'skill' | 'prompt' | 'team', id: string, hash: string): 'held' | 'missing' {
-  try { return readStoreCache(layout.storeCacheRoot, kind, id, hash) === null ? 'missing' : 'held'; } catch { return 'missing'; }
+export function storeCacheStatus(layout: { storeCacheRoot: string }, kind: 'skill' | 'prompt' | 'team', id: string, hash: string, notes?: string[]): 'held' | 'missing' {
+  const probe = probeStoreCache(layout.storeCacheRoot, kind, id, hash);
+  if (probe.fault && notes) notes.push(faultNote(probe.fault.key));
+  return probe.dir === null ? 'missing' : 'held';
 }
 const FROZEN_LINE = 'Frozen: installing only what bowerloom.lock.json records.';
 export const offlineHold = (kind: 'skill' | 'prompt', id: string): { code: string; next: string } => ({ code: 'SKILLS_OFFLINE', next: 'Run bowerloom apply --frozen, or bowerloom skills sync.' });
@@ -504,7 +515,7 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     const layout = stateLayout(input), storeDir = resolved.store.context?.dir ?? null;
     // When sync and apply read the live store, the private state and the store must not be inside one another.
     if (resolved.store.context !== null && storeStateNested(resolved.store.context, resolved.store.context.dir, input.stateRoot, layout.pins)) throw projectRefusal('STORE_STATE_NESTED');
-    const ctx: ItemContext = { input, manifest, layout, ignore, target, storeDir };
+    const ctx: ItemContext = { input, manifest, layout, ignore, target, storeDir, notes: [], offline: input.offline || (input.apply !== undefined && !frozen) };
     const inTeam = (teams: readonly string[]) => input.team === null || teams.length === 0 || teams.includes(input.team);
     const entries = new Map(manifest.skills.map(e => [e.id, e]));
     const classified: Classified[] = [], items: SyncItem[] = [];
@@ -544,8 +555,8 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     // Authored lock items this run only puts in the store cache: prompts for skills sync, teams for a frozen run.
     const storeFetch: StoreFetch[] = [];
     if (!input.apply && !input.offline && resolved.mode === 'config') {
-      for (const r of resolved.prompts) if (r.resolvedFrom === 'lock' && r.lockPin !== null && inTeam(r.teams)) storeFetch.push({ kind: 'prompt', id: r.id, lockPin: r.lockPin, storeCache: storeCacheStatus(layout, 'prompt', r.id, r.lockPin.hash) });
-      if (frozen) for (const r of resolved.teams) if (r.resolvedFrom === 'lock' && r.lockPin !== null) storeFetch.push({ kind: 'team', id: r.id, lockPin: r.lockPin, storeCache: storeCacheStatus(layout, 'team', r.id, r.lockPin.hash) });
+      for (const r of resolved.prompts) if (r.resolvedFrom === 'lock' && r.lockPin !== null && inTeam(r.teams)) storeFetch.push({ kind: 'prompt', id: r.id, lockPin: r.lockPin, storeCache: storeCacheStatus(layout, 'prompt', r.id, r.lockPin.hash, ctx.notes) });
+      if (frozen) for (const r of resolved.teams) if (r.resolvedFrom === 'lock' && r.lockPin !== null) storeFetch.push({ kind: 'team', id: r.id, lockPin: r.lockPin, storeCache: storeCacheStatus(layout, 'team', r.id, r.lockPin.hash, ctx.notes) });
     }
     const work = items.filter(actionable), create: string[] = [];
     // The machine cache is made for any fetch (its lock covers the store cache too), the store cache only for an authored one.
@@ -567,8 +578,9 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
       store: storeBinding(resolved, fromStore),
       harnesses: target, team: input.team, offline: input.offline,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
-      managed: { ignore }, items, storeFetch, notes: [...resolved.notes, ...(frozen ? [FROZEN_LINE] : [])],
-      network: { required: needsFetch, hosts: kinds },
+      managed: { ignore }, items, storeFetch, notes: [...resolved.notes, ...ctx.notes, ...(frozen ? [FROZEN_LINE] : [])],
+      // Review L2: the GitHub requests of the authored items of this run, whether or not the store cache holds them now.
+      network: { required: needsFetch, hosts: kinds, requests: [...items.filter(i => actionable(i) && i.lockPin !== null).map(i => i.lockPin!), ...storeFetch.map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0) },
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     const plan = freezeSkillData({ ...body, revision: revisionOf(syncBinding(body)) }) as SyncPlan;

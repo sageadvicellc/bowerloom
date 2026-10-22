@@ -17,7 +17,7 @@ import { readAuthoringState } from '../../project-authoring/src/state.js';
 import type { ItemSurface, SyncItem } from './plan.js';
 import { MIN_FREE_BYTES, beforePins, driftNext, driftedPaths, historyNext, readCatalog, recoverNext, strayHold, union } from './plan.js';
 import { managedCode, syncError } from './refusal.js';
-import { readStoreCache } from './store-git.js';
+import { faultNote, probeStoreCache } from './store-git.js';
 import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { locateV2 } from '../../managed-skills/src/v2-observed.js';
 import type { ItemClosure } from '../../managed-skills/src/v2-types.js';
@@ -62,6 +62,10 @@ export interface PromptSource {
   lockPin: AuthoredPin | null;
   /** The store cache, for a prompt from the lock. */
   storeCacheRoot: string;
+  /** Review F5: the plan notes, which name a store cache entry that fails verification. */
+  notes?: string[];
+  /** Review F5: a run that fetches nothing holds an item whose store cache entry fails verification, with that code. */
+  offline?: boolean;
 }
 const PROJECT_SOURCE = { origin: 'project' as const, via: [] as string[], resolvedFrom: 'project' as const, lockPin: null, storeCache: null };
 
@@ -102,9 +106,11 @@ export const missingPromptHold = (id: string): { code: string; next: string } =>
 });
 
 /** The store folder a prompt is read from now: the live store, or its store cache folder; null when it is not on this machine. */
-function promptFolder(id: string, src: PromptSource): string | null {
-  if (src.resolvedFrom === 'store') return src.storeDir;
-  try { return readStoreCache(src.storeCacheRoot, 'prompt', id, src.lockPin!.hash)?.dir ?? null; } catch { return null; }
+function promptFolder(id: string, src: PromptSource): { dir: string | null; fault: { code: string; key: string } | null } {
+  if (src.resolvedFrom === 'store') return { dir: src.storeDir, fault: null };
+  const probe = probeStoreCache(src.storeCacheRoot, 'prompt', id, src.lockPin!.hash);
+  if (probe.fault) src.notes?.push(faultNote(probe.fault.key));
+  return probe;
 }
 /** A prompt the resolver holds (CONFIG_ITEM_MISSING, STORE_ITEM_MISSING): no definition to read, and the copies stay. */
 export function heldPrompt(project: string, id: string, teams: string[], target: Harness[], hold: { code: string; next: string }, r: Pick<PromptSource, 'origin' | 'via' | 'resolvedFrom'>): PromptItem {
@@ -117,11 +123,11 @@ export function heldPrompt(project: string, id: string, teams: string[], target:
 }
 /** Classifies one prompt: a registered project prompt, or, in a config project, a store prompt live or from the lock. Reads only. */
 export function classifyPrompt(project: string, itemsRoot: string, id: string, teams: string[], target: Harness[], src?: PromptSource): PromptItem {
-  let files: InventoryRow[], notices: PromptNotice[] | null, storeCache: PromptItem['storeCache'] = null;
+  let files: InventoryRow[], notices: PromptNotice[] | null, storeCache: PromptItem['storeCache'] = null, fault: { code: string } | null = null;
   const fromStore = src !== undefined && src.origin === 'store', where = fromStore ? (src.resolvedFrom === 'store' ? `~/.bowerloom/prompts/${id}.md` : `the store at ${src.lockPin!.remote.slice('https://'.length)}`) : `.bowerloom/prompts/${id}.md`;
   const tag = src === undefined ? PROJECT_SOURCE : { origin: src.origin, via: [...src.via], resolvedFrom: src.resolvedFrom, lockPin: src.resolvedFrom === 'lock' ? src.lockPin : null, storeCache: null };
   if (fromStore) {
-    const folder = promptFolder(id, src);
+    const probe = promptFolder(id, src), folder = probe.dir; fault = probe.fault;
     if (src.resolvedFrom === 'lock') storeCache = folder === null ? 'missing' : 'held';
     if (folder === null && src.resolvedFrom === 'lock') { files = src.lockPin!.files.map(f => ({ path: f.path, sha256: f.sha256, bytes: f.bytes })); notices = null; }
     else {
@@ -170,6 +176,7 @@ export function classifyPrompt(project: string, itemsRoot: string, id: string, t
   if ((action === 'install' || action === 'update') && hold === null && ops.length >= LIMITS.history) {
     hold = { code: 'MANAGED_SKILL_HISTORY_FULL', next: historyNext(itemId, previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder', 'bowerloom apply') };
   }
+  if (fault !== null && src?.offline === true && hold === null && (action === 'install' || action === 'update')) hold = { code: fault.code, next: 'Run bowerloom apply --frozen.' };
   if (hold !== null) action = 'hold';
   return {
     id, itemId, teams, state, action, harnesses,

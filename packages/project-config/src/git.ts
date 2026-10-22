@@ -74,7 +74,8 @@ function configValues(text: string): { objectFormat: string | null; originUrl: s
     if (line === '' || line.startsWith('#') || line.startsWith(';')) continue;
     const header = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]$/.exec(line);
     if (header) { section = header[2] === undefined ? header[1]!.toLowerCase() : `${header[1]!.toLowerCase()} "${header[2]}"`; continue; }
-    if (line.startsWith('[')) { section = '?'; continue; }
+    // Review F9: a key on the header line, such as `[remote "origin"] url = ...`, is refused, not read past.
+    if (line.startsWith('[')) unreadable();
     const kv = /^([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*))?$/.exec(line);
     if (!kv) continue;
     const key = kv[1]!.toLowerCase(); let value = (kv[2] ?? '').trim();

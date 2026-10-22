@@ -108,3 +108,7 @@ test('11. a file that is a link, a FIFO, another owner\'s, or group-writable giv
   const writable = store(t); fs.chmodSync(path.join(writable, '.git', 'refs', 'remotes', 'origin', 'main'), 0o664);
   assert.equal(readStoreRepo(writable, null).problem, 'unreadable');
 });
+
+test('F9. a url on the header line of [remote "origin"] is refused as unreadable', t => {
+  assert.equal(readStoreRepo(store(t, { config: '[remote "origin"] url = https://github.com/o/r\n' }), null).problem, 'unreadable');
+});
