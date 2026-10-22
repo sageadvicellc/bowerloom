@@ -42,19 +42,19 @@ const BODY = (rel, id = ID) => `{"format":"bowerloom/store-folder/v1beta1","path
 const RECORD = rel => new RegExp(`^\\{"format":"bowerloom/store-folder/v1beta1","path":${JSON.stringify(rel).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')},"id":"[a-f0-9]{32}"\\}\\n$`);
 
 test('1. folder add plans the exact lines, and the store-create line only when the store is absent', t => {
-  const w = world(t); w.make('Sage Advice/knowledge-base');
-  const plan = planFolderAddWith(w.home, w.home, 'kb', '~/Sage Advice/knowledge-base', w.hooks);
-  assert.equal(plan.storeCreate, true); assert.equal(plan.path, 'Sage Advice/knowledge-base'); assert.match(plan.revision, /^[a-f0-9]{64}$/);
+  const w = world(t); w.make('My Notes/knowledge-base');
+  const plan = planFolderAddWith(w.home, w.home, 'kb', '~/My Notes/knowledge-base', w.hooks);
+  assert.equal(plan.storeCreate, true); assert.equal(plan.path, 'My Notes/knowledge-base'); assert.match(plan.revision, /^[a-f0-9]{64}$/);
   assert.equal(renderFolderAddReview(plan), [
     'Create the store at ~/.bowerloom (store.json). It holds definitions only.',
     'Register folder kb in the store at ~/.bowerloom/folders/kb.json',
-    '  Folder: ~/Sage Advice/knowledge-base',
+    '  Folder: ~/My Notes/knowledge-base',
     '  A slice names it with root: { registered: kb }. Bowerloom reads this folder and never writes it.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n'));
   assert.equal(fs.existsSync(w.store), false, 'planning writes nothing');
   fs.mkdirSync(w.store, { mode: 0o700 }); fs.writeFileSync(path.join(w.store, 'store.json'), `{"format":"bowerloom/store/v1beta1"}\n`, { mode: 0o644 });
-  const again = planFolderAddWith(w.home, w.home, 'kb', '~/Sage Advice/knowledge-base', w.hooks);
+  const again = planFolderAddWith(w.home, w.home, 'kb', '~/My Notes/knowledge-base', w.hooks);
   assert.equal(again.storeCreate, false);
   assert.doesNotMatch(renderFolderAddReview(again), /Create the store/);
 });
@@ -176,9 +176,9 @@ test('15b. folder remove refuses STALE_APPROVAL when the file was replaced by a 
   assert.equal(fs.existsSync(w.record('kb')), true);
 });
 test('16. resolveRegisteredFolder returns the real path, the identity, and the record sha256', async t => {
-  const w = world(t); const dir = w.make('Sage Advice/kb'); await w.add('kb', '~/Sage Advice/kb'); await w.allow('kb');
+  const w = world(t); const dir = w.make('My Notes/kb'); await w.add('kb', '~/My Notes/kb'); await w.allow('kb');
   const got = resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks);
-  assert.equal(got.ok, true); assert.equal(got.dir, dir); assert.equal(got.rel, 'Sage Advice/kb');
+  assert.equal(got.ok, true); assert.equal(got.dir, dir); assert.equal(got.rel, 'My Notes/kb');
   const st = fs.statSync(dir, { bigint: true });
   assert.equal(got.identity.device, String(st.dev)); assert.equal(got.identity.inode, String(st.ino)); assert.equal(got.identity.birthtimeNs, String(st.birthtimeNs));
   const { createHash } = await import('node:crypto');
@@ -290,13 +290,13 @@ test('29. the checks run again on a recorded folder: a record that points into a
 // ---------------------------------------------------------------------------------------------- Part B security round
 const isAllowedDir = (w, name) => path.join(w.folders, name + '.grants');
 test('30. folder allow plans the absolute folder and the project, and writes a grant bound to the record', async t => {
-  const w = world(t); w.make('Sage Advice/kb'); await w.add('kb', '~/Sage Advice/kb');
+  const w = world(t); w.make('My Notes/kb'); await w.add('kb', '~/My Notes/kb');
   const plan = planFolderAllowWith(w.home, w.project, 'kb', w.hooks);
   assert.equal(renderFolderAllowReview(plan), [
     'Allow this project to read registered folder kb',
     `  Project: ${w.project.dir}`,
-    `  Folder: ${path.join(w.home, 'Sage Advice/kb')} (~/Sage Advice/kb)`,
-    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led '${path.join(w.home, 'Sage Advice/kb')}'.`,
+    `  Folder: ${path.join(w.home, 'My Notes/kb')} (~/My Notes/kb)`,
+    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led '${path.join(w.home, 'My Notes/kb')}'.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n'));
