@@ -13,6 +13,15 @@ Open beta · 0.7.0-beta.2
 Setup does not start workers, grant runtime access, or authorize connected actions.
 <!-- release:status:end -->
 
+## 0.7.0-beta.3
+
+- `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
+- A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
+- `bowerloom status` no longer reports a team's `agents/` files as edited.
+- Codex agents are not projected in this beta.
+- Known limit: `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
+- A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
+
 ## 0.7.0-beta.2
 
 This release changes the package text and how Bowerloom reads skills. It adds no new command.
