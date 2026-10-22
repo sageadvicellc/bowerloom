@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { join } from 'node:path';
 import { relativeSkillPath, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, check, boundary, hash, same, identity, names, path as projectPath } from './observed.js';
+import { claudeCopyBytes } from './agent-copy.js';
 import type { Identity } from './observed-types.js';
 import type { ItemFile, InventoryRow, LocalClosure } from './v2-types.js';
 
@@ -20,14 +21,14 @@ const owned = (s: fs.BigIntStats): boolean => Number(s.uid) === process.getuid?.
 const pinOf = (p: string, s: fs.BigIntStats): Pin => ({ path: p, identity: identity(s), size: String(s.size), mtimeNs: String(s.mtimeNs), ctimeNs: String(s.ctimeNs) });
 function folder(p: string): Pin { const s = fs.lstatSync(p, { bigint: true }); check(!s.isSymbolicLink() && s.isDirectory() && owned(s)); return pinOf(p, s); }
 /** One authored file: O_NOFOLLOW, one link, owner, no group or world write, bounded, unchanged across the read. */
-function authored(p: string, max: number): { text: string; pin: Pin } {
+function authored(p: string, max: number, ignoreBOM = false): { text: string; pin: Pin } {
   const fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const before = fs.fstatSync(fd, { bigint: true }); check(before.isFile() && before.nlink === 1n && before.size >= 0n && before.size <= BigInt(max) && owned(before));
     const bytes = Buffer.alloc(Number(before.size)); let at = 0; while (at < bytes.length) { const n = fs.readSync(fd, bytes, at, bytes.length - at, null); check(n > 0); at += n; }
     check(fs.readSync(fd, Buffer.alloc(1), 0, 1, null) === 0); const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(p, { bigint: true });
     check(!named.isSymbolicLink() && named.nlink === 1n && owned(after) && owned(named) && same(pinOf(p, before), pinOf(p, after)) && same(pinOf(p, before), pinOf(p, named)));
-    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), pin: pinOf(p, before) };
+    return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM }).decode(bytes), pin: pinOf(p, before) };
   } finally { fs.closeSync(fd); }
 }
 /** The closing pass: the same entries with the same identities, sizes and times. */
@@ -40,7 +41,7 @@ function closure(source: LocalClosure['source'], files: ItemFile[]): LocalClosur
   return freezeSkillData({ format: 'bowerloom/local-item-closure/v1beta2', source, files: sorted, inventory, executionAuthorized: false });
 }
 /** The fixed folders from the project down to `.bowerloom/<area>`. */
-function base(projectDir: string, area: 'skills' | 'prompts', pins: Pin[]): string {
+function base(projectDir: string, area: 'skills' | 'prompts' | 'teams', pins: Pin[]): string {
   projectPath(projectDir); const s = fs.lstatSync(projectDir, { bigint: true }); check(s.isDirectory() && !s.isSymbolicLink() && Number(s.uid) === process.getuid?.() && !(Number(s.mode) & 0o7022));
   const bowerloom = join(projectDir, '.bowerloom'), root = join(bowerloom, area); pins.push(folder(bowerloom), folder(root)); return root;
 }
@@ -67,5 +68,20 @@ export function readLocalPrompt(projectDir: string, name: string, live: () => vo
     itemName(name); const pins: Pin[] = []; live(); const file = join(base(projectDir, 'prompts', pins), name + '.md');
     const got = authored(file, LIMITS.file); pins.push(got.pin); closing(pins, live); live();
     return closure({ kind: 'prompt', path: 'prompts/' + name + '.md' }, [{ path: name + '.md', text: got.text, sha256: hash(got.text), mode: 420 }]);
+  } catch (e) { return boundary(e); }
+}
+
+/**
+ * One team agent, `.bowerloom/teams/<team>/agents/<role>.md` (spec 01a). The folders down to `agents/` are pinned. The
+ * one file is read with the prompt rules, and a leading byte order mark stays in the text so that the parser can refuse
+ * it. The closure file is the Claude copy of the source.
+ */
+export function readLocalAgent(projectDir: string, team: string, role: string, live: () => void): LocalClosure {
+  try {
+    itemName(role); itemName(team); const pins: Pin[] = []; live();
+    const teamDir = join(base(projectDir, 'teams', pins), team), agents = join(teamDir, 'agents'); pins.push(folder(teamDir), folder(agents));
+    const got = authored(join(agents, role + '.md'), LIMITS.file, true); pins.push(got.pin); closing(pins, live); live();
+    const text = claudeCopyBytes(got.text);
+    return closure({ kind: 'agent', path: `teams/${team}/agents/${role}.md` }, [{ path: role + '.md', text, sha256: hash(text), mode: 420 }]);
   } catch (e) { return boundary(e); }
 }
