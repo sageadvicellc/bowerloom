@@ -60,14 +60,18 @@ export interface FilePin { path: string; sha256: string; bytes: number }
 /**
  * Reads every file under `.bowerloom/<relative>` with the guards and returns their pins, sorted by path, with paths
  * relative to `.bowerloom`. Folders are real and owned; at most LIMITS.itemEntries entries and LIMITS.depth levels.
+ * `skip` is a folder, relative to `.bowerloom`, that is not read at all and does not count toward the entry limit:
+ * the hand-placed `agents/` folder of a team (spec 01a). The caller checks that folder itself.
  */
-export function readTree(bowerloom: string, relative: string): FilePin[] {
+export function readTree(bowerloom: string, relative: string, skip: string | null = null): FilePin[] {
   const pins: FilePin[] = []; let entries = 0;
   const walk = (rel: string, depth: number): void => {
     ensure(depth <= LIMITS.depth, 'AUTHORING_UNSAFE_PATH');
     for (const name of folderNames(join(bowerloom, rel))) {
+      const child = `${rel}/${name}`;
+      if (skip !== null && child === skip) continue;
       ensure(++entries <= LIMITS.itemEntries, 'AUTHORING_UNSAFE_PATH');
-      const child = `${rel}/${name}`, s = lstatOrNull(join(bowerloom, child));
+      const s = lstatOrNull(join(bowerloom, child));
       ensure(s !== null && !s.isSymbolicLink(), 'AUTHORING_UNSAFE_PATH');
       if (s.isDirectory()) walk(child, depth + 1);
       else { const bytes = readGuarded(join(bowerloom, child), LIMITS.fileBytes); pins.push({ path: child, sha256: sha256(bytes), bytes: bytes.length }); }

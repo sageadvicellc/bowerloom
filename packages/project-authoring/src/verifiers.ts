@@ -9,6 +9,7 @@ import { readManifestState } from '../../skill-manifest/src/add.js';
 import { parseManifest } from '../../skill-manifest/src/schema.js';
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { LIMITS, folderNames, lstatOrNull, readGuarded, readTree, realFolder, sha256 } from './files.js';
+import { AGENT_STEM, AGENT_STEM_MAX, parseAgentOrRefuse } from './agent-file.js';
 import { isAuthoringRefusal, refuse } from './refusal.js';
 import { AUTHORING_FOLDER, isPromptId, isSkillId, isTeamId, itemPath, readAuthoringState, sameItem } from './state.js';
 import type { AuthoredItem, ItemKind } from './state.js';
@@ -27,15 +28,34 @@ function claimedItem(path: string): { kind: ItemKind; id: string } | null {
   return m[1] === 'teams' ? (isTeamId(m[2]) ? { kind: 'team', id: m[2] } : null) : (isSkillId(m[2]) ? { kind: 'skill', id: m[2] } : null);
 }
 
+/** The one team folder that the startup receipt lists: its `agents/` folder is hand placed, so the authoring owner claims it. */
+const FIRST_TEAM_AGENTS = 'teams/first-team/agents';
+/**
+ * Every entry of a team's `agents/` folder (spec 01a, section 4.5): a plain file named `<role>.md` that parses as an
+ * agent. The folder itself must be real, owned, with safe names (AUTHORING_UNSAFE_PATH otherwise). Any other entry or any
+ * file the parser refuses is AGENT_INVALID. A role named by two teams is not a status finding; apply holds it.
+ */
+function agentsVerdict(agents: string, team: string): OwnerVerdict | null {
+  const names = folderNames(agents);
+  for (const name of names) {
+    const file = join(agents, name), s = lstatOrNull(file), stem = name.endsWith('.md') ? name.slice(0, -3) : '';
+    if (s === null || s.isSymbolicLink() || !s.isFile() || name.startsWith('.') || !name.endsWith('.md') || stem.length < 1 || stem.length > AGENT_STEM_MAX || !AGENT_STEM.test(stem) || stem.startsWith('prompt-')) return refused('AGENT_INVALID');
+    try { parseAgentOrRefuse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(readGuarded(file, 65536)), stem, team); }
+    catch { return refused('AGENT_INVALID'); }
+  }
+  return null;
+}
+
 /**
  * The authoring owner: `authoring/`, `prompts/`, and the registered `teams/<id>/` and `skills/<id>/` (never
- * first-team or personal-assistant, which the startup receipt owns). A claimed folder is verified whole.
+ * first-team or personal-assistant, which the startup receipt owns), and the hand-placed `teams/first-team/agents/`.
+ * A claimed folder is verified whole.
  */
 export function authoringVerifier(project: string): OwnerVerifier {
   projectPath(project);
   const bowerloom = join(project, '.bowerloom');
   const claims = (path: string, kind: OwnedEntryKind): boolean =>
-    typeof path === 'string' && kind === 'directory' && (path === AUTHORING_FOLDER || path === 'prompts' || claimedItem(path) !== null);
+    typeof path === 'string' && kind === 'directory' && (path === AUTHORING_FOLDER || path === 'prompts' || path === FIRST_TEAM_AGENTS || claimedItem(path) !== null);
   async function check(path: string, kind: OwnedEntryKind, signal: AbortSignal): Promise<OwnerVerdict> {
     if (!claims(path, kind) || !(signal instanceof AbortSignal) || signal.aborted) refuse('AUTHORING_UNSAFE_PATH');
     realFolder(bowerloom);
@@ -63,11 +83,16 @@ export function authoringVerifier(project: string): OwnerVerifier {
       // A registered prompt that is gone is AUTHORING_ITEM_MISSING on `authoring`, not an edit here.
       return changed ? edited : verified;
     }
+    if (path === FIRST_TEAM_AGENTS) return agentsVerdict(join(bowerloom, path), 'first-team') ?? verified;
     const target = claimedItem(path)!, item = lookup(target.kind, target.id);
     if (item === null) return refused('AUTHORING_UNREGISTERED');
     if (item === 'pending') return refused('AUTHORING_PENDING');
-    const pins = readTree(bowerloom, path);
-    return pins.length === item.files.length && pins.every((p, i) => p.path === item.files[i]!.path && p.sha256 === item.files[i]!.sha256 && p.bytes === item.files[i]!.bytes) ? verified : edited;
+    // A team's hand-placed `agents/` folder is not part of what create wrote: it is left out of both sides of the
+    // comparison, and checked on its own.
+    const agents = `${path}/agents`, files = target.kind === 'team' ? item.files.filter(f => !f.path.startsWith(agents + '/')) : item.files;
+    if (target.kind === 'team' && lstatOrNull(join(bowerloom, agents)) !== null) { const verdict = agentsVerdict(join(bowerloom, agents), target.id); if (verdict) return verdict; }
+    const pins = readTree(bowerloom, path, target.kind === 'team' ? agents : null);
+    return pins.length === files.length && pins.every((p, i) => p.path === files[i]!.path && p.sha256 === files[i]!.sha256 && p.bytes === files[i]!.bytes) ? verified : edited;
   }
   return Object.freeze({
     owner: 'authoring' as const,
