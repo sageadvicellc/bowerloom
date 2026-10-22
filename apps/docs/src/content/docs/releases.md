@@ -15,6 +15,12 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ## 0.7.0-beta.3
 
+- `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.
+- An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
+- `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
+- `bowerloom context show` previews a slice.
+- Ids that start with `slice-` are reserved for new skills and prompts.
+- A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
 - A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
 - `bowerloom status` no longer reports a team's `agents/` files as edited.

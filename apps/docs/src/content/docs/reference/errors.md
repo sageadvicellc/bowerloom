@@ -157,6 +157,36 @@ The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store
 | `AGENT_TEAM_UNREGISTERED` | Bowerloom applies agents only from teams it created or adopted. The agent is held back. | Run `bowerloom team create`, or move the agent into a registered team. |
 | `AGENT_TARGET_OCCUPIED` | Bowerloom never overwrites what it did not install. The agent is held back. | Move the file the `Next:` line names aside, then run `bowerloom apply`. |
 
+## Context slice refusals
+
+A hold keeps one slice or one agent back, and the rest of `apply` goes on. A refusal stops one command. A guard code is a reason in the deny line that `bowerloom-guard` prints, or the text on its standard error. [Context slices for agents](/docs/guides/context-slices/) explains each case.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `SLICE_INVALID` | Bowerloom builds an index only from slice files it can check. The slice is held back. | Follow the `Next:` line, fix the file named in `.bowerloom/slices`, then run `bowerloom apply`. |
+| `SLICE_KEY_UNKNOWN` | Bowerloom accepts only the documented slice keys. The slice is held back. | Remove the key the `Next:` line names, then run `bowerloom apply`. |
+| `SLICE_NAME_INVALID` | The id becomes a file name and a skill name, so it is kept plain: lower-case words joined by single hyphens, at most 57 characters, not starting with `prompt-`. | Choose another id, or run `bowerloom help context`. |
+| `SLICE_EXISTS` | Each slice needs its own id and its own skill name. The project already has a slice with that id, a file that differs only in case, or a skill `slice-<id>`. | Run `bowerloom ls slices`. |
+| `SLICE_LIMIT` | This beta applies at most 64 slices. Nothing was changed. | Run `bowerloom ls slices`, then remove slices. |
+| `SLICE_PATH_MISSING` | The folder or the file that a slice names is gone. The slice is held back and an installed index stays. | Fix the path in the slice file, or restore the file, then run `bowerloom apply`. |
+| `SLICE_ROOT_MISSING` | A registered folder cannot be found. This beta has no command to register a folder, so any slice that names one is held back. | Use a root inside the project, then run `bowerloom apply`. |
+| `SLICE_ROOT_UNSAFE` | The root is a link, is not yours, or other users can write in it. The slice is held back. | Run `ls -ld <folder>`. |
+| `SLICE_SOURCE_UNSAFE` | A selected file or a folder on its path is a link, has more than one link, is not yours, can be written by others, or two names differ only in case. The slice is held back. | Run `ls -l <path>`. |
+| `SLICE_EMPTY` | The slice selects no file, and an empty index would give an agent nothing. The slice is held back. | Widen `include`, then run `bowerloom apply`. |
+| `SLICE_TOO_LARGE` | The slice selects more than `maxFiles` files, reads more than 32 MiB, walks more than 8,192 entries or 16 levels, or its index passes 64 KiB. The slice is held back. | Narrow the slice, or set `summary: none`, then run `bowerloom apply`. |
+| `SLICE_TARGET_OCCUPIED` | Something Bowerloom did not install is where a slice index goes. The slice is held back. | Move `.claude/skills/slice-<id>` aside, then run `bowerloom apply`. |
+| `AGENT_GUARD_CONFLICT` | An agent's `hooks` is not a map, or its `hooks.PreToolUse` is not a list, so the read guard cannot be added. The agent is held back. | Make `hooks` a map and `hooks.PreToolUse` a list, then run `bowerloom apply`. |
+| `AGENT_GUARD_WORKTREE` | A guarded agent that sets `isolation: worktree` runs in a git worktree, which holds its own copies of every tracked file outside the guarded folders. The agent is held back. | Remove `isolation: worktree` or the agent's slices, then run `bowerloom apply`. |
+| `CONTEXT_SLICE_NOT_FOUND` | `context show` names a slice that this project does not register. | Run `bowerloom ls slices`. |
+| `CONTEXT_AGENT_NOT_FOUND` | `--agent` or `--explain` names a role that no team of this project holds. | Run `bowerloom ls teams`. |
+| `CONTEXT_BASELINE_INVALID` | The `--baseline` folder does not exist or is not safe to read. The baseline must be a folder you own. | Run `bowerloom help context`. |
+| `CONTEXT_MEASURE_LIMIT` | The baseline folder holds more than 100,000 entries, the most this beta measures. | Pass a narrower `--baseline`. |
+| `GUARD_OUTSIDE_SLICE` | The read guard blocked a Read, Grep, or Glob that reaches a file under a guarded folder when no slice of the agent lists it. | Run `bowerloom context show <slice>`. To widen a slice, edit its file and run `bowerloom apply`. |
+| `GUARD_SLICE_NOT_INSTALLED` | A slice of the agent is not installed, or its catalog changed. The guard blocked every call. | Run `bowerloom apply`. |
+| `GUARD_ROOT_MISSING` | The folder of a slice cannot be found, or it changed since `apply`. The guard blocked every call. | Run `bowerloom apply`. |
+| `GUARD_PROJECT_MISMATCH` | The project path or id in the agent copy matches no project that manages the agent. The guard blocked every call. | Run `bowerloom apply` in the project that holds `.claude/agents/<role>.md`. |
+| `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocked the call and exited 2. | Run `claude --debug`. |
+
 ## Request-file skills refusals
 
 The request-file `bowerloom skills source`, `skills plan`, `skills update`, `skills apply`, and `skills inspect` forms print one line of JSON on standard error. A refusal exits 1. A usage error exits 2. [CLI reference](/docs/cli/#skills) lists the forms.
