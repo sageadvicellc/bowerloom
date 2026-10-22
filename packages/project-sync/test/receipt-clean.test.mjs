@@ -182,3 +182,34 @@ test('10. a stale plan refuses STALE_APPROVAL: the receipt, skills.json, or bowe
     assert.deepEqual(snapshot(w.projectDir), before, `${change}: nothing was written`);
   }
 });
+
+test('S3. a link at an item folder area refuses AUTHORING_UNSAFE_PATH: a dangling link never makes items gone, and a live one is not followed', async t => {
+  const w = await fullProject(t);
+  const outside = path.join(w.base, 'outside-skills'); fs.renameSync(bl(w, 'skills'), outside); fs.symlinkSync(outside, bl(w, 'skills'));
+  assert.throws(() => planReceiptClean(projectScope(w)), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('.bowerloom/skills'));
+  fs.unlinkSync(bl(w, 'skills')); fs.symlinkSync(path.join(w.base, 'nowhere'), bl(w, 'skills'));
+  assert.throws(() => planReceiptClean(projectScope(w)), code('AUTHORING_UNSAFE_PATH'), 'a dangling link');
+  // The store scope too.
+  await storeItem(w, 'prompt', 'weekly');
+  const away = path.join(w.base, 'outside-prompts'); fs.renameSync(path.join(w.store, 'prompts'), away); fs.symlinkSync(path.join(w.base, 'gone'), path.join(w.store, 'prompts'));
+  assert.throws(() => planReceiptClean(storeScope(w)), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('~/.bowerloom/prompts'));
+});
+
+test('L4. scratch with nothing gone: the plan lists the scratch, and apply removes it', async t => {
+  const w = await fullProject(t);
+  const stage = `.stage-${'d'.repeat(64)}`; fs.mkdirSync(bl(w, `authoring/${stage}`), { mode: 0o700 });
+  const plan = planReceiptClean(projectScope(w));
+  assert.deepEqual(plan.items, []); assert.deepEqual(plan.scratch, [stage]);
+  const result = await withProjectLock(w.projectDir, signal(), async held => applyReceiptClean(projectScope(w), plan.revision, held));
+  assert.deepEqual(result.removed, []); assert.equal(fs.existsSync(bl(w, `authoring/${stage}`)), false);
+});
+
+test('H1 and P8. skills.json changed after the config write: the refusal names what was written, and a rerun finishes', async t => {
+  const w = await fullProject(t); goneAll(w);
+  const edit = () => writeManifest({ projectDir: w.projectDir }, [...parseManifest(fs.readFileSync(bl(w, 'skills.json')), MANIFEST_LIMITS).skills, { id: 'late', source: { kind: 'local', path: 'skills/late' } }]);
+  await assert.rejects(cleanProject(w, { afterConfig: edit }), e => e.code === 'STALE_APPROVAL' && !/Nothing was applied/.test(e.message) && /bowerloom\.json/.test(e.message) && /receipt clean/.test(e.message));
+  const again = planReceiptClean(projectScope(w));
+  assert.equal(again.config, null, 'the config step is done'); assert.equal(again.items.length, 4);
+  await cleanProject(w);
+  assert.deepEqual(receiptIds(bl(w)), ['skill keeper']);
+});

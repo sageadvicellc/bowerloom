@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { syncError } from './refusal.js';
+import { partialRefusal, staleBecause, syncError } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -73,6 +73,8 @@ export interface MigrateItem {
   /** `pinned` only for a skill with an npm or git entry. */
   how: 'pinned' | 'local';
   state: 'copy' | 'register' | 'present';
+  /** Review C1 of PR 98: true when the store record of created items lists the item already. No second record is written. */
+  recorded: boolean;
   /** True when the config entry changes to store in this run. */
   switch: boolean;
   notSwitched: { code: string; sentence: string } | null;
@@ -120,8 +122,15 @@ export interface StoreMigratePlan {
 }
 export interface StoreMigrateResult {
   format: typeof STORE_MIGRATE_RESULT_FORMAT; planRevision: string;
+  /** Review M2 of PR 98: the items that switched to the store in this run. */
   moved: { kind: Kind; id: string; state: MigrateItem['state'] }[];
+  /** The items copied or recorded in the store that did not switch. */
+  copied: { kind: Kind; id: string; state: MigrateItem['state'] }[];
   notSwitched: { kind: Kind; id: string; code: string }[];
+  /** The items the plan left in the project, with their lines. */
+  skipped: StoreMigratePlan['skipped'];
+  /** True when every chosen item switched and none was left in the project. */
+  complete: boolean;
   configSha256: string | null; configBytes: number | null; lockSha256: string | null; lockBytes: number | null;
   removeLines: string[]; executionAuthorized: false;
 }
@@ -183,6 +192,33 @@ function pinsUnder(base: string, kind: Kind, id: string): FilePin[] {
   return readTree(base, itemPath(kind, id));
 }
 const samePins = (a: readonly FilePin[], b: readonly FilePin[]): boolean => canonicalJson(a) === canonicalJson(b);
+const AREAS = ['skills', 'prompts', 'teams'] as const;
+/** Review S1 of PR 98: an area folder that is there must be a real folder (not a link, dangling or not) inside `base`. */
+function checkArea(base: string, shown: string, area: string): void {
+  const at = join(base, area);
+  if (lstatOrNull(at) === null) return;
+  let inside = false;
+  try { realFolder(at); inside = fs.realpathSync(at) === join(fs.realpathSync(base), area); } catch { inside = false; }
+  if (!inside) authoringRefuse('AUTHORING_UNSAFE_PATH', `The folder is ${shown}/${area}.`);
+}
+function checkAreas(base: string, shown: string): void { for (const area of AREAS) checkArea(base, shown, area); }
+/** The item's own path, really inside its area of `base`: no link on the way. */
+function insideArea(base: string, shown: string, kind: Kind, id: string): void {
+  checkArea(base, shown, LIST[kind]);
+  let real: string | null = null; try { real = fs.realpathSync(join(base, itemPath(kind, id))); } catch { real = null; }
+  if (real !== join(fs.realpathSync(base), itemPath(kind, id))) authoringRefuse('AUTHORING_UNSAFE_PATH', `The folder is ${shown}/${LIST[kind]}.`);
+}
+/** Review L1: true when a folder has more entries or levels than readTree takes (LIMITS.itemEntries, LIMITS.depth). Links are not followed. */
+function pastTreeLimits(root: string): boolean {
+  let entries = 0;
+  const walk = (dir: string, depth: number): boolean => {
+    if (depth > LIMITS.depth) return true;
+    let list: fs.Dirent[]; try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    for (const e of list) { if (++entries > LIMITS.itemEntries) return true; if (e.isDirectory() && walk(join(dir, e.name), depth + 1)) return true; }
+    return false;
+  };
+  return walk(root, 1);
+}
 const reasonOf = (error: unknown): MigrateReason => (error as Error | null)?.message?.endsWith(NOT_SHAREABLE.size) ? 'size' : 'file';
 
 /** A proof outcome the plan bound for a present written item in a shared project. */
@@ -223,7 +259,9 @@ async function prove(store: StoreState, needs: readonly Found[], commit: string 
       if (mode.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
       const code = error instanceof DefinitionError ? error.code : null;
       if (code === 'SKILLS_ADD_NETWORK') throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
-      if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND') { byPair.set(pairOf(need), { switch: false, code: 'LOCK_STORE_NOT_PUSHED', sentence: 'The pushed copy differs from your store' }); continue; }
+      // Review L2: a pushed file Bowerloom cannot check is not the same finding as a pushed copy that differs.
+      if (code === 'SKILLS_ADD_UNSAFE_CONTENT') { byPair.set(pairOf(need), { switch: false, code: 'SKILLS_ADD_UNSAFE_CONTENT', sentence: 'The pushed copy holds a file that Bowerloom cannot check' }); continue; }
+      if (code === 'SKILLS_ADD_NOT_FOUND') { byPair.set(pairOf(need), { switch: false, code: 'LOCK_STORE_NOT_PUSHED', sentence: 'The pushed copy differs from your store' }); continue; }
       throw error;
     } finally { transport?.close(); }
     if (outcome.outcome === 'commit-missing') {
@@ -290,6 +328,9 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
   const projectAuth = readAuthoringState(bowerloom);
   if (projectAuth.pending !== null) authoringRefuse('AUTHORING_PENDING');
   if (lstatOrNull(join(project.dir, '.bowerloom-revision.json')) !== null) authoringRefuse('REVISION_PENDING');
+  // Review S1 of PR 98: a link at an area folder is never followed, in the project or in the store.
+  checkAreas(bowerloom, '.bowerloom');
+  if (store.context !== null) checkAreas(storeDir, '~/.bowerloom');
   const projectManifestState = readManifestState(project.dir, { allowAbsent: true });
   const projectManifest = projectManifestState.file ? parseManifest(projectManifestState.file.bytes, MANIFEST_LIMITS) : null;
   const receiptItems = projectAuth.receipt?.value.items ?? [];
@@ -301,6 +342,21 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
 
   // The candidates: the named items, or with --all every project item (rule 3: never first-team, personal-assistant, or a slice).
   const skipped: StoreMigratePlan['skipped'] = [];
+  /** The lines that remove the old copies of items listed from the store. */
+  const leftover: string[] = [];
+  /** The remove lines of an item's copy in this project: its files, and the skills.json line Bowerloom does not edit. */
+  const oldCopy = (kind: Kind, id: string): string[] => {
+    const out: string[] = [];
+    if (kind === 'skill') {
+      const e = projectManifest?.skills.find(x => x.id === id) ?? null;
+      if (e === null) return out;
+      if (e.source.kind === 'local' && lstatOrNull(join(bowerloom, itemPath('skill', id))) !== null) out.push(`  git rm -r .bowerloom/${itemPath('skill', id)}`);
+      if (e.source.kind !== 'local' || !receiptItems.some(i => i.kind === 'skill' && i.id === id)) out.push(REMOVE_REMINDER(id));
+      return out;
+    }
+    if (lstatOrNull(join(bowerloom, itemPath(kind, id))) !== null) out.push(kind === 'prompt' ? `  git rm .bowerloom/${itemPath('prompt', id)}` : `  git rm -r .bowerloom/${itemPath(kind, id)}`);
+    return out;
+  };
   const candidates: { kind: Kind; id: string; explicit: boolean }[] = [];
   if (input.all) {
     const defined: { kind: Kind; id: string }[] = [
@@ -316,7 +372,8 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
         const e = listed(d.kind, d.id);
         // Rule 6, the --all decision (variant B): an item bowerloom.json does not list stays as it is.
         if (e === null) { skipped.push({ kind: d.kind, id: d.id, line: 'not listed in bowerloom.json, so it stays as it is.' }); continue; }
-        if (e.source === 'store') continue;
+        // Review H2: an item already listed from the store whose old copy is still here is named, with the lines that remove it.
+        if (e.source === 'store') { const old = oldCopy(d.kind, d.id); if (old.length) { skipped.push({ kind: d.kind, id: d.id, line: 'already listed from the store; its old copy is still in this project.' }); leftover.push(...old); } continue; }
       }
       candidates.push({ ...d, explicit: false });
     }
@@ -327,7 +384,8 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
   const found: Found[] = [];
   const skip = (c: { kind: Kind; id: string }, line: string) => skipped.push({ kind: c.kind, id: c.id, line });
   for (const c of candidates) {
-    const missing = (): void => { if (c.explicit) throw configRefusal('MIGRATE_ITEM_NOT_FOUND'); };
+    // Review M1: --all names an item whose files are gone.
+    const missing = (): void => { if (c.explicit) throw configRefusal('MIGRATE_ITEM_NOT_FOUND'); skip(c, 'its files are gone, so it stays as it is.'); };
     let entry: Entry | null = null, teams: string[] = [], how: 'pinned' | 'local' = 'local';
     const registered = receiptItems.find(i => i.kind === c.kind && i.id === c.id) ?? null;
     if (c.kind === 'skill') {
@@ -339,21 +397,30 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
       if (registered === null || lstatOrNull(join(bowerloom, itemPath(c.kind, c.id))) === null) { missing(); continue; }
       teams = c.kind === 'prompt' ? [...registered.teams] : [];
     }
+    // Rule 6: an item listed from the store is not moved again. Review H2: the next step removes the old copy.
+    if (c.explicit && listed(c.kind, c.id)?.source === 'store') {
+      const old = oldCopy(c.kind, c.id)[0];
+      throw old === undefined ? configRefusal('CONFIG_ITEM_SELECTED') : refusalWithNext('CONFIG_ITEM_SELECTED', old.trim());
+    }
     let files: FilePin[] = [], candidate: string | null = null;
     if (how === 'local') {
+      insideArea(bowerloom, '.bowerloom', c.kind, c.id);
       try { localItemRows(bowerloom, c.kind, c.id); }
       catch (error) {
         if ((error as { code?: unknown }).code !== 'STORE_ITEM_NOT_SHAREABLE') throw error;
         if (c.explicit) throw migrateUnsupported(reasonOf(error));
         skip(c, `stays in this project. ${migrateReasonWords(reasonOf(error))}`); continue;
       }
-      // A tree past the limits of readTree (256 entries, depth 8) is larger than a store item can be.
+      // A tree past the limits of readTree (256 entries, depth 8) is larger than a store item can be. Review L1: any
+      // other failure is refused as it is.
       try { files = pinsUnder(bowerloom, c.kind, c.id); }
-      catch { if (c.explicit) throw migrateUnsupported('size'); skip(c, `stays in this project. ${migrateReasonWords('size')}`); continue; }
+      catch (error) {
+        if (!pastTreeLimits(join(bowerloom, itemPath(c.kind, c.id)))) throw error;
+        if (c.explicit) throw migrateUnsupported('size');
+        skip(c, `stays in this project. ${migrateReasonWords('size')}`); continue;
+      }
       if (c.kind === 'team') candidate = (await compileCrew(join(bowerloom, itemPath('team', c.id), 'team.yaml'))).candidateRevision;
     }
-    // Rule 6: an item listed from the store is not moved again.
-    if (c.explicit && listed(c.kind, c.id)?.source === 'store') throw configRefusal('CONFIG_ITEM_SELECTED');
     found.push({ kind: c.kind, id: c.id, how, entry, teams, files, candidate, explicit: c.explicit, inReceipt: registered !== null });
   }
   // Rule 7: each tag names a team that is in the store already or moves in this run. first-team is never in the store.
@@ -371,9 +438,10 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
 
   // Rule 8: each item against the store.
   const storeRecords = store.auth.receipt?.value.items ?? [];
-  const states = new Map<string, MigrateItem['state']>();
+  const states = new Map<string, MigrateItem['state']>(), inStoreRecord = new Set<string>();
   for (const f of kept) {
     const record = storeRecords.find(i => i.kind === f.kind && i.id === f.id) ?? null;
+    if (record !== null) inStoreRecord.add(pairOf(f));
     const at = join(storeDir, itemPath(f.kind, f.id)), there = store.context !== null && lstatOrNull(at) !== null;
     const exists = (next?: string): never => { throw next === undefined ? configRefusal('MIGRATE_ID_EXISTS') : refusalWithNext('MIGRATE_ID_EXISTS', next); };
     const recordGone = (): never => exists('bowerloom receipt clean --global');
@@ -396,7 +464,8 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
     states.set(pairOf(f), record !== null && entryThere ? 'present' : 'register');
   }
   const stateOf = (f: Found): MigrateItem['state'] => states.get(pairOf(f))!;
-  const recorded = kept.filter(f => f.how === 'local' && stateOf(f) !== 'present');
+  // The store receipt gains a record for each written item that it does not list yet (review C1).
+  const recorded = kept.filter(f => f.how === 'local' && stateOf(f) !== 'present' && !inStoreRecord.has(pairOf(f)));
   // Rule 13: the store record of created items, after this run.
   const records: AuthoredItem[] = recorded.map(f => ({ kind: f.kind, id: f.id, teams: [...f.teams], files: f.files.map(p => ({ ...p })), planRevision: '0'.repeat(64) }));
   const nextRecords = [...storeRecords, ...records];
@@ -424,7 +493,7 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
       if (stateOf(f) !== 'present') { sw = false; notSwitched = { code: 'LOCK_STORE_NOT_PUSHED', sentence: NEW_IN_STORE }; }
       else { const p = proofs.byPair.get(pairOf(f)); if (p === undefined) throw stale(); if (!p.switch) { sw = false; notSwitched = { code: p.code, sentence: p.sentence }; } }
     }
-    return { kind: f.kind, id: f.id, how: f.how, state: stateOf(f), switch: sw, notSwitched, teams: [...f.teams], files: f.files, entry: f.entry, candidate: f.candidate, lock: null };
+    return { kind: f.kind, id: f.id, how: f.how, state: stateOf(f), recorded: inStoreRecord.has(pairOf(f)), switch: sw, notSwitched, teams: [...f.teams], files: f.files, entry: f.entry, candidate: f.candidate, lock: null };
   });
   const switched = items.filter(i => i.switch);
   let configStep: StoreMigratePlan['config'] = null;
@@ -467,9 +536,12 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
   const folders = FOLDER_ORDER.filter(f => needed.has(f) && (store.context === null || lstatOrNull(join(storeDir, f)) === null));
   for (const f of FOLDER_ORDER) if (store.context !== null && needed.has(f) && !folders.includes(f)) realFolder(join(storeDir, f));
   // The lines that remove the old copies: switched items only.
+  // Review H2: and the old copies of items that are listed from the store already.
   const removeLines = [
     ...switched.filter(i => i.how === 'local').map(i => i.kind === 'prompt' ? `  git rm .bowerloom/${itemPath('prompt', i.id)}` : `  git rm -r .bowerloom/${itemPath(i.kind, i.id)}`),
+    ...leftover.filter(l => l.startsWith('  ')),
     ...switched.filter(i => i.kind === 'skill' && (i.how === 'pinned' || !kept.find(f => f.kind === 'skill' && f.id === i.id)!.inReceipt)).map(i => REMOVE_REMINDER(i.id)),
+    ...leftover.filter(l => !l.startsWith('  ')),
   ];
   if (store.context !== null && !create) verifyStorePins(store.context);
   verifyProjectPins(project);
@@ -508,11 +580,14 @@ export async function applyStoreMigrate(plan: StoreMigratePlan, revision: string
   if (project.dir !== plan.project.dir) throw projectRefusal('USAGE');
   const outcome = await withStoreForWrite(deps.home, deps.signal, async (store, heldStore, created) => {
     hooks.locked?.('store');
+    let entered = false;
     try {
-      return { result: await withProjectLock(project.dir, deps.signal, async heldProject => { hooks.locked?.('project'); return work(plan, store, heldStore, created, heldProject, deps); }) };
+      return { result: await withProjectLock(project.dir, deps.signal, async heldProject => { entered = true; hooks.locked?.('project'); return work(plan, store, heldStore, created, heldProject, deps); }) };
     } catch (error) {
-      if ((error as { code?: unknown } | null)?.code === 'PROJECT_LOCKED') return { projectLocked: error };
-      throw error;
+      if ((error as { code?: unknown } | null)?.code !== 'PROJECT_LOCKED') throw error;
+      // Review L3: the store lock came first and made the store; the old plan saw none, so the next plan is needed.
+      if (!entered && created) return { projectLocked: projectRefusal('PROJECT_LOCKED', 'Bowerloom made the store at ~/.bowerloom before it waited for the project. Run the command again without --approve to see the next plan.') };
+      return { projectLocked: error };
     }
   });
   if ('projectLocked' in outcome) throw outcome.projectLocked;
@@ -522,34 +597,48 @@ export async function applyStoreMigrate(plan: StoreMigratePlan, revision: string
 /** Inside both locks: the steps of 3.2. Every PROJECT_LOCKED here is the project lock's; the store lock's is STORE_LOCKED. */
 async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: HeldProjectLock, created: boolean, heldProject: HeldProjectLock, deps: MigrateDeps): Promise<StoreMigrateResult> {
   const { project, hooks = {} } = deps;
-  if (!isHeldProjectLock(heldStore) || !isHeldProjectLock(heldProject)) throw manifestRefusal('PROJECT_LOCKED');
+  // Review L6: a store lock that is not held is the store's refusal.
+  if (!isHeldProjectLock(heldStore)) throw projectRefusal('STORE_LOCKED');
+  if (!isHeldProjectLock(heldProject)) throw manifestRefusal('PROJECT_LOCKED');
   const storeHeld = (): void => { try { heldStore.assertHeld(store.dir); } catch { throw projectRefusal('STORE_LOCKED'); } };
   const live = (): void => { storeHeld(); verifyStorePins(store); heldProject.assertHeld(project.dir); verifyProjectPins(project); };
-  // A store this run made is the store the plan saw absent, and only then.
-  if (created !== plan.store.create) throw stale();
-  live();
-  let again: StoreMigratePlan;
+  // Review H1: what this run wrote, so that a refusal part way says so and names it.
+  const done: string[] = created ? ['the store at ~/.bowerloom (store.json)'] : [];
   try {
-    again = await build({ project, home: deps.home, selectors: { skills: plan.selectors.skills, prompts: plan.selectors.prompts, teams: plan.selectors.teams }, all: plan.selectors.all, commit: plan.selectors.commit, githubToken: null, signal: deps.signal }, { kind: 'apply', plan, store, created });
-  } catch (error) {
-    // Any refusal of the plan made again is a change since the approval.
-    if (error instanceof DefinitionError && error.code !== 'STORE_LOCKED' && error.code !== 'PROJECT_LOCKED') throw stale();
-    throw error;
-  }
-  if (again.revision !== plan.revision) throw stale();
+    // A store this run made is the store the plan saw absent, and only then.
+    if (created !== plan.store.create) throw stale();
+    live();
+    let again: StoreMigratePlan;
+    try {
+      again = await build({ project, home: deps.home, selectors: { skills: plan.selectors.skills, prompts: plan.selectors.prompts, teams: plan.selectors.teams }, all: plan.selectors.all, commit: plan.selectors.commit, githubToken: null, signal: deps.signal }, { kind: 'apply', plan, store, created });
+    } catch (error) {
+      // Any refusal of the plan made again is a change since the approval. Review M3: its code is kept as the cause.
+      if (error instanceof DefinitionError && error.code !== 'STORE_LOCKED' && error.code !== 'PROJECT_LOCKED') throw error.code === 'STALE_APPROVAL' ? error : staleBecause(error);
+      throw error;
+    }
+    if (again.revision !== plan.revision) throw stale();
+    return await steps(plan, store, heldStore, heldProject, deps, live, storeHeld, done);
+  } catch (error) { throw partialRefusal(error, done, 'bowerloom store migrate'); }
+}
+
+/** Steps 0 to 8 of 3.2. Each write is added to `done` once it is made. */
+async function steps(plan: StoreMigratePlan, store: StoreContext, heldStore: HeldProjectLock, heldProject: HeldProjectLock, deps: MigrateDeps, live: () => void, storeHeld: () => void, done: string[]): Promise<StoreMigrateResult> {
+  const { project, hooks = {} } = deps;
   const auth = join(store.dir, AUTHORING_FOLDER), bowerloom = join(project.dir, '.bowerloom');
   // 0. The project scratch of the config and lock writer.
-  for (const name of plan.projectScratch) { live(); const s = lstatOrNull(join(project.dir, name)); if (s !== null && s.isFile() && !s.isSymbolicLink() && s.uid === process.getuid?.()) removeScratch(join(project.dir, name)); }
+  for (const name of plan.projectScratch) { live(); const s = lstatOrNull(join(project.dir, name)); if (s !== null && s.isFile() && !s.isSymbolicLink() && s.uid === process.getuid?.()) { removeScratch(join(project.dir, name)); done.push(`the leftover ${name}, removed`); } }
   // 1. The store's own scratch.
-  if (plan.scratch.length) { live(); for (const name of plan.scratch) removeScratch(join(auth, name)); syncFolder(auth); }
+  if (plan.scratch.length) { live(); for (const name of plan.scratch) { removeScratch(join(auth, name)); done.push(`the store scratch ${name}, removed`); } syncFolder(auth); }
   // 2. The store folders (withStoreForWrite made the store itself).
-  for (const folder of plan.folders) { live(); makeFolder(join(store.dir, folder)); }
+  for (const folder of plan.folders) { live(); makeFolder(join(store.dir, folder)); done.push(`the store folder ${folder}`); }
   if (plan.folders.length) syncFolder(store.dir);
   // 3. Each copy, staged, checked, and moved into place.
   const stage = join(auth, stageName(plan.revision));
   const copies = plan.items.filter(i => i.state === 'copy' && i.how === 'local');
-  if (copies.length) { live(); makeFolder(stage); }
+  if (copies.length) { live(); makeFolder(stage); done.push('a staging folder in ~/.bowerloom/authoring'); }
   for (const item of copies) {
+    // Review S1: the project area is read without following a link, here as in the plan.
+    insideArea(bowerloom, '.bowerloom', item.kind, item.id);
     for (const file of item.files) {
       const source = readGuarded(join(bowerloom, file.path), LIMITS.fileBytes);
       if (sha(source) !== file.sha256 || source.length !== file.bytes) throw stale();
@@ -566,8 +655,13 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
     const parent = join(store.dir, LIST[item.kind]), to = join(store.dir, itemPath(item.kind, item.id));
     live(); realFolder(parent);
     if (lstatOrNull(to) !== null) throw stale();
-    fs.renameSync(from, to);
+    if (item.kind === 'prompt') {
+      // Review S2: a prompt is linked into place, so a file that appears there meanwhile is never overwritten.
+      try { fs.linkSync(from, to); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw stale(); throw error; }
+      fs.unlinkSync(from);
+    } else fs.renameSync(from, to);
     syncFolder(parent);
+    done.push(`${item.kind} ${item.id}, copied to the store`);
     hooks.afterItem?.(item.kind, item.id);
   }
   if (copies.length) hooks.afterStep?.(3);
@@ -579,13 +673,15 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
     const change = planManifestChange(storeTarget(store.dir), { add: item.how === 'pinned' ? item.entry! : localEntry(item.id, item.teams) }, { storeCreate: false });
     if ((change.before?.sha256 ?? null) !== (step.before?.sha256 ?? null) || change.after.sha256 !== step.after.sha256 || change.after.bytes !== step.after.bytes) throw stale();
     try { applyManifestChange(change, change.revision, heldStore); } catch (error) { if ((error as { code?: unknown }).code === 'PROJECT_LOCKED') throw projectRefusal('STORE_LOCKED'); throw error; }
+    done.push(`the store skills.json entry of skill ${step.id}`);
   }
   if (plan.manifest !== null) hooks.afterStep?.(4);
   // 5. The store receipt, once: every written item copied or found unrecorded. A pinned skill lives only in skills.json.
-  const records: AuthoredItem[] = plan.items.filter(i => i.how === 'local' && i.state !== 'present').map(i => ({ kind: i.kind, id: i.id, teams: [...i.teams], files: i.files.map(f => ({ ...f })), planRevision: plan.revision }));
+  const records: AuthoredItem[] = plan.items.filter(i => i.how === 'local' && i.state !== 'present' && !i.recorded).map(i => ({ kind: i.kind, id: i.id, teams: [...i.teams], files: i.files.map(f => ({ ...f })), planRevision: plan.revision }));
   if (records.length) {
     const existing = readAuthoringState(store.dir).receipt?.value.items ?? [];
     writeReceiptRecord(auth, plan.revision, plan.store.authoring, [...existing, ...records], live, () => readAuthoringState(store.dir).receipt?.read ?? null);
+    done.push('the store record of created items');
     hooks.afterStep?.(5);
   }
   // 6. The staging folder.
@@ -595,7 +691,7 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
   if (plan.config !== null) {
     live();
     const wrote = writeGuardedFile(project.dir, CONFIG_FILE, plan.config.text, plan.config.before?.sha256 ?? null, heldProject, `.${CONFIG_FILE}`);
-    configWrite = { sha256: wrote.sha256, bytes: wrote.bytes };
+    configWrite = { sha256: wrote.sha256, bytes: wrote.bytes }; done.push('bowerloom.json');
     if (plan.config.created) context = adoptCreatedMarker(project, 'config', { device: wrote.device, inode: wrote.inode });
     hooks.afterStep?.(7);
   }
@@ -606,10 +702,13 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
     const wrote = writeGuardedFile(project.dir, LOCK_FILE, plan.lock.text, plan.lock.before?.sha256 ?? null, heldProject, `.${LOCK_FILE}`);
     lockWrite = { sha256: wrote.sha256, bytes: wrote.bytes };
   }
+  // Review L5: a copy-only item always carries its reason; a plan without one is not this plan.
+  const notSwitched = plan.items.filter(i => !i.switch).map(i => { if (i.notSwitched === null) throw stale(); return { kind: i.kind, id: i.id, code: i.notSwitched.code }; });
   return {
     format: STORE_MIGRATE_RESULT_FORMAT, planRevision: plan.revision,
-    moved: plan.items.filter(i => i.state !== 'present' || i.switch).map(i => ({ kind: i.kind, id: i.id, state: i.state })),
-    notSwitched: plan.items.filter(i => !i.switch).map(i => ({ kind: i.kind, id: i.id, code: i.notSwitched?.code ?? 'STORE_ITEM_NOT_SHAREABLE' })),
+    moved: plan.items.filter(i => i.switch).map(i => ({ kind: i.kind, id: i.id, state: i.state })),
+    copied: plan.items.filter(i => !i.switch && i.state !== 'present').map(i => ({ kind: i.kind, id: i.id, state: i.state })),
+    notSwitched, skipped: plan.skipped.map(x => ({ ...x })), complete: notSwitched.length === 0 && plan.skipped.length === 0,
     configSha256: configWrite?.sha256 ?? null, configBytes: configWrite?.bytes ?? null, lockSha256: lockWrite?.sha256 ?? null, lockBytes: lockWrite?.bytes ?? null,
     removeLines: [...plan.removeLines], executionAuthorized: false,
   };

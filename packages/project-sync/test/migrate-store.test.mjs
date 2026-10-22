@@ -25,7 +25,7 @@ const ctx = w => discoverProject(w.projectDir, w.home);
 const bl = (w, rel = '') => path.join(w.projectDir, '.bowerloom', rel);
 const TOKEN = () => GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: `ghp_${'t'.repeat(36)}` });
 const PLAN_KEYS = ['commit', 'config', 'executionAuthorized', 'folders', 'format', 'items', 'lock', 'manifest', 'network', 'notes', 'project', 'projectScratch', 'removeLines', 'revision', 'scratch', 'selectors', 'shared', 'skipped', 'staleLock', 'store', 'writesAuthorized'];
-const ITEM_KEYS = ['candidate', 'entry', 'files', 'how', 'id', 'kind', 'lock', 'notSwitched', 'state', 'switch', 'teams'];
+const ITEM_KEYS = ['candidate', 'entry', 'files', 'how', 'id', 'kind', 'lock', 'notSwitched', 'recorded', 'state', 'switch', 'teams'];
 
 /** Creates one project item through the product's create path, under the project lock. */
 async function projectItem(w, kind, id, extra = {}) {
@@ -124,7 +124,7 @@ test('2, 3 and 4. apply copies each item with its bytes, records the written one
   assert.equal(fs.readFileSync(path.join(w.projectDir, 'bowerloom.json'), 'utf8'), expected);
   assert.equal(p.config.created, true); assert.equal(p.config.text, expected);
   assert.equal(fs.existsSync(path.join(w.projectDir, 'bowerloom.lock.json')), false);
-  assert.deepEqual(result, { format: STORE_MIGRATE_RESULT_FORMAT, planRevision: p.revision, moved: p.items.map(i => ({ kind: i.kind, id: i.id, state: 'copy' })), notSwitched: [], configSha256: sha(expected), configBytes: Buffer.byteLength(expected), lockSha256: null, lockBytes: null, removeLines: p.removeLines, executionAuthorized: false });
+  assert.deepEqual(result, { format: STORE_MIGRATE_RESULT_FORMAT, planRevision: p.revision, moved: p.items.map(i => ({ kind: i.kind, id: i.id, state: 'copy' })), copied: [], notSwitched: [], skipped: [], complete: true, configSha256: sha(expected), configBytes: Buffer.byteLength(expected), lockSha256: null, lockBytes: null, removeLines: p.removeLines, executionAuthorized: false });
   // 18. The staging folder is gone.
   assert.deepEqual(fs.readdirSync(path.join(w.store, 'authoring')), ['receipt.json']);
 });
@@ -174,7 +174,9 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   // A registered prompt whose file is gone: explicit refuses, --all skips it.
   await projectItem(w, 'prompt', 'gone'); fs.rmSync(bl(w, 'prompts/gone.md'));
   await assert.rejects(plan(w, { prompts: ['gone'] }), code('MIGRATE_ITEM_NOT_FOUND'));
-  assert.ok(!pairs(await plan(w, { all: true })).includes('prompt gone'));
+  const goneAll = await plan(w, { all: true });
+  assert.ok(!pairs(goneAll).includes('prompt gone'));
+  assert.deepEqual(goneAll.skipped.find(s => s.id === 'gone'), { kind: 'prompt', id: 'gone', line: 'its files are gone, so it stays as it is.' }, 'review M1: --all names an item whose files are gone');
   // A skill with an empty file, and one with a script: explicit refuses with the reason, --all keeps it with a line.
   await projectItem(w, 'skill', 'empty'); fs.writeFileSync(bl(w, 'skills/empty/notes.md'), '');
   await assert.rejects(plan(w, { skills: ['empty'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It holds a file that a store item cannot hold.'));
@@ -189,7 +191,7 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   ]);
   // CONFIG_ITEM_SELECTED: the config lists the item from the store already. --all skips it.
   await migrate(w, { prompts: ['brief'] });
-  await assert.rejects(plan(w, { prompts: ['brief'] }), code('CONFIG_ITEM_SELECTED'));
+  await assert.rejects(plan(w, { prompts: ['brief'] }), e => e.code === 'CONFIG_ITEM_SELECTED' && e.next === 'git rm .bowerloom/prompts/brief.md', 'review H2: the next step removes the old copy');
   assert.ok(!pairs(await plan(w, { all: true })).includes('prompt brief'));
 });
 
@@ -248,6 +250,20 @@ test('8. states present and register; a folder with no skills.json entry is regi
   await apply(w, q);
   assert.deepEqual(storeReceipt(w).map(i => i.id).sort(), ['brief', 'house-style', 'research']);
   assert.deepEqual(storeSkills(w).map(s => s.id), ['charts', 'house-style']);
+  // Review C1: a store record whose skills.json entry is missing: the entry is added, and no second record is written.
+  const c = await fourItems(t); await storeItem(c, 'skill', 'house-style');
+  fs.writeFileSync(path.join(c.store, 'skills.json'), serializeManifest(validateManifest({ format: 'bowerloom/skills/v1beta1', harnesses: ['claude', 'codex'], skills: [] }, STORE_MANIFEST_LIMITS), STORE_MANIFEST_LIMITS));
+  const cp = await plan(c, { skills: ['house-style'] });
+  assert.deepEqual(cp.items.map(i => [i.state, i.recorded]), [['register', true]]);
+  await apply(c, cp);
+  assert.equal(storeReceipt(c).filter(i => i.id === 'house-style').length, 1);
+  assert.deepEqual(storeSkills(c).map(s => s.id), ['house-style']);
+  // Review M3 of the mutation list: a prompt's store record must carry the project tag.
+  const m = await fourItems(t); await storeItem(m, 'team', 'ops'); await storeItem(m, 'prompt', 'brief', { teams: ['ops'] });
+  await assert.rejects(plan(m, { prompts: ['brief'] }), code('MIGRATE_ID_EXISTS'));
+  // Mutant M4: a pinned project skill and an orphan store folder skills/<id> with no entry and no record.
+  const o = await fourItems(t); await storeItem(o, 'skill', 'seed'); fs.mkdirSync(path.join(o.store, 'skills/charts'), { mode: 0o700 }); fs.writeFileSync(path.join(o.store, 'skills/charts/SKILL.md'), '# charts\n', { mode: 0o600 });
+  await assert.rejects(plan(o, { skills: ['charts'] }), code('MIGRATE_ID_EXISTS'));
   // A local store entry with another tag refuses.
   const v = await fourItems(t); await storeItem(v, 'team', 'ops'); await storeItem(v, 'skill', 'house-style', { teams: ['ops'] });
   await assert.rejects(plan(v, { skills: ['house-style'] }), code('MIGRATE_ID_EXISTS'));
@@ -286,9 +302,14 @@ test('11. shared by origin: a pinned skill locks; a copy is copy-only with no ne
   const w = await fourItems(t); originProject(w);
   const first = await plan(w, { all: true });
   assert.equal(first.shared, true);
+  assert.equal((await plan(w, { prompts: ['brief'] })).config, null, 'review C3: only written items in a shared project: no config change');
   assert.deepEqual(first.items.map(i => [i.id, i.switch, i.notSwitched?.sentence ?? null]), [['charts', true, null], ['house-style', false, 'It is new in your store and not pushed yet'], ['brief', false, 'It is new in your store and not pushed yet'], ['research', false, 'It is new in your store and not pushed yet']]);
   assert.deepEqual(first.network, { hosts: [], credentials: null });
-  await apply(w, first);
+  const firstResult = await apply(w, first);
+  // Review M2: moved names only what switched; the copies are named apart, and the result is not complete.
+  assert.deepEqual(firstResult.moved, [{ kind: 'skill', id: 'charts', state: 'copy' }]);
+  assert.deepEqual(firstResult.copied.map(i => `${i.kind} ${i.id}`), ['skill house-style', 'prompt brief', 'team research']);
+  assert.equal(firstResult.complete, false);
   assert.deepEqual(configOf(w).skills, [{ id: 'charts', source: 'store' }, { id: 'house-style', source: 'project' }]);
   assert.deepEqual(readLock(ctx(w)).lock.skills, [{ id: 'charts', from: 'store', pin: CHARTS }]);
   // Present, and the store is not a git repository: copy-only with that sentence; nothing reads the network.
@@ -388,7 +409,11 @@ test('13c. a crash after step 7 in a project that is not shared: the config is w
   const w = await fourItems(t), boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
   await assert.rejects(migrate(w, { all: true, hooks: { afterStep: n => { if (n === 7) throw boom; } } }), code('TEST_CRASH'));
   assert.equal(configOf(w).teams[0].source, 'store');
-  assert.deepEqual((await plan(w, { all: true })).items, []);
+  const rerun = await plan(w, { all: true });
+  assert.deepEqual(rerun.items, []);
+  // Review H2: the old copies are still in the project, so the plan names them and gives the lines that remove them.
+  assert.deepEqual(rerun.skipped.map(s => `${s.kind} ${s.id}: ${s.line}`), ['skill charts', 'skill house-style', 'prompt brief', 'team research'].map(x => `${x}: already listed from the store; its old copy is still in this project.`));
+  assert.deepEqual(rerun.removeLines, ['  git rm -r .bowerloom/skills/house-style', '  git rm .bowerloom/prompts/brief.md', '  git rm -r .bowerloom/teams/research', 'Bowerloom does not edit .bowerloom/skills.json. Remove the line for skill charts yourself.']);
 });
 
 test('14. a stale plan refuses STALE_APPROVAL: a project file, the store skills.json or receipt, bowerloom.json, the lock, a switched item, or the token', async t => {
@@ -452,6 +477,11 @@ test('17. the store lock is taken before the project lock', async t => {
   const p = await plan(w, { prompts: ['brief'] });
   await apply(w, p, { hooks: { locked: name => order.push(name) } });
   assert.deepEqual(order, ['store', 'project']);
+  // A store that exists already: another holder of the project lock gives PROJECT_LOCKED, not STORE_LOCKED, and no write.
+  const v = await fourItems(t); await storeItem(v, 'skill', 'seed');
+  const q = await plan(v, { prompts: ['brief'] }), before = snapshot(v.store);
+  await withProjectLock(v.projectDir, signal(), async () => assert.rejects(apply(v, q), e => e.code === 'PROJECT_LOCKED' && !/made the store/.test(e.message)));
+  assert.deepEqual(snapshot(v.store), before);
 });
 
 test('19. lock rules: an old lock item that is not a store entry is dropped; a store entry neither switched nor locked refuses LOCK_CONFIG_MISMATCH', async t => {
@@ -498,4 +528,69 @@ test('21 and 3a. nothing to copy and no change; nothing to move; a project with 
   const bare = configWorld(t); writeConfig(bare, {});
   assert.deepEqual((await plan(bare, { all: true })).items, []);
   await assert.rejects(plan(bare, { skills: ['x'] }), code('MIGRATE_ITEM_NOT_FOUND'));
+});
+
+test('4c (review C3). a shared project with only written items: no bowerloom.json is created', async t => {
+  const w = await fourItems(t); originProject(w);
+  const p = await plan(w, { prompts: ['brief'], teams: ['research'] });
+  assert.equal(p.config, null); assert.equal(p.lock, null);
+  const result = await apply(w, p);
+  assert.equal(fs.existsSync(path.join(w.projectDir, 'bowerloom.json')), false);
+  assert.deepEqual(result.moved, []); assert.equal(result.complete, false);
+});
+
+test('S1. a link at .bowerloom/skills, teams or prompts refuses AUTHORING_UNSAFE_PATH and copies nothing from outside the project', async t => {
+  for (const [area, selector] of [['skills', { skills: ['house-style'] }], ['teams', { teams: ['research'] }], ['prompts', { prompts: ['brief'] }]]) {
+    const w = await fourItems(t), outside = path.join(w.base, `outside-${area}`);
+    fs.renameSync(bl(w, area), outside); fs.symlinkSync(outside, bl(w, area));
+    for (const o of [{ all: true }, selector]) await assert.rejects(plan(w, o), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes(`.bowerloom/${area}`), `${area} ${JSON.stringify(o)}`);
+    assert.equal(fs.existsSync(w.store), false, `${area}: nothing reached the store`);
+  }
+  // A dangling link refuses too.
+  const d = await fourItems(t); fs.rmSync(bl(d, 'teams'), { recursive: true }); fs.symlinkSync(path.join(d.base, 'nowhere'), bl(d, 'teams'));
+  await assert.rejects(plan(d, { all: true }), code('AUTHORING_UNSAFE_PATH'));
+});
+
+test('S1b. a link swapped in after the plan: apply refuses STALE_APPROVAL with the cause, and copies nothing', async t => {
+  const w = await fourItems(t), p = await plan(w, { skills: ['house-style'] });
+  const copy = path.join(w.base, 'copy'); fs.cpSync(bl(w, 'skills'), copy, { recursive: true }); fs.rmSync(bl(w, 'skills'), { recursive: true }); fs.symlinkSync(copy, bl(w, 'skills'));
+  await assert.rejects(apply(w, p), e => e.code === 'STALE_APPROVAL' && e.cause === 'AUTHORING_UNSAFE_PATH' && /^The plan changed after you saw it: AUTHORING_UNSAFE_PATH\. /.test(e.message));
+  assert.equal(fs.existsSync(path.join(w.store, 'skills/house-style')), false);
+});
+
+test('S2. a store prompt that appears after the staging is never overwritten', async t => {
+  const w = await fourItems(t), p = await plan(w, { prompts: ['brief'] });
+  await assert.rejects(apply(w, p, { hooks: { afterStage: kind => { if (kind === 'prompt') { fs.mkdirSync(path.join(w.store, 'prompts'), { recursive: true, mode: 0o700 }); fs.writeFileSync(path.join(w.store, 'prompts/brief.md'), 'theirs\n', { mode: 0o600 }); } } } }), code('STALE_APPROVAL'));
+  assert.equal(fs.readFileSync(path.join(w.store, 'prompts/brief.md'), 'utf8'), 'theirs\n');
+});
+
+test('S4 (mutant M11). a store swapped after the first item, or a project swapped after step 5, refuses; nothing lands in the swapped folder', async t => {
+  const w = await fourItems(t), p = await plan(w, { prompts: ['brief'], teams: ['research'] });
+  const swapped = path.join(w.base, 'store-away');
+  await assert.rejects(apply(w, p, { hooks: { afterItem: kind => { if (kind === 'prompt') { fs.renameSync(w.store, swapped); fs.cpSync(swapped, w.store, { recursive: true }); } } } }), e => ['STORE_LOCKED', 'STORE_UNSAFE'].includes(e.code));
+  assert.equal(fs.existsSync(path.join(w.store, 'teams/research')), false, 'the team did not reach the swapped-in store');
+  const v = await fourItems(t), q = await plan(v, { prompts: ['brief'] }), away = path.join(v.base, 'project-away');
+  await assert.rejects(apply(v, q, { hooks: { afterStep: n => { if (n === 5) { fs.renameSync(v.projectDir, away); fs.cpSync(away, v.projectDir, { recursive: true }); } } } }), e => ['PROJECT_LOCKED', 'PROJECT_UNSAFE'].includes(e.code));
+  assert.equal(fs.existsSync(path.join(v.projectDir, 'bowerloom.json')), false); assert.equal(fs.existsSync(path.join(away, 'bowerloom.json')), false);
+});
+
+test('H1. a refusal after a write says what was written and that a rerun finishes it', async t => {
+  const w = await fourItems(t); await projectItem(w, 'prompt', 'notes');
+  const p = await plan(w, { prompts: ['brief', 'notes'] });
+  await assert.rejects(apply(w, p, { hooks: { afterItem: (kind, id) => { if (id === 'brief') fs.appendFileSync(bl(w, 'prompts/notes.md'), 'changed\n'); } } }), e => e.code === 'STALE_APPROVAL' && !/Nothing was applied/.test(e.message) && /prompt brief/.test(e.message) && /store migrate/.test(e.message));
+  assert.deepEqual((await plan(w, { prompts: ['brief', 'notes'] })).items.map(i => `${i.id} ${i.state}`), ['brief register', 'notes copy']);
+});
+
+test('L2. a pushed copy with a file Bowerloom cannot check is copy-only with its own sentence', async t => {
+  const w = await fourItems(t); originProject(w);
+  await apply(w, await plan(w, { prompts: ['brief'] }));
+  const repo = push(w);
+  const p = await plan(w, { prompts: ['brief'], transport: storeTransport(repo, [], { override: url => url.includes('/git/blobs/') ? Buffer.alloc(300000, 97) : undefined }) });
+  assert.deepEqual(p.items[0].notSwitched, { code: 'SKILLS_ADD_UNSAFE_CONTENT', sentence: 'The pushed copy holds a file that Bowerloom cannot check' });
+});
+
+test('L1. a team past the entry limit of a store item is larger than a store item can be', async t => {
+  const w = await fourItems(t);
+  for (let i = 0; i < 90; i++) { const dir = bl(w, `teams/research/extra/f${i}/g`); fs.mkdirSync(dir, { recursive: true, mode: 0o755 }); fs.writeFileSync(path.join(dir, 'n.md'), `${i}\n`); }
+  await assert.rejects(plan(w, { teams: ['research'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It is larger than a store item can be.'));
 });

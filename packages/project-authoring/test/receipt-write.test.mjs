@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import '../../../dist/tests/support/isolate-home.js';
 import { writeReceiptRecord } from '../../../dist/packages/project-authoring/src/index.js';
 import { readAuthoringState, receiptOf, recordText, tempName } from '../../../dist/packages/project-authoring/src/state.js';
+import { makeFolder } from '../../../dist/packages/project-authoring/src/files.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const code = expected => error => { assert.equal(error?.code, expected, error?.stack); return true; };
@@ -78,4 +79,22 @@ test('3. no temporary file stays: after a write, after live() throws, after a st
   assert.throws(() => writeReceiptRecord(f.auth, REV, before, [bad], () => {}, f.readNow), code('AUTHORING_RECEIPT_INVALID'));
   assert.equal(fs.existsSync(temp), false); assert.deepEqual(fs.readFileSync(join(f.auth, 'receipt.json')), bytes);
   assert.deepEqual(f.names(), ['receipt.json']);
+});
+
+test('L7. when live() throws and the cleanup of the temporary file fails too, the first error is the one reported', t => {
+  const f = folder(t), temp = join(f.auth, tempName(REV, 'receipt'));
+  const lost = Object.assign(new Error('lock lost'), { code: 'PROJECT_LOCKED' });
+  const original = fs.unlinkSync;
+  fs.unlinkSync = () => { throw Object.assign(new Error('busy'), { code: 'EBUSY' }); };
+  try { assert.throws(() => writeReceiptRecord(f.auth, REV, null, [item('prompt', 'brief')], () => { throw lost; }, f.readNow), code('PROJECT_LOCKED')); }
+  finally { fs.unlinkSync = original; }
+  fs.rmSync(temp, { force: true });
+});
+
+test('L8. makeFolder names a full disk and a refused permission with their own codes', t => {
+  const f = folder(t), original = fs.mkdirSync;
+  for (const [errno, expected] of [['ENOSPC', 'AUTHORING_DISK_FULL'], ['EACCES', 'AUTHORING_ACCESS_DENIED'], ['EPERM', 'AUTHORING_ACCESS_DENIED'], ['EEXIST', 'AUTHORING_UNSAFE_PATH']]) {
+    fs.mkdirSync = () => { throw Object.assign(new Error(errno), { code: errno }); };
+    try { assert.throws(() => makeFolder(join(f.auth, 'x')), code(expected), errno); } finally { fs.mkdirSync = original; }
+  }
 });

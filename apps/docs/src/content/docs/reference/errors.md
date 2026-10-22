@@ -82,7 +82,7 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. On a clone, `bowerloom up --team` and `team create` refuse this way, because `.bowerloom/brief.json` stays on the first machine. | Run `bowerloom status`. On a clone, follow the [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine). |
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
 
-Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_INVALID`, `TEAM_NOT_FOUND`, `SKILL_EXISTS`, `SKILL_NAME_RESERVED`, `SKILL_NAME_INVALID`, `PROMPT_EXISTS`, `PROMPT_NAME_INVALID`, `REVISION_PENDING`, `AUTHORING_PENDING`, `AUTHORING_RECEIPT_INVALID`, `AUTHORING_UNSAFE_PATH`, `AUTHORING_UNREGISTERED`, `AUTHORING_WRITE_INTERRUPTED`, and `AUTHORING_ITEM_MISSING`. [Create teams, skills, and prompts](/docs/guides/create-items/#if-a-command-refuses) explains them. `AUTHORING_RECEIPT_INVALID` means Bowerloom reads its record of created items strictly, so a hand edit can break it. Run `git diff .bowerloom/authoring/receipt.json`. `AUTHORING_UNSAFE_PATH` means Bowerloom does not read or write through links, shared files, or files others can change. Run `ls -la .bowerloom`. `AUTHORING_ITEM_MISSING` means a created item is gone. Run `git status .bowerloom`.
+Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_INVALID`, `TEAM_NOT_FOUND`, `SKILL_EXISTS`, `SKILL_NAME_RESERVED`, `SKILL_NAME_INVALID`, `PROMPT_EXISTS`, `PROMPT_NAME_INVALID`, `REVISION_PENDING`, `AUTHORING_PENDING`, `AUTHORING_RECEIPT_INVALID`, `AUTHORING_UNSAFE_PATH`, `AUTHORING_UNREGISTERED`, `AUTHORING_WRITE_INTERRUPTED`, and `AUTHORING_ITEM_MISSING`. [Create teams, skills, and prompts](/docs/guides/create-items/#if-a-command-refuses) explains them. `AUTHORING_RECEIPT_INVALID` means Bowerloom reads its record of created items strictly, so a hand edit can break it. Run `git diff .bowerloom/authoring/receipt.json`. `AUTHORING_UNSAFE_PATH` means Bowerloom does not read or write through links, shared files, or files others can change. Run `ls -la .bowerloom`. `AUTHORING_ITEM_MISSING` means a created item is gone. Run `git status .bowerloom`. `AUTHORING_DISK_FULL` means the disk has no room, so Bowerloom stopped before it wrote more. Run `df -h .`. `AUTHORING_ACCESS_DENIED` means the system refused the write, so Bowerloom stopped before it wrote more. Run `ls -ld .bowerloom ~/.bowerloom`.
 
 ## Store and config refusals
 
@@ -125,16 +125,16 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | `TEAM_NOT_SELECTED` | `up` installs for a team only if `bowerloom.json` lists it. | `bowerloom use team <id>` |
 | `ITEM_REVIEW_REQUIRED` | Bowerloom shows what an item can do before it installs it. | Run `bowerloom apply --frozen` again to review it. |
 
-These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above.
+These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above. A refusal after the run wrote part of its work says what it wrote. Run the same command again, and its plan finishes the rest. If another command holds the project lock, `store migrate` may already have made an empty store. Then its old plan no longer applies: run the command again without `--approve` to see the next plan.
 
 | Code | Meaning | Next action |
 | --- | --- | --- |
-| `MIGRATE_ITEM_NOT_FOUND` | A selected item is not defined in the project, or its files are gone. | `bowerloom ls` |
-| `MIGRATE_ITEM_UNSUPPORTED` | A selected skill or prompt cannot be a store item. The message adds the reason: a file that a store item cannot hold, or a size past a limit. | `bowerloom help store` |
-| `MIGRATE_ID_EXISTS` | The store already holds an item with that kind and id but other bytes. Bowerloom never overwrites a store item. | Rename the project item, or remove the store item yourself. For a store record whose files are gone, run `bowerloom receipt clean --global`. |
-| `MIGRATE_RESERVED` | `first-team` or `personal-assistant` was named. Setup owns them. | `bowerloom store migrate --all` skips them. |
-| `MIGRATE_TEAM_MISSING` | A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team. | Add `--team <name>` to move that team too. |
-| `MIGRATE_LIMIT` | The store record of created items holds 512 items at most. | Remove items from the store, or move fewer items. |
+| `MIGRATE_ITEM_NOT_FOUND` | `store migrate` moves only items that this project defines in `.bowerloom`, with their files in place. | `bowerloom ls` |
+| `MIGRATE_ITEM_UNSUPPORTED` | A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits. | `bowerloom help store` |
+| `MIGRATE_ID_EXISTS` | Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move. | Rename the project item, or remove the store item yourself. For a store record whose files are gone, run `bowerloom receipt clean --global`. |
+| `MIGRATE_RESERVED` | Setup made these items for this project, so they stay in it. | `bowerloom store migrate --all` skips them. |
+| `MIGRATE_TEAM_MISSING` | The store keeps the team tag, so that team must be in the store. | Add `--team <name>` to move that team too. |
+| `MIGRATE_LIMIT` | This beta keeps the store record small: 512 items and 1 MiB at most. | Remove items from the store, or move fewer items. |
 
 These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, `PROJECT_LOCK_UNAVAILABLE`, `STORE_STATE_NESTED`, and `SKILLS_STATE_UNSAFE`.
 

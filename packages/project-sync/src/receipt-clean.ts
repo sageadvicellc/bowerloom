@@ -13,7 +13,8 @@ import { canonicalJson } from '../../contracts/src/index.js';
 import { isHeldProjectLock, projectRefusal, verifyProjectPins, verifyStorePins } from '../../project-context/src/index.js';
 import type { StoreContext } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, HeldProjectLock, ProjectContext } from '../../project-context/src/types.js';
-import { lstatOrNull, removeScratch } from '../../project-authoring/src/files.js';
+import fs from 'node:fs';
+import { lstatOrNull, realFolder, removeScratch } from '../../project-authoring/src/files.js';
 import { refuse as authoringRefuse } from '../../project-authoring/src/refusal.js';
 import { AUTHORING_FOLDER, itemPath, readAuthoringState, receiptOf, recordText } from '../../project-authoring/src/state.js';
 import type { AuthoredItem, ItemKind } from '../../project-authoring/src/state.js';
@@ -29,6 +30,7 @@ import { parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Manifest } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { scratchFiles } from './change.js';
+import { partialRefusal } from './refusal.js';
 
 export const RECEIPT_CLEAN_PLAN_FORMAT = 'bowerloom/receipt-clean-plan/v1beta1' as const;
 export const RECEIPT_CLEAN_RESULT_FORMAT = 'bowerloom/receipt-clean-result/v1beta1' as const;
@@ -94,10 +96,19 @@ export function planReceiptClean(input: ReceiptCleanInput): ReceiptCleanPlan {
   const state = readAuthoringState(scope.base);
   if (state.pending !== null) authoringRefuse('AUTHORING_PENDING');
   const receiptItems = state.receipt?.value.items ?? [];
+  // Review S3 of PR 98: an area folder that is a link, dangling or not, is never followed and never makes an item gone.
+  for (const area of ['skills', 'prompts', 'teams', 'slices']) {
+    const at = join(scope.base, area);
+    if (lstatOrNull(at) === null) continue;
+    let inside = false;
+    try { realFolder(at); inside = fs.realpathSync(at) === join(fs.realpathSync(scope.base), area); } catch { inside = false; }
+    if (!inside) authoringRefuse('AUTHORING_UNSAFE_PATH', `The folder is ${scope.kind === 'store' ? '~/.bowerloom' : '.bowerloom'}/${area}.`);
+  }
   const selected = receiptItems.filter(i => gone(join(scope.base, itemPath(i.kind, i.id))))
     .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || byteOrder(a.id, b.id));
   const projectScratch = project !== null ? scratchFiles(project.dir) : [];
-  if (selected.length === 0) { pins(scope); return empty(); }
+  // Review L4: scratch goes even when nothing is gone.
+  if (selected.length === 0) { pins(scope); return body({ items: [], manifest: null, config: null, receipt: null, scratch: state.scratch, projectScratch }); }
   // skills.json: one removal for each gone skill whose entry is local, in id order. A pinned entry is never removed.
   const manifestState = readManifestState(scope.target, { allowAbsent: true });
   let current: Manifest | null = manifestState.file ? parseManifest(manifestState.file.bytes, scope.target.limits) : null;
@@ -159,14 +170,18 @@ export function applyReceiptClean(input: ReceiptCleanInput, revision: string, he
   if (plan.revision !== revision) throw stale();
   const live = (): void => { held.assertHeld(scope.dir); pins(scope); };
   const auth = join(scope.base, AUTHORING_FOLDER);
+  // Review H1 of PR 98: what this run wrote, so that a refusal part way says so and names it.
+  const done: string[] = [];
+  try {
   // 0. Bowerloom's own scratch.
-  if (plan.scratch.length) { live(); for (const name of plan.scratch) removeScratch(join(auth, name)); }
-  if (plan.projectScratch.length) { live(); removeProjectScratch(scope.dir, plan.projectScratch); }
+  if (plan.scratch.length) { live(); for (const name of plan.scratch) { removeScratch(join(auth, name)); done.push(`the scratch ${name}, removed`); } }
+  if (plan.projectScratch.length) { live(); removeProjectScratch(scope.dir, plan.projectScratch); done.push('the leftover scratch of bowerloom.json and the lock, removed'); }
   if (plan.receipt === null) return { format: RECEIPT_CLEAN_RESULT_FORMAT, planRevision: plan.revision, scope: plan.scope, removed: [], executionAuthorized: false };
   // 1. The config.
   if (plan.config !== null) {
     live();
     writeGuardedFile(scope.dir, CONFIG_FILE, plan.config.text, plan.config.before.sha256, held, `.${CONFIG_FILE}`);
+    done.push('bowerloom.json');
     hooks.afterConfig?.();
   }
   // 2. skills.json: one removal at a time, each made again now and checked against the bytes the plan bound.
@@ -175,6 +190,7 @@ export function applyReceiptClean(input: ReceiptCleanInput, revision: string, he
     const change = planManifestChange(scope.target, { remove: step.id }, { storeCreate: false });
     if ((change.before?.sha256 ?? null) !== (step.before?.sha256 ?? null) || change.after.sha256 !== step.after.sha256 || change.after.bytes !== step.after.bytes) throw stale();
     applyManifestChange(change, change.revision, held);
+    done.push(`the skills.json entry of skill ${step.id}, removed`);
   }
   if (plan.manifest !== null) hooks.afterManifest?.();
   // 3. The receipt, once, last.
@@ -183,6 +199,7 @@ export function applyReceiptClean(input: ReceiptCleanInput, revision: string, he
   if (sha(recordText(receiptOf(keep))) !== plan.receipt.after.sha256) throw stale();
   writeReceiptRecord(auth, plan.revision, plan.receipt.before, keep, live, () => readAuthoringState(scope.base).receipt?.read ?? null);
   live();
+  } catch (error) { throw partialRefusal(error, done, `bowerloom receipt clean${scope.kind === 'store' ? ' --global' : ''}`); }
   return { format: RECEIPT_CLEAN_RESULT_FORMAT, planRevision: plan.revision, scope: plan.scope, removed: plan.items.map(i => ({ kind: i.kind, id: i.id })), executionAuthorized: false };
 }
 

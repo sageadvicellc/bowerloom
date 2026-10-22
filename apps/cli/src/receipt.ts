@@ -21,7 +21,7 @@ const entries = (n: number): string => `${n} ${n === 1 ? 'entry' : 'entries'}`;
 /** The plan in plain words (3.4). */
 export function renderReceiptClean(plan: ReceiptCleanPlan): string {
   const record = plan.scope === 'store' ? '~/.bowerloom/authoring/receipt.json' : '.bowerloom/authoring/receipt.json';
-  const lines = [`Remove ${entries(plan.items.length)} from the record of created items (${record})`];
+  const lines = plan.items.length ? [`Remove ${entries(plan.items.length)} from the record of created items (${record})`] : [];
   for (const item of plan.items) lines.push(`${itemLabel(item.kind, item.id)}its files are gone`);
   for (const step of plan.manifest?.steps ?? []) lines.push(`skills.json: removes the local entry for skill ${step.id}`);
   for (const r of plan.config?.removes ?? []) lines.push(`bowerloom.json: removes ${r.kind} ${r.id} (project)`);
@@ -48,7 +48,8 @@ export async function runReceiptCommand(args: readonly string[], cwd: string, ho
   } else input = { scope: 'project', project: discoverProject(cwd, home) };
   const controller = new AbortController();
   const first = planReceiptClean(input);
-  if (first.items.length === 0) { write(flags.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : 'Nothing to clean.\n'); return 0; }
+  // Review L4: a plan with only scratch to remove still asks, then removes it.
+  if (first.items.length === 0 && first.scratch.length === 0 && first.projectScratch.length === 0) { write(flags.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : 'Nothing to clean.\n'); return 0; }
   let pending: ReceiptCleanPlan | null = first, result: ReceiptCleanResult | null = null;
   const change: PlannedChange<ReceiptCleanPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planReceiptClean(input); },

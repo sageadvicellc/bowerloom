@@ -242,19 +242,20 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
 });
 
-// Spec 08, section 5: the six store migrate codes. The sentence is the Cause cell and the next step the table's. Each has a row in the errors reference.
+// Spec 08, section 5: the six store migrate codes. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why,
+// and does not repeat the message. Each has a row in the errors reference whose meaning is that sentence.
 test('spec 08: the MIGRATE_* codes have their words and a row in the errors reference', () => {
   const rows: ReadonlyArray<readonly [string, string, string]> = [
-    ['MIGRATE_ITEM_NOT_FOUND', 'A selected item is not defined in the project, or its files are gone.', 'bowerloom ls'],
-    ['MIGRATE_ITEM_UNSUPPORTED', 'A selected skill or prompt cannot be a store item. The message adds the reason.', 'bowerloom help store'],
-    ['MIGRATE_ID_EXISTS', 'The store already holds an item with that kind and id but other bytes.', 'Rename the project item, or remove the store item yourself.'],
-    ['MIGRATE_RESERVED', 'first-team or personal-assistant was named. Setup owns them.', 'bowerloom store migrate --all skips them.'],
-    ['MIGRATE_TEAM_MISSING', 'A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team.', 'Add --team <name> to move that team too.'],
-    ['MIGRATE_LIMIT', 'The store record of created items holds 512 items at most.', 'Remove items from the store, or move fewer items.'],
+    ['MIGRATE_ITEM_NOT_FOUND', 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', 'bowerloom ls'],
+    ['MIGRATE_ITEM_UNSUPPORTED', 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', 'bowerloom help store'],
+    ['MIGRATE_ID_EXISTS', 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', 'Rename the project item, or remove the store item yourself.'],
+    ['MIGRATE_RESERVED', 'Setup made these items for this project, so they stay in it.', 'bowerloom store migrate --all skips them.'],
+    ['MIGRATE_TEAM_MISSING', 'The store keeps the team tag, so that team must be in the store.', 'Add --team <name> to move that team too.'],
+    ['MIGRATE_LIMIT', 'This beta keeps the store record small: 512 items and 1 MiB at most.', 'Remove items from the store, or move fewer items.'],
   ];
   for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
-  for (const [code] of rows) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` | ${sentence.replace('store migrate', '`store migrate`').replace('.bowerloom', '`.bowerloom`')} |`)), code);
   for (const code of rows.map(r => r[0])) assert.ok((CONFIG_REFUSAL_CODES as readonly string[]).includes(code), code);
   // A refusal that carries its own next step names it: the store record whose files are gone.
   assert.match(renderRefusal('MIGRATE_ID_EXISTS', 'm.', { next: 'bowerloom receipt clean --global' }), /\nNext: bowerloom receipt clean --global\n$/);

@@ -442,13 +442,13 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Review F1 of PR 97.
   GITHUB_TOKEN_SSO_REQUIRED: { sentence: 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', next: "Authorize the token for the organization on GitHub, under the token's settings, then run the command again." },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
-  // Spec 08, section 5: the sentence is the Cause cell and the next step the table's.
-  MIGRATE_ITEM_NOT_FOUND: { sentence: 'A selected item is not defined in the project, or its files are gone.', next: 'bowerloom ls' },
-  MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A selected skill or prompt cannot be a store item. The message adds the reason.', next: 'bowerloom help store' },
-  MIGRATE_ID_EXISTS: { sentence: 'The store already holds an item with that kind and id but other bytes.', next: 'Rename the project item, or remove the store item yourself.' },
-  MIGRATE_RESERVED: { sentence: 'first-team or personal-assistant was named. Setup owns them.', next: 'bowerloom store migrate --all skips them.' },
-  MIGRATE_TEAM_MISSING: { sentence: 'A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team.', next: 'Add --team <name> to move that team too.' },
-  MIGRATE_LIMIT: { sentence: 'The store record of created items holds 512 items at most.', next: 'Remove items from the store, or move fewer items.' },
+  // Spec 08, section 5. Review C2 of PR 98 (Hanna's choice C on #97): each sentence says why, and the next step is the table's.
+  MIGRATE_ITEM_NOT_FOUND: { sentence: 'store migrate moves only items that this project defines in .bowerloom, with their files in place.', next: 'bowerloom ls' },
+  MIGRATE_ITEM_UNSUPPORTED: { sentence: 'A store item holds only md, txt, json, yaml, yml, csv, and license files, within the size limits.', next: 'bowerloom help store' },
+  MIGRATE_ID_EXISTS: { sentence: 'Bowerloom never overwrites a store item, so an item with the same id and other bytes cannot move.', next: 'Rename the project item, or remove the store item yourself.' },
+  MIGRATE_RESERVED: { sentence: 'Setup made these items for this project, so they stay in it.', next: 'bowerloom store migrate --all skips them.' },
+  MIGRATE_TEAM_MISSING: { sentence: 'The store keeps the team tag, so that team must be in the store.', next: 'Add --team <name> to move that team too.' },
+  MIGRATE_LIMIT: { sentence: 'This beta keeps the store record small: 512 items and 1 MiB at most.', next: 'Remove items from the store, or move fewer items.' },
   // Spec 09, section 5: the sentence is the fixed message, the next step is the Next step cell.
   CACHE_ENTRY_NOT_FOUND: { sentence: 'No cache entry starts with that text.', next: 'bowerloom cache list' },
   CACHE_ENTRY_BUSY: { sentence: 'Another Bowerloom command is using that cache entry.', next: 'When the other command is done, run this one again.' },
@@ -507,6 +507,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   PROJECT_BRIEF_INVALID: { sentence: 'A new team is built from the project brief that setup saved.', next: 'bowerloom status' },
   AUTHORING_PENDING: { sentence: 'Bowerloom finishes an interrupted create only when what it left matches its record exactly.', next: 'cat .bowerloom/authoring/pending.json' },
   AUTHORING_RECEIPT_INVALID: { sentence: 'Bowerloom reads its record of created items strictly, so a hand edit can break it.', next: 'git diff .bowerloom/authoring/receipt.json' },
+  // Review L8 of PR 98.
+  AUTHORING_DISK_FULL: { sentence: 'The disk has no room, so Bowerloom stopped before it wrote more.', next: 'df -h .' },
+  AUTHORING_ACCESS_DENIED: { sentence: 'The system refused the write, so Bowerloom stopped before it wrote more.', next: 'ls -ld .bowerloom ~/.bowerloom' },
   AUTHORING_UNSAFE_PATH: { sentence: 'Bowerloom will not read or write through links, shared files or files others can change.', next: 'ls -la .bowerloom' },
   AUTHORING_UNREGISTERED: { sentence: 'Bowerloom keeps track only of what create made.', next: 'bowerloom status' },
   REVISION_PENDING: { sentence: 'Create waits until the revise is finished.', next: 'bowerloom help advanced' },
