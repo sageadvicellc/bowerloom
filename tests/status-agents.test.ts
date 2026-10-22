@@ -99,6 +99,7 @@ test('apply exit codes: 3 for approval required, 0 for done and for nothing to c
   const done = run(p, ['apply', '--approve', revisionIn(shown.stdout)]); assert.equal(done.status, 0, done.stderr);
   assert.match(done.stdout, /^ {2}agent plan: installed$/m); assert.match(done.stdout, /^ {2}agent scribe: installed$/m);
   assert.match(done.stdout, /Project skills are in \.claude\/skills and \.agents\/skills\. Prompts are Claude Code commands in \.claude\/commands, and Codex skills named prompt-<name>\. Agents are in \.claude\/agents\./);
+  const afterApply = JSON.parse(run(p, ['status', '--json']).stdout); assert.deepEqual(afterApply.drift, []); assert.ok(!/held|refused/.test(run(p, ['status']).stdout));
   const again = run(p, ['apply']); assert.equal(again.status, 0); assert.match(again.stdout, /agent up to date/); assert.match(again.stdout, /Nothing to change\./);
   place(p, 'desk', 'scribe.md', agent('scribe', 'tools: Read'));
   const update = run(p, ['apply']); assert.equal(update.status, 3); assert.match(update.stdout, /update agent: \.claude\/agents\/scribe\.md/);

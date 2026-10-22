@@ -303,3 +303,27 @@ test('25. the shared ignore file is put back through an up-to-date agent, after 
   fs.rmSync(path.join(g.bowerloom, 'managed/.gitignore'));
   const q = await plan(g, ['claude']); assert.deepEqual([q.prompts[0].action, q.agents[0].action], ['update', 'none']);
 });
+
+test('26. a skill named agent-scribe and an agent named scribe both install with no collision', async t => {
+  const f = await agentProject(t); localSkill(f, 'agent-scribe'); writeManifest(f, [localEntry('agent-scribe')]); agentSource(f, 'first-team', 'scribe.md', agentText('scribe'));
+  const { result } = await applied(f, ['claude']);
+  assert.deepEqual(result.applied.map(x => [x.kind, x.id]), [['skill', 'agent-scribe'], ['agent', 'scribe']]);
+  assert.ok(exists(f, '.bowerloom/managed/catalog/agent-scribe.json')); assert.ok(exists(f, '.bowerloom/managed/catalog/agent_scribe.json'));
+});
+
+test('27. a byte order mark, invalid UTF-8, a null byte and a carriage return each hold the agent with AGENT_INVALID', async t => {
+  const f = await agentProject(t), ok = agentText('plain');
+  agentSource(f, 'first-team', 'bom.md', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(agentText('bom'))]));
+  agentSource(f, 'first-team', 'utf.md', Buffer.concat([Buffer.from(agentText('utf')), Buffer.from([0xed, 0xa0, 0x80])]));
+  agentSource(f, 'first-team', 'nul.md', agentText('nul', '', 'Body\0here\n')); agentSource(f, 'first-team', 'crlf.md', agentText('crlf').replace(/\n/g, '\r\n')); agentSource(f, 'first-team', 'plain.md', ok);
+  const p = await plan(f, ['claude']), codes = Object.fromEntries(p.agents.map(a => [a.id, a.hold?.code ?? null]));
+  assert.deepEqual(codes, { bom: 'AGENT_INVALID', crlf: 'AGENT_INVALID', nul: 'AGENT_INVALID', plain: null, utf: 'AGENT_INVALID' });
+  assert.equal(byId(p.agents).plain.action, 'install');
+});
+
+test('28. a source file over 64 KiB, or one that others can write, holds that agent with AGENT_INVALID', async t => {
+  const f = await agentProject(t);
+  agentSource(f, 'first-team', 'big.md', agentText('big', '', 'x'.repeat(66000))); agentSource(f, 'first-team', 'loose.md', agentText('loose'), 0o664); agentSource(f, 'first-team', 'fine.md', agentText('fine'));
+  const p = await plan(f, ['claude']), codes = Object.fromEntries(p.agents.map(a => [a.id, a.hold?.code ?? null]));
+  assert.deepEqual(codes, { big: 'AGENT_INVALID', fine: null, loose: 'AGENT_INVALID' });
+});

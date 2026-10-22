@@ -46,6 +46,7 @@ These limits are current facts of this beta:
 - No worker starts. `up` ends at `prepared, workers held`.
 - Native discovery of the skill, prompt and agent copies by Claude Code and Codex is not observed.
 - Codex agents are not projected in this beta.
+- `bowerloom status` does not report the files of a team's `agents/` folder as edited. It reports a bad agent file as `owner-refused` with `AGENT_INVALID`.
 - Skills come from public sources only, and only MIT and Apache-2.0 skills install.
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
 - Bowerloom keeps history and deletes none. A full item needs a manual step. See [the guide](/docs/guides/add-skills/#current-beta-limits).
