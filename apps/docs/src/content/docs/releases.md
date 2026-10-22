@@ -15,11 +15,14 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ## 0.7.0-beta.2
 
-This release changes the package and its checks. It adds no new command.
+This release changes the package text and how Bowerloom reads skills. It adds no new command.
 
 - The npm package text is public. It holds no private or proof wording.
 - The package homepage link now points at bowerloom.ai.
 - The installed CLI accepts the npm beta-stream release record. The 0.7.0-beta.1 package did not include this check.
+- `skills add` and `skills sync` read npm packages packed by npm 11. Those packages leave the owner and group id fields empty, and 0.7.0-beta.1 refused them with `NPM_TAR_NUMBER`.
+- An npm package can hold up to 8,192 archive entries. 0.7.0-beta.1 refused a package with more than 1,024 entries with `NPM_TAR_BOUND`.
+- A skill can declare `allowed-tools` in `SKILL.md`. The `skills add` and `skills sync` plans print it on an `Allowed tools:` line, and `skills.json` records it. 0.7.0-beta.1 refuses a `skills.json` that records it.
 - Dependency pins are unchanged.
 
 ## 0.7.0-beta.1
