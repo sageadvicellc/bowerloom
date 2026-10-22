@@ -367,7 +367,10 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_ITEM_NOT_FOUND: { sentence: 'Bowerloom picks only items that your store defines.', next: 'bowerloom ls --global' },
   STORE_ITEM_MISSING: { sentence: 'A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.', next: 'Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.' },
   STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.' },
-  STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It may be private or may not exist.', next: 'Check the repository name and that the repository is public.' },
+  STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It may be private or may not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
+  // Spec 07, section 5: the sentence is the fixed message, and the next step the table's.
+  GITHUB_TOKEN_INVALID: { sentence: 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.', next: 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.' },
+  STORE_REMOTE_AUTH_FAILED: { sentence: 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.', next: 'Check that the token can read the repository, and that the repository name is right.' },
   CONFIG_ITEM_SELECTED: { sentence: 'This project already picks that item from that source.', next: 'bowerloom ls' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },

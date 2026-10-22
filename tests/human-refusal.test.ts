@@ -200,3 +200,18 @@ test('every agent refusal and hold code has a row in the errors reference', () =
   for (const code of codes) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
   for (const code of codes) assert.ok([...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES].includes(code as never), code);
 });
+
+// Spec 07, section 5: the two token codes, and the new next step of STORE_REMOTE_PRIVATE. Each has a row in the errors reference.
+test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE_REMOTE_PRIVATE next step', () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    ['GITHUB_TOKEN_INVALID', 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.', 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.'],
+    ['STORE_REMOTE_AUTH_FAILED', 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.', 'Check that the token can read the repository, and that the repository name is right.'],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  assert.match(renderRefusal('STORE_REMOTE_PRIVATE', 'm.'), /\nNext: Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public\.\n$/);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const code of ['GITHUB_TOKEN_INVALID', 'STORE_REMOTE_AUTH_FAILED', 'STORE_REMOTE_PRIVATE']) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
+  // The JSON envelope of a pipe keeps the fixed message of each code.
+  assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
+});

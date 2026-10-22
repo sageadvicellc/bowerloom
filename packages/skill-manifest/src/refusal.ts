@@ -30,6 +30,9 @@ const MESSAGES = {
   TEAM_NOT_FOUND: 'This project has no team with that id. Run bowerloom ls teams to see the teams.',
   GITHUB_RATE_LIMITED: 'api.github.com answered 429, or 403 with no requests left.',
   GITHUB_REQUEST_FAILED: 'api.github.com refused the request.',
+  // Spec 07, section 5.
+  GITHUB_TOKEN_INVALID: 'The BOWERLOOM_GITHUB_TOKEN variable does not hold a valid GitHub token.',
+  STORE_REMOTE_AUTH_FAILED: 'GitHub did not accept the token for the store repository, or the repository or commit does not exist.',
 } as const;
 
 export type ManifestRefusalCode = keyof typeof MESSAGES;

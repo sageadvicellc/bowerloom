@@ -12,7 +12,8 @@
  * - Addresses: one dns.lookup per host, all answers IPv4 and public (the same table as npm.ts and git.ts), at most 16;
  *   the request connects only to the first answer, through a pinned lookup.
  * - TLS: certificate checks on, TLS 1.2 or later. No proxy (proxyEnv is empty), no keep-alive, no session reuse,
- *   no Authorization or cookie header, no credentials from the environment.
+ *   no cookie header. The Authorization header is sent only for a GitHub repository that the caller names, with a token
+ *   that the caller passes in (githubAuth). Nothing reads the environment here.
  * - Response: status 200 only, so a 3xx is never followed; the D11 header gate from skill-sources/response-headers.ts
  *   (a repeated guarded header, more than 128 header pairs, or framing other than chunked refuses); no Location; no
  *   content encoding but identity; a declared and an actual length within the caller's bound; a complete body.
@@ -29,13 +30,30 @@ import { guardedResponseHeaders } from '../../skill-sources/src/response-headers
 import { publicIPv4 } from '../../skill-sources/src/public-address.js';
 import { githubRequestFailed, isManifestRefusal, manifestRefusal, requireManifest } from './refusal.js';
 import type { ManifestRefusalCode } from './refusal.js';
+import { GithubToken } from './github-token.js';
 
 export const PUBLIC_HOSTS: readonly string[] = Object.freeze(['registry.npmjs.org', 'api.github.com']);
 // Review M3 finding 3: GIT_LIMITS, except the total. npm reads its metadata (512 KiB) and its archive (8 MiB) in one
 // `skills add`, so the total is 8 MiB plus 512 KiB, the bound of an npm acquisition.
 export const PUBLIC_GET_LIMITS = Object.freeze({ requests: 130, durationMs: 30000, requestMs: 10000, headerBytes: 16384, responseBytes: 8388608, totalBytes: 8912896, addresses: 16 });
 export interface PublicTransport { get(url: string, maxBytes: number, signal: AbortSignal): Promise<Buffer> }
-export interface PublicGetOptions { requests?: number; durationMs?: number; requestMs?: number }
+/**
+ * Spec 07: `githubAuth` names the token and the repositories (`owner/repo`, lower case, 1 to 8) whose git commits, trees,
+ * and blobs may carry it. Null or absent: no request carries an Authorization header.
+ */
+export interface PublicGetOptions { requests?: number; durationMs?: number; requestMs?: number; githubAuth?: { token: GithubToken; repositories: readonly string[] } | null }
+/** The one URL shape that may carry the header (spec 07, section 6): a git object of one repository on api.github.com. */
+const AUTH_URL = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/git\/(commits|trees|blobs)\/[0-9a-f]{40}(\?recursive=1)?$/;
+const AUTH_REPOSITORY = /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/;
+/** The approved repositories of a githubAuth option, checked (4.2), or null for none. Anything else refuses. */
+function approvedAuth(value: unknown): { token: GithubToken; repositories: ReadonlySet<string> } | null {
+  if (value === undefined || value === null) return null;
+  requireManifest(typeof value === 'object' && Object.keys(value).every(k => k === 'token' || k === 'repositories'), 'SKILLS_ADD_NETWORK');
+  const { token, repositories } = value as { token?: unknown; repositories?: unknown };
+  requireManifest(GithubToken.isToken(token) && Array.isArray(repositories) && repositories.length >= 1 && repositories.length <= 8, 'SKILLS_ADD_NETWORK');
+  requireManifest(repositories.every(r => typeof r === 'string' && AUTH_REPOSITORY.test(r)), 'SKILLS_ADD_NETWORK');
+  return { token, repositories: new Set(repositories as string[]) };
+}
 
 const URL_SHAPE = /^https:\/\/(registry\.npmjs\.org|api\.github\.com)\/[A-Za-z0-9._~@%/-]+(\?recursive=1)?$/;
 /** The one public IPv4 test of skill-sources npm.ts and git.ts (review M3 finding 4). */
@@ -53,7 +71,8 @@ const bounded = (value: unknown, max: number): value is number => Number.isSafeI
 
 /** A transport for one `skills add`. Call close() when done. */
 export function createPublicTransport(options: PublicGetOptions = {}): PublicTransport & { close(): void } {
-  requireManifest(options !== null && typeof options === 'object' && Object.keys(options).every(k => ['requests', 'durationMs', 'requestMs'].includes(k)), 'SKILLS_ADD_NETWORK');
+  requireManifest(options !== null && typeof options === 'object' && Object.keys(options).every(k => ['requests', 'durationMs', 'requestMs', 'githubAuth'].includes(k)), 'SKILLS_ADD_NETWORK');
+  const githubAuth = approvedAuth(options.githubAuth);
   const limit = { requests: options.requests ?? PUBLIC_GET_LIMITS.requests, durationMs: options.durationMs ?? PUBLIC_GET_LIMITS.durationMs, requestMs: options.requestMs ?? PUBLIC_GET_LIMITS.requestMs };
   requireManifest(bounded(limit.requests, PUBLIC_GET_LIMITS.requests) && bounded(limit.durationMs, PUBLIC_GET_LIMITS.durationMs) && bounded(limit.requestMs, PUBLIC_GET_LIMITS.requestMs), 'SKILLS_ADD_NETWORK');
   const agent = new https.Agent({ keepAlive: false, maxSockets: 1, maxCachedSessions: 0, proxyEnv: {} } as https.AgentOptions);
@@ -90,9 +109,15 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
       work.then(value => settle(undefined, value), error => settle(error ?? manifestRefusal('SKILLS_ADD_NETWORK')));
     });
   }
-  function headersFor(host: string, url: string): Record<string, string> {
+  /** True only for a git object URL of an approved repository on api.github.com (spec 07, 3.3). */
+  function carriesToken(host: string, url: string): boolean {
+    if (githubAuth === null || host !== 'api.github.com') return false;
+    const m = AUTH_URL.exec(url);
+    return m !== null && githubAuth.repositories.has(`${m[1]!.toLowerCase()}/${m[2]!.toLowerCase()}`);
+  }
+  function headersFor(host: string, url: string, withToken: boolean): Record<string, string> {
     const common = { 'Accept-Encoding': 'identity', 'User-Agent': 'bowerloom-skills-add/1' };
-    if (host === 'api.github.com') return { Accept: 'application/vnd.github+json', ...common, 'X-GitHub-Api-Version': '2026-03-10' };
+    if (host === 'api.github.com') return { Accept: 'application/vnd.github+json', ...common, 'X-GitHub-Api-Version': '2026-03-10', ...(withToken ? { Authorization: githubAuth!.token.authorization() } : {}) };
     return { Accept: url.endsWith('.tgz') ? 'application/octet-stream' : 'application/json', ...common };
   }
 
@@ -105,6 +130,7 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
     if (!addresses.has(host)) { const pending = lookup(host); pending.catch(() => {}); addresses.set(host, pending); }
     const address = await withinLimits(addresses.get(host)!, signal);
     usable(signal);
+    const withToken = carriesToken(host, url);
     return new Promise<Buffer>((resolve, reject) => {
       let done = false, request: ClientRequest | undefined, response: IncomingMessage | undefined, bytes = 0;
       const chunks: Buffer[] = [], requestDeadline = performance.now() + limit.requestMs;
@@ -120,7 +146,7 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
       const guard = () => { usable(signal); requireManifest(performance.now() < requestDeadline, 'SKILLS_ADD_NETWORK'); };
       try {
         request = https.request(url, {
-          method: 'GET', agent, rejectUnauthorized: true, minVersion: 'TLSv1.2', maxHeaderSize: PUBLIC_GET_LIMITS.headerBytes, headers: headersFor(host, url),
+          method: 'GET', agent, rejectUnauthorized: true, minVersion: 'TLSv1.2', maxHeaderSize: PUBLIC_GET_LIMITS.headerBytes, headers: headersFor(host, url, withToken),
           lookup: (_host, lookupOptions, callback) => {
             try { guard(); if (lookupOptions.all) callback(null, [{ address, family: 4 }]); else callback(null, address, 4); }
             catch (error) { settle(error as Error); callback(new Error('SKILLS_ADD_NETWORK'), '', 4); }
@@ -134,6 +160,8 @@ export function createPublicTransport(options: PublicGetOptions = {}): PublicTra
             // Spec 06, 3.10: GitHub's request limit keeps its own code. Both headers are read from incoming.headers, because
             // guardedResponseHeaders returns only the guarded names. Every other status keeps its result.
             if (host === 'api.github.com' && (incoming.statusCode === 429 || (incoming.statusCode === 403 && (incoming.headers?.['x-ratelimit-remaining'] === '0' || incoming.headers?.['retry-after'] !== undefined)))) { settle('GITHUB_RATE_LIMITED'); return; }
+            // Spec 07: GitHub refused the token. Only a request that carried it; without it, spec 06 decides below.
+            if (withToken && (incoming.statusCode === 401 || incoming.statusCode === 403)) { settle('STORE_REMOTE_AUTH_FAILED'); return; }
             if (incoming.statusCode === 404 || incoming.statusCode === 410 || incoming.statusCode === 422 && host === 'api.github.com') { settle('SKILLS_ADD_NOT_FOUND'); return; }
             // Review F3: any other refusal of GitHub (401, 403, 5xx) names its status instead of passing as a network failure.
             const status = incoming.statusCode ?? 0;

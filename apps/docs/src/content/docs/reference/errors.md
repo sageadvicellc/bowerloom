@@ -114,7 +114,9 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | `STORE_ITEM_NOT_FOUND` | Bowerloom picks only items that your store defines. | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` | A listed store item is not in your store and not in the lock, so Bowerloom cannot install it. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
 | `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | Give the store a remote and push it. `bowerloom store status` shows the commands. Or adopt a team into this project with `bowerloom team adopt`. |
-| `STORE_REMOTE_PRIVATE` | GitHub does not show this repository without a token. It may be private or may not exist. | Check the repository name and that the repository is public. |
+| `STORE_REMOTE_PRIVATE` | GitHub does not show this repository without a token. It may be private or may not exist. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
+| `STORE_REMOTE_AUTH_FAILED` | GitHub did not accept the token for the store repository, or the repository or commit does not exist. | Check that the token can read the repository, and that the repository name is right. |
+| `GITHUB_TOKEN_INVALID` | `BOWERLOOM_GITHUB_TOKEN` is set to a value that is not a valid GitHub token. Bowerloom never shows the value. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
 | `CONFIG_ITEM_SELECTED` | This project already picks that item from that source. | `bowerloom ls` |
 | `CONFIG_ITEM_NOT_SELECTED` | Bowerloom changes only items that `bowerloom.json` lists. | `bowerloom ls` |
 | `CONFIG_ITEM_MISSING` | `bowerloom.json` lists a project item that the project does not define. | `bowerloom <kind> create <id>`, or `bowerloom unuse <kind> <id>`. |
