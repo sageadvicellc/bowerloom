@@ -13,7 +13,8 @@ import { planManagedItem } from '../../managed-skills/src/v2-observed.js';
 import { applyManagedItem } from '../../managed-skills/src/v2-transaction.js';
 import type { ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
-import type { PublicTransport } from '../../skill-manifest/src/public-get.js';
+import type { PublicGetOptions, PublicTransport } from '../../skill-manifest/src/public-get.js';
+import type { GithubToken } from '../../skill-manifest/src/github-token.js';
 
 export interface Acquirer {
   npm(plan: Readonly<NpmAcquisitionPlan>, approval: string, signal: AbortSignal): Promise<Readonly<AcquiredSkillCacheReceipt>>;
@@ -30,8 +31,13 @@ export interface ManagedPort {
  */
 export interface SyncDeps {
   acquirer: Acquirer; signal: AbortSignal; managed?: ManagedPort;
-  /** The transport of an authored store fetch (spec 06, 3.11). Tests pass a fake. The default is createPublicTransport. */
-  storeTransport?: () => PublicTransport & { close(): void };
+  /**
+   * The transport of an authored store fetch (spec 06, 3.11). Tests pass a fake. The default is createPublicTransport.
+   * Spec 07: it gets `{ githubAuth }` for a plan with credentials, else `{}`.
+   */
+  storeTransport?: (options: PublicGetOptions) => PublicTransport & { close(): void };
+  /** Spec 07: the token of this run. applySync and applyProjectApply set it from their input; nothing else does. */
+  githubToken?: GithubToken | null;
   /** Test hook: runs before phase A reads the store cache for an authored item, so a test can fill it as another run would. */
   beforeStoreRead?: (item: { kind: 'skill' | 'prompt' | 'team'; id: string }) => void | Promise<void>;
 }

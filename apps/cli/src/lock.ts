@@ -13,6 +13,8 @@ import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
+import { githubTokenReader } from './sync.js';
+import { proofStaleNote, tokenNotes } from './use.js';
 
 const USAGE = 'Use bowerloom lock verify [--json], or bowerloom lock update [--item <kind>:<id>]... [--commit <sha>], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', USAGE); };
@@ -40,11 +42,11 @@ const CHANGE_WORDS: Readonly<Record<string, (u: LockUpdatePlan['updated'][number
 };
 /** The update plan in plain words (3.15). */
 export function renderLockUpdate(plan: LockUpdatePlan): string {
-  return ['Update bowerloom.lock.json from your store', ...plan.updated.map(u => `  ${u.kind} ${u.id}  ${CHANGE_WORDS[u.change]!(u)}`), ...plan.notes, 'This changes bowerloom.lock.json only.'].join('\n');
+  return ['Update bowerloom.lock.json from your store', ...plan.updated.map(u => `  ${u.kind} ${u.id}  ${CHANGE_WORDS[u.change]!(u)}`), ...tokenNotes(plan.notes, plan.network.credentials), 'This changes bowerloom.lock.json only.'].join('\n');
 }
 
 /** `lock update`. Returns 0 done or nothing to do, 3 approval required. */
-async function update(words: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo): Promise<number> {
+async function update(words: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo, env: NodeJS.ProcessEnv): Promise<number> {
   const items: { kind: Kind; id: string }[] = [], rest: string[] = []; let commit: string | null = null, itemsGiven = false;
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
@@ -54,14 +56,16 @@ async function update(words: readonly string[], cwd: string, home: string, write
   }
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), controller = new AbortController(), plans = new Map<string, LockUpdatePlan>();
-  const plan = () => planLockUpdate({ project, home, items: itemsGiven ? items : null, commit, signal: controller.signal });
+  // Spec 07: the planner reads the token through this reader only for the proof of an authored store item.
+  const githubToken = githubTokenReader(env);
+  const plan = () => planLockUpdate({ project, home, items: itemsGiven ? items : null, commit, signal: controller.signal, githubToken });
   const first = await plan(); plans.set(first.revision, first);
   if (first.nothing) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : 'Nothing to lock.\n'); return 0; }
   if (lockUpdateIsNoop(first) && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderLockUpdate(first), true)}\nNothing to change.\n`); return 0; }
   let pending: LockUpdatePlan | null = first, result: LockUpdateResult | null = null;
   const change: PlannedChange<LockUpdatePlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } const p = await plan(); plans.set(p.revision, p); return p; },
-    revision: p => p.revision, review: renderLockUpdate,
+    revision: p => p.revision, review: renderLockUpdate, staleNote: proofStaleNote,
     async apply(revision: string) {
       const p = plans.get(revision); if (!p) throw new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
       result = await withProjectLock(project.dir, controller.signal, async held => applyLockUpdate(p, revision, held, project, home)); return result;
@@ -73,8 +77,8 @@ async function update(words: readonly string[], cwd: string, home: string, write
 }
 
 /** `lock verify` and `lock update`. */
-export async function runLockCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), _env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function runLockCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
   if (args[1] === 'verify') { write(verify(args.slice(2), cwd, home)); return 0; }
-  if (args[1] === 'update') return update(args.slice(2), cwd, home, write, io);
+  if (args[1] === 'update') return update(args.slice(2), cwd, home, write, io, env);
   return usage();
 }

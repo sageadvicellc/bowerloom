@@ -21,8 +21,12 @@ export function world(t: TestContext, prefix = 'bowerloom-config-cli-'): World {
   const work = join(base, 'work'); mkdirSync(work, { mode: 0o755 });
   return { base, home, work, store: join(home, '.bowerloom'), state: join(base, 'state'), env: { HOME: home, XDG_STATE_HOME: join(base, 'state') } };
 }
+/** The environment of this test process without the GitHub token variables (spec 07). A test passes a canary in `env`. */
+export function baseEnv(): Record<string, string | undefined> {
+  const { BOWERLOOM_GITHUB_TOKEN: _b, GH_TOKEN: _h, GITHUB_TOKEN: _g, ...rest } = process.env; return rest;
+}
 export function run(cwd: string, args: string[], env: Record<string, string>, node: string[] = []) {
-  const r = spawnSync(process.execPath, [...node, cli, ...args], { cwd, encoding: 'utf8', timeout: 120000, env: { ...process.env, ...env } });
+  const r = spawnSync(process.execPath, [...node, cli, ...args], { cwd, encoding: 'utf8', timeout: 120000, env: { ...baseEnv(), ...env } });
   assert.equal(r.error, undefined); return r;
 }
 export const errorCode = (stderr: string): string => (JSON.parse(stderr) as { error: { code: string } }).error.code;

@@ -208,3 +208,34 @@ test('every agent refusal and hold code has a row in the errors reference', () =
   for (const code of codes) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
   for (const code of codes) assert.ok([...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES].includes(code as never), code);
 });
+
+// Spec 07, section 5: the two token codes, and the new next step of STORE_REMOTE_PRIVATE. Each has a row in the errors reference.
+test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE_REMOTE_PRIVATE next step', async () => {
+  const rows: ReadonlyArray<readonly [string, string, string]> = [
+    // Review R2 of PR 97 (option C): each sentence says why, and does not repeat the message.
+    ['GITHUB_TOKEN_INVALID', "Bowerloom checks the token's shape before any network call and never shows the value.", 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.'],
+    ['STORE_REMOTE_AUTH_FAILED', 'GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist.', 'Check that the token can read the repository, and that the repository name is right.'],
+    // Review F1 of PR 97.
+    ['GITHUB_TOKEN_SSO_REQUIRED', 'An organization that uses single sign-on refuses a token until it is authorized for that organization.', "Authorize the token for the organization on GitHub, under the token's settings, then run the command again."],
+  ];
+  for (const [code, sentence, next] of rows) assert.equal(renderRefusal(code, 'The message.'), text(code, 'The message.', sentence, next), code);
+  assert.match(renderRefusal('STORE_REMOTE_PRIVATE', 'm.'), /\nNext: Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public\.\n$/);
+  const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
+  for (const code of ['GITHUB_TOKEN_INVALID', 'STORE_REMOTE_AUTH_FAILED', 'STORE_REMOTE_PRIVATE', 'GITHUB_TOKEN_SSO_REQUIRED']) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
+  // The errors reference row of each new code says what the terminal sentence says (review R2).
+  for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` |`) && l.replace(/`/g, '').includes(sentence.replace(/`/g, ''))), code);
+  // Review F6 and F5: the request-failed next step names the token, and the STALE_APPROVAL row says a token change stales a plan.
+  // Round 3: a pinned third-party skill never sends the token, so the step names the token for the store repository only.
+  assert.match(renderRefusal('GITHUB_REQUEST_FAILED', 'm.'), /\nNext: Run the command again later\. If the status is 401 or 403, make sure that the store repository is public\. If this is your store repository, set BOWERLOOM_GITHUB_TOKEN\.\n$/);
+  // Round 3: GITHUB_RATE_LIMITED also covers a 403 whose message names a rate limit, in its message, its words, and its row.
+  const { manifestRefusal } = await import('../packages/skill-manifest/src/refusal.js');
+  assert.equal(manifestRefusal('GITHUB_RATE_LIMITED').message, 'api.github.com answered 429, or 403 with no requests left or with a message that names a rate limit.');
+  const rateSentence = 'GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so.';
+  assert.match(renderRefusal('GITHUB_RATE_LIMITED', 'm.'), new RegExp(`^Refused \\(GITHUB_RATE_LIMITED\\): m\\.\\n${rateSentence.replace(/[.,]/g, '\\$&')}\\n`));
+  assert.ok(page.split('\n').some(l => l.startsWith('| `GITHUB_RATE_LIMITED` |') && l.includes(rateSentence)));
+  assert.match(page, /^\| `STALE_APPROVAL` \|.*BOWERLOOM_GITHUB_TOKEN.*\|$/m);
+  assert.match(page, /^\| `GITHUB_REQUEST_FAILED` \|.*If this is your store repository, set `BOWERLOOM_GITHUB_TOKEN`\. \|$/m);
+  assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
+  // The JSON envelope of a pipe keeps the fixed message of each code.
+  assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);
+});

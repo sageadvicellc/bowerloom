@@ -208,3 +208,28 @@ test('a remote that is not the normal form, or an unsafe id, never reaches the t
   await assert.rejects(fetchAuthored(transport, { ...at('skill', 'house-style'), commit: 'HEAD' }, signal()), code('SKILLS_ADD_SPEC_INVALID'));
   assert.equal(transport.urls.length, 0);
 });
+
+// Spec 07, section 10: with a token for the approved repository, every request of one walk carries the header; for any
+// other repository, none does. The real transport runs over a stubbed https.request.
+test('spec 07. a token transport sends the header on every request of a walk of the approved repository, and on none of another', async t => {
+  const { GithubToken } = await import('../../../dist/packages/skill-manifest/src/github-token.js');
+  const token = GithubToken.fromEnv({ BOWERLOOM_GITHUB_TOKEN: 'ghp_' + 'g'.repeat(36) });
+  const walk = async (owner, approved) => {
+    const r = buildFakeRepo(owner, 'store', FILES, COMMIT, fs.mkdtempSync(`${process.env.HOME}/store-repo-`)), seen = [];
+    t.mock.method(dns, 'lookup', async () => [{ address: '104.16.25.34', family: 4 }]);
+    t.mock.method(https, 'request', (url, options, callback) => {
+      const entry = { url, auth: Object.keys(options.headers).some(h => h.toLowerCase() === 'authorization') }; seen.push(entry);
+      const req = new EventEmitter(); req.destroy = () => req; req.setHeader = name => { if (String(name).toLowerCase() === 'authorization') entry.auth = true; };
+      req.end = () => { queueMicrotask(() => { const body = r.responses.get(url) ?? Buffer.from('{}'); const res = new EventEmitter(); res.destroy = () => res; res.statusCode = r.responses.has(url) ? 200 : 404; res.complete = true; res.rawHeaders = ['Content-Length', String(body.length)]; res.headers = { 'content-length': String(body.length) }; callback(res); res.emit('data', body); res.emit('end'); }); return req; };
+      return req;
+    });
+    syncBuiltinESMExports();
+    const transport = createPublicTransport({ githubAuth: { token, repositories: [approved] } });
+    try { await fetchAuthored(transport, { remote: `https://github.com/${owner}/store`, commit: COMMIT, kind: 'skill', id: 'house-style' }, signal()); } finally { transport.close(); t.mock.restoreAll(); syncBuiltinESMExports(); }
+    return seen;
+  };
+  const mine = await walk('sageadvicellc', 'sageadvicellc/store');
+  assert.equal(mine.length, 6); assert.ok(mine.every(s => s.auth), JSON.stringify(mine));
+  const other = await walk('other-org', 'sageadvicellc/store');
+  assert.equal(other.length, 6); assert.ok(other.every(s => !s.auth), JSON.stringify(other));
+});

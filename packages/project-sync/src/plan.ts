@@ -37,7 +37,9 @@ import type { CacheLookup, PinnedRequest } from './cache-index.js';
 import { managedCode, outward, syncError } from './refusal.js';
 import { resolveProject } from './resolve.js';
 import type { Resolved, ResolvedItem } from './resolve.js';
-import { fetchRequests, faultNote, probeStoreCache, requestLimit } from './store-git.js';
+import { credentialsFor, fetchRequests, faultNote, probeStoreCache, readTokenSource, requestLimit } from './store-git.js';
+import type { Credentials, TokenSource } from './store-git.js';
+import type { GithubToken } from '../../skill-manifest/src/github-token.js';
 import { promptNotices } from './notices.js';
 import { skillHead } from '../../skill-manifest/src/content.js';
 import type { PromptNotice } from './notices.js';
@@ -65,6 +67,11 @@ export interface SyncInput {
   apply?: { harnesses: Harness[] };
   /** `--max-github-requests`: the GitHub requests this run may make, 1 to 5000. Default 1000 (second review L2). */
   maxGithubRequests?: number;
+  /**
+   * Spec 07: the token of a private store remote, or a reader the CLI made over its `env` argument. It is read only when
+   * an authored lock item installs or updates. It never enters the plan: only `network.credentials` does.
+   */
+  githubToken?: TokenSource;
 }
 export type ItemState = 'up-to-date' | 'needs-fetch' | 'cached' | 'drift' | 'pin-changed' | 'harnesses-changed' | 'orphaned' | 'local';
 export type ItemAction = 'none' | 'install' | 'update' | 'hold';
@@ -127,13 +134,17 @@ export interface SyncPlan {
    * fills the cache first. Shown, not bound.
    * `requests`: the GitHub requests of the authored items the store cache lacks now. Shown, not bound: apply counts again.
    * `maxRequests`: the limit of the run. Bound (second review L2).
+   * `credentials`: spec 07, 4.3. The repositories that get the token, when one is set and needed; else null. Bound.
    */
-  network: { required: boolean; hosts: string[]; requests: number; maxRequests: number };
+  network: { required: boolean; hosts: string[]; requests: number; maxRequests: number; credentials: Credentials | null };
   writesAuthorized: false; executionAuthorized: false; revision: string;
 }
 export interface StorePlanBinding { dir: string; identity: DirectoryIdentity; skills: { sha256: string; bytes: number } | null; authoring: { sha256: string; bytes: number } | null }
-/** The plan and what apply needs beside it: the parsed entries, the effective manifest, and the resolution. */
-export interface Observed { plan: SyncPlan; entries: ReadonlyMap<string, Entry>; manifest: Manifest; resolved: Resolved }
+/**
+ * The plan and what apply needs beside it: the parsed entries, the effective manifest, the resolution, and the token
+ * this run read (spec 07), which never enters the plan.
+ */
+export interface Observed { plan: SyncPlan; entries: ReadonlyMap<string, Entry>; manifest: Manifest; resolved: Resolved; token: GithubToken | null }
 
 const sameValue = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b);
 const actionable = (i: SyncItem): boolean => i.action === 'install' || i.action === 'update';
@@ -480,7 +491,7 @@ export function bindPrivateState<T extends { root: string; create: string[]; pin
  */
 export function syncBinding(body: Omit<SyncPlan, 'revision'>): unknown {
   return {
-    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts, maxRequests: body.network.maxRequests },
+    ...body, privateState: bindPrivateState(body.privateState), network: { hosts: body.network.hosts, maxRequests: body.network.maxRequests, credentials: body.network.credentials },
     // Spec 06, 4.4: whether the store cache holds an authored item now is dropped too; its hash stays.
     items: body.items.map(i => ({ ...i, state: i.state === 'cached' ? 'needs-fetch' : i.state, cacheOperationId: null, cache: null, storeCache: null })),
     storeFetch: body.storeFetch.map(f => ({ ...f, storeCache: null })),
@@ -581,6 +592,10 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     // from api.github.com, whether or not the store cache holds it now; --offline approves no host.
     const authored = classified.some(c => actionable(c.item) && c.item.lockPin !== null) || storeFetch.length > 0;
     const kinds = input.offline ? [] : [...new Set([...classified.filter(c => c.pinned && actionable(c.item)).map(c => HOSTS[c.pinned!.kind]), ...(authored ? [HOSTS.git] : [])])].sort();
+    // Spec 07, 3.5: the remotes of every authored lock item that installs or updates, held in the store cache or not. The
+    // token is read only when there is one, and a run that approves no host needs none.
+    const remotes = input.offline ? [] : [...items.filter(i => actionable(i) && i.lockPin !== null).map(i => i.lockPin!.remote), ...storeFetch.map(f => f.lockPin.remote)];
+    const token = remotes.length ? readTokenSource(input.githubToken) : null, credentials = token !== null ? credentialsFor(remotes) : null;
     const fromStore = items.some(i => i.resolvedFrom === 'store' && i.origin === 'store') || resolved.prompts.some(p => p.resolvedFrom === 'store' && p.origin === 'store');
     const body = {
       format: SYNC_PLAN_FORMAT,
@@ -592,11 +607,11 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, storeCacheRoot: layout.storeCacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, items, storeFetch, notes: [...resolved.notes, ...ctx.notes, ...(frozen ? [FROZEN_LINE] : [])],
       // Review L2: the GitHub requests of the authored items of this run, whether or not the store cache holds them now.
-      network: { required: needsFetch, hosts: kinds, requests: [...items.filter(i => actionable(i) && i.lockPin !== null && i.storeCache === 'missing').map(i => i.lockPin!), ...storeFetch.filter(f => f.storeCache === 'missing').map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0), maxRequests },
+      network: { required: needsFetch, hosts: kinds, requests: [...items.filter(i => actionable(i) && i.lockPin !== null && i.storeCache === 'missing').map(i => i.lockPin!), ...storeFetch.filter(f => f.storeCache === 'missing').map(f => f.lockPin)].reduce((n, p) => n + fetchRequests(p), 0), maxRequests, credentials },
       writesAuthorized: false as const, executionAuthorized: false as const,
     };
     const plan = freezeSkillData({ ...body, revision: revisionOf(syncBinding(body)) }) as SyncPlan;
-    return { plan, entries, manifest, resolved };
+    return { plan, entries, manifest, resolved, token };
   } catch (e) { throw outward(e); }
 }
 

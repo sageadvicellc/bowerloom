@@ -40,7 +40,7 @@ import { missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 import { terminalIo } from './manifest.js';
 import { runStartupCommand } from './startup.js';
-import { harnessWords, renderSyncReview } from './sync.js';
+import { githubTokenReader, harnessWords, renderSyncReview, syncStaleNote } from './sync.js';
 
 export type UpStep = 'init' | 'team' | 'sync' | 'apply' | 'held';
 export const UP_STEP_FORMAT = 'bowerloom/up-step/v1beta1' as const;
@@ -79,6 +79,7 @@ function wrap<P extends { revision: string }>(step: Exclude<UpStep, 'held'>, tea
     revision: wrapped => (wrapped.plan as P).revision,
     review: wrapped => `${heading(wrapped.plan as P)}\n${change.review(wrapped.plan as P)}`,
     apply: revision => change.apply(revision),
+    ...(change.staleNote ? { staleNote: (wrapped: UpStepPlan) => change.staleNote!(wrapped.plan as P) } : {}),
   };
 }
 
@@ -156,12 +157,14 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   // Spec 06, 3.19: the sync step runs when the effective skill list is not empty.
   const resolved = resolveProject({ project, home: ctx.home, frozen: false });
   if (resolved.manifest !== null && resolved.manifest.skills.length > 0) {
-    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false });
+    // Spec 07: the sync step reads the token only when an authored lock item needs its repository.
+    const githubToken = githubTokenReader(ctx.env);
+    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false, githubToken });
     const plan = await planSync(input());
     held.push(...planHolds(plan.items));
     if (plan.items.some(i => i.action === 'install' || i.action === 'update')) {
       const lock = new AbortController(), change: PlannedChange<SyncPlan> = {
-        plan: () => planSync(input()), revision: p => p.revision, review: renderSyncReview,
+        plan: () => planSync(input()), revision: p => p.revision, review: renderSyncReview, staleNote: syncStaleNote,
         apply: revision => applySync(input(), revision, { acquirer: ctx.acquirer, signal: lock.signal }),
       };
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };

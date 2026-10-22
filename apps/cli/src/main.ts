@@ -144,7 +144,7 @@ async function main(args: string[]): Promise<void> {
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
   if (args[0] === 'store') {
     const { runStoreCommand } = await import('./store.js');
-    process.exitCode = await runStoreCommand(args, homedir(), text => process.stdout.write(text));
+    process.exitCode = await runStoreCommand(args, homedir(), text => process.stdout.write(text), process.env);
     return;
   }
   // Review finding 6: status without a session flag is the project status, which names its own usage.
@@ -191,13 +191,13 @@ async function main(args: string[]): Promise<void> {
   // Spec 06: use and unuse change bowerloom.json and bowerloom.lock.json; lock verify and lock update read and write the lock.
   if (args[0] === 'use' || args[0] === 'unuse') {
     const { runUseCommand } = await import('./use.js');
-    process.exitCode = await runUseCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    process.exitCode = await runUseCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
     return;
   }
   if (args[0] === 'lock') {
     if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.lock!}`); return; }
     const { runLockCommand } = await import('./lock.js');
-    process.exitCode = await runLockCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    process.exitCode = await runLockCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
     return;
   }
   if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {

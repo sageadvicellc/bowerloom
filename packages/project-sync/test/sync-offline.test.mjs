@@ -39,7 +39,7 @@ test('pins that are already cached sync offline, with no acquisition', async t =
   const f = syncProject(t), a = npmPackage('alpha'), b = npmPackage('bravo'); localSkill(f, 'house-style');
   writeManifest(f, [a.entry, b.entry, localEntry('house-style')]); await prefill(f, a); await prefill(f, b);
   const plan = await planSync(f.input({ offline: true }));
-  assert.equal(plan.offline, true); assert.deepEqual(plan.network, { required: false, hosts: [], requests: 0, maxRequests: 1000 });
+  assert.equal(plan.offline, true); assert.deepEqual(plan.network, { required: false, hosts: [], requests: 0, maxRequests: 1000, credentials: null });
   assert.deepEqual(plan.items.map(i => i.state), ['cached', 'cached', 'local']);
   const acquirer = noAcquirer(), result = await applySync(f.input({ offline: true }), plan.revision, deps(acquirer));
   assert.deepEqual(acquirer.calls, []); assert.deepEqual(result.applied.map(x => x.id), ['alpha', 'bravo', 'house-style']);

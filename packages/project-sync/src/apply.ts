@@ -41,6 +41,7 @@ import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
 import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
 import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
+import type { Credentials } from './store-git.js';
 import { promptNotices } from './notices.js';
 import { verifyProjectPins } from '../../project-context/src/index.js';
 import { createBowerloomFolder } from '../../project-config/src/folder.js';
@@ -146,14 +147,14 @@ export async function selectorFor(item: SyncItem, pinned: PinnedRequest, lookup:
 }
 
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
-export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps): Promise<{ dir: string; fetched: boolean }> {
+export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
   if (pin === null) throw stale();
   await deps.beforeStoreRead?.({ kind: item.kind, id: item.id });
   let cached: { dir: string } | null = null;
   try { cached = readStoreCache(privateState.storeCacheRoot, item.kind, item.id, pin.hash); } catch { cached = null; }
   if (cached !== null) return { dir: cached.dir, fetched: false };
-  return fetchStoreGit({ kind: item.kind, id: item.id, requestDigest: item.requestDigest, lockPin: pin }, privateState, hosts, { signal: deps.signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}) });
+  return fetchStoreGit({ kind: item.kind, id: item.id, requestDigest: item.requestDigest, lockPin: pin }, privateState, hosts, { signal: deps.signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}), githubToken: deps.githubToken ?? null }, credentials);
 }
 /** The text of one file of a store cache folder, read with the store reader. */
 function storeText(project: string, kind: 'skill' | 'prompt', id: string, dir: string): string {
@@ -253,7 +254,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
       if (item.origin === 'project') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
       if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: plan.store.dir }); continue; }
       held.assertHeld(dir);
-      const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps);
+      const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null);
       if (got.fetched) fetched.push(item.id);
       if (needsReview(dir, item, got.dir)) { review.push(item.id); continue; }
       sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: got.dir });
@@ -329,11 +330,11 @@ export async function applyChildren(children: readonly Child[], held: HeldProjec
 /** The origin fields of a plan item, for a result entry. */
 export const originOf = (i: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }): ResultOrigin => ({ origin: i.origin, resolvedFrom: i.resolvedFrom });
 /** Fetches the authored lock items a plan puts in the store cache only (3.16): prompts for skills sync, teams for a frozen run. */
-export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[] }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps): Promise<string[]> {
+export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[]; credentials?: Credentials | null }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps): Promise<string[]> {
   const fetched: string[] = [];
   for (const f of plan.storeFetch) {
     held.assertHeld(plan.project.dir);
-    const got = await authoredFolder({ kind: f.kind, id: f.id, requestDigest: f.lockPin.hash, lockPin: f.lockPin }, plan.privateState, plan.network.hosts, deps);
+    const got = await authoredFolder({ kind: f.kind, id: f.id, requestDigest: f.lockPin.hash, lockPin: f.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null);
     if (got.fetched) fetched.push(`${f.kind} ${f.id}`);
   }
   return fetched;
@@ -349,8 +350,10 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
   const lock = new AbortController();
   try {
     return await withProjectLock(input.project.dir, lock.signal, async held => {
-      const { plan, entries } = await observeSync(input);
+      const { plan, entries, token } = await observeSync(input);
       if (plan.revision !== revision) throw stale();
+      // Spec 07: the token this run read for the plan, and only that one, reaches the store fetch.
+      deps = { ...deps, githubToken: token };
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
       createPrivateFolders(plan, held, dir);

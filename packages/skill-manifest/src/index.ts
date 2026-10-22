@@ -14,3 +14,4 @@ export { checkManifest, pinOf, MANIFEST_CHECK_FORMAT } from './check.js';
 export type { ManifestCheck } from './check.js';
 export { manifestRefusal, isManifestRefusal, MANIFEST_REFUSAL_CODES } from './refusal.js';
 export type { ManifestRefusalCode } from './refusal.js';
+export { GithubToken, GITHUB_TOKEN_VARIABLE } from './github-token.js';

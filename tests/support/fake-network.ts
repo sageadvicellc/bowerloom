@@ -15,7 +15,11 @@ import { EventEmitter } from 'node:events';
 import { syncBuiltinESMExports } from 'node:module';
 
 // Spec 06: a route value can also be { "status": <n>, "headers": { "<name>": "<value>" }, "file": <path or null> }.
-// Each https.request line of the log says whether an Authorization header was set, never its value.
+// Each https.request line of the log says whether an Authorization header was set, never its value. The header counts
+// whether it came in the request options or through request.setHeader (spec 07 sets it there, review H1 of PR 97).
+// The line is written when the request ends, after any setHeader call.
+// This stub replaces https.request, so Node's own https and http code never runs here, and NODE_DEBUG prints none of
+// its lines. tests/token-debug.test.ts runs the real transport for that.
 type Route = string | { status: number; headers?: Record<string, string>; file: string | null };
 interface Plan { log: string; routes?: Record<string, Route> }
 const planPath = process.env.TEST_FAKE_NETWORK_PLAN;
@@ -28,8 +32,9 @@ const deny = (name: string) => (...args: unknown[]): never => { record(name, arg
 type Callback = (response: EventEmitter) => void;
 function serve(url: unknown, options: unknown, callback: Callback): EventEmitter {
   const headers = (options as { headers?: Record<string, unknown> } | null)?.headers ?? {};
-  record('https.request', url, { authorization: Object.keys(headers).some(h => h.toLowerCase() === 'authorization') });
-  const req = Object.assign(new EventEmitter(), { destroyed: false, destroy() { req.destroyed = true; return req; }, end() {
+  const names = new Set(Object.keys(headers).map(h => h.toLowerCase()));
+  const req = Object.assign(new EventEmitter(), { destroyed: false, destroy() { req.destroyed = true; return req; }, setHeader(name: string) { names.add(String(name).toLowerCase()); }, end() {
+    record('https.request', url, { authorization: names.has('authorization') });
     queueMicrotask(() => {
       if (req.destroyed) return;
       const route = routes![String(url)];

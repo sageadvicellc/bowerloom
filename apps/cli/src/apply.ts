@@ -17,7 +17,8 @@ import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText, shellWord } from './human.js';
 import { terminalIo } from './manifest.js';
-import { harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, withInterrupt } from './sync.js';
+import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
+import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 
 const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
@@ -169,6 +170,13 @@ function places(harnesses: readonly Harness[]): string {
   const all = ['.bowerloom/managed', ...harnesses.map(h => h === 'claude' ? '.claude' : '.agents')];
   return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
 }
+/** Review F5 of PR 97: a frozen apply that fetches an authored lock item names the token in its STALE_APPROVAL. */
+export function applyStaleNote(plan: ApplyPlan): string | null {
+  if (!plan.frozen) return null;
+  const needs = plan.network?.credentials != null || (plan.skills !== null && syncStaleNote(plan.skills) !== null)
+    || plan.prompts.some(p => (p.action === 'install' || p.action === 'update') && p.resolvedFrom === 'lock' && p.lockPin !== null) || (plan.storeFetch ?? []).length > 0;
+  return needs ? TOKEN_STALE_NOTE : null;
+}
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
 export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
@@ -180,6 +188,9 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
     ...(plan.agentsMayBeTracked && guarded.length ? [`  Note: the read guard in the copies of agents ${andList(guarded)} names this project's folder, ${plan.project.dir}. Bowerloom found no .gitignore line that keeps .claude/agents out of git. A committed copy carries a path from this machine. On another machine its guard blocks every read, and apply holds the copy until it is moved aside.`] : [])];
   const fetching = [...skills.filter(i => (i.action === 'install' || i.action === 'update') && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing')), ...plan.prompts.filter(p => (p.action === 'install' || p.action === 'update') && p.storeCache === 'missing'), ...(plan.storeFetch ?? []).filter(f => f.storeCache === 'missing')].length;
   const network = !plan.frozen ? 'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.'
+    : fetching && plan.network?.credentials ? (plan.network.hosts.includes('registry.npmjs.org')
+      ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetching} ${fetching === 1 ? 'item' : 'items'}. Pins are fetched without credentials. ${TOKEN_TAIL} Bytes must match their pins or bowerloom.lock.json.`
+      : `Network: reads ${plan.network.hosts.join(' and ')} for ${fetching} ${fetching === 1 ? 'item' : 'items'}. ${TOKEN_TAIL} Bytes must match bowerloom.lock.json.`)
     : fetching ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetching} ${fetching === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.` : 'Network: none now. Every item is on this machine.';
   const title = !claude ? 'Apply skills and prompts for' : codex ? 'Apply skills, prompts, and agents for' : 'Apply skills, prompts, agents, and context slices for';
   return [
@@ -189,6 +200,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
     ...(plan.notes ?? []),
     ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
     ...(plan.codexAgentsSkipped || plan.codexSlicesSkipped ? ['Codex agents and context slices are not projected in this beta. See the capability model design.'] : []),
+    ...credentialsLines(plan.network?.credentials),
     network,
     ...requestLine(plan.network),
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
@@ -271,7 +283,9 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
   if (allow.length) requireTerminal(io, approval.json);
-  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
+  // Spec 07: only a frozen apply reads the token, and only when an authored lock item needs its repository.
+  const githubToken = parsedHarness.frozen ? githubTokenReader(env) : null;
+  const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   const first = await planProjectApply(input());
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {
@@ -280,7 +294,7 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
-    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json),
+    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json), staleNote: applyStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },

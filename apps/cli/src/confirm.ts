@@ -39,7 +39,8 @@ export function namesYesFlag(args: readonly string[]): boolean {
 }
 
 const shorten = (revision: string): string => `${revision.slice(0, 4)}…${revision.slice(-4)}`;
-const stale = (): DefinitionError => new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.');
+const STALE_MESSAGE = 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.';
+const stale = (note?: string | null): DefinitionError => new DefinitionError('STALE_APPROVAL', note ? `${STALE_MESSAGE} ${note}` : STALE_MESSAGE);
 
 /**
  * Plans, then applies only what was approved.
@@ -54,12 +55,12 @@ export async function runWithApproval<P>(change: PlannedChange<P>, flags: Approv
     const result = await change.apply(value);
     return { output: flags.json ? newCommandJson({ applied: true, revision: value, result }) : `Applied plan ${value}.\n`, exitCode: 0 };
   };
-  if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(); return applied(revision); }
+  if (flags.approve !== undefined) { if (flags.approve !== revision) throw stale(change.staleNote?.(plan)); return applied(revision); }
   if (io.interactive && !flags.json) {
     const answer = await io.ask(`${plainText(change.review(plan), true)}\nApply plan ${shorten(revision)}? [y/N] `);
     if (!/^y(?:es)?$/i.test(answer.trim())) throw new DefinitionError('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
-    const again = change.revision(await change.plan());
-    if (again !== revision) throw stale();
+    const next = await change.plan(), again = change.revision(next);
+    if (again !== revision) throw stale(change.staleNote?.(next));
     return applied(revision);
   }
   return {
