@@ -242,6 +242,8 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
     for (const s of before.filter(b => ownSurface(b) && !kept.some(k => k.id === b.id))) check(s.pins === null, 'MANAGED_SKILL_PATH_OCCUPIED');
     const catalog = schema<{ source: { kind: string; package?: string; registry?: string; host?: string; repository?: string; version?: string; commit?: string }; skill: unknown; inventory: unknown }>(strictJson(raw(catalogPath(v.projectDir, v.item), 262144, false).bytes.toString('utf8'), 262144), catalogKeys);
     const incoming = closure.source as typeof catalog.source, was = catalog.source;
+    // An agent may move to another team, so its path may change. The planner (project-sync classifyAgent) plans an update for a moved
+    // agent, and checkAgentChild binds the path of the plan; this check only keeps the kind (tests: v2-agent 'moves to another team').
     const sameSource = incoming.kind === was.kind && (incoming.kind === 'agent' ? true : incoming.kind === 'npm' ? was.package === incoming.package && was.registry === incoming.registry : incoming.kind === 'git' ? was.host === incoming.host && was.repository === incoming.repository : same(was, incoming));
     check(sameSource && same(catalog.skill, closure.skill));
     // Same commit or same npm version with changed contents or provenance is not an update.

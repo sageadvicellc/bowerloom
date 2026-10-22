@@ -18,7 +18,7 @@ import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { harnessWords, itemLine, withInterrupt } from './sync.js';
 
-const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both], with optional --approve <revision> and --json.';
+const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]..., with optional --approve <revision> and --json.';
 const usage = (): never => { throw new DefinitionError('USAGE', APPLY_USAGE); };
 const HARNESSES: Readonly<Record<string, Harness[]>> = { claude: ['claude'], codex: ['codex'], both: ['claude', 'codex'] };
 const NULL_PINS = revisionOf(null);
@@ -60,21 +60,24 @@ function promptState(item: PromptItem, width: number): string[] {
  * A team agent's Claude Code file can grant tools, register hooks and start servers when the agent runs (spec 01a,
  * section 3.2). The notice names them; it never quotes the file.
  */
+const NOTICE_WORDS: Readonly<Record<string, string>> = {
+  hooks: 'sets hooks', mcpServers: 'sets mcpServers', 'shell-tools': 'lists shell tools in tools', 'edit-tools': 'lists file-editing tools in tools',
+  'web-tools': 'lists web tools in tools', 'mcp-tools': 'lists MCP tools in tools', 'agent-tools': 'lists the Agent tool in tools', 'all-tools': 'inherits every tool, including shell tools',
+};
 function agentNoticeLine(item: AgentItem): string[] {
   const copies = item.action === 'install' || item.action === 'update';
   if (!copies || !item.notices.length) return [];
-  const mode = item.notices.find(n => n.startsWith('permissionMode:'));
-  const what = [item.notices.includes('hooks') ? 'sets hooks' : null, item.notices.includes('mcpServers') ? 'sets mcpServers' : null,
-    mode ? `sets permissionMode ${mode.slice('permissionMode:'.length)}` : null,
-    item.notices.includes('shell-tools') ? 'lists shell tools in tools' : null,
-    item.notices.includes('all-tools') ? 'inherits every tool, including shell tools' : null].filter((w): w is string => w !== null)
+  const what = item.notices.map(n => (n.startsWith('permissionMode:') ? `sets permissionMode ${n.slice('permissionMode:'.length)}` : NOTICE_WORDS[n]!) + (item.newNotices.includes(n) ? ' (new)' : ''))
     .reduce((all, w, i, list) => i === 0 ? w : `${all}${i === list.length - 1 ? ' and ' : ', '}${w}`, '');
   return [`  Note: agent ${item.id} ${what}. Claude Code applies them when the agent runs. Review .bowerloom/teams/${item.team}/agents/${item.id}.md.`];
 }
 function agentLine(item: AgentItem, width: number): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = item.expected.surfaces.filter(s => s.id === 'agent-claude').map(s => s.path).join(' and ');
   if (item.action === 'hold') return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
-  const warning = item.builtin && item.action !== 'none' ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : [];
+  const copies = item.action !== 'none', warning = [
+    ...(item.builtin && copies ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : []),
+    ...(item.userCopy && copies ? [`  ${pad} Warning: ${item.id} also exists in ~/.claude/agents. This project's agent takes precedence in this project.`] : []),
+  ];
   switch (item.state) {
     case 'new': return [`  ${id} install agent: ${where}`, ...warning, ...agentNoticeLine(item)];
     case 'adopt': return [`  ${id} adopt agent: ${where}`, ...warning, ...agentNoticeLine(item)];
@@ -96,10 +99,11 @@ export function renderApplyReview(plan: ApplyPlan): string {
   return [
     `${claude ? 'Apply skills, prompts, and agents for' : 'Apply skills and prompts for'} ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}`,
     ...(lines.length ? lines : [claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, or .bowerloom/teams/*/agents to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
+    ...(plan.agents.some(a => a.action !== 'hold' && a.notices.length && (a.action === 'install' || a.action === 'update')) ? ['  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.'] : []),
     ...(plan.codexAgentsSkipped ? ['Codex agents are not projected in this beta. See the capability model design.'] : []),
     'Network: none. Apply never fetches. A pin that is not cached yet needs bowerloom skills sync first.',
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
-    'This copies text files only. It starts no workers and runs nothing.',
+    plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
   ].join('\n');
 }
@@ -125,12 +129,24 @@ export function parseHarness(words: readonly string[]): { harnesses: Harness[]; 
   return { harnesses: harnesses ?? [...HARNESSES.both!], rest };
 }
 
+/** Takes every `--allow-agent <role>:<12 hex>` out of the words (it repeats); the rest goes on. */
+export function takeAllow(words: readonly string[]): { allow: string[]; rest: string[] } {
+  const allow: string[] = [], rest: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (word === '--allow-agent') { const value = words[++i]; if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{12}$/.test(value)) usage(); allow.push(value!); }
+    else if (word.startsWith('--allow-agent=')) usage();
+    else rest.push(word);
+  }
+  return { allow: [...new Set(allow)].sort(), rest };
+}
+
 /** `bowerloom apply`. Returns the exit code: 0 done or nothing to do, 3 approval required. A refusal throws. */
 export async function runApplyCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env): Promise<number> {
-  const { harnesses, rest } = parseHarness(args.slice(1));
+  const parsedHarness = parseHarness(args.slice(1)), { harnesses } = parsedHarness, { allow, rest } = takeAllow(parsedHarness.rest);
   const approval = parseApprovalFlags(rest); if (approval.rest.length) usage();
   const project = discoverProject(cwd, home), stateRoot = privateStateRoot(env, home);
-  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null });
+  const input = (): ApplyInput => ({ project, stateRoot, harnesses, team: null, allow });
   const first = await planProjectApply(input());
   if (!first.actionable && approval.approve === undefined) {
     write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first), true)}\nNothing to change.\n`); return 0;

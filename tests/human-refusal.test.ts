@@ -171,10 +171,10 @@ test('the declined, usage and offline refusals do not repeat themselves', () => 
   assert.equal(renderRefusal('USAGE', 'Use bowerloom up --team <name> --goal <goal>.').includes('did not match'), false);
 });
 
-// Spec 01a, section 10.8 item 10: the seven agent codes each have a row in the errors reference.
+// Spec 01a, section 10.8 item 10: the nine agent codes each have a row in the errors reference.
 test('every agent refusal and hold code has a row in the errors reference', () => {
   const page = readFileSync(new URL('../../apps/docs/src/content/docs/reference/errors.md', import.meta.url), 'utf8');
-  const codes = ['AGENT_INVALID', 'AGENT_KEY_UNKNOWN', 'AGENT_NAME_MISMATCH', 'AGENT_LIMIT', 'APPLY_AGENT_DUPLICATE', 'APPLY_AGENTS_FOLDER_UNSAFE', 'AGENT_TARGET_OCCUPIED'];
+  const codes = ['AGENT_INVALID', 'AGENT_KEY_UNKNOWN', 'AGENT_NAME_MISMATCH', 'AGENT_LIMIT', 'APPLY_AGENT_DUPLICATE', 'APPLY_AGENTS_FOLDER_UNSAFE', 'AGENT_TARGET_OCCUPIED', 'AGENT_GRANT_REVIEW_REQUIRED', 'AGENT_TEAM_UNREGISTERED'];
   for (const code of codes) assert.match(page, new RegExp(`^\\| \`${code}\` \\|`, 'm'), code);
   for (const code of codes) assert.ok([...SYNC_REFUSAL_CODES, ...AUTHORING_REFUSAL_CODES].includes(code as never), code);
 });

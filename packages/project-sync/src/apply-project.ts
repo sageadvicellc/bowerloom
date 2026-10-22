@@ -33,7 +33,7 @@ import { bindPrivateState, checkProjectAncestry, ignoreCarrier, isActionable, ob
 import type { SyncItem, SyncPlan } from './plan.js';
 import { checkPromptChild, classifyPrompt, orphanPrompt, promptRequest, registeredPrompts } from './prompts.js';
 import type { PromptItem } from './prompts.js';
-import { agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
+import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
 import { managedCode, outward, syncError } from './refusal.js';
 
@@ -67,6 +67,8 @@ export interface ApplyInput {
   harnesses: Harness[];
   /** Only this team's skills and prompts (`up --team`). Null or absent: every skill and prompt. */
   team?: string | null;
+  /** `<role>:<12 hex>` allowances from `--allow-agent`. An agent that sets bypassPermissions, hooks or mcpServers installs only with its own. */
+  allow?: readonly string[];
 }
 export interface ApplyPlan {
   format: typeof APPLY_PLAN_FORMAT;
@@ -77,6 +79,8 @@ export interface ApplyPlan {
   prompts: PromptItem[];
   /** The team agents of this project, planned for Claude Code only (spec 01a). Empty under `--harness codex`. */
   agents: AgentItem[];
+  /** The allowances this plan was made with, sorted. They are part of the revision. */
+  allow: string[];
   /** True when the harnesses include Codex and at least one agent file exists: Codex agents are not projected in this beta. */
   codexAgentsSkipped: boolean;
   privateState: { root: string; projectId: string; cacheRoot: string; itemsRoot: string; create: string[]; pins: { path: string; identity: Identity }[] };
@@ -149,11 +153,13 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
       if (ref.kind === 'prompt' && !registered.some(p => p.id === ref.id)) prompts.push(orphanPrompt(dir, layout.itemsRoot, ref.id));
     }
     // Agents: every team folder is listed and checked whatever the harness and team say (spec 01a, section 3.6).
+    const allow = [...new Set(input.allow ?? [])].sort();
+    if (allow.some(a => typeof a !== 'string' || !ALLOW_FLAG.test(a))) throw new DefinitionError('USAGE', 'Use --allow-agent <role>:<first 12 hex characters of the agent file\'s sha256>.');
     const scan = scanAgents(dir), claude = harnesses.includes('claude'), agents: AgentItem[] = [];
     if (claude) {
       const planned = scan.entries.filter(e => team === null || e.team === team);
       if (planned.some(e => e.hold === null)) checkClaudeFolders(dir);
-      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e)));
+      agents.push(...planned.map(e => classifyAgent(dir, layout.itemsRoot, e, allow)));
       if (exists(catalogs)) for (const n of names(catalogs)) {
         const ref = catalogItem(n);
         if (ref.kind === 'agent' && !scan.entries.some(e => e.entry === ref.id + '.md')) agents.push(orphanAgent(dir, layout.itemsRoot, ref.id));
@@ -177,7 +183,7 @@ export async function observeApply(input: ApplyInput): Promise<Observed> {
     const body = {
       format: APPLY_PLAN_FORMAT,
       project: { dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
-      harnesses, team, skills, prompts, agents, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
+      harnesses, team, skills, prompts, agents, allow, codexAgentsSkipped: harnesses.includes('codex') && scan.fileCount > 0,
       privateState: { root: layout.root, projectId: project.projectId, cacheRoot: layout.cacheRoot, itemsRoot: layout.itemsRoot, create, pins: layout.pins },
       managed: { ignore }, actionable: skillWork.length + promptWork.length + agentWork.length > 0, pointer: applyPointer(harnesses),
       writesAuthorized: false as const, executionAuthorized: false as const,
@@ -232,7 +238,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
           if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], 'bowerloom apply');
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to agent ${item.id}; nothing was changed.`);
         }
-        children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkAgentChild(dir, item, req, child) });
+        children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkAgentChild(dir, item, req, child, plan.allow) });
       }
       // Phase C: every child, in order, with a revision planned right before it in this run.
       const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, 'bowerloom apply');

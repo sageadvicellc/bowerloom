@@ -20,6 +20,8 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom status` no longer reports a team's `agents/` files as edited.
 - Codex agents are not projected in this beta.
 - Known limit: `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
+- An agent that sets `bypassPermissions`, `hooks`, or `mcpServers` is held until `apply --allow-agent <role>:<hash>` names the hash of its file.
+- Hidden files and editor backups in `agents/` are ignored. An agent in a team that is not registered is held with `AGENT_TEAM_UNREGISTERED`.
 - A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
 
 ## 0.7.0-beta.2

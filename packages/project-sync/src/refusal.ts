@@ -27,6 +27,8 @@ const MESSAGES = {
   AGENT_LIMIT: 'This project holds more than 128 agents. Nothing was changed.',
   APPLY_AGENT_DUPLICATE: 'Two teams hold an agent with the same name.',
   APPLY_AGENTS_FOLDER_UNSAFE: '.claude or .claude/agents is a link, or others can write to it. Nothing was changed.',
+  AGENT_GRANT_REVIEW_REQUIRED: 'This agent asks for powers that need your explicit approval.',
+  AGENT_TEAM_UNREGISTERED: 'This agent\'s team is not registered in .bowerloom/authoring/receipt.json.',
   AGENT_TARGET_OCCUPIED: 'A file Bowerloom did not install is at an agent\'s place and differs from the source.',
   REVISION_PENDING: 'A revise of this project is unfinished. Finish it first (bowerloom help advanced lists revise recover).',
   MANAGED_SKILL_LEGACY_PRESENT: 'This project still holds a skill installed by an earlier Bowerloom (.bowerloom-skills). Migrate it first: bowerloom skills migrate plan --state <v1-state-dir>.',

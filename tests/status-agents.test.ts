@@ -2,6 +2,7 @@
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -135,4 +136,44 @@ test('help apply and help up carry the agent sentences', t => {
   const up = run(p, ['help', 'up']); assert.equal(up.status, 0);
   assert.ok(up.stdout.includes('  apply   when skills, prompts, or agents of the team need copies for Claude Code and Codex: apply.\n'));
   assert.ok(up.stdout.includes('exits 4. When a skill, prompt,\n') && up.stdout.includes('agent, or team is held or gone, it prints "prepared, N items held" instead, with the next command for each item.\n'));
+});
+
+const shaOf = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 12);
+
+test('S2: --approve alone never installs an agent that needs review; --allow-agent does, on apply and on up', t => {
+  const p = project(t), text = agent('hooked', 'hooks:\n  PreToolUse:\n    - matcher: Bash\ntools: Read'); place(p, 'desk', 'hooked.md', text); place(p, 'desk', 'plain.md', agent('plain', 'tools: Read'));
+  const flag = `hooked:${shaOf(text)}`;
+  const shown = run(p, ['apply']); assert.equal(shown.status, 3, shown.stderr);
+  assert.match(shown.stdout, /^ {2}hooked +agent held \(AGENT_GRANT_REVIEW_REQUIRED\)$/m); assert.ok(shown.stdout.includes(`then run bowerloom apply --allow-agent ${flag}.`), shown.stdout);
+  const approved = run(p, ['apply', '--approve', revisionIn(shown.stdout)]); assert.equal(approved.status, 0, approved.stderr);
+  assert.match(approved.stdout, /^ {2}agent hooked: held \(AGENT_GRANT_REVIEW_REQUIRED\)\. Next: /m); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false); assert.equal(existsSync(join(p.dir, '.claude/agents/plain.md')), true);
+  const up = run(p, ['up', '--team', 'desk']); assert.equal(up.status, 4, up.stderr + up.stdout); assert.match(up.stdout, /Held: agent hooked \(AGENT_GRANT_REVIEW_REQUIRED\)/); assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  const upShown = run(p, ['up', '--team', 'desk', '--allow-agent', flag]); assert.equal(upShown.status, 3, upShown.stderr);
+  assert.match(upShown.stdout, /^ {2}hooked +install agent: /m);
+  // The plan made with the allowance is a different plan, and only it installs the agent.
+  const without = run(p, ['apply', '--allow-agent', flag]); assert.equal(without.status, 3);
+  assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  const done = run(p, ['apply', '--allow-agent', flag, '--approve', revisionIn(without.stdout)]); assert.equal(done.status, 0, done.stderr);
+  assert.match(done.stdout, /^ {2}agent hooked: installed$/m); assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), text);
+  for (const bad of [['--allow-agent'], ['--allow-agent', 'hooked'], ['--allow-agent', 'hooked:zzz'], ['--allow-agent=hooked:000000000000']]) assert.equal(run(p, ['apply', ...bad]).status, 2, bad.join(' '));
+});
+
+test('S2: up --approve with the allowance installs it, and without it never does', t => {
+  const p = project(t), text = agent('hooked', 'hooks:\n  a: 1\ntools: Read'); place(p, 'desk', 'hooked.md', text);
+  const shown = run(p, ['up', '--team', 'desk']); assert.equal(shown.status, 4, shown.stdout);
+  const flag = `hooked:${shaOf(text)}`, planned = run(p, ['up', '--team', 'desk', '--allow-agent', flag]); assert.equal(planned.status, 3);
+  const bare = run(p, ['up', '--team', 'desk', '--approve', revisionIn(planned.stdout)]); assert.notEqual(bare.status, 0);
+  assert.equal(existsSync(join(p.dir, '.claude/agents/hooked.md')), false);
+  assert.equal(run(p, ['up', '--team', 'desk', '--allow-agent', flag, '--approve', revisionIn(planned.stdout)]).status, 4);
+  assert.equal(readFileSync(join(p.dir, '.claude/agents/hooked.md'), 'utf8'), text);
+});
+
+test('F2: status names a refusal of the apply plan and sets the setup to drifted', t => {
+  const p = project(t);
+  for (let i = 0; i < 129; i++) { const role = `agent-${String(i).padStart(3, '0')}`; place(p, 'desk', role + '.md', agent(role, 'tools: Read')); }
+  const words = run(p, ['status']); assert.equal(words.status, 0, words.stderr);
+  assert.match(words.stdout, /^Setup: drifted$/m); assert.match(words.stdout, /^ {2}plan unavailable \(AGENT_LIMIT\)$/m);
+  const q = project(t); place(q, 'desk', 'scribe.md', agent('scribe', 'tools: Read')); mkdirSync(join(q.dir, '.claude/agents'), { recursive: true }); chmodSync(join(q.dir, '.claude/agents'), 0o775);
+  const other = run(q, ['status']); assert.match(other.stdout, /^Setup: drifted$/m); assert.match(other.stdout, /^ {2}plan unavailable \(APPLY_AGENTS_FOLDER_UNSAFE\)$/m);
+  const ok = project(t); assert.doesNotMatch(run(ok, ['status']).stdout, /plan unavailable|drifted/);
 });

@@ -51,6 +51,8 @@ export interface UpContext {
   team: string;
   goal: string | null; name: string | null;
   harnesses: Harness[]; acquirer: Acquirer;
+  /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
+  allow?: readonly string[];
 }
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
@@ -139,7 +141,7 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
       plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
@@ -177,18 +179,22 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
 }
 
 /** Splits the up command line. Every value flag at most once; anything else is the approval wrapper's. */
-export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[] } {
-  const values = new Map<string, string>(), rest: string[] = [];
+export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[]; allow: string[] } {
+  const values = new Map<string, string>(), rest: string[] = [], allow: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const word = args[i]!;
     if (word === '--team' || word === '--goal' || word === '--name') {
       const value = args[++i];
       if (value === undefined || value === '' || value.startsWith('-') || values.has(word)) usage();
       values.set(word, value!);
+    } else if (word === '--allow-agent') {
+      const value = args[++i];
+      if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{12}$/.test(value)) usage();
+      allow.push(value!);
     } else rest.push(word);
   }
   if (args[0] !== 'up' || !values.has('--team')) usage();
-  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest };
+  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest, allow: [...new Set(allow)].sort() };
 }
 
 const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '' });
@@ -212,7 +218,7 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow };
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.

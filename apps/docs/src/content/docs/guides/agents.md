@@ -25,7 +25,9 @@ Add an agent named scribe to the first team in this project. Write it at .bowerl
 
 Each agent is one file: `.bowerloom/teams/<team>/agents/<role>.md`. The file name without `.md` is the role. A role is lower-case letters and digits in words joined by single hyphens, at most 64 characters. It does not start with `prompt-`.
 
-You place the file by hand. Bowerloom does not create it. The `agents` folder and the file must belong to you, with no write access for the group or others. The file holds at most 64 KiB.
+You place the file by hand. Bowerloom does not create it. The `agents` folder and the file must belong to you, with no write access for the group or others. A shell with `umask 002` makes folders with mode 0775, and `apply` refuses those with `AUTHORING_UNSAFE_PATH` and the folder name. Run `chmod 755` on the folder to fix it. The file holds at most 64 KiB.
+
+Bowerloom ignores names that start with `.` or end with `~` in `agents/`, such as `.DS_Store` and editor backups. Every other entry must be a plain `<role>.md` file. Only teams that `team create` made, and `first-team`, count. An agent in a folder under `.bowerloom/teams` that is not registered holds with `AGENT_TEAM_UNREGISTERED`. A `teams/first-team` that is a link is skipped.
 
 The first team is a team too. Put its agents in `.bowerloom/teams/first-team/agents`. `bowerloom status` does not report that folder as drift.
 
@@ -47,6 +49,8 @@ bowerloom apply
 ```
 
 The plan lists each agent: `install agent`, `update agent`, `adopt agent`, `agent up to date`, `agent kept`, or `agent held`. After you approve, the copy lands at `.claude/agents/<role>.md`, byte for byte. Bowerloom also records the item in `.bowerloom/managed/catalog/agent_<role>.json`. These copies stay on this machine. Decide for yourself whether git tracks `.claude/agents`. Commit the source files in `.bowerloom/teams`. Bowerloom never edits `.gitignore` outside `.bowerloom/managed/.gitignore`.
+
+`apply` checks that `.claude` and `.claude/agents` are real folders that others cannot write only when at least one agent could be installed. A plan in which every agent is held does not check them.
 
 Apply never removes a copy. If you delete a source file, the plan shows `agent kept`, and the copy stays.
 
@@ -75,7 +79,7 @@ omitClaudeMd, effort, isolation, color, initialPrompt, experimental
 - `initialPrompt` is text of at most 8192 bytes.
 - `experimental` is a map with only the key `cacheTtl`, set to `5m` or `1h`.
 
-A key with an empty value is not valid. A repeated key, an alias, and a merge key are not valid.
+A key with an empty value is not valid. A repeated key, an alias, a merge key, a YAML tag such as `!!set`, and any YAML warning are not valid. The size limit of `hooks` and `mcpServers` counts the bytes of the source text.
 
 ### What the notices mean
 
@@ -85,7 +89,11 @@ Some keys take effect when the agent runs. Claude Code applies them. The plan na
 - `sets mcpServers` means the file has an `mcpServers` key.
 - `sets permissionMode <value>` means the mode is not `default` and not `plan`.
 - `lists shell tools in tools` means `tools` names `Bash`, `PowerShell`, or `Monitor`, with or without a pattern in parentheses.
-- `inherits every tool, including shell tools` means the file has no `tools` key.
+- `inherits every tool, including shell tools` means the file has no `tools` key, an empty `tools` list, or a `*` entry. Until the Claude Code docs confirm what an empty list means, Bowerloom treats it as every tool.
+- `lists file-editing tools`, `lists web tools`, `lists MCP tools`, and `lists the Agent tool` name `Write`, `Edit`, or `NotebookEdit`; `WebFetch` or `WebSearch`; a name that starts with `mcp__`; and `Agent` or `Task`.
+- On an update, a notice that the installed copy did not have ends with `(new)`.
+
+The plan also prints one line that says hooks run shell commands, and that Claude Code can use an agent without being asked, based on its description. If `~/.claude/agents/<role>.md` exists, the plan warns that the project agent takes precedence in this project.
 
 ### Built-in names
 
@@ -118,12 +126,14 @@ A hold affects one agent. Every other skill, prompt, and agent still applies. Th
 - `AGENT_NAME_MISMATCH` means the `name` key differs from the file name, or the file name is not a valid role.
 - `APPLY_AGENT_DUPLICATE` means two teams hold an agent with the same role. Both are held. Rename or remove one. An agent that was installed before stays installed.
 - `AGENT_TARGET_OCCUPIED` means a file that Bowerloom did not install is at the target.
+- `AGENT_GRANT_REVIEW_REQUIRED` means the agent sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers`. Read the file. Then run `bowerloom apply --allow-agent <role>:<hash>`, where `<hash>` is the first 12 hex characters of the sha256 of the file. The `Next:` line has the exact flag, and `up` takes the flag too. The flag is part of the plan, so `--approve` alone never installs the agent. An edit to the file holds it again.
+- `AGENT_TEAM_UNREGISTERED` means the agent sits in a team folder that `team create` did not make.
 
 Two problems stop the whole `apply`, and nothing is written. `AGENT_LIMIT` means the project holds more than 128 agent files. `APPLY_AGENTS_FOLDER_UNSAFE` means `.claude` or `.claude/agents` is a link or others can write to it. An unsafe `agents` folder in `.bowerloom` stops it with `AUTHORING_UNSAFE_PATH`. [Errors](/docs/reference/errors/) lists each code.
 
 ## Limits in this beta
 
 - Codex agents are not projected in this beta.
-- `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
+- `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back. For a folder made with `mkdir`, the refusal is `REVISION_PRIVATE_DIRECTORY_REQUIRED`, because the revise check wants private folders first.
 - A 0.7.0-beta.2 CLI cannot read a project that holds agent catalogs. It refuses.
 - Native discovery of the copies by Claude Code is not observed. This page asserts nothing about whether Claude Code needs a restart to see a new file.

@@ -22,6 +22,8 @@ export function projectOwners(project: ProjectContext, env: NodeJS.ProcessEnv, h
   return owners;
 }
 
+/** Refusals of the apply plan that `status` leaves to its drift lines: a legacy install, an unfinished operation, a pending revise, and an uncached pin. */
+const EXPECTED_PLAN_REFUSALS = ['MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'REVISION_PENDING', 'SKILLS_OFFLINE'];
 /** `bowerloom status [--json]` for the project that holds the working folder. Reads only. Returns the text to print; the words escape control characters, the JSON is exact. */
 export async function runProjectStatus(args: readonly string[], cwd: string, home: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const words = args.slice(1);
@@ -39,17 +41,22 @@ export async function runProjectStatus(args: readonly string[], cwd: string, hom
   // prompt files, and each held or missing item comes with its next step. These reads are best effort: when one
   // cannot be made, the folder line stays.
   const editedFiles = (path: string): string[] => { if (path !== '.bowerloom/prompts') return [path]; const files = editedPrompts(project); return files === null || files.length === 0 ? [path] : files; };
-  let held: HeldItem[] = missingItems(project, null);
+  let held: HeldItem[] = missingItems(project, null), unavailable: string | null = null;
   try {
     const plan = await planProjectApply({ project, stateRoot: privateStateRoot(env, home), harnesses: ['claude', 'codex'], team: null });
     held = uniqueHolds([...held, ...planHolds(plan.skills?.items ?? [], plan.prompts, plan.agents)]);
-  } catch { /* The drift lines above still name the folder. */ }
+  } catch (error) {
+    // These refusals already show as drift lines above or in `bowerloom apply`. Any other refusal is named, and the setup is drifted.
+    const code = (error as { code?: unknown } | null)?.code;
+    if (!EXPECTED_PLAN_REFUSALS.includes(String(code))) unavailable = typeof code === 'string' && /^[A-Z_]{1,100}$/.test(code) ? code : 'IO_ERROR';
+  }
   return [
     `Project: ${plainText(project.dir)}`,
-    `Setup: ${plainText(status)}`,
+    `Setup: ${plainText(unavailable !== null ? 'drifted' : status)}`,
     ...(inspection.revision ? [`Revision: ${plainText(inspection.revision)}`] : []),
     ...inspection.drift.map(item => `  ${plainText(item.kind)}: ${plainText(item.path)}${item.code ? ` (${plainText(item.code)})` : ''}`),
     ...owned.filter(item => item.state === 'edited').flatMap(item => editedFiles(item.path)).map(path => `  edited: ${plainText(path)}`),
+    ...(unavailable !== null ? [`  plan unavailable (${plainText(unavailable)})`] : []),
     ...held.map(item => `  ${item.kind} ${plainText(item.id)}: held (${plainText(item.code)}). Next: ${plainText(item.next)}`),
     ...(legacy ? [`Legacy managed skill: .bowerloom-skills. Run ${MIGRATE}`] : []),
     'Workers: none started (this beta starts none)',

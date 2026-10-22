@@ -119,7 +119,7 @@ test('apply refusals: a collision, an uncached pin, and usage errors; nothing is
 const agentItem = (id: string, extra: Partial<AgentItem>): AgentItem => ({
   id, team: 'first-team', itemId: `agent_${id}`, state: 'new', action: 'install', harnesses: ['claude'],
   expected: { files: [], surfaces: [{ id: 'agent-claude', path: `.claude/agents/${id}.md` }, { id: 'catalog', path: `.bowerloom/managed/catalog/agent_${id}.json` }], source: { kind: 'agent', path: `teams/first-team/agents/${id}.md` } },
-  before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], builtin: false, capabilities: null, enforcement: [], ...extra,
+  before: [], previousReceiptRevision: null, history: 0, hold: null, notices: [], newNotices: [], builtin: false, userCopy: false, capabilities: null, enforcement: [], ...extra,
 });
 const planOf = (agents: AgentItem[], harnesses: ('claude' | 'codex')[], extra: Partial<ApplyPlan> = {}): ApplyPlan => ({
   format: 'bowerloom/project-apply-plan/v1beta2', harnesses, team: null, skills: null, prompts: [], agents, codexAgentsSkipped: false, actionable: true,
@@ -148,6 +148,7 @@ test('apply review: the agent lines, warning, notice and Codex line are exact', 
     '  Note: agent scribe sets hooks and lists shell tools in tools. Claude Code applies them when the agent runs. Review .bowerloom/teams/first-team/agents/scribe.md.',
     '  writer   adopt agent: .claude/agents/writer.md',
     '  archive  agent kept: no longer an agent of this project, and apply removes nothing',
+    '  Hooks run shell commands, and Claude Code may use an agent without being asked, based on its description.',
     'Codex agents are not projected in this beta. See the capability model design.',
   ]);
 });

@@ -70,3 +70,11 @@ test('revise plan on such a project refuses and writes nothing: REVISION_DRIFT f
   await assert.rejects(planStartupRevision({ targetDir: p.dir, brief }), e => e.code === 'REVISION_DRIFT');
   assert.equal(tree(p.dir), second);
 });
+
+test('S7: without owners, an entry in first-team agents that is not a plain <stem>.md file is unexpected; editor files are skipped', async t => {
+  const p = await project(t); place(p, 'helper.md', agent('helper')); place(p, '.DS_Store', 'junk'); place(p, 'helper.md~', 'junk');
+  assert.deepEqual((await inspectStartup(p.dir)).drift, []);
+  place(p, 'notes.txt', 'x'); place(p, 'Capital.md', agent('Capital')); fs.mkdirSync(join(p.bowerloom, 'teams/first-team/agents/folder.md'));
+  const drift = (await inspectStartup(p.dir)).drift.map(d => d.path).sort();
+  assert.deepEqual(drift, ['.bowerloom/teams/first-team/agents/Capital.md', '.bowerloom/teams/first-team/agents/folder.md', '.bowerloom/teams/first-team/agents/notes.txt']);
+});

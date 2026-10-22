@@ -9,7 +9,7 @@ import { readManifestState } from '../../skill-manifest/src/add.js';
 import { parseManifest } from '../../skill-manifest/src/schema.js';
 import { isManifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { LIMITS, folderNames, lstatOrNull, readGuarded, readTree, realFolder, sha256 } from './files.js';
-import { AGENT_STEM, AGENT_STEM_MAX, parseAgentOrRefuse } from './agent-file.js';
+import { AGENT_STEM, AGENT_STEM_MAX, parseAgentOrRefuse, skippedAgentName } from './agent-file.js';
 import { isAuthoringRefusal, refuse } from './refusal.js';
 import { AUTHORING_FOLDER, isPromptId, isSkillId, isTeamId, itemPath, readAuthoringState, sameItem } from './state.js';
 import type { AuthoredItem, ItemKind } from './state.js';
@@ -36,12 +36,15 @@ const FIRST_TEAM_AGENTS = 'teams/first-team/agents';
  * file the parser refuses is AGENT_INVALID. A role named by two teams is not a status finding; apply holds it.
  */
 function agentsVerdict(agents: string, team: string): OwnerVerdict | null {
-  const names = folderNames(agents);
+  const names = folderNames(agents).filter(n => !skippedAgentName(n));
   for (const name of names) {
     const file = join(agents, name), s = lstatOrNull(file), stem = name.endsWith('.md') ? name.slice(0, -3) : '';
-    if (s === null || s.isSymbolicLink() || !s.isFile() || name.startsWith('.') || !name.endsWith('.md') || stem.length < 1 || stem.length > AGENT_STEM_MAX || !AGENT_STEM.test(stem) || stem.startsWith('prompt-')) return refused('AGENT_INVALID');
-    try { parseAgentOrRefuse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(readGuarded(file, 65536)), stem, team); }
-    catch { return refused('AGENT_INVALID'); }
+    if (s === null || s.isSymbolicLink() || !s.isFile() || !name.endsWith('.md') || stem.length < 1 || stem.length > AGENT_STEM_MAX || !AGENT_STEM.test(stem) || stem.startsWith('prompt-')) return refused('AGENT_INVALID');
+    // An unsafe file is AUTHORING_UNSAFE_PATH and an I/O error stays an error. Only a parse refusal is AGENT_INVALID.
+    const bytes = readGuarded(file, 65536);
+    let text: string; try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); } catch { return refused('AGENT_INVALID'); }
+    try { parseAgentOrRefuse(text, stem, team); }
+    catch (error) { if (isAuthoringRefusal(error) && ['AGENT_INVALID', 'AGENT_KEY_UNKNOWN', 'AGENT_NAME_MISMATCH'].includes(error.code)) return refused('AGENT_INVALID'); throw error; }
   }
   return null;
 }

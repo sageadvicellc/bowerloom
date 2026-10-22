@@ -80,7 +80,7 @@ test('the planned material writes the closure text to agent-claude and the catal
 });
 
 test('claudeCopyBytes returns its input', () => {
-  for (const s of ['', TEXT, 'x\u0000y', '﻿z', 'é🌿']) assert.equal(claudeCopyBytes(s), s);
+  for (const s of ['', TEXT, 'x\u0000y', '\uFEFFz', 'é🌿']) assert.equal(claudeCopyBytes(s), s);
 });
 
 test('an agent installs, updates, reports up to date, and refuses a local edit of the copy', async t => {
@@ -165,12 +165,13 @@ test('the install check lets an equal hand-made agent file through and refuses a
   const g = project(t); agentFile(g, 'desk', 'scribe'); fs.mkdirSync(path.join(g.projectDir, '.claude/agents'), { recursive: true, mode: 0o755 });
   fs.writeFileSync(path.join(g.projectDir, '.claude/agents/scribe.md'), 'Mine.\n', { mode: 0o644 }); fs.chmodSync(path.join(g.projectDir, '.claude/agents/scribe.md'), 0o644);
   await assert.rejects(planManagedItem(agentRequest(g, 'scribe')), code('MANAGED_SKILL_PATH_OCCUPIED'));
-  // An occupied catalog is occupied even when the agent file is equal.
-  const h = project(t); agentFile(h, 'desk', 'scribe'); fs.mkdirSync(path.join(h.projectDir, '.bowerloom/managed/catalog'), { recursive: true, mode: 0o755 });
-  fs.writeFileSync(path.join(h.projectDir, '.bowerloom/managed/catalog/agent_scribe.json'), '{}\n', { mode: 0o644 }); fs.chmodSync(path.join(h.projectDir, '.bowerloom/managed/catalog/agent_scribe.json'), 0o644);
-  await assert.rejects(planManagedItem(agentRequest(h, 'scribe')));
-  // A skill with the same id must still find its own surfaces occupied by any file: the equal-hash exception is agent only.
-  assert.notEqual(hash(TEXT), hash('Mine.\n'));
+  // An equal agent file does not excuse an occupied catalog surface. The catalog is occupied by a file that is not ours.
+  const h = project(t); agentFile(h, 'desk', 'scribe'); fs.mkdirSync(path.join(h.projectDir, '.claude/agents'), { recursive: true, mode: 0o755 });
+  fs.writeFileSync(path.join(h.projectDir, '.claude/agents/scribe.md'), TEXT, { mode: 0o644 }); fs.chmodSync(path.join(h.projectDir, '.claude/agents/scribe.md'), 0o644);
+  fs.mkdirSync(path.join(h.projectDir, '.bowerloom/managed/catalog'), { recursive: true, mode: 0o755 });
+  // A well-formed catalog with no committed receipt behind it: the managed code calls the place occupied.
+  fs.writeFileSync(path.join(h.projectDir, '.bowerloom/managed/catalog/agent_scribe.json'), fs.readFileSync(path.join(f.projectDir, '.bowerloom/managed/catalog/agent_scribe.json')), { mode: 0o644 }); fs.chmodSync(path.join(h.projectDir, '.bowerloom/managed/catalog/agent_scribe.json'), 0o644);
+  await assert.rejects(planManagedItem(agentRequest(h, 'scribe')), code('MANAGED_SKILL_PATH_OCCUPIED'));
 });
 
 test('an agent that moves to another team with the same bytes plans an update', async t => {

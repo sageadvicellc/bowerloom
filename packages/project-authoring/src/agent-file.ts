@@ -6,7 +6,7 @@
  * A failure carries a fixed code and a fixed phrase. A phrase names a key only when the key is plain; no message
  * quotes other file text.
  */
-import { isScalar, parseDocument, visit } from 'yaml';
+import { isMap, isNode, isScalar, parseDocument, visit } from 'yaml';
 import { refuse } from './refusal.js';
 
 export type AgentParseCode = 'AGENT_INVALID' | 'AGENT_KEY_UNKNOWN' | 'AGENT_NAME_MISMATCH';
@@ -28,6 +28,8 @@ export const ALLOWED_AGENT_KEYS: readonly string[] = Object.freeze([
 ]);
 export const AGENT_STEM = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const AGENT_STEM_MAX = 64;
+/** Hidden files and editor backups (`.DS_Store`, `.x.swp`, `x~`) in an agents folder are neither agents nor findings. */
+export const skippedAgentName = (name: string): boolean => name.startsWith('.') || name.endsWith('~');
 const PLAIN_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
 const FENCE = /^---[ \t]*$/;
 const TOOL = /^[A-Za-z0-9_.:*-]+(\(.{0,100}\))?$/;
@@ -84,16 +86,23 @@ const depthOf = (value: unknown): number => {
   const children = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
   return 1 + Math.max(0, ...children.map(depthOf));
 };
-function opaque(key: string, value: unknown): void {
+/** `hooks` and `mcpServers`: a map or a list, at most 6 levels deep, and at most 4096 bytes of the source text. */
+function opaque(key: string, value: unknown, sourceBytes: number): void {
   if (value === null || typeof value !== 'object') return invalid(`${keyWords(key)} must be a map or a list`);
   if (depthOf(value) > 6) invalid(`${keyWords(key)} is nested more than 6 levels deep`);
-  let size: number; try { size = Buffer.byteLength(JSON.stringify(value)); } catch { return invalid(`${keyWords(key)} cannot be read`); }
-  if (size > 4096) invalid(`${keyWords(key)} is larger than 4096 bytes`);
+  if (sourceBytes > 4096) invalid(`${keyWords(key)} is larger than 4096 bytes`);
 }
 
+/** The bytes the value of a top-level key takes in the frontmatter text. */
+function sourceSize(doc: ReturnType<typeof parseDocument>, key: string, block: string): number {
+  const root = doc.contents;
+  if (!isMap(root)) return 0;
+  for (const pair of root.items) if (isScalar(pair.key) && pair.key.value === key && isNode(pair.value) && pair.value.range) return Buffer.byteLength(block.slice(pair.value.range[0], pair.value.range[1]));
+  return 0;
+}
 function frontmatter(text: string): { block: string; body: string } {
   if (text.includes('\0') || text.includes('\r')) invalid('the file holds a null byte or a carriage return');
-  if (text.startsWith('﻿')) invalid('the file starts with a byte order mark');
+  if (text.startsWith('\uFEFF')) invalid('the file starts with a byte order mark');
   const lines = text.split('\n');
   if (!FENCE.test(lines[0] ?? '')) invalid('the file does not start with a --- line');
   const end = lines.findIndex((l, i) => i > 0 && FENCE.test(l));
@@ -109,6 +118,9 @@ function validate(text: string, stem: string, team: string): ParsedAgent {
   const { block } = frontmatter(text);
   const doc = parseDocument(block, { uniqueKeys: true });
   if (doc.errors.length) invalid('the frontmatter is not valid YAML, or repeats a key');
+  if (doc.warnings.length) invalid('the frontmatter holds a tag or a value that YAML cannot resolve');
+  let tagged = false; visit(doc, { Node(_key, node) { if (node.tag !== undefined) tagged = true; } });
+  if (tagged) invalid('the frontmatter uses an explicit YAML tag, which is not allowed');
   let value: unknown;
   try { value = doc.toJS({ maxAliasCount: 0 }); } catch { return invalid('the frontmatter uses an alias, which is not allowed'); }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return invalid('the frontmatter is not a map of keys');
@@ -136,7 +148,7 @@ function validate(text: string, stem: string, team: string): ParsedAgent {
       case 'permissionMode': parsed.permissionMode = oneOf(key, v, PERMISSION_MODES); break;
       case 'maxTurns': integer(key, v, 1, 10000); break;
       case 'autoCompactWindow': integer(key, v, 100000, 1000000); break;
-      case 'mcpServers': case 'hooks': opaque(key, v); break;
+      case 'mcpServers': case 'hooks': opaque(key, v, sourceSize(doc, key, block)); break;
       case 'memory': oneOf(key, v, MEMORY); break;
       case 'background': case 'omitClaudeMd': if (typeof v !== 'boolean') invalid(`${keyWords(key)} must be true or false`); break;
       case 'effort': oneOf(key, v, EFFORT); break;

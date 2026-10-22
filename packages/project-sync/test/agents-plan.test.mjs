@@ -7,6 +7,7 @@ import path from 'node:path';
 import { denyNetwork, localSkill, localEntry, writeManifest } from './sync-fixture.mjs';
 import { applyProjectApply, APPLY_PLAN_FORMAT, APPLY_RESULT_FORMAT } from '../../../dist/packages/project-sync/src/index.js';
 import { claudeCopyBytes, BUILTIN_AGENT_NAMES } from '../../../dist/packages/project-sync/src/agents.js';
+import { sourceHash } from '../../../dist/packages/project-sync/src/agents.js';
 import { agentProject, createTeam, createPrompt, agentText, agentSource, agentDir, claudeAgent, target, plan, applied, review, byId, read, exists, code, exactTree, signal } from './agents-fixture.mjs';
 
 const network = denyNetwork();
@@ -129,7 +130,7 @@ test('9b. the other parse failures hold with their own codes and next steps', as
   fs.symlinkSync(path.join(f.base, 'outside.md'), path.join(agentDir(f, 'first-team'), 'linked.md')); fs.writeFileSync(path.join(f.base, 'outside.md'), agentText('linked'));
   const p = await plan(f, ['claude']), agents = byId(p.agents);
   const held = Object.fromEntries(p.agents.map(a => [a.id, a.hold?.code]));
-  assert.deepEqual(held, { typo: 'AGENT_KEY_UNKNOWN', mismatch: 'AGENT_NAME_MISMATCH', Scribe: 'AGENT_NAME_MISMATCH', 'notes.txt': 'AGENT_INVALID', folder: 'AGENT_INVALID', '.hidden': 'AGENT_INVALID', linked: 'AGENT_INVALID' });
+  assert.deepEqual(held, { typo: 'AGENT_KEY_UNKNOWN', mismatch: 'AGENT_NAME_MISMATCH', Scribe: 'AGENT_NAME_MISMATCH', 'notes.txt': 'AGENT_INVALID', folder: 'AGENT_INVALID', linked: 'AGENT_INVALID' });
   assert.equal(agents.typo.hold.next, 'Remove the key tool from .bowerloom/teams/first-team/agents/typo.md, then run bowerloom apply.');
   assert.equal(agents.mismatch.hold.next, 'Make the name key equal mismatch in .bowerloom/teams/first-team/agents/mismatch.md, and name the file with lowercase letters, digits, and single hyphens. Then run bowerloom apply.');
   assert.equal(p.actionable, false);
@@ -162,17 +163,19 @@ test('12. the notice line is exact for each notice item, for the items together,
   const cases = {
     hooked: ['hooks:\n  PreToolUse:\n    - matcher: Bash\ntools: Read', 'sets hooks'],
     served: ['mcpServers:\n  docs:\n    command: docs\ntools: Read', 'sets mcpServers'],
-    loose: ['permissionMode: dontAsk\ntools: Read', 'sets permissionMode dontAsk'],
+    loose: ['permissionMode: bypassPermissions\ntools: Read', 'sets permissionMode bypassPermissions'],
+    dont: ['permissionMode: dontAsk\ntools: Read', 'sets permissionMode dontAsk'],
     shelled: ['tools: Read, Bash(npm run *)', 'lists shell tools in tools'],
     monitor: ['tools: Monitor', 'lists shell tools in tools'],
     power: ['tools: PowerShell', 'lists shell tools in tools'],
     inherit: ['model: sonnet', 'inherits every tool, including shell tools'],
     together: ['hooks:\n  a: 1\nmcpServers:\n  b: 1\npermissionMode: bypassPermissions\ntools: Bash', 'sets hooks, sets mcpServers, sets permissionMode bypassPermissions and lists shell tools in tools'],
     inheriting: ['hooks:\n  a: 1\nmcpServers:\n  b: 1\npermissionMode: auto', 'sets hooks, sets mcpServers, sets permissionMode auto and inherits every tool, including shell tools'],
-    quiet: ['tools: Read, Grep\npermissionMode: plan', null], safe: ['tools: []\npermissionMode: default', null], notbash: ['tools: bash, MultiEdit', null],
+    quiet: ['tools: Read, Grep\npermissionMode: plan', null], safe: ['tools: Read\npermissionMode: default', null], notbash: ['tools: bash, MultiEdit', null],
   };
   for (const [role, [extra]] of Object.entries(cases)) agentSource(f, 'first-team', role + '.md', agentText(role, extra));
-  const text = review(await plan(f, ['claude']));
+  const allow = ['hooked', 'served', 'loose', 'together', 'inheriting'].map(r => `${r}:${sourceHash(agentText(r, cases[r][0]))}`);
+  const text = review(await plan(f, ['claude'], { allow }));
   for (const [role, [, what]] of Object.entries(cases)) {
     const note = `Note: agent ${role} ${what}. Claude Code applies them when the agent runs. Review .bowerloom/teams/first-team/agents/${role}.md.`;
     if (what) assert.ok(lines(text).includes(`  ${note}`), `${role}\n${text}`); else assert.ok(!text.includes(`Note: agent ${role} `), role);

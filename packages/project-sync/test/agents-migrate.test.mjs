@@ -43,7 +43,7 @@ test('3. a link, mode 0600, mode 0664, two hard links, and a case alias hold and
   };
   for (const [name, make] of Object.entries(forms)) {
     const f = await agentProject(t); agentSource(f, 'first-team', 'scribe.md', TEXT); make(f);
-    const p = await plan(f, ['claude']); occupied(p, /^\.claude\/agents\/scribe\.md was not installed by Bowerloom and cannot be read as a plain file that you own\. Move it aside, then run bowerloom apply\.$/); assert.equal(p.actionable, false, name);
+    const p = await plan(f, ['claude']); occupied(p, /^\.claude\/agents\/scribe\.md was not installed by Bowerloom and cannot be read as a plain file that you own \(MANAGED_SKILL_[A-Z_]+\)\. Move it aside, then run bowerloom apply\.$/); assert.equal(p.actionable, false, name);
     const result = await applyProjectApply(f.input(['claude']), p.revision, signal()); assert.deepEqual(result.applied, [], name); assert.equal(exists(f, '.bowerloom/managed/catalog/agent_scribe.json'), false, name);
   }
   const alias = await agentProject(t); agentSource(alias, 'first-team', 'scribe.md', TEXT); claudeAgent(alias, 'Scribe.md', TEXT);

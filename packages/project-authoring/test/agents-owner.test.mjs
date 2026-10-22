@@ -35,7 +35,7 @@ test('a registered team with a valid agents folder is verified, not edited', asy
 
 test('a bad agent file refuses the team folder with AGENT_INVALID, for each of the three parse codes', async t => {
   const p = await project(t);
-  for (const [entry, text] of [['typo.md', agent('typo', 'tool: x')], ['mismatch.md', agent('other')], ['broken.md', 'no frontmatter'], ['Capital.md', agent('Capital')], ['.hidden.md', agent('hidden')], ['notes.txt', 'x']]) {
+  for (const [entry, text] of [['typo.md', agent('typo', 'tool: x')], ['mismatch.md', agent('other')], ['broken.md', 'no frontmatter'], ['Capital.md', agent('Capital')], ['notes.txt', 'x']]) {
     const file = place(p, 'desk', entry, text);
     assert.deepEqual(await verify(p, 'teams/desk'), { result: 'refused', code: 'AGENT_INVALID' }, entry); fs.rmSync(file);
   }
@@ -43,7 +43,7 @@ test('a bad agent file refuses the team folder with AGENT_INVALID, for each of t
   fs.writeFileSync(join(p.dir, 'outside.md'), agent('linked')); fs.symlinkSync(join(p.dir, 'outside.md'), join(p.bowerloom, 'teams/desk/agents/linked.md'));
   assert.deepEqual(await verify(p, 'teams/desk'), { result: 'refused', code: 'AGENT_INVALID' }); fs.unlinkSync(join(p.bowerloom, 'teams/desk/agents/linked.md'));
   place(p, 'desk', 'ok.md', agent('ok')); assert.deepEqual(await verify(p, 'teams/desk'), { result: 'verified' });
-  place(p, 'desk', 'bom.md', '﻿' + agent('bom')); assert.deepEqual(await verify(p, 'teams/desk'), { result: 'refused', code: 'AGENT_INVALID' });
+  place(p, 'desk', 'bom.md', '\uFEFF' + agent('bom')); assert.deepEqual(await verify(p, 'teams/desk'), { result: 'refused', code: 'AGENT_INVALID' });
 });
 
 test('an agents folder that is a link, or that others can write, is AUTHORING_UNSAFE_PATH', async t => {
@@ -82,4 +82,23 @@ test('inspectStartup with owners names a bad agent file as owner-refused on the 
   const p = await project(t); place(p, 'desk', 'typo.md', agent('typo', 'tool: x'));
   const result = await inspectStartup(p.dir, { owners: [authoringVerifier(p.dir), manifestVerifier(p.dir)] });
   assert.deepEqual(result.drift, [{ path: '.bowerloom/teams/desk', kind: 'owner-refused', code: 'AGENT_INVALID' }]);
+});
+
+test('D1: hidden and editor files in agents/ change nothing', async t => {
+  const p = await project(t); place(p, 'desk', 'scribe.md', agent('scribe'));
+  for (const name of ['.DS_Store', '.foo.md.swp', 'foo.md~', '.hidden.md']) place(p, 'desk', name, 'junk');
+  assert.deepEqual(await verify(p, 'teams/desk'), { result: 'verified' });
+  place(p, 'first-team', 'helper.md', agent('helper')); place(p, 'first-team', '.DS_Store', 'junk'); place(p, 'first-team', 'helper.md~', 'junk');
+  assert.deepEqual(await verify(p, 'teams/first-team/agents'), { result: 'verified' });
+});
+
+test('F5: an unsafe agent file is AUTHORING_UNSAFE_PATH, not AGENT_INVALID', async t => {
+  const p = await project(t); place(p, 'desk', 'scribe.md', agent('scribe'), 0o664);
+  assert.deepEqual(await verify(p, 'teams/desk'), { result: 'refused', code: 'AUTHORING_UNSAFE_PATH' });
+});
+
+test('S8: an Agents folder is skipped from the edited comparison as agents is', async t => {
+  const p = await project(t); place(p, 'desk', 'scribe.md', agent('scribe'));
+  fs.renameSync(join(p.bowerloom, 'teams/desk/agents'), join(p.bowerloom, 'teams/desk/Agents-tmp')); fs.renameSync(join(p.bowerloom, 'teams/desk/Agents-tmp'), join(p.bowerloom, 'teams/desk/Agents'));
+  assert.deepEqual(await verify(p, 'teams/desk'), { result: 'verified' });
 });

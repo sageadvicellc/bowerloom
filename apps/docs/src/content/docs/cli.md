@@ -59,7 +59,7 @@ In a terminal, a refusal prints its code, a plain sentence, and a `Next:` line. 
 These commands work in a project folder. The project is the nearest parent folder that holds `.bowerloom`, found the way git finds `.git`. The search stops at your home folder. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`. A home folder or a whole disk refuses with `PROJECT_ROOT_REFUSED`.
 
 ```text
-bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--approve <revision>] [--json]
+bowerloom up --team <name> [--goal <goal>] [--name <project-name>] [--allow-agent <role>:<hash>]... [--approve <revision>] [--json]
 bowerloom ls [teams|skills|prompts] [--json]
 bowerloom status [--json]
 ```
@@ -85,10 +85,10 @@ Agents use these commands most. They write inside `.bowerloom` only. You and you
 ## Apply
 
 ```text
-bowerloom apply [--harness claude|codex|both] [--approve <revision>] [--json]
+bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--approve <revision>] [--json]
 ```
 
-`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it places any skill copy that is still missing. It also copies the agents of every team, `first-team` included, from `.bowerloom/teams/<team>/agents/<role>.md` to `.claude/agents/<role>.md` for Claude Code. Claude Code and Codex are the harnesses, the agent applications that read these copies. Codex agents are not projected in this beta. Run `apply` when the project has prompts or agents. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed or a copy that Bowerloom did not install. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`, and a bad agent file holds only that agent. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands, and for an agent that sets hooks or lists shell tools. Read that prompt or agent before you approve. See [Project agents for Claude Code](/docs/guides/agents/). See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
+`skills sync` already copies the skills in `.bowerloom/skills.json` into place. `apply` puts the prompts in `.bowerloom/prompts` in place for Claude Code, Codex, or both (the default), and it places any skill copy that is still missing. It also copies the agents of every team, `first-team` included, from `.bowerloom/teams/<team>/agents/<role>.md` to `.claude/agents/<role>.md` for Claude Code. Claude Code and Codex are the harnesses, the agent applications that read these copies. Codex agents are not projected in this beta. Run `apply` when the project has prompts or agents. When every copy is already in place, it prints `Nothing to change.` and exits 0. It never fetches. It adds copies and removes none. It never overwrites a copy you changed or a copy that Bowerloom did not install. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`, and a bad agent file holds only that agent. It never edits `AGENTS.md` or `CLAUDE.md`. The plan shows a note for a prompt that sets `allowed-tools`, registers hooks, or runs shell commands, and for an agent that sets hooks or lists shell tools. Read that prompt or agent before you approve. An agent that sets `permissionMode: bypassPermissions`, `hooks`, or `mcpServers` is held with `AGENT_GRANT_REVIEW_REQUIRED` until you read it and pass `--allow-agent <role>:<hash>`. The hash is the first 12 hex characters of the sha256 of the agent file. The plan prints the exact flag. The flag repeats, `up` takes it too, and `--approve` alone never installs such an agent. See [Project agents for Claude Code](/docs/guides/agents/). See [Add third-party skills](/docs/guides/add-skills/#apply-the-skills).
 
 <a id="init"></a>
 

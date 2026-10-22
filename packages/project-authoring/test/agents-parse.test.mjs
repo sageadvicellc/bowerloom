@@ -77,7 +77,7 @@ test('a missing description, an empty body, and a blank body are AGENT_INVALID',
 });
 
 test('a leading BOM, a carriage return, and a null byte are AGENT_INVALID', () => {
-  bad('﻿' + file(base()), 'AGENT_INVALID');
+  bad('\uFEFF' + file(base()), 'AGENT_INVALID');
   bad(file(base()).replace(/\n/g, '\r\n'), 'AGENT_INVALID');
   bad(file(base(), 'Body\0here\n'), 'AGENT_INVALID');
 });
@@ -148,4 +148,19 @@ test('parseAgentOrRefuse returns the agent or throws an authoring refusal with t
 
 test('large and odd input does not throw out of parseAgent', () => {
   for (const text of ['', '---', '---\n', 'x'.repeat(100000), '---\n' + 'a: 1\n'.repeat(20000) + '---\nb\n', '---\n{{{{\n---\nb\n']) assert.equal(parse(text).ok, false);
+});
+
+test('S3: an explicit YAML tag is AGENT_INVALID, and the opaque size is measured from the source text', () => {
+  bad(file(base('hooks: !!omap [ {a: 1} ]')), 'AGENT_INVALID');
+  bad(file(base('mcpServers: !!set {x: ~}')), 'AGENT_INVALID');
+  bad(file(base('initialPrompt: !!binary aGVsbG8=')), 'AGENT_INVALID');
+  bad(file(base('model: !!str sonnet')), 'AGENT_INVALID');
+  bad(file(base('model: !custom sonnet')), 'AGENT_INVALID');
+  // The JSON of this value is tiny, and its source text is larger than 4096 bytes.
+  bad(file(base(`hooks: {a: ${' '.repeat(4200)}1}`)), 'AGENT_INVALID');
+  ok(file(base(`hooks: {a: ${' '.repeat(100)}1}`)));
+});
+
+test('F6: a YAML warning is AGENT_INVALID', () => {
+  bad(file(base('model: sonnet\nhooks: !unknown {a: 1}')), 'AGENT_INVALID');
 });

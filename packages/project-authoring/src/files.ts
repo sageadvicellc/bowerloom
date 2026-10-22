@@ -69,7 +69,8 @@ export function readTree(bowerloom: string, relative: string, skip: string | nul
     ensure(depth <= LIMITS.depth, 'AUTHORING_UNSAFE_PATH');
     for (const name of folderNames(join(bowerloom, rel))) {
       const child = `${rel}/${name}`;
-      if (skip !== null && child === skip) continue;
+      // The comparison folds case, so a disk that ignores case and a disk that does not agree on `Agents`.
+      if (skip !== null && child.normalize('NFC').toLowerCase() === skip.normalize('NFC').toLowerCase()) continue;
       ensure(++entries <= LIMITS.itemEntries, 'AUTHORING_UNSAFE_PATH');
       const s = lstatOrNull(join(bowerloom, child));
       ensure(s !== null && !s.isSymbolicLink(), 'AUTHORING_UNSAFE_PATH');
