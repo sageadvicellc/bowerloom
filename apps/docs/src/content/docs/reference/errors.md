@@ -136,6 +136,14 @@ These codes come from `bowerloom store migrate`. It also raises the store, confi
 | `MIGRATE_TEAM_MISSING` | A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team. | Add `--team <name>` to move that team too. |
 | `MIGRATE_LIMIT` | The store record of created items holds 512 items at most. | Remove items from the store, or move fewer items. |
 
+These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, `PROJECT_LOCK_UNAVAILABLE`, `STORE_STATE_NESTED`, and `SKILLS_STATE_UNSAFE`.
+
+| Code | Meaning | Next action |
+| --- | --- | --- |
+| `CACHE_ENTRY_NOT_FOUND` | `--entry` matched no entry of `bowerloom cache list`. | `bowerloom cache list` |
+| `CACHE_ENTRY_BUSY` | `--entry` named an entry that another command is using. | When the other command is done, run this one again. |
+| `CACHE_PRUNE_FAILED` | A delete step failed. The message says how many entries were deleted. Those stay deleted. | Run `bowerloom cache list`, then run the command again. |
+
 ## Lock refusals
 
 `bowerloom.lock.json` records where each store item of a project comes from. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file.

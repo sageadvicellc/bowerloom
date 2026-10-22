@@ -423,6 +423,10 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MIGRATE_RESERVED: { sentence: 'first-team or personal-assistant was named. Setup owns them.', next: 'bowerloom store migrate --all skips them.' },
   MIGRATE_TEAM_MISSING: { sentence: 'A skill or prompt is limited to a team that is not in the store and not in this run. The message names the team.', next: 'Add --team <name> to move that team too.' },
   MIGRATE_LIMIT: { sentence: 'The store record of created items holds 512 items at most.', next: 'Remove items from the store, or move fewer items.' },
+  // Spec 09, section 5: the sentence is the fixed message, the next step is the Next step cell.
+  CACHE_ENTRY_NOT_FOUND: { sentence: 'No cache entry starts with that text.', next: 'bowerloom cache list' },
+  CACHE_ENTRY_BUSY: { sentence: 'Another Bowerloom command is using that cache entry.', next: 'When the other command is done, run this one again.' },
+  CACHE_PRUNE_FAILED: { sentence: 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.', next: 'bowerloom cache list, then run the command again.' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
   CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },

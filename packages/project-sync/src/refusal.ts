@@ -63,6 +63,10 @@ const MESSAGES = {
   MANAGED_SKILL_ABORTED: 'A managed skill operation was stopped.',
   MANAGED_SKILL_TIMEOUT: 'A managed skill operation ran past its time limit.',
   MANAGED_SKILL_REFUSED: 'A managed skill operation was refused by its safety checks.',
+  // Spec 09: cache prune.
+  CACHE_ENTRY_NOT_FOUND: 'No cache entry starts with that text.',
+  CACHE_ENTRY_BUSY: 'Another Bowerloom command is using that cache entry.',
+  CACHE_PRUNE_FAILED: 'Bowerloom failed to delete a cache entry. Entries it deleted before that stay deleted.',
 } as const;
 
 export type SyncCode = keyof typeof MESSAGES;
