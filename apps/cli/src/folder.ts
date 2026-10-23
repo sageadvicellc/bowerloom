@@ -5,7 +5,7 @@
  * through the approval wrapper, under the store lock. `list` reads only.
  */
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
-import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
+import { discoverProject, isGrantSummary, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import {
   applyFolderAdd, applyFolderAllow, applyFolderDeny, applyFolderRemove, listFolders, planFolderAdd, planFolderAllow, planFolderDeny, planFolderRemove, renderFolderAddReview, renderFolderAllowReview, renderFolderDenyReview, renderFolderRemoveReview,
 } from '../../../packages/project-context/src/index.js';
@@ -64,7 +64,10 @@ export async function runFolderCommand(args: readonly string[], cwd: string, hom
     const { flags, positional } = words(args.slice(2));
     // `folder allow` takes the summary kind the grant records after the name. It is `heading` when left out, the default of a slice.
     if (positional.length !== 1 && !(sub === 'allow' && positional.length === 2)) usage();
-    const name = positional[0]!, summary = positional[1] ?? 'heading', controller = new AbortController(), stateRoot = privateStateRoot(env, home), found = discoverProject(cwd, home), project = { dir: found.dir, projectId: found.projectId, birthtimeNs: found.identity.birthtimeNs };
+    const summary = positional[1] ?? 'heading';
+    // The kind is checked before the project is looked for, so a bad kind is a usage error from any folder.
+    if (sub === 'allow' && !isGrantSummary(summary)) usage();
+    const name = positional[0]!, controller = new AbortController(), stateRoot = privateStateRoot(env, home), found = discoverProject(cwd, home), project = { dir: found.dir, projectId: found.projectId, birthtimeNs: found.identity.birthtimeNs };
     if (sub === 'allow') {
       const change: PlannedChange<FolderAllowPlan> = {
         async plan() { return planFolderAllow(home, project, name, stateRoot, summary); },

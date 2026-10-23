@@ -159,6 +159,9 @@ test('13b. folder allow <name> frontmatter:<key> records the kind, and a bad kin
   assert.equal(run(p.dir, ['folder', 'allow', 'kb', 'frontmatter:title', '--approve', revisionIn(planned.stdout)], p.home).status, 0);
   assert.match(grant(), /,"summary":"frontmatter:title"\}\n$/);
   for (const bad of ['none', 'frontmatter:', 'frontmatter:a/b', 'Heading']) { const r = run(p.dir, ['folder', 'allow', 'kb', bad], p.home); assert.equal(r.status, 2, bad + r.stdout); assert.equal(errorOf(r.stderr).code, 'USAGE', bad); }
+  assert.match(planned.stdout, /\n {2}Warning: the values of the key title in the files of this folder will be copied into a skill file under \.claude\/skills in this project\. If git does not ignore \.claude\/skills, they can end up in git\.\n/);
+  const outside = run(p.dir, ['folder', 'allow', 'kb', 'none'], p.home); assert.equal(outside.status, 2); assert.equal(errorOf(outside.stderr).code, 'USAGE');
+  const w = world(t); const noProject = run(w.work, ['folder', 'allow', 'kb', 'none'], w.home); assert.equal(noProject.status, 2, 'the kind is checked before the project is looked for'); assert.equal(errorOf(noProject.stderr).code, 'USAGE');
   const wrong = run(p.dir, ['folder', 'allow', 'kb', 'heading', '--approve', revisionIn(planned.stdout)], p.home); assert.equal(errorOf(wrong.stderr).code, 'STALE_APPROVAL', 'the kind is bound by the revision');
 });
 test('14. folder allow needs a project, a known name, and an unchanged plan', t => {

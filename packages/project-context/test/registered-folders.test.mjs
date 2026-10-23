@@ -572,4 +572,6 @@ test('G4. folder allow refuses a summary kind that is not heading or frontmatter
   assert.notEqual(a.revision, b.revision);
   await assert.rejects(applyFolderAllowWith(w.home, w.project, 'kb', a.revision, signal(), w.hooks, 'frontmatter:title'), code('STALE_APPROVAL'));
   assert.match(renderFolderAllowReview(b), /\n {2}Summary kind: frontmatter:title\. /);
+  assert.match(renderFolderAllowReview(b), /\n {2}Warning: the values of the key title in the files of this folder will be copied into a skill file under \.claude\/skills in this project\. If git does not ignore \.claude\/skills, they can end up in git\.\n/);
+  assert.doesNotMatch(renderFolderAllowReview(a), /Warning:/, 'the heading kind copies titles only');
 });

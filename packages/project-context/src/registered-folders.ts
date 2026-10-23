@@ -38,6 +38,8 @@ export interface RootAccess { readonly projectId: string; /** The summary kind t
 export const GRANT_FORMAT = 'bowerloom/store-folder-grant/v1beta1';
 /** The summary kinds a grant can record. `none` copies no text, so it is never recorded and never held. */
 const GRANT_SUMMARY = /^(?:heading|frontmatter:[A-Za-z0-9_-]{1,64})$/;
+/** True for a summary kind that a grant can record. */
+export const isGrantSummary = (value: unknown): value is string => typeof value === 'string' && GRANT_SUMMARY.test(value);
 const GRANTS = /^[a-z0-9]+(?:-[a-z0-9]+)*\.grants$/;
 const PROJECT_ID = /^[a-f0-9]{32}$/;
 const REGISTRATION_ID = /^[a-f0-9]{32}$/;
@@ -799,6 +801,7 @@ export function renderFolderAllowReview(plan: FolderAllowPlan): string {
     `  Bowerloom reads the mode of the folder only. To see access control entries, ${lsStep(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     `  Summary kind: ${plan.summary}. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind.`,
+    ...(plan.summary.startsWith('frontmatter:') ? [`  Warning: the values of the key ${plan.summary.slice(12)} in the files of this folder will be copied into a skill file under .claude/skills in this project. If git does not ignore .claude/skills, they can end up in git.`] : []),
     ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');
