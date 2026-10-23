@@ -221,6 +221,14 @@ test('D7. releases.md groups beta.3 under the seven labels, in order, with no Fi
   for(const label of RELEASE_LABELS)assert.match(section,new RegExp(`^\\*\\*${label}\\*\\*\\n\\n- `,'m'),`${label}: a blank line, then the list`);
 });
 
+test('D7a. the beta.3 notes open with one plain sentence and carry no review or internal wording',()=>{
+  const section=betaThree(),body=lines(section).filter(l=>l.trim()!=='');
+  assert.equal(body[0],'## 0.7.0-beta.3');
+  assert.match(body[1],/^This release [^*`#-][^\n]*\.$/,'a sentence opens the section, as it does for beta.2');
+  assert.equal(body[2],'**New commands**');
+  assert.doesNotMatch(section,/\b(?:review round|round \d|PR \d|pull request|track \d+|spec \d+|Hanna|owner decision|TODO|TBD)\b/i);
+});
+
 const FORMAT=/bowerloom\/[a-z-]+\/v1(?:alpha|beta)[0-9]+/g;
 function sourceFormats(){
   const out=new Set();
