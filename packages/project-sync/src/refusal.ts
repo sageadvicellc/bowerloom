@@ -183,10 +183,17 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   else if (/^Run the command again\b/.test(step)) next = step.replace(/^Run the command again\b/, () => `Run ${rerun}`);
   // Round 11 of the reviews of PR 101: a step is a sentence, also when `rerun` holds the words of a command.
   else next = step ? `${step} Then run ${rerun}.` : `Run ${rerun}.`;
+  // Round 12 (variant B): `fix` carries the bare command when `rerun` is one, so an agent keeps a runnable value.
+  if (runnable(rerun)) Object.defineProperty(partial, 'fix', { value: rerun, enumerable: false });
   Object.defineProperty(partial, 'next', { value: next, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }
+/**
+ * Round 12 of the reviews of PR 101: true when `rerun` is a command a person can run as it is, not the words that name
+ * one (`the same bowerloom ... command`, or the migrate words `bowerloom skills migrate plan with --state and ...`).
+ */
+export const runnable = (rerun: string): boolean => rerun.startsWith('bowerloom ') && !/^bowerloom [a-z ]+ with --state and /.test(rerun);
 /** The hint of a refusal after a partial write. apps/cli/src/human.ts gives it its own words. */
 export const PARTIAL_HINT = 'partial' as const;
 /**

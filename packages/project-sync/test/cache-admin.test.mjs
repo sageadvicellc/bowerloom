@@ -498,7 +498,7 @@ test('12.7. a pin pruned between phase A and phase B of a sync refuses STALE_APP
   const managed = { async plan(req, options) { const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal()); return managedPort.plan(req, options); }, apply: managedPort.apply };
   // Review M2 of PR 99 (tech lead): the cause and the next step, in place of MANAGED_SKILL_REFUSED.
   await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: fakeAcquirer([a]), signal: signal(), managed }), e => code('STALE_APPROVAL')(e)
-    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.');
+    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.' && e.fix === 'bowerloom skills sync');
   assert.equal(exactTree(w.projectDir), before, 'nothing in the project changed');
   assert.equal(fs.existsSync(path.join(w.projectDir, '.bowerloom', 'managed-pending.json')), false, 'no pending record');
   // A rerun fetches again.
@@ -540,7 +540,7 @@ test('12.7b. a cached pin pruned before phase A reads it back gives the same cau
   const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal());
   const context = { rerun: 'bowerloom skills sync', stateRoot: w.stateRoot, cacheIdentity: identity(w.cacheRoot) };
   await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), e => code('STALE_APPROVAL')(e)
-    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.');
+    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.' && e.fix === 'bowerloom skills sync');
   // An operation that is there but unreadable keeps its own refusal.
   await seed(w, a); fs.appendFileSync(path.join(w.cacheRoot, 'op-' + item.cache.operationId, 'files', 'SKILL.md'), 'x');
   await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), code('SKILLS_CACHE_RECOVERY_REQUIRED'));

@@ -300,7 +300,7 @@ test('a partial refusal: its own sentence, the rerun command as Next, and partia
     assert.doesNotMatch(text, /nothing was (?:applied|changed)/i, code);
     assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: Run bowerloom store migrate --prompt brief\\.\\n$`), code);
     const json = JSON.parse(reportFailure(partial, false).text) as { error: { code: string; next?: string; partial?: boolean } };
-    assert.equal(json.error.code, code); assert.equal(json.error.next, `Run ${rerun}.`); assert.equal(json.error.partial, true);
+    assert.equal(json.error.code, code); assert.equal(json.error.next, `Run ${rerun}.`); assert.equal((json.error as { fix?: string }).fix, rerun); assert.equal(json.error.partial, true);
     assert.equal(reportFailure(partial, false).exitCode, 1);
   }
   // L2: the system code of an error that is not a refusal is kept as the cause.

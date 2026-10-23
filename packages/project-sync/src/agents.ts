@@ -144,7 +144,7 @@ function parseHold(code: AgentParseCode, detail: string, stem: string, path: str
 /** An unsafe folder keeps its code and names the folder, so a person knows where to look. */
 function named<T>(where: string, work: () => T): T {
   try { return work(); }
-  catch (e) { if (isAuthoringRefusal(e) && e.code === 'AUTHORING_UNSAFE_PATH') throw new DefinitionError(e.code, `${e.message} The folder is ${where}.`); throw e; }
+  catch (e) { if (isAuthoringRefusal(e) && e.code === 'AUTHORING_UNSAFE_PATH') throw new DefinitionError(e.code, `${e.message} The folder is ${oneLine(where)}.`); throw e; }
 }
 const UNREGISTERED: Hold = { code: 'AGENT_TEAM_UNREGISTERED', next: 'Create the team with bowerloom team create, or move the agent into a registered team.' };
 export function scanAgents(dir: string): AgentScan {

@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { isStoreFault, localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { offlineNetwork, PARTIAL_HINT, partialRefusal, staleBecause, syncError, withNext } from './refusal.js';
+import { offlineNetwork, PARTIAL_HINT, partialRefusal, runnable, staleBecause, syncError, withNext } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -633,9 +633,12 @@ export async function applyStoreMigrate(plan: StoreMigratePlan, revision: string
       // Review L3: the store lock came first and made the store; the old plan saw none, so the next plan is needed.
       if (!entered && created) {
         const refused = projectRefusal('PROJECT_LOCKED', 'Bowerloom made the store at ~/.bowerloom before it waited for the project. Run the command again without --approve to see the next plan.');
-        // Second security review M1: the store was written, so this refusal is partial, and its Next line is that command.
+        // Second security review M1: the store was written, so this refusal is partial. Rounds 11 and 12 of the reviews of
+        // PR 101: its next is the sentence that says to run that command, and its fix is the bare command, when it is one.
+        const again = rerunOf(plan.selectors);
         Object.defineProperty(refused, 'hint', { value: PARTIAL_HINT, enumerable: false });
-        Object.defineProperty(refused, 'next', { value: `Run ${rerunOf(plan.selectors)}.`, enumerable: false });
+        Object.defineProperty(refused, 'next', { value: `Run ${again}.`, enumerable: false });
+        if (runnable(again)) Object.defineProperty(refused, 'fix', { value: again, enumerable: false });
         return { projectLocked: refused };
       }
       return { projectLocked: error };

@@ -620,7 +620,10 @@ export interface RefusalDetail {
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
 /** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
 const STORE_LIMIT = 'store-limit';
-/** The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is the command that finishes the run. */
+/**
+ * The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is a
+ * sentence that says to run the command that finishes the run. Its `fix` is that bare command, when it is one.
+ */
 const PARTIAL = 'partial';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
