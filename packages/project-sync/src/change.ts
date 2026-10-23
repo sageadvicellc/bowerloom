@@ -28,7 +28,7 @@ import type { AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js'
 import { readAuthoringState } from '../../project-authoring/src/state.js';
 import { readStoreDefinitions } from './resolve.js';
 import type { StoreDefinitions } from './resolve.js';
-import { localItemRows } from './store-items.js';
+import { isStoreFault, localItemRows } from './store-items.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
 import { credentialsFor, onceTokenSource, repositoryOf, requestLimit, requireRequestBudget } from './store-git.js';
 import type { GithubToken } from '../../skill-manifest/src/github-token.js';
@@ -172,6 +172,7 @@ export const requestCount = (needs: readonly { local: { distinct: number } | nul
 export const NETWORK_LINE = (n: number, r: number): string => `Network: reads api.github.com, to check the pushed copy of ${n} ${n === 1 ? 'item' : 'items'}, about ${r} requests to api.github.com.`;
 /** The request line of a run whose limit the person set, in the words of the sync and apply plans (`requestLine`). */
 export const REQUEST_LINE = (r: number, max: number): string => `GitHub requests: at most ${r}, of the ${max} this run allows.`;
+export const NO_REQUEST_NOTE = 'No GitHub request is needed, so --max-github-requests has no effect.';
 export const NO_TOKEN_LINE = 'Without a token GitHub allows about 60 requests an hour. Set BOWERLOOM_GITHUB_TOKEN, or run the command again after an hour to finish.';
 
 /**
@@ -324,6 +325,8 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     const lockText = serializeLock(lockFrom(items));
     lock = { before: current.read, after: { sha256: sha(lockText), bytes: Buffer.byteLength(lockText) }, text: lockText, adds: lockAdds.sort(byteOrder), removes: lockRemoves.sort(byteOrder) };
   } catch (error) { throw sharedState.unknown !== undefined ? honestShared(error, sharedState.unknown) : error; }
+  // Round 3 of the reviews of PR 101 (decided): a script may always pass the flag, so a run with no GitHub request says so.
+  if (input.maxGithubRequests !== undefined && hosts.length === 0) notes.push(NO_REQUEST_NOTE);
   const body: Omit<ConfigChangePlan, 'revision'> = {
     format: CONFIG_CHANGE_FORMAT,
     project: { dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
@@ -346,7 +349,8 @@ function recheck(project: ProjectContext, home: string, plan: { revision: string
   if (plan.store !== null) {
     let defs: StoreDefinitions; try { defs = openStoreDefinitions(home); } catch { throw stale(); }
     if (canonicalJson(storeRead(defs)) !== canonicalJson(plan.store)) throw stale();
-    for (const a of plan.authored) { let h: string; try { h = localItemRows(plan.store.dir, a.kind, a.id).hash; } catch { throw stale(); } if (h !== a.hash) throw stale(); }
+    // Round 3 of the reviews of PR 101: a store fault keeps its code and its next step; only a real change is stale.
+    for (const a of plan.authored) { let h: string; try { h = localItemRows(plan.store.dir, a.kind, a.id).hash; } catch (error) { if (isStoreFault(error)) throw error; throw stale(); } if (h !== a.hash) throw stale(); }
   }
 }
 /** Removes the leftover scratch files a plan listed: still regular files the user owns. */

@@ -51,7 +51,7 @@ import type { AgentItem } from './agents.js';
 import { agentsMayBeTracked, checkSliceChild, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
 import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
-import { managedCode, outward, syncError } from './refusal.js';
+import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 
 export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
 export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta2' as const;
@@ -321,8 +321,9 @@ export async function planProjectApply(input: ApplyInput): Promise<ApplyPlan> { 
 
 /** Apply never fetches: phase A only reads the cache. This acquirer is never reached, and refuses if it were. */
 const NO_FETCH: Acquirer = Object.freeze({
-  npm: async () => { throw syncError('SKILLS_OFFLINE', 'bowerloom apply never fetches. Run bowerloom skills sync first.'); },
-  git: async () => { throw syncError('SKILLS_OFFLINE', 'bowerloom apply never fetches. Run bowerloom skills sync first.'); },
+  // Round 3 of the reviews of PR 101: the step travels as the next step of the refusal.
+  npm: async () => { throw offlineBecause('apply', 'bowerloom apply never fetches.'); },
+  git: async () => { throw offlineBecause('apply', 'bowerloom apply never fetches.'); },
 });
 
 /** What applyProjectApply takes beside the plan input: test ports. `acquirer` and `storeTransport` serve a frozen apply only. */

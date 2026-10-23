@@ -188,8 +188,9 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   await assert.rejects(plan(w, { skills: ['big'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It is larger than a store item can be.'));
   const all = await plan(w, { all: true });
   assert.deepEqual(all.skipped.filter(s => s.id === 'empty' || s.id === 'big'), [
-    { kind: 'skill', id: 'big', line: 'stays in this project. It is larger than a store item can be.' },
-    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds a file that a store item cannot hold.' },
+    // Round 3 of the reviews of PR 101: the skip names the file and gives its step.
+    { kind: 'skill', id: 'big', line: 'stays in this project. It is larger than a store item can be. .bowerloom/skills/big/references/a.md is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. Then run the command again.' },
+    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds a file that a store item cannot hold. .bowerloom/skills/empty/notes.md is empty. Add content to it, or delete it if you do not need it. Then run the command again.' },
   ]);
   // CONFIG_ITEM_SELECTED: the config lists the item from the store already. --all skips it.
   await migrate(w, { prompts: ['brief'] });

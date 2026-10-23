@@ -198,7 +198,8 @@ test('6. a shared project: the first run copies and prints Not switched; after t
   // The next run: the copies are present, and the store has no git repository yet.
   const repoRun = run(dir, ['store', 'migrate', '--all'], w.env);
   assert.equal(repoRun.status, 0, 'present items with no store .git change nothing');
-  assert.match(repoRun.stdout, /^Not switched: skill house-style cannot be locked yet\. The store is not a git repository\. Push the store, then run this command again\.$/m);
+  // Round 3 of the reviews of PR 101: the cause prints its own step.
+  assert.match(repoRun.stdout, /^Not switched: skill house-style cannot be locked yet\. The store is not a git repository\. Make the store a git repository and push it to a github\.com repository\. bowerloom store status shows the commands\. Then run this command again\.$/m);
   assert.match(repoRun.stdout, /\nNothing to change\.\n$/);
   const repo = pushStore(w), net = network(w, repo.routes);
   const second = approve(dir, ['store', 'migrate', '--all'], net.env, NETWORK);

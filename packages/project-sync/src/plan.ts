@@ -34,7 +34,7 @@ import type { StoreContext } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { entryRequest, lookupCache } from './cache-index.js';
 import type { CacheLookup, PinnedRequest } from './cache-index.js';
-import { managedCode, outward, syncError } from './refusal.js';
+import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 import { resolveProject } from './resolve.js';
 import type { Resolved, ResolvedItem } from './resolve.js';
 import { credentialsFor, fetchRequests, faultNote, probeStoreCache, readTokenSource, requestLimit } from './store-git.js';
@@ -577,7 +577,8 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     const fetch = items.filter(i => actionable(i) && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing'));
     // Review freeze finding 13: the fixed message already says that a pin is not cached and that nothing changed.
     const missing = `${fetch.length === 1 ? 'The skill is' : 'The skills are'} ${fetch.map(i => i.id).join(', ')}.`;
-    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', input.apply ? `bowerloom apply never fetches. ${missing} Run bowerloom skills sync first, then bowerloom apply.` : `--offline was set. ${missing} Run bowerloom skills sync without --offline.`);
+    // Round 3 of the reviews of PR 101: the step of each case travels as the next step of the refusal.
+    if (input.offline && fetch.length) throw input.apply ? offlineBecause('apply', `bowerloom apply never fetches. ${missing}`) : offlineBecause('offline', `--offline was set. ${missing}`);
     // Authored lock items this run only puts in the store cache: prompts for skills sync, teams for a frozen run.
     const storeFetch: StoreFetch[] = [];
     if (!input.apply && !input.offline && resolved.mode === 'config') {

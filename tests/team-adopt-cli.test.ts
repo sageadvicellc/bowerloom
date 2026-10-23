@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { world, run, mustApprove, errorCode, errorMessage, project, shared, EMPTY_CONFIG } from './support/config-cli.js';
-import { renderRefusal } from '../apps/cli/src/human.js';
+
 
 test('team adopt shows its plan lines, adopts the store team, and the result switches bowerloom.json', t => {
   const w = world(t), dir = project(w, 'app', { ...EMPTY_CONFIG, teams: [{ id: 'research', source: 'store' }] });
@@ -51,7 +51,8 @@ test('fix 1: in a shared project, use team refuses STORE_ITEM_NOT_SHAREABLE, its
   assert.equal(refused.status, 1); assert.equal(errorCode(refused.stderr), 'STORE_ITEM_NOT_SHAREABLE');
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')), EMPTY_CONFIG);
   // The terminal words name the command; run it with the team the person tried to use.
-  const next = /\nNext: (.*)\n$/.exec(renderRefusal('STORE_ITEM_NOT_SHAREABLE', errorMessage(refused.stderr)))![1]!;
+  // Round 2 of the reviews of PR 101: each cause carries its own next step, which the terminal prints.
+  const next = (JSON.parse(refused.stderr) as { error: { next: string } }).error.next;
   const step = /bowerloom (team adopt)\b/.exec(next); assert.ok(step, next);
   const plan = run(dir, [...step[1]!.split(' '), 'research'], w.env);
   assert.equal(plan.status, 3, plan.stderr);

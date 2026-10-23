@@ -10,7 +10,8 @@ import { MANAGED_ITEM_CODES } from '../../managed-skills/src/v2-observed.js';
 
 const MESSAGES = {
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
-  SKILLS_OFFLINE: 'A pinned skill is not in this machine\'s cache yet. Nothing in the project changed.',
+  // Round 3 of the reviews of PR 101: true for a written store item too.
+  SKILLS_OFFLINE: 'This item is not in this machine\'s cache yet. Nothing in the project changed.',
   SKILLS_SYNC_CONTENT_MISMATCH: 'The bytes Bowerloom holds for a skill do not match the pins and file hashes in .bowerloom/skills.json. Nothing in the project changed.',
   SKILLS_SYNC_INTERRUPTED: 'skills sync stopped between two skills, as asked. Each skill it finished is complete; no skill was left half done.',
   SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 256 skills at most, counting the skills that are no longer in skills.json.',
@@ -80,17 +81,29 @@ export function syncError(code: SyncCode, extra?: string): DefinitionError {
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('syncError takes a listed code only.');
   const error = new DefinitionError(code, extra ? `${MESSAGES[code]} ${extra}` : MESSAGES[code]); own.add(error); return error;
 }
-/** The next step of a fetch that failed on the network (round 2 of the reviews of PR 101). */
-export const NETWORK_NEXT = 'Connect to the network and run the command again.';
 /**
- * Round 2 of the reviews of PR 101, item 1: SKILLS_OFFLINE for a fetch that failed on the network. It carries its own next
- * step, so the words of the code, which cover --offline and plain apply too, never send a person back to the same command.
+ * Rounds 2 and 3 of the reviews of PR 101: the next step of SKILLS_OFFLINE for each real cause. Each raise site carries
+ * the step of its cause, so a person is never sent back to the command that just failed in the same conditions.
  */
-export function offlineNetwork(extra: string): DefinitionError {
+export const OFFLINE_NEXT = Object.freeze({
+  network: 'Connect to the network and run the command again.',
+  response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
+  nonpublic: 'Check the DNS or proxy configuration of this machine.',
+  other: 'Run bowerloom skills check, then bowerloom skills sync again.',
+  offline: 'Run the command again without --offline.',
+  apply: 'Run bowerloom skills sync, then bowerloom apply.',
+  approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
+});
+export type OfflineCause = keyof typeof OFFLINE_NEXT;
+export const NETWORK_NEXT = OFFLINE_NEXT.network;
+/** SKILLS_OFFLINE with the next step of its cause. */
+export function offlineBecause(cause: OfflineCause, extra: string): DefinitionError {
   const error = syncError('SKILLS_OFFLINE', extra);
-  Object.defineProperty(error, 'next', { value: NETWORK_NEXT, enumerable: false });
+  Object.defineProperty(error, 'next', { value: OFFLINE_NEXT[cause], enumerable: false });
   return error;
 }
+/** SKILLS_OFFLINE for a fetch that failed on the network: only a transport failure. */
+export const offlineNetwork = (extra: string): DefinitionError => offlineBecause('network', extra);
 /**
  * Review M5 finding 2: STALE_APPROVAL after earlier children of the run applied. Its fixed message never says that
  * nothing was applied; it names the finished items, which are complete, and the item that changed.
@@ -132,6 +145,9 @@ export const PARTIAL_HINT = 'partial' as const;
 export function staleBecause(error: DefinitionError): DefinitionError {
   const stale = new DefinitionError('STALE_APPROVAL', `The plan changed after you saw it: ${error.code}. ${error.message} Nothing was applied. Run the command again to see the new plan.`);
   Object.defineProperty(stale, 'cause', { value: error.code, enumerable: false });
+  // Round 3 of the reviews of PR 101: the next step of the cause, which lifts it, is kept.
+  const next = (error as { next?: unknown }).next;
+  if (typeof next === 'string') Object.defineProperty(stale, 'next', { value: next, enumerable: false });
   own.add(stale); return stale;
 }
 export const isSyncError = (error: unknown): error is DefinitionError => typeof error === 'object' && error !== null && own.has(error);

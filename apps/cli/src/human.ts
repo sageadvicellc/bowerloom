@@ -436,7 +436,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_ITEM_NOT_FOUND: { sentence: 'Bowerloom picks only items that your store defines.', next: 'bowerloom ls --global' },
   STORE_ITEM_MISSING: { sentence: 'A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.', next: 'Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.' },
   // Round 2 of the reviews of PR 101: each cause and each fault carries its own next step, which names the file or folder.
-  STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Fix the cause that the message names. bowerloom store status shows the git state of the store. Or adopt a team into this project with bowerloom team adopt.' },
+  // Round 3: the sentence holds in a project that is not shared too, and each cause carries its own next step.
+  STORE_ITEM_NOT_SHAREABLE: { sentence: 'Each store item that a lock records must be fetchable by your team.', next: 'Each cause prints its own next step. bowerloom store status shows the git state of the store.' },
   STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It is private, or it does not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
   // Spec 07, section 5: the sentence is the fixed message, and the next step the table's.
   // Review R2 of PR 97 (option C): each sentence says why, instead of repeating the message.
@@ -552,11 +553,12 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   CONTEXT_BASELINE_INVALID: { sentence: 'The baseline must be a folder you own.', next: 'bowerloom help context' },
   CONTEXT_MEASURE_LIMIT: { sentence: 'This beta measures at most 100000 entries.', next: 'bowerloom context measure --baseline <narrower-folder>' },
   GUARD_OUTSIDE_SLICE: { sentence: 'A slice lists the files an agent reads under its folder.', next: 'bowerloom context show <slice>' },
-  GUARD_SLICE_NOT_INSTALLED: { sentence: 'The guard fails closed when it cannot read a slice.', next: 'bowerloom apply' },
-  GUARD_ROOT_MISSING: { sentence: 'The guard fails closed when a slice\'s folder is gone.', next: 'bowerloom apply' },
+  // Round 3 of the reviews of PR 101: plain words for what the guard does.
+  GUARD_SLICE_NOT_INSTALLED: { sentence: 'The guard blocks every call when it cannot read a slice.', next: 'bowerloom apply' },
+  GUARD_ROOT_MISSING: { sentence: 'The guard blocks every call when the folder of a slice is gone.', next: 'bowerloom apply' },
   GUARD_PROJECT_MISMATCH: { sentence: 'A guarded copy works only in the project folder that apply wrote it for.', next: 'bowerloom apply' },
   GUARD_INPUT_INVALID: { sentence: 'The guard blocks a call it cannot check.', next: 'claude --debug' },
-  GUARD_INTERNAL_ERROR: { sentence: 'The guard blocks a call when it meets an error it cannot explain, such as a folder it may not read.', next: 'claude --debug' },
+  GUARD_INTERNAL_ERROR: { sentence: 'The guard blocks a call when it meets an error it cannot explain, such as a folder it is not allowed to read.', next: 'claude --debug' },
   FOLDER_NAME_INVALID: { sentence: 'The name becomes a file name in your store.', next: 'bowerloom help context' },
   FOLDER_EXISTS: { sentence: 'Each registered folder needs its own name.', next: 'bowerloom folder list' },
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
@@ -565,7 +567,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
-  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs a fetch, and this run did not fetch it: --offline was set, plain apply ran, or the network was not reachable.', next: 'Connect to the network and run the command again. After plain apply or --offline, run bowerloom skills sync without --offline, or bowerloom apply --frozen.' },
+  // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.
+  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs a fetch, and this run did not fetch it. The message says why.', next: 'After --offline, run the command again without --offline. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 256 skills at once.', next: 'bowerloom skills check' },

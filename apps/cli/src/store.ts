@@ -241,7 +241,8 @@ export function renderStoreMigrate(plan: StoreMigratePlan): string {
   for (const item of plan.items) lines.push(itemLine(item));
   for (const s of plan.skipped) lines.push(`${itemLabel(s.kind, s.id)}${s.line}`);
   for (const item of plan.items) if (item.switch && isAgentFile(item)) lines.push(`${itemLabel('team', item.id)}its agents stop being projected. A store team projects no agents in this beta. Copies in .claude/agents stay.`);
-  for (const item of plan.items) if (!item.switch && item.notSwitched) lines.push(`Not switched: ${item.kind} ${item.id} cannot be locked yet. ${item.notSwitched.sentence}. Push the store, then run this command again.`);
+  // Round 3 of the reviews of PR 101: a store repository cause prints its own step; the others still need a push.
+  for (const item of plan.items) if (!item.switch && item.notSwitched) lines.push(`Not switched: ${item.kind} ${item.id} cannot be locked yet. ${item.notSwitched.sentence}. ${item.notSwitched.next !== undefined ? `${item.notSwitched.next} Then run this command again.` : 'Push the store, then run this command again.'}`);
   if (plan.config !== null) {
     if (plan.config.created) { const c = JSON.parse(plan.config.text) as { skills: unknown[]; prompts: unknown[]; teams: unknown[] }; lines.push(`bowerloom.json: creates it, and lists ${plural(c.skills.length + c.prompts.length + c.teams.length, 'item')} of this project`); }
     for (const item of plan.items) if (item.switch && !plan.config.adds.includes(`${item.kind} ${item.id}`)) lines.push(`bowerloom.json: ${item.kind} ${item.id} changes from project to store`);

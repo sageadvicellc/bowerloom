@@ -31,7 +31,7 @@ import { CONFIG_FILE, serializeConfig } from '../../project-config/src/schema.js
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockAgrees, lockItem, lockSourceLabel, parseLock, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
-import { MIGRATE_REASON, NOT_SHAREABLE, configRefusal, honestShared, lockMismatch, migrateTeamMissing, migrateUnsupported, refusalWithNext } from '../../project-config/src/refusal.js';
+import { MIGRATE_REASON, NOT_SHAREABLE, causeNext, configRefusal, honestShared, lockMismatch, migrateTeamMissing, migrateUnsupported, refusalWithNext } from '../../project-config/src/refusal.js';
 import type { MigrateReason } from '../../project-config/src/refusal.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
 import { readStoreRepo } from '../../project-config/src/git.js';
@@ -44,7 +44,7 @@ import { createPublicTransport } from '../../skill-manifest/src/public-get.js';
 import { proveAuthored } from '../../skill-manifest/src/resolve-store-git.js';
 import { GithubToken } from '../../skill-manifest/src/github-token.js';
 import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles } from './change.js';
-import { localItemRows } from './store-items.js';
+import { isStoreFault, localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
 import { offlineNetwork, PARTIAL_HINT, partialRefusal, staleBecause, syncError } from './refusal.js';
@@ -77,7 +77,8 @@ export interface MigrateItem {
   recorded: boolean;
   /** True when the config entry changes to store in this run. */
   switch: boolean;
-  notSwitched: { code: string; sentence: string } | null;
+  /** Round 3 of the reviews of PR 101: `next`, the step that lifts a store repository cause, when the cause has one. */
+  notSwitched: { code: string; sentence: string; next?: string } | null;
   /** The item's team tag. */
   teams: string[];
   /** The pins of the item's files, relative to `.bowerloom` and to the store alike. Empty for a pinned skill. */
@@ -241,17 +242,15 @@ function pastTreeLimits(root: string): boolean {
 const reasonOf = (error: unknown): MigrateReason => (error as Error | null)?.message?.endsWith(NOT_SHAREABLE.size) ? 'size' : 'file';
 
 /** A proof outcome the plan bound for a present written item in a shared project. */
-type Proof = { switch: true; item: LockItem } | { switch: false; code: string; sentence: string };
+type Proof = { switch: true; item: LockItem } | { switch: false; code: string; sentence: string; next?: string };
 interface Proofs { byPair: Map<string, Proof>; notes: string[]; hosts: string[]; credentials: Credentials | null; commit: string | null }
 type Mode =
   | { kind: 'plan'; token: TokenSource; transport: StoreTransportFactory | undefined; signal: AbortSignal }
   | { kind: 'apply'; plan: StoreMigratePlan; store: StoreContext; created: boolean };
 
 /** The sentence of a store repository problem, without its final period (3.1, `<sentence>`). */
-function problemSentence(problem: keyof typeof NOT_SHAREABLE): string {
-  const base = NOT_SHAREABLE[problem].replace(/\.$/, '');
-  return problem === 'unsupported-remote' || problem === 'unreadable' ? `${base}. ${FIX}` : base;
-}
+// Round 3 of the reviews of PR 101: the step travels as `next` (causeNext), so the sentence carries none.
+function problemSentence(problem: keyof typeof NOT_SHAREABLE): string { return NOT_SHAREABLE[problem].replace(/\.$/, ''); }
 
 /** Proves the present written items of a shared project (rule 9). Reads the token and the network only when it must. */
 async function prove(store: StoreState, needs: readonly Found[], commit: string | null, mode: Extract<Mode, { kind: 'plan' }>): Promise<Proofs> {
@@ -259,7 +258,7 @@ async function prove(store: StoreState, needs: readonly Found[], commit: string 
   if (!needs.length) return { byPair, notes, hosts: [], credentials: null, commit: null };
   const repo = readStoreRepo(store.dir, commit);
   if (repo.problem !== null) {
-    for (const n of needs) byPair.set(pairOf(n), { switch: false, code: 'STORE_ITEM_NOT_SHAREABLE', sentence: problemSentence(repo.problem) });
+    for (const n of needs) byPair.set(pairOf(n), { switch: false, code: 'STORE_ITEM_NOT_SHAREABLE', sentence: problemSentence(repo.problem), next: causeNext(repo.problem, false) });
     return { byPair, notes, hosts: [], credentials: null, commit: null };
   }
   if (commit === null && repo.head !== null && repo.head !== repo.pushed) notes.push(`Your store has commits that are not pushed (HEAD differs from origin/${repo.branch}). The lock records the pushed commit ${repo.pushed!.slice(0, 8)}.`);
@@ -302,10 +301,11 @@ function boundProofs(plan: StoreMigratePlan, store: StoreState): Proofs {
   if (plan.lock !== null) { try { lock = parseLock(Buffer.from(plan.lock.text)); } catch { throw stale(); } }
   for (const item of plan.items) {
     if (item.how !== 'local' || !plan.shared || item.state !== 'present') continue;
-    if (!item.switch) { if (item.notSwitched === null) throw stale(); byPair.set(pairOf(item), { switch: false, code: item.notSwitched.code, sentence: item.notSwitched.sentence }); continue; }
+    if (!item.switch) { if (item.notSwitched === null) throw stale(); byPair.set(pairOf(item), { switch: false, code: item.notSwitched.code, sentence: item.notSwitched.sentence, ...(item.notSwitched.next !== undefined ? { next: item.notSwitched.next } : {}) }); continue; }
     const bound = lock === null ? null : lockItem(lock, item.kind, item.id);
     if (bound === null || !('authored' in bound)) throw stale();
-    let hash: string; try { hash = localItemRows(store.dir, item.kind, item.id).hash; } catch { throw stale(); }
+    // Round 3: a store fault keeps its code and its next step; only a real change of the plan is stale.
+    let hash: string; try { hash = localItemRows(store.dir, item.kind, item.id).hash; } catch (error) { if (isStoreFault(error)) throw error; throw stale(); }
     if (hash !== bound.authored.hash) throw stale();
     byPair.set(pairOf(item), { switch: true, item: bound });
   }
@@ -434,11 +434,13 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
     let files: FilePin[] = [], candidate: string | null = null;
     if (how === 'local') {
       insideArea(bowerloom, '.bowerloom', c.kind, c.id);
-      try { localItemRows(bowerloom, c.kind, c.id); }
+      // Round 3 of the reviews of PR 101: the item is read in the project's .bowerloom, and the fault names its file there.
+      try { localItemRows(bowerloom, c.kind, c.id, '.bowerloom'); }
       catch (error) {
         if ((error as { code?: unknown }).code !== 'STORE_ITEM_NOT_SHAREABLE') throw error;
-        if (c.explicit) throw migrateUnsupported(reasonOf(error));
-        skip(c, `stays in this project. ${migrateReasonWords(reasonOf(error))}`); continue;
+        const next = (error as { next?: unknown }).next, step = typeof next === 'string' ? ` ${next}` : '';
+        if (c.explicit) throw migrateUnsupported(reasonOf(error), typeof next === 'string' ? next : undefined);
+        skip(c, `stays in this project. ${migrateReasonWords(reasonOf(error))}${step}`); continue;
       }
       // A tree past the limits of readTree (256 entries, depth 8) is larger than a store item can be. Review L1: any
       // other failure is refused as it is.
@@ -520,7 +522,7 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
     let sw = true, notSwitched: MigrateItem['notSwitched'] = null;
     if (shared && f.how === 'local') {
       if (stateOf(f) !== 'present') { sw = false; notSwitched = { code: 'LOCK_STORE_NOT_PUSHED', sentence: NEW_IN_STORE }; }
-      else { const p = proofs.byPair.get(pairOf(f)); if (p === undefined) throw stale(); if (!p.switch) { sw = false; notSwitched = { code: p.code, sentence: p.sentence }; } }
+      else { const p = proofs.byPair.get(pairOf(f)); if (p === undefined) throw stale(); if (!p.switch) { sw = false; notSwitched = { code: p.code, sentence: p.sentence, ...(p.next !== undefined ? { next: p.next } : {}) }; } }
     }
     return { kind: f.kind, id: f.id, how: f.how, state: stateOf(f), recorded: inStoreRecord.has(pairOf(f)), switch: sw, notSwitched, teams: [...f.teams], files: f.files, entry: f.entry, candidate: f.candidate, lock: null };
   });

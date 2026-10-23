@@ -83,8 +83,11 @@ export function honestShared(error: unknown, what: string): unknown {
 export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.' });
 export type MigrateReason = keyof typeof MIGRATE_REASON;
 /** MIGRATE_ITEM_UNSUPPORTED with its reason. */
-export function migrateUnsupported(reason: MigrateReason): DefinitionError {
-  const error = new DefinitionError('MIGRATE_ITEM_UNSUPPORTED', `${MESSAGES.MIGRATE_ITEM_UNSUPPORTED} ${MIGRATE_REASON[reason]}`); own.add(error); return error;
+export function migrateUnsupported(reason: MigrateReason, next?: string): DefinitionError {
+  const error = new DefinitionError('MIGRATE_ITEM_UNSUPPORTED', `${MESSAGES.MIGRATE_ITEM_UNSUPPORTED} ${MIGRATE_REASON[reason]}`); own.add(error);
+  // Round 3 of the reviews of PR 101: the next step of the fault, which names the file and its fix.
+  if (next !== undefined) Object.defineProperty(error, 'next', { value: next, enumerable: false });
+  return error;
 }
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** MIGRATE_TEAM_MISSING naming the team. The name is checked, so no other text gets in. */
@@ -102,44 +105,53 @@ export function teamListedFromProject(id: string): DefinitionError {
  * For a path that is not plain, the line names the item folder, and for an item that is not plain, "the store item".
  */
 const STORE_PATH = /^(?:skills|prompts|teams)(?:\/[A-Za-z0-9._-]+)+$/;
-const plainPath = (path: string | undefined): string | null =>
-  path !== undefined && path.length <= 256 && STORE_PATH.test(path) && !path.split('/').some(part => /^\.+$/.test(part)) ? `~/.bowerloom/${path}` : null;
+/** Round 3: the folder a path is shown under. The store, or the `.bowerloom` of a project for `store migrate`. */
+export type ShareRoot = '~/.bowerloom' | '.bowerloom';
+const plainPath = (path: string | undefined, root: ShareRoot): string | null =>
+  path !== undefined && path.length <= 256 && STORE_PATH.test(path) && !path.split('/').some(part => /^\.+$/.test(part)) ? `${root}/${path}` : null;
 /** The place of a fault: `path` is the store path of the file or folder, `item` the store path of the item folder. */
-export type ShareProblem = 'name' | 'empty' | 'mode' | 'bom' | 'encoding' | 'link' | 'special' | 'unsafe-file' | 'unsafe-folder' | 'unreadable'
+export type ShareProblem = 'name' | 'folder-name' | 'names' | 'empty' | 'mode' | 'bom' | 'encoding' | 'link' | 'special' | 'unsafe-file' | 'unsafe-folder' | 'unreadable'
   | 'empty-folder' | 'too-deep' | 'not-folder' | 'area' | 'large' | 'count' | 'total';
-export interface SharePlace { readonly problem: ShareProblem; readonly path?: string; readonly item?: string }
+export interface SharePlace { readonly problem: ShareProblem; readonly path?: string; readonly item?: string; readonly root?: ShareRoot }
 const AGAIN = 'Then run the command again.';
-const RECORDS = 'a lock records only md, txt, json, yaml, yml, and csv files, and LICENSE and NOTICE files.';
+// Round 3: the rules of skillFilePath (packages/skill-sources/src/validation.ts, relativeSkillPath).
+const NAMES = 'A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot.';
+const RECORDS = `${NAMES} A lock records only files whose names end in .md, .txt, .json, .yaml, .yml, or .csv, and LICENSE and NOTICE files.`;
 const ADOPT = 'Or adopt a team into this project with bowerloom team adopt.';
-const CAUSE_NEXT: Readonly<Record<Exclude<NotShareableCause, 'file' | 'size'>, string>> = {
-  none: `Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. ${ADOPT}`,
-  'no-origin': `Add the remote origin of a github.com repository to the store and push it. bowerloom store status shows the commands. ${ADOPT}`,
-  'unsupported-remote': `Point the remote origin of the store at a github.com repository. bowerloom store status shows the command. ${ADOPT}`,
-  unpushed: `Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. ${ADOPT}`,
-  unreadable: `Bowerloom reads the git files of the store itself. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom/.git. A store whose git uses reftable or SHA-256 cannot be read in this beta. ${ADOPT}`,
+const CAUSE_STEP: Readonly<Record<Exclude<NotShareableCause, 'file' | 'size'>, string>> = {
+  none: 'Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands.',
+  'no-origin': 'Add the remote origin of a github.com repository to the store and push it. bowerloom store status shows the commands.',
+  'unsupported-remote': 'Point the remote origin of the store at a github.com repository. bowerloom store status shows the command.',
+  unpushed: 'Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command.',
+  unreadable: 'Bowerloom reads the git files of the store itself. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom/.git. A store whose git uses reftable or SHA-256 cannot be read in this beta.',
 };
+/** The next step of a store repository cause. `adopt` adds the way out through team adopt, which store migrate does not offer. */
+export const causeNext = (cause: Exclude<NotShareableCause, 'file' | 'size'>, adopt = true): string => adopt ? `${CAUSE_STEP[cause]} ${ADOPT}` : CAUSE_STEP[cause];
 const GENERIC_NEXT = { file: `Find the file or folder of the item in ~/.bowerloom that a lock cannot record, and fix it. bowerloom help store lists the files a lock records. ${AGAIN}`, size: `Make the item in ~/.bowerloom smaller. bowerloom help store gives the limits. ${AGAIN}` };
 /** The next step of one fault, naming its path when `plainPath` allows, else its item folder. */
 export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
   if (place === undefined) return GENERIC_NEXT[cause];
-  const p = plainPath(place.path), item = plainPath(place.item) ?? 'the store item';
+  const root: ShareRoot = place.root === '.bowerloom' ? '.bowerloom' : '~/.bowerloom';
+  const p = plainPath(place.path, root), item = plainPath(place.item, root) ?? 'the store item';
   const sub = p ?? `A file in ${item}`;
   switch (place.problem) {
-    case 'name': return p ? `If you do not need ${p}, delete it. Otherwise rename it: ${RECORDS} ${AGAIN}` : `${sub} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it: ${RECORDS} ${AGAIN}`;
+    case 'name': return p ? `If you do not need ${p}, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}` : `${sub} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`;
+    case 'folder-name': return `${p ?? `A folder in ${item}`} is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`;
+    case 'names': { const f = p ?? item; return `${f} has two names that differ only in case or form, a name with a control character, or more than 256 names. Rename them. ${AGAIN}`; }
     case 'empty': return p ? `${p} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}` : `${sub} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}`;
     case 'mode': return p ? `Run chmod a-x ${p}. A lock records no file with an execute bit. ${AGAIN}` : `${sub} has an execute bit. Run chmod a-x on it. ${AGAIN}`;
     case 'bom': return p ? `Remove the byte order mark at the start of ${p}. ${AGAIN}` : `${sub} starts with a byte order mark. Remove it. ${AGAIN}`;
     case 'encoding': return p ? `Save ${p} as UTF-8 text. ${AGAIN}` : `${sub} is not UTF-8 text. Save it as UTF-8 text. ${AGAIN}`;
     case 'link': return `${p ?? `A file or folder in ${item}`} is a link, and a lock records no link. Put a copy of what it points to in its place. ${AGAIN}`;
     case 'special': return `${p ?? `An entry in ${item}`} is not a plain file or folder. Move it out of the item. ${AGAIN}`;
-    case 'unsafe-file': return p ? `Bowerloom could not read ${p} safely. It must be a plain file that you own, with one link, closed to other users. Run ls -l ${p}. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`
+    case 'unsafe-file': return p ? `Bowerloom could not read ${p} safely. It must be a plain file that you own, with one link, closed to other users. Run ls -l ${p}. If it was made under umask 002, run chmod -R go-w ${root}. ${AGAIN}`
       : `Bowerloom could not read a file in ${item} safely. Each file must be a plain file that you own, with one link, closed to other users. Run ls -la ${item}. ${AGAIN}`;
-    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users, with at most 256 names. Run ls -la ${f}. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`; }
-    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. Run ls -la ${f}, and fix what it shows. ${AGAIN}`; }
+    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users. Run ls -ld ${f}. If it was made under umask 002, run chmod -R go-w ${root}. ${AGAIN}`; }
+    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. Run ls -la ${f}, and give yourself read access to what it shows. ${AGAIN}`; }
     case 'empty-folder': return `${p ?? item} is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`;
     case 'too-deep': return `${p ?? `A folder in ${item}`} sits too deep in the item. A lock records at most 7 levels of folders inside an item. Move its files up. ${AGAIN}`;
     case 'not-folder': return `${item} is not a real folder that you own. Run ls -ld ${item}. ${AGAIN}`;
-    case 'area': { const a = place.path !== undefined && /^(?:skills|prompts|teams)$/.test(place.path) ? `~/.bowerloom/${place.path}` : 'A folder of the store'; return `${a} is a link or not a real folder of the store. Make it a real folder in ~/.bowerloom. ${AGAIN}`; }
+    case 'area': { const a = place.path !== undefined && /^(?:skills|prompts|teams)$/.test(place.path) ? `${root}/${place.path}` : 'A folder of the store'; return `${a} is a link or not a real folder. Make it a real folder in ${root}. ${AGAIN}`; }
     case 'large': return `${p ?? `A file in ${item}`} is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. ${AGAIN}`;
     case 'count': return `${item} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`;
     case 'total': return `${item} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`;
@@ -151,7 +163,7 @@ export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
  */
 export function notShareable(cause: NotShareableCause, place?: SharePlace): DefinitionError {
   const error = new DefinitionError('STORE_ITEM_NOT_SHAREABLE', `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} ${NOT_SHAREABLE[cause]}`); own.add(error);
-  const next = cause === 'file' || cause === 'size' ? shareNext(cause, place) : CAUSE_NEXT[cause];
+  const next = cause === 'file' || cause === 'size' ? shareNext(cause, place) : causeNext(cause);
   Object.defineProperty(error, 'next', { value: next, enumerable: false });
   return error;
 }

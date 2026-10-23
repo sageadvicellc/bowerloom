@@ -41,7 +41,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
-import { managedCode, offlineNetwork, outward, staleAfterApplied, syncError } from './refusal.js';
+import { managedCode, offlineBecause, offlineNetwork, outward, staleAfterApplied, syncError } from './refusal.js';
 import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
 import type { Credentials } from './store-git.js';
 import { promptNotices } from './notices.js';
@@ -88,19 +88,26 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
   } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
 }
 
-const NETWORK = new Set(['NPM_DNS', 'NPM_NETWORK', 'NPM_RESPONSE', 'NPM_RESPONSE_BOUND', 'NPM_REQUEST_BOUND', 'NPM_TIMEOUT', 'NPM_NONPUBLIC_ADDRESS', 'GIT_DNS', 'GIT_NETWORK', 'GIT_RESPONSE', 'GIT_RESPONSE_BOUND', 'GIT_REQUEST_BOUND', 'GIT_TIMEOUT', 'GIT_NONPUBLIC_ADDRESS']);
+// Round 3 of the reviews of PR 101: SKILLS_OFFLINE sorted by its real cause. Only a transport failure is the network.
+const TRANSPORT = new Set(['NPM_DNS', 'NPM_NETWORK', 'NPM_TIMEOUT', 'GIT_DNS', 'GIT_NETWORK', 'GIT_TIMEOUT']);
+const RESPONSE = new Set(['NPM_RESPONSE', 'NPM_RESPONSE_BOUND', 'NPM_REQUEST_BOUND', 'GIT_RESPONSE', 'GIT_RESPONSE_BOUND', 'GIT_REQUEST_BOUND']);
+const NONPUBLIC = new Set(['NPM_NONPUBLIC_ADDRESS', 'GIT_NONPUBLIC_ADDRESS']);
+const FIXED_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const CONTENT = /^(?:NPM_(?:METADATA|ARCHIVE_BOUND|INTEGRITY|ENCODING|CONTENT|SELECTED_INVENTORY|COMPRESSION|TAR_[A-Z]+)|GIT_(?:METADATA|BASE64|BLOB|BLOB_DIGEST|BOUND|CONTENT|ENCODING|OUTSIDE_PATH|PATH_[A-Z]+|SELECTED_INVENTORY|SUBMODULE|SYMLINK|TREE|TREE_BOUND|TREE_DIGEST))$/;
-/** An acquisition refusal in sync's words. Nothing in the project has changed when this runs. */
-function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string): Error {
+/** An acquisition refusal in sync's words. Nothing in the project has changed when this runs. Exported for its tests. */
+export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string): Error {
   if (signal.aborted) return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. Run bowerloom skills sync again.`);
   const summary = refusalSummary(error), code = summary.codes[0] ?? '';
   if (summary.uncertain) return syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The fetch of ${id} left the cache unclear (${summary.codes.join(', ')}). Run bowerloom skills sync again: it leaves that operation as it is and fetches into a new one.`);
   if (code.endsWith('_ABORTED')) return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
   if (CONTENT.test(code)) return syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The fetched bytes of ${id} do not match its pin (${code}).`);
   if (code.startsWith('NPM_CACHE') || code.startsWith('GIT_CACHE')) return syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The private cache refused the fetch of ${id} (${code}).`);
-  // Round 2 of the reviews of PR 101: a network failure carries the network step; any other fetch failure keeps the words of the code.
-  if (NETWORK.has(code)) return offlineNetwork(`Bowerloom could not fetch it, because the network was not reachable. The skill is ${id} (${code}). Pins that are already cached also sync with --offline.`);
-  return syncError('SKILLS_OFFLINE', `Bowerloom could not fetch it. The skill is ${id}. Run bowerloom skills sync again. Pins that are already cached also sync with --offline.`);
+  if (TRANSPORT.has(code)) return offlineNetwork(`Bowerloom could not fetch ${id}, because the network was not reachable (${code}). Pins that are already cached also sync with --offline.`);
+  if (RESPONSE.has(code)) return offlineBecause('response', `The registry answered, but not with the bytes of the pin (${code}). The skill is ${id}.`);
+  if (NONPUBLIC.has(code)) return offlineBecause('nonpublic', `The name of the registry resolved to an address that is not public, so Bowerloom did not connect (${code}). The skill is ${id}.`);
+  // Any other refusal is named and never called offline. An error with no fixed code is passed on as it is.
+  if (!FIXED_CODE.test(code)) return error instanceof Error ? error : new Error(String(error));
+  return offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`);
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */
@@ -113,7 +120,7 @@ export function cacheRoots(privateState: { root: string; cacheRoot: string }): C
 export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: CacheRoots, approvedHosts: readonly string[], deps: SyncDeps): Promise<{ lookup: CacheLookup; fetched: boolean }> {
   if (pinned.digest !== item.requestDigest || item.cacheOperationId === null) throw stale();
   // The approval names each host the run may contact. A fetch it did not approve never starts.
-  if (!approvedHosts.includes(HOSTS[pinned.kind])) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom skills sync without --offline.`);
+  if (!approvedHosts.includes(HOSTS[pinned.kind])) throw offlineBecause('approved', `The approved plan allows no fetch of ${item.id}.`);
   try {
     return await withCacheLock(roots.cacheRoot, deps.signal, async held => {
       const again = await lookupCache(roots, pinned);

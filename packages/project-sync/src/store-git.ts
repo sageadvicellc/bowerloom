@@ -26,7 +26,7 @@ import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
-import { offlineNetwork, syncError } from './refusal.js';
+import { offlineBecause, offlineNetwork, syncError } from './refusal.js';
 import { DefinitionError } from '../../contracts/src/index.js';
 
 export const STORE_CACHE_FOLDER = 'store-cache';
@@ -312,7 +312,7 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
   const pin = item.lockPin;
   if (pin === null || item.requestDigest !== pin.hash || pin.path !== authoredPath(item.kind, item.id)) throw syncError('STALE_APPROVAL');
   // The approval names each host the run may contact. A fetch it did not approve never starts.
-  if (!approvedHosts.includes(GITHUB_HOST)) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom apply --frozen without --offline.`);
+  if (!approvedHosts.includes(GITHUB_HOST)) throw offlineBecause('approved', `The approved plan allows no fetch of ${item.id}.`);
   const options = storeTransportOptions(credentials, deps.githubToken, pin.remote), withToken = options.githubAuth !== undefined;
   const make = (): StoreTransport => (deps.storeTransport ?? createPublicTransport)(options);
   let commitMissing = false, check: RepositoryCheck | null = null;

@@ -458,7 +458,7 @@ test('25. each unknown-source rule of 3.2 puts the source in unreadableSources',
     ['a refusing lock', 'project', async w => { fs.writeFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), '{}\n', { mode: 0o644 }); return {}; }, 'LOCK_INVALID', 'bowerloom.lock.json'],
     ['a throwing inspectStore', 'store', async w => { await storeItem(w, 'team', 'studio'); fs.chmodSync(w.store, 0o777); return {}; }, 'STORE_UNSAFE', null],
     ['a refusing store skills.json', 'store', async w => { await storeItem(w, 'team', 'studio'); fs.writeFileSync(path.join(w.store, 'skills.json'), 'null', { mode: 0o600 }); return {}; }, 'MANIFEST_INVALID', 'skills.json'],
-    ['a localItemRows refusal for a live store item', 'store', async w => { await storeItem(w, 'team', 'studio'); await storeItem(w, 'skill', 'house-style'); fs.writeFileSync(path.join(w.store, 'skills', 'house-style', 'run.sh'), 'echo\n', { mode: 0o755 }); return {}; }, 'STORE_ITEM_NOT_SHAREABLE', 'skill house-style'],
+    ['a localItemRows refusal for a live store item', 'store', async w => { await storeItem(w, 'team', 'studio'); await storeItem(w, 'skill', 'house-style'); fs.writeFileSync(path.join(w.store, 'skills', 'house-style', 'run.sh'), 'echo\n', { mode: 0o755 }); return {}; }, 'STORE_ITEM_NOT_SHAREABLE', 'skill house-style', 'If you do not need ~/.bowerloom/skills/house-style/run.sh, delete it. Otherwise rename it. A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot. A lock records only files whose names end in .md, .txt, .json, .yaml, .yml, or .csv, and LICENSE and NOTICE files. Then run the command again.'],
     ...['skills', 'prompts', 'teams'].map(area => [`a linked store area ~/.bowerloom/${area}`, 'store', async w => {
       await storeItem(w, 'team', 'studio'); const real = path.join(w.base, `real-${area}`);
       if (fs.existsSync(path.join(w.store, area))) fs.renameSync(path.join(w.store, area), real); else fs.mkdirSync(real, { mode: 0o700 });
@@ -466,13 +466,14 @@ test('25. each unknown-source rule of 3.2 puts the source in unreadableSources',
     }, 'AUTHORING_UNSAFE_PATH', area]),
     ['a folder at ~/.bowerloom that is not a store', 'store', async w => { fs.mkdirSync(w.store, { mode: 0o700 }); fs.writeFileSync(path.join(w.store, 'notes.md'), 'x\n'); return {}; }, 'STORE_INVALID', null],
   ];
-  for (const [name, source, make, why, item] of cases) {
+  for (const [name, source, make, why, item, next] of cases) {
     await t.test(name, async t2 => {
       const w = world(t2), extra = await make(w), a = npmPackage('alpha'); await seed(w, a);
       t2.after(() => { try { fs.chmodSync(w.store, 0o700); } catch { /* gone */ } });
       const list = await listCache(w.input(extra));
       assert.deepEqual(list.unreadableSources, [source]); assert.equal(list.entries[0].references[source], null);
-      assert.deepEqual(list.unreadable, [{ source, code: why, item }], 'review M1: the cause of an unknown source');
+      // Round 3 of the reviews of PR 101: a store fault keeps the next step that names its file.
+      assert.deepEqual(list.unreadable, [{ source, code: why, item, ...(next !== undefined ? { next } : {}) }], 'review M1: the cause of an unknown source');
       assert.deepEqual((await planCachePrune({ ...w.input(extra), selectors: sel({ unreferenced: true }) })).picked, []);
     });
   }

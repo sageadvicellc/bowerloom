@@ -47,7 +47,8 @@ const NEXT: Readonly<Record<string, string>> = { store: 'bowerloom store status'
 /** Review M1 of PR 99: each unread source with its code and item, and the next step. */
 function notChecked(unreadable: readonly Unreadable[], unreferenced: boolean): string {
   const why = unreadable.map(u => `${u.source} (${u.code}${u.item ? `, ${u.item}` : ''})`).join(' and ');
-  const next = [...new Set(unreadable.map(u => NEXT[u.source]!))].join(' and ');
+  // Round 3 of the reviews of PR 101: a refusal with its own next step, such as a store fault naming its file, prints that step.
+  const next = [...new Set(unreadable.map(u => u.next ?? NEXT[u.source]!))].join(' and ');
   return `Some references were not checked: ${why}.${unreferenced ? ' --unreferenced picks nothing.' : ''} Next: ${next}`;
 }
 const unknownCount = (items: readonly { bytes: number | null }[]): number => items.filter(i => i.bytes === null).length;

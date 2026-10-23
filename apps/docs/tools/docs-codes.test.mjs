@@ -418,6 +418,7 @@ test('D30. each row of the project tables of errors.md holds the sentence and th
   const headings=lines(doc('reference/errors.md')).filter(l=>/^## .* refusals$/.test(l)).map(l=>l.slice(3));
   assert.deepEqual(headings.filter(h=>!PROJECT_TABLES.includes(h)&&!EXCLUDED_TABLES.includes(h)),[],'every refusal table is a project table or excluded by name');
   const rows=errorRows(),{words,keys}=humanWords(),bad=[];
+  assert.ok(rows.size>=140,`${rows.size} rows`);assert.ok(words.size>=170,`${words.size} codes with words`);
   for(const [code,row] of rows){
     if(WORDS_EXEMPT.has(code)){assert.ok(!keys.has(code),`${code} is exempt because human.ts has no words for it`);continue;}
     if(keys.has(code)&&!words.has(code)){bad.push(`${code}: human.ts holds an entry that this test cannot read`);continue;}

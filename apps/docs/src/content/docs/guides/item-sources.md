@@ -316,7 +316,7 @@ bowerloom apply
 - `skills sync` installs the skill into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`.
 - `apply` puts prompts and agents in place, and any skill copy that is still missing.
 
-A project is shared in two cases. Either `bowerloom.lock.json` exists, or the project sits in a git repository with a remote named `origin`. An `origin` on any host counts, a private repository that only you use included. [If you share a project](#share-a-project) gives the full rule.
+A project is shared in two cases. Either `bowerloom.lock.json` exists, or the project sits in a git repository with a remote named `origin`. A remote named `origin` that has a URL counts, on any host, a private repository that only you use included. [If you share a project](#share-a-project) gives the full rule.
 
 If your project is not shared, `use` writes no lock and makes no network call.
 
@@ -503,7 +503,7 @@ In a shared project, `use` refuses. For the cause `none`, a terminal shows:
 
 ```text
 Refused (STORE_ITEM_NOT_SHAREABLE): This project is shared, and a teammate cannot fetch this store item. The store is not a git repository.
-A shared project needs every store item to be fetchable by your team.
+Each store item that a lock records must be fetchable by your team.
 Next: Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.
 ```
 
@@ -607,7 +607,7 @@ Bowerloom takes a classic token and a fine-grained token alike. It checks only t
 - If an organization owns the store repository and the teammate is a member, use a fine-grained token limited to that one repository.
 - If a personal account owns the store repository and the teammate is a collaborator, a fine-grained token does not work. The teammate then needs a classic token with the `repo` scope. That scope grants read and write access to every private repository the teammate reaches.
 - An outside collaborator on an organization repository also needs a classic token.
-- A classic token has no read-only scope for private repositories. Keep a team store in an organization, or use a separate GitHub account that has read access to this repository only.
+- A classic token has no read-only scope for private repositories. Keep a team store in an organization where each teammate is a member, or use a separate GitHub account that has read access to this repository only.
 - One fine-grained token reaches the repositories of one owner only. Bowerloom reads one variable and sends that one token for every store repository that the lock names. If the lock names private store repositories of two owners, the repository of the other owner refuses with `STORE_REMOTE_AUTH_FAILED`. Keep those store repositories under one owner, or use a classic token.
 
 Bowerloom makes these promises:
@@ -891,7 +891,7 @@ These are the codes this page names. [Errors](/docs/reference/errors/) lists eve
 | --- | --- | --- |
 | `STORE_ITEM_NOT_FOUND` | Bowerloom picks only items that your store defines. | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` | A listed store item is not in your store and not in the lock, so Bowerloom cannot install it. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
-| `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | The `Next:` line names the cause, or the file or folder of the item, and its fix. For the cause `file`, a `.DS_Store` among them, it names the file. Fix the cause that the message names. `bowerloom store status` shows the git state of the store. Or adopt a team into this project with `bowerloom team adopt`. |
+| `STORE_ITEM_NOT_SHAREABLE` | A lock needs a store item that a teammate can fetch, and this one is not. Each store item that a lock records must be fetchable by your team. The message names the cause. | Each cause prints its own next step. `bowerloom store status` shows the git state of the store. For the causes `file` and `size`, the step names the file or folder and its fix, such as `chmod a-x` for a file with an execute bit. For a store with no store repository, it gives the git steps. |
 | `STORE_ITEM_GONE_AT_COMMIT` | The lock names a store commit that does not hold this item, so Bowerloom cannot install it. | `bowerloom lock verify`, then ask the owner of the store to run `bowerloom lock update`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
 | `SKILLS_ADD_SOURCE_CHANGED` | `--replace` keeps the npm package or GitHub repository and moves only its version or commit. | Add the other source under a new id. |
@@ -950,7 +950,7 @@ These are the codes this page names. [Errors](/docs/reference/errors/) lists eve
 
 | Code | What it means | What to do |
 | --- | --- | --- |
-| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run did not fetch it: `--offline` was set, plain `apply` ran, or the network was not reachable. Nothing changed in the project. | Connect to the network and run the command again. After plain `apply` or `--offline`, run `bowerloom skills sync` without `--offline`, or `bowerloom apply --frozen`. A failed fetch prints only the network step. |
+| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run did not fetch it. The message says why. The cases are these: `--offline` was set, plain `apply` ran, the network was not reachable, the registry answered with something other than the bytes of the pin, or its name resolved to an address that is not public. Nothing changed in the project. | Each case prints its own next step. After a network failure, connect to the network and run the command again. After `--offline`, run the command again without `--offline`. After plain `apply`, run `bowerloom skills sync`, then `bowerloom apply`. Without a step of its own, the refusal prints: After --offline, run the command again without --offline. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen. |
 | `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom installs only bytes that match `skills.json` exactly, so it stopped before any change to the project. | Run `bowerloom skills check`. |
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
 | `STALE_APPROVAL` | The plan changed after you saw it, so nothing was applied. Setting or removing `BOWERLOOM_GITHUB_TOKEN` after the plan also changes it, and the refusal then says so. | Run the same command again, without `--approve`, to see the new plan. |
