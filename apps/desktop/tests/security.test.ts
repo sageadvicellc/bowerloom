@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, webPreferences } from '../main/security.js';
+import { APP_INDEX, CSP, EXTERNAL_HOSTS, allowRequest, decideNavigation, isAllowedExternal, resolveAppFile, webPreferences } from '../main/security.js';
+import { join as joinPath } from 'node:path';
 import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP } from './support.js';
 
@@ -51,9 +52,19 @@ test('navigation: only the app page stays; links go outside only when allowliste
   assert.match(main, /action: 'deny'/);
 });
 
-test('no request leaves the machine: the session lets through only the app\'s own files', () => {
-  assert.equal(allowRequest('file:///app/dist/renderer/app.js'), true);
-  for (const url of ['https://example.com/a.js', 'http://localhost:3000/', 'ws://localhost/', 'ftp://x/', 'not a url']) assert.equal(allowRequest(url), false, url);
+test('no request leaves the machine: the session lets through only files under the app\'s own dist folder', () => {
+  const dist = '/app/dist';
+  for (const url of ['file:///app/dist/renderer/app.js', 'file:///app/dist/renderer/index.html#x', 'file:///app/dist']) assert.equal(allowRequest(url, dist), true, url);
+  for (const url of ['file:///app/dist-evil/app.js', 'file:///app/distant/x', 'file:///etc/passwd', 'file:///app/dist/../secret', 'file:///app/dist/%2e%2e/secret', 'file://server/app/dist/x', 'https://example.com/a.js', 'http://localhost:3000/', 'ws://localhost/', 'ftp://x/', 'data:text/html,x', 'not a url']) assert.equal(allowRequest(url, dist), false, url);
+  assert.match(read('main/main.ts'), /allowRequest\(details\.url, root\)/);
+  void joinPath;
+});
+
+test('the packaged window turns the developer tools off, and every frame navigation and device permission is refused', () => {
+  assert.equal(webPreferences('/p', true).devTools, false); assert.equal(webPreferences('/p', false).devTools, true); assert.equal(webPreferences('/p').devTools, true);
+  const main = read('main/main.ts');
+  assert.match(main, /webPreferences\(join\(root, 'preload\.cjs'\), app\.isPackaged\)/); assert.match(main, /'will-frame-navigate'/); assert.match(main, /setDevicePermissionHandler\(\(\) => false\)/);
+  assert.match(main, /setPermissionRequestHandler\(\(_contents, _permission, callback\) => callback\(false\)\)/); assert.match(main, /setPermissionCheckHandler\(\(\) => false\)/);
 });
 
 test('the bridge: one named call per channel, nothing generic, and main answers each channel and no other', () => {
@@ -99,4 +110,14 @@ test('process.env is read in exactly two places, and the token value never leave
   const token = read('main/token.ts');
   assert.match(token, /return GithubToken\.status\(only\)/);
   assert.doesNotMatch(token, /fromEnv|reveal|\.value|console\./);
+});
+
+test('the page is served by the app itself, and only files below its renderer folder can be asked for', () => {
+  assert.equal(APP_INDEX, 'app://viewer/index.html'); assert.equal(decideNavigation(APP_INDEX, APP_INDEX), 'allow-app'); assert.equal(decideNavigation('app://viewer/other.html', APP_INDEX), 'block'); assert.equal(decideNavigation('app://evil/index.html', APP_INDEX), 'block');
+  assert.equal(allowRequest('app://viewer/app.js', '/x'), true); assert.equal(allowRequest('app://evil/app.js', '/x'), false);
+  const dir = '/app/dist/renderer';
+  assert.equal(resolveAppFile(dir, '/index.html'), '/app/dist/renderer/index.html'); assert.equal(resolveAppFile(dir, '/a%20b.css'), '/app/dist/renderer/a b.css'); assert.equal(resolveAppFile(dir, '/'), dir);
+  for (const bad of ['/../main.mjs', '/%2e%2e/main.mjs', '/..%2fmain.mjs', '/a/../../main.mjs', '/%00', '/..\\main.mjs', '/%E0%A4%A']) assert.equal(resolveAppFile(dir, bad), null, bad);
+  assert.equal(resolveAppFile('/app/dist/renderer', '/../renderer-evil/x'), null);
+  const main = read('main/main.ts'); assert.match(main, /protocol\.handle\(APP_SCHEME/); assert.match(main, /registerSchemesAsPrivileged/); assert.match(main, /loadURL\(indexUrl\)/);
 });

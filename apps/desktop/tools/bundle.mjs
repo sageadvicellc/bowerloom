@@ -12,6 +12,8 @@ const common = { bundle: true, sourcemap: true, logLevel: 'warning', target: 'no
 if (process.argv.includes('--tests')) {
   rmSync(join(here, '.build'), { recursive: true, force: true });
   const entries = readdirSync(join(here, 'tests')).filter(f => f.endsWith('.test.ts')).map(f => join(here, 'tests', f));
+  const helpers = readdirSync(join(here, 'tests/helpers')).filter(f => f.endsWith('.ts')).map(f => join(here, 'tests/helpers', f));
+  await build({ ...common, entryPoints: helpers, outdir: join(here, '.build/helpers'), outExtension: { '.js': '.mjs' }, format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
   await build({ ...common, entryPoints: entries, outdir: join(here, '.build/tests'), outExtension: { '.js': '.mjs' }, format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } });
 } else {
   rmSync(join(here, 'dist'), { recursive: true, force: true });

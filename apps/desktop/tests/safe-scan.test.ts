@@ -99,3 +99,10 @@ test('scan says when the depth limit hid folders, when a folder could not be ope
   const many = tempDir(t); for (let i = 0; i < 60; i++) symlinkSync(base, join(many, `l${i}`));
   assert.equal(scanRoots([many]).info.skippedMore, true);
 });
+
+test('a root is matched as a whole folder name: a folder whose name only starts the same is not inside it', t => {
+  const base = tempDir(t); mkdirSync(join(base, 'root')); mkdirSync(join(base, 'root-evil', 'x'), { recursive: true });
+  assert.throws(() => resolveInside([join(base, 'root')], join(base, 'root-evil', 'x')), (e: unknown) => e instanceof OutsideRoot && e.code === 'OUTSIDE_ROOT');
+  symlinkSync(join(base, 'root-evil'), join(base, 'root', 'in'));
+  assert.throws(() => resolveInside([join(base, 'root')], join(base, 'root', 'in', 'x')), OutsideRoot);
+});

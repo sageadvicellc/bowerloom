@@ -47,3 +47,38 @@ test('the colors and sizes live in one tokens file', () => {
   assert.match(readFileSync(join(DESKTOP, 'renderer', 'tokens.css'), 'utf8'), /prefers|\[data-theme="dark"\]/);
   assert.match(css, /prefers-reduced-motion: reduce/); assert.match(css, /:focus-visible/);
 });
+
+test('the build turns on the safe fuses: no run-as-node, no NODE_OPTIONS, no inspect arguments, asar integrity and asar-only on', () => {
+  const f = (pkg.build as { electronFuses: Record<string, boolean> }).electronFuses;
+  assert.equal(f.runAsNode, false); assert.equal(f.enableNodeOptionsEnvironmentVariable, false); assert.equal(f.enableNodeCliInspectArguments, false);
+  assert.equal(f.enableEmbeddedAsarIntegrityValidation, true); assert.equal(f.onlyLoadAppFromAsar, true); assert.equal(f.grantFileProtocolExtraPrivileges, false);
+  assert.match(pkg.devDependencies['@electron/fuses']!, /^\d+\.\d+\.\d+$/);
+});
+
+test('the built binary has those fuses (checked when a macOS build is present)', { skip: !existsSync(join(DESKTOP, 'release', 'mac-arm64', 'Bowerloom Viewer.app')) ? 'no macOS build in release/' : false }, () => {
+  const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const x64 = join(DESKTOP, 'release', 'mac', 'Bowerloom Viewer.app', 'Contents', 'MacOS', 'Bowerloom Viewer');
+  if (existsSync(x64)) assert.equal(spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs'), x64], { encoding: 'utf8' }).status, 0);
+});
+
+test('the launcher gives install scripts a minimal environment: no token reaches them', async () => {
+  const { installEnv, marker } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { installEnv(s: Record<string, string | undefined>): Record<string, string>; marker(d: string): string };
+  const env = installEnv({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', BOWERLOOM_GITHUB_TOKEN: 'ghp_secret', NPM_TOKEN: 'npm_secret', GH_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'y', npm_config_registry: 'https://registry.example/', npm_config_proxy: 'http://p:1', 'npm_config__authToken': 'z', npm_config_cafile: '/ca.pem', npm_config__password: 'w', HTTPS_PROXY: 'http://p:2', SYSTEMROOT: 'C:\\Windows', ANTHROPIC_API_KEY: 'k' });
+  assert.deepEqual(Object.keys(env).sort(), ['HOME', 'HTTPS_PROXY', 'PATH', 'SYSTEMROOT', 'TMPDIR', 'npm_config_cafile', 'npm_config_proxy', 'npm_config_registry'].sort());
+  for (const value of Object.values(env)) assert.doesNotMatch(value, /secret|^z$|^w$|^k$/);
+  assert.equal(marker('/x'), '/x/node_modules/.bowerloom-install-ok');
+});
+
+test('the launcher refuses an unknown flag with a plain message, and both modes at once, without installing or building anything', () => {
+  for (const [args, re] of [[['--sample'], /do not know "--sample"/], [['--sample-data', '--real-data'], /not both/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
+    const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 2, args.join(' ')); assert.match(r.stderr, re); assert.doesNotMatch(r.stdout, /Installing|Building/);
+  }
+});
+
+test('the launcher source: a failed or signalled step exits non-zero, spawn errors are printed, Windows uses npm.cmd, and a marker proves an install finished', () => {
+  const src = readFileSync(join(DESKTOP, 'tools', 'run.mjs'), 'utf8');
+  for (const needle of ['r.error', 'r.signal', "'npm.cmd'", 'bowerloom-install-ok', "child.on('error'", "child.on('exit', (code, signal)"]) assert.ok(src.includes(needle), needle);
+  assert.match(src, /step\('Installing the viewer[^\n]*clean\)/); assert.match(src, /step\('Downloading the app window[^\n]*clean\)/); assert.match(src, /step\('Installing Bowerloom[^\n]*clean\)/);
+});

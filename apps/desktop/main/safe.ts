@@ -34,8 +34,9 @@ export function resolveInside(roots: readonly string[], candidate: string): stri
     const realOfRoot = realRoot(root);
     if (realOfRoot === null || !isInside(realOfRoot, real)) continue;
     // Walk the candidate below the root, as written, and refuse a link on the way.
-    const written = candidate.startsWith(root) ? relative(root, candidate) : relative(realOfRoot, real);
-    let at = candidate.startsWith(root) ? root : realOfRoot;
+    const under = candidate === root || candidate.startsWith(root.endsWith(sep) ? root : root + sep);
+    const written = under ? relative(root, candidate) : relative(realOfRoot, real);
+    let at = under ? root : realOfRoot;
     for (const part of written.split(sep).filter(Boolean)) {
       at = join(at, part);
       let stat; try { stat = lstatSync(at); } catch { throw new OutsideRoot('NOT_FOUND', 'The folder is not there.'); }
