@@ -23,7 +23,7 @@ import { syncBuiltinESMExports } from 'node:module';
 type Route = string | { status: number; headers?: Record<string, string>; file: string | null };
 // Round 3 of the reviews of PR 101: `address` replaces the public address every lookup answers, to test a name that
 // resolves to an address that is not public.
-interface Plan { log: string; routes?: Record<string, Route>; address?: string }
+interface Plan { log: string; routes?: Record<string, Route>; address?: string; lookupThrows?: string }
 const planPath = process.env.TEST_FAKE_NETWORK_PLAN;
 if (!planPath) throw new Error('fake-network: TEST_FAKE_NETWORK_PLAN is not set');
 const plan = JSON.parse(fs.readFileSync(planPath, 'utf8')) as Plan;
@@ -57,7 +57,8 @@ if (routes === null) {
   (dnsPromises as { lookup: unknown }).lookup = deny('dns.promises.lookup');
   (https as { request: unknown }).request = deny('https.request');
 } else {
-  (dnsPromises as { lookup: unknown }).lookup = async (host: string) => { record('dns.promises.lookup', host); return [{ address: plan.address ?? '104.16.25.34', family: 4 }]; };
+  // Round 4: `lookupThrows` names a built-in error class that every lookup throws, for an error with no Bowerloom code.
+  (dnsPromises as { lookup: unknown }).lookup = async (host: string) => { record('dns.promises.lookup', host); if (plan.lookupThrows === 'TypeError') throw new TypeError('fake-network: a lookup that throws'); return [{ address: plan.address ?? '104.16.25.34', family: 4 }]; };
   (https as { request: unknown }).request = serve;
 }
 // The project lock listens on the literal 127.0.0.1, and net.Server.listen passes even a literal through dns.lookup.

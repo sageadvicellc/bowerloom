@@ -90,7 +90,11 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
 
 // Round 3 of the reviews of PR 101: SKILLS_OFFLINE sorted by its real cause. Only a transport failure is the network.
 const TRANSPORT = new Set(['NPM_DNS', 'NPM_NETWORK', 'NPM_TIMEOUT', 'GIT_DNS', 'GIT_NETWORK', 'GIT_TIMEOUT']);
-const RESPONSE = new Set(['NPM_RESPONSE', 'NPM_RESPONSE_BOUND', 'NPM_REQUEST_BOUND', 'GIT_RESPONSE', 'GIT_RESPONSE_BOUND', 'GIT_REQUEST_BOUND']);
+const RESPONSE = new Set(['NPM_RESPONSE', 'NPM_RESPONSE_BOUND', 'GIT_RESPONSE', 'GIT_RESPONSE_BOUND']);
+// Round 4: Bowerloom's own limit on the requests of one pin, not an answer of the registry.
+const REQUESTS = new Set(['NPM_REQUEST_BOUND', 'GIT_REQUEST_BOUND']);
+const PLAN_CHANGED = new Set(['NPM_PLAN_CHANGED', 'GIT_PLAN_CHANGED']);
+const ERROR_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const NONPUBLIC = new Set(['NPM_NONPUBLIC_ADDRESS', 'GIT_NONPUBLIC_ADDRESS']);
 const FIXED_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const CONTENT = /^(?:NPM_(?:METADATA|ARCHIVE_BOUND|INTEGRITY|ENCODING|CONTENT|SELECTED_INVENTORY|COMPRESSION|TAR_[A-Z]+)|GIT_(?:METADATA|BASE64|BLOB|BLOB_DIGEST|BOUND|CONTENT|ENCODING|OUTSIDE_PATH|PATH_[A-Z]+|SELECTED_INVENTORY|SUBMODULE|SYMLINK|TREE|TREE_BOUND|TREE_DIGEST))$/;
@@ -105,9 +109,16 @@ export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: stri
   if (TRANSPORT.has(code)) return offlineNetwork(`Bowerloom could not fetch ${id}, because the network was not reachable (${code}). Pins that are already cached also sync with --offline.`);
   if (RESPONSE.has(code)) return offlineBecause('response', `The registry answered, but not with the bytes of the pin (${code}). The skill is ${id}.`);
   if (NONPUBLIC.has(code)) return offlineBecause('nonpublic', `The name of the registry resolved to an address that is not public, so Bowerloom did not connect (${code}). The skill is ${id}.`);
-  // Any other refusal is named and never called offline. An error with no fixed code is passed on as it is.
-  if (!FIXED_CODE.test(code)) return error instanceof Error ? error : new Error(String(error));
-  return offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`);
+  if (REQUESTS.has(code)) return offlineBecause('requests', `Fetching the pin needs more requests than Bowerloom makes for one pin: 2 for npm and 130 for GitHub (${code}). The skill is ${id}.`);
+  // Round 4: a plan that changed under the fetch is a stale approval.
+  if (PLAN_CHANGED.has(code)) return stale(`The fetch plan of ${id} changed (${code}).`);
+  if (FIXED_CODE.test(code)) return offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`);
+  // Round 4 of the reviews of PR 101: an error with no fixed code keeps SKILLS_OFFLINE, names the fetch and the kind of
+  // error only, never its message, and keeps the original as a cause that no output prints.
+  const name = error instanceof Error && ERROR_NAME.test(error.name) ? error.name : 'Error';
+  const wrapped = offlineBecause('other', `Bowerloom could not fetch ${id} (${name}).`);
+  Object.defineProperty(wrapped, 'cause', { value: error, enumerable: false });
+  return wrapped;
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */

@@ -26,6 +26,11 @@ function badFolder(rel: string): string | null {
   }
   return null;
 }
+/**
+ * Round 4 of the reviews of PR 101: a real folder of this user that the group or others can write, such as one made
+ * under umask 002. Its words are those of an unsafe folder, whose step lifts it; a link or a non-folder keeps its own.
+ */
+const writableFolder = (abs: string): boolean => { try { const s = lstatSync(abs); return s.isDirectory() && !s.isSymbolicLink() && s.uid === process.getuid?.() && (s.mode & 0o022) !== 0; } catch { return false; } };
 /** True when the path can be read by this user; a guarded read that fails on a readable file found it unsafe. */
 const readable = (abs: string): boolean => { try { accessSync(abs, constants.R_OK); return true; } catch { return false; } };
 
@@ -61,7 +66,7 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string, 
   // must really be inside the folder that was given, so a link never brings in files from elsewhere.
   const areaName = kind === 'prompt' ? 'prompts' : `${kind}s`, area = join(storeDir, areaName);
   try { realFolder(area); if (realpathSync(area) !== join(realpathSync(storeDir), areaName)) file('area', areaName, item); }
-  catch (error) { if (ours(error)) throw error; file('area', areaName, item); }
+  catch (error) { if (ours(error)) throw error; file(writableFolder(area) ? 'unsafe-folder' : 'area', areaName, item); }
   if (kind === 'prompt') {
     take(rootDir, `${id}.md`);
   } else {
@@ -71,8 +76,8 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string, 
       // Round 3: a folder the guards refuse is unsafe; one this user cannot list is unreadable; else its names are at fault.
       let names: string[]; try { names = folderNames(abs); } catch {
         try { realFolder(abs); } catch { return file('unsafe-folder', here, item); }
-        try { readdirSync(abs); } catch { return file('unreadable', here, item); }
-        return file('names', here, item);
+        let count: number; try { count = readdirSync(abs).length; } catch { return file('unreadable', here, item); }
+        return file(count > LIMITS.folderNames ? 'too-many' : 'names', here, item);
       }
       if (names.length === 0) file('empty-folder', here, item);
       for (const name of names) {
@@ -83,10 +88,9 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string, 
         if (isFolder) walk(childAbs, childRel, depth + 1); else take(childAbs, childRel);
       }
     };
-    // Round 3 of the reviews of PR 101: a file in place of the item folder refuses STORE_ITEM_MISSING when the store is
-    // read, before this, so 'not-folder' and 'area' are not reached from the live store in the CLI tests. They stay for a
-    // store cache folder and as guards, and tests/item-sources-cli.test.ts checks their words at unit level.
-    try { realFolder(rootDir); } catch { file('not-folder', item, item); }
+    // Round 4 of the reviews of PR 101: a group-writable item or area folder, as umask 002 makes, is reached from the live
+    // store and gets the words of an unsafe folder. 'not-folder' and 'area' keep a link or a non-folder.
+    try { realFolder(rootDir); } catch { file(writableFolder(rootDir) ? 'unsafe-folder' : 'not-folder', item, item); }
     walk(rootDir, '', 1);
   }
   if (files.length === 0) file('empty-folder', item, item);

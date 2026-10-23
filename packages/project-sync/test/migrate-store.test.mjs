@@ -626,3 +626,19 @@ test('round 3 L3. an item folder that is a link refuses at plan time; an area sw
   await assert.rejects(apply(v, p, { hooks: { afterItem: kind => { if (kind === 'prompt') swap(); } } }), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('.bowerloom/teams') && e.hint === 'partial');
   assert.equal(fs.existsSync(path.join(v.store, 'teams/research')), false, 'nothing was read through the link');
 });
+
+// Round 4 of the reviews of PR 101 (decided): at apply, a store fault surfaces with its code and next step, as in
+// change.ts, and never as STALE_APPROVAL. A real change of the bytes stays STALE_APPROVAL.
+test('round 4. apply keeps a store fault with its next step; a content change is STALE_APPROVAL', async t => {
+  const w = await fourItems(t); originProject(w);
+  await apply(w, await plan(w, { all: true }));
+  const repo = push(w);
+  const proved = await plan(w, { all: true, transport: storeTransport(repo) });
+  assert.ok(proved.items.every(i => i.switch));
+  const file = path.join(w.store, 'prompts', 'brief.md');
+  fs.chmodSync(file, 0o755);
+  await assert.rejects(apply(w, proved), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/prompts/brief.md. A lock records no file with an execute bit. Then run the command again.');
+  fs.chmodSync(file, 0o644);
+  fs.appendFileSync(file, 'edited\n');
+  await assert.rejects(apply(w, proved), code('STALE_APPROVAL'));
+});

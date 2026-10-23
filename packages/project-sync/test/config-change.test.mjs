@@ -276,3 +276,19 @@ test('F4. a transport that cannot be made is reported as the proof failure, insi
   const { manifestRefusal } = await import('../../../dist/packages/skill-manifest/src/refusal.js');
   await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); }, githubToken: tokenOf(CANARY) }), code('SKILLS_OFFLINE'));
 });
+
+// Round 4 of the reviews of PR 101 (decided): a store fault found at approval time surfaces as it is, with its own next
+// step, because the same --approve works once the file is fixed. A real change of the bytes stays STALE_APPROVAL.
+test('round 4. at apply, a store fault keeps its code and next step; a content change is STALE_APPROVAL', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); originProject(w);
+  const repo = pushStore(w); gitStore(w, repo);
+  const p = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo) });
+  const file = path.join(w.store, 'skills', 'house-style', 'SKILL.md');
+  const apply = () => withProjectLock(w.projectDir, new AbortController().signal, async held => applyConfigChange(p, p.revision, held, ctx(w), w.home));
+  fs.chmodSync(file, 0o755);
+  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/skills/house-style/SKILL.md. A lock records no file with an execute bit. Then run the command again.');
+  fs.chmodSync(file, 0o644);
+  fs.appendFileSync(file, 'More words.\n');
+  await assert.rejects(apply(), code('STALE_APPROVAL'));
+});

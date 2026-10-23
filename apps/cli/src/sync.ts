@@ -13,6 +13,7 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { isId } from '../../../packages/skill-manifest/src/schema.js';
 import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
+import { NO_REQUEST_NOTE } from '../../../packages/project-sync/src/change.js';
 import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-git.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
@@ -98,6 +99,8 @@ function extraFilesLine(item: SyncItem): string[] {
   const shown = extra.slice(0, 20).map(p => plainText(p)).join(', ');
   return [`  skill ${item.id} also holds: ${shown}${extra.length > 20 ? `, and ${extra.length - 20} more` : ''}`];
 }
+/** Round 4 of the reviews of PR 101: a run given --max-github-requests that reads no host says the flag has no effect. */
+export const withRequestNote = (review: string, max: number | undefined, hosts: readonly string[] | undefined): string => max !== undefined && (hosts ?? []).length === 0 ? `${review}\n${NO_REQUEST_NOTE}` : review;
 /** Second review L2: the GitHub requests of the run and its limit, when the run makes any or the limit was set. */
 export function requestLine(network: { requests?: number; maxRequests?: number } | undefined): string[] {
   const requests = network?.requests ?? 0, max = network?.maxRequests ?? GITHUB_REQUEST_LIMIT;
@@ -214,11 +217,11 @@ export async function runSyncCommand(args: readonly string[], cwd: string, home:
   const githubToken = githubTokenReader(env);
   const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen'), githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
   const first = await planSync(input());
-  if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
+  if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(withRequestNote(renderSyncReview(first), max, first.network.hosts), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;
   const change: PlannedChange<SyncPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planSync(input()); },
-    revision: plan => plan.revision, review: renderSyncReview, staleNote: syncStaleNote,
+    revision: plan => plan.revision, review: plan => withRequestNote(renderSyncReview(plan), max, plan.network.hosts), staleNote: syncStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applySync(input(), revision, { acquirer, signal, managed })); return result;
     },

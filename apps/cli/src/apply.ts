@@ -17,7 +17,7 @@ import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText, shellWord } from './human.js';
 import { terminalIo } from './manifest.js';
-import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
+import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt, withRequestNote } from './sync.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 
 const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
@@ -289,12 +289,12 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   const first = await planProjectApply(input());
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {
-    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first, io.interactive), true)}\nNothing to change.\n`); return 0;
+    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(withRequestNote(renderApplyReview(first, io.interactive), max, first.network?.hosts), true)}\nNothing to change.\n`); return 0;
   }
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
-    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json), staleNote: applyStaleNote,
+    revision: plan => plan.revision, review: plan => withRequestNote(renderApplyReview(plan, io.interactive && !approval.json), max, plan.network?.hosts), staleNote: applyStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },

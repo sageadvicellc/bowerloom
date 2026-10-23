@@ -5,27 +5,33 @@
 import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 import { world, run, mustApprove, errorCode, errorMessage, project, EMPTY_CONFIG, NETWORK } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
 import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { acquisitionRefusal } from '../packages/project-sync/src/apply.js';
+import { runSyncCommand } from '../apps/cli/src/sync.js';
+import { acquisitionRefusal, fetchPin } from '../packages/project-sync/src/apply.js';
+import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
+import { partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
+import { GitAcquisitionError } from '../packages/skill-sources/src/git.js';
 import { NpmAcquisitionError } from '../packages/skill-sources/src/npm.js';
 
 const fixtures = fileURLToPath(new URL('../../packages/skill-manifest/test/fixtures/', import.meta.url));
 const NPM_SPEC = 'npm:@synthetic/db-skills@0.0.1:skills/synthetic-db/collections';
 const META = 'https://registry.npmjs.org/@synthetic/db-skills/0.0.1', TGZ = 'https://registry.npmjs.org/@synthetic/db-skills/-/db-skills-0.0.1.tgz';
 const NPM_ROUTES = { [META]: join(fixtures, 'npm-db-skills', 'metadata.json'), [TGZ]: join(fixtures, 'npm-db-skills', 'archive.tgz') };
-const FIXED = "This item is not in this machine's cache yet. Nothing in the project changed.";
+const FIXED = "This run needs a fetch that did not happen. Nothing in the project changed.";
 const SENTENCE = 'A pin or a lock item needs a fetch, and this run did not fetch it. The message says why.';
 const NEXT = {
   network: 'Connect to the network and run the command again.',
   response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
   nonpublic: 'Check the DNS or proxy configuration of this machine.',
-  other: 'Run bowerloom skills check, then bowerloom skills sync again.',
+  other: 'Run the command again. If it fails again, report the code and the output of bowerloom --version.',
+  requests: 'Check with bowerloom skills check that the pin names the package or commit you expect. If it does, report the code and the output of bowerloom --version.',
+  approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
   offline: 'Run the command again without --offline.',
   apply: 'Run bowerloom skills sync, then bowerloom apply.',
 };
@@ -89,23 +95,99 @@ test('--offline with an uncached pin says to run without --offline; plain apply 
   assert.equal(nextOf(apply.stderr), NEXT.apply);
 });
 
-test('the fallback of a fetch: a known code is named, never called offline; an error with no code is passed on as it is', () => {
+test('the fallback of a fetch: a known code is named, never called offline; an error with no code is wrapped, never shown', () => {
   const signal = new AbortController().signal;
   const known = acquisitionRefusal(new NpmAcquisitionError('NPM_PLAN_REFUSED'), signal, 'x') as Error & { code: string; next?: string };
   assert.equal(known.code, 'SKILLS_OFFLINE');
   assert.equal(known.message, `${FIXED} Bowerloom could not fetch x (NPM_PLAN_REFUSED).`);
   assert.doesNotMatch(known.message, /offline|network/i);
   assert.equal(known.next, NEXT.other);
-  const plain = new TypeError('a bug');
-  assert.equal(acquisitionRefusal(plain, signal, 'x'), plain, 'an error with no code is passed on');
-  // A transport code through the same function.
-  const down = acquisitionRefusal(new NpmAcquisitionError('NPM_NETWORK'), signal, 'x') as Error & { next?: string };
-  assert.equal(down.next, NEXT.network);
+  // Round 4: an error with no code keeps SKILLS_OFFLINE, names the kind of error, never its message, and keeps the cause.
+  const plain = new TypeError('a secret detail /Users/someone');
+  const wrapped = acquisitionRefusal(plain, signal, 'x') as Error & { code: string; next?: string; cause?: unknown };
+  assert.equal(wrapped.code, 'SKILLS_OFFLINE'); assert.equal(wrapped.message, `${FIXED} Bowerloom could not fetch x (TypeError).`);
+  assert.equal(wrapped.next, NEXT.other); assert.equal(wrapped.cause, plain);
+  assert.ok(!Object.keys(wrapped).includes('cause'), 'the cause is not enumerable');
+  const terminal = reportFailure(wrapped, true).text + reportFailure(wrapped, false).text;
+  assert.doesNotMatch(terminal, /secret|someone/, 'no output prints the message of the cause');
+  assert.ok(reportFailure(wrapped, true).text.endsWith(`Next: ${NEXT.other}\n`));
+  const odd = acquisitionRefusal({ name: 'bad name\u001b' }, signal, 'x') as Error;
+  assert.equal(odd.message, `${FIXED} Bowerloom could not fetch x (Error).`);
+});
+
+test('each fetch code goes to its cause, for npm and for GitHub alike', () => {
+  const signal = new AbortController().signal;
+  const cases: [string, string, RegExp | null][] = [
+    ['NETWORK', NEXT.network, /because the network was not reachable/], ['DNS', NEXT.network, null], ['TIMEOUT', NEXT.network, null],
+    ['RESPONSE', NEXT.response, /The registry answered, but not with the bytes of the pin/], ['RESPONSE_BOUND', NEXT.response, null],
+    ['REQUEST_BOUND', NEXT.requests, /needs more requests than Bowerloom makes for one pin: 2 for npm and 130 for GitHub/],
+    ['NONPUBLIC_ADDRESS', NEXT.nonpublic, /address that is not public/], ['APPROVAL', NEXT.other, /Bowerloom could not fetch x/],
+  ];
+  for (const [suffix, next, words] of cases) for (const make of [(c: string) => new NpmAcquisitionError(`NPM_${c}`), (c: string) => new GitAcquisitionError(`GIT_${c}`)]) {
+    const e = acquisitionRefusal(make(suffix), signal, 'x') as Error & { code: string; next?: string };
+    assert.equal(e.code, 'SKILLS_OFFLINE', suffix); assert.equal(e.next, next, suffix);
+    if (words) assert.match(e.message, words, suffix);
+    if (suffix === 'REQUEST_BOUND') assert.doesNotMatch(e.message, /registry answered/);
+  }
+  // A plan that changed under the fetch is a stale approval.
+  for (const e of [new NpmAcquisitionError('NPM_PLAN_CHANGED'), new GitAcquisitionError('GIT_PLAN_CHANGED')]) assert.equal((acquisitionRefusal(e, signal, 'x') as Error & { code: string }).code, 'STALE_APPROVAL');
+});
+
+// Round 4: no CLI run reaches these two checks, because a plan names the host of every fetch it holds. A fetch whose
+// approved plan names no host refuses before any request, and its step re-plans without --offline.
+test('an approved plan that names no host for a fetch refuses with the step to re-plan', async () => {
+  const pin = { digest: 'd', kind: 'npm' } as unknown as Parameters<typeof fetchPin>[1];
+  const item = { id: 'x', requestDigest: 'd', cacheOperationId: 'a'.repeat(32) } as unknown as Parameters<typeof fetchPin>[0];
+  await assert.rejects(fetchPin(item, pin, { cacheRoot: '/nonexistent', legacyCacheRoot: null } as never, [], { signal: new AbortController().signal } as never),
+    (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_OFFLINE' && e.next === NEXT.approved && e.message.endsWith('The approved plan allows no fetch of x.'));
+  const lockPin = { remote: 'https://github.com/o/s', commit: 'c'.repeat(40), path: 'skills/x', tree: 't'.repeat(40), files: [], hash: 'h' };
+  await assert.rejects(fetchStoreGit({ kind: 'skill', id: 'x', requestDigest: 'h', lockPin } as never, { cacheRoot: '/nonexistent', storeCacheRoot: '/nonexistent' }, [], { signal: new AbortController().signal }),
+    (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_OFFLINE' && e.next === NEXT.approved);
+});
+
+test('a refusal after a partial write keeps the step of its cause, then the command that finishes the run', () => {
+  const fault = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.network, enumerable: false });
+  const partial = partialRefusal(fault, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
+  assert.equal(partial.next, `${NEXT.network} Then run bowerloom store migrate --all.`);
+  assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
+  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
+});
+
+test('a GitHub pin whose repository answers 500 is not called offline', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  const recorded = JSON.parse(readFileSync(join(fixtures, 'github-skills-repo.json'), 'utf8')) as { responses: Record<string, string> };
+  const routes: Record<string, string | { status: number; file: string | null }> = {};
+  Object.entries(recorded.responses).forEach(([url, body], i) => { const file = join(w.base, `gh-${i}.json`); writeFileSync(file, Buffer.from(body, 'base64')); routes[url] = file; });
+  mustApprove(dir, ['skills', 'add', `github:synthetic-owner/skills-repo@${'c0ffee00'.repeat(5)}:skills/verification-loop`], net(w, { routes }), NETWORK);
+  rmSync(join(w.state, 'bowerloom', 'cache'), { recursive: true, force: true });
+  const failing = Object.fromEntries(Object.keys(routes).map(url => [url, { status: 500, file: null }]));
+  const plan = run(dir, ['skills', 'sync', '--json'], net(w, { routes }), NETWORK);
+  assert.equal(plan.status, 3, plan.stderr);
+  const r = run(dir, ['skills', 'sync', '--json', '--approve', (JSON.parse(plan.stdout) as { revision: string }).revision], net(w, { routes: failing }), NETWORK);
+  refused(r, 'git 500');
+  assert.match(errorMessage(r.stderr), /The registry answered, but not with the bytes of the pin \(GIT_RESPONSE\)\./);
+  assert.equal(nextOf(r.stderr), NEXT.response);
 });
 
 test('the words of the code: a neutral sentence, and a table next step that names each case', () => {
   const words = renderRefusal('SKILLS_OFFLINE', FIXED).split('\n');
   assert.equal(words[1], SENTENCE);
   assert.equal(words[2], 'Next: After --offline, run the command again without --offline. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.');
-  void reportFailure;
+});
+
+// Round 4: an acquirer that throws an error with no Bowerloom code, through the skills sync command. No network failure
+// of the real transport reaches this, because the acquirer gives every such failure an NPM_ or GIT_ code (a lookup that
+// throws a TypeError is NPM_DNS), so the command is called in process with a throwing acquirer.
+test('skills sync with an acquirer that throws a TypeError refuses SKILLS_OFFLINE with the other step, and never prints the message', async t => {
+  const { w, dir } = pinned(t);
+  const plan = run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK);
+  const revision = (JSON.parse(plan.stdout) as { revision: string }).revision;
+  const throwing = { npm: async () => { throw new TypeError('a private detail'); }, git: async () => { throw new TypeError('a private detail'); } };
+  let caught: unknown = null;
+  try { await runSyncCommand(['skills', 'sync', '--approve', revision], dir, w.home, () => {}, { interactive: false, ask: async () => 'n' }, { ...process.env, ...w.env }, throwing as never); }
+  catch (error) { caught = error; }
+  const e = caught as Error & { code?: string; next?: string; cause?: unknown };
+  assert.equal(e?.code, 'SKILLS_OFFLINE', String(caught)); assert.equal(e.next, NEXT.other); assert.ok(e.cause instanceof TypeError);
+  const words = reportFailure(e, true).text;
+  assert.match(words, /Bowerloom could not fetch synthetic-db-collections \(TypeError\)\./); assert.doesNotMatch(words, /private detail/);
 });

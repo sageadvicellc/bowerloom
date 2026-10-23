@@ -2,7 +2,7 @@
 // fake network of tests/support/fake-network.ts. Not a test file, and not part of the product.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -14,9 +14,22 @@ export const cli = fileURLToPath(new URL('../../apps/cli/src/main.js', import.me
 export const preload = pathToFileURL(fileURLToPath(new URL('./fake-network.js', import.meta.url))).href;
 export const STORE_COMMIT = '0123456789abcdef0123456789abcdef01234567';
 export interface World { base: string; home: string; work: string; store: string; state: string; env: Record<string, string> }
+/**
+ * Round 4 of the reviews of PR 101: removes a sandbox even when a test stopped part way and left a folder it had made
+ * read only, such as the `locked` folder of a cache prune test. Each folder gets u+rwx, then the whole tree goes.
+ */
+export function removeAll(base: string): void {
+  try { rmSync(base, { recursive: true, force: true }); return; } catch { /* A folder without write access: open it, then retry. */ }
+  const open = (dir: string): void => {
+    try { chmodSync(dir, 0o700); } catch { return; }
+    let names: string[] = []; try { names = readdirSync(dir); } catch { return; }
+    for (const n of names) { const p = join(dir, n); try { if (lstatSync(p).isDirectory()) open(p); } catch { /* gone */ } }
+  };
+  open(base); rmSync(base, { recursive: true, force: true });
+}
 export function world(t: TestContext, prefix = 'bowerloom-config-cli-'): World {
   const base = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  t.after(() => { try { chmodSync(join(base, 'home'), 0o700); } catch { /* gone */ } rmSync(base, { recursive: true, force: true }); });
+  t.after(() => { try { chmodSync(join(base, 'home'), 0o700); } catch { /* gone */ } removeAll(base); });
   const home = join(base, 'home'); mkdirSync(home, { mode: 0o700 });
   const work = join(base, 'work'); mkdirSync(work, { mode: 0o755 });
   return { base, home, work, store: join(home, '.bowerloom'), state: join(base, 'state'), env: { HOME: home, XDG_STATE_HOME: join(base, 'state') } };

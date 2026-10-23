@@ -199,7 +199,7 @@ test('every sync, apply and create refusal code has its own plain words and next
 test('the declined, usage and offline refusals do not repeat themselves', () => {
   const declined = renderRefusal('APPROVAL_DECLINED', 'You declined the plan. Nothing was changed.');
   assert.equal(declined.match(/nothing was changed/gi)?.length, 1, declined);
-  const offline = renderRefusal('SKILLS_OFFLINE', 'This item is not in this machine\'s cache yet. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
+  const offline = renderRefusal('SKILLS_OFFLINE', 'This run needs a fetch that did not happen. Nothing in the project changed. --offline was set. The skill is charts. Run bowerloom skills sync without --offline.');
   assert.equal(offline.match(/nothing (?:in the project )?(?:was )?changed/gi)?.length, 1, offline);
   assert.equal(renderRefusal('USAGE', 'Use bowerloom up --team <name> --goal <goal>.').includes('did not match'), false);
 });

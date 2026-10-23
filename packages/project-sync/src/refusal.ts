@@ -11,7 +11,7 @@ import { MANAGED_ITEM_CODES } from '../../managed-skills/src/v2-observed.js';
 const MESSAGES = {
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
   // Round 3 of the reviews of PR 101: true for a written store item too.
-  SKILLS_OFFLINE: 'This item is not in this machine\'s cache yet. Nothing in the project changed.',
+  SKILLS_OFFLINE: 'This run needs a fetch that did not happen. Nothing in the project changed.',
   SKILLS_SYNC_CONTENT_MISMATCH: 'The bytes Bowerloom holds for a skill do not match the pins and file hashes in .bowerloom/skills.json. Nothing in the project changed.',
   SKILLS_SYNC_INTERRUPTED: 'skills sync stopped between two skills, as asked. Each skill it finished is complete; no skill was left half done.',
   SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 256 skills at most, counting the skills that are no longer in skills.json.',
@@ -89,7 +89,8 @@ export const OFFLINE_NEXT = Object.freeze({
   network: 'Connect to the network and run the command again.',
   response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
   nonpublic: 'Check the DNS or proxy configuration of this machine.',
-  other: 'Run bowerloom skills check, then bowerloom skills sync again.',
+  requests: 'Check with bowerloom skills check that the pin names the package or commit you expect. If it does, report the code and the output of bowerloom --version.',
+  other: 'Run the command again. If it fails again, report the code and the output of bowerloom --version.',
   offline: 'Run the command again without --offline.',
   apply: 'Run bowerloom skills sync, then bowerloom apply.',
   approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
@@ -122,7 +123,7 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   let code: string, base: string, cause: unknown;
   if (error instanceof DefinitionError) {
     code = error.code; cause = (error as { cause?: unknown }).cause;
-    base = error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim();
+    base = error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Nothing in the project changed\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim();
   } else {
     // Second security review L2: a system error after a write (EIO, EPERM, EXDEV) is a partial refusal too, with its code as the cause.
     const system = (error as { code?: unknown } | null)?.code;
@@ -132,7 +133,9 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   const partial = new DefinitionError(code, `${base} The run stopped part way. Already written: ${done.join('; ')}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
   // Second security review M1: the words of a partial refusal, and its Next line, which is the command that finishes it.
   Object.defineProperty(partial, 'hint', { value: PARTIAL_HINT, enumerable: false });
-  Object.defineProperty(partial, 'next', { value: rerun, enumerable: false });
+  // Round 4 of the reviews of PR 101: the next step of the cause comes first, then the command that finishes the run.
+  const existing = error instanceof DefinitionError ? (error as { next?: unknown }).next : undefined;
+  Object.defineProperty(partial, 'next', { value: typeof existing === 'string' ? `${existing} Then run ${rerun}.` : rerun, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }

@@ -27,7 +27,7 @@ const nextOf = (stderr: string): string | undefined => (JSON.parse(stderr) as { 
 const requestsIn = (log: string): string[] => readFileSync(log, 'utf8').split('\n').filter(Boolean);
 const AGAIN = 'Then run the command again.';
 const ITEM = '~/.bowerloom/skills/house-style';
-const NAMES = 'A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot.';
+const NAMES = 'A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot. The first name in the item starts with a letter or a digit.';
 const RECORDS = `${NAMES} A lock records only files whose names end in .md, .txt, .json, .yaml, .yml, or .csv, and LICENSE and NOTICE files.`;
 
 /** A fake network with no route at all: every request fails as a network failure, never as a 404. */
@@ -98,9 +98,16 @@ test('round 2. each fault of a store item refuses lock update with its own Next:
     ['a group-writable folder', () => { mkdirSync(join(item, 'refs'), { mode: 0o755 }); writeFileSync(join(item, 'refs', 'a.md'), 'a\n'); chmodSync(join(item, 'refs'), 0o775); }, () => shell(item, 'rm -r refs', w), 'file',
       `Bowerloom could not read the folder ${ITEM}/refs safely. It must be a real folder that you own, closed to other users. Run ls -ld ${ITEM}/refs. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`],
     ['a file this user cannot read', () => { writeFileSync(join(item, 'secret.md'), 's\n'); chmodSync(join(item, 'secret.md'), 0o000); }, () => shell(item, 'chmod 600 secret.md && rm secret.md', w), 'file',
-      `Bowerloom could not read ${ITEM}/secret.md. Run ls -la ${ITEM}/secret.md, and give yourself read access to what it shows. ${AGAIN}`],
+      `Bowerloom could not read ${ITEM}/secret.md. Run ls -la ${ITEM}/secret.md. Give yourself read access to what it shows. ${AGAIN}`],
     ['a name with a control character', () => writeFileSync(join(item, 'a\u0001.md'), 'a\n'), () => shell(item, "rm a$(printf '\\001').md", w), 'file',
-      `${ITEM} has two names that differ only in case or form, a name with a control character, or more than 256 names. Rename them. ${AGAIN}`],
+      `${ITEM} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`],
+    // Round 4 of the reviews of PR 101: a backslash, a first name that starts with an underscore, and a folder of too many names.
+    ['a name with a backslash', () => writeFileSync(join(item, 'a\\b.md'), 'a\n'), () => shell(item, "rm 'a\\b.md'", w), 'file',
+      `${ITEM} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`],
+    ['a first folder that starts with an underscore', () => { mkdirSync(join(item, '_x'), { mode: 0o755 }); writeFileSync(join(item, '_x', 'a.md'), 'a\n'); }, () => shell(item, 'rm -r _x', w), 'file',
+      `${ITEM}/_x is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`],
+    ['a folder of more than 256 names', () => { mkdirSync(join(item, 'many'), { mode: 0o755 }); for (let i = 0; i < 257; i++) writeFileSync(join(item, 'many', `f${i}.md`), `${i}\n`); }, () => shell(item, 'rm -r many', w), 'file',
+      `${ITEM}/many holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer. ${AGAIN}`],
     ['a file name that starts with a dot', () => writeFileSync(join(item, '.notes.md'), 'n\n'), () => shell(item, 'rm .notes.md', w), 'file',
       `If you do not need ${ITEM}/.notes.md, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`],
     ['a folder name that starts with a dot', () => { mkdirSync(join(item, '.drafts'), { mode: 0o755 }); writeFileSync(join(item, '.drafts', 'a.md'), 'a\n'); }, () => shell(item, 'rm -r .drafts', w), 'file',
@@ -270,7 +277,7 @@ test('round 2. SKILLS_OFFLINE on a network failure: apply --frozen and use print
   const revision = (JSON.parse(run(copy, ['apply', '--frozen', '--json'], network(mate, repo.routes).env, NETWORK).stdout) as { revision: string }).revision;
   const frozen = run(copy, ['apply', '--frozen', '--json', '--approve', revision], offline(mate).env, NETWORK);
   assert.equal(errorCode(frozen.stderr), 'SKILLS_OFFLINE', frozen.stderr);
-  assert.equal(errorMessage(frozen.stderr), "This item is not in this machine's cache yet. Nothing in the project changed. Fetching house-style needs api.github.com, and the network was not reachable.");
+  assert.equal(errorMessage(frozen.stderr), "This run needs a fetch that did not happen. Nothing in the project changed. Fetching house-style needs api.github.com, and the network was not reachable.");
   assert.equal(nextOf(frozen.stderr), NETWORK_NEXT);
   // use of a written item with no network.
   mustApprove(owner.home, ['skill', 'create', 'second', '--global'], owner.env);
@@ -378,4 +385,52 @@ test('round 3. use --max-github-requests with no GitHub request plans, with a no
   const r = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9'], w.env);
   assert.equal(r.status, 3, r.stderr);
   assert.match(r.stdout, /^No GitHub request is needed, so --max-github-requests has no effect\.$/m);
+});
+
+// Round 4 of the reviews of PR 101, item 1: a store made under umask 002 gets the words of an unsafe folder, and the step
+// it gives lifts the refusal when it is followed.
+test('round 4. a group-writable item folder, or ~/.bowerloom/skills, prints the unsafe folder step, and that step lifts it', t => {
+  const { w, dir } = sharedWithSkill(t);
+  const deny = network(w), step = `If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`;
+  const cases: [string, string, string][] = [
+    ['the item folder', join(w.store, 'skills', 'house-style'), `Bowerloom could not read the folder ${ITEM} safely. It must be a real folder that you own, closed to other users. Run ls -ld ${ITEM}. ${step}`],
+    ['the area folder', join(w.store, 'skills'), `Bowerloom could not read the folder ~/.bowerloom/skills safely. It must be a real folder that you own, closed to other users. Run ls -ld ~/.bowerloom/skills. ${step}`],
+  ];
+  for (const [label, folder, next] of cases) {
+    chmodSync(folder, 0o775);
+    const r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+    assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: ${r.stderr}`);
+    assert.equal(nextOf(r.stderr), next, label);
+    shell(w.home, 'chmod -R go-w ~/.bowerloom', w);
+    const after = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+    assert.notEqual(errorCode(after.stderr === '' ? '{"error":{"code":"none"}}' : after.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: the step lifts it`);
+  }
+});
+
+// Round 4, item 5: a step under the .bowerloom of a project says where to run it, and store migrate names an unreadable item.
+test('round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o755);
+  const sub = join(dir, 'docs'); mkdirSync(sub, { mode: 0o755 });
+  const named = run(sub, ['store', 'migrate', '--skill', 'local-tool', '--json'], w.env);
+  assert.equal(errorCode(named.stderr), 'MIGRATE_ITEM_UNSUPPORTED', named.stderr);
+  assert.equal(nextOf(named.stderr), `In the project folder, run chmod a-x .bowerloom/skills/local-tool/SKILL.md. A lock records no file with an execute bit. ${AGAIN}`);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o000);
+  const all = run(sub, ['store', 'migrate', '--all'], w.env);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o644);
+  assert.ok(all.stdout.includes('stays in this project. Bowerloom could not read all of it safely. Bowerloom could not read .bowerloom/skills/local-tool/SKILL.md. In the project folder, run ls -la .bowerloom/skills/local-tool/SKILL.md.'), all.stdout + all.stderr);
+});
+
+// Round 4, item 6: apply and skills sync accept --max-github-requests when they read no host, and say it has no effect.
+test('round 4. apply and skills sync with --max-github-requests and nothing to fetch print the no-effect note', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  for (const args of [['apply'], ['skills', 'sync']]) {
+    const r = run(dir, [...args, '--max-github-requests', '9'], w.env);
+    assert.ok(r.status === 3 || r.status === 0, `${args.join(' ')}: ${r.stderr}`);
+    assert.match(r.stdout, /^No GitHub request is needed, so --max-github-requests has no effect\.$/m, args.join(' '));
+    const plain = run(dir, args, w.env);
+    assert.doesNotMatch(plain.stdout, /has no effect/, `${args.join(' ')} without the flag`);
+  }
 });

@@ -6,7 +6,6 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { world, run, mustApprove, errorCode, errorMessage, project, shared, EMPTY_CONFIG } from './support/config-cli.js';
 
-
 test('team adopt shows its plan lines, adopts the store team, and the result switches bowerloom.json', t => {
   const w = world(t), dir = project(w, 'app', { ...EMPTY_CONFIG, teams: [{ id: 'research', source: 'store' }] });
   mustApprove(w.home, ['team', 'create', 'research', '--global'], w.env);

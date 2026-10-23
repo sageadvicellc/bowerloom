@@ -239,7 +239,13 @@ function pastTreeLimits(root: string): boolean {
   };
   return walk(root, 1);
 }
-const reasonOf = (error: unknown): MigrateReason => (error as Error | null)?.message?.endsWith(NOT_SHAREABLE.size) ? 'size' : 'file';
+// Round 4 of the reviews of PR 101: a fault that is not about a file's content has a sentence of its own.
+const reasonOf = (error: unknown): MigrateReason => {
+  const problem = (error as { problem?: unknown } | null)?.problem;
+  if (problem === 'unreadable' || problem === 'unsafe-file' || problem === 'unsafe-folder') return 'unreadable';
+  if (problem === 'names' || problem === 'too-many') return 'names';
+  return (error as Error | null)?.message?.endsWith(NOT_SHAREABLE.size) ? 'size' : 'file';
+};
 
 /** A proof outcome the plan bound for a present written item in a shared project. */
 type Proof = { switch: true; item: LockItem } | { switch: false; code: string; sentence: string; next?: string };
@@ -650,6 +656,9 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
       again = await build({ project, home: deps.home, selectors: { skills: plan.selectors.skills, prompts: plan.selectors.prompts, teams: plan.selectors.teams }, all: plan.selectors.all, commit: plan.selectors.commit, githubToken: null, signal: deps.signal }, { kind: 'apply', plan, store, created });
     } catch (error) {
       // Any refusal of the plan made again is a change since the approval. Review M3: its code is kept as the cause.
+      // Round 4 of the reviews of PR 101 (decided): a store fault surfaces as it is, with its own next step. Once the file is
+      // fixed, the approved plan is unchanged and the same --approve works, so STALE_APPROVAL would send the person to re-plan.
+      if (isStoreFault(error)) throw error;
       if (error instanceof DefinitionError && error.code !== 'STORE_LOCKED' && error.code !== 'PROJECT_LOCKED') throw error.code === 'STALE_APPROVAL' ? error : staleBecause(error);
       throw error;
     }
