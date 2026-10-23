@@ -98,6 +98,11 @@ This release adds a store for items that you share across projects, a lock file 
 
 - The read guard needs Claude Code 2.1.295 or later. Before 2.1.295, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
 - Codex gets neither agents nor context slices in this beta.
+- One folder grant holds one summary kind per folder per project. Two slices on one folder with different kinds cannot both be live, and `folder allow` for one kind holds the slices of the other.
+- The read guard checks that a grant with a kind exists, not which kind. A grant made before the kind was recorded makes the guard refuse already installed slices until you run `folder allow` again.
+- Narrowing a grant deletes no text that `apply` already copied. The next `apply` holds the slice.
+- The kind grant does not cover a `where` filter, which can confirm guessed frontmatter values one at a time.
+- A grant file with a kind keeps the format name `bowerloom/store-folder-grant/v1beta1`, and an older beta.3 build reports `FOLDER_INVALID` for it.
 - `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
 - The store must be on github.com in this beta.
 - A store team projects no agents. Moving a team with agents to the store stops the projection of its agents.
