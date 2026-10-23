@@ -114,5 +114,5 @@ test('a stop while checking the pushed copy names the lock update command that r
   const repo = pushStore(w); gitStore(w, repo);
   const controller = new AbortController(), stopping = () => { controller.abort(); throw new Error('stopped'); };
   await assert.rejects(plan(w, { items: [{ kind: 'skill', id: 'house-style' }], storeTransport: stopping, signal: controller.signal }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom lock update --item skill:house-style again.');
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom lock update --item skill:house-style again.' && e.fix === 'bowerloom lock update --item skill:house-style');
 });

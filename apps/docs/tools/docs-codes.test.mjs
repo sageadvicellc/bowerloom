@@ -381,7 +381,8 @@ const FIVE_LINES=[
   // Round 1 of the reviews of PR 101: one name, the store repository, for the copy of the store on GitHub.
   'In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.',
   'So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.',
-  'Commit bowerloom.json and bowerloom.lock.json. A teammate runs bowerloom apply --frozen.',
+  // Round 13 of the reviews of PR 101: the project items in .bowerloom are committed too.
+  'Commit bowerloom.json, bowerloom.lock.json, and the project items in .bowerloom, as [What to commit](#commit-list) lists. A teammate runs bowerloom apply --frozen.',
 ];
 test('D28. the sharing model in five lines, exactly',()=>{
   const section=sectionOf(page(),'sharing-model');

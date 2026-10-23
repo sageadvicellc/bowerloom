@@ -26,21 +26,21 @@ test('a stop during a store fetch under apply --frozen names bowerloom apply --f
   const { w, repo } = await written(t), controller = new AbortController();
   const input = applyInput(w, { harnesses: ['claude'], maxGithubRequests: 50 }), plan = await planProjectApply(input);
   await assert.rejects(applyProjectApply(input, plan.revision, controller.signal, { acquirer: fakeAcquirer([]), storeTransport: storeTransport(repo), beforeStoreRead: () => controller.abort() }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.' && e.message.endsWith('It stopped while fetching house-style, before any change to the project. Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.'));
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.' && e.fix === 'bowerloom apply --harness claude --frozen --max-github-requests 50' && e.message.endsWith('It stopped while fetching house-style, before any change to the project. Run bowerloom apply --harness claude --frozen --max-github-requests 50 again.'));
 });
 
 test('a stop during a store fetch under skills sync --frozen names bowerloom skills sync --frozen', async t => {
   const { w, repo } = await written(t), controller = new AbortController();
   const input = syncInput(w, { frozen: true }), plan = await planSync(input);
   await assert.rejects(applySync(input, plan.revision, { acquirer: fakeAcquirer([]), signal: controller.signal, storeTransport: storeTransport(repo), beforeStoreRead: () => controller.abort() }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom skills sync --frozen again.');
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom skills sync --frozen again.' && e.fix === 'bowerloom skills sync --frozen');
 });
 
 test('a stop before the first item under bowerloom apply names bowerloom apply to finish', async t => {
   const { w } = await written(t), input = applyInput(w, { frozen: false });
   const plan = await planProjectApply(input), stopped = AbortSignal.abort();
   await assert.rejects(applyProjectApply(input, plan.revision, stopped, {}),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply to finish.' && /Run bowerloom apply to finish\./.test(e.message));
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply to finish.' && e.fix === 'bowerloom apply' && /Run bowerloom apply to finish\./.test(e.message));
 });
 
 test('the rerun of a run holds each flag that changes its plan', () => {

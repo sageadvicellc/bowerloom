@@ -4,7 +4,7 @@
  * Each code has a fixed message. A message may add checked item ids and Bowerloom commands, never fetched text.
  * MANAGED_SKILL_* codes from managed-skills pass through under their own code, with words of their own here.
  */
-import { DefinitionError, shellArg } from '../../contracts/src/index.js';
+import { DefinitionError, oneLine, shellArg } from '../../contracts/src/index.js';
 import { ManagedSkillError } from '../../managed-skills/src/observed.js';
 import { MANAGED_ITEM_CODES } from '../../managed-skills/src/v2-observed.js';
 
@@ -102,12 +102,20 @@ export const OFFLINE_NEXT = Object.freeze({
 export type OfflineCause = keyof typeof OFFLINE_NEXT;
 export const NETWORK_NEXT = OFFLINE_NEXT.network;
 /**
+ * Round 13 of the reviews of PR 101 (decided): a runnable command is marked when it is built, never found by reading its
+ * text. Each builder of a rerun command (syncRerun, applyRerun, changeCommand, lockCommand, rerunOf, migrateFlow, and the
+ * fixed commands below) returns it through `command`. Words that name a command (`the same bowerloom ... command`, or
+ * the migrate words) are never marked, so they never become a `fix`.
+ */
+const COMMANDS = new Set<string>();
+export function command(text: string): string { COMMANDS.add(text); return text; }
+/**
  * Round 8 of the reviews of PR 101: the command flow of a fetch. `rerun` runs the command again. `replan` is set when the
  * plan binds its cache operation and folders (skills migrate, a format released in beta.2), so a failed fetch changes the
  * plan and each step plans again with that command instead.
  */
 export interface FetchFlow { readonly rerun: string; readonly replan?: string }
-export const SYNC_FLOW: FetchFlow = Object.freeze({ rerun: 'bowerloom skills sync' });
+export const SYNC_FLOW: FetchFlow = Object.freeze({ rerun: command('bowerloom skills sync') });
 /** The steps of a flow that plans again, one per cause that runs the command again. Rounds 7 and 8. */
 export const REPLAN_NEXT: Readonly<Partial<Record<OfflineCause, (command: string) => string>>> = Object.freeze({
   network: (c: string) => `Connect to the network, then run ${c} to see a new plan.`,
@@ -149,7 +157,7 @@ export const offlineNetwork = (extra: string, replan?: string): DefinitionError 
  * nothing was applied; it names the finished items, which are complete, and the item that changed.
  */
 export function staleAfterApplied(done: readonly string[], id: string, rerun: string): DefinitionError {
-  const error = new DefinitionError('STALE_APPROVAL', `The plan changed part way through the run: ${id} changed after the approval, so it was not applied. Finished before it: ${done.join(', ')}. Each finished item is complete. Run ${rerun} again to see the new plan.`);
+  const error = new DefinitionError('STALE_APPROVAL', `The plan changed part way through the run: ${id} changed after the approval, so it was not applied. Finished before it: ${oneLine(done.join(', '))}. Each finished item is complete. Run ${rerun} again to see the new plan.`);
   own.add(error); return error;
 }
 /**
@@ -169,7 +177,7 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
     cause = typeof system === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(system) ? system : 'UNKNOWN';
     code = 'IO_ERROR'; base = `A step failed with the system error ${cause as string}.`;
   }
-  const partial = new DefinitionError(code, `${base} The run stopped part way. Already written: ${done.join('; ')}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
+  const partial = new DefinitionError(code, `${base} The run stopped part way. Already written: ${oneLine(done.join('; '))}. Nothing else was changed. Run ${rerun} again: its plan shows what is left and finishes it.`);
   // Second security review M1: the words of a partial refusal, and its Next line, which is the command that finishes it.
   Object.defineProperty(partial, 'hint', { value: PARTIAL_HINT, enumerable: false });
   // Round 4 of the reviews of PR 101: the next step of the cause comes first, then the command that finishes the run.
@@ -189,11 +197,19 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }
+/** True when `rerun` was built as a runnable command (`command`). */
+export const runnable = (rerun: string): boolean => COMMANDS.has(rerun);
+/** The command of skills sync with no flags, the default rerun. */
+export const SYNC_COMMAND = command('bowerloom skills sync');
 /**
- * Round 12 of the reviews of PR 101: true when `rerun` is a command a person can run as it is, not the words that name
- * one (`the same bowerloom ... command`, or the migrate words `bowerloom skills migrate plan with --state and ...`).
+ * Round 13: a refusal with its step. `next` is the sentence; `fix` is the bare command `cmd`, set only when `cmd` was
+ * built as a runnable command, as review L-1 of PR 99 does.
  */
-export const runnable = (rerun: string): boolean => rerun.startsWith('bowerloom ') && !/^bowerloom [a-z ]+ with --state and /.test(rerun);
+export function withStep(error: DefinitionError, next: string, cmd?: string): DefinitionError {
+  const copy = withNext(error, next);
+  if (cmd !== undefined && runnable(cmd)) Object.defineProperty(copy, 'fix', { value: cmd, enumerable: false });
+  return copy;
+}
 /** The hint of a refusal after a partial write. apps/cli/src/human.ts gives it its own words. */
 export const PARTIAL_HINT = 'partial' as const;
 /**

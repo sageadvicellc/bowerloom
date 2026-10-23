@@ -28,6 +28,7 @@ import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../p
 import { DefinitionError, PLAIN_ID } from '../../contracts/src/index.js';
 const ALLOW_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/;
 import { applyChildren, createPrivateFolders, fetchedInto, interrupted, printableMax } from './apply.js';
+import { command } from './refusal.js';
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
@@ -336,11 +337,11 @@ export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTr
 export function applyRerun(input: Pick<ApplyInput, 'frozen' | 'harnesses' | 'team' | 'allow' | 'maxGithubRequests'>): string {
   // Round 10: only validated values print. Anything else prints no command, but words that name it.
   const allowed = input.allow ?? [], ok = allowed.every(a => ALLOW_VALUE.test(a)) && input.harnesses.every(h => h === 'claude' || h === 'codex') && printableMax(input.maxGithubRequests);
-  if (input.team) return ok && PLAIN_ID.test(input.team) ? ['bowerloom up --team', input.team, ...allowed.flatMap(a => ['--allow-agent', a])].join(' ') : 'the same bowerloom up command';
+  if (input.team) return ok && PLAIN_ID.test(input.team) ? command(['bowerloom up --team', input.team, ...allowed.flatMap(a => ['--allow-agent', a])].join(' ')) : 'the same bowerloom up command';
   if (!ok) return 'the same bowerloom apply command';
   const allow = allowed.flatMap(a => ['--allow-agent', a]);
   const harness = input.harnesses.length === 1 ? ['--harness', input.harnesses[0]!] : [];
-  return ['bowerloom apply', ...harness, ...allow, ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' ');
+  return command(['bowerloom apply', ...harness, ...allow, ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' '));
 }
 /**
  * Applies an approved apply plan. `revision` must equal the revision this run computes again under the lock.

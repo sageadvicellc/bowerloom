@@ -120,7 +120,8 @@ test('H2. an unlisted adopt that failed after the copy says so, and finishes aft
   try { error = await applyPlan(w, plan).then(() => null, e => e); } finally { fs.renameSync = original; }
   assert.ok(error, 'the run fails');
   assert.match(error.message, /The team was copied\. Run bowerloom team adopt research again to finish\.$/);
-  assert.equal(error.next, 'bowerloom team adopt research');
+  // Round 13 of the reviews of PR 101: next is the sentence, fix the bare command.
+  assert.equal(error.next, 'Run bowerloom team adopt research.'); assert.equal(error.fix, 'bowerloom team adopt research');
   // The store team changes before the person runs it again.
   fs.writeFileSync(path.join(w.store, 'teams/research/notes.md'), '# A later store change\n', { mode: 0o600 });
   const again = await planAdopt(input(w));

@@ -362,3 +362,16 @@ test('14. a leftover whose name holds a control character gets guidance, not a c
   // A leftover name of the delete step is always plain; the guidance applies to names that someone else made.
   await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, name, held()), e => typeof e.fix === 'string' && !/[\u0000-\u001f]/.test(e.fix));
 });
+
+// Round 13 of the reviews of PR 101, item 2: a path inside a cache entry that cannot be deleted is named on one line, so
+// a bidi character in a file name cannot reorder the refusal.
+test('a cache entry holding a bidi-named folder that cannot be deleted names it on one line', async t => {
+  const w = stateWorld(t), name = 'op-' + OP, dir = entry(w.cacheRoot, name), sub = path.join(dir, 'lo\u202Eck\nx');
+  fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) for (const s of fs.existsSync(path.join(w.cacheRoot, n)) ? fs.readdirSync(path.join(w.cacheRoot, n)) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, s), 0o700); } catch { /* gone */ } });
+  await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, name, held()), e => {
+    assert.doesNotMatch(e.message, /[\u202E\n]/, e.message);
+    assert.ok(e.message.includes('lo\\u202eck\\u000ax'), e.message);
+    return true;
+  });
+});

@@ -33,7 +33,7 @@ import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces,
 import type { SyncItem } from './plan.js';
 import { FETCHED_NOTHING, cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
 import { oneLine } from '../../contracts/src/index.js';
-import { outward, shellPath, syncError, withNext } from './refusal.js';
+import { command, outward, shellPath, syncError, withNext } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
@@ -126,7 +126,7 @@ export function migrateFlow(input: MigrateInput): FetchFlow {
   // Round 10: a path that no command can carry gets words that name the command, never a placeholder in a command.
   const state = shellPath(input.legacyStateDir);
   // Round 11: the words name the folder, on one line (oneLine), with no < or >.
-  const replan = state !== null ? `bowerloom skills migrate plan --state ${state}` : `bowerloom skills migrate plan with --state and the path of the earlier state folder (${oneLine(input.legacyStateDir)})`;
+  const replan = state !== null ? command(`bowerloom skills migrate plan --state ${state}`) : `bowerloom skills migrate plan with --state and the path of the earlier state folder (${oneLine(input.legacyStateDir)})`;
   return { rerun: replan, replan };
 }
 /**

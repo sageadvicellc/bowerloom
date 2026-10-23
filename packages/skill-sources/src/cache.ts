@@ -4,7 +4,7 @@ import { dirname, isAbsolute, resolve, join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { DefinitionError, SHELL_UNSAFE } from '../../contracts/src/index.js';
+import { DefinitionError, oneLine, SHELL_UNSAFE } from '../../contracts/src/index.js';
 import { SkillSourceError, closed, captureSkillData, freezeSkillData, revisionOf } from './validation.js';
 import { NPM_LIMITS, NpmAcquisitionError, npmCheck, npmRefuse, sha256, validateNpmPlan, verifyNpmPayload } from './npm.js';
 import type { NpmAcquisitionPlan, ObservedNpmPayload, ExpectedSkillFile } from './npm.js';
@@ -648,10 +648,11 @@ export async function removeCacheEntry(stateRoot: string, place: CachePlace, nam
   try { removePinned(doomed); syncDir(root); }
   catch (error) {
     const code = errnoOf(error), at = (error as { path?: unknown }).path;
-    if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(doomed, 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
+    // Round 13 of the reviews of PR 101: the paths are named on one line (oneLine); the fix still names the real path.
+    if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(oneLine(doomed), 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
     // Round 5, L-1: next is the bare command (or, for a name no command can name, plain guidance), never both.
     const fix = leftoverTreeFix(doomed);
-    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
+    lockFirst(held, new CachePruneRefusal(oneLine(doomed), `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${oneLine(at)}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
   }
 }
 function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }

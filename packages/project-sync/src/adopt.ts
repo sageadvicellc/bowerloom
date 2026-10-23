@@ -17,7 +17,7 @@ import { readConfig } from '../../project-config/src/config.js';
 import { configRefusal, refusalWithNext, teamListedFromProject } from '../../project-config/src/refusal.js';
 import { lockItem, readLock } from '../../project-config/src/lock.js';
 import { applyConfigChange, initialConfig, planConfigChange } from './change.js';
-import { PARTIAL_HINT } from './refusal.js';
+import { command, PARTIAL_HINT } from './refusal.js';
 import type { ConfigChangePlan, ConfigChangeResult } from './change.js';
 import { readStoreCache } from './store-git.js';
 import { readStoreDefinitions } from './resolve.js';
@@ -120,7 +120,7 @@ function withExistsNext(error: unknown, id: string): unknown {
  * the same command finishes, and the next step is that command.
  */
 function copiedRefusal(error: unknown, id: string): DefinitionError {
-  const rerun = `bowerloom team adopt ${id}`, tail = `The team was copied. Run ${rerun} again to finish.`;
+  const rerun = command(`bowerloom team adopt ${id}`), tail = `The team was copied. Run ${rerun} again to finish.`;
   let out: DefinitionError;
   if (error instanceof DefinitionError) out = new DefinitionError(error.code, `${error.message.replace(/\s*Nothing was applied\.?/g, '').replace(/\s*Run the command again to see the new plan\.?/g, '').trim()} ${tail}`);
   else {
@@ -129,7 +129,9 @@ function copiedRefusal(error: unknown, id: string): DefinitionError {
     Object.defineProperty(out, 'cause', { value: cause, enumerable: false });
   }
   Object.defineProperty(out, 'hint', { value: PARTIAL_HINT, enumerable: false });
-  Object.defineProperty(out, 'next', { value: rerun, enumerable: false });
+  // Round 13 of the reviews of PR 101: next is the sentence, and fix the bare command (review L-1 of PR 99).
+  Object.defineProperty(out, 'next', { value: `Run ${rerun}.`, enumerable: false });
+  Object.defineProperty(out, 'fix', { value: rerun, enumerable: false });
   return out;
 }
 

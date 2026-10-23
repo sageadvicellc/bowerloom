@@ -124,7 +124,7 @@ Required facts:
    4. `So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.`
 
    A lock pin comes from npm or from its own GitHub repository, never from your store. The proof reads the store repository only for written items (`packages/project-sync/src/change.ts:180-182`). So a store that holds only pins needs no remote.
-   5. `Commit bowerloom.json and bowerloom.lock.json. A teammate runs bowerloom apply --frozen.` (File names and the command in inline code.)
+   5. `Commit bowerloom.json, bowerloom.lock.json, and the project items in .bowerloom, as [What to commit](#commit-list) lists. A teammate runs bowerloom apply --frozen.` (File names, the folder and the command in inline code.) Amended by #101: the project items in `.bowerloom` are committed too.
 5. What a teammate needs, as a bullet list with these six bullets:
    - the project
    - network access to `api.github.com` and `registry.npmjs.org`

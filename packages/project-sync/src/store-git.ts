@@ -26,7 +26,7 @@ import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
-import { offlineBecause, offlineNetwork, syncError, withNext } from './refusal.js';
+import { offlineBecause, offlineNetwork, SYNC_COMMAND, syncError, withStep } from './refusal.js';
 import { DefinitionError } from '../../contracts/src/index.js';
 
 export const STORE_CACHE_FOLDER = 'store-cache';
@@ -265,9 +265,9 @@ const OWN_CODES: ReadonlySet<string> = new Set(['GITHUB_RATE_LIMITED', 'GITHUB_R
  * A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. With a token
  * (spec 07, 3.7), a 404 on the commit request is STORE_REMOTE_AUTH_FAILED unless the repository check says more.
  */
-function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean, check: RepositoryCheck | null = null, rerun = 'bowerloom skills sync'): unknown {
+function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean, check: RepositoryCheck | null = null, rerun = SYNC_COMMAND): unknown {
   // Round 9 of the reviews of PR 101: the step names the command that ran, with its flags.
-  if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. Run ${rerun} again.`), `Run ${rerun} again.`);
+  if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return withStep(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. Run ${rerun} again.`), `Run ${rerun} again.`, rerun);
   // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
   if (!(error instanceof DefinitionError)) return error;
   const code = error.code;

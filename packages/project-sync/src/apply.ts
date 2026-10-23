@@ -41,7 +41,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
-import { managedCode, offlineBecause, offlineNetwork, outward, runnable, staleAfterApplied, SYNC_FLOW, syncError, withNext } from './refusal.js';
+import { command, managedCode, offlineBecause, offlineNetwork, outward, runnable, staleAfterApplied, SYNC_COMMAND, SYNC_FLOW, syncError, withNext, withStep } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
 import type { Credentials } from './store-git.js';
@@ -175,7 +175,7 @@ export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: stri
   if (summary.uncertain) {
     // Round 8: a flow that binds its cache operation plans again; the new plan fetches into a new operation.
     const again = flow.replan !== undefined ? `Run ${flow.replan} to see a new plan` : `Run ${flow.rerun} again`;
-    return withNext(syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The fetch of ${id} left the cache unclear (${summary.codes.join(', ')}). ${again}: it leaves that operation as it is and fetches into a new one.`), `${again}.`);
+    return withStep(syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The fetch of ${id} left the cache unclear (${summary.codes.join(', ')}). ${again}: it leaves that operation as it is and fetches into a new one.`), `${again}.`, flow.replan ?? flow.rerun);
   }
   if (code.endsWith('_ABORTED')) return stoppedFetch(id, flow);
   if (CONTENT.test(code)) return syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The fetched bytes of ${id} do not match its pin (${code}).`);
@@ -207,7 +207,7 @@ export function recoveryInFlow(error: unknown, flow: FetchFlow): unknown {
 /** Round 8: a fetch that stopped, with the step of its flow. */
 function stoppedFetch(id: string, flow: FetchFlow): DefinitionError {
   const step = flow.replan !== undefined ? `Run ${flow.replan} to see a new plan.` : `Run ${flow.rerun} again.`;
-  return withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. ${step}`), step);
+  return withStep(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. ${step}`), step, flow.replan ?? flow.rerun);
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */
@@ -304,7 +304,7 @@ export function prunedPin(id: string, root: string, operationId: string, context
   }
 }
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
-export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null, rerun: Rerun = 'bowerloom skills sync'): Promise<{ dir: string; fetched: boolean }> {
+export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null, rerun: Rerun = SYNC_COMMAND): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
   if (pin === null) throw stale();
   await deps.beforeStoreRead?.({ kind: item.kind, id: item.id });
@@ -393,11 +393,11 @@ export const printableMax = (n: number | undefined): boolean => n === undefined 
  */
 export function syncRerun(input: Pick<SyncInput, 'offline' | 'team' | 'frozen' | 'maxGithubRequests'>): string {
   if ((input.team && !PLAIN_ID.test(input.team)) || !printableMax(input.maxGithubRequests)) return 'the same bowerloom skills sync command';
-  return ['bowerloom skills sync', ...(input.offline ? ['--offline'] : []), ...(input.team ? [`--team ${input.team}`] : []), ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? [`--max-github-requests ${input.maxGithubRequests}`] : [])].join(' ');
+  return command(['bowerloom skills sync', ...(input.offline ? ['--offline'] : []), ...(input.team ? [`--team ${input.team}`] : []), ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? [`--max-github-requests ${input.maxGithubRequests}`] : [])].join(' '));
 }
 /** Round 9: the interrupted refusal between skills. Its step finishes the run with the same command. */
-export const interrupted = (done: string[], left: string[], rerun: Rerun = 'bowerloom skills sync') => withNext(syncError('SKILLS_SYNC_INTERRUPTED',
-  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run ${rerun} to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`), `Run ${rerun} to finish.`);
+export const interrupted = (done: string[], left: string[], rerun: Rerun = SYNC_COMMAND) => withStep(syncError('SKILLS_SYNC_INTERRUPTED',
+  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run ${rerun} to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`), `Run ${rerun} to finish.`, rerun);
 function childFailure(error: unknown, id: string, done: string[], rerun: Rerun): Error {
   const code = managedCode(error), before = done.length ? ` Finished before it: ${done.join(', ')}.` : '';
   if (code === 'MANAGED_SKILL_RECOVERY_REQUIRED') return syncError(code, `It belongs to ${id}, which stopped inside its change.${before} Run bowerloom skills recover plan --item ${id}, then ${rerun}.`);
@@ -414,7 +414,7 @@ export interface SkillSources { sources: Map<string, ItemSource>; pins: Map<stri
  * private caches. No project write. A lock-fetched authored skill whose SKILL.md declares allowed-tools that the plan did
  * not show is held for review (ITEM_REVIEW_REQUIRED) and gets no child.
  */
-export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = 'bowerloom skills sync'): Promise<SkillSources> {
+export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = SYNC_COMMAND): Promise<SkillSources> {
   const dir = plan.project.dir, work = plan.items.filter(isActionable), prune = pruneContext(plan, rerun);
   const pins = new Map<string, PinnedRequest>(), sources = new Map<string, ItemSource>(), fetched: string[] = [], review: string[] = [];
   for (const item of work) {
@@ -444,7 +444,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
   return { sources, pins, fetched, review, prune };
 }
 /** Phase B: every child plan of the skills phase A gave a source, checked against the bindings. No project write. */
-export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<Child[]> {
+export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = SYNC_COMMAND): Promise<Child[]> {
   const work = plan.items.filter(isActionable).filter(i => got.sources.has(i.id)), children: Child[] = [];
   for (const item of work) {
     if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
@@ -464,7 +464,7 @@ export async function planSkillChildren(plan: SyncPlan, got: SkillSources, deps:
  * Phases A and B for the actionable skills of a sync plan, inside the caller's locked run: fetch what needs fetching
  * into the private cache, then build and check every child plan. Neither phase writes in the project.
  */
-export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = 'bowerloom skills sync'): Promise<{ children: Child[]; fetched: string[]; review: string[] }> {
+export async function prepareSkillChildren(plan: SyncPlan, entries: ReadonlyMap<string, Entry>, held: HeldProjectLock, deps: SyncDeps, managed: ManagedPort, rerun: Rerun = SYNC_COMMAND): Promise<{ children: Child[]; fetched: string[]; review: string[] }> {
   const got = await fetchSkillSources(plan, entries, held, deps, rerun);
   return { children: await planSkillChildren(plan, got, deps, managed, rerun), fetched: got.fetched, review: got.review };
 }
@@ -483,7 +483,7 @@ export function bowerloomBeforePhaseB(project: ProjectContext, plan: { bowerloom
  * place when the run planned.
  */
 export interface AppliedChild { id: string; action: 'install' | 'update'; receiptRevision: string }
-export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = 'bowerloom skills sync'): Promise<AppliedChild[]> {
+export async function applyChildren(children: readonly Child[], held: HeldProjectLock, dir: string, ignoreExact: boolean, managed: ManagedPort, signal: AbortSignal, rerun: Rerun = SYNC_COMMAND): Promise<AppliedChild[]> {
   const applied: AppliedChild[] = [], created = new Map<string, Identity>(); let ignoreCreated = ignoreExact;
   for (const [index, child] of children.entries()) {
     if (signal.aborted) throw interrupted(applied.map(a => a.id), children.slice(index).map(c => c.item.id), rerun);
@@ -507,7 +507,7 @@ export async function applyChildren(children: readonly Child[], held: HeldProjec
 /** The origin fields of a plan item, for a result entry. */
 export const originOf = (i: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }): ResultOrigin => ({ origin: i.origin, resolvedFrom: i.resolvedFrom });
 /** Fetches the authored lock items a plan puts in the store cache only (3.16): prompts for skills sync, teams for a frozen run. */
-export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[]; credentials?: Credentials | null }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = 'bowerloom skills sync'): Promise<string[]> {
+export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[]; credentials?: Credentials | null }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = SYNC_COMMAND): Promise<string[]> {
   const fetched: string[] = [];
   for (const f of plan.storeFetch) {
     held.assertHeld(plan.project.dir);

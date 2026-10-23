@@ -17,7 +17,7 @@ import { runSyncCommand } from '../apps/cli/src/sync.js';
 import { acquisitionRefusal, fetchPin, recoveryInFlow } from '../packages/project-sync/src/apply.js';
 import { ALL_IDS_USED_NEXT, cacheOperationId } from '../packages/project-sync/src/cache-index.js';
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
-import { offlineBecause, partialRefusal, REPLAN_NEXT, shellPath, syncError, withNext } from '../packages/project-sync/src/refusal.js';
+import { command, offlineBecause, partialRefusal, REPLAN_NEXT, shellPath, syncError, withNext } from '../packages/project-sync/src/refusal.js';
 import { addDirStep, shellWord } from '../apps/cli/src/human.js';
 import type { OfflineCause } from '../packages/project-sync/src/refusal.js';
 import { notShareable } from '../packages/project-config/src/index.js';
@@ -183,9 +183,9 @@ test('a refusal after a partial write keeps the step of its cause, then the comm
   assert.equal(partialOf(NEXT.approved), 'Run bowerloom store migrate --all without --offline and without --approve, to see a plan that fetches it.');
   for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic, NEXT.offline, NEXT.approved]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
-  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'Run bowerloom receipt clean.');
+  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], command('bowerloom receipt clean')) as Error & { next?: string }).next, 'Run bowerloom receipt clean.');
   // Round 12 (variant B): the bare command is the fix; words that name a command give no fix.
-  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { fix?: string }).fix, 'bowerloom receipt clean');
+  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], command('bowerloom receipt clean')) as Error & { fix?: string }).fix, 'bowerloom receipt clean');
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'the same bowerloom store migrate command') as Error & { fix?: string; next?: string }).fix, undefined);
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'the same bowerloom store migrate command') as Error & { next?: string }).next, 'Run the same bowerloom store migrate command.');
 });

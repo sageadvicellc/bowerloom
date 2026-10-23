@@ -305,5 +305,5 @@ test('a stop while checking the pushed copy names the use command that ran, with
   const { w } = await sharedWorld(t), controller = new AbortController(), commit = 'e'.repeat(40);
   const stopping = () => { controller.abort(); throw new Error('stopped'); };
   await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: stopping, signal: controller.signal, commit }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === `Run bowerloom use skill house-style --commit ${commit} again.` && e.message.endsWith(`before any change. Run bowerloom use skill house-style --commit ${commit} again.`));
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === `Run bowerloom use skill house-style --commit ${commit} again.` && e.fix === `bowerloom use skill house-style --commit ${commit}` && e.message.endsWith(`before any change. Run bowerloom use skill house-style --commit ${commit} again.`));
 });

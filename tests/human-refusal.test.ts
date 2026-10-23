@@ -4,7 +4,7 @@ import { DefinitionError } from '../packages/contracts/src/index.js';
 import { RecipeError } from '../packages/recipes/src/types.js';
 import { BrokerError } from '../packages/broker/src/index.js';
 import { exitCodeFor, newCommandJson, newCommandRefusal, plainText, renderRefusal, reportFailure } from '../apps/cli/src/human.js';
-import { SYNC_REFUSAL_CODES, partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
+import { SYNC_REFUSAL_CODES, command, partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
 import type { SyncCode } from '../packages/project-sync/src/refusal.js';
 import { AUTHORING_REFUSAL_CODES } from '../packages/project-authoring/src/index.js';
 import { readFileSync } from 'node:fs';
@@ -286,7 +286,8 @@ test('spec 09: the CACHE_* codes have their words, their fixed messages, and the
 // changed. Its words say the run stopped part way, its Next line is the exact command that finishes it, and the JSON
 // envelope carries partial: true and that command as next.
 test('a partial refusal: its own sentence, the rerun command as Next, and partial: true in JSON', () => {
-  const rerun = 'bowerloom store migrate --prompt brief';
+  // Round 13: a runnable rerun is built as a command, as rerunOf builds it.
+  const rerun = command('bowerloom store migrate --prompt brief');
   const cases: Array<readonly [unknown, string]> = [
     [new DefinitionError('STALE_APPROVAL', 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.'), 'STALE_APPROVAL'],
     [new DefinitionError('PROJECT_LOCKED', 'Another Bowerloom command is changing this project.'), 'PROJECT_LOCKED'],

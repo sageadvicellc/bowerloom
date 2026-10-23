@@ -650,5 +650,5 @@ test('a stop while checking the pushed copy names the store migrate command that
   push(w);
   const controller = new AbortController(), stopping = () => { controller.abort(); throw new Error('stopped'); };
   await assert.rejects(planStoreMigrate({ project: ctx(w), home: w.home, selectors: selectors({ skills: ['house-style'] }), all: false, commit: null, githubToken: null, storeTransport: stopping, signal: controller.signal }),
-    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom store migrate --skill house-style again.');
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom store migrate --skill house-style again.' && e.fix === 'bowerloom store migrate --skill house-style');
 });

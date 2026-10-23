@@ -32,7 +32,7 @@ import { isStoreFault, localItemRows } from './store-items.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
 import { credentialsFor, onceTokenSource, repositoryOf, requestLimit, requireRequestBudget } from './store-git.js';
 import type { GithubToken } from '../../skill-manifest/src/github-token.js';
-import { offlineNetwork, syncError, withNext } from './refusal.js';
+import { command, offlineNetwork, syncError, withStep } from './refusal.js';
 import { join } from 'node:path';
 export { localItemRows } from './store-items.js';
 
@@ -186,7 +186,7 @@ export const NO_TOKEN_LINE = 'Without a token GitHub allows about 60 requests an
  * (`--commit`), else the pushed commit of the current branch. Network refusals follow the table of 3.10, and with a
  * token the table of spec 07, 3.7. `proof.credentials` gets the repository the token goes to.
  */
-async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit: string | null, input: Pick<ChangeInput, 'signal' | 'storeTransport'>, notes: string[], token: GithubToken | null = null, proof: { credentials: Credentials | null } = { credentials: null }, command = 'the command'): Promise<Map<string, LockItem>> {
+async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit: string | null, input: Pick<ChangeInput, 'signal' | 'storeTransport'>, notes: string[], token: GithubToken | null = null, proof: { credentials: Credentials | null } = { credentials: null }, cmd = 'the command'): Promise<Map<string, LockItem>> {
   const out = new Map<string, LockItem>();
   for (const n of needs) if (n.pin !== null) out.set(`${n.kind} ${n.id}`, { id: n.id, from: 'store', pin: n.pin });
   const authored = needs.filter(n => n.local !== null);
@@ -205,7 +205,7 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
     try { transport = make(); outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: n.kind, id: n.id, ...(n.kind !== 'team' ? { teams: n.local!.teams } : {}) }, n.local!.hash, signal, make); }
     catch (error) {
       // Round 9 of the reviews of PR 101: the step names the command that ran, not skills sync.
-      if (signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while checking the pushed copy, before any change. Run ${command} again.`), `Run ${command} again.`);
+      if (signal.aborted) throw withStep(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while checking the pushed copy, before any change. Run ${cmd} again.`), `Run ${cmd} again.`, cmd);
       // Review F3: only a network failure of the transport is offline; any other error keeps its code, or is rethrown.
       const code = error instanceof DefinitionError ? error.code : null;
       if (code === 'SKILLS_ADD_NETWORK') throw offlineNetwork(`Checking ${ids} needs api.github.com, and the network was not reachable.`);
@@ -485,15 +485,15 @@ export function changeCommand(input: Pick<ChangeInput, 'op' | 'kind' | 'id' | 's
   // Round 10: only validated values print. Anything else prints no command, but words that name it.
   const max = input.maxGithubRequests, okMax = max === undefined || (Number.isSafeInteger(max) && max >= 1 && max <= 5000);
   if (!PLAIN_ID.test(input.id) || !KINDS.has(input.kind) || (input.commit && !HEX40.test(input.commit)) || !okMax) return input.op === 'adopt' ? 'the same bowerloom team adopt command' : `the same bowerloom ${input.op} command`;
-  if (input.op === 'adopt') return `bowerloom team adopt ${input.id}`;
-  return [`bowerloom ${input.op} ${input.kind} ${input.id}`, ...(input.source === 'project' ? ['--project'] : []), ...(input.commit ? ['--commit', input.commit] : []), ...(max !== undefined ? ['--max-github-requests', String(max)] : [])].join(' ');
+  if (input.op === 'adopt') return command(`bowerloom team adopt ${input.id}`);
+  return command([`bowerloom ${input.op} ${input.kind} ${input.id}`, ...(input.source === 'project' ? ['--project'] : []), ...(input.commit ? ['--commit', input.commit] : []), ...(max !== undefined ? ['--max-github-requests', String(max)] : [])].join(' '));
 }
 const KINDS: ReadonlySet<string> = new Set(['skill', 'prompt', 'team']);
 /** Round 9: the command of a lock update run, with its items and --commit. Round 10: validated values only. */
 export function lockCommand(input: Pick<LockUpdateInput, 'items' | 'commit'>): string {
   const items = input.items ?? [];
   if (items.some(i => !KINDS.has(i.kind) || !PLAIN_ID.test(i.id)) || (input.commit && !HEX40.test(input.commit))) return 'the same bowerloom lock update command';
-  return ['bowerloom lock update', ...items.flatMap(i => ['--item', `${i.kind}:${i.id}`]), ...(input.commit ? ['--commit', input.commit] : [])].join(' ');
+  return command(['bowerloom lock update', ...items.flatMap(i => ['--item', `${i.kind}:${i.id}`]), ...(input.commit ? ['--commit', input.commit] : [])].join(' '));
 }
 /** True when the plan changes nothing: the lock's bytes stay and no item changes. */
 export const lockUpdateIsNoop = (plan: LockUpdatePlan): boolean => plan.nothing || (plan.lock.before?.sha256 === plan.lock.after.sha256 && plan.updated.every(u => u.change === 'unchanged'));

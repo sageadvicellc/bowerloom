@@ -219,7 +219,8 @@ export interface StateLayout { root: string; cacheRoot: string; itemsRoot: strin
 export function projectFolders(project: string): void {
   let at: string; try { at = fs.realpathSync(project); } catch { throw syncError('SKILLS_PROJECT_UNSAFE'); }
   for (;;) {
-    try { directory(at); } catch { throw syncError('SKILLS_PROJECT_UNSAFE', `The folder is ${at}.`); }
+    // Round 13 of the reviews of PR 101: a folder name of this machine, on one line.
+    try { directory(at); } catch { throw syncError('SKILLS_PROJECT_UNSAFE', `The folder is ${oneLine(at)}.`); }
     if (at === '/') return;
     at = dirname(at);
   }

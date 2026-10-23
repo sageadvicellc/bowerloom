@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { isStoreFault, localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { offlineNetwork, PARTIAL_HINT, partialRefusal, runnable, staleBecause, syncError, withNext } from './refusal.js';
+import { command, offlineNetwork, PARTIAL_HINT, partialRefusal, runnable, staleBecause, syncError, withStep } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -286,7 +286,7 @@ async function prove(store: StoreState, needs: readonly Found[], commit: string 
     try { transport = make(); outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: need.kind, id: need.id, ...(need.kind !== 'team' ? { teams: need.teams } : {}) }, local.hash, mode.signal, make); }
     catch (error) {
       // Round 9 of the reviews of PR 101: the step names this store migrate command, not skills sync.
-      if (mode.signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while checking the pushed copy, before any change. Run ${again} again.`), `Run ${again} again.`);
+      if (mode.signal.aborted) throw withStep(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while checking the pushed copy, before any change. Run ${again} again.`), `Run ${again} again.`, again);
       const code = error instanceof DefinitionError ? error.code : null;
       if (code === 'SKILLS_ADD_NETWORK') throw offlineNetwork(`Checking ${ids} needs api.github.com, and the network was not reachable.`);
       // Review L2: a pushed file Bowerloom cannot check is not the same finding as a pushed copy that differs.
@@ -334,7 +334,7 @@ export function rerunOf(s: StoreMigratePlan['selectors']): string {
   for (const id of s.prompts) words.push('--prompt', id);
   for (const id of s.teams) words.push('--team', id);
   if (s.commit !== null) words.push('--commit', s.commit);
-  return words.join(' ');
+  return command(words.join(' '));
 }
 const REMOVE_REMINDER = (id: string): string => `Bowerloom does not edit .bowerloom/skills.json. Remove the line for skill ${id} yourself.`;
 

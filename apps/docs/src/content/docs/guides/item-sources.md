@@ -32,7 +32,7 @@ Bowerloom decides whether a project is shared. You do not. It treats a project a
 4. So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.
 
    A pin is an exact npm version or a full GitHub commit of a published skill, with the hashes of its files. A pin in the lock comes from npm or from the GitHub repository of that skill, never from your store. Bowerloom reads the store repository only for the items you wrote. So a store that holds only pins needs no store repository.
-5. Commit `bowerloom.json` and `bowerloom.lock.json`. A teammate runs `bowerloom apply --frozen`.
+5. Commit `bowerloom.json`, `bowerloom.lock.json`, and the project items in `.bowerloom`, as [What to commit](#commit-list) lists. A teammate runs `bowerloom apply --frozen`.
 
 A teammate needs these things:
 
@@ -302,7 +302,7 @@ Bowerloom writes one `.gitignore` of its own in a project, inside `.bowerloom/ma
 
 ## If you work alone
 
-A project that only you use needs no lock and no remote. Run these commands in order:
+A project that has no `bowerloom.lock.json` and no `origin` remote is not shared, even when only you use it. It needs no lock. Run these commands in order:
 
 ```text
 bowerloom skill create house-style --global
