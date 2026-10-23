@@ -348,7 +348,7 @@ test('11b. shared: a private remote refuses STORE_REMOTE_PRIVATE, no network ref
   const repo = push(w);
   const before = { store: snapshot(w.store), project: snapshot(w.projectDir) };
   await assert.rejects(plan(w, { all: true, transport: storeTransport({ responses: new Map() }) }), code('STORE_REMOTE_PRIVATE'));
-  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com, and the network was not reachable.') && e.next === 'Connect to the network, then run the command again without --approve to see a new plan.');
+  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com, and the network was not reachable.') && e.next === 'Connect to the network and run the command again.');
   assert.deepEqual({ store: snapshot(w.store), project: snapshot(w.projectDir) }, before, 'nothing is written');
   const withToken = await plan(w, { all: true, transport: storeTransport(repo), token: TOKEN() });
   assert.deepEqual(withToken.network.credentials, { variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories: ['sageadvicellc/store'] });

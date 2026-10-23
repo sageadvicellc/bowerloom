@@ -347,7 +347,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       syncDeps.githubToken = token;
       const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), slices = plan.slices.filter(sliceActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
       if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
-      createPrivateFolders(plan, held, dir);
+      createPrivateFolders(plan, held, dir, 'shared');
       // Review L2: checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
       requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [
@@ -370,6 +370,8 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
         promptDirs.set(item.id, folder.dir);
       }
       await fetchStoreOnly(plan, held, syncDeps);
+      // Round 6 of the reviews of PR 101: this project's own state folders, only after every fetch succeeded.
+      createPrivateFolders(plan, held, dir, 'own');
       const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + slices.length + agents.length > 0);

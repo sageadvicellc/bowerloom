@@ -119,6 +119,8 @@ async function scan(root: string, digest: string, pinned: PinnedRequest): Promis
  * of an earlier beta. A completed operation whose stored request differs from the entry refuses
  * SKILLS_SYNC_CONTENT_MISMATCH: its id was derived from this request, so its bytes are not what skills.json pins.
  */
+/** The step of a pin whose operation ids are all used. */
+export const ALL_IDS_USED_NEXT = 'Run bowerloom cache prune --partial to delete the unfinished fetches, then run the command again.';
 export async function lookupCache(roots: CacheRoots, pinned: PinnedRequest): Promise<CacheLookup> {
   const machine = await scan(roots.cacheRoot, pinned.digest, pinned);
   if (machine.kind === 'cached') return machine.lookup;
@@ -126,6 +128,12 @@ export async function lookupCache(roots: CacheRoots, pinned: PinnedRequest): Pro
     const legacy = await scan(roots.legacyCacheRoot, pinned.legacyDigest, pinned);
     if (legacy.kind === 'cached') return { ...legacy.lookup, partial: machine.partial };
   }
-  if (machine.firstUnused === null) throw syncError('SKILLS_CACHE_RECOVERY_REQUIRED', 'Inspect them with bowerloom skills source inspect (bowerloom help advanced).');
+  // Round 6 of the reviews of PR 101: each failed fetch of a pin keeps its operation, so eight failures use every id. Its
+  // step deletes the unfinished fetches, which lifts the refusal.
+  if (machine.firstUnused === null) {
+    const error = syncError('SKILLS_CACHE_RECOVERY_REQUIRED', 'Inspect them with bowerloom skills source inspect (bowerloom help advanced).');
+    Object.defineProperty(error, 'next', { value: ALL_IDS_USED_NEXT, enumerable: false });
+    throw error;
+  }
   return { status: 'needs-fetch', root: roots.cacheRoot, operationId: machine.firstUnused, snapshotRevision: null, receiptRevision: null, partial: machine.partial };
 }

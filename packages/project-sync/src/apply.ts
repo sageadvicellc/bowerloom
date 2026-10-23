@@ -72,10 +72,18 @@ const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The 
  * A shared folder (the state root, a folder above it, or the machine cache) that another project's run created
  * meanwhile is taken as it is, once it passes the same check: a real folder of this user, mode 0700.
  */
-export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string): void {
+/**
+ * Round 6 of the reviews of PR 101: `part` splits the folders a run makes. 'shared' makes the chain, the skills cache, and
+ * the store cache, before phase A fetches into them. 'own' makes this project's folders (its state root, items, and
+ * items/<id>), after phase A, which never writes under them. A fetch that fails then leaves the bound plan as it was, so the
+ * same --approve applies once the network or the registry is back. 'all' is both, for a caller with no phase A. Each part
+ * checks every pin of the plan, so a folder that changed since the plan refuses before any write of that part.
+ */
+export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all'): void {
   try {
     const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
     for (const p of plan.privateState.create) {
+      if ((part === 'shared' && ownFolder(p)) || (part === 'own' && !ownFolder(p))) continue;
       held.assertHeld(dir); directory(dirname(p));
       if (!ownFolder(p) && exists(p)) { directory(p, true); continue; }
       absent(p);
@@ -429,13 +437,15 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       deps = { ...deps, githubToken: token };
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
-      createPrivateFolders(plan, held, dir);
+      createPrivateFolders(plan, held, dir, 'shared');
       // Review L2: a run never makes more GitHub requests than the budget, checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
       requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [...work.filter(i => i.lockPin !== null).map(i => ({ kind: 'skill' as const, id: i.id, lockPin: i.lockPin! })), ...plan.storeFetch]), plan.network.maxRequests);
       // Phase A: the private caches only.
       const got = await fetchSkillSources(plan, entries, held, deps);
       const stored = await fetchStoreOnly(plan, held, deps);
+      // Round 6: this project's own state folders, only after every fetch succeeded.
+      createPrivateFolders(plan, held, dir, 'own');
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const project = bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
       const children = await planSkillChildren(plan, got, deps, managed);

@@ -17,6 +17,7 @@ import { acquisitionRefusal, fetchPin } from '../packages/project-sync/src/apply
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
 import { partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
 import { notShareable } from '../packages/project-config/src/index.js';
+import { atApproval } from '../packages/project-config/src/refusal.js';
 import { GitAcquisitionError } from '../packages/skill-sources/src/git.js';
 import { NpmAcquisitionError } from '../packages/skill-sources/src/npm.js';
 
@@ -27,11 +28,11 @@ const NPM_ROUTES = { [META]: join(fixtures, 'npm-db-skills', 'metadata.json'), [
 const FIXED = "This run could not get bytes that it needs. Nothing in the project changed.";
 const SENTENCE = 'A pin or a lock item needs bytes that this run could not get. The message says why.';
 const NEXT = {
-  network: 'Connect to the network, then run the command again without --approve to see a new plan.',
-  response: 'Run the command again later, without --approve, to see a new plan. If it fails again, check that the version or commit of the pin still exists on its registry.',
-  nonpublic: 'Check the DNS or proxy configuration of this machine. Then run the command again without --approve to see a new plan.',
-  other: 'Run the command again without --approve to see a new plan. If it fails again, report the code and the output of bowerloom --version.',
-  nocode: 'Run the command again without --approve to see a new plan. If it fails again, report the error name above and the output of bowerloom --version.',
+  network: 'Connect to the network and run the command again.',
+  response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
+  nonpublic: 'Check the DNS or proxy configuration of this machine, then run the command again.',
+  other: 'Run the command again. If it fails again, report the code and the output of bowerloom --version.',
+  nocode: 'Run the command again. If it fails again, report the error name above and the output of bowerloom --version.',
   requests: 'Check with bowerloom skills check that the pin names the package or commit you expect. If it does, report the code and the output of bowerloom --version.',
   approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
   offline: 'Run the command again without --offline and without --approve.',
@@ -155,11 +156,16 @@ test('an approved plan that names no host for a fetch refuses with the step to r
 test('a refusal after a partial write keeps the step of its cause, then the command that finishes the run', () => {
   const network = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.network, enumerable: false });
   const partial = partialRefusal(network, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
-  assert.equal(partial.next, `${NEXT.network} Then run bowerloom store migrate --all.`);
+  assert.equal(partial.next, 'Connect to the network. Then run bowerloom store migrate --all.');
   // Round 5: a cause whose step ends with "Then run the command again." says run once.
   const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
   const faulted = partialRefusal(fault, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
   assert.equal(faulted.next, 'Run chmod a-x ~/.bowerloom/skills/x/run.md. A lock records no file with an execute bit. Then run bowerloom store migrate --all.');
+  // Round 6: an error with the approval note, and a step that ends ", then run ...", say run once too.
+  const noted = partialRefusal(atApproval(fault), ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
+  assert.equal(noted.next, 'Run chmod a-x ~/.bowerloom/skills/x/run.md. A lock records no file with an execute bit. Then run bowerloom store migrate --all.');
+  const dns = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.nonpublic, enumerable: false });
+  assert.equal((partialRefusal(dns, ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'Check the DNS or proxy configuration of this machine. Then run bowerloom receipt clean.');
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
 });
@@ -203,18 +209,30 @@ test('skills sync with an acquirer that throws a TypeError refuses SKILLS_OFFLIN
   assert.match(words, /The fetch of synthetic-db-collections failed with an error that has no Bowerloom code \(TypeError\)\./); assert.doesNotMatch(words, /private detail/);
 });
 
-// Round 5 of the reviews of PR 101, item 1: a failed fetch keeps its cache operation (the cache keeps every operation it
-// opened until cache prune deletes it), so the next plan names a new one. The step says to leave out --approve, and
-// following it lifts the refusal once the registry or the network is back.
-test('after a failed fetch, the step leaves out --approve, and a new plan then installs, for npm and for git', t => {
+// Round 6 of the reviews of PR 101, item 1: this project's own state folders are made only after every fetch succeeds,
+// and a failed fetch's cache operation is not bound. So after a fetch fails on a first run, the same --approve applies once
+// the registry or the network is back, for npm and for git, and when the own folders exist already.
+test('after a failed fetch, the same --approve applies once the registry or the network is back, for npm and for git', t => {
+  const cases: [string, Record<string, unknown>][] = [['npm 500', { routes: { ...NPM_ROUTES, [META]: { status: 500, file: null } } }], ['npm 404 tarball', { routes: { ...NPM_ROUTES, [TGZ]: { status: 404, file: null } } }], ['npm DNS', {}]];
+  for (const [label, failing] of cases) {
+    const { w, dir } = pinned(t);
+    const plan = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+    const failed = run(dir, ['skills', 'sync', '--json', '--approve', plan.revision], net(w, failing as never), NETWORK);
+    assert.equal(errorCode(failed.stderr), 'SKILLS_OFFLINE', label);
+    assert.ok(!(nextOf(failed.stderr) ?? '').includes('--approve'), `${label}: the step keeps the approval`);
+    const retried = run(dir, ['skills', 'sync', '--approve', plan.revision], net(w, { routes: NPM_ROUTES }), NETWORK);
+    assert.equal(retried.status, 0, `${label}: the same --approve applies: ${retried.stderr}`);
+  }
+  // The own folders exist already: a second project item fails, then the same --approve applies.
   const { w, dir } = pinned(t);
-  const first = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
-  const failed = run(dir, ['skills', 'sync', '--json', '--approve', first.revision], net(w, { routes: { ...NPM_ROUTES, [META]: { status: 500, file: null } } }), NETWORK);
-  assert.equal(nextOf(failed.stderr), NEXT.response);
-  assert.equal(errorCode(run(dir, ['skills', 'sync', '--json', '--approve', first.revision], net(w, { routes: NPM_ROUTES }), NETWORK).stderr), 'STALE_APPROVAL', 'the same --approve is stale, as the step says');
+  const warm = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+  assert.equal(run(dir, ['skills', 'sync', '--approve', warm.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0);
+  rmSync(join(w.state, 'bowerloom', 'cache'), { recursive: true, force: true }); rmSync(join(dir, '.claude'), { recursive: true, force: true }); rmSync(join(dir, '.agents'), { recursive: true, force: true });
+  rmSync(join(dir, '.bowerloom', 'managed'), { recursive: true, force: true });
   const again = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
-  assert.equal(run(dir, ['skills', 'sync', '--approve', again.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0, 'a new plan installs');
-  // git: a DNS failure, then the step.
+  assert.equal(errorCode(run(dir, ['skills', 'sync', '--json', '--approve', again.revision], net(w, {}), NETWORK).stderr), 'SKILLS_OFFLINE');
+  assert.equal(run(dir, ['skills', 'sync', '--approve', again.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0, 'own folders already there');
+  // git: a DNS failure, then the same --approve.
   const g = world(t), gd = project(g, 'app', EMPTY_CONFIG);
   const recorded = JSON.parse(readFileSync(join(fixtures, 'github-skills-repo.json'), 'utf8')) as { responses: Record<string, string> };
   const routes: Record<string, string> = {};
@@ -224,6 +242,20 @@ test('after a failed fetch, the step leaves out --approve, and a new plan then i
   const gp = JSON.parse(run(gd, ['skills', 'sync', '--json'], net(g, { routes }), NETWORK).stdout) as { revision: string };
   const down = run(gd, ['skills', 'sync', '--json', '--approve', gp.revision], net(g, {}), NETWORK);
   assert.equal(nextOf(down.stderr), NEXT.network);
-  const gp2 = JSON.parse(run(gd, ['skills', 'sync', '--json'], net(g, { routes }), NETWORK).stdout) as { revision: string };
-  assert.equal(run(gd, ['skills', 'sync', '--approve', gp2.revision], net(g, { routes }), NETWORK).status, 0, 'a new plan installs');
+  assert.equal(run(gd, ['skills', 'sync', '--approve', gp.revision], net(g, { routes }), NETWORK).status, 0, 'git: the same --approve applies');
 });
+
+// Round 6, item 1: each failed npm fetch keeps one of the 8 operation ids of its pin. After 8, the step deletes them.
+test('after 8 failed fetches of one pin, the step is cache prune --partial, and following it lifts the refusal', t => {
+  const { w, dir } = pinned(t), bad = net(w, { routes: { ...NPM_ROUTES, [META]: { status: 500, file: null } } });
+  const plan = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+  for (let i = 0; i < 8; i++) assert.equal(errorCode(run(dir, ['skills', 'sync', '--json', '--approve', plan.revision], bad, NETWORK).stderr), 'SKILLS_OFFLINE', `failure ${i + 1}`);
+  const full = run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK);
+  assert.equal(errorCode(full.stderr), 'SKILLS_CACHE_RECOVERY_REQUIRED', full.stderr);
+  assert.equal(nextOf(full.stderr), 'Run bowerloom cache prune --partial to delete the unfinished fetches, then run the command again.');
+  const prune = JSON.parse(run(dir, ['cache', 'prune', '--partial', '--json'], w.env).stdout) as { revision: string };
+  assert.equal(run(dir, ['cache', 'prune', '--partial', '--approve', prune.revision], w.env).status, 0);
+  const after = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+  assert.equal(run(dir, ['skills', 'sync', '--approve', after.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0);
+});
+

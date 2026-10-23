@@ -17,6 +17,7 @@ import { world, run, mustApprove, errorCode, errorMessage, project, pushStore, n
 import type { World } from './support/config-cli.js';
 import type { TestContext } from 'node:test';
 import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
+import { runWithApproval } from '../apps/cli/src/confirm.js';
 import { notShareable } from '../packages/project-config/src/index.js';
 import { honestShared, MIGRATE_REASON } from '../packages/project-config/src/refusal.js';
 import { reasonOf } from '../packages/project-sync/src/migrate-store.js';
@@ -266,7 +267,7 @@ test('M5. a token set between the plan and --approve refuses STALE_APPROVAL, and
 
 // Round 2 of the reviews of PR 101, item 1: a fetch that fails on the network says so, with one right step.
 const OFFLINE_SENTENCE = 'A pin or a lock item needs bytes that this run could not get. The message says why.';
-const NETWORK_NEXT = 'Connect to the network, then run the command again without --approve to see a new plan.';
+const NETWORK_NEXT = 'Connect to the network and run the command again.';
 test('round 2. SKILLS_OFFLINE on a network failure: apply --frozen and use print the network step; plain apply keeps its hold', t => {
   const owner = world(t), dir = project(owner, 'app', EMPTY_CONFIG); shared(dir);
   mustApprove(owner.home, ['skill', 'create', 'house-style', '--global'], owner.env);
@@ -486,7 +487,10 @@ test('round 5. store migrate --all names a true reason for each fault kind of a 
 
 test('round 5. the store migrate reason of every fault kind, at unit level', () => {
   const reason = (problem: string, cause: 'file' | 'size' = 'file') => MIGRATE_REASON[reasonOf(notShareable(cause, { problem: problem as never, path: 'skills/x/a', item: 'skills/x' }))];
-  for (const p of ['not-folder', 'area', 'empty-folder', 'too-deep', 'folder-name']) assert.equal(reason(p), 'It holds a folder that a store item cannot hold.', p);
+  for (const p of ['empty-folder', 'too-deep', 'folder-name']) assert.equal(reason(p), 'It holds a folder that a store item cannot hold.', p);
+  // Round 6: the item itself, and its area folder.
+  assert.equal(reason('not-folder'), 'It is not a real folder that you own.');
+  assert.equal(reason('area'), 'It sits in a folder of .bowerloom that is a link or not a real folder.');
   for (const p of ['link', 'special']) assert.equal(reason(p), 'It holds a link or a special file that a store item cannot hold.', p);
   for (const p of ['unreadable', 'unsafe-file', 'unsafe-folder']) assert.equal(reason(p), 'Bowerloom could not read all of it safely.', p);
   for (const p of ['names', 'too-many']) assert.equal(reason(p), 'It holds names that Bowerloom does not read.', p);
@@ -513,4 +517,60 @@ test('round 5. store migrate --approve with a fault: the step ends with the appr
   assert.ok(!nextOf(run(dir, ['store', 'migrate', '--all', '--json'], net.env, NETWORK).stderr)!.includes('--approve'));
   chmodSync(file, 0o644);
   assert.equal(run(dir, ['store', 'migrate', '--all', '--approve', plan.revision], net.env, NETWORK).status, 0, 'the same --approve applies');
+});
+
+
+// Round 6 of the reviews of PR 101, item 2: the item note fits a fault of an item only. A store repository cause on a run
+// with --approve says to run again without --approve, because pushing or adding a remote changes the plan.
+test('round 6. an unpushed store with --approve says to run again without --approve, and gets no item note', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  pushStore(w); shell(w.store, "printf 'ffffffffffffffffffffffffffffffffffffffff\\n' > .git/refs/heads/main && rm .git/refs/remotes/origin/main", w);
+  const r = run(dir, ['use', 'skill', 'house-style', '--json', '--approve', 'a'.repeat(64)], w.env);
+  assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', r.stderr);
+  assert.equal(nextOf(r.stderr), 'Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. Then run the command again without --approve. Or adopt a team into this project with bowerloom team adopt.');
+  assert.ok(!nextOf(run(dir, ['use', 'skill', 'house-style', '--json'], w.env).stderr)!.includes('--approve'), 'without --approve, no note');
+});
+
+// Round 6, item 3: each command with --approve adds the item note to a store fault; without --approve it does not; and an
+// error that is not a store fault is unchanged.
+test('round 6. use, apply, skills sync, and lock update with --approve add the item note to a store fault', t => {
+  const { w, dir } = sharedWithSkill(t);
+  mustApprove(w.home, ['skill', 'create', 'second', '--global'], w.env);
+  const STEP = `Run chmod a-x ~/.bowerloom/skills/house-style/run.md. A lock records no file with an execute bit. ${AGAIN}`;
+  const NOTE = 'If you also changed the item, run the command again without --approve.';
+  writeFileSync(join(w.store, 'skills', 'house-style', 'run.md'), '# r\n', { mode: 0o755 });
+  writeFileSync(join(w.store, 'skills', 'second', 'run.md'), '# r\n', { mode: 0o755 });
+  const deny = network(w), fake = 'a'.repeat(64);
+  const cases: [string[], string][] = [[['use', 'skill', 'second'], STEP.replace('house-style', 'second')], [['apply'], STEP], [['skills', 'sync'], STEP], [['lock', 'update'], STEP]];
+  for (const [args, step] of cases) {
+    const approved = run(dir, [...args, '--json', '--approve', fake], deny.env, NETWORK);
+    assert.equal(errorCode(approved.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${args.join(' ')}: ${approved.stderr}`);
+    assert.equal(nextOf(approved.stderr), `${step} ${NOTE}`, args.join(' '));
+    assert.equal(nextOf(run(dir, [...args, '--json'], deny.env, NETWORK).stderr), step, `${args.join(' ')} without --approve`);
+  }
+  // A refusal that is not a store fault keeps its words with --approve.
+  writeFileSync(join(dir, 'bowerloom.lock.json'), '{');
+  const invalid = run(dir, ['lock', 'update', '--item', 'skill:house-style', '--json', '--approve', fake], deny.env, NETWORK);
+  assert.equal(errorCode(invalid.stderr), 'LOCK_INVALID'); assert.ok(!invalid.stderr.includes('If you also changed'));
+});
+
+test('round 6. runWithApproval adds the item note to a fault that apply finds, and leaves other errors as they are', async () => {
+  const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
+  const change = (error: unknown) => ({ plan: async () => ({}), revision: () => 'b'.repeat(64), review: () => '', apply: async () => { throw error; } });
+  const io = { interactive: false, ask: async () => 'n' };
+  await assert.rejects(runWithApproval(change(fault), { approve: 'b'.repeat(64), json: true }, io), (e: Error & { next?: string }) => e.next!.endsWith('If you also changed the item, run the command again without --approve.'));
+  const other = new Error('other');
+  await assert.rejects(runWithApproval(change(other), { approve: 'b'.repeat(64), json: true }, io), (e: unknown) => e === other);
+});
+
+test('round 6. a step with no plain path gives no command, and its sentences start with a capital', () => {
+  const next = (problem: string, cause: 'file' | 'size' = 'file') => (notShareable(cause, { problem: problem as never, path: 'other/x', item: 'skills/../x' }) as { next?: string }).next!;
+  assert.equal(next('unreadable'), `Bowerloom could not read the store item. Give yourself read access to the files of the item. ${AGAIN}`);
+  assert.equal(next('unsafe-folder'), `Bowerloom could not read a folder of the store item safely. It must be a real folder that you own, closed to other users. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`);
+  assert.equal(next('not-folder'), `The store item is not a real folder that you own. ${AGAIN}`);
+  assert.equal(next('unsafe-file'), `Bowerloom could not read a file in the store item safely. Each file must be a plain file that you own, with one link, closed to other users. ${AGAIN}`);
+  for (const p of ['names', 'too-many', 'empty-folder']) assert.match(next(p), /^The store item /, p);
+  for (const p of ['count', 'total']) assert.match(next(p, 'size'), /^The store item /, p);
+  for (const p of ['unreadable', 'unsafe-folder', 'not-folder', 'unsafe-file']) assert.doesNotMatch(next(p), /\bRun (?:ls|chmod)\b/, p);
 });

@@ -243,7 +243,7 @@ function pastTreeLimits(root: string): boolean {
 // Round 5: each fault kind maps to a reason that is true of it. Exported for its tests.
 const REASON_OF: Readonly<Record<string, MigrateReason>> = {
   unreadable: 'unreadable', 'unsafe-file': 'unreadable', 'unsafe-folder': 'unreadable', names: 'names', 'too-many': 'names',
-  'not-folder': 'folder', area: 'folder', 'empty-folder': 'folder', 'too-deep': 'folder', 'folder-name': 'folder',
+  'not-folder': 'notfolder', area: 'area', 'empty-folder': 'folder', 'too-deep': 'folder', 'folder-name': 'folder',
   link: 'link', special: 'link', empty: 'empty', count: 'count', large: 'size', total: 'size',
 };
 export const reasonOf = (error: unknown): MigrateReason => {

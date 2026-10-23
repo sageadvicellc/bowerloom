@@ -82,7 +82,7 @@ export function honestShared(error: unknown, what: string): unknown {
 /** Spec 08, section 5: the reason MIGRATE_ITEM_UNSUPPORTED adds, one per fault of `localItemRows`. */
 export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.', unreadable: 'Bowerloom could not read all of it safely.', names: 'It holds names that Bowerloom does not read.',
   // Round 5 of the reviews of PR 101: the faults that are not about the content of a file.
-  folder: 'It holds a folder that a store item cannot hold.', link: 'It holds a link or a special file that a store item cannot hold.', empty: 'It holds an empty file, which a store item cannot hold.', count: 'It holds more files than a store item can hold.' });
+  folder: 'It holds a folder that a store item cannot hold.', notfolder: 'It is not a real folder that you own.', area: 'It sits in a folder of .bowerloom that is a link or not a real folder.', link: 'It holds a link or a special file that a store item cannot hold.', empty: 'It holds an empty file, which a store item cannot hold.', count: 'It holds more files than a store item can hold.' });
 export type MigrateReason = keyof typeof MIGRATE_REASON;
 /** MIGRATE_ITEM_UNSUPPORTED with its reason. */
 export function migrateUnsupported(reason: MigrateReason, next?: string): DefinitionError {
@@ -140,12 +140,14 @@ export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
   const run = (command: string): string => root === '.bowerloom' ? `In the project folder, run ${command}.` : `Run ${command}.`;
   // Round 5: a command needs a real path. With no plain path to name, the step gives no command (ls -la the store item).
   const runOn = (command: string, target: string): string => target === 'the store item' ? '' : `${run(`${command} ${target}`)} `;
+  // Round 6: a sentence that starts with the item starts with a capital, as when the item has no plain path.
+  const cap = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
   const sub = p ?? `A file in ${item}`;
   switch (place.problem) {
     case 'name': return p ? `If you do not need ${p}, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}` : `${sub} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`;
     case 'folder-name': return `${p ?? `A folder in ${item}`} is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`;
-    case 'names': { const f = p ?? item; return `${f} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`; }
-    case 'too-many': { const f = p ?? item; return `${f} holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer.${place.files !== undefined ? ` A lock records at most ${place.files} files in one item.` : ''} ${AGAIN}`; }
+    case 'names': { const f = p ?? item; return `${cap(f)} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`; }
+    case 'too-many': { const f = p ?? item; return `${cap(f)} holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer.${place.files !== undefined ? ` A lock records at most ${place.files} files in one item.` : ''} ${AGAIN}`; }
     case 'empty': return p ? `${p} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}` : `${sub} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}`;
     case 'mode': return p ? `${run(`chmod a-x ${p}`)} A lock records no file with an execute bit. ${AGAIN}` : `${sub} has an execute bit. Run chmod a-x on it. ${AGAIN}`;
     case 'bom': return p ? `Remove the byte order mark at the start of ${p}. ${AGAIN}` : `${sub} starts with a byte order mark. Remove it. ${AGAIN}`;
@@ -154,15 +156,15 @@ export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
     case 'special': return `${p ?? `An entry in ${item}`} is not a plain file or folder. Move it out of the item. ${AGAIN}`;
     case 'unsafe-file': return p ? `Bowerloom could not read ${p} safely. It must be a plain file that you own, with one link, closed to other users. ${run(`ls -l ${p}`)} If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`
       : `Bowerloom could not read a file in ${item} safely. Each file must be a plain file that you own, with one link, closed to other users. ${runOn('ls -la', item)}${AGAIN}`;
-    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users. ${runOn('ls -ld', f)}If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`; }
-    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. ${runOn('ls -la', f)}Give yourself read access to what it shows. ${AGAIN}`; }
-    case 'empty-folder': return `${p ?? item} is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`;
+    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read ${f === 'the store item' ? 'a folder of the store item' : `the folder ${f}`} safely. It must be a real folder that you own, closed to other users. ${runOn('ls -ld', f)}If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`; }
+    case 'unreadable': { const f = p ?? item; return f === 'the store item' ? `Bowerloom could not read the store item. Give yourself read access to the files of the item. ${AGAIN}` : `Bowerloom could not read ${f}. ${runOn('ls -la', f)}Give yourself read access to what it shows. ${AGAIN}`; }
+    case 'empty-folder': return `${cap(p ?? item)} is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`;
     case 'too-deep': return `${p ?? `A folder in ${item}`} sits too deep in the item. A lock records at most 7 levels of folders inside an item. Move its files up. ${AGAIN}`;
-    case 'not-folder': return `${item} is not a real folder that you own. ${runOn('ls -ld', item)}${AGAIN}`;
+    case 'not-folder': return `${cap(item)} is not a real folder that you own. ${runOn('ls -ld', item)}${AGAIN}`;
     case 'area': { const a = place.path !== undefined && /^(?:skills|prompts|teams)$/.test(place.path) ? `${root}/${place.path}` : 'A folder of the store'; return `${a} is a link or not a real folder. Make it a real folder in ${root}. ${AGAIN}`; }
     case 'large': return `${p ?? `A file in ${item}`} is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. ${AGAIN}`;
-    case 'count': return `${item} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`;
-    case 'total': return `${item} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`;
+    case 'count': return `${cap(item)} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`;
+    case 'total': return `${cap(item)} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`;
   }
 }
 /**
@@ -183,13 +185,22 @@ export const APPROVAL_NOTE = 'If you also changed the item, run the command agai
  * A store fault found at approval time (decided in round 4): it surfaces as it is, because once the fault is fixed the
  * same --approve works, unless the item also changed. Its next step says so. Any other error is returned as it is.
  */
+/** Round 6: the step of a store repository cause at approval time. Pushing or adding a remote changes the plan. */
+export const APPROVAL_REPO_NOTE = 'Then run the command again without --approve.';
 export function atApproval(error: unknown): unknown {
   if (!(error instanceof DefinitionError) || !own.has(error) || error.code !== 'STORE_ITEM_NOT_SHAREABLE') return error;
-  const next = (error as { next?: unknown }).next;
-  if (typeof next !== 'string' || next.endsWith(APPROVAL_NOTE)) return error;
+  const next = (error as { next?: unknown }).next, problem = (error as { problem?: unknown }).problem;
+  if (typeof next !== 'string' || next.endsWith(APPROVAL_NOTE) || next.includes(APPROVAL_REPO_NOTE)) return error;
+  // Round 6 of the reviews of PR 101: the item note fits a fault of an item only. A cause of the store repository
+  // (none, no-origin, unsupported-remote, unpushed, unreadable) is fixed by a change that changes the plan.
+  let value: string;
+  if (problem !== undefined) value = `${next} ${APPROVAL_NOTE}`;
+  else {
+    const base = next.replace(/\s*Then run the command again\.$/, '');
+    value = base.endsWith(` ${ADOPT}`) ? `${base.slice(0, -ADOPT.length - 1)} ${APPROVAL_REPO_NOTE} ${ADOPT}` : `${base} ${APPROVAL_REPO_NOTE}`;
+  }
   const noted = new DefinitionError(error.code, error.message); own.add(noted);
-  Object.defineProperty(noted, 'next', { value: `${next} ${APPROVAL_NOTE}`, enumerable: false });
-  const problem = (error as { problem?: unknown }).problem;
+  Object.defineProperty(noted, 'next', { value, enumerable: false });
   if (problem !== undefined) Object.defineProperty(noted, 'problem', { value: problem, enumerable: false });
   return noted;
 }
