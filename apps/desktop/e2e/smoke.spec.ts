@@ -114,8 +114,10 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('heading', { name: /Reading lists/ }).scrollIntoViewIfNeeded();
       await page.evaluate(() => document.getElementById('main')!.scrollBy(0, 250));
       await snap(page, '09b-project-held-not-allowed', theme);
-      await page.getByText('An older permission without a style needs to be set again.').scrollIntoViewIfNeeded();
+      await page.locator('.card.slice .warning', { hasText: 'An older permission without a style needs to be set again.' }).scrollIntoViewIfNeeded();
       await snap(page, '09c-project-held-older-permission', theme);
+      await page.locator('.card.slice .warning', { hasText: 'too big to load at the start' }).scrollIntoViewIfNeeded();
+      await snap(page, '09e-project-held-too-large', theme);
       await page.getByText('A folder permission holds one style per project, so only one of these can be live.').scrollIntoViewIfNeeded();
       await page.evaluate(() => document.getElementById('main')!.scrollBy(0, 150));
       await snap(page, '09d-project-conflict-side-by-side', theme);
