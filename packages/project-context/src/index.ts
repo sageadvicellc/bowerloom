@@ -92,6 +92,13 @@ export function slotStillNames(project: string, slot: LockSlot): boolean {
 /** The local port of a project's lock slot. See `lockSlot`. */
 export const lockPort = (project: string): number => lockSlot(project).port;
 
+/**
+ * Track 11 of beta.3, item 5: how many more binds a writer tries after a holder let go between its refused bind and the
+ * banner read. With three or more commands on one project, another command can take the slot and let go again between
+ * two binds of this one, so one more bind was not enough. A slot that still refuses every read after these binds is a
+ * collision: a holder that lets go does not take the port back each time.
+ */
+export const LOCK_REBINDS = 3;
 /** How long a refused writer waits for the slot holder's banner. Only a writer that could not bind ever waits. */
 export const LOCK_BANNER_TIMEOUT_MS = 1000;
 /**
@@ -106,24 +113,44 @@ export function lockServer(slot: LockSlot): Server {
  * closes within the timeout. 'gone' when the connection is refused before any byte: nobody listens any more, so the
  * holder let go. Anything else, including silence or extra bytes, is 'other'.
  * It reads at most one banner length plus one byte and never writes.
+ * Track 11 of beta.3, item 5: `silentRetries` probes again after a silent answer. A process that probes its own slot
+ * passes 1: its own busy event loop can run the probe's timer before the read, and then the probe is silent.
  */
-export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS): Promise<'this' | 'other' | 'gone'> {
-  const holder = await probeLockHolder(slot, timeoutMs);
+export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS, silentRetries = 0): Promise<'this' | 'other' | 'gone'> {
+  let holder = await probeLockHolder(slot, timeoutMs);
+  for (let retry = 0; holder === 'silent' && retry < silentRetries; retry++) holder = await probeLockHolder(slot, timeoutMs);
   return holder === 'silent' || holder === 'reset' ? 'other' : holder;
 }
 /**
+ * Track 11 of beta.3, item 5: a probe timer that fires more than PROBE_LATE_MS after it was due gets PROBE_GRACE_MS more,
+ * up to PROBE_GRACES times, so the probe reads what came in while its own event loop was busy. A holder that stays
+ * silent while this event loop is free is silent after the timeout, as before.
+ */
+const PROBE_LATE_MS = 100, PROBE_GRACE_MS = 100, PROBE_GRACES = 10;
+/**
  * `lockHolder` with two more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
- * 'reset' when the connection is reset before any byte. A Bowerloom holder whose event loop is busy, such as one
- * unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
+ * 'reset' when the connection is reset, or closed, before any byte. A Bowerloom holder whose event loop is busy, such
+ * as one unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
  * that squats the port can answer either way. Only `withCacheLock` waits on them, and only up to a limit.
+ * Track 11 of beta.3, item 5: a clean close with no byte is 'reset' too, not 'other'. No Bowerloom lock holder closes
+ * without its banner while it holds the slot, so a close with no byte is a holder that let go, or a listener that is
+ * not the lock. `slotRefusal` binds again, and that bind decides: a squatter keeps the port and stays a collision.
  */
 function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<'this' | 'other' | 'gone' | 'silent' | 'reset'> {
   return new Promise(resolveHolder => {
-    const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false;
+    const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false, graces = 0, due = performance.now() + timeoutMs;
     const socket = net.connect({ host: '127.0.0.1', port: slot.port });
     const finish = (verdict: 'this' | 'other' | 'gone' | 'silent' | 'reset') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
-    const settle = () => finish(Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
-    const timer = setTimeout(() => finish(size === 0 ? 'silent' : 'other'), timeoutMs);
+    const settle = () => finish(size === 0 ? 'reset' : Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
+    // Track 11 of beta.3, item 5: after a busy spell, Node runs a due timer before it reads the sockets. A timer that
+    // fires late means this process's own event loop was busy, so the banner, or the close after it, may be waiting
+    // unread: read it first.
+    const expire = (): void => {
+      const now = performance.now();
+      if (now - due > PROBE_LATE_MS && graces++ < PROBE_GRACES) { due = now + PROBE_GRACE_MS; timer = setTimeout(expire, PROBE_GRACE_MS); return; }
+      finish(size === 0 ? 'silent' : 'other');
+    };
+    let timer = setTimeout(expire, timeoutMs);
     socket.on('data', (chunk: Buffer) => { chunks.push(chunk); size += chunk.length; if (size > want.length) finish('other'); });
     socket.on('end', settle); socket.on('close', settle);
     socket.on('error', (error: NodeJS.ErrnoException) => finish(size !== 0 ? 'other' : error.code === 'ECONNREFUSED' ? 'gone' : error.code === 'ECONNRESET' ? 'reset' : 'other'));
@@ -143,13 +170,14 @@ export function reportSlotCollision(slot: LockSlot): number {
 /**
  * After EADDRINUSE: 'locked' when this project's own lock holds the slot, 'collision' for anything else. A collision
  * is reported on the diagnostics channel. Neither verdict lets the caller proceed.
- * With `mayBindAgain`, a holder that let go before the banner read ('gone', or a reset before any byte) gives 'free': the caller binds once more,
- * and that bind alone decides. Without it, 'gone' is a collision, so a caller binds again at most once.
+ * With `mayBindAgain`, a holder that let go before the banner read ('gone', or a reset or close before any byte) gives
+ * 'free': the caller binds once more, and that bind alone decides. Without it, 'gone' is a collision. A caller passes
+ * `attempt < LOCK_REBINDS`, so it binds again at most LOCK_REBINDS times.
  */
 export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise<'locked' | 'collision' | 'free'> {
   const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
   if (holder === 'this') return 'locked';
-  // A reset before any byte is a holder that exited before it read the connection: it let go, like 'gone'.
+  // A reset or close before any byte is a holder that let go before it answered, like 'gone'.
   if ((holder === 'gone' || holder === 'reset') && mayBindAgain) return 'free';
   reportSlotCollision(slot); return 'collision';
 }
@@ -176,7 +204,7 @@ function closeServer(server: Server): Promise<void> {
 
 /**
  * Holds the project lock while `work` runs. A holder that let go between the refused bind and its banner read gets one
- * more bind. The token is valid only inside `work`, and only while its path still names
+ * more bind, up to LOCK_REBINDS times. The token is valid only inside `work`, and only while its path still names
  * the folder it locked (the token's `key`): a folder replaced at that path ends it. Only EADDRINUSE means the slot is
  * taken: PROJECT_LOCKED when the holder sends this project's banner, PROJECT_LOCK_SLOT_COLLISION (naming the port) for
  * anything else. Any other listen error is PROJECT_LOCK_UNAVAILABLE. A signal that aborts while the lock
@@ -194,8 +222,8 @@ export async function withProjectLock<T>(root: string, signal: AbortSignal, work
     const outcome = await bind(server);
     if (outcome.ok) break;
     if (outcome.code !== 'EADDRINUSE') throw refuse('PROJECT_LOCK_UNAVAILABLE');
-    // A holder that let go before its banner was read gets one more bind, with a fresh listener.
-    const verdict = await slotRefusal(slot, attempt === 0);
+    // A holder that let go before its banner was read gets one more bind, with a fresh listener, up to LOCK_REBINDS.
+    const verdict = await slotRefusal(slot, attempt < LOCK_REBINDS);
     if (verdict === 'free') { server = lockServer(slot); continue; }
     throw verdict === 'locked' ? refuse('PROJECT_LOCKED') : slotCollision(slot.port);
   }

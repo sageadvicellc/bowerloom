@@ -1,7 +1,7 @@
 import { constants, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
-import { lockSlot, lockServer, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal, slotStillNames, LOCK_REBINDS } from '../../project-context/src/index.js';
 import type { LockSlot } from '../../project-context/src/index.js';
 import { compileCrew } from '../../crew/src/index.js';
 import { scaffold, TEAM_PATH, TEMPLATE_VERSION } from './scaffold.js';
@@ -58,7 +58,7 @@ async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
     if (code === undefined) break;
     // This project's own lock (its banner) stays REVISION_LOCK_UNAVAILABLE; anything else on the slot is a collision.
     // A holder that let go before its banner was read gets one more bind, with a fresh listener.
-    const verdict = code === 'EADDRINUSE' ? await slotRefusal(slot, attempt === 0) : 'locked';
+    const verdict = code === 'EADDRINUSE' ? await slotRefusal(slot, attempt < LOCK_REBINDS) : 'locked';
     if (verdict === 'free') { server = lockServer(slot); continue; }
     if (verdict === 'collision') throw Object.assign(new StartupError('REVISION_LOCK_SLOT_COLLISION'), { message: `REVISION_LOCK_SLOT_COLLISION (local port ${slot.port})`, port: slot.port });
     throw new StartupError('REVISION_LOCK_UNAVAILABLE');

@@ -14,7 +14,7 @@ import type { NotShareableCause } from '../packages/project-config/src/index.js'
 import { honestShared } from '../packages/project-config/src/refusal.js';
 import { renderRefusal, reportFailure, TOPICS } from '../apps/cli/src/human.js';
 import { NETWORK_LINE, NO_TOKEN_LINE, requestCount } from '../packages/project-sync/src/change.js';
-import { SHARED_NO_LOCK_NOTE, STALE_NOTE } from '../packages/project-sync/src/resolve.js';
+import { SHARED_NO_LOCK_NOTE, STALE_NOTE, storeItemNote } from '../packages/project-sync/src/resolve.js';
 import { offlineHold } from '../packages/project-sync/src/plan.js';
 import { credentialsLines, requestLine, TOKEN_TAIL } from '../apps/cli/src/sync.js';
 import { GITHUB_REQUEST_LIMIT, GITHUB_REQUEST_MAX, TOKEN_STALE_NOTE } from '../packages/project-sync/src/store-git.js';
@@ -251,6 +251,16 @@ test('E14. the folders/ warnings of store status, read from store.ts, are on the
 
 // Round 11 of the reviews of PR 101, item 3: a branch that starts with - is not a branch Bowerloom names, so no fix line
 // can pass it to git as an option.
+test('track 11, item 3: each form of the store item note on the page comes from storeItemNote', () => {
+  const text = page(), base = { kind: 'skill' as const, id: 'house-style', lockPin: null, hold: null };
+  const fromStore = storeItemNote({ ...base, resolvedFrom: 'store', entry: null });
+  const fromLock = storeItemNote({ ...base, resolvedFrom: 'lock', entry: null, lockPin: { hash: 'x' } as never });
+  for (const line of [fromStore, fromLock]) assert.ok(text.includes(`\n${line.trim()}\n`), line);
+  const phrase = (note: string): string => /comes from (.*); this project asks for it$/.exec(note)![1]!;
+  for (const entry of [{ source: { kind: 'npm' } }, { source: { kind: 'git' } }] as never[]) assert.ok(text.includes(`\`comes from ${phrase(storeItemNote({ ...base, resolvedFrom: 'lock', entry }))}\``), JSON.stringify(entry));
+  assert.ok(text.includes(`\`comes from ${phrase(storeItemNote({ ...base, resolvedFrom: 'store', entry: null, hold: { code: 'STORE_ITEM_MISSING', next: '' } }))}\``));
+});
+
 test('store status never prints a push line for a HEAD of refs/heads/--force', t => {
   const w = world(t, 'bowerloom-docs-examples-');
   mustApprove(w.home, ['skill', 'create', 'probe', '--global'], w.env);

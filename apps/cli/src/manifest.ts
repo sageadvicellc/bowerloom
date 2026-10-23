@@ -46,7 +46,7 @@ import type { HeldProjectLock } from '../../../packages/project-context/src/type
 import { createHash } from 'node:crypto';
 import { parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { newCommandJson, plainText, promptStopped } from './human.js';
+import { newCommandJson, plainText, promptStopped, FOLDER_FOR_ITEMS } from './human.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
 const ADD_USAGE = 'Use bowerloom skills add npm:<package>@<version>:<path> or github:<owner>/<repo>@<40-character-commit>:<path>, with optional --id <id>, --team <team>, --replace, --global, --approve <revision> and --json.';
@@ -154,7 +154,7 @@ export function renderAddReview(plan: ManifestChangePlan): string {
   const entry = (replace ? replace.to : (plan.change as { add: Entry }).add) as Pinned;
   return [
     ...(plan.storeCreate ? [STORE_CREATE_LINE] : []),
-    ...((plan as { bowerloomFolder?: string }).bowerloomFolder === 'create' ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
+    ...((plan as { bowerloomFolder?: string }).bowerloomFolder === 'create' ? [FOLDER_FOR_ITEMS] : []),
     ...(replace
       ? [`Replace the pin of skill ${entry.id} in ${plan.manifest}`, `  Old pin: ${pinWords(replace.from as Pinned)}`, `  New pin: ${pinWords(entry)}`]
       : [`Add skill ${entry.id} to ${plan.manifest}`, `  Source: ${pinWords(entry)}`]),

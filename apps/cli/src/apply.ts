@@ -16,7 +16,7 @@ import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
 import { approvalFault, parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { addDirStep, newCommandJson, plainText } from './human.js';
+import { addDirStep, newCommandJson, plainText, FOLDER_FOR_COPIES } from './human.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
@@ -205,7 +205,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = fa
     : fetching ? `Network: reads ${plan.network.hosts.join(' and ')} for ${fetching} ${fetching === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.` : 'Network: none now. Every item is on this machine.';
   const title = !claude ? 'Apply skills and prompts for' : codex ? 'Apply skills, prompts, and agents for' : 'Apply skills, prompts, agents, and context slices for';
   return [
-    ...(plan.bowerloomFolder === 'create' && plan.actionable ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
+    ...(plan.bowerloomFolder === 'create' && plan.actionable ? [FOLDER_FOR_COPIES] : []),
     `${title} ${harnessWords(plan.harnesses)}${codex && claude ? ', and context slices for Claude Code' : ''}${plan.team ? `, team ${plan.team}` : ''}`,
     ...(lines.length ? lines : [plan.config != null ? '  Nothing is selected to apply yet.' : claude ? '  Nothing in .bowerloom/skills.json, .bowerloom/prompts, .bowerloom/teams/*/agents, or .bowerloom/slices to apply yet.' : '  Nothing in .bowerloom/skills.json or .bowerloom/prompts to apply yet.']),
     ...(plan.notes ?? []),

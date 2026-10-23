@@ -40,6 +40,15 @@ const OUTRO = [
   '  bowerloom help store       Your store, ~/.bowerloom, and how a project uses it.',
 ];
 
+/**
+ * Track 11 of beta.3, item 2: the first plan line when a command creates `.bowerloom` in a project that has only
+ * `bowerloom.json`. What git ignores there depends on what the command writes ("What to commit" on the page "Where your
+ * items come from"). The create commands, `team adopt`, and `skills add` write project items, which are committed.
+ * `skills sync` and `apply` write only the records of the copies, in `.bowerloom/managed`, whose own .gitignore holds `*`.
+ */
+export const FOLDER_FOR_ITEMS = "Create .bowerloom, the folder of this project's items. Commit the files this writes there.";
+export const FOLDER_FOR_COPIES = 'Create .bowerloom for the records of the copies, in .bowerloom/managed. Its own .gitignore keeps them out of git.';
+
 /** The short help, without the release heading. */
 export function shortHelp(): string {
   return [INTRO, '', ...SECTIONS.flatMap(section => [section.title, ...section.lines.map(line => `  ${line}`), '']), ...OUTRO, ''].join('\n');
@@ -122,7 +131,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.',
     '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
     '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
-    'It changes bowerloom.json and bowerloom.lock.json only. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
+    'It changes bowerloom.json only, and bowerloom.lock.json too in a shared project. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   unuse: [

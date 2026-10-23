@@ -379,11 +379,19 @@ Bowerloom talks only to `api.github.com` here. The plan names the host, and Bowe
 
 The store must be on GitHub in this beta, in a repository whose `origin` is a `github.com` address. Other hosts refuse with `STORE_ITEM_NOT_SHAREABLE`.
 
-In a shared project, each plan names each store item that the config asks for, in this form:
+In a shared project, each plan names each store item that the config asks for, and where this run takes it from. On the machine of the store, in a normal run, the line reads:
 
 ```text
 skill house-style comes from your store; this project asks for it
 ```
+
+On a machine with no store, or in a frozen run, an item that you wrote comes from the lock and the store repository:
+
+```text
+skill house-style comes from the lock and the store repository; this project asks for it
+```
+
+A pin in the lock reads `comes from the lock and npm`, or `comes from the lock and its GitHub repository`. An item that neither the store nor the lock holds reads `comes from a store, and neither your store nor the lock holds it`.
 
 <a id="commit-list"></a>
 

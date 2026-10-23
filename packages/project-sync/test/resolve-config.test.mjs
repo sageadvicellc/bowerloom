@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { denyNetwork, npmPackage, writeManifest, localSkill } from './sync-fixture.mjs';
 import { configWorld, writeConfig, writeLock, storeItem, storePin, editStore, authoredLockItem, code } from './config-fixture.mjs';
-import { resolveProject } from '../../../dist/packages/project-sync/src/resolve.js';
+import { resolveProject, storeItemNote } from '../../../dist/packages/project-sync/src/resolve.js';
 import { readManifestState } from '../../../dist/packages/skill-manifest/src/add.js';
 import { validateEntry } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
@@ -102,6 +102,26 @@ test('4 and 5. with no store, store entries resolve from the lock (a pinned item
   assert.deepEqual(skill['missing-one'].hold, { code: 'STORE_ITEM_MISSING', next: 'Create it with bowerloom skill create missing-one --global, or run bowerloom unuse skill missing-one.' });
   assert.equal(r.lock.state, 'mismatch'); assert.equal(r.lock.code, 'LOCK_CONFIG_MISMATCH');
   assert.ok(r.notes.includes('bowerloom.lock.json and bowerloom.json list different store items: skill missing-one. Run bowerloom lock update.'), r.notes.join('\n'));
+});
+
+test('track 11, item 3: with no store, each store item note names the lock and where its bytes come from, never your store', t => {
+  const w = configWorld(t), npm = npmPackage('tanstack-db');
+  const files = [{ path: 'SKILL.md', bytes: Buffer.from('---\nname: house-style\ndescription: x\n---\nx\n') }];
+  writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }, { id: 'missing-one', source: 'store' }, { id: 'tanstack-db', source: 'store' }] });
+  writeLock(w, { skills: [authoredLockItem(w, 'skill', 'house-style', { files }), { id: 'tanstack-db', from: 'store', pin: npm.entry }] });
+  const r = resolveProject({ project: w.project(), home: w.home, frozen: false });
+  assert.equal(r.store.state, 'absent');
+  const named = r.notes.filter(n => n.includes('this project asks for it'));
+  assert.deepEqual(named, [
+    '  skill house-style comes from the lock and the store repository; this project asks for it',
+    '  skill missing-one comes from a store, and neither your store nor the lock holds it; this project asks for it',
+    '  skill tanstack-db comes from the lock and npm; this project asks for it',
+  ]);
+  // A GitHub pin in the lock, and a prompt or team the person wrote, which carry no skill entry.
+  const git = { source: { kind: 'git' } };
+  assert.equal(storeItemNote({ kind: 'skill', id: 'gh', resolvedFrom: 'lock', entry: git, lockPin: null, hold: null }), '  skill gh comes from the lock and its GitHub repository; this project asks for it');
+  assert.equal(storeItemNote({ kind: 'team', id: 'research', resolvedFrom: 'lock', entry: null, lockPin: { hash: 'a' }, hold: null }), '  team research comes from the lock and the store repository; this project asks for it');
+  assert.equal(storeItemNote({ kind: 'prompt', id: 'brief', resolvedFrom: 'store', entry: null, lockPin: null, hold: null }), '  prompt brief comes from your store; this project asks for it');
 });
 
 test('6. a frozen run never reads the store: a store that refuses has no effect, and a live store that differs does not win', async t => {

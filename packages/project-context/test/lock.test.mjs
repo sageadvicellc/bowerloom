@@ -1,4 +1,6 @@
 import test from '../../../dist/tests/support/lock-slot-retry.js';
+import nodeTest from 'node:test';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -7,7 +9,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { withProjectLock, isHeldProjectLock, lockPort } from '../../../dist/packages/project-context/src/index.js';
+import { withProjectLock, isHeldProjectLock, lockPort, lockSlot, lockHolder, LOCK_REBINDS, LOCK_BANNER_TIMEOUT_MS } from '../../../dist/packages/project-context/src/index.js';
 import { applyObservedManagedSkill } from '../../../dist/packages/managed-skills/src/transaction.js';
 import { applyManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
 import { applyStartupRevision } from '../../../dist/packages/startup/src/index.js';
@@ -226,14 +228,90 @@ test('a holder that lets go between the refused bind and the banner read is not 
   }
 });
 
-test('the bind is tried once more only once: a second refused banner read is a collision', async t => {
+// Track 11 of beta.3, item 5: when three or more commands overlap, another command can take the slot and let go between
+// two binds of this one. Each let-go gets one more bind, up to LOCK_REBINDS; only a slot that keeps refusing the banner
+// read after that is a collision. A real squatter answers on the port, so it stays a collision at once (see above).
+test('a holder that lets go again after a rebind is not a collision: each let-go gets one more bind (track 11, item 5)', async t => {
+  for (const user of lockUsers) {
+    const dir = await freshProject(t), port = formula(dir); let squatter = net.createServer(); await listen(squatter, port);
+    let connects = 0, ran = false;
+    // Two let-gos in a row: after the first one another command takes the slot, then lets go too.
+    t.mock.method(net, 'connect', () => { connects++; const first = connects === 1; return refusedConnect(done => squatter.close(() => { if (!first) return done(); squatter = net.createServer(); listen(squatter, port).then(done); })); });
+    let outcome; try { outcome = await user.run(dir, () => { ran = true; }); } catch (error) { outcome = error; }
+    t.mock.restoreAll();
+    assert.equal(connects, 2, user.name);
+    assert.doesNotMatch(String(outcome?.code ?? ''), /LOCK|COLLISION/, `${user.name}: ${outcome?.code}`);
+    if (user.name === 'withProjectLock') { assert.equal(outcome, 'ok'); assert.equal(ran, true); }
+  }
+});
+
+test('a slot that refuses the banner read after every bind is a collision once LOCK_REBINDS binds are spent', async t => {
   const dir = await freshProject(t), port = formula(dir); let squatter = net.createServer(); await listen(squatter, port);
   t.after(() => new Promise(resolve => squatter.close(() => resolve())));
   let connects = 0;
-  t.mock.method(net, 'connect', () => { connects++; const first = connects === 1; return refusedConnect(done => { if (!first) return done(); squatter.close(() => { squatter = net.createServer(); listen(squatter, port).then(done); }); }); });
+  // Something takes the port back before each bind, and refuses each read: no holder that let go acts so.
+  t.mock.method(net, 'connect', () => { connects++; return refusedConnect(done => squatter.close(() => { squatter = net.createServer(); listen(squatter, port).then(done); })); });
   let ran = false;
   await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
-  t.mock.restoreAll(); assert.equal(connects, 2); assert.equal(ran, false);
+  t.mock.restoreAll(); assert.equal(connects, LOCK_REBINDS + 1); assert.equal(ran, false);
+  assert.ok(LOCK_REBINDS >= 2 && LOCK_REBINDS <= 5);
+});
+
+test('a holder that closes the banner connection with no byte and lets go is not a collision (track 11, item 5)', async t => {
+  for (const user of lockUsers) {
+    const dir = await freshProject(t), port = formula(dir);
+    // A listener on the slot that ends each connection with no byte and stops listening: a holder that let go.
+    const holder = net.createServer(socket => { socket.on('error', () => {}); socket.end(); holder.close(); }); await listen(holder, port);
+    let outcome, ran = false; try { outcome = await user.run(dir, () => { ran = true; }); } catch (error) { outcome = error; }
+    assert.doesNotMatch(String(outcome?.code ?? ''), /LOCK|COLLISION/, `${user.name}: ${outcome?.code}`);
+    if (user.name === 'withProjectLock') { assert.equal(outcome, 'ok'); assert.equal(ran, true); }
+  }
+});
+
+// Track 11 of beta.3, item 5: after a busy spell of this process's own event loop, Node runs a due timer before it
+// reads the sockets. So a probe's timer could fire first and call a holder that had already answered silent. A timer
+// that fires late gives the probe a short grace to read what came in. Plain node:test: a collision is a failure here.
+nodeTest('a probe whose own event loop was busy past its timeout reads the banner before it decides (track 11, item 5)', async t => {
+  const dir = await freshProject(t);
+  await withProjectLock(dir, new AbortController().signal, async () => {
+    const verdict = lockHolder(lockSlot(dir));
+    const end = performance.now() + LOCK_BANNER_TIMEOUT_MS + 300; while (performance.now() < end) { /* a busy event loop */ }
+    assert.equal(await verdict, 'this');
+  });
+});
+nodeTest('a probe that read the banner but not yet the close, while its event loop was busy, waits for the close (track 11, item 5)', async t => {
+  const dir = await freshProject(t), port = formula(dir), banner = lockSlot(dir).banner;
+  // A holder in another process sends the banner at once and closes 300 ms later.
+  const code = `const net = require('node:net'); const s = net.createServer(c => { c.on('error', () => {}); c.write(${JSON.stringify(banner)}); setTimeout(() => c.end(), 300); });
+s.listen({ host: '127.0.0.1', port: ${port}, exclusive: true }, () => process.stdout.write('ready\\n')); setTimeout(() => process.exit(0), 5000);`;
+  const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'pipe', 'inherit'] }); t.after(() => child.kill());
+  await new Promise((resolve, reject) => { child.stdout.on('data', d => { if (String(d).includes('ready')) resolve(); }); child.once('exit', c => reject(new Error(`exited ${c}`))); });
+  // The probe reads the banner, then this event loop is busy past the probe's 200 ms, and the close arrives meanwhile.
+  const verdict = lockHolder(lockSlot(dir), 200);
+  // The busy spell runs in the check phase, so the next turn of the loop runs the due timer before it reads the socket.
+  await new Promise(resolve => setTimeout(() => setImmediate(() => { const end = performance.now() + 600; while (performance.now() < end) { /* busy */ } resolve(); }), 60));
+  assert.equal(await verdict, 'this');
+});
+nodeTest('a holder that never answers is still silent after the timeout when the event loop is free', async t => {
+  const dir = await freshProject(t), port = formula(dir), sockets = new Set();
+  const mute = net.createServer(socket => { sockets.add(socket); socket.on('error', () => {}); }); await listen(mute, port);
+  t.after(() => { for (const s of sockets) s.destroy(); return close(mute); });
+  const started = performance.now();
+  assert.equal(await lockHolder(lockSlot(dir)), 'other');
+  const took = performance.now() - started; assert.ok(took >= LOCK_BANNER_TIMEOUT_MS - 50 && took < LOCK_BANNER_TIMEOUT_MS + 900, String(took));
+});
+
+const RACER = new URL('./support/lock-racer.mjs', import.meta.url), RACE_INDEX = new URL('../../../dist/packages/project-context/src/index.js', import.meta.url).href;
+nodeTest('a race: four processes take one project lock again and again, and each gets the lock or PROJECT_LOCKED, never a collision (track 11, item 5)', async t => {
+  const dir = await freshProject(t), codes = {};
+  const racer = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [fileURLToPath(RACER), RACE_INDEX, dir, '150'], { stdio: ['ignore', 'pipe', 'inherit'] });
+    let out = ''; child.stdout.on('data', d => { out += d; }); child.on('error', reject);
+    child.on('close', status => { if (status !== 0) reject(new Error(`racer exited ${status}`)); else resolve(out); });
+  });
+  for (const out of await Promise.all([racer(), racer(), racer(), racer()])) for (const c of out.split('\n').filter(Boolean)) codes[c] = (codes[c] ?? 0) + 1;
+  assert.deepEqual(Object.keys(codes).filter(c => c !== 'ok' && c !== 'PROJECT_LOCKED'), [], JSON.stringify(codes));
+  assert.equal(Object.values(codes).reduce((a, b) => a + b, 0), 600); assert.ok(codes.ok > 0, JSON.stringify(codes));
 });
 
 const INDEX = new URL('../../../dist/packages/project-context/src/index.js', import.meta.url).href;

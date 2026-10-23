@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
 import { shortHelp, TOPICS, reportFailure } from './human.js';
 import { namesYesFlag } from './confirm.js';
+import { quietBrokenPipe } from './broken-pipe.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
 import type { TestExecutor } from '../../../packages/controlled-tests/src/index.js';
 
@@ -375,7 +376,11 @@ async function main(args: string[]): Promise<void> {
   process.stdout.write(`${canonicalJson(result)}\n`);
 }
 
-main(process.argv.slice(2)).catch((error: unknown) => {
+// Track 11 of beta.3, item 1: a reader that closes early ends the output, not the command. The hook form of
+// `context guard` keeps its own handling, unchanged.
+const argv = process.argv.slice(2);
+if (!(argv[0] === 'context' && argv[1] === 'guard' && !argv.includes('--explain'))) { quietBrokenPipe(process.stdout); quietBrokenPipe(process.stderr); }
+main(argv).catch((error: unknown) => {
   // A terminal gets plain words. Anything else gets the JSON envelope agents parse.
   const failure = reportFailure(error, process.stderr.isTTY === true);
   process.stderr.write(failure.text);

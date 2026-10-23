@@ -21,7 +21,7 @@ test('rule 9: the plan in a config-only folder creates .bowerloom and lists both
   const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
   const r = run(dir, ['skills', 'add', SPEC], npm(w), NETWORK);
   assert.equal(r.status, 3, r.stderr + r.stdout);
-  assert.match(r.stdout, /^Create \.bowerloom \(records of the copies\)\. Its contents are git-ignored\.$/m);
+  assert.match(r.stdout, /^Create \.bowerloom, the folder of this project's items\. Commit the files this writes there\.$/m);
   assert.match(r.stdout, new RegExp(`^bowerloom\\.json adds: skill ${ID} \\(project\\)$`, 'm'));
   assert.equal(existsSync(join(dir, '.bowerloom')), false);
   assert.deepEqual(config(dir).skills, []);

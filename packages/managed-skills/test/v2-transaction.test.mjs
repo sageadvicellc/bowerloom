@@ -1,4 +1,5 @@
 import test from '../../../dist/tests/support/lock-slot-retry.js';
+import nodeTest from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -306,6 +307,28 @@ test('held lock: a banner read that finds nobody is LOCK_NOT_HELD, not a collisi
   await hold(f.projectDir, async held => {
     t.mock.method(net, 'connect', () => { const socket = new net.Socket(); process.nextTick(() => socket.emit('error', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }))); return socket; });
     await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_LOCK_NOT_HELD')); restore(t);
+  });
+  assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
+});
+
+// Track 11 of beta.3, item 5: the held-lock self-probe reads this process's own banner. A busy event loop can run the
+// probe's 1-second timer before the read, so the probe goes silent. It is tried once more; only a second silence refuses.
+// A socket that never connects stands in for the busy loop. Plain node:test, so a collision is reported, not retried.
+const silentOnce = (t, silences) => { const original = net.connect; let calls = 0; t.mock.method(net, 'connect', (...args) => (++calls <= silences ? new net.Socket() : original.apply(net, args))); return () => calls; };
+nodeTest('held lock: a self-probe that goes silent once is tried once more, and the apply goes on (track 11, item 5)', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req);
+  await hold(f.projectDir, async held => {
+    const calls = silentOnce(t, 1);
+    const result = await applyManagedItem(held, req, plan.revision); restore(t);
+    assert.equal(result.state, 'committed'); assert.equal(calls(), 2);
+  });
+});
+nodeTest('held lock: a self-probe that stays silent twice is a collision, with no write', async t => {
+  const f = project(t); localSkill(f, 'house-style'); const req = request(f, { id: 'house-style', source: local('house-style') }), plan = await planManagedItem(req), before = inventory(f.projectDir);
+  await hold(f.projectDir, async held => {
+    const calls = silentOnce(t, 2);
+    await assert.rejects(applyManagedItem(held, req, plan.revision), code('MANAGED_SKILL_LOCK_SLOT_COLLISION')); restore(t);
+    assert.equal(calls(), 2);
   });
   assert.deepEqual(fs.readdirSync(req.stateDir), []); assert.deepEqual(inventory(f.projectDir), before);
 });

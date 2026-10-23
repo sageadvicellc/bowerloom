@@ -16,7 +16,8 @@ test('1 to 4. skill create --global, then use shows the plan and exits 3, applie
   assert.match(text, /^Create bowerloom\.json and list 0 items this project defines now, with the source project\.$/m);
   assert.match(text, /^Use skill house-style from the store\n {2}Source: store skill \(written in ~\/\.bowerloom\/skills\/house-style\)\n {2}Teams: every team$/m);
   assert.match(text, /^bowerloom\.json adds: skill house-style \(store\)$/m);
-  assert.match(text, /^This changes bowerloom\.json and bowerloom\.lock\.json only\. Then run bowerloom skills sync and bowerloom apply\.$/m);
+  // Track 11 of beta.3, item 4: this project is not shared, so the plan writes no lock and names bowerloom.json only.
+  assert.match(text, /^This changes bowerloom\.json only\. Then run bowerloom skills sync and bowerloom apply\.$/m);
   void planned;
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')).skills, [{ id: 'house-style', source: 'store' }]);
   // 2: ls shows the store item.

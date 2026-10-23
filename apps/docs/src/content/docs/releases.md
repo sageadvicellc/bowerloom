@@ -18,6 +18,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 **New commands**
 
 - `bowerloom use` and `bowerloom unuse` pick and drop items, and change only `bowerloom.json` and `bowerloom.lock.json`.
+- If a plan of `use` or `unuse` changes `bowerloom.lock.json`, it names that file. Otherwise it names only `bowerloom.json`.
 - `bowerloom lock verify` checks the lock with no network. `bowerloom lock update` rewrites it from your store.
 - `bowerloom team adopt` copies a store team into the project, and the project owns the copy.
 - `bowerloom store migrate` copies skills, prompts, and teams from a project to your store and lists them in `bowerloom.json`. It deletes nothing. `bowerloom receipt clean` removes the records of items whose files you deleted.
@@ -27,6 +28,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 - `bowerloom.json` lists what a project installs, from the project or from your store. A project without it installs everything it defines, as before.
 - A project with only `bowerloom.json` works with every command. Its first install makes `.bowerloom`, whose engine files git ignores.
+- In a project with only `bowerloom.json`, the plan line about a new `.bowerloom` now says what git ignores there. The create commands, `team adopt`, and `skills add` write project items, and the line says to commit them. `skills sync` and `apply` write only the records of the copies, in `.bowerloom/managed`, which its own `.gitignore` keeps out of git.
 - A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`.
 - `--global` on `team create`, `skill create`, `prompt create`, `skills add`, `skills check`, and `ls` works on your store, `~/.bowerloom`. `ls` shows where each item comes from. `ls --json` has a new format, `bowerloom/ls/v1beta2`. The store holds up to 256 skills and a project up to 128.
 - The project folder, `bowerloom.json`, and `bowerloom.lock.json` must be yours and closed to group and other writes. Otherwise Bowerloom refuses with `PROJECT_FOLDER_UNSAFE`, `CONFIG_UNSAFE`, or `LOCK_UNSAFE`. A clone made under `umask 002` refuses until you run `chmod -R go-w .`.
@@ -34,6 +36,8 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom status` prints a `Config:` line, one of seven `Lock:` states, and the notes for a stale lock and for a shared project with no lock.
 - `bowerloom up` reads `bowerloom.json`. Only a team that the project or your store defines, and that the file does not list, refuses `TEAM_NOT_SELECTED`. `up --team <unknown>` goes to the team create step. On a clone, `up` works for a listed team.
 - The store keeps a `.gitignore` that leaves out `folders/` and other files of this machine, so `git add -A` in a store you push does not publish registered-folder records or grants. Each machine runs `bowerloom folder add` itself. Bowerloom adds the lines on every store write and keeps every line you added. `bowerloom store status` warns when the lines are missing, when git already tracks something under `folders/`, and when it cannot tell, for example with a split index.
+- A command no longer crashes with `EPIPE` on a reader that closes early, as in `bowerloom use skill <id> | head -1`. It finishes its work and exits with its own status.
+- Commands that overlap on one project no longer refuse `PROJECT_LOCK_SLOT_COLLISION` or `MANAGED_SKILL_LOCK_SLOT_COLLISION` by mistake. Each one gets the lock, or it refuses `PROJECT_LOCKED`. The mistake came after another command let go of the lock, or while the command itself was busy.
 
 **Sharing**
 
@@ -45,6 +49,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `use`, `lock update`, and `store migrate` take `--commit <sha>` to record a chosen pushed commit of the store repository.
 - Bowerloom holds some store skills and prompts fetched from the lock with `ITEM_REVIEW_REQUIRED`, until a plan shows them. Those are the items that set `allowed-tools`, register hooks, or run shell lines.
 - Plain `apply` never fetches. It holds a lock item that this machine lacks with `SKILLS_OFFLINE`. `skills sync` and `up` fetch lock items into the store cache.
+- On a machine with no store, the plans of a shared project say that a store item comes from the lock and the store repository. A frozen run says so too. Before, they said that it came from your store.
 - `bowerloom team adopt` also takes a store team that `bowerloom.json` does not list yet. One plan copies the team and lists it as a project item, so it works in a shared project whose store is not pushed. Store skills and prompts tagged to the team stay store items, and the plan names them.
 - `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. After a 404 on the commit, one extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
 - A store item that holds a file a lock cannot record, such as `.DS_Store`, refuses `STORE_ITEM_NOT_SHAREABLE` before any network call. Its `Next:` line names the file or folder and its fix. Each other cause of the code has a `Next:` line of its own too.
