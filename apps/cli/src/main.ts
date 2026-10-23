@@ -4,12 +4,9 @@ import { homedir } from 'node:os';
 import { readInstalledRelease } from './release.js';
 import { shortHelp, TOPICS, reportFailure } from './human.js';
 import { namesYesFlag } from './confirm.js';
+import { failClosedOnBrokenPipe, quietBrokenPipe } from './broken-pipe.js';
 import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
-import { localInstallation, privateJson, openLocalSession } from './controller.js';
-import { executeSession, parseSessionCommand } from './session.js';
 import type { TestExecutor } from '../../../packages/controlled-tests/src/index.js';
-import { compileCrew } from '../../../packages/crew/src/index.js';
-import { compileAuthoring } from '../../../packages/authoring/src/index.js';
 
 const HELP = `Usage:
   bowerloom skills source plan --request <absolute-json> --state <private-root> --operation <id> --min-free-bytes <integer>
@@ -120,16 +117,19 @@ function topic(name: string | undefined): string | null { return name !== undefi
 const SKILLS_WORDS = ['add', 'check', 'sync', 'recover', 'migrate'];
 /** Review finding 18: `help sync`, `help skills <word>` and `help <noun> create` name the topic that covers them. */
 function helpText(words: readonly string[]): string | null {
-  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : topic(words[0]);
+  if (words.length === 1) return words[0] === 'advanced' ? HELP : words[0] === 'init' ? INIT_HELP : words[0] === 'sync' ? TOPICS.skills! : words[0] === 'slice' || words[0] === 'folder' ? TOPICS.context! : topic(words[0]);
   if (words.length === 2 && words[0] === 'skills' && SKILLS_WORDS.includes(words[1]!)) return TOPICS.skills!;
   if (words.length === 2 && ['team', 'skill', 'prompt'].includes(words[0]!) && words[1] === 'create') return TOPICS[words[0]!]!;
+  if (words.length === 2 && words[0] === 'team' && words[1] === 'adopt') return TOPICS.team!;
+  if (words.length === 2 && words[0] === 'lock' && (words[1] === 'verify' || words[1] === 'update')) return TOPICS.lock!;
+  if (words.length === 2 && words[0] === 'slice' && words[1] === 'create') return TOPICS.context!;
   return null;
 }
 // The flags of the session commands (up --demo, status --installation). With one of them, the session parser keeps
 // its own usage words, as at cc117ac.
 const SESSION_FLAGS = ['--installation', '--registry', '--demo', '--pro', '--5x', '--20x', '--candidate', '--action'];
 // Every first word main() handles. Any other first word is a typo: review finding 6.
-const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'status', 'init', 'team', 'skill', 'prompt', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
+const COMMANDS = new Set(['help', '--help', '-h', '--version', '-V', 'ls', 'cache', 'store', 'receipt', 'use', 'unuse', 'lock', 'status', 'init', 'team', 'skill', 'prompt', 'slice', 'folder', 'context', 'skills', 'apply', 'up', 'routine', 'mcp', 'link', 'revise', 'harness', 'control', 'destruct', 'backend', 'portable', 'recipe', 'authoring', 'review', 'approve', 'cancel', 'validate', 'plan']);
 
 async function main(args: string[]): Promise<void> {
   // There is no --yes: approval always names the plan it approves (usage error, exit 2). `-y` as a flag's value is a value.
@@ -143,16 +143,78 @@ async function main(args: string[]): Promise<void> {
   }
   if (args.length === 2 && (args[1] === '--help' || args[1] === '-h') && topic(args[0]) !== null) { process.stdout.write(`${releaseHeading()}\n${topic(args[0])}`); return; }
   if (args[0] === 'ls') { const { runLsCommand } = await import('./ls.js'); process.stdout.write(runLsCommand(args, process.cwd(), homedir())); return; }
+  // Spec 09: cache list and cache prune.
+  if (args[0] === 'cache') {
+    if (args.length === 3 && (args[1] === 'list' || args[1] === 'prune') && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.cache!}`); return; }
+    const { runCacheCommand } = await import('./cache.js');
+    process.exitCode = await runCacheCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
+    return;
+  }
+  if (args[0] === 'store') {
+    // Spec 08: store migrate --help prints the store topic.
+    if (args.length === 3 && args[1] === 'migrate' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.store!}`); return; }
+    const { runStoreCommand } = await import('./store.js');
+    process.exitCode = await runStoreCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
+    return;
+  }
+  // Spec 08: receipt clean.
+  if (args[0] === 'receipt') {
+    if (args.length === 3 && args[1] === 'clean' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.receipt!}`); return; }
+    const { runReceiptCommand } = await import('./receipt.js');
+    process.exitCode = await runReceiptCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
+    return;
+  }
   // Review finding 6: status without a session flag is the project status, which names its own usage.
   if (args[0] === 'status' && !SESSION_FLAGS.some(flag => args.includes(flag))) {
     const { runProjectStatus } = await import('./project-status.js'); process.stdout.write(await runProjectStatus(args, process.cwd(), homedir())); return;
   }
   if (args.length === 1 && (args[0] === '--version' || args[0] === '-V')) { process.stdout.write(`Bowerloom ${installedVersion()}\n`); return; }
   if (args.length === 2 && args[0] === 'init' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${INIT_HELP}`); return; }
-  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt') {
-    if (args.length === 3 && args[1] === 'create' && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+  if (args[0] === 'context' && args[1] === 'guard' && !args.includes('--explain')) {
+    // The hook form: it reads stdin, prints a deny line or nothing, and sets its own exit code. It never goes through reportFailure.
+    try {
+      const { runContextCommand } = await import('./context.js');
+      process.exitCode = await runContextCommand(args, process.cwd(), homedir(), text => { process.stdout.write(text); });
+    } catch {
+      try { process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Bowerloom guard: the guard could not run, so the call is blocked. Run bowerloom apply, or reinstall Bowerloom.' } })}\n`); process.exitCode = 0; } catch { process.exitCode = 2; }
+    }
+    return;
+  }
+  if (args[0] === 'context') {
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+    const { runContextCommand } = await import('./context.js');
+    process.exitCode = await runContextCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'slice' && args[1] === 'create' && args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+  if (args.length === 2 && args[0] === 'slice' && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+  if (args[0] === 'folder') {
+    if (args.length === 2 && (args[1] === '--help' || args[1] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.context!}`); return; }
+    const { runFolderCommand } = await import('./folder.js');
+    process.exitCode = await runFolderCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  if (args[0] === 'team' || args[0] === 'skill' || args[0] === 'prompt' || args[0] === 'slice') {
+    if (args.length === 3 && (args[1] === 'create' || (args[0] === 'team' && args[1] === 'adopt')) && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS[args[0]]!}`); return; }
+    if (args[0] === 'team' && args[1] === 'adopt') {
+      const { runAdoptCommand } = await import('./adopt.js');
+      process.exitCode = await runAdoptCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+      return;
+    }
     const { runCreateCommand } = await import('./create.js');
     process.exitCode = await runCreateCommand(args, process.cwd(), homedir(), text => process.stdout.write(text));
+    return;
+  }
+  // Spec 06: use and unuse change bowerloom.json and bowerloom.lock.json; lock verify and lock update read and write the lock.
+  if (args[0] === 'use' || args[0] === 'unuse') {
+    const { runUseCommand } = await import('./use.js');
+    process.exitCode = await runUseCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
+    return;
+  }
+  if (args[0] === 'lock') {
+    if (args.length === 3 && (args[2] === '--help' || args[2] === '-h')) { process.stdout.write(`${releaseHeading()}\n${TOPICS.lock!}`); return; }
+    const { runLockCommand } = await import('./lock.js');
+    process.exitCode = await runLockCommand(args, process.cwd(), homedir(), text => process.stdout.write(text), undefined, process.env);
     return;
   }
   if (args[0] === 'skills' && (args[1] === 'add' || args[1] === 'check')) {
@@ -253,6 +315,7 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (args[0] === 'authoring') {
+    const { compileAuthoring } = await import('../../../packages/authoring/src/index.js');
     const [, command, file, flag, scenario, rootFlag, root] = args;
     if (!['validate','export'].includes(command ?? '') || !file || file.startsWith('-') || flag !== '--scenario'
       || !scenario || scenario.startsWith('-') || (args.length !== 5 && (args.length !== 7 || rootFlag !== '--root' || !root || root.startsWith('-')))) {
@@ -266,6 +329,8 @@ async function main(args: string[]): Promise<void> {
     return;
   }
   if (['up','status','review','approve','cancel'].includes(args[0] ?? '')) {
+    const { localInstallation, privateJson, openLocalSession } = await import('./controller.js');
+    const { executeSession, parseSessionCommand } = await import('./session.js');
     const command=parseSessionCommand(args),config=localInstallation(await privateJson(command.installation));
     const readOnly=command.command==='status'||command.command==='review';
     const signal=new AbortController();const abort=()=>signal.abort();
@@ -298,6 +363,7 @@ async function main(args: string[]): Promise<void> {
     || (args.length !== 2 && (args.length !== 4 || flag !== '--root' || !root || root.startsWith('-')))) {
     throw new DefinitionError('USAGE', 'Use bowerloom validate <crew.yaml> or bowerloom plan <crew.yaml>, with optional --root <directory>.');
   }
+  const { compileCrew } = await import('../../../packages/crew/src/index.js');
   const plan = await compileCrew(file, root ? { root } : {});
   const result = command === 'plan' ? plan : {
     valid: true,
@@ -310,7 +376,12 @@ async function main(args: string[]): Promise<void> {
   process.stdout.write(`${canonicalJson(result)}\n`);
 }
 
-main(process.argv.slice(2)).catch((error: unknown) => {
+// Track 11 of beta.3, item 1: a reader that closes early ends the output, not the command. The hook form of
+// `context guard` fails closed instead (follow-up item 2): it exits 2, which blocks the call.
+const argv = process.argv.slice(2);
+if (argv[0] === 'context' && argv[1] === 'guard' && !argv.includes('--explain')) failClosedOnBrokenPipe();
+else { quietBrokenPipe(process.stdout); quietBrokenPipe(process.stderr); }
+main(argv).catch((error: unknown) => {
   // A terminal gets plain words. Anything else gets the JSON envelope agents parse.
   const failure = reportFailure(error, process.stderr.isTTY === true);
   process.stderr.write(failure.text);

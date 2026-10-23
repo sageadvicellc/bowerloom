@@ -10,24 +10,38 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { canonicalJson } from '../../contracts/src/index.js';
 import { isHeldProjectLock } from '../../project-context/src/index.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
-import { manifestRefusal, refuse, requireManifest } from './refusal.js';
-import { HARNESSES, MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
-import type { Entry, Manifest } from './schema.js';
+import { manifestRefusal, refuse, requireLimit, requireManifest } from './refusal.js';
+import { HARNESSES, MANIFEST_FILE, MANIFEST_FORMAT, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS, isEntryId, isId, parseManifest, serializeManifest, validateEntry, validateManifest } from './schema.js';
+import type { Entry, Manifest, ManifestLimits } from './schema.js';
 
-export const MANIFEST_CHANGE_FORMAT = 'bowerloom/skills-manifest-change/v1beta1' as const;
+export const MANIFEST_CHANGE_FORMAT = 'bowerloom/skills-manifest-change/v1beta2' as const;
 export const MANIFEST_PATH = `.bowerloom/${MANIFEST_FILE}` as const;
+/** What the plan names for the store manifest. The home folder is never written into a plan. */
+export const STORE_MANIFEST_PATH = `~/.bowerloom/${MANIFEST_FILE}` as const;
+/** Where a manifest lives: `folder` holds skills.json, `lockDir` is the folder whose project lock guards it. */
+export interface ManifestTarget { folder: string; lockDir: string; scope: 'project' | 'store'; limits: ManifestLimits }
+export const projectTarget = (projectDir: string): ManifestTarget => ({ folder: join(projectDir, '.bowerloom'), lockDir: projectDir, scope: 'project', limits: MANIFEST_LIMITS });
+export const storeTarget = (storeDir: string): ManifestTarget => ({ folder: storeDir, lockDir: storeDir, scope: 'store', limits: STORE_MANIFEST_LIMITS });
+const targetOf = (value: string | ManifestTarget): ManifestTarget => typeof value === 'string' ? projectTarget(value) : value;
 const sha256 = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
 
 export interface ManifestChangePlan {
   format: typeof MANIFEST_CHANGE_FORMAT;
   project: string;
-  manifest: typeof MANIFEST_PATH;
-  /** The device and inode of `.bowerloom`, as decimal strings. */
-  bowerloom: { device: string; inode: string };
+  /** `.bowerloom/skills.json` for a project, `~/.bowerloom/skills.json` for the store. */
+  manifest: string;
+  scope: 'project' | 'store';
+  /** True when the store does not exist yet and this change makes it. Always false for a project. Set by the caller, never read from the disk. */
+  storeCreate: boolean;
+  /** The device and inode of `.bowerloom`, as decimal strings. Null for the store: `verifyStorePins` binds its identity. */
+  bowerloom: { device: string; inode: string } | null;
   before: { sha256: string; bytes: number } | null;
   after: { sha256: string; bytes: number };
-  /** An add, or a replace of one pinned entry's pin: `from` is the entry as it stands, `to` the entry it becomes. */
-  change: { add: Entry } | { replace: { from: Entry; to: Entry } };
+  /**
+   * An add, a replace of one pinned entry's pin (`from` is the entry as it stands, `to` the entry it becomes), or the
+   * removal of one local entry (spec 08, 4.5): `remove` is the entry as it stands.
+   */
+  change: { add: Entry } | { replace: { from: Entry; to: Entry } } | { remove: Entry };
   /** The exact new bytes of skills.json. */
   text: string;
   /**
@@ -38,19 +52,22 @@ export interface ManifestChangePlan {
   writesAuthorized: false; executionAuthorized: false;
   revision: string;
 }
-/** What planManifestChange takes: one entry to add, or one pinned entry whose id already exists, with its new pin. */
-export type ManifestChange = { add: Entry } | { replace: Entry };
-export type ManifestChangeReceipt = { manifest: typeof MANIFEST_PATH; sha256: string; bytes: number } & ({ added: string } | { replaced: string });
+/**
+ * What planManifestChange takes: one entry to add, one pinned entry whose id already exists with its new pin, or the id of
+ * one local entry to remove (spec 08, 4.5).
+ */
+export type ManifestChange = { add: Entry } | { replace: Entry } | { remove: string };
+export type ManifestChangeReceipt = { manifest: string; sha256: string; bytes: number } & ({ added: string } | { replaced: string } | { removed: string });
 
 /** Adds a local skill entry to a manifest, or starts one for both harnesses. Pure: the input is not changed. */
-export function addLocalEntry(m: Manifest | null, id: string, teams: string[]): Manifest {
-  requireManifest(isEntryId(id), 'MANIFEST_INVALID');
+export function addLocalEntry(m: Manifest | null, id: string, teams: string[], limits: ManifestLimits): Manifest {
+  requireManifest(isEntryId(id) && !id.startsWith('slice-'), 'MANIFEST_INVALID');
   requireManifest(Array.isArray(teams) && teams.every(isId) && new Set(teams).size === teams.length, 'MANIFEST_INVALID');
-  const base = m === null ? { format: MANIFEST_FORMAT, harnesses: [...HARNESSES], skills: [] as Entry[] } : validateManifest(JSON.parse(serializeManifest(m)));
+  const base = m === null ? { format: MANIFEST_FORMAT, harnesses: [...HARNESSES], skills: [] as Entry[] } : validateManifest(JSON.parse(serializeManifest(m, limits)), limits);
   requireManifest(!base.skills.some(s => s.id === id), 'MANIFEST_DUPLICATE_ID');
-  requireManifest(base.skills.length < MANIFEST_LIMITS.skills, 'MANIFEST_LIMIT');
+  requireLimit(base.skills.length < limits.skills, limits);
   const entry: Entry = { id, ...(teams.length ? { teams: [...teams] } : {}), source: { kind: 'local', path: `skills/${id}` } };
-  return validateManifest({ format: base.format, harnesses: [...base.harnesses], skills: [...base.skills, entry] });
+  return validateManifest({ format: base.format, harnesses: [...base.harnesses], skills: [...base.skills, entry] }, limits);
 }
 
 // The temporary name applyManifestChange writes through. A kill between its link and its unlink leaves a second link.
@@ -66,30 +83,33 @@ function leftoverLinkRefusal(): Error {
   Object.defineProperty(error, 'hint', { value: 'skills-json-temp-link', enumerable: false });
   return error;
 }
-interface ManifestState { bowerloom: { device: string; inode: string }; file: { bytes: Buffer; sha256: string } | null }
+interface ManifestState { bowerloom: { device: string; inode: string } | null; file: { bytes: Buffer; sha256: string } | null }
 const owned = (s: fs.Stats) => s.uid === process.getuid?.() && (s.mode & 0o022) === 0;
 /**
  * Reads `.bowerloom/skills.json` with the full guards: `.bowerloom` is a real folder owned by this user with no write
  * for others; the file is a regular file with one link, owned by this user, with no write for others, at most 1 MiB,
  * opened without following a link and checked to be the file that was inspected.
  */
-export function readManifestState(project: string): ManifestState {
-  requireManifest(typeof project === 'string' && isAbsolute(project) && resolve(project) === project && !project.includes('\0'), 'USAGE');
-  const folder = join(project, '.bowerloom'), file = join(folder, MANIFEST_FILE);
-  let dir: fs.Stats; try { dir = fs.lstatSync(folder); } catch { return refuse('MANIFEST_UNSAFE'); }
+export function readManifestState(location: string | ManifestTarget, options: { allowAbsent?: boolean } = {}): ManifestState {
+  const target = targetOf(location), limits = target.limits;
+  requireManifest(typeof target.lockDir === 'string' && isAbsolute(target.lockDir) && resolve(target.lockDir) === target.lockDir && !target.lockDir.includes('\0'), 'USAGE');
+  const folder = target.folder, file = join(folder, MANIFEST_FILE);
+  let dir: fs.Stats;
+  try { dir = fs.lstatSync(folder); }
+  catch (error) { if (options.allowAbsent === true && (error as NodeJS.ErrnoException).code === 'ENOENT') return { bowerloom: null, file: null }; return refuse('MANIFEST_UNSAFE'); }
   requireManifest(dir.isDirectory() && !dir.isSymbolicLink() && owned(dir), 'MANIFEST_UNSAFE');
   const bowerloom = { device: String(dir.dev), inode: String(dir.ino) };
   let stat: fs.Stats;
   try { stat = fs.lstatSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { bowerloom, file: null }; return refuse('MANIFEST_UNSAFE'); }
   if (stat.isFile() && !stat.isSymbolicLink() && stat.nlink !== 1 && leftoverTempLink(folder, stat)) throw leftoverLinkRefusal();
   requireManifest(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && owned(stat), 'MANIFEST_UNSAFE');
-  requireManifest(stat.size <= MANIFEST_LIMITS.bytes, 'MANIFEST_LIMIT');
+  requireLimit(stat.size <= limits.bytes, limits);
   let fd: number; try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); } catch { return refuse('MANIFEST_UNSAFE'); }
   try {
     const opened = fs.fstatSync(fd);
     requireManifest(opened.dev === stat.dev && opened.ino === stat.ino && opened.isFile() && opened.nlink === 1, 'MANIFEST_UNSAFE');
-    const buffer = Buffer.alloc(MANIFEST_LIMITS.bytes + 1); let length = 0, read = 0;
-    while ((read = fs.readSync(fd, buffer, length, buffer.length - length, null)) > 0) { length += read; requireManifest(length <= MANIFEST_LIMITS.bytes, 'MANIFEST_LIMIT'); }
+    const buffer = Buffer.alloc(limits.bytes + 1); let length = 0, read = 0;
+    while ((read = fs.readSync(fd, buffer, length, buffer.length - length, null)) > 0) { length += read; requireLimit(length <= limits.bytes, limits); }
     requireManifest(length === opened.size, 'MANIFEST_UNSAFE');
     const bytes = Buffer.from(buffer.subarray(0, length));
     return { bowerloom, file: { bytes, sha256: sha256(bytes) } };
@@ -115,18 +135,24 @@ export function replaceTarget(skills: readonly Entry[], entry: Entry): Entry {
 }
 
 /**
- * A plan to add one entry, or to replace the pin of one entry. It reads skills.json and writes nothing.
- * A replace keeps the id, the kind and the package or repository; the version or commit, the folder and the teams
- * come from the new entry. Like an add, it binds the sha256 of skills.json as it stands.
+ * The manifest after one change, in memory: the checks of planManifestChange without any read. `current` is the manifest
+ * as it stands, or null when there is no skills.json. Returns the new manifest, its exact bytes, and the plan's `change`.
+ * Spec 08 (store migrate) chains adds through it, one step per entry, before anything is written.
  */
-export function planManifestChange(project: string, change: ManifestChange, options: { cacheRoot?: string } = {}): ManifestChangePlan {
-  const state = readManifestState(project);
-  const cacheRoot = options?.cacheRoot;
-  requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
-  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace')), 'MANIFEST_INVALID');
+export function manifestAfter(current: Manifest | null, change: ManifestChange, limits: ManifestLimits): { manifest: Manifest; text: string; change: ManifestChangePlan['change'] } {
+  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace') || Object.hasOwn(change, 'remove')), 'MANIFEST_INVALID');
+  if ('remove' in change) {
+    // Spec 08, 4.5: only a local entry is removed. A pinned entry with that id is never removed.
+    const id = change.remove;
+    requireManifest(typeof id === 'string', 'MANIFEST_INVALID');
+    const from = current?.skills.find(s => s.id === id);
+    requireManifest(from, 'SKILLS_ADD_REPLACE_MISSING');
+    requireManifest(from.source.kind === 'local', 'MANIFEST_INVALID');
+    const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...current!.harnesses], skills: current!.skills.filter(s => s.id !== id) }, limits);
+    return { manifest, text: serializeManifest(manifest, limits), change: { remove: from } };
+  }
   const replacing = 'replace' in change;
   const entry = validateEntry(replacing ? change.replace : change.add);
-  const current = state.file ? parseManifest(state.file.bytes) : null;
   let skills: Entry[], from: Entry | null = null;
   if (replacing) {
     requireManifest(entry.source.kind !== 'local', 'MANIFEST_INVALID');
@@ -135,27 +161,51 @@ export function planManifestChange(project: string, change: ManifestChange, opti
     requireManifest(!current!.skills.some(s => sourceKey(s) === sourceKey(entry)), 'SKILLS_ADD_EXISTS');
     skills = current!.skills.map(s => s.id === entry.id ? entry : s);
   } else {
+    // The slice- prefix is reserved for the index skills of context slices. Entries that already use it keep working.
+    requireManifest(!entry.id.startsWith('slice-'), 'MANIFEST_INVALID');
     if (current) requireManifest(!current.skills.some(s => s.id === entry.id || sourceKey(s) === sourceKey(entry)), 'SKILLS_ADD_EXISTS');
-    requireManifest((current?.skills.length ?? 0) < MANIFEST_LIMITS.skills, 'MANIFEST_LIMIT');
+    requireLimit((current?.skills.length ?? 0) < limits.skills, limits);
     skills = [...(current?.skills ?? []), entry];
   }
-  const next = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills });
-  const text = serializeManifest(next);
-  const written = next.skills.find(s => s.id === entry.id)!;
+  const manifest = validateManifest({ format: MANIFEST_FORMAT, harnesses: [...(current?.harnesses ?? HARNESSES)], skills }, limits);
+  const written = manifest.skills.find(s => s.id === entry.id)!;
+  return { manifest, text: serializeManifest(manifest, limits), change: from ? { replace: { from, to: written } } : { add: written } };
+}
+
+/**
+ * A plan to add one entry, to replace the pin of one entry, or to remove one local entry. It reads skills.json and
+ * writes nothing. A replace keeps the id, the kind and the package or repository; the version or commit, the folder and
+ * the teams come from the new entry. Each binds the sha256 of skills.json as it stands. A removal that leaves no skill
+ * keeps the file, with `skills: []`.
+ */
+export function planManifestChange(location: string | ManifestTarget, change: ManifestChange, options: { cacheRoot?: string; storeCreate?: boolean; allowAbsentFolder?: boolean } = {}): ManifestChangePlan {
+  const target = targetOf(location), project = target.lockDir, limits = target.limits;
+  // Spec 06, 3.8 rule 9: a config-only project has no `.bowerloom` yet; its caller creates the folder before the write.
+  const state = readManifestState(target, { allowAbsent: target.scope === 'store' || options.allowAbsentFolder === true });
+  const storeCreate = options?.storeCreate === true && target.scope === 'store';
+  const cacheRoot = options?.cacheRoot;
+  requireManifest(cacheRoot === undefined || (typeof cacheRoot === 'string' && isAbsolute(cacheRoot) && resolve(cacheRoot) === cacheRoot && !cacheRoot.includes('\0')), 'USAGE');
+  // The shape of the change and its entry are checked before skills.json is parsed, as they always were.
+  requireManifest(change !== null && typeof change === 'object' && Object.keys(change).length === 1 && (Object.hasOwn(change, 'add') || Object.hasOwn(change, 'replace') || Object.hasOwn(change, 'remove')), 'MANIFEST_INVALID');
+  if (!('remove' in change)) validateEntry('replace' in change ? change.replace : change.add);
+  const current = state.file ? parseManifest(state.file.bytes, limits) : null;
+  const { text, change: planned } = manifestAfter(current, change, limits);
   const body: Omit<ManifestChangePlan, 'revision'> = {
-    format: MANIFEST_CHANGE_FORMAT, project, manifest: MANIFEST_PATH, bowerloom: state.bowerloom,
+    format: MANIFEST_CHANGE_FORMAT, project, manifest: target.scope === 'store' ? STORE_MANIFEST_PATH : MANIFEST_PATH, scope: target.scope, storeCreate,
+    bowerloom: target.scope === 'store' ? null : state.bowerloom,
     before: state.file ? { sha256: state.file.sha256, bytes: state.file.bytes.length } : null,
     after: { sha256: sha256(text), bytes: Buffer.byteLength(text) },
-    change: from ? { replace: { from, to: written } } : { add: written }, text, ...(cacheRoot !== undefined ? { cache: { root: cacheRoot } } : {}), writesAuthorized: false, executionAuthorized: false,
+    change: planned, text, ...(cacheRoot !== undefined ? { cache: { root: cacheRoot } } : {}), writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: revisionOf(body) };
 }
-/** The input that makes `plan` again. */
-const changeOf = (plan: ManifestChangePlan): ManifestChange => {
-  const c = plan.change as Partial<{ add: Entry; replace: { to: Entry } }> | null;
-  requireManifest(c !== null && typeof c === 'object', 'STALE_APPROVAL');
-  if (c.replace !== undefined && c.add === undefined) { requireManifest(c.replace !== null && typeof c.replace === 'object', 'STALE_APPROVAL'); return { replace: c.replace.to }; }
-  requireManifest(c.add !== undefined && c.replace === undefined, 'STALE_APPROVAL');
+/** The input that makes `plan` again. A remove plan gives `{ remove: <id> }` (spec 08, 4.5). */
+export const changeOf = (plan: ManifestChangePlan): ManifestChange => {
+  const c = plan.change as Partial<{ add: Entry; replace: { to: Entry }; remove: Entry }> | null;
+  requireManifest(c !== null && typeof c === 'object' && Object.keys(c).length === 1, 'STALE_APPROVAL');
+  if (c.remove !== undefined) { requireManifest(c.remove !== null && typeof c.remove === 'object' && typeof c.remove.id === 'string', 'STALE_APPROVAL'); return { remove: c.remove.id }; }
+  if (c.replace !== undefined) { requireManifest(c.replace !== null && typeof c.replace === 'object', 'STALE_APPROVAL'); return { replace: c.replace.to }; }
+  requireManifest(c.add !== undefined, 'STALE_APPROVAL');
   return { add: c.add };
 };
 
@@ -175,17 +225,20 @@ export function applyManifestChange(plan: ManifestChangePlan, revision: string, 
   if (typeof revision !== 'string' || revision !== claimed || revisionOf(body) !== revision) throw stale();
   const cache = (plan as { cache?: unknown }).cache;
   requireManifest(cache === undefined || (cache !== null && typeof cache === 'object' && typeof (cache as { root?: unknown }).root === 'string'), 'STALE_APPROVAL');
-  const again = planManifestChange(plan.project, changeOf(plan), cache === undefined ? {} : { cacheRoot: (cache as { root: string }).root });
+  requireManifest(plan.scope === 'project' || plan.scope === 'store', 'STALE_APPROVAL');
+  requireManifest(typeof plan.storeCreate === 'boolean', 'STALE_APPROVAL');
+  const where = plan.scope === 'store' ? storeTarget(plan.project) : projectTarget(plan.project);
+  const again = planManifestChange(where, changeOf(plan), { ...(cache === undefined ? {} : { cacheRoot: (cache as { root: string }).root }), storeCreate: plan.storeCreate });
   if (again.revision !== revision) throw stale();
-  const folder = join(plan.project, '.bowerloom'), target = join(folder, MANIFEST_FILE);
+  const folder = where.folder, target = join(folder, MANIFEST_FILE);
   const temp = join(folder, `.${MANIFEST_FILE}.${randomBytes(8).toString('hex')}.tmp`);
   let created = false;
   try {
     const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o644); created = true;
     try { fs.fchmodSync(fd, 0o644); const data = Buffer.from(again.text); let at = 0; while (at < data.length) at += fs.writeSync(fd, data, at); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     held.assertHeld(plan.project);
-    const now = readManifestState(plan.project);
-    if (now.bowerloom.device !== again.bowerloom.device || now.bowerloom.inode !== again.bowerloom.inode || (now.file?.sha256 ?? null) !== (again.before?.sha256 ?? null)) throw stale();
+    const now = readManifestState(where);
+    if ((again.bowerloom !== null && (now.bowerloom?.device !== again.bowerloom.device || now.bowerloom?.inode !== again.bowerloom.inode)) || (now.file?.sha256 ?? null) !== (again.before?.sha256 ?? null)) throw stale();
     if (again.before === null) {
       try { fs.linkSync(temp, target); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw stale(); throw error; }
       fs.unlinkSync(temp);
@@ -194,8 +247,8 @@ export function applyManifestChange(plan: ManifestChangePlan, revision: string, 
     syncFolder(folder);
   } finally { if (created) { try { fs.unlinkSync(temp); } catch { /* Already gone. */ } } }
   // The file was written. A mismatch now is not a stale plan: it gets its own code and words (review M3 finding 5).
-  const written = readManifestState(plan.project);
+  const written = readManifestState(where);
   requireManifest(written.file?.sha256 === again.after.sha256, 'MANIFEST_WRITE_UNCONFIRMED');
-  const done = 'replace' in again.change ? { replaced: again.change.replace.to.id } : { added: again.change.add.id };
-  return { manifest: MANIFEST_PATH, ...done, sha256: again.after.sha256, bytes: again.after.bytes };
+  const done = 'replace' in again.change ? { replaced: again.change.replace.to.id } : 'remove' in again.change ? { removed: again.change.remove.id } : { added: again.change.add.id };
+  return { manifest: plan.manifest, ...done, sha256: again.after.sha256, bytes: again.after.bytes };
 }

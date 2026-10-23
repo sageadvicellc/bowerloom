@@ -172,9 +172,9 @@ test('finding 2: a deleted team folder is held with its restore step when skills
 test('finding 12: a created team is named once, and --goal and --name on a set-up project are named as unused', t => {
   const p = fresh(t);
   const first = upAll(p, 'research-desk', '--goal', GOAL); prepared(first);
-  assert.match(first.stdout, /^ {2}Team: research-desk \(first-team\), with skills and prompts in place for Claude Code and Codex\.$/m);
+  assert.match(first.stdout, /^ {2}Team: research-desk \(first-team\), with skills, prompts, agents, and context slices in place for Claude Code and Codex\.$/m);
   const created = upAll(p, 'market-desk'); prepared(created);
-  assert.match(created.stdout, /^ {2}Team: market-desk, with skills and prompts in place for Claude Code and Codex\.$/m);
+  assert.match(created.stdout, /^ {2}Team: market-desk, with skills, prompts, agents, and context slices in place for Claude Code and Codex\.$/m);
   assert.doesNotMatch(created.stdout, /market-desk \(market-desk\)/);
   const unused = run(p, ['up', '--team', 'market-desk', '--goal', 'Another goal', '--name', 'other']); prepared(unused);
   assert.match(unused.stdout, /^Note: this project is set up already, so up does not use --goal or --name\. The project brief keeps its goal and name\.$/m);

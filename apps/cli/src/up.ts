@@ -7,7 +7,7 @@
  *    team name becomes the display name of first-team.
  * 2. team, when the name matches neither first-team (by id or display name) nor a created team: `team create`.
  * 3. sync, when .bowerloom/skills.json has skills of the team to install: `skills sync --team <id>`.
- * 4. apply, when skills or prompts of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
+ * 4. apply, when skills, prompts, or agents of the team need copies for Claude Code and Codex (owner, answer 4): `apply`.
  * 5. held: prints `prepared, workers held`, points to .bowerloom/START-HERE.md, and exits 4 (WORKERS_HELD). When a
  *    skill, prompt or team of the team is held or gone, it prints `prepared, N items held` with each item's next
  *    command instead, and never says the copies are in place (review finding 2).
@@ -25,9 +25,13 @@ import { readAuthoringState } from '../../../packages/project-authoring/src/stat
 import { applySync, planProjectApply, applyProjectApply, planSync, productionAcquirer } from '../../../packages/project-sync/src/index.js';
 import type { Acquirer, ApplyPlan, SyncPlan } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
-import { readManifestState } from '../../../packages/skill-manifest/src/add.js';
+import { lstatSync } from 'node:fs';
+import { inspectStore } from '../../../packages/project-context/src/index.js';
+import { readConfig, refusalWithNext } from '../../../packages/project-config/src/index.js';
+import type { ProjectConfig } from '../../../packages/project-config/src/index.js';
+import { readStoreDefinitions, resolveProject } from '../../../packages/project-sync/src/index.js';
 import type { StartupPlan } from '../../../packages/startup/src/index.js';
-import { renderApplyReview } from './apply.js';
+import { confirmAllowances, renderApplyReview, requireTerminal } from './apply.js';
 import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { createChange, renderCreateReview } from './create.js';
@@ -36,13 +40,13 @@ import { missingItems, planHolds, uniqueHolds } from './held.js';
 import type { HeldItem } from './held.js';
 import { terminalIo } from './manifest.js';
 import { runStartupCommand } from './startup.js';
-import { harnessWords, renderSyncReview } from './sync.js';
+import { githubTokenReader, harnessWords, renderSyncReview, syncStaleNote } from './sync.js';
 
 export type UpStep = 'init' | 'team' | 'sync' | 'apply' | 'held';
 export const UP_STEP_FORMAT = 'bowerloom/up-step/v1beta1' as const;
 export const FIRST_TEAM = 'first-team';
 const START_HERE = '.bowerloom/START-HERE.md';
-const UP_USAGE = 'Use bowerloom up --team <name> [--goal <goal>] [--name <project-name>], with optional --approve <revision> and --json. A folder with no .bowerloom needs --goal.';
+const UP_USAGE = 'Use bowerloom up --team <name> [--goal <goal>] [--name <project-name>], with optional --approve <revision> and --json. A folder with no .bowerloom and no bowerloom.json needs --goal.';
 const usage = (message = UP_USAGE): never => { throw new DefinitionError('USAGE', message); };
 
 export interface UpContext {
@@ -51,6 +55,10 @@ export interface UpContext {
   team: string;
   goal: string | null; name: string | null;
   harnesses: Harness[]; acquirer: Acquirer;
+  /** `--allow-agent <role>:<hash>` allowances, passed to the apply step. */
+  allow?: readonly string[];
+  /** The terminal, when the person may take an allowance. */
+  terminal?: boolean; io?: ApprovalIo; write?: (text: string) => void;
 }
 export interface UpTeam { id: string; name: string }
 /** What an agent sees with --json: the step, the team, and the step's own plan. Its revision is the step plan's. */
@@ -71,11 +79,12 @@ function wrap<P extends { revision: string }>(step: Exclude<UpStep, 'held'>, tea
     revision: wrapped => (wrapped.plan as P).revision,
     review: wrapped => `${heading(wrapped.plan as P)}\n${change.review(wrapped.plan as P)}`,
     apply: revision => change.apply(revision),
+    ...(change.staleNote ? { staleNote: (wrapped: UpStepPlan) => change.staleNote!(wrapped.plan as P) } : {}),
   };
 }
 
 function initStep(ctx: UpContext): UpNext {
-  if (ctx.goal === null) usage('This folder has no .bowerloom yet. Run bowerloom up --team <name> --goal <goal> once to set it up.');
+  if (ctx.goal === null) usage('This folder has no .bowerloom and no bowerloom.json yet. Run bowerloom up --team <name> --goal <goal> once to set it up.');
   let target: string; try { target = realpathSync(ctx.cwd); } catch { return usage(); }
   checkProjectPath(target, ctx.home);
   const name = ctx.name ?? basename(target), team: UpTeam = { id: FIRST_TEAM, name: ctx.team };
@@ -106,6 +115,23 @@ function firstTeamName(project: ProjectContext): string {
   } catch { /* Refused below. */ }
   throw new DefinitionError('PROJECT_BRIEF_INVALID', 'The project brief, .bowerloom/brief.json, cannot be read, so Bowerloom cannot tell whether the team is first-team.');
 }
+/**
+ * Spec 06, 3.19: in a config project a team must be listed in bowerloom.json. A store team or a project team that is
+ * not listed refuses TEAM_NOT_SELECTED with its next step; a name no team has gets the team step.
+ */
+function configTeam(project: ProjectContext, home: string, value: string, config: ProjectConfig): UpTeam | null {
+  const listed = config.teams.find(t => t.id === value);
+  if (listed) return { id: value, name: value === FIRST_TEAM && lstatOk(join(project.dir, '.bowerloom', 'brief.json')) ? firstTeamName(project) : value };
+  const projectTeam = value === FIRST_TEAM ? lstatOk(join(project.dir, '.bowerloom', 'teams', FIRST_TEAM)) : (project.bowerloomIdentity !== null && (readAuthoringState(join(project.dir, '.bowerloom')).receipt?.value.items ?? []).some(i => i.kind === 'team' && i.id === value));
+  if (projectTeam) throw refusalWithNext('TEAM_NOT_SELECTED', `bowerloom use team ${value} --project`);
+  let storeTeam = false;
+  // Review F6: a store that cannot be read is named by its own code, never reported as a team that is missing.
+  try { const found = inspectStore(home); storeTeam = found.state === 'store' && readStoreDefinitions(found.context).teams.has(value); }
+  catch (e) { const c = codeOf(e); if (typeof c === 'string' && c.startsWith('STORE_')) throw e; storeTeam = false; }
+  if (storeTeam) throw refusalWithNext('TEAM_NOT_SELECTED', `bowerloom use team ${value}`);
+  return null;
+}
+const lstatOk = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
 /** The team the --team value names, or null when it names no team of this project yet. */
 function resolveTeam(project: ProjectContext, value: string): UpTeam | null {
   const display = value === FIRST_TEAM ? null : firstTeamName(project);
@@ -118,7 +144,8 @@ function resolveTeam(project: ProjectContext, value: string): UpTeam | null {
 export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   let project: ProjectContext;
   try { project = discoverProject(ctx.cwd, ctx.home); } catch (e) { if (codeOf(e) === 'PROJECT_NOT_FOUND') return initStep(ctx); throw e; }
-  const team = resolveTeam(project, ctx.team);
+  const read = readConfig(project);
+  const team = read.state === 'valid' ? configTeam(project, ctx.home, ctx.team, read.config) : resolveTeam(project, ctx.team);
   if (team === null) {
     const created: UpTeam = { id: ctx.team, name: ctx.team };
     return { step: 'team', team: created, change: wrap('team', created, createChange(project, { kind: 'team', project: project.dir, name: ctx.team }), () => `Next step: team. Create team ${ctx.team} for this project.`) };
@@ -127,27 +154,32 @@ export async function nextUpStep(ctx: UpContext): Promise<UpNext> {
   // F' code review A: a created team whose folder is gone stops here, with its restore step. The sync planner would
   // refuse it TEAM_NOT_FOUND, and team create would refuse TEAM_EXISTS, so no other step can help.
   if (held.some(i => i.kind === 'team' && i.id === team.id)) return { step: 'held', team, change: null, held };
-  if (readManifestState(project.dir).file !== null) {
-    const input = () => ({ project, stateRoot, team: team.id, offline: false });
+  // Spec 06, 3.19: the sync step runs when the effective skill list is not empty.
+  const resolved = resolveProject({ project, home: ctx.home, frozen: false });
+  if (resolved.manifest !== null && resolved.manifest.skills.length > 0) {
+    // Spec 07: the sync step reads the token only when an authored lock item needs its repository.
+    const githubToken = githubTokenReader(ctx.env);
+    const input = () => ({ project, stateRoot, home: ctx.home, team: team.id, offline: false, githubToken });
     const plan = await planSync(input());
     held.push(...planHolds(plan.items));
     if (plan.items.some(i => i.action === 'install' || i.action === 'update')) {
       const lock = new AbortController(), change: PlannedChange<SyncPlan> = {
-        plan: () => planSync(input()), revision: p => p.revision, review: renderSyncReview,
+        plan: () => planSync(input()), revision: p => p.revision, review: renderSyncReview, staleNote: syncStaleNote,
         apply: revision => applySync(input(), revision, { acquirer: ctx.acquirer, signal: lock.signal }),
       };
       return { step: 'sync', team, change: wrap('sync', team, change, () => `Next step: sync. Install the skills of team ${team.name} on this machine.`) };
     }
   }
-  const applyInput = () => ({ project, stateRoot, harnesses: ctx.harnesses, team: team.id }), applyPlan = await planProjectApply(applyInput());
+  const applyInput = () => ({ project, stateRoot, home: ctx.home, harnesses: ctx.harnesses, team: team.id, allow: ctx.allow ?? [] }), applyPlan = await planProjectApply(applyInput());
+  if ((ctx.allow ?? []).length && ctx.io && ctx.write) await confirmAllowances(applyPlan, ctx.io, ctx.write);
   if (applyPlan.actionable) {
     const lock = new AbortController(), change: PlannedChange<ApplyPlan> = {
-      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: renderApplyReview,
+      plan: () => planProjectApply(applyInput()), revision: p => p.revision, review: p => renderApplyReview(p, ctx.terminal === true),
       apply: revision => applyProjectApply(applyInput(), revision, lock.signal),
     };
-    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills and prompts of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
+    return { step: 'apply', team, change: wrap('apply', team, change, () => `Next step: apply. Put the skills, prompts, agents, and context slices of team ${team.name} in place for ${harnessWords(ctx.harnesses)}.`) };
   }
-  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts));
+  held.push(...planHolds(applyPlan.skills?.items ?? [], applyPlan.prompts, applyPlan.agents, applyPlan.slices));
   return { step: 'held', team, change: null, held: uniqueHolds(held) };
 }
 
@@ -166,29 +198,33 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
     : plainText((items.length ? [
       `prepared, ${count} held`,
       `  Team: ${teamWords(team)}, for ${harnessWords(ctx.harnesses)}. Workers stay held.`,
-      ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${i.next}`]),
+      ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${plainText(i.next)}`]),
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',
-      `  Team: ${teamWords(team)}, with skills and prompts in place for ${harnessWords(ctx.harnesses)}.`,
+      `  Team: ${teamWords(team)}, with skills, prompts, agents, and context slices in place for ${harnessWords(ctx.harnesses)}.`,
       `  Next: read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ]).join('\n'), true));
   throw newCommandRefusal('WORKERS_HELD', `prepared, workers held. Read ${START_HERE}. No worker was started.`);
 }
 
 /** Splits the up command line. Every value flag at most once; anything else is the approval wrapper's. */
-export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[] } {
-  const values = new Map<string, string>(), rest: string[] = [];
+export function parseUpArgs(args: readonly string[]): { team: string; goal: string | null; name: string | null; rest: string[]; allow: string[] } {
+  const values = new Map<string, string>(), rest: string[] = [], allow: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const word = args[i]!;
     if (word === '--team' || word === '--goal' || word === '--name') {
       const value = args[++i];
       if (value === undefined || value === '' || value.startsWith('-') || values.has(word)) usage();
       values.set(word, value!);
+    } else if (word === '--allow-agent') {
+      const value = args[++i];
+      if (value === undefined || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/.test(value)) usage();
+      allow.push(value!);
     } else rest.push(word);
   }
   if (args[0] !== 'up' || !values.has('--team')) usage();
-  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest };
+  return { team: values.get('--team')!, goal: values.get('--goal') ?? null, name: values.get('--name') ?? null, rest, allow: [...new Set(allow)].sort() };
 }
 
 const QUIET: ApprovalIo = Object.freeze({ interactive: false, ask: async () => '' });
@@ -212,9 +248,12 @@ function afterApplied(step: UpStep, error: unknown): unknown {
 export async function runUpCommand(args: readonly string[], cwd: string, home: string, write: (text: string) => void, io: ApprovalIo = terminalIo(), env: NodeJS.ProcessEnv = process.env, acquirer: Acquirer = productionAcquirer): Promise<number> {
   const parsed = parseUpArgs(args), approval = parseApprovalFlags(parsed.rest);
   if (approval.rest.length) usage();
-  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer };
+  const ctx: UpContext = { cwd, home, env, team: parsed.team, goal: parsed.goal, name: parsed.name, harnesses: ['claude', 'codex'], acquirer, allow: parsed.allow, terminal: io.interactive && !approval.json, io, write };
+  if (parsed.allow.length) requireTerminal(io, approval.json);
   const json = approval.json ? ['--json'] : [];
   let next = await nextUpStep(ctx);
+  // Spec 06, 3.19: one note for a missing or disagreeing lock.
+  if (!approval.json) { try { const project = discoverProject(cwd, home), r = resolveProject({ project, home, frozen: false }); if (r.lock.state === 'absent') write('Note: bowerloom.lock.json is missing.\n'); else if (r.lock.state === 'mismatch') write('Note: bowerloom.lock.json does not match bowerloom.json.\n'); } catch (e) { /* Review F4: a refusal (no project yet) is named by the step; anything else is not hidden. */ if (!(e instanceof DefinitionError)) throw e; } }
   // Review finding 12: on a project that is set up, --goal and --name are not used. Say so, once, in words only.
   if (next.step !== 'init' && (ctx.goal !== null || ctx.name !== null) && !approval.json) write('Note: this project is set up already, so up does not use --goal or --name. The project brief keeps its goal and name.\n');
   if (approval.approve !== undefined) {

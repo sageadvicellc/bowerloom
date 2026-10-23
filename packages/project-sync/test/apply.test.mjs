@@ -109,7 +109,7 @@ test('name collisions refuse APPLY_NAME_COLLISION and nothing is written', async
 test('a pin that is not cached refuses SKILLS_OFFLINE, names skills sync, and writes nothing anywhere', async t => {
   const f = syncProject(t), a = npmPackage('alpha'); await createPrompt(f, 'review'); writeManifest(f, [a.entry]);
   const before = exactTree(f.base);
-  await assert.rejects(planProjectApply(input(f)), e => code('SKILLS_OFFLINE')(e) && /bowerloom skills sync/.test(e.message) && /alpha/.test(e.message));
+  await assert.rejects(planProjectApply(input(f)), e => code('SKILLS_OFFLINE')(e) && e.next === 'Run bowerloom skills sync, then bowerloom apply.' && /alpha/.test(e.message));
   assert.equal(exactTree(f.base), before); assert.equal(fs.existsSync(f.stateRoot), false);
 });
 

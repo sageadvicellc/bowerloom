@@ -25,7 +25,7 @@ A working agreement records the team's proposed scope and review expectations. M
 
 ## Readable definitions
 
-The setup includes team YAML, role prompts, skills, maps, and supporting assets. [Files and configuration](/docs/configuration/) lists all 20 files.
+`.bowerloom/slices/` holds context slice files, and `apply` writes the index skill `.claude/skills/slice-<id>` for each one. The setup includes team YAML, role prompts, skills, maps, and supporting assets. [Files and configuration](/docs/configuration/) lists all 20 files.
 
 Crew describes team definitions. Relay describes communication structure. Roots concerns knowledge access. Vines records activity.
 
@@ -34,5 +34,7 @@ Module names do not imply that setup starts those services. A map declaration do
 ## Portable and private
 
 Portable definitions describe the work and its proposed boundaries. Private installation records bind approved file effects to their actual paths and state. This separation lets the definitions follow your project without transferring local credentials or approval. Inspect each definition for private context before sharing it. Moving a file does not prove that another harness, an agent application such as Claude Code or Codex, can execute it.
+
+Your store, `~/.bowerloom`, holds definitions only and stays on your machine. `bowerloom.json` and `bowerloom.lock.json` are portable, so commit them. The skills cache and the store cache stay private to each machine. [Where your items come from](/docs/guides/item-sources/) explains how they fit together.
 
 [Read and review your setup](/docs/learn/review-your-setup/) connects these concepts to the installed guides.

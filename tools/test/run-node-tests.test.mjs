@@ -122,3 +122,17 @@ test('a SIGTERM to the runner reaches the whole run, and the runner exits non-ze
   assert.equal(signal, null); assert.ok(code !== 0 && code !== null, `exit ${code}`);
   assert.equal(await gone(testPid), true, 'the stuck test process is gone'); assert.equal(await gone(runPid), true, 'node --test is gone');
 });
+
+// Spec 07: no test process may see a real GitHub token of the machine. The runner removes the three token variables
+// from the environment of node --test, so every test file and every child it starts runs without them.
+test('the runner removes BOWERLOOM_GITHUB_TOKEN, GH_TOKEN, and GITHUB_TOKEN from the environment of node --test', t => {
+  const dir = scratch(t, { 'env.test.mjs': [
+    "import test from 'node:test';",
+    "import assert from 'node:assert/strict';",
+    "test('no token variable', () => { for (const name of ['BOWERLOOM_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN']) assert.equal(Object.hasOwn(process.env, name), false, name); assert.equal(process.env.KEEP_ME, 'kept'); });",
+  ].join('\n') });
+  const canary = 'ghp_' + 'g'.repeat(36);
+  const r = run([path.join(dir, 'env.test.mjs')], { env: { BOWERLOOM_GITHUB_TOKEN: canary, GH_TOKEN: canary, GITHUB_TOKEN: canary, KEEP_ME: 'kept' } });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(`${r.stdout}${r.stderr}`.includes(canary), false);
+});

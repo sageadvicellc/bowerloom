@@ -5,9 +5,9 @@ section: "Guides: Connections and shared work"
 order: 12
 ---
 
-A harness is an application that runs a model and exposes tools. Bowerloom separates portable definitions from harness-specific configuration.
+A harness is an application that runs a model and exposes tools. Bowerloom separates portable definitions from harness-specific configuration. `bowerloom apply` projects the agents of a team into `.claude/agents` for Claude Code. It does not project Codex agents in this beta. Context slices are projected for Claude Code and not for Codex.
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 

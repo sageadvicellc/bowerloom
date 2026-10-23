@@ -69,7 +69,7 @@ test('up --team chains from a fresh folder to exit 4 with --approve only; each s
   // 2. init applied. Nothing else to prepare yet: held, exit 4.
   const first = run(p, [...up, '--approve', r1]); held(first); save('up-exit4-after-init.txt', first.stdout + first.stderr);
   assert.match(first.stdout, new RegExp(`^Applied plan ${r1}\\.$`, 'm'));
-  const teams = JSON.parse(run(p, ['ls', 'teams', '--json']).stdout); assert.deepEqual(teams.teams, ['first-team']);
+  const teams = JSON.parse(run(p, ['ls', 'teams', '--json']).stdout); assert.deepEqual(teams.teams.map((t: { id: string }) => t.id), ['first-team']);
   assert.equal(JSON.parse(readFileSync(join(p.dir, '.bowerloom/brief.json'), 'utf8')).teamName, 'Studio crew');
   assert.equal(JSON.parse(readFileSync(join(p.dir, '.bowerloom/brief.json'), 'utf8')).projectName, 'studio');
 
@@ -97,7 +97,7 @@ test('up --team chains from a fresh folder to exit 4 with --approve only; each s
   const quiet = tree(p.dir), again = run(p, up); held(again); assert.equal(tree(p.dir), quiet);
 
   assert.equal(readFileSync(join(p.dir, 'AGENTS.md'), 'utf8'), own.agents); assert.equal(readFileSync(join(p.dir, 'CLAUDE.md'), 'utf8'), own.claude);
-  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams, ['first-team']);
+  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams.map((t: { id: string }) => t.id), ['first-team']);
   const status = JSON.parse(run(p, ['status', '--json']).stdout); assert.equal(status.status, 'ready', JSON.stringify(status.drift));
   assert.deepEqual(readdirSync(p.sentinels), [], 'no claude or codex process ran'); assert.deepEqual(p.network(), []);
 });
@@ -108,11 +108,11 @@ test('up --team reuses first-team by id or display name; a new id becomes a team
   for (const name of ['first-team', 'Studio crew']) held(run(p, up(name)));
   // Run from a folder inside the project, as git would be: the project is found by walking up.
   const sub = join(p.dir, 'src'); mkdirSync(sub); held(run(p, ['up', '--team', 'Studio crew'], sub));
-  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams, ['first-team']);
+  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams.map((t: { id: string }) => t.id), ['first-team']);
   const team = run(p, up('research-desk')); assert.equal(team.status, 3, team.stderr);
   assert.match(team.stdout, /^Next step: team\./m); assert.match(team.stdout, /^Create team research-desk in \.bowerloom\/teams\/research-desk$/m);
   held(run(p, up('research-desk', '--approve', revisionIn(team.stdout))));
-  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams, ['first-team', 'research-desk']);
+  assert.deepEqual(JSON.parse(run(p, ['ls', 'teams', '--json']).stdout).teams.map((t: { id: string }) => t.id), ['first-team', 'research-desk']);
   held(run(p, up('research-desk')));
   const invalid = run(p, up('Another Team')); assert.equal(invalid.status, 1); assert.equal(errorOf(invalid.stderr).code, 'TEAM_NAME_INVALID');
   assert.deepEqual(readdirSync(p.sentinels), []); assert.deepEqual(p.network(), []);

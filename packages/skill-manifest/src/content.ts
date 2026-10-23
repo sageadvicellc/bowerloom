@@ -35,6 +35,31 @@ export function skillFilePath(path: string): void {
   try { relativeSkillPath(path); } catch (error) { if (error instanceof SkillSourceError) refuse('SKILLS_ADD_UNSAFE_CONTENT'); throw error; }
   requireManifest(TEXT_FILE.test(path) || LICENSE_PATH.test(path), 'SKILLS_ADD_UNSAFE_CONTENT');
 }
+/**
+ * The file rules of an item a lock can record (spec 06, 3.11 step 4), shared by the store sources of the managed engine,
+ * `localItemRows` and the fetch of an authored store item: at most 126 files, 65536 bytes each, 2097152 bytes in all.
+ */
+export const STORE_FILE_LIMITS = Object.freeze({ files: 126, fileBytes: 65536, totalBytes: 2097152 });
+/**
+ * The fault of one file of a store item, or null: `unsafe` for a path `skillFilePath` refuses, an empty file, a byte order
+ * mark, bytes that are not UTF-8, or an execute bit in `mode`; `large` for a file over 65536 bytes.
+ */
+export function storeFileFault(path: string, bytes: Buffer, mode: number): 'unsafe' | 'large' | null {
+  const problem = storeFileProblem(path, bytes, mode);
+  return problem === null ? null : problem === 'large' ? 'large' : 'unsafe';
+}
+/** Round 2 of the reviews of PR 101: which rule of `storeFileFault` a file breaks, in the same order, so a refusal names it. */
+export type StoreFileProblem = 'name' | 'empty' | 'mode' | 'large' | 'bom' | 'encoding';
+export function storeFileProblem(path: string, bytes: Buffer, mode: number): StoreFileProblem | null {
+  if (!storeFileName(path)) return 'name';
+  if (bytes.length === 0) return 'empty';
+  if ((mode & 0o111) !== 0) return 'mode';
+  if (bytes.length > STORE_FILE_LIMITS.fileBytes) return 'large';
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'bom';
+  return strictUtf8(bytes) === null ? 'encoding' : null;
+}
+/** True when `skillFilePath` accepts the path of a store item file: a name a lock can record. */
+export function storeFileName(path: string): boolean { try { skillFilePath(path); return true; } catch { return false; } }
 /** Bounds on the selected files: count, size of each, and total. */
 export function checkBounds(files: readonly { bytes: number }[]): void {
   let total = 0;

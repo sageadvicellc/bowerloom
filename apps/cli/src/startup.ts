@@ -1,8 +1,10 @@
 import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
 import { strictJson } from '../../../packages/codex-adapter/src/safe.js';
+import { assertNotInStore } from '../../../packages/project-context/src/index.js';
 import { planStartup, applyStartup, inspectStartup, planStartupDemo, StartupError, type StartupInput } from '../../../packages/startup/src/index.js';
 
 export { renderStartupReview, renderStartupDemoReview } from '../../../packages/startup/src/index.js';
@@ -48,6 +50,8 @@ async function dispatchStartup(args: string[]): Promise<unknown> {
     values.set(key!, value!);
   }
   if (!values.has('--target')) usage();
+  // The store holds definitions only. A relative target is resolved against the working folder first, so `.` inside the store is caught.
+  if ((command === 'plan' || command === 'apply') && !values.get('--target')!.includes('\0')) assertNotInStore(resolve(values.get('--target')!), homedir());
   if (command === 'status') return inspectStartup(values.get('--target')!);
   if (command === 'demo-plan') {
     if (!values.has('--from')) usage();

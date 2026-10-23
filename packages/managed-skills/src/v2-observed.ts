@@ -9,9 +9,10 @@ import { strictJson } from '../../codex-adapter/src/safe.js';
 import { freezeSkillData, revisionOf, relativeSkillPath } from '../../skill-sources/src/validation.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { projectionFor } from '../../portable/src/harness-projection.js';
-import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes } from './observed.js';
+import { LIMITS, MANAGED_SKILL_CODES, MARKER as V1_MARKER, ManagedSkillError, OP_TEMP, temporary, check, fail, passThrough, hash, same, schema, lifetime, path, directory, ancestry, exists, names, raw, parsed, stablePins, retainedBytes, sameOrInside } from './observed.js';
 import type { Lifetime } from './observed.js';
-import { readLocalSkill, readLocalPrompt, itemName } from './local-source.js';
+import { readLocalSkill, readLocalPrompt, readLocalAgent, readLocalSlice, itemName, ITEM_ID } from './local-source.js';
+import { isFolderName, isSliceId } from '../../context-slices/src/slice-file.js';
 import { LEGACY_NAMESPACE, legacyPresent, readLegacy } from './migrate.js';
 import type { AcquiredSkillClosure } from '../../skill-sources/src/cache.js';
 import type { Identity, FilePin } from './observed-types.js';
@@ -29,7 +30,7 @@ export const IGNORE_TEXT = '*\n';
 const HEX64 = /^[a-f0-9]{64}$/;
 /** The v1 projection-name rule, kept so every v1 skill name stays valid in v2. */
 const PROJECTION_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const ITEM_SURFACES: readonly SurfaceId[] = ['canonical', 'catalog', 'projection-claude', 'projection-codex', 'command-claude'];
+const ITEM_SURFACES: readonly SurfaceId[] = ['canonical', 'catalog', 'projection-claude', 'projection-codex', 'command-claude', 'agent-claude'];
 export const ownSurface = (s: { id: SurfaceId }): boolean => ITEM_SURFACES.includes(s.id);
 /** Every fixed v2 code: the v1 list plus four. MANAGED_SKILL_REFUSED stays the fallback. */
 export const MANAGED_ITEM_CODES: readonly string[] = Object.freeze([...MANAGED_SKILL_CODES.filter(c => c !== 'MANAGED_SKILL_REFUSED'), 'MANAGED_SKILL_PATH_OCCUPIED', 'MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_HISTORY_FULL', 'MANAGED_SKILL_LOCK_NOT_HELD', 'MANAGED_SKILL_REFUSED']);
@@ -37,9 +38,11 @@ export const MANAGED_ITEM_CODES: readonly string[] = Object.freeze([...MANAGED_S
 export function boundaryV2(error: unknown, fallback = 'MANAGED_SKILL_REFUSED'): never {
   return passThrough(error, MANAGED_ITEM_CODES, fallback);
 }
-export const itemId = (item: ItemRef): string => item.kind === 'prompt' ? 'prompt-' + item.id : item.id;
+/** The private folder and catalog name of an item. An agent's underscore cannot be part of a skill id, so no skill collides. */
+export const itemId = (item: ItemRef): string => item.kind === 'prompt' ? 'prompt-' + item.id : item.kind === 'agent' ? 'agent_' + item.id : item.kind === 'slice' ? 'slice_' + item.id : item.id;
 export function itemRef(value: unknown): ItemRef {
-  const item = schema<ItemRef>(value, ['kind', 'id']); check(item.kind === 'skill' || item.kind === 'prompt'); itemName(item.id);
+  const item = schema<ItemRef>(value, ['kind', 'id']); check(item.kind === 'skill' || item.kind === 'prompt' || item.kind === 'agent' || item.kind === 'slice');
+  if (item.kind === 'slice') check(isSliceId(item.id)); else itemName(item.id);
   if (item.kind === 'skill') check(!item.id.startsWith('prompt-')); return item;
 }
 /** v1 `request`, generalized from one harness and one cache selector to a harness list and an item source. */
@@ -53,6 +56,42 @@ export function requestV2(value: unknown): ManagedItemRequest {
   if (source.kind === 'cache') { const s = schema<{ selector: { root: string } }>(source, ['kind', 'selector']); schema(s.selector, ['root', 'operationId', 'expectedSnapshotRevision', 'expectedReceiptRevision']); path(s.selector.root); check(item.kind === 'skill'); roots.push(s.selector.root); }
   else if (source.kind === 'local') { const s = schema<{ path: string }>(source, ['kind', 'path']); check(item.kind === 'skill' && s.path === 'skills/' + item.id); }
   else if (source.kind === 'prompt') { const s = schema<{ name: string }>(source, ['kind', 'name']); check(item.kind === 'prompt' && s.name === item.id); }
+  // Spec 06, 3.12: a folder laid out like a store, the live store or a store cache folder. It joins the non-nesting check.
+  else if (source.kind === 'store') { const s = schema<{ path: string; storeDir: string }>(source, ['kind', 'path', 'storeDir']); check(item.kind === 'skill' && s.path === 'skills/' + item.id); path(s.storeDir); roots.push(s.storeDir); }
+  else if (source.kind === 'store-prompt') { const s = schema<{ name: string; storeDir: string }>(source, ['kind', 'name', 'storeDir']); check(item.kind === 'prompt' && s.name === item.id); path(s.storeDir); roots.push(s.storeDir); }
+  else if (source.kind === 'agent') {
+    const s = schema<{ team: string; name: string; guard: unknown }>(source, ['kind', 'team', 'name', 'guard']);
+    check(item.kind === 'agent' && s.name === item.id && typeof s.team === 'string' && s.team.length <= 64 && ITEM_ID.test(s.team) && v.harnesses.length === 1 && v.harnesses[0] === 'claude');
+    if (s.guard !== null) {
+      const g = schema<{ slices: string[]; roots: string[] }>(s.guard, ['slices', 'roots']);
+      check(Array.isArray(g.slices) && g.slices.length >= 1 && g.slices.length <= 64 && g.slices.every((x, i) => isSliceId(x) && (i === 0 || g.slices[i - 1]! < x)));
+      // Each root names a listed slice, and the roots follow the slice list: by position in that list, never by string order
+      // (the string `wiki-eng:...` sorts before `wiki:...`, though the slice wiki comes first).
+      let at = -1;
+      check(Array.isArray(g.roots) && g.roots.length <= g.slices.length && g.roots.every(x => {
+        if (typeof x !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{32}$/.test(x)) return false;
+        const position = g.slices.indexOf(x.slice(0, x.lastIndexOf(':')));
+        if (position <= at) return false; at = position; return true;
+      }));
+    }
+  }
+  else if (source.kind === 'slice') {
+    const s = schema<{ name: string; root: unknown }>(source, ['kind', 'name', 'root']);
+    check(item.kind === 'slice' && s.name === item.id && v.harnesses.length === 1 && v.harnesses[0] === 'claude');
+    check(s.root !== null && typeof s.root === 'object');
+    const rootKind = (s.root as { kind?: unknown }).kind;
+    if (rootKind === 'project') schema(s.root, ['kind']);
+    else {
+      // A registered root is a folder outside the project. It is not added to `roots`: a folder that holds the project is allowed.
+      const g = schema<{ name: string; dir: string; identity: unknown }>(s.root, ['kind', 'name', 'dir', 'identity']);
+      check(rootKind === 'registered' && isFolderName(g.name)); path(g.dir);
+      check(g.dir !== v.projectDir && !g.dir.startsWith(v.projectDir + '/') && g.dir !== v.stateDir && !g.dir.startsWith(v.stateDir + '/'));
+      // By identity too: a link or a case alias names the same folder under another text.
+      check(!sameOrInside(g.dir, v.projectDir) && !sameOrInside(g.dir, v.stateDir));
+      const id = schema<{ device: unknown; inode: unknown; birthtimeNs: unknown }>(g.identity, ['device', 'inode', 'birthtimeNs']);
+      check([id.device, id.inode, id.birthtimeNs].every(x => typeof x === 'string' && /^[0-9]{1,24}$/.test(x)));
+    }
+  }
   else fail('MANAGED_SKILL_REFUSED');
   if (v.operation === 'migrate') {
     check(v.legacy !== null && source.kind === 'cache' && v.expectedPreviousRevision === null);
@@ -82,8 +121,10 @@ export function locateV2(v: ManagedItemRequest, closure: ItemClosure, extra: { i
   if (extra.ignore) out.push({ id: 'ignore', kind: 'file', path: join(managed, '.gitignore') });
   if (item.kind === 'skill') out.push({ id: 'canonical', kind: 'directory', path: join(managed, 'skills', item.id) });
   if (item.kind === 'skill' && v.harnesses.includes('claude')) out.push({ id: 'projection-claude', kind: 'directory', path: join(p, projectionFor('claude')!.skillRoot, name) });
-  if (v.harnesses.includes('codex')) out.push({ id: 'projection-codex', kind: 'directory', path: join(p, projectionFor('codex')!.skillRoot, item.kind === 'prompt' ? 'prompt-' + name : name) });
+  if (item.kind === 'slice') out.push({ id: 'projection-claude', kind: 'directory', path: join(p, projectionFor('claude')!.skillRoot, 'slice-' + name) });
+  if (item.kind !== 'agent' && item.kind !== 'slice' && v.harnesses.includes('codex')) out.push({ id: 'projection-codex', kind: 'directory', path: join(p, projectionFor('codex')!.skillRoot, item.kind === 'prompt' ? 'prompt-' + name : name) });
   if (item.kind === 'prompt' && v.harnesses.includes('claude')) out.push({ id: 'command-claude', kind: 'file', path: join(p, '.claude/commands', name + '.md') });
+  if (item.kind === 'agent' && v.harnesses.includes('claude')) out.push({ id: 'agent-claude', kind: 'file', path: join(p, '.claude/agents', name + '.md') });
   out.push({ id: 'catalog', kind: 'file', path: join(managed, 'catalog', itemId(item) + '.json') });
   if (extra.legacy) out.push({ id: 'legacy', kind: 'directory', path: join(p, LEGACY_NAMESPACE) });
   return out;
@@ -104,10 +145,16 @@ export function cacheClosure(c: Readonly<AcquiredSkillClosure>, item: ItemRef): 
 export async function readClosure(v: ManagedItemRequest, life: Lifetime): Promise<{ closure: ItemClosure; acquired: Readonly<AcquiredSkillClosure> | null }> {
   const s = v.source;
   if (s.kind === 'cache') { const acquired = await readAcquiredSkillCache(s.selector, { signal: life.signal, deadlineMs: life.deadlineMs }); life.check(); return { closure: cacheClosure(acquired, v.item), acquired }; }
-  const local = s.kind === 'local' ? readLocalSkill(v.projectDir, s.path, () => life.check()) : readLocalPrompt(v.projectDir, s.name, () => life.check()); life.check();
-  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: [], inventory: local.inventory, files: local.files, name: v.item.id }), acquired: null };
+  const local = s.kind === 'local' ? readLocalSkill(v.projectDir, s.path, () => life.check()) : s.kind === 'agent' ? readLocalAgent(v.projectDir, s.team, s.name, () => life.check(), s.guard)
+    : s.kind === 'slice' ? readLocalSlice(v.projectDir, s.name, s.root, () => life.check())
+    : s.kind === 'store' ? readLocalSkill(v.projectDir, s.path, () => life.check(), { bowerloom: s.storeDir, origin: 'store' })
+    : s.kind === 'store-prompt' ? readLocalPrompt(v.projectDir, s.name, () => life.check(), { bowerloom: s.storeDir, origin: 'store' }) : readLocalPrompt(v.projectDir, s.name, () => life.check()); life.check();
+  return { closure: freezeSkillData({ format: 'bowerloom/managed-item-closure/v1beta2', source: local.source, skill: null, license: null, references: local.references, inventory: local.inventory, files: local.files, name: v.item.id, ...(local.sourceSha256 === undefined ? {} : { sourceSha256: local.sourceSha256 }) }), acquired: null };
 }
-const wrapper = (name: string, text: string): string => `---\nname: prompt-${name}\ndescription: Bowerloom prompt ${name}, wrapped as a skill for Codex. Edit .bowerloom/prompts/${name}.md, not this file.\n---\n${text}`;
+/** The Codex wrapper of a prompt. A store prompt, live or fetched, names the store instead of `.bowerloom/prompts` (spec 06, 3.12). */
+const wrapper = (name: string, text: string, origin: 'project' | 'store'): string => origin === 'store'
+  ? `---\nname: prompt-${name}\ndescription: Bowerloom prompt ${name}, wrapped as a skill for Codex. It comes from your Bowerloom store. Edit it there, not this file.\n---\n${text}`
+  : `---\nname: prompt-${name}\ndescription: Bowerloom prompt ${name}, wrapped as a skill for Codex. Edit .bowerloom/prompts/${name}.md, not this file.\n---\n${text}`;
 const fileOf = (path: string, text: string) => ({ path, text, sha256: hash(text), mode: 420 });
 /** The catalog bytes of one item. Content only: no absolute path, no operation key, no machine data. */
 export function catalogText(v: ManagedItemRequest, c: ItemClosure, surfaces: { id: SurfaceId; path: string }[]): string {
@@ -124,8 +171,8 @@ export function materialV2(core: PlanCoreV2): MaterialV2[] {
   for (const s of core.before) {
     if (s.id === 'ignore') out.push({ id: s.id, kind: 'file', files: [fileOf('gitignore', IGNORE_TEXT)] });
     else if (s.id === 'canonical' || s.id === 'projection-claude') out.push({ id: s.id, kind: 'directory', files });
-    else if (s.id === 'projection-codex') out.push({ id: s.id, kind: 'directory', files: v.item.kind === 'prompt' ? [fileOf('SKILL.md', wrapper(c.name, text))] : files });
-    else if (s.id === 'command-claude') out.push({ id: s.id, kind: 'file', files: [fileOf(c.name + '.md', text)] });
+    else if (s.id === 'projection-codex') out.push({ id: s.id, kind: 'directory', files: v.item.kind === 'prompt' ? [fileOf('SKILL.md', wrapper(c.name, text, (c.source as { kind?: unknown } | null)?.kind === 'store-prompt' ? 'store' : 'project'))] : files });
+    else if (s.id === 'command-claude' || s.id === 'agent-claude') out.push({ id: s.id, kind: 'file', files: [fileOf(c.name + '.md', text)] });
     else if (s.id === 'catalog') out.push({ id: s.id, kind: 'file', files: [fileOf('catalog.json', catalogText(v, c, core.before))] });
   }
   return out;
@@ -222,7 +269,9 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
   const parents = parentsOf(v.projectDir, locations).sort((a, b) => a.length - b.length).map(p => ({ path: p, identity: exists(p) ? directory(p) : null }));
   for (const p of parents) if (exists(dirname(p.path))) { names(dirname(p.path)); if (!p.identity) check(aliasFree(p.path), 'MANAGED_SKILL_PATH_OCCUPIED'); }
   for (const s of before) if (s.pins === null && exists(dirname(s.path))) check(aliasFree(s.path), 'MANAGED_SKILL_PATH_OCCUPIED');
-  if (v.operation === 'install') check(previous === null && before.every(s => s.pins === null), 'MANAGED_SKILL_PATH_OCCUPIED');
+  // An agent adopts one equal hand-made copy (spec 01a, section 3.3): `agent-claude` may hold one file whose hash equals the closure file's.
+  const adoptable = (s: SurfaceV2): boolean => v.item.kind === 'agent' && s.id === 'agent-claude' && s.pins !== null && s.pins.length === 1 && s.pins[0]!.sha256 === closure.files[0]!.sha256;
+  if (v.operation === 'install') check(previous === null && before.every(s => s.pins === null || adoptable(s)), 'MANAGED_SKILL_PATH_OCCUPIED');
   else if (v.operation === 'migrate') {
     // v2: the only occupied item surface may be the v1 projection, unchanged since the v1 receipt.
     check(previous === null && before.at(-1)!.id === 'legacy' && before.at(-1)!.pins !== null);
@@ -234,7 +283,13 @@ export async function planItemWithLifetime(value: unknown, life: Lifetime): Prom
     for (const s of before.filter(b => ownSurface(b) && !kept.some(k => k.id === b.id))) check(s.pins === null, 'MANAGED_SKILL_PATH_OCCUPIED');
     const catalog = schema<{ source: { kind: string; package?: string; registry?: string; host?: string; repository?: string; version?: string; commit?: string }; skill: unknown; inventory: unknown }>(strictJson(raw(catalogPath(v.projectDir, v.item), 262144, false).bytes.toString('utf8'), 262144), catalogKeys);
     const incoming = closure.source as typeof catalog.source, was = catalog.source;
-    const sameSource = incoming.kind === was.kind && (incoming.kind === 'npm' ? was.package === incoming.package && was.registry === incoming.registry : incoming.kind === 'git' ? was.host === incoming.host && was.repository === incoming.repository : same(was, incoming));
+    // An agent may move to another team, so its path may change. The planner (project-sync classifyAgent) plans an update for a moved
+    // agent, and checkAgentChild binds the path of the plan; this check only keeps the kind (tests: v2-agent 'moves to another team').
+    // Spec 06, 3.12: `local` and `store` are one family, and so are `prompt` and `store-prompt`. Equal paths make two
+    // members of a family the same source, so a local skill moved from the project to the store keeps updating.
+    const family = (kind: string): string => kind === 'store' ? 'local' : kind === 'store-prompt' ? 'prompt' : kind;
+    const sameSource = family(incoming.kind) === family(was.kind) && (incoming.kind === 'agent' || incoming.kind === 'slice' ? true : incoming.kind === 'npm' ? was.package === incoming.package && was.registry === incoming.registry : incoming.kind === 'git' ? was.host === incoming.host && was.repository === incoming.repository
+      : family(incoming.kind) !== incoming.kind || family(was.kind) !== was.kind ? (was as { path?: unknown }).path === (incoming as { path?: unknown }).path : same(was, incoming));
     check(sameSource && same(catalog.skill, closure.skill));
     // Same commit or same npm version with changed contents or provenance is not an update.
     if ((incoming.kind === 'git' && was.commit === incoming.commit) || (incoming.kind === 'npm' && was.version === incoming.version)) check(same(was, incoming) && same(catalog.inventory, closure.inventory));
@@ -250,10 +305,10 @@ export function readPending(project: string): PendingV2 {
   const m = parsed<PendingV2>(join(project, MARKER_V2), pendingKeys, true); itemRef(m.item); path(m.stateDir);
   check(m.format === PENDING_FORMAT && HEX64.test(m.operationKey) && HEX64.test(m.intentSha256)); return m;
 }
-/** Item refs from catalog file names: `<id>.json` for a skill, `prompt-<id>.json` for a prompt. */
+/** Item refs from catalog file names: `<id>.json` for a skill, `prompt-<id>.json` for a prompt, `agent_<id>.json` for an agent, `slice_<id>.json` for a slice. */
 export function catalogItem(name: string): ItemRef {
-  const m = /^(prompt-)?([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/.exec(name); check(m !== null);
-  return itemRef(m[1] ? { kind: 'prompt', id: m[2]! } : { kind: 'skill', id: m[2]! });
+  const m = /^(?:(prompt-)|(agent_)|(slice_))?([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/.exec(name); check(m !== null);
+  return itemRef(m[1] ? { kind: 'prompt', id: m[4]! } : m[2] ? { kind: 'agent', id: m[4]! } : m[3] ? { kind: 'slice', id: m[4]! } : { kind: 'skill', id: m[4]! });
 }
 /** Status of every managed item and of the project's markers. Reads only. */
 export function inspectManagedProject(projectDir: string, itemsRoot: string): ManagedProjectInspection {

@@ -15,6 +15,9 @@ const GRACE_MS = 5000;
 const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
 const say = line => process.stderr.write(`run-node-tests: ${line}\n`);
+// Spec 07: no test process sees a GitHub token of this machine. A test that needs one sets its own canary.
+const TOKEN_VARS = ['BOWERLOOM_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
+const testEnv = () => Object.fromEntries(Object.entries(process.env).filter(([name]) => !TOKEN_VARS.includes(name)));
 
 /** The limit in seconds, or a refusal: the variable must be a whole number of seconds above zero. */
 function limitSeconds(value) {
@@ -35,7 +38,7 @@ function main() {
   if (limit.note) say(limit.note);
 
   // detached: the child leads a new process group, so one kill reaches node --test and every test process under it.
-  const child = spawn(process.execPath, ['--test', ...process.argv.slice(2)], { stdio: 'inherit', detached: true });
+  const child = spawn(process.execPath, ['--test', ...process.argv.slice(2)], { stdio: 'inherit', detached: true, env: testEnv() });
   let timedOut = false, forwarded = null, grace = null;
 
   const timer = setTimeout(() => {

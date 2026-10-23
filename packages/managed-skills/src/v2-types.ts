@@ -11,14 +11,38 @@ export type { Identity, FilePin, JournalRecord };
  * `ignore` is the shared `.bowerloom/managed/.gitignore`, planned only by the operation that finds it absent;
  * `legacy` is the whole v1beta1 namespace `.bowerloom-skills/`, moved out (backup only) by a migrate operation.
  */
-export type ItemSurfaceId = 'canonical' | 'catalog' | 'projection-claude' | 'projection-codex' | 'command-claude';
+export type ItemSurfaceId = 'canonical' | 'catalog' | 'projection-claude' | 'projection-codex' | 'command-claude' | 'agent-claude';
 export type SurfaceId = ItemSurfaceId | 'ignore' | 'legacy';
 export type SurfaceKind = 'directory' | 'file';
 export type Harness = 'claude' | 'codex';
 export interface SurfaceV2 { id: SurfaceId; kind: SurfaceKind; path: string; pins: FilePin[] | null }
 export interface MaterialV2 { id: SurfaceId; kind: SurfaceKind; files: { path: string; text: string; sha256: string; mode: number }[] }
-export interface ItemRef { kind: 'skill' | 'prompt'; id: string }
-export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string };
+export interface ItemRef { kind: 'skill' | 'prompt' | 'agent' | 'slice'; id: string }
+/**
+ * The guard of an agent copy (spec 05, section 4.8): the sorted slice ids, and one `<slice id>:<32 hex>` string for each
+ * listed slice whose root resolves. Null when no slice of the agent is guarded.
+ */
+export interface AgentGuardSource { slices: string[]; roots: string[] }
+/** The device, inode, and birth time of a folder, as decimal strings. */
+export interface RootIdentity { device: string; inode: string; birthtimeNs: string }
+/**
+ * Where a slice reads from: the project, or a registered folder outside it (spec 05, Part B). A registered root names the
+ * real path of the root folder (the registered folder joined with the slice's path) and its identity, so the plan binds
+ * the folder it read.
+ */
+export type SliceRequestRoot = { kind: 'project' } | { kind: 'registered'; name: string; dir: string; identity: RootIdentity };
+/**
+ * How the planner finds a registered root: the store lookup of project-context, passed in because managed-skills reads no
+ * store. It returns the root, or the hold of the slice.
+ */
+export type RegisteredLookup = (name: string, path: string) =>
+  | { ok: true; dir: string; identity: RootIdentity; recordSha256: string }
+  | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string };
+export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string }
+  | { kind: 'agent'; team: string; name: string; guard: AgentGuardSource | null } | { kind: 'slice'; name: string; root: SliceRequestRoot }
+  | { kind: 'store'; path: string; storeDir: string } | { kind: 'store-prompt'; name: string; storeDir: string };
+/** The root and guard mode a slice's catalog records. It holds no absolute path. */
+export type SliceCatalogRoot = { kind: 'project'; path: string } | { kind: 'registered'; name: string; path: string; id: string };
 export interface LegacyRef { stateDir: string; operationKey: string }
 export interface ManagedItemRequest {
   operation: 'install' | 'update' | 'migrate'; projectDir: string; stateDir: string; item: ItemRef; harnesses: Harness[];
@@ -28,13 +52,21 @@ export interface InventoryRow { path: string; sha256: string; bytes: number }
 export interface ItemFile { path: string; text: string; sha256: string; mode: number }
 /** The local reader's result. Content only: no absolute path, identity or time. */
 export interface LocalClosure {
-  format: 'bowerloom/local-item-closure/v1beta2'; source: { kind: 'local'; path: string } | { kind: 'prompt'; path: string };
+  format: 'bowerloom/local-item-closure/v1beta2';
+  source: { kind: 'local'; path: string } | { kind: 'prompt'; path: string } | { kind: 'agent'; path: string; guard: string[] | null }
+    | { kind: 'slice'; path: string; root: SliceCatalogRoot; guard: 'root' | 'none' } | { kind: 'store'; path: string } | { kind: 'store-prompt'; path: string };
   files: ItemFile[]; inventory: InventoryRow[]; executionAuthorized: false;
+  /** For a slice: the member paths, then the covered folders, each sorted, relative to the slice root. Skills, prompts and agents hold none. */
+  references: string[];
+  /** For an agent: the sha256 of the raw source bytes, which `--allow-agent` names. The closure file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The material source of one item, normalized from a cache closure or a local closure. Content only. */
 export interface ItemClosure {
   format: 'bowerloom/managed-item-closure/v1beta2'; source: unknown; skill: { id: string; name: string; sourceRoot: string } | null;
   license: unknown; references: unknown[]; inventory: InventoryRow[]; files: ItemFile[]; name: string;
+  /** For an agent: the sha256 of the raw source bytes. The one file holds the Claude copy. */
+  sourceSha256?: string;
 }
 /** The bound v1beta1 install of a migrate operation. The v1 state folder is read, never written. */
 export interface LegacyCore { stateDir: string; operationKey: string; receiptRevision: string; receiptPin: FilePin; harness: Harness }

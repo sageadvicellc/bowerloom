@@ -9,14 +9,14 @@ Bowerloom brings governance to the agent teams, skills, and prompts in your proj
 
 Install the `bowerloom` command from the npm beta stream. Then run one command in a project folder. Each step shows its plan first, and you approve each step.
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 <a id="ask-your-personal-agent"></a>
 
 ## Ask your agent
 
 ```text
-Read the Bowerloom installation guide for 0.7.0-beta.2. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
+Read the Bowerloom installation guide for 0.7.0-beta.3. Review the requirements and the install command with me. After installation, read the version and help. Ask me for the team name and the goal. Then run bowerloom up for my project and show me each plan. Wait for my exact approval of each step. Do not start workers, and do not edit AGENTS.md or CLAUDE.md.
 ```
 
 ## Agent procedure
@@ -39,18 +39,18 @@ bowerloom --help
 
 Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install.
 
-A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`.
+A colleague who was given a `bowerloom-0.7.0-beta.3.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.3.tgz`. Installing from a downloaded .tgz file gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
 
 npm reports the packages it added and exits 0. In the tests for this release, `bowerloom --version` printed this line:
 
 ```text
-Bowerloom 0.7.0-beta.2
+Bowerloom 0.7.0-beta.3
 ```
 
 `bowerloom --help` starts with these two lines:
 
 ```text
-Bowerloom 0.7.0-beta.2: open beta
+Bowerloom 0.7.0-beta.3: open beta
 Setup does not start workers, grant runtime access, or authorize connected actions.
 ```
 
@@ -131,13 +131,13 @@ When no step is left, the run prints `prepared, workers held` and exits 4. In th
 ```text
 Applied plan a42ec3be3b5e38c2181ccb3418668e395fda471fdab2bb5f1201397e4cdd8078.
 prepared, workers held
-  Team: Studio crew (first-team), with skills and prompts in place for Claude Code and Codex.
+  Team: Studio crew (first-team), with skills, prompts, agents, and context slices in place for Claude Code and Codex.
   Next: read .bowerloom/START-HERE.md. This beta starts no worker; worker launch comes after the startup gate.
 ```
 
 The test run also recorded standard error. It held one line of JSON with the code `WORKERS_HELD`.
 
-When a skill, prompt, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
+When a skill, prompt, agent, or team is held or gone, the last run prints `prepared, N items held` instead, with a next command for each item. Press Ctrl-C or Ctrl-D at the yes/no question to stop. It prints `Stopped. Nothing was changed.` and exits 130. Exit 4 means a gate holds the workers. It does not mean the command failed. Read [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes).
 
 `up` never edits `AGENTS.md` or `CLAUDE.md`, and it never runs `claude`, `codex`, or any other program.
 
