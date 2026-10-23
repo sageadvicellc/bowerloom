@@ -103,7 +103,7 @@ test('the fallback of a fetch: a known code is named, never called offline; an e
   assert.doesNotMatch(known.message, /offline|network/i);
   assert.equal(known.next, NEXT.other);
   // Round 4: an error with no code keeps SKILLS_OFFLINE, names the kind of error, never its message, and keeps the cause.
-  const plain = new TypeError('a secret detail /Users/someone');
+  const plain = new TypeError('a secret detail of someone');
   const wrapped = acquisitionRefusal(plain, signal, 'x') as Error & { code: string; next?: string; cause?: unknown };
   assert.equal(wrapped.code, 'SKILLS_OFFLINE'); assert.equal(wrapped.message, `${FIXED} Bowerloom could not fetch x (TypeError).`);
   assert.equal(wrapped.next, NEXT.other); assert.equal(wrapped.cause, plain);
