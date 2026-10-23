@@ -10,6 +10,7 @@ import { denyNetwork } from './sync-fixture.mjs';
 import { wikiProject, createSlice, put, plan, applied, review, code, exists, read, rewriteSlice, sliceAgent, registeredFolder, allowFolder, agentProject, measureInput, signal } from './slices-fixture.mjs';
 import { planFolderRemove, applyFolderRemove, planFolderAdd, applyFolderAdd } from '../../../dist/packages/project-context/src/index.js';
 import { applyProjectApply } from '../../../dist/packages/project-sync/src/index.js';
+import { readSliceTree } from '../../../dist/packages/managed-skills/src/local-source.js';
 import { measureContext, showSlice } from '../../../dist/packages/project-sync/src/index.js';
 import { agentsMayBeTracked } from '../../../dist/packages/project-sync/src/slices.js';
 import { parse } from 'yaml';
@@ -227,6 +228,23 @@ test('N3c. a grant made before the kind was recorded holds the slice, and says w
   const s = slice(await plan(f, ['claude'])); assert.deepEqual([s.hold.code, s.hold.next], ['FOLDER_NOT_ALLOWED', `bowerloom folder allow ${kb.name} heading`]);
   await allowFolder(f, kb.name); assert.equal(slice(await plan(f, ['claude'])).hold, null);
 });
+// Review fix 1: the grant is looked up again in phase B of apply, with the kind, so a change after the approval is stale.
+// The change runs inside the slice hook, after the replan read the slice and before phase B, which is the window the lookup closes.
+for (const [label, change] of [
+  ['folder deny', file => fs.unlinkSync(file)],
+  ['folder allow with another kind', file => fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('frontmatter:api_key', 'heading'))],
+]) {
+  test(`N3d. ${label} between the approval and apply: apply refuses STALE_APPROVAL and writes nothing`, async t => {
+    const { f, kb } = await registeredProject(t); sliceAgent(f, 'lead', ['slice-wiki']);
+    rewriteSlice(f, 'wiki', text => text.replace('summary: heading', 'summary: frontmatter:api_key')); await allowFolder(f, kb.name, 'frontmatter:api_key');
+    const approved = await plan(f, ['claude']); assert.equal(slice(approved).action, 'install');
+    const dir = path.join(f.home, '.bowerloom/folders', kb.name + '.grants'); let changed = false;
+    const hook = (...args) => { const r = readSliceTree(...args); if (!changed) { changed = true; change(path.join(dir, fs.readdirSync(dir)[0])); } return r; };
+    await assert.rejects(applyProjectApply(f.input(['claude'], { sliceTree: hook }), approved.revision, signal()), code('STALE_APPROVAL'));
+    assert.equal(changed, true);
+    assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), false, 'no frontmatter value is written');
+  });
+}
 test('N4. the plan warns when .claude/skills may be committed, and a git-ignore line silences it', async t => {
   const { f, kb } = await registeredProject(t); fs.mkdirSync(path.join(f.projectDir, '.git'));
   const warn = new RegExp(`^ {2}Note: slice wiki puts text of ${esc(kb.wiki)} into \\.claude/skills, and Bowerloom found no \\.gitignore line that keeps \\.claude/skills out of git\\. Do not commit it\\.$`, 'm');

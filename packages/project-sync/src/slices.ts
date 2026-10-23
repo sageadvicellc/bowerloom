@@ -288,6 +288,19 @@ export function requestRoot(item: SliceItem): SliceRequestRoot {
   return { kind: 'registered', name: root.name, dir: root.dir, identity: { device: root.identity.device, inode: root.identity.inode, birthtimeNs: root.identity.birthtimeNs } };
 }
 
+/**
+ * Phase B of apply, before the child request: a registered slice looks its grant up again, with the summary kind it copies. The
+ * root and the record must be the ones the approved plan read. A grant that went (`folder deny`), a grant for another kind
+ * (`folder allow` again), or a folder or record that changed since the approval makes apply refuse, and nothing is written.
+ */
+export function checkSliceGrant(item: SliceItem, lookup: RegisteredLookup): void {
+  const root = item.root;
+  if (root === null || root.kind !== 'registered') return;
+  const copies = item.copies, kind = copies === null ? undefined : copies.summary === 'frontmatter' ? `frontmatter:${copies.key}` : copies.summary;
+  const found = lookup(root.name, root.path, kind);
+  if (!found.ok || found.dir !== root.dir || found.recordSha256 !== root.recordSha256 || found.identity.device !== root.identity.device || found.identity.inode !== root.identity.inode || found.identity.birthtimeNs !== root.identity.birthtimeNs) throw stale(`The grant or the folder of slice ${item.id} changed since the plan.`);
+}
+
 /** The child request of one slice. Every field comes from the plan this run computed. */
 export function sliceRequest(project: string, itemsRoot: string, item: SliceItem): ManagedItemRequest {
   return {
