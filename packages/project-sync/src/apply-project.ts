@@ -25,8 +25,9 @@ import type { Entry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
-import { DefinitionError, shellArg } from '../../contracts/src/index.js';
-import { applyChildren, createPrivateFolders, fetchedInto, interrupted } from './apply.js';
+import { DefinitionError, PLAIN_ID } from '../../contracts/src/index.js';
+const ALLOW_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/;
+import { applyChildren, createPrivateFolders, fetchedInto, interrupted, printableMax } from './apply.js';
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
@@ -333,8 +334,11 @@ export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTr
  * is the command of a team run.
  */
 export function applyRerun(input: Pick<ApplyInput, 'frozen' | 'harnesses' | 'team' | 'allow' | 'maxGithubRequests'>): string {
-  const allow = (input.allow ?? []).flatMap(a => ['--allow-agent', shellArg(a, '<role>:<hash>')]);
-  if (input.team) return ['bowerloom up --team', shellArg(input.team, '<team>'), ...allow].join(' ');
+  // Round 10: only validated values print. Anything else prints no command, but words that name it.
+  const allowed = input.allow ?? [], ok = allowed.every(a => ALLOW_VALUE.test(a)) && input.harnesses.every(h => h === 'claude' || h === 'codex') && printableMax(input.maxGithubRequests);
+  if (input.team) return ok && PLAIN_ID.test(input.team) ? ['bowerloom up --team', input.team, ...allowed.flatMap(a => ['--allow-agent', a])].join(' ') : 'the same bowerloom up command';
+  if (!ok) return 'the same bowerloom apply command';
+  const allow = allowed.flatMap(a => ['--allow-agent', a]);
   const harness = input.harnesses.length === 1 ? ['--harness', input.harnesses[0]!] : [];
   return ['bowerloom apply', ...harness, ...allow, ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' ');
 }

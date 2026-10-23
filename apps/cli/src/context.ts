@@ -8,7 +8,7 @@ import { discoverProject, privateStateRoot } from '../../../packages/project-con
 import { measureContext, showSlice } from '../../../packages/project-sync/src/context-measure.js';
 import type { MeasureAgent, MeasureResult, ShowResult } from '../../../packages/project-sync/src/context-measure.js';
 import { ESTIMATE_BAND, formatPercent, formatThousands, parseBytesPerToken } from '../../../packages/context-slices/src/estimate.js';
-import { newCommandJson, plainText, shellWord } from './human.js';
+import { addDirStep, newCommandJson, plainText } from './human.js';
 
 const SHOW_USAGE = 'Use bowerloom context show <slice> [--json].';
 const MEASURE_USAGE = 'Use bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json].';
@@ -32,7 +32,7 @@ export function renderShow(r: ShowResult): string {
   if (n.oversize.length) notes.push(`lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) notes.push(`skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) notes.push(`follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
-  if (n.outsideProject) notes.push(`reads ${r.root}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${shellWord(r.folder ?? r.root ?? '')}, or add the folder to permissions.additionalDirectories.`);
+  if (n.outsideProject) notes.push(`reads ${r.root}, outside this project. Claude Code may ask before it reads there. ${addDirStep(r.folder ?? r.root ?? '')}`);
   if (r.copies !== null) {
     const c = r.copies;
     notes.push(c.summary === 'none' ? `copies no text from ${c.folder}, only the paths of ${c.count} files.` : c.summary === 'heading' ? `copies the first heading of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.` : `copies frontmatter key ${c.key} of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.`);

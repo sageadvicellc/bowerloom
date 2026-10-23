@@ -18,7 +18,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
-import { DefinitionError, shellArg } from '../../contracts/src/index.js';
+import { DefinitionError, PLAIN_ID } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { inspectSkillCache, observeSkillCacheRoot, refusalSummary } from '../../skill-sources/src/cache.js';
 import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
@@ -385,9 +385,15 @@ function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, c
  * of PR 101: with each flag that changes the plan, from syncRerun or applyRerun.
  */
 export type Rerun = string;
-/** Round 9: `skills sync` with each flag of `input` that changes its plan. */
+/** Round 10: a --max-github-requests value that a command prints: a whole number from 1 to 5000. */
+export const printableMax = (n: number | undefined): boolean => n === undefined || (Number.isSafeInteger(n) && n >= 1 && n <= 5000);
+/**
+ * Round 9: `skills sync` with each flag of `input` that changes its plan. Round 10: a value that is not a validated team
+ * id or request count prints no command, but the words `the same bowerloom skills sync command`.
+ */
 export function syncRerun(input: Pick<SyncInput, 'offline' | 'team' | 'frozen' | 'maxGithubRequests'>): string {
-  return ['bowerloom skills sync', ...(input.offline ? ['--offline'] : []), ...(input.team ? [`--team ${shellArg(input.team, '<team>')}`] : []), ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? [`--max-github-requests ${input.maxGithubRequests}`] : [])].join(' ');
+  if ((input.team && !PLAIN_ID.test(input.team)) || !printableMax(input.maxGithubRequests)) return 'the same bowerloom skills sync command';
+  return ['bowerloom skills sync', ...(input.offline ? ['--offline'] : []), ...(input.team ? [`--team ${input.team}`] : []), ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? [`--max-github-requests ${input.maxGithubRequests}`] : [])].join(' ');
 }
 /** Round 9: the interrupted refusal between skills. Its step finishes the run with the same command. */
 export const interrupted = (done: string[], left: string[], rerun: Rerun = 'bowerloom skills sync') => withNext(syncError('SKILLS_SYNC_INTERRUPTED',

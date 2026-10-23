@@ -145,18 +145,23 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
- * Round 9 of the reviews of PR 101: the characters that no printed shell word holds. Control characters, the line and
- * paragraph separators, and the bidirectional controls change what a terminal shows. A lone surrogate has no UTF-8 form.
- * A backslash ends a single-quoted word early in fish, which reads \' and \\ inside single quotes.
+ * Rounds 9 and 10 of the reviews of PR 101: the characters that no printed shell word holds. Control characters, the line
+ * and paragraph separators, and every invisible format character (the bidirectional controls among them) change what a
+ * terminal shows. ZWNJ and ZWJ are kept, because real folder names use them. A lone surrogate has no UTF-8 form. A
+ * backslash ends a single-quoted word early in fish, which reads \' and \\ inside single quotes.
  */
-export const SHELL_UNSAFE = /[\p{Cc}\p{Cs}\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\\]/u;
+export const SHELL_UNSAFE = /[\p{Cc}\p{Cs}\u2028\u2029\\]|(?![\u200C\u200D])\p{Cf}/u;
+/** Round 10: the ids, team names and role names that Bowerloom validates. They print as they are. */
+export const PLAIN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /**
- * A path as one shell word for a person to paste: plain characters stay, any other path is single-quoted, with each '
- * written as '\''. A path that holds a character of SHELL_UNSAFE is `placeholder`, which names it in words.
+ * Round 10: a value as one shell word for a person to paste, or null when no command can carry it. Plain characters stay,
+ * a leading = is quoted (zsh expands it), and any other value is single-quoted, with each ' written as '\''. Null for an
+ * empty value, a value with a character of SHELL_UNSAFE, and a value that starts with -, which quoting does not stop
+ * from being read as an option. A caller then prints no command, and a sentence that names what to run.
  */
-export function shellArg(path: string, placeholder: string): string {
-  if (path.length === 0 || SHELL_UNSAFE.test(path)) return placeholder;
-  return /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+export function shellArg(value: string): string | null {
+  if (value.length === 0 || SHELL_UNSAFE.test(value) || value.startsWith('-')) return null;
+  return /^[A-Za-z0-9_/.:@%+,][A-Za-z0-9_/.:@%+=,-]*$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 export function digest(value: string | Uint8Array): string {

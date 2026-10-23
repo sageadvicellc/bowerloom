@@ -6,7 +6,7 @@
  */
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { DefinitionError, canonicalJson, shellArg } from '../../contracts/src/index.js';
+import { DefinitionError, PLAIN_ID, canonicalJson } from '../../contracts/src/index.js';
 import { inspectStore, isHeldProjectLock, projectRefusal, adoptCreatedMarker, verifyProjectPins } from '../../project-context/src/index.js';
 import type { HeldProjectLock, ProjectContext } from '../../project-context/src/types.js';
 import { readConfig } from '../../project-config/src/config.js';
@@ -482,13 +482,18 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
 const proveNeeds = (defs: StoreDefinitions, needs: LockNeed[], input: LockUpdateInput, notes: string[], token: GithubToken | null, proof: { credentials: Credentials | null }) => prove(defs, needs, input.commit, input, notes, token, proof, lockCommand(input));
 /** Round 9 of the reviews of PR 101: the command of a use, unuse or team adopt run, with each flag that changes its plan. */
 export function changeCommand(input: Pick<ChangeInput, 'op' | 'kind' | 'id' | 'source' | 'commit' | 'maxGithubRequests'>): string {
-  const id = shellArg(input.id, '<id>');
-  if (input.op === 'adopt') return `bowerloom team adopt ${id}`;
-  return [`bowerloom ${input.op} ${input.kind} ${id}`, ...(input.source === 'project' ? ['--project'] : []), ...(input.commit ? ['--commit', shellArg(input.commit, '<sha>')] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' ');
+  // Round 10: only validated values print. Anything else prints no command, but words that name it.
+  const max = input.maxGithubRequests, okMax = max === undefined || (Number.isSafeInteger(max) && max >= 1 && max <= 5000);
+  if (!PLAIN_ID.test(input.id) || !KINDS.has(input.kind) || (input.commit && !HEX40.test(input.commit)) || !okMax) return input.op === 'adopt' ? 'the same bowerloom team adopt command' : `the same bowerloom ${input.op} command`;
+  if (input.op === 'adopt') return `bowerloom team adopt ${input.id}`;
+  return [`bowerloom ${input.op} ${input.kind} ${input.id}`, ...(input.source === 'project' ? ['--project'] : []), ...(input.commit ? ['--commit', input.commit] : []), ...(max !== undefined ? ['--max-github-requests', String(max)] : [])].join(' ');
 }
-/** Round 9: the command of a lock update run, with its items and --commit. */
+const KINDS: ReadonlySet<string> = new Set(['skill', 'prompt', 'team']);
+/** Round 9: the command of a lock update run, with its items and --commit. Round 10: validated values only. */
 export function lockCommand(input: Pick<LockUpdateInput, 'items' | 'commit'>): string {
-  return ['bowerloom lock update', ...(input.items ?? []).flatMap(i => ['--item', shellArg(`${i.kind}:${i.id}`, '<kind>:<id>')]), ...(input.commit ? ['--commit', shellArg(input.commit, '<sha>')] : [])].join(' ');
+  const items = input.items ?? [];
+  if (items.some(i => !KINDS.has(i.kind) || !PLAIN_ID.test(i.id)) || (input.commit && !HEX40.test(input.commit))) return 'the same bowerloom lock update command';
+  return ['bowerloom lock update', ...items.flatMap(i => ['--item', `${i.kind}:${i.id}`]), ...(input.commit ? ['--commit', input.commit] : [])].join(' ');
 }
 /** True when the plan changes nothing: the lock's bytes stay and no item changes. */
 export const lockUpdateIsNoop = (plan: LockUpdatePlan): boolean => plan.nothing || (plan.lock.before?.sha256 === plan.lock.after.sha256 && plan.updated.every(u => u.change === 'unchanged'));

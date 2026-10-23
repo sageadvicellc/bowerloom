@@ -18,7 +18,7 @@ import { acquisitionRefusal, fetchPin, recoveryInFlow } from '../packages/projec
 import { ALL_IDS_USED_NEXT, cacheOperationId } from '../packages/project-sync/src/cache-index.js';
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
 import { offlineBecause, partialRefusal, REPLAN_NEXT, shellPath, syncError, withNext } from '../packages/project-sync/src/refusal.js';
-import { shellWord } from '../apps/cli/src/human.js';
+import { addDirStep, shellWord } from '../apps/cli/src/human.js';
 import type { OfflineCause } from '../packages/project-sync/src/refusal.js';
 import { notShareable } from '../packages/project-config/src/index.js';
 import { atApproval } from '../packages/project-config/src/refusal.js';
@@ -372,17 +372,20 @@ test('a flow that plans again: an approved plan with no host, and a pin with all
 
 // Round 9 of the reviews of PR 101, item 4: a printed path is single-quoted unless it holds a character that changes what a
 // terminal shows, has no UTF-8 form, or ends a single-quoted word in fish (a backslash). Those print the placeholder.
-test('a printed path: other format characters are quoted; control, bidirectional, surrogate and backslash characters print the placeholder', () => {
-  const P = '<earlier-state-folder>';
-  assert.equal(shellPath('/home/a/plain-path_1', P), '/home/a/plain-path_1');
-  assert.equal(shellPath('/home/a/My Notes', P), "'/home/a/My Notes'");
-  assert.equal(shellPath("/home/a/it's", P), "'/home/a/it'\\''s'");
-  assert.equal(shellPath('/home/a/\u0645\u200C\u0627', P), "'/home/a/\u0645\u200C\u0627'", 'ZWNJ is quoted');
-  assert.equal(shellPath('/home/a/\u{1F468}\u200D\u{1F469}', P), "'/home/a/\u{1F468}\u200D\u{1F469}'", 'ZWJ is quoted');
-  for (const odd of ['/a/\u202Etxt', '/a/\u2066x\u2069', '/a/\u061Cx', '/a/\u200Fx', '/a/x\\y', '/a/x\\', '/a/\uD800x', '/a/\uDC00', '/a/x\u0007', '/a/x\u2028y', 'relative/path', ''])
-    assert.equal(shellPath(odd, P), P, JSON.stringify(odd));
-  assert.equal(shellWord('/a/x\\y'), '<folder>'); assert.equal(shellWord('/a/\u202Ex'), '<folder>');
+test('a printed path: ZWNJ and ZWJ are quoted; control, invisible, surrogate, backslash and leading-dash values print no command', () => {
+  assert.equal(shellPath('/home/a/plain-path_1'), '/home/a/plain-path_1');
+  assert.equal(shellPath('/home/a/My Notes'), "'/home/a/My Notes'");
+  assert.equal(shellPath("/home/a/it's"), "'/home/a/it'\\''s'");
+  assert.equal(shellPath('/home/a/\u0645\u200C\u0627'), "'/home/a/\u0645\u200C\u0627'", 'ZWNJ is quoted');
+  assert.equal(shellPath('/home/a/\u{1F468}\u200D\u{1F469}'), "'/home/a/\u{1F468}\u200D\u{1F469}'", 'ZWJ is quoted');
+  // Round 10: every other invisible format character too, and a tag character, which is outside the BMP.
+  for (const odd of ['/a/\u202Etxt', '/a/\u2066x\u2069', '/a/\u061Cx', '/a/\u200Fx', '/a/\u200Bx', '/a/\u2060x', '/a/\uFEFFx', '/a/\u00ADx', '/a/\u{E0041}x', '/a/x\\y', '/a/x\\', '/a/\uD800x', '/a/\uDC00', '/a/x\u0007', '/a/x\u2028y', 'relative/path', ''])
+    assert.equal(shellPath(odd), null, JSON.stringify(odd));
+  assert.equal(shellWord('/a/x\\y'), null); assert.equal(shellWord('/a/\u202Ex'), null); assert.equal(shellWord('-rf'), null);
+  assert.equal(shellWord('=cmd'), "'=cmd'", 'a leading = is quoted'); assert.equal(shellWord('a=b'), 'a=b');
   assert.equal(shellWord('/a/\u200Cx'), "'/a/\u200Cx'"); assert.equal(shellWord('/a b'), "'/a b'"); assert.equal(shellWord('/a/b'), '/a/b');
+  assert.equal(addDirStep('/a/x\\y'), 'Add the folder to permissions.additionalDirectories, or start Claude Code with --add-dir and that folder.');
+  assert.equal(addDirStep('/a b'), "Start Claude Code with --add-dir '/a b', or add the folder to permissions.additionalDirectories.");
 });
 
 // Round 9, item 5: skills sync and bowerloom apply keep their own command in these steps, with its flags.

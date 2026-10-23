@@ -326,6 +326,8 @@ function boundProofs(plan: StoreMigratePlan, store: StoreState): Proofs {
 
 /** The command, without --approve, that makes the plan of these selectors again (second security review M1). */
 export function rerunOf(s: StoreMigratePlan['selectors']): string {
+  // Round 10 of the reviews of PR 101: only validated ids and commits print. Anything else prints no command.
+  if (![...s.skills, ...s.prompts, ...s.teams].every(id => ID.test(id)) || (s.commit !== null && !HEX40.test(s.commit))) return 'the same bowerloom store migrate command';
   const words = ['bowerloom', 'store', 'migrate'];
   if (s.all) words.push('--all');
   for (const id of s.skills) words.push('--skill', id);

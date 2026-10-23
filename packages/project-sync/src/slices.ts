@@ -10,6 +10,7 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
+import { shellArg } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, raw, sameOrInside, stablePins } from '../../managed-skills/src/observed.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
@@ -98,9 +99,11 @@ export function holdOf(id: string, hold: { code: string; detail: string; errno?:
     case 'SLICE_KEY_UNKNOWN': return { code: hold.code, next: `Remove ${/^[A-Za-z0-9_.-]{1,64}$/.test(hold.detail) ? `the key ${hold.detail}` : 'a key with unsupported characters'} from ${path}, then run bowerloom apply.` };
     case 'SLICE_PATH_MISSING': return { code: hold.code, next: `${hold.detail} is gone. Fix the path in ${path}, or restore the file, then run bowerloom apply.` };
     case 'SLICE_ROOT_MISSING': return { code: hold.code, next: 'Run bowerloom folder list, or register the folder with bowerloom folder add <folder-name> <path>, then run bowerloom apply.' };
-    case 'SLICE_ROOT_UNSAFE': return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : hold.errno !== undefined ? `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -ld ${hold.detail}, let your user read it, then run bowerloom apply.` : `ls -ld ${hold.detail}` };
+    // Round 10 of the reviews of PR 101: the root comes from a slice file, which a cloned repository controls, so a path
+    // goes into a command only through shellArg. A path that no command can carry gets words instead.
+    case 'SLICE_ROOT_UNSAFE': { const word = shellArg(hold.detail); return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : hold.errno !== undefined ? `Bowerloom cannot read ${hold.detail} (${hold.errno}). ${word !== null ? `Run ls -ld ${word}` : 'Run ls -ld on the root folder of the slice'}, let your user read it, then run bowerloom apply.` : word !== null ? `ls -ld ${word}` : `Run ls -ld on the root folder of the slice, ${hold.detail}, and make it a real folder that you own, closed to other users. Then run bowerloom apply.` }; }
     case 'FOLDER_NOT_ALLOWED': return { code: hold.code, next: `bowerloom folder allow ${hold.detail}` };
-    case 'SLICE_SOURCE_UNSAFE': return { code: hold.code, next: hold.errno === undefined ? `ls -l ${hold.detail}` : `Bowerloom cannot read ${hold.detail} (${hold.errno}). Run ls -l ${hold.detail}, let your user read it, then run bowerloom apply.` };
+    case 'SLICE_SOURCE_UNSAFE': { const word = shellArg(hold.detail); return { code: hold.code, next: hold.errno === undefined ? (word !== null ? `ls -l ${word}` : `Run ls -l on the source file of the slice, ${hold.detail}, and make it a plain file that you own, closed to other users. Then run bowerloom apply.`) : `Bowerloom cannot read ${hold.detail} (${hold.errno}). ${word !== null ? `Run ls -l ${word}` : 'Run ls -l on the source file of the slice'}, let your user read it, then run bowerloom apply.` }; }
     case 'SLICE_EMPTY': return { code: hold.code, next: `Widen include in ${path}, then run bowerloom apply.` };
     default: return { code: 'SLICE_TOO_LARGE', next: 'Narrow the slice, or set summary: none, then run bowerloom apply.' };
   }

@@ -667,8 +667,12 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
 }
 
 /**
- * A path as one shell word: plain characters stay, anything else is single-quoted. Round 9 of the reviews of PR 101: a
- * path with a character that no shell word holds (SHELL_UNSAFE: a control character, a bidirectional control, or a
- * backslash) prints <folder>, and the sentence names the folder.
+ * A path as one shell word: plain characters stay, anything else is single-quoted. Rounds 9 and 10 of the reviews of
+ * PR 101: null for a path that no command can carry (shellArg), so the caller prints words instead of a command.
  */
-export const shellWord = (path: string): string => shellArg(path, '<folder>');
+export const shellWord = (path: string): string | null => shellArg(path);
+/** The step for a slice that reads a folder outside the project: --add-dir with the folder, when a command can carry it. */
+export function addDirStep(path: string): string {
+  const word = shellWord(path);
+  return word !== null ? `Start Claude Code with --add-dir ${word}, or add the folder to permissions.additionalDirectories.` : 'Add the folder to permissions.additionalDirectories, or start Claude Code with --add-dir and that folder.';
+}

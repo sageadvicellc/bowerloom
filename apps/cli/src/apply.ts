@@ -6,7 +6,7 @@
  * instead), and starts no process. The write runs through the approval wrapper; the core takes the project lock.
  */
 import { relative } from 'node:path';
-import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { DefinitionError, PLAIN_ID } from '../../../packages/contracts/src/index.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
@@ -15,7 +15,7 @@ import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
 import { approvalFault, parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { newCommandJson, plainText, shellWord } from './human.js';
+import { addDirStep, newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
@@ -95,7 +95,7 @@ export function sliceNoteLines(item: SliceItem, project: string, tracked = false
   if (n.oversize.length) out.push(`  Note: slice ${id} lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) out.push(`  Note: slice ${id} skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) out.push(`  Note: slice ${id} follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
-  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${registeredDisplay(item, project)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${shellWord(item.root!.dir)}, or add the folder to permissions.additionalDirectories.`);
+  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${registeredDisplay(item, project)}, outside this project. Claude Code may ask before it reads there. ${addDirStep(item.root!.dir)}`);
   if (item.copies !== null) {
     const c = item.copies;
     out.push(c.summary === 'none' ? `  Note: slice ${id} copies no text from ${c.folder}, only the paths of ${c.count} files.` : c.summary === 'heading' ? `  Note: slice ${id} copies the first heading of ${c.count} files from ${c.folder} into .claude/skills/slice-${id}/SKILL.md.` : `  Note: slice ${id} copies frontmatter key ${c.key} of ${c.count} files from ${c.folder} into .claude/skills/slice-${id}/SKILL.md.`);
@@ -165,6 +165,15 @@ function agentLine(item: AgentItem, width: number, terminal: boolean, slices: re
     default: return [`  ${id} agent up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`, ...agentContextWarnings(item, pad)];
   }
 }
+/**
+ * Round 10 of the reviews of PR 101: a slice file that no receipt lists. Its name comes from the project, which a cloned
+ * repository controls, so the slice create command prints only for a name whose stem is a valid slice id.
+ */
+export function unregisteredNote(name: string): string {
+  const stem = name.replace(/\.[^.]*$/, '');
+  return PLAIN_ID.test(stem) && stem.length <= 64 && name === `${stem}.yaml` ? `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${stem} to register it.`
+    : `  Note: .bowerloom/slices/${plainText(name)} is not registered, so apply skips it. Its name is not a slice id, so rename it to <id>.yaml with a lowercase id before you register it with bowerloom slice create.`;
+}
 /** Where copies go, for the chosen harnesses only (review freeze finding 9). */
 function places(harnesses: readonly Harness[]): string {
   const all = ['.bowerloom/managed', ...harnesses.map(h => h === 'claude' ? '.claude' : '.agents')];
@@ -181,7 +190,7 @@ export function applyStaleNote(plan: ApplyPlan): string | null {
 export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
-  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
+  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => unregisteredNote(name))];
   const guarded = plan.agents.filter(a => (a.action === 'install' || a.action === 'update') && a.context.guard !== null).map(a => a.id);
   const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...slicesBlock, ...plan.agents.flatMap(a => agentLine(a, width, terminal, plan.slices, plan.project?.dir ?? '')),
     ...(plan.storeFetch ?? []).map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),

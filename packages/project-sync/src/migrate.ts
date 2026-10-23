@@ -122,7 +122,9 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
  * of round 7), so each step plans again with this command. A path with a space is quoted for a shell.
  */
 export function migrateFlow(input: MigrateInput): FetchFlow {
-  const replan = `bowerloom skills migrate plan --state ${shellPath(input.legacyStateDir, '<earlier-state-folder>')}`;
+  // Round 10: a path that no command can carry gets words that name the command, never a placeholder in a command.
+  const state = shellPath(input.legacyStateDir);
+  const replan = state !== null ? `bowerloom skills migrate plan --state ${state}` : 'bowerloom skills migrate plan, with --state and the path of the earlier state folder,';
   return { rerun: replan, replan };
 }
 /**

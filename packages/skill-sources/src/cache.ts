@@ -510,13 +510,15 @@ export function leftoverBlocked(path: string, limit = 4096): string | null {
  * `--` before its operands (`chmod -- 700 <path>`, because BSD chmod ends its options at the mode), so no path is an option.
  */
 export function shellPath(path: string): string {
-  const visible = path.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
+  // Round 10 of the reviews of PR 101: ZWNJ and ZWJ stay as they are, as shellArg keeps them; a command can carry them.
+  const visible = path.replace(/[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
   return `'${visible.replaceAll("'", "'\\''")}'`;
 }
 /** Round 5 of the reviews of PR 99, L-3: a path with a control character gets this guidance in place of a command. */
-export const NO_COMMAND = 'Its name holds control characters or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
-// Round 9 of the reviews of PR 101: a backslash too, because fish reads \' and \\ inside single quotes (SHELL_UNSAFE).
-const CONTROL = new RegExp(`[\\p{Cf}]|${SHELL_UNSAFE.source}`, 'u');
+export const NO_COMMAND = 'Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
+// Rounds 9 and 10 of the reviews of PR 101: the shared rule (SHELL_UNSAFE) of shellArg. It holds every invisible format
+// character except ZWNJ and ZWJ, and a backslash, because fish reads \' and \\ inside single quotes.
+const CONTROL = SHELL_UNSAFE;
 /** The command that lets a stuck leftover tree be deleted (round 3, M-A), or null for a name that no command can name. */
 export const leftoverTreeFix = (path: string): string | null => CONTROL.test(path) ? null : `chmod -R -- u+rwx ${shellPath(path)}`;
 /** The command that clears a leftover name, or the guidance for a name with a control character. */

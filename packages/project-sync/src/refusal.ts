@@ -136,11 +136,11 @@ export function withNext(error: DefinitionError, next: string): DefinitionError 
   return copy;
 }
 /**
- * Rounds 8 and 9 of the reviews of PR 101: an absolute path as one shell word, by the rule of `shellArg` that
- * `shellWord` in apps/cli/src/human.ts uses too. A path that is not absolute is `placeholder`.
+ * Rounds 8 to 10 of the reviews of PR 101: an absolute path as one shell word, by the rule of `shellArg` that `shellWord`
+ * in apps/cli/src/human.ts uses too. Null for a path that is not absolute or that no command can carry.
  */
-export function shellPath(path: string, placeholder: string): string {
-  return path.startsWith('/') ? shellArg(path, placeholder) : placeholder;
+export function shellPath(path: string): string | null {
+  return path.startsWith('/') ? shellArg(path) : null;
 }
 /** SKILLS_OFFLINE for a fetch that failed on the network: only a transport failure. */
 export const offlineNetwork = (extra: string, replan?: string): DefinitionError => offlineBecause('network', extra, replan);

@@ -764,14 +764,14 @@ export async function applyFolderDenyWith(home: string, project: GrantProject, n
     return { name };
   }, hooks);
 }
-/** Round 9 of the reviews of PR 101: the rule of shellWord in apps/cli/src/human.ts. The review names the folder above. */
-const shellWord = (path: string): string => shellArg(path, '<folder>');
+/** Rounds 9 and 10 of the reviews of PR 101: the ls step, with the folder when a command can carry it (shellArg). */
+const lsStep = (path: string): string => { const word = shellArg(path); return word !== null ? `run ls -led ${word}` : 'run ls -led on that folder'; };
 export function renderFolderAllowReview(plan: FolderAllowPlan): string {
   return [
     `Allow this project to read registered folder ${plan.name}`,
     `  Project: ${plan.project}`,
     `  Folder: ${plan.folderDir} (~/${plan.path})`,
-    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led ${shellWord(plan.folderDir)}.`,
+    `  Bowerloom reads the mode of the folder only. To see access control entries, ${lsStep(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',

@@ -287,3 +287,20 @@ test('L1. a record that is lost and added again does not let an old project inst
   const p = await plan(f, ['claude']); assert.deepEqual([slice(p).action, slice(p).hold.code, slice(p).installed], ['hold', 'FOLDER_NOT_ALLOWED', true]);
   await allowFolder(f, kb.name); assert.equal(slice(await plan(f, ['claude'])).state, 'up-to-date');
 });
+
+// Round 10 of the reviews of PR 101, item 1: the root of a slice comes from a file that a cloned repository controls. A
+// root path with shell characters goes into the ls step only as one quoted word, and running that step runs nothing else.
+test('X1. a slice root named with ; $( and | prints an ls step that, run in a shell, runs nothing else', async t => {
+  const f = await wikiProject(t, { slice: false });
+  const name = 'x;touch PWNED-1|sh $(touch PWNED-2)', target = path.join(f.projectDir, 'real-root');
+  fs.mkdirSync(target, { mode: 0o755 }); fs.writeFileSync(path.join(target, 'a.md'), '# A\n');
+  fs.symlinkSync(target, path.join(f.projectDir, name));
+  await createSlice(f, 'evil', { root: name });
+  const s = slice(await plan(f, ['claude']));
+  assert.equal(s.hold.code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(s.hold.next, `ls -ld '${name}'`, 'the root, relative to the project, as one quoted word');
+  const { spawnSync } = await import('node:child_process');
+  const ran = spawnSync('/bin/sh', ['-c', s.hold.next], { cwd: f.projectDir, encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  for (const p of ['PWNED-1', 'PWNED-2']) assert.equal(fs.existsSync(path.join(f.projectDir, p)), false, `${p} was not made`);
+});
