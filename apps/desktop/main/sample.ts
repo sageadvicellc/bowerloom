@@ -10,7 +10,7 @@ import { GRANT_FORMAT, discoverProject, readFolderRecord, openStore } from '../.
 import { isInside } from './safe.js';
 
 export interface SampleWorld { home: string; projects: string; env: NodeJS.ProcessEnv; state: string }
-interface SampleMeta { storeCommit: string; storeRemote: string; projectRemote: string; projects: string[]; grants: { folder: string; project: string; summary: string | null }[] }
+interface SampleMeta { storeCommit: string; storeRemote: string; projectRemote: string; projects: string[]; grants: { folder: string; project: string; summary: string | null }[]; generated: { folder: string; files: number }[] }
 
 /** Folders Bowerloom makes (every `.bowerloom`) are private to the owner; everything else is an ordinary folder or file. */
 function setModes(dir: string, inside: boolean): void {
@@ -34,6 +34,8 @@ export function seedSample(appDir: string, sampleDir: string): SampleWorld {
   const meta = JSON.parse(readFileSync(join(sampleDir, 'sample.json'), 'utf8')) as SampleMeta;
   const home = join(target, 'home');
   setModes(home, false);
+  // A folder with more files than a reading list can hold in one place, so one reading list is too large. Made here so the sample stays small.
+  for (const g of meta.generated) for (let i = 0; i < g.files; i++) put(join(home, g.folder, `note-${String(i).padStart(4, '0')}.md`), `# Note ${i}\n`);
   // The git files of the store and of each project: the lock records this commit.
   const git = join(home, '.bowerloom', '.git');
   put(join(git, 'config'), `[remote "origin"]\n\turl = ${meta.storeRemote}\n`);

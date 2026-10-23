@@ -89,6 +89,11 @@ pre.file { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.5; b
 .attention.bad { border-left-color: var(--bad-fg); } .attention.warn { border-left-color: var(--warn-fg); } .attention.quiet { border-left-color: var(--text-muted); }
 .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); align-items: start; }
 .card.held { border-left: 6px solid var(--warn-fg); } .card.live { border-left: 6px solid var(--good-fg); }
+.banners { margin-bottom: var(--space-4); }
+.warning button { margin-left: auto; }
+main.solo { display: block; overflow-y: auto; height: 100vh; }
+h1:focus { outline: none; }
+h1:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (max-width: 1000px) {

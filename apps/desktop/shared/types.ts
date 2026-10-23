@@ -3,7 +3,7 @@
 export type Mode = 'sample' | 'real';
 export type ItemKind = 'skill' | 'prompt' | 'team';
 export type Origin = 'yours' | 'github' | 'npm';
-export type ProjectStatus = 'ready' | 'drifted' | 'lock-problem' | 'not-set-up' | 'unreadable';
+export type ProjectStatus = 'ready' | 'not-locked' | 'drifted' | 'lock-problem' | 'not-set-up' | 'unreadable';
 
 export interface Hold { code: string; next: string }
 
@@ -17,7 +17,11 @@ export interface LibraryItem {
   usedBy: string[];
 }
 
-export interface Library { skills: LibraryItem[]; prompts: LibraryItem[]; teams: LibraryItem[]; unlisted: number; pinsError: string | null }
+export interface Library {
+  skills: LibraryItem[]; prompts: LibraryItem[]; teams: LibraryItem[]; unlisted: number; pinsError: string | null;
+  /** The code of why the library could not be read, or null. When set, the counts are not known. */
+  failed: string | null;
+}
 
 export type LockMatch = 'same' | 'changed' | 'missing' | 'not-used' | 'unknown';
 export interface ProjectItem {
@@ -43,7 +47,9 @@ export interface SliceRow {
   /** What the slice wants to show of each file: nothing, the first heading, or one frontmatter key. */
   wants: 'none' | 'heading' | 'frontmatter' | null; wantsKey: string | null;
   /** What this project's permission for the folder says: no permission (absent), an older one with no style (unset), or a style. Null when the slice has no registered folder. */
-  grantStyle: 'absent' | 'unset' | 'heading' | 'frontmatter' | null; grantKey: string | null;
+  grantStyle: 'absent' | 'unset' | 'unknown' | 'heading' | 'frontmatter' | null; grantKey: string | null;
+  /** For `unknown`: the code of what went wrong when the permission was checked. */
+  grantCode: string | null;
   /** From `context measure`: the bytes of the index an agent loads, and of the files it points to. */
   indexBytes: number | null; memberBytes: number | null;
 }
@@ -75,6 +81,8 @@ export interface FolderData {
   styles: { key: string; style: 'heading' | 'frontmatter'; styleKey: string | null }[];
   /** Projects whose permission is an older one with no style. */
   unstyled: string[];
+  /** Projects whose permission could not be checked, and why. */
+  unknown: { key: string; code: string }[];
 }
 
 export interface CacheRow { id: string; scope: string; label: string | null; status: string; bytes: number | null; files: number | null; usedByStore: boolean | null; usedByProject: boolean | null }
@@ -89,7 +97,15 @@ export interface StoreData {
   counts: { skills: number; pinned: number | null; prompts: number; teams: number } | null;
 }
 
-export interface ScanInfo { roots: { path: string; ok: boolean; reason: string | null }[]; skipped: { path: string; reason: string }[]; truncated: boolean; found: number }
+export interface ScanInfo {
+  roots: { path: string; ok: boolean; reason: string | null }[]; skipped: { path: string; reason: string }[]; truncated: boolean; found: number;
+  /** True when some folder at the deepest level searched had folders below it that were not looked into. */
+  depthReached: boolean;
+  /** True when more entries were skipped than listed. */
+  skippedMore: boolean;
+  /** How many levels down the search went. */
+  depthLimit: number;
+}
 
 export interface Snapshot {
   mode: Mode; at: string;
@@ -101,8 +117,11 @@ export interface Snapshot {
 export interface FileView { path: string; text: string | null; note: string | null; bytes: number }
 export interface ItemContent { kind: ItemKind; id: string; where: 'store' | 'project'; files: FileView[]; pinned: { lines: string[] } | null; note: string | null }
 
-export interface AppSettings { theme: 'system' | 'light' | 'dark'; roots: string[]; mode: Mode | null; updatesEnabled: boolean }
-export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean }
+export interface AppSettings { theme: 'system' | 'light' | 'dark'; roots: string[]; mode: Mode | null }
+export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
+export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
+  /** A plain sentence about the viewer's own settings file (damaged, unreadable, could not be saved), or null. */
+  notice: string | null }
 
 /** The whole surface of the preload: named read-only calls and nothing else. */
 export interface ViewerApi {
@@ -112,9 +131,10 @@ export interface ViewerApi {
   getItemContent(request: { kind: ItemKind; id: string; projectKey: string | null }): Promise<ItemContent>;
   getFileText(request: { projectKey: string; file: 'config' | 'lock' }): Promise<{ text: string | null; note: string | null }>;
   chooseMode(mode: Mode): Promise<AppInfo>;
-  addRoot(): Promise<AppSettings>;
-  removeRoot(path: string): Promise<AppSettings>;
-  setTheme(theme: AppSettings['theme']): Promise<AppSettings>;
+  addRoot(): Promise<SettingsResult>;
+  removeRoot(path: string): Promise<SettingsResult>;
+  setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
+  copyText(text: string): Promise<boolean>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
 }

@@ -1,7 +1,7 @@
 // What each screen says. A drifted project says why, in plain words, and no screen shows a command line.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STATUS_CHIP, cacheSummary, configLines, folderRows, homeModel, itemDetail, libraryRows, lockSentence, pinWords, powerfulSettings, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
+import { STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, powerfulSettings, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
 import { codeWords, humanBytes, titleOf } from '../shared/words.js';
 import { safeLine, safeText } from '../shared/text.js';
 import type { Snapshot } from '../shared/types.js';
@@ -46,7 +46,7 @@ test('a project with a damaged lock says so and offers what a person would do', 
 });
 
 test('status chips: Ready, Drifted, Lock problem, Not set up', () => {
-  assert.deepEqual(Object.values(STATUS_CHIP).map(c => c.label), ['Ready', 'Drifted', 'Lock problem', 'Not set up', 'Cannot open']);
+  assert.deepEqual(Object.values(STATUS_CHIP).map(c => c.label), ['Ready', 'Nothing locked yet', 'Drifted', 'Lock problem', 'Not set up', 'Cannot open']);
 });
 
 test('home: a sentence, four counts that link to their screens, and the list that needs attention', async () => {
@@ -68,7 +68,7 @@ test('home: each kind of problem gets a plain explanation and a thing to do', as
   s.scan.roots.push({ path: '/gone', ok: false, reason: 'This folder is not there any more.' }); s.scan.truncated = true; s.problems.push({ area: 'library', code: 'STORE_UNREADABLE' });
   s.projects.push({ ...clone(s.projects[0]!), key: '/x/locked', name: 'locked', status: 'unreadable', openCode: 'PROJECT_IN_CLOUD_FOLDER', items: [], agents: [] });
   const text = homeModel(s).attention.map(a => `${a.title} ${a.body} ${a.todo}`).join('\n');
-  for (const part of ['"client-archive" is missing', 'cannot be used', 'not shared on GitHub', 'may share private files', 'tracked by git', 'Leftover files', 'cannot be searched', 'Not every project is shown', 'Part of the library could not be read', 'Bowerloom cannot open locked', 'cloud-synced']) assert.ok(text.includes(part), part);
+  for (const part of ['"client-archive" is missing', 'cannot be used', 'not shared on GitHub', 'may share private files', 'tracked by git', 'Leftover files', 'cannot be searched', 'Some projects may be missing', 'Part of the library could not be read', 'Bowerloom cannot open locked', 'cloud-synced']) assert.ok(text.includes(part), part);
   for (const a of homeModel(s).attention) { assert.ok(a.todo.length > 10, a.id); assert.ok(a.body.length > 10, a.id); }
 });
 
@@ -135,7 +135,7 @@ test('slices: a simple bar compares what an agent reads at the start with readin
 
 test('knowledge folders: state, who may read, and what to do about an empty list', async () => {
   const s = await sampleSnapshot(), rows = folderRows(s);
-  assert.equal(rows[0]!.note, 'No project is allowed to read this folder yet.'); assert.equal(rows[3]!.note, '2 projects can read it.'); assert.deepEqual(rows[3]!.allowed.map(a => a.name), ['newsletter', 'studio-site']);
+  assert.equal(rows[0]!.note, 'No project is allowed to read this folder yet.'); const tn = rows.find(x => x.name === 'team-notes')!; assert.equal(tn.note, '2 projects can read it.'); assert.deepEqual(tn.allowed.map(a => a.name), ['newsletter', 'studio-site']);
   const t = clone(s); t.folders[0]!.state = 'missing'; assert.equal(folderRows(t)[0]!.state, 'Missing');
 });
 
@@ -151,8 +151,8 @@ test('storage words: location, sharing, token, saved copies', async () => {
 test('the raw files are rendered as readable sentences, not JSON', async () => {
   const s = await sampleSnapshot(), p = s.projects.find(x => x.name === 'studio-site')!;
   const lines = configLines(p);
-  assert.match(lines[0]!, /^It uses 1 team: research-desk \(from your library\)\.$/); assert.match(lines[1]!, /^It uses 3 skills: brand-voice \(from your library\), house-style/);
-  assert.ok(projectDetail(p).lock.includes('Skill brand-voice: npm package @synthetic/brand-voice@1.2.0'));
+  assert.match(lines[0]!, /^It uses 1 team: research-desk \(from your library\)\.$/); assert.match(lines[1]!, /^It uses 2 skills: house-style \(from your library\), meeting-notes/);
+  assert.ok(projectDetail(s.projects.find(x => x.name === 'newsletter')!).lock.includes('Skill brand-voice: npm package @synthetic/brand-voice@1.2.0'));
   assert.match(lockSentence(p), /good/);
   for (const line of [...lines, ...projectDetail(p).lock]) assert.doesNotMatch(line, /[{}"\[\]]/, 'no JSON');
 });
@@ -195,13 +195,13 @@ test('slice cards: two slices on one folder that need different styles sit side 
   assert.deepEqual(g.slices.map(c => `${c.id}:${c.stateLabel}`), ['team-notes:Live', 'team-titles:Held']);
   for (const other of groups.filter(x => x.folder !== 'team-notes')) assert.equal(other.conflict, null, other.folder);
   assert.ok(sliceGroups(s.projects.find(p => p.name === 'studio-site')!).every(x => x.conflict === null));
-  assert.equal(slicesByProject(s).find(x => x.project.name === 'newsletter')!.slices.length, 3, 'grouped by folder on the folders screen too');
+  assert.equal(slicesByProject(s).find(x => x.project.name === 'newsletter')!.slices.length, 4, 'grouped by folder on the folders screen too');
 });
 
 test('slice cards: a slice that wants no text is never held by a permission; the same style on both is no conflict', async () => {
   const s = clone(await sampleSnapshot()), p = s.projects.find(x => x.name === 'newsletter')!;
   const none = p.slices.find(x => x.id === 'client-history')!; none.wants = 'none'; none.hold = null; assert.equal(sliceReason(none), null);
-  for (const x of p.slices.filter(y => y.folder === 'team-notes')) { x.wants = 'frontmatter'; x.wantsKey = 'title'; x.grantStyle = 'frontmatter'; x.grantKey = 'title'; }
+  for (const x of p.slices.filter(y => y.folder === 'team-notes')) { x.hold = null; x.wants = 'frontmatter'; x.wantsKey = 'title'; x.grantStyle = 'frontmatter'; x.grantKey = 'title'; }
   assert.equal(sliceGroups(p).find(x => x.folder === 'team-notes')!.conflict, null);
   assert.ok(sliceGroups(p).find(x => x.folder === 'team-notes')!.slices.every(c => c.stateLabel === 'Live'));
   const t = p.slices.find(x => x.id === 'team-titles')!; t.wantsKey = 'summary'; assert.match(sliceReason(t)!, /`summary`.*only allowed to show the `title`/);
@@ -213,4 +213,50 @@ test('folder cards: the permission style of each project, and the older permissi
   assert.deepEqual(r('project-briefs').styles.map(x => x.text), ['May show the `title` of each file']);
   assert.match(r('old-reports').styles[0]!.text, /older permission with no style/); assert.equal(r('old-reports').note, 'No project is allowed to read this folder yet.');
   assert.equal(r('client-archive').styleNote, null); assert.match(r('team-notes').styleNote!, /one style per project/);
+});
+
+test('a reading list is Held whenever Bowerloom holds it, even with a matching permission; every hold has a plain reason', async () => {
+  const s = clone(await sampleSnapshot()), p = s.projects.find(x => x.name === 'studio-site')!, sl = p.slices.find(x => x.id === 'team-notes')!;
+  assert.equal(sliceModels(p).find(c => c.id === 'team-notes')!.stateLabel, 'Live');
+  const expected: Record<string, RegExp> = { SLICE_TOO_LARGE: /too big/, SLICE_ROOT_MISSING: /is not there/, SLICE_ROOT_UNSAFE: /not safe to read/, SLICE_EMPTY: /matches no files/, FOLDER_NOT_ALLOWED: /not been allowed/, SOMETHING_NEW: /cannot describe in plain words yet/ };
+  for (const [code, re] of Object.entries(expected)) {
+    sl.hold = { code, next: 'x' }; assert.equal(sl.grantStyle, 'heading'); assert.equal(sl.wants, 'heading');
+    const c = sliceModels(p).find(x => x.id === 'team-notes')!;
+    assert.equal(c.stateLabel, 'Held', code); assert.match(c.reason!, re, code); assert.equal(c.technical, code);
+  }
+  const real = sliceModels((await sampleSnapshot()).projects.find(x => x.name === 'newsletter')!).find(c => c.id === 'meeting-archive-all')!;
+  assert.equal(real.stateLabel, 'Held'); assert.match(real.reason!, /too big to load at the start/);
+});
+
+test('a permission that could not be checked is said so in plain words, on the card and in the project reasons', async () => {
+  const s = clone(await sampleSnapshot()), p = s.projects.find(x => x.name === 'studio-site')!, sl = p.slices[0]!;
+  sl.grantStyle = 'unknown'; sl.grantCode = 'FOLDER_UNSAFE';
+  const c = sliceModels(p)[0]!; assert.match(c.note!, /^Could not check this folder: /); assert.equal(c.stateLabel, 'Live', 'a check that failed is not a hold');
+  assert.ok(projectDetail(p).reasons.some(r => /could not check the folder/.test(r)));
+  const f = s.folders.find(x => x.name === 'team-notes')!; f.unknown = [{ key: p.key, code: 'FOLDER_UNSAFE' }];
+  const row = folderRows(s).find(x => x.name === 'team-notes')!; assert.match(row.unknownNotes[0]!, /could not check the permission/); assert.match(row.note, /could not be fully checked/);
+});
+
+test('home: unknown counts, no folder chosen, the sample banner, a time, and limits of the search', async () => {
+  const base = await sampleSnapshot(), s = clone(base);
+  assert.equal(homeModel(s).sample, true); assert.match(homeModel(s).asOf, /^As of /);
+  s.library.failed = 'STORE_UNREADABLE';
+  assert.deepEqual(homeModel(s).counts.slice(0, 3).map(c => c.value), [null, null, null]); assert.match(homeModel(s).sentence, /could not be read, so the numbers/); assert.ok(homeModel(s).attention.some(a => a.id === 'library:failed'));
+  const t = clone(base); t.mode = 'real'; t.projects = []; t.scan.roots = []; t.store.token = 'set';
+  assert.equal(homeModel(t).needsFolder, true); assert.equal(homeModel(t).sample, false);
+  const u = clone(base); u.scan.truncated = true; u.scan.depthReached = true; u.scan.skipped = [{ path: '/x', reason: 'cannot be opened' }, { path: '/y', reason: 'is a link, so it is not followed' }];
+  const missing = homeModel(u).attention.find(a => a.id === 'scan:limits')!;
+  assert.equal(missing.title, 'Some projects may be missing'); for (const part of ['stopped early', '4 folders deep', '1 folder could not be opened', '1 shortcut']) assert.ok(missing.body.includes(part), part);
+  const v = clone(base); v.problems.push({ area: 'folders', code: 'STORE_UNREADABLE' }); v.folders = [];
+  assert.match(homeModel(v).attention.find(a => a.id === 'problem:folders')!.title, /knowledge folders could not be read/); assert.match(foldersProblem(v)!, /not known/);
+  assert.equal(foldersProblem(base), null);
+});
+
+test('words: Ready needs a lock that is used; Drifted never claims nothing is broken; things that cannot run are a thing to look at', async () => {
+  assert.equal(STATUS_CHIP['not-locked'].label, 'Nothing locked yet'); assert.match(STATUS_SENTENCE['not-locked'], /Nothing is locked yet/);
+  for (const sentence of Object.values(STATUS_SENTENCE)) assert.doesNotMatch(sentence, /Nothing is broken/);
+  const s = await sampleSnapshot(), reasons = projectDetail(s.projects.find(x => x.name === 'newsletter')!).reasons;
+  assert.ok(reasons.some(r => /fixed-version skills have not been downloaded/.test(r)), 'SKILLS_OFFLINE is shown');
+  const t = clone(s), p = t.projects.find(x => x.name === 'studio-site')!;
+  for (const code of ['REVISION_PENDING', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_LEGACY_PRESENT']) { p.unavailable = code; assert.ok(projectDetail(p).reasons.length > 0, code); assert.doesNotMatch(projectDetail(p).reasons.join(' '), /no plain words/); }
 });

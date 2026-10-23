@@ -6,6 +6,10 @@
   ],
   "skills": [
     {
+      "id": "brand-voice",
+      "source": "store"
+    },
+    {
       "id": "old-rules",
       "source": "store"
     },

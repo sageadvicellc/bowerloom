@@ -11,5 +11,6 @@ export const CHANNELS = Object.freeze({
   setTheme: 'viewer:set-theme',
   checkForUpdates: 'viewer:check-for-updates',
   openLink: 'viewer:open-link',
+  copyText: 'viewer:copy-text',
 } as const);
 export type ChannelName = keyof typeof CHANNELS;

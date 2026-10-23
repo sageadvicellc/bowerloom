@@ -18,6 +18,7 @@ const api: ViewerApi = {
   setTheme: theme => ipcRenderer.invoke(CHANNELS.setTheme, theme),
   checkForUpdates: () => ipcRenderer.invoke(CHANNELS.checkForUpdates),
   openLink: url => ipcRenderer.invoke(CHANNELS.openLink, url),
+  copyText: text => ipcRenderer.invoke(CHANNELS.copyText, text),
 };
 
 contextBridge.exposeInMainWorld('bowerloom', Object.freeze(api));

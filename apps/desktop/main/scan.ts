@@ -24,7 +24,7 @@ export function scanRoots(roots: readonly string[], options: ScanOptions = {}): 
   const maxDepth = options.depth ?? SCAN_LIMITS.depth, maxResults = options.results ?? SCAN_LIMITS.results, maxEntries = options.entries ?? SCAN_LIMITS.entries;
   const dirs: string[] = [], skipped: { path: string; reason: string }[] = [], infoRoots: ScanInfo['roots'] = [];
   const seen = new Set<string>();
-  let entries = 0, truncated = false;
+  let entries = 0, truncated = false, depthReached = false, skippedTotal = 0;
   for (const root of roots) {
     let stat; try { stat = lstatSync(root); } catch { infoRoots.push({ path: root, ok: false, reason: 'This folder is not there any more.' }); continue; }
     if (stat.isSymbolicLink()) { infoRoots.push({ path: root, ok: false, reason: 'This folder is a shortcut (a link). The viewer does not follow shortcuts.' }); continue; }
@@ -40,19 +40,19 @@ export function scanRoots(roots: readonly string[], options: ScanOptions = {}): 
         if (!seen.has(dir)) { seen.add(dir); dirs.push(dir); }
         return;
       }
-      if (depth >= maxDepth) return;
       let list: Dirent[];
-      try { list = readdirSync(dir, { withFileTypes: true }); } catch { skipped.push({ path: dir, reason: 'cannot be opened' }); return; }
+      try { list = readdirSync(dir, { withFileTypes: true }); } catch { skippedTotal++; skipped.push({ path: dir, reason: 'cannot be opened' }); return; }
+      if (depth >= maxDepth) { if (list.some(e => !e.name.startsWith('.') && e.name !== 'node_modules' && !e.isSymbolicLink() && e.isDirectory())) depthReached = true; return; }
       list.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
       for (const entry of list) {
         if (++entries > maxEntries) { truncated = true; return; }
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        if (entry.isSymbolicLink()) { skipped.push({ path: join(dir, entry.name), reason: 'is a link, so it is not followed' }); continue; }
+        if (entry.isSymbolicLink()) { skippedTotal++; skipped.push({ path: join(dir, entry.name), reason: 'is a link, so it is not followed' }); continue; }
         if (!entry.isDirectory()) continue;
         visit(join(dir, entry.name), depth + 1);
       }
     };
     visit(real, 0);
   }
-  return { dirs, info: { roots: infoRoots, skipped: skipped.slice(0, 50), truncated, found: dirs.length } };
+  return { dirs, info: { roots: infoRoots, skipped: skipped.slice(0, 50), truncated, found: dirs.length, depthReached, skippedMore: skippedTotal > 50, depthLimit: maxDepth } };
 }

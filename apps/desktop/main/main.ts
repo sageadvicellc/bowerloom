@@ -1,5 +1,5 @@
 /** Electron entry. Opens one window onto the viewer page and answers its named calls. */
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, session, shell } from 'electron';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CHANNELS } from '../shared/channels.js';
@@ -62,9 +62,10 @@ function registerIpc(): void {
   guarded('chooseMode', (mode: Mode) => controller.chooseMode(mode));
   guarded('addRoot', () => controller.addRoot());
   guarded('removeRoot', (path: string) => controller.removeRoot(path));
-  guarded('setTheme', async (theme: Parameters<Controller['setTheme']>[0]) => { const s = await controller.setTheme(theme); nativeTheme.themeSource = s.theme; return s; });
+  guarded('setTheme', async (theme: Parameters<Controller['setTheme']>[0]) => { const s = await controller.setTheme(theme); nativeTheme.themeSource = s.settings.theme; return s; });
   guarded('checkForUpdates', () => controller.checkForUpdates());
   guarded('openLink', (url: string) => controller.openLink(url));
+  guarded('copyText', (text: string) => controller.copyText(text));
 }
 
 app.on('web-contents-created', (_event, contents) => hardenContents(contents));
@@ -89,6 +90,7 @@ void app.whenReady().then(async () => {
       return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
     },
     openExternal: url => shell.openExternal(url),
+    copyText: text => clipboard.writeText(text),
   });
   nativeTheme.themeSource = (await controller.getSettings()).theme;
   registerIpc();

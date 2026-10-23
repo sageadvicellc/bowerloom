@@ -47,7 +47,7 @@ test('security: the window is locked down', async () => {
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => [typeof (globalThis as { require?: unknown }).require, typeof (globalThis as { process?: unknown }).process, typeof (globalThis as { Buffer?: unknown }).Buffer])).toEqual(['undefined', 'undefined', 'undefined']);
     const names = await page.evaluate(() => Object.keys((window as unknown as { bowerloom: object }).bowerloom).sort());
-    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setTheme']);
+    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setTheme']);
     // An inline script is refused by the policy.
     const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
       document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true });

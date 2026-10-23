@@ -1,6 +1,6 @@
 ---
 name: house-style
-description: Keep every document in the studio voice: plain, warm, and short.
+description: Keep every document in the studio voice. Plain, warm and short.
 ---
 
 # House style

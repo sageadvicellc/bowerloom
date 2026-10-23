@@ -39,7 +39,7 @@ approve(home, ['skill', 'create', 'meeting-notes', '--team', 'research-desk', '-
 approve(home, ['skill', 'create', 'weekly-digest', '--global']);
 approve(home, ['prompt', 'create', 'weekly-update', '--global']);
 approve(home, ['prompt', 'create', 'launch-checklist', '--team', 'launch-crew', '--global']);
-put(join(store, 'skills/house-style/SKILL.md'), '---\nname: house-style\ndescription: Keep every document in the studio voice: plain, warm, and short.\n---\n\n# House style\n\nWrite in short sentences. Use the words our clients use.\nName the next step at the end of every message.\n');
+put(join(store, 'skills/house-style/SKILL.md'), '---\nname: house-style\ndescription: Keep every document in the studio voice. Plain, warm and short.\n---\n\n# House style\n\nWrite in short sentences. Use the words our clients use.\nName the next step at the end of every message.\n');
 put(join(store, 'prompts/weekly-update.md'), '# Weekly update\n\nWrite a five-line update for the client.\n\n1. What we finished this week.\n2. What we start next week.\n3. Anything that needs the client to decide.\n');
 // Editing files by hand changes their hashes in the authoring record; the creating commands are the only writers, so this is left as created.
 const pkg = npmPackage('brand-voice', '1.2.0');
@@ -54,6 +54,7 @@ const FILLER = Array.from({ length: 6 }, (_, i) => `Section ${i + 1}. Our studio
 for (const [name, text] of [['brand-rules.md', '# Brand rules\n\nThe logo sits top left. Use two colors.\n'], ['clients.md', '# Clients\n\nA list of who we work with and what they asked for.\n'], ['pricing-notes.md', '# Pricing notes\n\nRates are reviewed each January.\n'], ['process/onboarding.md', '# Onboarding\n\nFive steps to start with a new client.\n']]) put(join(home, 'Notes/team-notes', name), `${text}\n${FILLER}`);
 put(join(home, 'Notes/client-archive/2024-projects.md'), '# 2024 projects\n\nThe finished work from last year.\n');
 for (const [name, text] of [['studio-brief.md', '---\ntitle: Studio site brief\n---\n# Brief\n\nThe goals for the new site.\n'], ['launch-brief.md', '---\ntitle: Launch plan\n---\n# Launch\n\nDates and owners.\n']]) put(join(home, 'Notes/project-briefs', name), `${text}\n${FILLER}`);
+mkdirSync(join(home, 'Notes/meeting-archive'), { recursive: true }); put(join(home, 'Notes/meeting-archive/README.md'), '# Meeting archive\n');
 put(join(home, 'Notes/old-reports/2023-report.md'), '# 2023 report\n\nWhat we delivered in 2023.\n');
 chmodSync(join(home, 'Notes'), 0o755);
 const projects = join(home, 'Projects'); mkdirSync(projects, { mode: 0o755 });
@@ -83,11 +84,12 @@ function approveNet(cwd, args, extra) {
 // 1. A healthy project.
 const healthy = mk('studio-site'); put(join(healthy, 'bowerloom.json'), config()); share(healthy);
 const netEnv = lockEnv(storeFiles(), join(base, 'plan-1.json'));
-for (const args of [['use', 'team', 'research-desk'], ['use', 'skill', 'house-style'], ['use', 'skill', 'brand-voice'], ['use', 'prompt', 'weekly-update']]) approveNet(healthy, args, netEnv);
+for (const args of [['use', 'team', 'research-desk'], ['use', 'skill', 'house-style'], ['use', 'prompt', 'weekly-update']]) approveNet(healthy, args, netEnv);
 approve(healthy, ['folder', 'add', 'team-notes', join(home, 'Notes/team-notes')]);
 approve(healthy, ['folder', 'add', 'client-archive', join(home, 'Notes/client-archive')]);
 approve(healthy, ['folder', 'add', 'project-briefs', join(home, 'Notes/project-briefs')]);
 approve(healthy, ['folder', 'add', 'old-reports', join(home, 'Notes/old-reports')]);
+approve(healthy, ['folder', 'add', 'meeting-archive', join(home, 'Notes/meeting-archive')]);
 approve(healthy, ['slice', 'create', 'team-notes', '--registered', 'team-notes', '--include', '**/*.md']);
 approve(healthy, ['slice', 'create', 'brief-titles', '--registered', 'project-briefs', '--include', '**/*.md']);
 const briefFile = join(healthy, '.bowerloom/slices/brief-titles.yaml');
@@ -95,13 +97,14 @@ writeFileSync(briefFile, readFileSync(briefFile, 'utf8').replace(/^summary: .*$/
 
 // 2. A drifted project: its lock was made, then the store changed, and it names a store item that is gone.
 const drifted = mk('newsletter'); put(join(drifted, 'bowerloom.json'), config()); share(drifted);
-for (const args of [['use', 'skill', 'weekly-digest'], ['use', 'prompt', 'launch-checklist']]) approveNet(drifted, args, netEnv);
+for (const args of [['use', 'skill', 'weekly-digest'], ['use', 'skill', 'brand-voice'], ['use', 'prompt', 'launch-checklist']]) approveNet(drifted, args, netEnv);
 approve(drifted, ['team', 'create', 'newsroom', '--profile', 'research']);
 put(join(drifted, '.bowerloom/teams/newsroom/agents/editor.md'), '---\nname: editor\ndescription: Reads the team notes and edits drafts in the studio voice.\ntools: Read, Grep, Glob\nskills:\n  - slice-team-notes\n---\n\nYou edit drafts. Read the notes first. Never change facts.\n');
 put(join(drifted, '.bowerloom/teams/newsroom/agents/publisher.md'), '---\nname: publisher\ndescription: Publishes approved issues to the mailing list.\npermissionMode: bypassPermissions\n---\n\nYou publish issues that the editor has approved.\n');
 approve(drifted, ['slice', 'create', 'team-notes', '--registered', 'team-notes', '--include', '**/*.md']);
 // Two more reading lists: one on a folder this project may not read yet, and one that wants each file's title.
 approve(drifted, ['slice', 'create', 'client-history', '--registered', 'client-archive', '--include', '**/*.md']);
+approve(drifted, ['slice', 'create', 'meeting-archive-all', '--registered', 'meeting-archive', '--include', '**/*.md']);
 approve(drifted, ['slice', 'create', 'old-reports-list', '--registered', 'old-reports', '--include', '**/*.md']);
 approve(drifted, ['slice', 'create', 'team-titles', '--registered', 'team-notes', '--include', '**/*.md']);
 const titlesFile = join(drifted, '.bowerloom/slices/team-titles.yaml');
@@ -119,7 +122,7 @@ put(join(broken, 'bowerloom.lock.json'), '<<<<<<< HEAD\n{"format": "bowerloom/lo
 
 // Copy the authored files only.
 rmSync(out, { recursive: true, force: true });
-cpSync(home, join(out, 'home'), { recursive: true, filter: src => !/(^|\/)(\.git|\.claude|\.codex|\.local)(\/|$)/.test(src.slice(home.length)) });
-writeFileSync(join(out, 'sample.json'), `${JSON.stringify({ storeCommit: COMMIT, storeRemote: 'git@github.com:sample-co/shared-store.git', projectRemote: 'https://github.com/sample-co/studio-site.git', projects: ['studio-site', 'newsletter', 'old-archive'], grants: [{ folder: 'team-notes', project: 'studio-site', summary: 'heading' }, { folder: 'team-notes', project: 'newsletter', summary: 'heading' }, { folder: 'project-briefs', project: 'studio-site', summary: 'frontmatter:title' }, { folder: 'old-reports', project: 'newsletter', summary: null }] }, null, 2)}\n`);
+cpSync(home, join(out, 'home'), { recursive: true, filter: src => !/(^|\/)(\.git|\.claude|\.codex|\.local|meeting-archive)(\/|$)/.test(src.slice(home.length)) || /\.bowerloom\/folders\//.test(src) });
+writeFileSync(join(out, 'sample.json'), `${JSON.stringify({ storeCommit: COMMIT, storeRemote: 'git@github.com:sample-co/shared-store.git', projectRemote: 'https://github.com/sample-co/studio-site.git', projects: ['studio-site', 'newsletter', 'old-archive'], grants: [{ folder: 'team-notes', project: 'studio-site', summary: 'heading' }, { folder: 'team-notes', project: 'newsletter', summary: 'heading' }, { folder: 'project-briefs', project: 'studio-site', summary: 'frontmatter:title' }, { folder: 'old-reports', project: 'newsletter', summary: null }, { folder: 'meeting-archive', project: 'newsletter', summary: 'heading' }], generated: [{ folder: 'Notes/meeting-archive', files: 1100 }] }, null, 2)}\n`);
 rmSync(base, { recursive: true, force: true });
 console.log(`Sample data written to ${out}`);

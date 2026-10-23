@@ -15,6 +15,7 @@ import type { Listing } from '../../cli/src/ls.js';
 import { report } from '../../cli/src/store.js';
 import { runProjectStatus } from '../../cli/src/project-status.js';
 import { readProjectPlan } from '../../cli/src/viewer-read.js';
+import { parseSlice } from '../../../packages/context-slices/src/index.js';
 import { LIMITS, readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type {
   AgentRow, CacheData, FolderData, ItemKind, Library, LibraryItem, LockMatch, MeasureRow, Mode, Origin, ProjectData, ProjectItem, ProjectStatus, Snapshot, SliceRow, StoreData,
@@ -59,7 +60,7 @@ function pinWords(listing: Listing, id: string): { origin: Origin; pin: string |
 
 export function readLibrary(ctx: ReadContext): { library: Library; storeProblem: string | null } {
   let listing: Listing;
-  try { listing = listStore(ctx.home); } catch (error) { return { library: { skills: [], prompts: [], teams: [], unlisted: 0, pinsError: null }, storeProblem: codeOf(error) }; }
+  try { listing = listStore(ctx.home); } catch (error) { return { library: { skills: [], prompts: [], teams: [], unlisted: 0, pinsError: null, failed: codeOf(error) }, storeProblem: codeOf(error) }; }
   const item = (kind: ItemKind, id: string): LibraryItem => {
     if (kind === 'skill') {
       const w = pinWords(listing, id), missing = listing.skillInfo?.get(id)?.kind === 'local' && listing.skillFolders !== undefined && !listing.skillFolders.has(id);
@@ -71,7 +72,7 @@ export function readLibrary(ctx: ReadContext): { library: Library; storeProblem:
     storeProblem: null,
     library: {
       skills: listing.skills.map(id => item('skill', id)), prompts: listing.prompts.map(id => item('prompt', id)), teams: listing.teams.map(id => item('team', id)),
-      unlisted: listing.unlisted, pinsError: listing.pinsError ?? null,
+      unlisted: listing.unlisted, pinsError: listing.pinsError ?? null, failed: null,
     },
   };
 }
@@ -119,39 +120,48 @@ const empty = (dir: string): ProjectData => ({
 });
 
 
-/** What a slice definition says about its folder and what it wants to show. Read from the definition file with the guarded reader. */
+/**
+ * What a slice definition says about its folder and what it wants to show, read with Bowerloom's own slice parser
+ * (parseSlice) from the definition file, which is read with the guarded reader. Known even when the slice is held.
+ */
 function sliceDefinition(dir: string, id: string): { folder: string | null; wants: SliceRow['wants']; wantsKey: string | null } {
   try {
     const real = resolveInside([dir], join(dir, '.bowerloom', 'slices', `${id}.yaml`));
-    const text = readGuarded(real, LIMITS.fileBytes).toString('utf8');
-    const folder = /^\s{2}registered:\s*"?([a-z0-9-]{1,64})"?\s*$/m.exec(text)?.[1] ?? null;
-    const summary = /^summary:\s*"?([A-Za-z0-9:_-]{1,80})"?\s*$/m.exec(text)?.[1] ?? 'heading';
-    if (summary === 'none') return { folder, wants: 'none', wantsKey: null };
-    if (summary === 'heading') return { folder, wants: 'heading', wantsKey: null };
-    if (summary.startsWith('frontmatter:')) return { folder, wants: 'frontmatter', wantsKey: summary.slice(12) };
-    return { folder, wants: null, wantsKey: null };
+    const parsed = parseSlice(readGuarded(real, LIMITS.fileBytes).toString('utf8'), id);
+    if (!parsed.ok) return { folder: null, wants: null, wantsKey: null };
+    const def = parsed.slice, folder = def.root.kind === 'registered' ? def.root.name : null;
+    return { folder, wants: def.summary.kind, wantsKey: def.summary.kind === 'frontmatter' ? def.summary.key : null };
   } catch { return { folder: null, wants: null, wantsKey: null }; }
 }
-export type Grant = { state: 'absent' } | { state: 'legacy' } | { state: 'kind'; style: 'heading' | 'frontmatter'; key: string | null };
+export type Grant = { state: 'absent' } | { state: 'legacy' } | { state: 'kind'; style: 'heading' | 'frontmatter'; key: string | null } | { state: 'unknown'; code: string };
 /**
  * What this project's permission for a registered folder says, learned from Bowerloom's own lookup (resolveRegisteredFolder).
- * Asking for the `heading` style: an answer of "ok" means the permission is for headings; a hold names the style the
- * permission is for (`granted`), says it is an older one (`legacy`), or names neither (no permission).
+ * Asking for the `heading` style: "ok" means the permission is for headings; FOLDER_NOT_ALLOWED names the style the permission
+ * is for (`granted`), says it is an older one (`legacy`), or names neither (no permission). Any other answer, such as a folder
+ * or record that is gone or unsafe, or an error, says nothing about the permission: it is `unknown`, with its code, and is
+ * never read as "no permission" or as a style.
  */
 export function grantOf(home: string, folder: string, project: ProjectContext): Grant {
   try {
     const found = resolveRegisteredFolder(home, folder, { projectId: project.projectId, birthtimeNs: project.identity.birthtimeNs, summary: 'heading' });
     if (found.ok) return { state: 'kind', style: 'heading', key: null };
-    if (found.code !== 'FOLDER_NOT_ALLOWED') return { state: 'kind', style: 'heading', key: null };
+    if (found.code !== 'FOLDER_NOT_ALLOWED') return { state: 'unknown', code: found.cause ?? found.code };
     if (found.legacy === true) return { state: 'legacy' };
     if (found.granted === undefined) return { state: 'absent' };
     return found.granted.startsWith('frontmatter:') ? { state: 'kind', style: 'frontmatter', key: found.granted.slice(12) } : { state: 'kind', style: 'heading', key: null };
-  } catch { return { state: 'absent' }; }
+  } catch (error) { return { state: 'unknown', code: codeOf(error) }; }
 }
-const grantFields = (g: Grant | null): Pick<SliceRow, 'grantStyle' | 'grantKey'> =>
-  g === null ? { grantStyle: null, grantKey: null } : g.state === 'absent' ? { grantStyle: 'absent', grantKey: null } : g.state === 'legacy' ? { grantStyle: 'unset', grantKey: null } : { grantStyle: g.style, grantKey: g.key };
+const grantFields = (g: Grant | null): Pick<SliceRow, 'grantStyle' | 'grantKey' | 'grantCode'> =>
+  g === null ? { grantStyle: null, grantKey: null, grantCode: null }
+    : g.state === 'absent' ? { grantStyle: 'absent', grantKey: null, grantCode: null } : g.state === 'legacy' ? { grantStyle: 'unset', grantKey: null, grantCode: null }
+    : g.state === 'unknown' ? { grantStyle: 'unknown', grantKey: null, grantCode: g.code } : { grantStyle: g.style, grantKey: g.key, grantCode: null };
 
+/** Reads one project. One project that cannot be read never fails the others: any unexpected error makes it `Cannot open`. */
 export async function readProject(ctx: ReadContext, dir: string): Promise<ProjectData> {
+  try { return await readProjectInner(ctx, dir); } catch (error) { return { ...empty(dir), openCode: codeOf(error) }; }
+}
+
+async function readProjectInner(ctx: ReadContext, dir: string): Promise<ProjectData> {
   const data = empty(dir);
   let project: ProjectContext;
   try { resolveInside(ctx.roots, dir); project = discoverProject(dir, ctx.home); }
@@ -165,7 +175,11 @@ export async function readProject(ctx: ReadContext, dir: string): Promise<Projec
 
   // 2. The items the project uses, and the lock.
   let resolved: Resolved | null = null, lockError: string | null = null, resolveCode: string | null = null;
-  const config = (() => { try { return readConfig(project); } catch (error) { statusCode = statusCode ?? codeOf(error); return { state: 'absent' as const }; } })();
+  let configProblem: string | null = null;
+  const config = (() => { try { return readConfig(project); } catch (error) { configProblem = codeOf(error); return { state: 'absent' as const }; } })();
+  // A bowerloom.json that is there but cannot be read is a project Bowerloom cannot open, never one that is not set up.
+  if (configProblem === null && config.state === 'absent' && project.configPresent) configProblem = 'CONFIG_UNREADABLE';
+  if (configProblem !== null) return { ...data, status: 'unreadable', openCode: configProblem, configState: 'invalid', configCode: configProblem };
   if (config.state === 'valid') {
     try { resolved = resolveProject({ project, home: ctx.home, frozen: false, tolerateStore: true }); }
     catch (error) { const code = codeOf(error); if (code.startsWith('LOCK_')) lockError = code; else resolveCode = code; }
@@ -174,14 +188,16 @@ export async function readProject(ctx: ReadContext, dir: string): Promise<Projec
   if (config.state !== 'valid') { try { lockOrphan = readLock(project).state === 'present'; } catch { lockOrphan = true; } }
 
   // 3. The agents, slices, and holds.
-  const plan = await readProjectPlan(project, ctx.env, ctx.home);
+  const plan = await readProjectPlan(project, ctx.env, ctx.home).catch((error: unknown) => ({ agents: [], prompts: [], skills: [], slices: [], held: [], unavailable: codeOf(error) } as Awaited<ReturnType<typeof readProjectPlan>>));
   const agents: AgentRow[] = plan.agents.map(a => ({ role: a.id, team: a.team, state: a.state, action: a.action, hold: a.hold, notices: [...a.notices], slices: [...a.context.slices] }));
-  const slices: SliceRow[] = plan.slices.map(s => ({
-    id: s.id, state: s.state, hold: s.hold ?? null, rootKind: s.root === null ? 'unknown' : s.root.kind, rootName: s.root?.kind === 'registered' ? s.root.name : null, rootPath: s.root?.path ?? null,
-    members: s.members.length, agents: s.agents, indexBytes: null, memberBytes: null,
-    ...((): Pick<SliceRow, 'folder' | 'wants' | 'wantsKey'> => { const d = sliceDefinition(dir, s.id); return { folder: s.root?.kind === 'registered' ? s.root.name : d.folder, wants: d.wants, wantsKey: d.wantsKey }; })(),
-    ...grantFields(((): Grant | null => { const f = sliceDefinition(dir, s.id).folder ?? (s.root?.kind === 'registered' ? s.root.name : null); return f === null ? null : grantOf(ctx.home, f, project); })()),
-  }));
+  const slices: SliceRow[] = plan.slices.map(s => {
+    const def = sliceDefinition(dir, s.id), folder = s.root?.kind === 'registered' ? s.root.name : def.folder;
+    return {
+      id: s.id, state: s.state, hold: s.hold ?? null, rootKind: s.root === null ? 'unknown' : s.root.kind, rootName: s.root?.kind === 'registered' ? s.root.name : null, rootPath: s.root?.path ?? null,
+      members: s.members.length, agents: s.agents, indexBytes: null, memberBytes: null, folder, wants: def.wants, wantsKey: def.wantsKey,
+      ...grantFields(folder === null ? null : grantOf(ctx.home, folder, project)),
+    };
+  });
 
   // 4. The size comparison, only when there is a slice to compare.
   let measure: MeasureRow[] = [], measureCode: string | null = null, baselineBytes: number | null = null, baselineFiles: number | null = null;
@@ -201,9 +217,12 @@ export async function readProject(ctx: ReadContext, dir: string): Promise<Projec
   const staleItems = items.filter(i => i.lock === 'changed' || i.lock === 'missing').length;
   const lockProblem = ['invalid', 'orphan'].includes(lockState) || drift.some(d => d.kind === 'lock-invalid' || d.kind === 'lock-orphan');
   const notSetUp = config.state === 'absent' && project.bowerloomIdentity === null && !lockOrphan;
-  const unexpected = plan.unavailable !== null && !['MANAGED_SKILL_LEGACY_PRESENT', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'REVISION_PENDING', 'SKILLS_OFFLINE'].includes(plan.unavailable);
-  const drifted = status.status === 'drifted' || status.status === 'revision-pending' || ['stale', 'mismatch'].includes(lockState) || plan.held.length > 0 || staleItems > 0 || resolved?.storeCode != null || resolveCode !== null || unexpected || config.state === 'invalid' || items.some(i => i.hold !== null);
-  const projectStatus: ProjectStatus = notSetUp ? 'not-set-up' : statusCode !== null && status.status === undefined ? 'unreadable' : lockProblem ? 'lock-problem' : drifted ? 'drifted' : 'ready';
+  // Anything the plan could not do is a thing to look at: a pinned skill not downloaded yet, a change that was started and not
+  // finished, or a recovery that is needed. `Ready` is for a project whose lock is used and matches, with nothing held.
+  const drifted = status.status === 'drifted' || status.status === 'revision-pending' || ['stale', 'mismatch', 'absent'].includes(lockState) || plan.held.length > 0 || staleItems > 0 || resolved?.storeCode != null || resolveCode !== null
+    || plan.unavailable !== null || config.state === 'invalid' || items.some(i => i.hold !== null) || slices.some(x => x.grantStyle === 'unknown');
+  const unlocked = lockState === 'not-used' || (lockState !== 'valid');
+  const projectStatus: ProjectStatus = notSetUp ? 'not-set-up' : statusCode !== null && status.status === undefined ? 'unreadable' : lockProblem ? 'lock-problem' : drifted ? 'drifted' : unlocked ? 'not-locked' : 'ready';
 
   return {
     ...data, status: projectStatus, setup: status.status ?? null,
@@ -218,25 +237,31 @@ export async function readProject(ctx: ReadContext, dir: string): Promise<Projec
 
 // ------------------------------------------------------------------------------------------------------------ folders
 
-export function readFolders(ctx: ReadContext, projects: readonly ProjectData[], contexts: ReadonlyMap<string, ProjectContext>): FolderData[] {
+/** The registered folders and who may read them. A list that cannot be read is `failed`, never an empty list. */
+export function readFolders(ctx: ReadContext, projects: readonly ProjectData[], contexts: ReadonlyMap<string, ProjectContext>): { folders: FolderData[]; failed: string | null } {
   let list;
-  try { list = listFolders(ctx.home); } catch { return []; }
-  return list.folders.map(f => {
-    const allowed: string[] = [], outdated: string[] = [], unstyled: string[] = [], styles: FolderData['styles'] = [];
+  try { list = listFolders(ctx.home); } catch (error) { return { folders: [], failed: codeOf(error) }; }
+  const folders = list.folders.map(f => {
+    const allowed: string[] = [], outdated: string[] = [], unstyled: string[] = [], styles: FolderData['styles'] = [], unknown: FolderData['unknown'] = [];
     if (f.state !== 'refused' || f.code !== 'FOLDER_INVALID') {
-      let ids: readonly string[] = [];
-      try { ids = listFolderGrants(ctx.home, f.name).projectIds; } catch { ids = []; }
+      let ids: readonly string[] | null = null, listCode = '';
+      try { ids = listFolderGrants(ctx.home, f.name).projectIds; } catch (error) { listCode = codeOf(error); }
       for (const p of projects) {
         const pc = contexts.get(p.key);
-        if (pc === undefined || !ids.includes(pc.projectId)) continue;
+        if (pc === undefined) continue;
+        // If the grant list cannot be read, no project's permission is known.
+        if (ids === null) { unknown.push({ key: p.key, code: listCode }); continue; }
+        if (!ids.includes(pc.projectId)) continue;
         const g = grantOf(ctx.home, f.name, pc);
         if (g.state === 'kind') { allowed.push(p.key); styles.push({ key: p.key, style: g.style, styleKey: g.key }); }
         else if (g.state === 'legacy') unstyled.push(p.key);
+        else if (g.state === 'unknown') unknown.push({ key: p.key, code: g.code });
         else outdated.push(p.key);
       }
     }
-    return { name: f.name, path: f.path, state: f.state, code: f.code, allowed, outdated, styles, unstyled };
+    return { name: f.name, path: f.path, state: f.state, code: f.code, allowed, outdated, styles, unstyled, unknown };
   });
+  return { folders, failed: null };
 }
 
 // -------------------------------------------------------------------------------------------------------------- cache
@@ -274,7 +299,8 @@ export async function readSnapshot(ctx: ReadContext): Promise<{ snapshot: Snapsh
     const list = i.kind === 'skill' ? library.skills : i.kind === 'prompt' ? library.prompts : library.teams;
     list.find(x => x.id === i.id)?.usedBy.push(p.key);
   }
-  const folders = readFolders(ctx, projects, contexts);
+  const folderRead = readFolders(ctx, projects, contexts), folders = folderRead.folders;
+  if (folderRead.failed !== null) problems.push({ area: 'folders', code: folderRead.failed });
   const cache = await readCache(ctx);
   if (inspectStoreSafe(ctx.home) === 'foreign') problems.push({ area: 'store', code: 'STORE_INVALID' });
   return { snapshot: { mode: ctx.mode, at: new Date().toISOString(), store, library, folders, projects, cache, scan: found.info, problems }, contexts };

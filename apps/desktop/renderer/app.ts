@@ -1,8 +1,8 @@
 /** The window. It asks the main process for plain data, works out the words with the shared view models, and draws them. */
-import type { AppInfo, AppSettings, ItemContent, ItemKind, Snapshot, ViewerApi } from '../shared/types.js';
+import type { AppInfo, AppSettings, ItemContent, ItemKind, SettingsResult, Snapshot, ViewerApi } from '../shared/types.js';
 import { EXPLAINERS, KIND_WORDS, humanBytes, plural, titleOf } from '../shared/words.js';
 import {
-  cacheSummary, folderRows, homeModel, itemDetail, libraryRows, projectDetail, projectRows, slicesByProject, storeSummary,
+  cacheSummary, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, projectDetail, projectRows, slicesByProject, storeSummary,
 } from '../shared/viewmodel.js';
 import type { Chip, Link, SliceGroup, SliceModel, Tone } from '../shared/viewmodel.js';
 import { ICONS, h, icon } from './dom.js';
@@ -12,10 +12,27 @@ const api = window.bowerloom;
 
 type Screen = Link['screen'];
 interface Route extends Link { tab?: ItemKind; fromProject?: string }
-const state: { info: AppInfo | null; settings: AppSettings | null; snap: Snapshot | null; route: Route; history: Route[]; error: string | null; busy: boolean; notice: string | null; raw: Record<string, { text: string | null; note: string | null } | undefined> } =
-  { info: null, settings: null, snap: null, route: { screen: 'home' }, history: [], error: null, busy: false, notice: null, raw: {} };
+interface Banner { text: string; retry: (() => void) | null }
+const state: { info: AppInfo | null; settings: AppSettings | null; snap: Snapshot | null; route: Route; history: Route[]; error: string | null; busy: boolean; notice: string | null; banner: Banner | null; focusHeading: boolean; raw: Record<string, { text: string | null; note: string | null } | undefined> } =
+  { info: null, settings: null, snap: null, route: { screen: 'home' }, history: [], error: null, busy: false, notice: null, banner: null, focusHeading: false, raw: {} };
 
 const root = document.getElementById('root')!;
+
+/**
+ * Runs one call to the main process. A refusal or a failure shows a plain message with a way to try again, and never leaves
+ * the window blank or lost. Returns null when the call failed.
+ */
+async function act<T>(what: string, run: () => Promise<T>, retry: (() => void) | null = null): Promise<T | null> {
+  try { const value = await run(); if (state.banner !== null) { state.banner = null; } return value; }
+  catch { state.banner = { text: `${what} did not work. Nothing was changed. You can try again.`, retry }; render(); return null; }
+}
+/** The settings changes answer with a sentence when they could not be made or kept. */
+function settled(result: SettingsResult | null): void {
+  if (result === null) return;
+  state.settings = result.settings;
+  state.banner = result.message === null ? null : { text: result.message, retry: null };
+}
+const asOfBar = (text: string): HTMLElement => h('div', { class: 'toolbar small muted' }, h('span', { text }), button('Look again', () => { void reload(); }, 'btn secondary'));
 
 // ------------------------------------------------------------------------------------------------------------- helpers
 
@@ -35,10 +52,10 @@ function bar(label: string, percent: number, right: string): HTMLElement {
 }
 function go(route: Route, replace = false): void {
   if (!replace) state.history.push(state.route);
-  state.route = route; render();
+  state.route = route; state.focusHeading = true; render();
   document.getElementById('main')?.scrollTo(0, 0);
 }
-const back = (): void => { const prev = state.history.pop(); state.route = prev ?? { screen: 'home' }; render(); };
+const back = (): void => { const prev = state.history.pop(); state.route = prev ?? { screen: 'home' }; state.focusHeading = true; render(); };
 function backButton(label: string): HTMLElement { return h('button', { type: 'button', class: 'back', on: { click: back } }, `← ${label}`); }
 const rowButton = (onClick: () => void, ...children: (Node | string)[]): HTMLElement => h('button', { type: 'button', class: 'row', on: { click: onClick } }, ...children);
 const fileBlock = (name: string, text: string | null, note: string | null, powers: string[] = []): HTMLElement =>
@@ -49,12 +66,16 @@ const fileBlock = (name: string, text: string | null, note: string | null, power
 
 function homeScreen(s: Snapshot): HTMLElement {
   const m = homeModel(s);
+  const addFolder = (): HTMLElement => button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); });
   return h('div', { class: 'page' },
-    h('h1', { text: 'Home' }), h('p', { class: 'lead', text: m.sentence }),
-    h('div', { class: 'grid' }, ...m.counts.map(c => h('button', { type: 'button', class: 'stat', on: { click: () => go(c.link) } }, h('span', { class: 'value', text: String(c.value) }), h('span', { class: 'muted', text: c.label })))),
+    h('h1', { text: 'Home' }),
+    m.sample ? h('div', { class: 'warning', role: 'note' }, icon(ICONS.warning, 20), 'You are looking at sample data, a made-up library with three projects. It is not your own Bowerloom.') : null,
+    h('p', { class: 'lead', text: m.sentence }), asOfBar(m.asOf),
+    h('div', { class: 'grid' }, ...m.counts.map(c => h('button', { type: 'button', class: 'stat', on: { click: () => go(c.link) } }, h('span', { class: 'value', text: c.value === null ? 'Unknown' : String(c.value) }), h('span', { class: 'muted', text: c.label })))),
     h('h2', { text: 'Needs attention' }),
+    m.needsFolder ? h('div', { class: 'card' }, h('h3', { text: 'No project folder chosen yet' }), h('p', { text: 'The viewer does not know where your projects live, so it cannot say how they are doing. Choose the folder that holds them. It looks a few levels deep for projects that use Bowerloom, and changes nothing there.' }), h('div', {}, addFolder())) : null,
     m.attention.length === 0
-      ? h('div', { class: 'card' }, h('div', { class: 'chips' }, chip({ label: 'All clear', tone: 'good' })), h('p', { text: 'Nothing needs your attention. Everything Bowerloom manages here is in place.' }))
+      ? (m.needsFolder ? null : h('div', { class: 'card' }, h('div', { class: 'chips' }, chip({ label: 'All clear', tone: 'good' })), h('p', { text: 'Nothing needs your attention. Everything Bowerloom manages here is in place.' })))
       : h('div', { class: 'row-list' }, ...m.attention.map(a => h('div', { class: `card attention ${a.tone}` },
         h('div', { class: 'toolbar' }, h('h3', { text: a.title }), chip({ label: a.tone === 'bad' ? 'Needs a person' : a.tone === 'warn' ? 'Worth a look' : 'For your information', tone: a.tone })),
         h('p', { text: a.body }), h('p', {}, h('strong', { text: 'What a person would do: ' }), a.todo),
@@ -66,11 +87,12 @@ function libraryScreen(s: Snapshot): HTMLElement {
   const kinds: ItemKind[] = ['skill', 'prompt', 'team'];
   const rows = libraryRows(s, tab);
   return h('div', { class: 'page' },
-    h('h1', { text: 'Library' }), h('p', { class: 'lead', text: 'Everything you have saved to use again. Projects pick from here.' }), explain('store'),
-    h('div', { class: 'tabs', role: 'tablist' }, ...kinds.map(k => h('button', { type: 'button', role: 'tab', aria: { selected: String(k === tab) }, on: { click: () => go({ screen: 'library', tab: k }, true) } }, `${KIND_WORDS[k].many} (${(k === 'skill' ? s.library.skills : k === 'prompt' ? s.library.prompts : s.library.teams).length})`))),
+    h('h1', { text: 'Library' }), h('p', { class: 'lead', text: 'Everything you have saved to use again. Projects pick from here.' }), asOfBar(homeModel(s).asOf), explain('store'),
+    s.library.failed ? h('div', { class: 'warning', role: 'alert' }, icon(ICONS.warning, 20), 'The library could not be read, so what is listed here may be missing or wrong. Choose "Look again".') : null,
+    h('div', { class: 'tabs', role: 'tablist' }, ...kinds.map(k => h('button', { type: 'button', role: 'tab', aria: { selected: String(k === tab) }, on: { click: () => go({ screen: 'library', tab: k }, true) } }, `${KIND_WORDS[k].many} (${s.library.failed ? '?' : (k === 'skill' ? s.library.skills : k === 'prompt' ? s.library.prompts : s.library.teams).length})`))),
     h('p', { class: 'muted', text: KIND_WORDS[tab].what }),
     s.library.pinsError ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), 'The list of fixed-version skills could not be read, so some skills may be missing here.') : null,
-    rows.length === 0 ? empty(`No ${KIND_WORDS[tab].many.toLowerCase()} yet`, `Your library has no ${KIND_WORDS[tab].many.toLowerCase()} yet. They appear here when someone creates them with Bowerloom.`)
+    rows.length === 0 && s.library.failed ? null : rows.length === 0 ? empty(`No ${KIND_WORDS[tab].many.toLowerCase()} yet`, `Your library has no ${KIND_WORDS[tab].many.toLowerCase()} yet. They appear here when someone creates them with Bowerloom.`)
       : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'item', kind: r.kind, id: r.id }),
         h('span', { class: 'title', text: r.label }), chip({ label: r.origin, tone: r.originTone }),
         h('span', { class: 'meta' }, h('span', { text: r.version }), h('span', { text: r.used }), r.problem ? chip({ label: r.problem, tone: 'bad' }) : null)))));
@@ -83,7 +105,7 @@ function itemScreen(s: Snapshot): HTMLElement {
   const key = `${fromProject ?? 'store'}:${kind}:${id}`;
   if (contentFor.key !== key) {
     contentFor = { key, content: null };
-    void api.getItemContent({ kind, id, projectKey: fromProject ?? null }).then(c => { if (contentFor.key === key) { contentFor.content = c; render(); } });
+    void act('Reading what is inside', () => api.getItemContent({ kind, id, projectKey: fromProject ?? null })).then(c => { if (contentFor.key === key) { contentFor.content = c ?? { kind, id, where: fromProject ? 'project' : 'store', files: [], pinned: null, note: 'This could not be read. Choose "Look again" to try once more.' }; render(); } });
   }
   const d = itemDetail(s, kind, id, contentFor.content, fromProject ?? null);
   const wait = contentFor.content === null;
@@ -102,11 +124,11 @@ function itemScreen(s: Snapshot): HTMLElement {
 
 function projectsScreen(s: Snapshot): HTMLElement {
   const rows = projectRows(s);
-  const addFolder = button('Add a folder where your projects live', async () => { state.settings = await api.addRoot(); await reload(); });
+  const addFolder = button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); });
   return h('div', { class: 'page' },
     h('div', { class: 'toolbar' }, h('h1', { text: 'Projects' }), s.mode === 'real' ? addFolder : null),
     h('p', { class: 'lead', text: 'The folders on this computer that use Bowerloom, and whether each one is in good shape.' }),
-    rows.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { state.settings = await api.addRoot(); await reload(); }) : undefined)
+    rows.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : undefined)
       : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }), h('span', { class: 'tech', text: r.dir }))))));
 }
 
@@ -116,6 +138,7 @@ function sliceCard(sm: SliceModel): HTMLElement {
     h('dl', { class: 'kv' }, h('dt', { text: 'Reads' }), h('dd', { text: sm.where }), h('dt', { text: 'Files' }), h('dd', { text: sm.files })),
     sm.wants ? h('p', { text: sm.wants }) : null,
     sm.permission ? h('p', { text: sm.permission }) : null,
+    sm.note ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), sm.note) : null,
     sm.reason ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'Held. ' }), sm.reason)) : null,
     sm.agents.length ? h('p', { class: 'muted', text: `Read at the start by: ${sm.agents.join(', ')}` }) : h('p', { class: 'muted', text: 'No helper reads this one yet.' }),
     ...sm.bars.map(b => h('div', { class: 'stack' }, bar(`${b.role} reads at the start`, b.percent, `${b.startText} of ${b.wholeText}`), h('p', { class: 'small muted', text: b.percent < 100 ? b.sentence : `${b.role} reads about as much as the whole folder.` }))),
@@ -134,7 +157,7 @@ function projectScreen(s: Snapshot): HTMLElement {
   const showRaw = state.raw[`${p.key}:shown`] !== undefined;
   const toggleRaw = async (): Promise<void> => {
     if (showRaw) delete state.raw[`${p.key}:shown`];
-    else { state.raw[`${p.key}:shown`] = { text: null, note: null }; state.raw[`${p.key}:config`] = await api.getFileText({ projectKey: p.key, file: 'config' }); state.raw[`${p.key}:lock`] = await api.getFileText({ projectKey: p.key, file: 'lock' }); }
+    else { state.raw[`${p.key}:shown`] = { text: null, note: null }; state.raw[`${p.key}:config`] = (await act('Reading the file', () => api.getFileText({ projectKey: p.key, file: 'config' }))) ?? { text: null, note: 'This could not be read.' }; state.raw[`${p.key}:lock`] = (await act('Reading the file', () => api.getFileText({ projectKey: p.key, file: 'lock' }))) ?? { text: null, note: 'This could not be read.' }; }
     render();
   };
   return h('div', { class: 'page' },
@@ -164,10 +187,12 @@ function foldersScreen(s: Snapshot): HTMLElement {
   const rows = folderRows(s), groups = slicesByProject(s);
   return h('div', { class: 'page' },
     h('h1', { text: 'Knowledge folders' }), h('p', { class: 'lead', text: 'Folders of notes outside your projects. A project may read one only when it has been given permission.' }), explain('folder'), explain('grant'),
-    rows.length === 0 ? empty('No knowledge folders yet', 'When someone saves a folder of notes with Bowerloom, it shows up here with the projects allowed to read it.')
+    foldersProblem(s) ? h('div', { class: 'warning', role: 'alert' }, icon(ICONS.warning, 20), `${foldersProblem(s)} Choose "Look again".`) : null,
+    foldersProblem(s) ? null : rows.length === 0 ? empty('No knowledge folders yet', 'When someone saves a folder of notes with Bowerloom, it shows up here with the projects allowed to read it.')
       : h('div', { class: 'row-list' }, ...rows.map(r => h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('h3', { text: r.name }), chip({ label: r.state, tone: r.tone })),
         h('p', { class: 'tech', text: r.path }), h('p', { text: r.note }),
         r.allowed.length ? h('div', { class: 'chips' }, ...r.allowed.map(a => h('button', { type: 'button', class: 'btn secondary', on: { click: () => go({ screen: 'project', key: a.key }) } }, a.name))) : null,
+        ...r.unknownNotes.map(n => h('p', { class: 'small', text: n })),
         r.styles.length ? h('ul', { class: 'sentences' }, ...r.styles.map(x => h('li', { text: `${x.name}: ${x.text}` }))) : null, r.styleNote ? h('p', { class: 'small muted', text: r.styleNote }) : null,
         r.outdated.length ? h('p', { class: 'small muted', text: `Permission is out of date for: ${r.outdated.map(o => o.name).join(', ')}.` }) : null))),
     h('h2', { text: 'Reading lists (slices) in each project' }), h('p', { class: 'muted', text: 'A reading list is a short list of files from a knowledge folder. A helper reads the list at the start instead of the whole folder. Each one is Live, or Held with a reason.' }), explain('slice'),
@@ -188,17 +213,17 @@ function storageScreen(s: Snapshot): HTMLElement {
 
 function settingsScreen(s: Snapshot): HTMLElement {
   const set = state.settings!, info = state.info!;
-  const theme = (value: AppSettings['theme'], label: string): HTMLElement => h('button', { type: 'button', class: set.theme === value ? 'btn' : 'btn secondary', aria: { pressed: String(set.theme === value) }, on: { click: async () => { state.settings = await api.setTheme(value); applyTheme(); render(); } } }, label);
+  const theme = (value: AppSettings['theme'], label: string): HTMLElement => h('button', { type: 'button', class: set.theme === value ? 'btn' : 'btn secondary', aria: { pressed: String(set.theme === value) }, on: { click: async () => { settled(await act('Changing the look', () => api.setTheme(value))); applyTheme(); render(); } } }, label);
   return h('div', { class: 'page' },
     h('h1', { text: 'Settings' }),
     h('div', { class: 'card' }, h('h2', { text: 'Folders being searched for projects' }), h('p', { class: 'muted', text: 'The viewer looks inside these folders for projects. Adding or removing one only changes this list in the viewer. It never changes the folder.' }),
-      s.mode === 'sample' ? h('p', { text: 'You are looking at sample data, so this list is not used.' }) : set.roots.length === 0 ? h('p', { class: 'muted', text: 'No folders yet.' }) : h('div', { class: 'row-list' }, ...set.roots.map(r => h('div', { class: 'row static-row' }, h('span', { class: 'tech', text: r }), button('Remove from the list', async () => { state.settings = await api.removeRoot(r); await reload(); }, 'btn secondary')))),
-      s.mode === 'real' ? button('Add a folder where your projects live', async () => { state.settings = await api.addRoot(); await reload(); }) : null),
+      s.mode === 'sample' ? h('p', { text: 'You are looking at sample data, so this list is not used.' }) : set.roots.length === 0 ? h('p', { class: 'muted', text: 'No folders yet.' }) : h('div', { class: 'row-list' }, ...set.roots.map(r => h('div', { class: 'row static-row' }, h('span', { class: 'tech', text: r }), button('Remove from the list', async () => { settled(await act('Removing the folder', () => api.removeRoot(r))); await reload(); }, 'btn secondary')))),
+      s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : null),
     h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }), h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
-      button(info.mode === 'sample' ? 'Look at my Bowerloom instead' : 'Try the sample data instead', async () => { state.info = await api.chooseMode(info.mode === 'sample' ? 'real' : 'sample'); state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')),
+      button(info.mode === 'sample' ? 'Look at my Bowerloom instead' : 'Try the sample data instead', async () => { state.info = (await act('Switching', () => api.chooseMode(info.mode === 'sample' ? 'real' : 'sample'))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')),
     h('div', { class: 'card' }, h('h2', { text: 'Appearance' }), h('div', { class: 'chips' }, theme('system', 'Match my computer'), theme('light', 'Light'), theme('dark', 'Dark'))),
     h('div', { class: 'card' }, h('h2', { text: 'About' }), h('dl', { class: 'kv' }, h('dt', { text: 'Version' }), h('dd', { text: info.version }), h('dt', { text: 'Updates' }), h('dd', { text: info.updates.status })),
-      button('Check for updates', async () => { const r = await api.checkForUpdates(); state.notice = r.status; state.info = await api.getInfo(); render(); }, 'btn secondary'), state.notice ? h('p', { role: 'status', text: state.notice }) : null,
+      button('Check for updates', async () => { const r = await act('Checking for updates', () => api.checkForUpdates()); if (r !== null) { state.notice = r.status; state.info = (await act('Reading the version', () => api.getInfo())) ?? state.info; } render(); }, 'btn secondary'), state.notice ? h('p', { role: 'status', text: state.notice }) : null,
       h('p', { class: 'small muted', text: 'This viewer only looks. It does not change your library or your projects.' })));
 }
 
@@ -207,7 +232,7 @@ function welcome(): HTMLElement {
     h('div', { class: 'brand' }, icon(ICONS.leaf, 32), 'Bowerloom Viewer'),
     h('h1', { text: 'See everything Bowerloom looks after' }),
     h('p', { class: 'lead', text: 'Bowerloom keeps your AI skills, prompts, and teams in one place and shares them with your projects. This app shows you all of it, in plain words, and changes nothing.' }),
-    h('div', { class: 'choices' }, button('Look at my Bowerloom', async () => { state.info = await api.chooseMode('real'); await reload(); go({ screen: 'home' }, true); }, 'btn big'), button('Try it with sample data', async () => { state.info = await api.chooseMode('sample'); await reload(); go({ screen: 'home' }, true); }, 'btn big secondary')),
+    h('div', { class: 'choices' }, button('Look at my Bowerloom', async () => { state.info = (await act('Opening your Bowerloom', () => api.chooseMode('real'))) ?? state.info; await reload(); go({ screen: 'home' }, true); }, 'btn big'), button('Try it with sample data', async () => { state.info = (await act('Opening the sample data', () => api.chooseMode('sample'))) ?? state.info; await reload(); go({ screen: 'home' }, true); }, 'btn big secondary')),
     h('p', { class: 'small muted', text: 'The sample data is a made-up library with three projects. One is in good shape, one has drifted, and one has a damaged lock file.' }));
 }
 
@@ -219,7 +244,7 @@ const NAV: { screen: Screen; label: string; icon: readonly string[] }[] = [
 ];
 const section = (screen: Screen): Screen => screen === 'item' ? 'library' : screen === 'project' ? 'projects' : screen;
 
-function shell(content: HTMLElement): HTMLElement {
+function shell(content: HTMLElement, banner: HTMLElement | null = null): HTMLElement {
   const info = state.info!, attention = state.snap ? homeModel(state.snap).attention.length : 0;
   const nav = h('nav', { class: 'nav', aria: { label: 'Main' } }, ...NAV.map(n => {
     const b = h('button', { type: 'button', on: { click: () => { state.history = []; go({ screen: n.screen }, true); } } }, icon(n.icon), n.label, n.screen === 'home' && attention > 0 ? chip({ label: String(attention), tone: 'warn' }) : null);
@@ -228,12 +253,12 @@ function shell(content: HTMLElement): HTMLElement {
   }));
   return h('div', { class: 'shell' },
     h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), nav, button('Look again', () => { void reload(); }, 'btn secondary')),
-    h('main', { id: 'main', tabindex: -1 }, content),
+    h('main', { id: 'main' }, banner, content),
     h('footer', { class: 'footer' }, h('span', { text: `Bowerloom Viewer ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : 'Showing your own Bowerloom' })));
 }
 
 function body(): HTMLElement {
-  if (state.error) return h('div', { class: 'page' }, empty('Something went wrong', state.error, button('Try again', () => { void reload(); })));
+  if (state.error) return h('div', { class: 'page', role: 'alert' }, empty('Something went wrong', state.error, button('Try again', () => { void reload(); })));
   if (state.snap === null) return h('div', { class: 'page' }, h('p', { class: 'muted', role: 'status', text: 'Reading your Bowerloom…' }));
   switch (state.route.screen) {
     case 'library': return libraryScreen(state.snap);
@@ -247,14 +272,32 @@ function body(): HTMLElement {
   }
 }
 
+function bannerView(): HTMLElement | null {
+  const notices: HTMLElement[] = [];
+  if (state.info?.notice) notices.push(h('div', { class: 'warning', role: 'alert' }, icon(ICONS.warning, 20), state.info.notice));
+  if (state.banner) notices.push(h('div', { class: 'warning', role: 'alert' }, icon(ICONS.warning, 20), h('span', { text: state.banner.text }), state.banner.retry ? button('Try again', state.banner.retry, 'btn secondary') : null));
+  return notices.length === 0 ? null : h('div', { class: 'stack banners' }, ...notices);
+}
+
+/** Tells a screen reader which screen is now showing, and moves the keyboard to its heading. */
+function announce(): void {
+  const live = document.getElementById('live');
+  const heading = document.querySelector<HTMLElement>('main h1');
+  if (!state.focusHeading) return;
+  state.focusHeading = false;
+  if (heading !== null) { heading.setAttribute('tabindex', '-1'); heading.focus({ preventScroll: true }); }
+  if (live !== null) live.textContent = heading?.textContent ?? '';
+}
+
 function render(): void {
   if (state.info === null || state.settings === null) return;
-  const focused = document.activeElement?.getAttribute('aria-current');
-  const view = state.info.firstRun ? h('div', { class: 'shell', role: 'main' }, h('main', { id: 'main' }, welcome())) : shell(body());
-  root.replaceChildren(view);
-  if (state.info.firstRun) view.style.display = 'block';
-  void focused;
+  const banner = bannerView();
+  const content = state.info.firstRun ? h('div', { class: 'welcome-wrap' }, banner, welcome()) : null;
+  const view = state.info.firstRun ? h('main', { id: 'main', class: 'solo' }, content) : shell(body(), banner);
+  const live = h('div', { id: 'live', class: 'sr', role: 'status', aria: { live: 'polite' } });
+  root.replaceChildren(view, live);
   document.title = `Bowerloom Viewer - ${titleOf(state.route.screen)}`;
+  announce();
 }
 
 function applyTheme(): void {
@@ -264,10 +307,14 @@ function applyTheme(): void {
 }
 
 async function reload(): Promise<void> {
-  state.info = await api.getInfo(); state.settings = await api.getSettings(); applyTheme();
+  const info = await act('Starting', () => api.getInfo(), () => { void reload(); }), settings = await act('Reading the viewer\'s settings', () => api.getSettings(), () => { void reload(); });
+  if (info === null || settings === null) { state.error = 'The viewer could not start properly.'; render(); return; }
+  state.info = info; state.settings = settings; applyTheme();
   if (state.info.mode === null) { state.snap = null; render(); return; }
   state.error = null; state.snap = null; render();
-  try { state.snap = await api.getSnapshot(); } catch { state.error = 'Bowerloom could not be read. Choose "Look again" to try once more.'; }
+  try { state.snap = await api.getSnapshot(); state.banner = null; }
+  catch (error) { state.error = error instanceof Error && /sample data could not be prepared|Choose what to look at/.test(error.message) ? error.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') : 'Bowerloom could not be read. Choose "Look again" to try once more.'; }
+  state.focusHeading = true;
   render();
 }
 

@@ -21,10 +21,9 @@ test('the sample has the three projects, one in each state', async () => {
 test('healthy project: every item matches the lock, with no hold and no drift', async () => {
   const h = (await byName()).p('studio-site');
   assert.equal(h.lockState, 'valid'); assert.deepEqual(h.drift, []); assert.deepEqual(h.held, []);
-  assert.deepEqual(h.items.map(i => `${i.kind}:${i.id}`), ['skill:brand-voice', 'skill:house-style', 'skill:meeting-notes', 'prompt:weekly-update', 'team:research-desk']);
+  assert.deepEqual(h.items.map(i => `${i.kind}:${i.id}`), ['skill:house-style', 'skill:meeting-notes', 'prompt:weekly-update', 'team:research-desk']);
   assert.ok(h.items.every(i => i.lock === 'same' && i.hold === null && i.from === 'store'));
-  assert.equal(h.items.find(i => i.id === 'brand-voice')!.origin, 'npm'); assert.equal(h.items.find(i => i.id === 'brand-voice')!.pin, '@synthetic/brand-voice@1.2.0');
-  assert.equal(h.lockRows.length, 5); assert.equal(h.shared, true);
+  assert.equal(h.lockRows.length, 4); assert.equal(h.shared, true);
   assert.deepEqual(h.slices.map(x => x.id), ['brief-titles', 'team-notes']); const tn = h.slices.find(x => x.id === 'team-notes')!; assert.equal(tn.rootKind, 'registered'); assert.equal(tn.rootName, 'team-notes'); assert.equal(tn.members, 4); assert.ok(h.slices.every(x => x.hold === null), 'both are live');
 });
 
@@ -36,7 +35,7 @@ test('drifted project: a changed item, a missing item, a held agent, and the rea
   assert.equal(d.items.find(i => i.id === 'weekly-digest')!.lock, 'same');
   assert.equal(d.items.find(i => i.id === 'newsroom')!.from, 'project');
   assert.ok(d.drift.some(x => x.kind === 'unexpected'));
-  assert.deepEqual(d.held.map(h => `${h.kind}:${h.id}`).sort(), ['agent:publisher', 'skill:old-rules', 'slice:client-history', 'slice:old-reports-list', 'slice:team-titles']);
+  assert.deepEqual(d.held.map(h => `${h.kind}:${h.id}`).sort(), ['agent:publisher', 'slice:client-history', 'slice:meeting-archive-all', 'slice:old-reports-list', 'slice:team-titles']);
 });
 
 test('agents per project: the powerful settings are named, and the slice an agent loads', async () => {
@@ -49,7 +48,7 @@ test('agents per project: the powerful settings are named, and the slice an agen
 test('slices: the size comparison comes from the real measure', async () => {
   const d = (await byName()).p('newsletter');
   assert.deepEqual(d.slices.map(x => [x.id, x.folder, x.wants, x.wantsKey, x.grantStyle, x.grantKey]), [
-    ['client-history', 'client-archive', 'heading', null, 'absent', null], ['old-reports-list', 'old-reports', 'heading', null, 'unset', null],
+    ['client-history', 'client-archive', 'heading', null, 'absent', null], ['meeting-archive-all', 'meeting-archive', 'heading', null, 'heading', null], ['old-reports-list', 'old-reports', 'heading', null, 'unset', null],
     ['team-notes', 'team-notes', 'heading', null, 'heading', null], ['team-titles', 'team-notes', 'frontmatter', 'title', 'heading', null]]);
   assert.equal(d.measureCode, null); assert.ok(d.baselineBytes! > 5000); assert.equal(d.baselineFiles, 4);
   const editor = d.measure.find(m => m.role === 'editor')!;
@@ -76,7 +75,7 @@ test('the library: origins, pins, and which projects use each item', async () =>
 
 test('registered folders and their grants', async () => {
   const { s } = await byName(), key = (n: string) => s.projects.find(x => x.name === n)!.key;
-  assert.deepEqual(s.folders.map(f => f.name), ['client-archive', 'old-reports', 'project-briefs', 'team-notes']);
+  assert.deepEqual(s.folders.map(f => f.name), ['client-archive', 'meeting-archive', 'old-reports', 'project-briefs', 'team-notes']);
   const f = (n: string) => s.folders.find(x => x.name === n)!;
   assert.deepEqual(f('client-archive').allowed, []); assert.deepEqual(f('team-notes').allowed.sort(), [key('newsletter'), key('studio-site')].sort());
   assert.deepEqual(f('team-notes').styles.map(x => x.style), ['heading', 'heading']); assert.deepEqual(f('project-briefs').styles, [{ key: key('studio-site'), style: 'frontmatter', styleKey: 'title' }]);
@@ -90,7 +89,7 @@ test('the new read-only export lists grant file names and nothing else', t => {
   assert.equal(ids.length, 2); assert.ok(ids.every(id => /^[a-f0-9]{32}$/.test(id)));
   assert.deepEqual(listFolderGrants(world.home, 'client-archive').projectIds, []);
   assert.throws(() => listFolderGrants(world.home, '../x'), /FOLDER_NAME_INVALID|name/i);
-  assert.deepEqual(readdirSync(join(storeRootOf(world.home), 'folders')).sort(), ['client-archive.json', 'old-reports.grants', 'old-reports.json', 'project-briefs.grants', 'project-briefs.json', 'team-notes.grants', 'team-notes.json']);
+  assert.deepEqual(readdirSync(join(storeRootOf(world.home), 'folders')).sort(), ['client-archive.json', 'meeting-archive.grants', 'meeting-archive.json', 'old-reports.grants', 'old-reports.json', 'project-briefs.grants', 'project-briefs.json', 'team-notes.grants', 'team-notes.json']);
 });
 
 test('a grant that no longer matches is reported as out of date, not as allowed', async t => {
@@ -196,4 +195,79 @@ test('an absent store and a store that is not a store are reported, not thrown',
   mkdirSync(join(home, '.bowerloom'), { mode: 0o700 }); writeFileSync(join(home, '.bowerloom', 'something'), 'x');
   const foreign = await readSnapshot({ mode: 'real', home, env: { HOME: home }, roots: [] });
   assert.equal(foreign.snapshot.store.state, 'foreign'); assert.ok(foreign.snapshot.problems.some(p => p.area === 'store'));
+});
+
+test('a reading list that is too large is held even though the permission matches', async () => {
+  const d = (await byName()).p('newsletter'), big = d.slices.find(x => x.id === 'meeting-archive-all')!;
+  assert.equal(big.hold!.code, 'SLICE_TOO_LARGE'); assert.equal(big.grantStyle, 'heading'); assert.equal(big.wants, 'heading');
+});
+
+test('status: Ready only when nothing is unavailable and the lock is used and matches; a plan that cannot run is a thing to look at', async () => {
+  const { p } = await byName();
+  assert.equal(p('studio-site').status, 'ready'); assert.equal(p('studio-site').unavailable, null); assert.equal(p('studio-site').lockState, 'valid');
+  assert.equal(p('newsletter').unavailable, 'SKILLS_OFFLINE'); assert.equal(p('newsletter').status, 'drifted');
+});
+
+test('a project with nothing locked is "not locked", never Ready', async t => {
+  const { tempDir } = await import('./support.js');
+  const home = tempDir(t), dir = join(home, 'Projects', 'solo'); (await import('node:fs')).mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify({ format: 'bowerloom/project/v1beta1', harnesses: ['claude', 'codex'], skills: [], prompts: [], teams: [] })}\n`);
+  const ctx = { mode: 'real' as const, home, env: { HOME: home }, roots: [join(home, 'Projects')] };
+  const solo = await readProject(ctx, dir);
+  assert.equal(solo.lockState, 'not-used'); assert.equal(solo.status, 'not-locked');
+});
+
+test('a bowerloom.json that exists but cannot be read is "Cannot open", never "Not set up"', async t => {
+  const { tempDir } = await import('./support.js');
+  const home = tempDir(t), dir = join(home, 'Projects', 'odd'), fs = await import('node:fs'); fs.mkdirSync(dir, { recursive: true });
+  writeFileSync(join(home, 'real.json'), '{}'); symlinkSync(join(home, 'real.json'), join(dir, 'bowerloom.json'));
+  const ctx = { mode: 'real' as const, home, env: { HOME: home }, roots: [join(home, 'Projects')] };
+  const p = await readProject(ctx, dir);
+  assert.equal(p.status, 'unreadable'); assert.ok(p.openCode !== null && p.openCode !== undefined); assert.deepEqual(p.items, []);
+  // A file that is there but that this user cannot open is found by the search, and is a project Bowerloom cannot open.
+  const dir2 = join(home, 'Projects', 'locked'); fs.mkdirSync(dir2); writeFileSync(join(dir2, 'bowerloom.json'), '{}\n'); fs.chmodSync(join(dir2, 'bowerloom.json'), 0o000);
+  try { const { snapshot } = await readSnapshot(ctx); const locked = snapshot.projects.find(x => x.name === 'locked')!; assert.equal(locked.status, 'unreadable'); assert.notEqual(locked.status as string, 'not-set-up'); }
+  finally { fs.chmodSync(join(dir2, 'bowerloom.json'), 0o600); }
+});
+
+test('one project that cannot be read never fails the others', async t => {
+  const { world, ctx } = sampleWorld(t);
+  const fs = await import('node:fs'); fs.mkdirSync(join(world.projects, 'broken'));
+  writeFileSync(join(world.projects, 'broken', 'bowerloom.json'), '{}\n'); fs.chmodSync(join(world.projects, 'broken'), 0o777);
+  const { snapshot } = await readSnapshot(ctx);
+  assert.equal(snapshot.projects.length, 4); assert.equal(snapshot.projects.find(x => x.name === 'studio-site')!.status, 'ready');
+  assert.equal(snapshot.projects.find(x => x.name === 'broken')!.status, 'unreadable');
+});
+
+test('a permission that cannot be checked is "unknown", never "no permission" and never "headings"', async t => {
+  const { grantOf } = await import('../main/reader.js'), { discoverProject } = await import('../../../packages/project-context/src/index.js');
+  const { world } = sampleWorld(t), pc = discoverProject(join(world.projects, 'newsletter'), world.home);
+  assert.deepEqual(grantOf(world.home, 'team-notes', pc), { state: 'kind', style: 'heading', key: null });
+  assert.deepEqual(grantOf(world.home, 'client-archive', pc), { state: 'absent' });
+  assert.deepEqual(grantOf(world.home, 'old-reports', pc), { state: 'legacy' });
+  assert.equal(grantOf(world.home, 'no-such-folder', pc).state, 'unknown', 'a folder with no record is not "no permission"');
+  assert.equal(grantOf(world.home, 'Not A Name', pc).state, 'unknown');
+  // A damaged grant file is a fault to report, not "no permission".
+  writeFileSync(join(storeRootOf(world.home), 'folders', 'team-notes.grants', pc.projectId), '{"damaged": true}\n', { mode: 0o644 });
+  assert.equal(grantOf(world.home, 'team-notes', pc).state, 'unknown');
+});
+
+test('a folder list or grant list that cannot be read is reported, not shown as no folders or no permission', async t => {
+  const { tempDir } = await import('./support.js'), fs = await import('node:fs');
+  const home = tempDir(t); fs.mkdirSync(join(home, '.bowerloom'), { mode: 0o700 }); writeFileSync(join(home, '.bowerloom', 'something'), 'x');
+  const { snapshot } = await readSnapshot({ mode: 'real', home, env: { HOME: home }, roots: [] });
+  assert.ok(snapshot.problems.some(x => x.area === 'folders'), 'the folder list failed and says so'); assert.deepEqual(snapshot.folders, []);
+  assert.notEqual(snapshot.library.failed, null, 'a library that could not be read is not a library of zero');
+  // The grants folder of one registered folder is damaged: the permissions of that folder are unknown.
+  const { world, ctx } = sampleWorld(t), grants = join(storeRootOf(world.home), 'folders', 'team-notes.grants');
+  fs.chmodSync(grants, 0o777);
+  const sample = await readSnapshot(ctx), f = sample.snapshot.folders.find(x => x.name === 'team-notes')!;
+  assert.equal(f.allowed.length, 0); assert.equal(f.unknown.length, 3, 'every project is unknown, not "not allowed"');
+});
+
+test('the library read failing leaves the counts unknown', async t => {
+  const { tempDir } = await import('./support.js'), fs = await import('node:fs');
+  const home = tempDir(t); fs.mkdirSync(join(home, '.bowerloom'), { mode: 0o700 }); writeFileSync(join(home, '.bowerloom', 'x'), 'x');
+  const { snapshot } = await readSnapshot({ mode: 'real', home, env: { HOME: home }, roots: [] });
+  assert.equal(snapshot.library.failed, 'STORE_INVALID');
 });

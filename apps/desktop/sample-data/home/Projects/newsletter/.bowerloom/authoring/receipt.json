@@ -12,7 +12,20 @@
           "bytes": 208
         }
       ],
-      "planRevision": "4f8e5c7a961887b6cea112ca835805903b8239dc3548da45ad6ec10be2fa11f9"
+      "planRevision": "269ca7aea3311a041314c14aa17d4bb0ba4d65b9d19ad9906f036fa01131b536"
+    },
+    {
+      "kind": "slice",
+      "id": "meeting-archive-all",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/meeting-archive-all.yaml",
+          "sha256": "9657ca5d690216d529a97ad3a3d4705ad7da468f21ca9fa71d492328ebb38f59",
+          "bytes": 209
+        }
+      ],
+      "planRevision": "422cb731dabe3dc4768abc8be49aef8845db86eed96e4b330df0a45274bb63f8"
     },
     {
       "kind": "slice",
@@ -25,7 +38,7 @@
           "bytes": 205
         }
       ],
-      "planRevision": "89a7eb9b893b54a4ccd574e13e28bafafac827fb080e05d6e3ef61621925ef9c"
+      "planRevision": "acf61cd2c9f78f2fd614ff586aa7d37701fa63650441ee61b141360b2eb39667"
     },
     {
       "kind": "slice",
@@ -38,7 +51,7 @@
           "bytes": 204
         }
       ],
-      "planRevision": "57c2a698aca62e6de88c62aea19d06d673b2ad58147c971817ea6283d7a1a44b"
+      "planRevision": "c02bdaf3564a31789fa347ed654c1e196385c41a98913593038fc6f4b2025e63"
     },
     {
       "kind": "slice",
@@ -51,7 +64,7 @@
           "bytes": 204
         }
       ],
-      "planRevision": "eedc46444bf85109c6cafdb6ffc4db4aa5f0f80632571c40f5cb0edf85df8016"
+      "planRevision": "c8eb6a8444329c869d1edcb0fc11d387e87cbaef13a340950949a390a8f6272f"
     },
     {
       "kind": "team",
@@ -109,8 +122,8 @@
           "bytes": 6575
         }
       ],
-      "planRevision": "c55466ec733e930c6249d6a68c4bfbdacb40ebd5b4ea7e72f28a354ed2b174c0"
+      "planRevision": "3cd7c9d68e9884adabd9a1668f1131de60d9c98a4a9dcd0e6e1ad8e3039d63b4"
     }
   ],
-  "revision": "f9fe2179fed9a7694dd6461c84f77fa2095763c38f716e1a14f156c6ce270c26"
+  "revision": "381f94a3b486585ccd3bf9769d348ed1e69ee2e0eac5d0e4b42c2c5fb1df8320"
 }

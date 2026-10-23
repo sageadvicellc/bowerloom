@@ -27,6 +27,17 @@
       "folder": "old-reports",
       "project": "newsletter",
       "summary": null
+    },
+    {
+      "folder": "meeting-archive",
+      "project": "newsletter",
+      "summary": "heading"
+    }
+  ],
+  "generated": [
+    {
+      "folder": "Notes/meeting-archive",
+      "files": 1100
     }
   ]
 }

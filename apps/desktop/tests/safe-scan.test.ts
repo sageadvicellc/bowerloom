@@ -1,7 +1,7 @@
 // Path rules and the folder scan: depth cap, symlink refusal, outside-root refusal.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { OutsideRoot, isId, isInside, isPlainName, resolveInside } from '../main/safe.js';
 import { SCAN_LIMITS, scanRoots } from '../main/scan.js';
@@ -88,4 +88,14 @@ test('scan reports a root that is gone or is a file', t => {
   const base = tempDir(t); writeFileSync(join(base, 'file'), 'x');
   const r = scanRoots([join(base, 'gone'), join(base, 'file')]);
   assert.deepEqual(r.info.roots.map(x => x.ok), [false, false]); assert.deepEqual(r.dirs, []);
+});
+
+test('scan says when the depth limit hid folders, when a folder could not be opened, and when links were skipped', t => {
+  const base = tempDir(t); mkdirSync(join(base, 'a', 'b', 'c', 'd', 'e', 'f'), { recursive: true });
+  const r = scanRoots([base]); assert.equal(r.info.depthReached, true); assert.equal(r.info.depthLimit, 4);
+  const shallow = tempDir(t); mkdirSync(join(shallow, 'a', 'b'), { recursive: true }); assert.equal(scanRoots([shallow]).info.depthReached, false);
+  const locked = tempDir(t); mkdirSync(join(locked, 'closed')); chmodSync(join(locked, 'closed'), 0o000);
+  try { const l = scanRoots([locked]); assert.ok(l.info.skipped.some(x => /cannot be opened/.test(x.reason))); } finally { chmodSync(join(locked, 'closed'), 0o700); }
+  const many = tempDir(t); for (let i = 0; i < 60; i++) symlinkSync(base, join(many, `l${i}`));
+  assert.equal(scanRoots([many]).info.skippedMore, true);
 });

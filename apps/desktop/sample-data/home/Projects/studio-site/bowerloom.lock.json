@@ -2,73 +2,21 @@
   "format": "bowerloom/lock/v1beta1",
   "skills": [
     {
-      "id": "brand-voice",
-      "from": "store",
-      "pin": {
-        "id": "brand-voice",
-        "source": {
-          "kind": "npm",
-          "registry": "https://registry.npmjs.org",
-          "package": "@synthetic/brand-voice",
-          "version": "1.2.0",
-          "integrity": "sha512-uk3j70udmp8aj62JaGxpT7EXLMlthsYpDwyWbSqclwp43dsxgU5fi5CiCzC3BgVMMzAqYffCUcbaI1zCoMeQVQ==",
-          "metadataSha256": "21f366cd6f66dd936b530452f570c11639a7be6bf449a3497793ff028a8acf99",
-          "publisher": "synthetic"
-        },
-        "skill": {
-          "name": "synthetic-brand-voice",
-          "sourceRoot": "skills/brand-voice"
-        },
-        "license": {
-          "spdx": "MIT",
-          "files": [
-            "LICENSE"
-          ]
-        },
-        "files": [
-          {
-            "path": "LICENSE",
-            "sourcePath": "LICENSE",
-            "sha256": "08e8324d4905e7dcdc712b9e078123285a2042bc877305829db2a6e046086e80",
-            "bytes": 30
-          },
-          {
-            "path": "SKILL.md",
-            "sourcePath": "skills/brand-voice/SKILL.md",
-            "sha256": "10161843747c8881799e6777a08ceba4f84f9403a0cf4250ff27c0c45935eb1c",
-            "bytes": 121
-          },
-          {
-            "path": "references/guide.md",
-            "sourcePath": "skills/brand-voice/references/guide.md",
-            "sha256": "62e4e89c1a5522329c951fbc57093f7d2f2ec35d5d31bf705bcf64e80a3e208b",
-            "bytes": 22
-          }
-        ],
-        "references": [
-          {
-            "from": "SKILL.md",
-            "to": "references/guide.md"
-          }
-        ]
-      }
-    },
-    {
       "id": "house-style",
       "from": "store",
       "authored": {
         "remote": "https://github.com/sample-co/shared-store",
         "commit": "5a3c9e1d7b2f4860a1c3e5d7f9b1a3c5e7d90b24",
         "path": "skills/house-style",
-        "tree": "77ae61dba2e8bacaacee258e94f5eaec7d48de6b",
+        "tree": "dc4ed8a0fab32722421e5e81b5b7178488b58929",
         "files": [
           {
             "path": "SKILL.md",
-            "sha256": "d10822623240e8b1c1ab3b6d30c1ac3aedba9c583186378c5bef151a9a032ffe",
-            "bytes": 225
+            "sha256": "5c7d9a031c151f9aa85528c47ba803939802edaeaee1d77bed2d6d046a64a3d8",
+            "bytes": 224
           }
         ],
-        "hash": "5e8c1ea7d043253e0a20a4c066d40d7bf6e2fcd8884f1b22b03c9be91afaf9cb"
+        "hash": "d8ea8aec78c4b50b46c6c41b9c7bef6278d43675ebb8d2c6022cc9566885cb14"
       }
     },
     {
