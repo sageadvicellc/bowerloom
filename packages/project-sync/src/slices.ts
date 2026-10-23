@@ -14,7 +14,7 @@ import { oneLine, shellArg } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, raw, sameOrInside, stablePins } from '../../managed-skills/src/observed.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
-import type { SliceTreeResult } from '../../managed-skills/src/local-source.js';
+import type { SliceHold, SliceTreeResult } from '../../managed-skills/src/local-source.js';
 import { catalogPath, currentV2, locateV2, ownSurface } from '../../managed-skills/src/v2-observed.js';
 import type { SliceCatalogRoot, InventoryRow, ItemClosure, ItemRef, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, RegisteredLookup, SliceRequestRoot, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
 import { resolveRegisteredRoot } from '../../project-context/src/registered-folders.js';
@@ -92,13 +92,13 @@ export function sliceSurfaces(project: string, id: string): { id: ItemSurface['i
 }
 
 /** The words of a hold from the reading of a slice: its code and the next step. */
-export function holdOf(id: string, hold: { code: string; detail: string; errno?: string; inside?: boolean }): { code: string; next: string } {
+export function holdOf(id: string, hold: SliceHold): { code: string; next: string } {
   // Round 11 of the reviews of PR 101: the detail comes from a slice file or a file name, which a cloned repository
   // controls. Every sentence holds it on one line (oneLine), so it cannot start a line such as a fake Next: line.
   const words = holdWords(id, { ...hold, detail: oneLine(hold.detail), ...(hold.errno !== undefined ? { errno: oneLine(hold.errno) } : {}) }, hold.detail);
   return { code: words.code, next: oneLine(words.next) };
 }
-function holdWords(id: string, hold: { code: string; detail: string; errno?: string; inside?: boolean }, raw: string): { code: string; next: string } {
+function holdWords(id: string, hold: SliceHold, raw: string): { code: string; next: string } {
   const path = fileOf(id);
   switch (hold.code) {
     case 'SLICE_INVALID': return { code: hold.code, next: `Fix ${path}: ${hold.detail}. Then run bowerloom apply.` };
@@ -108,7 +108,13 @@ function holdWords(id: string, hold: { code: string; detail: string; errno?: str
     // Round 10 of the reviews of PR 101: the root comes from a slice file, which a cloned repository controls, so a path
     // goes into a command only through shellArg. A path that no command can carry gets words instead.
     case 'SLICE_ROOT_UNSAFE': { const word = shellArg(raw.startsWith('-') ? `./${raw}` : raw); return { code: hold.code, next: hold.inside === true ? `Use root: ${hold.detail} instead.` : hold.errno !== undefined ? `Bowerloom cannot read ${hold.detail} (${hold.errno}). ${word !== null ? `Run ls -ld ${word}` : 'Run ls -ld on the root folder of the slice'}, let your user read it, then run bowerloom apply.` : word !== null ? `ls -ld ${word}` : `Run ls -ld on the root folder of the slice, ${hold.detail}, and make it a real folder that you own, closed to other users. Then run bowerloom apply.` }; }
-    case 'FOLDER_NOT_ALLOWED': return { code: hold.code, next: `bowerloom folder allow ${hold.detail}` };
+    case 'FOLDER_NOT_ALLOWED': {
+      // The folder name and the kind come in their own fields. A name is checked to be a folder name, a kind to be heading or frontmatter:<key>.
+      const kind = hold.kind !== undefined && /^(?:heading|frontmatter:[A-Za-z0-9_-]{1,64})$/.test(hold.kind) ? hold.kind : 'heading', run = `bowerloom folder allow ${hold.detail} ${kind}`;
+      if (hold.legacy === true) return { code: hold.code, next: `The grant for ${hold.detail} was made before Bowerloom recorded a summary kind, so it counts as no grant. Run ${run}.` };
+      if (hold.granted !== undefined) return { code: hold.code, next: `This project's grant for ${hold.detail} allows the summary kind ${oneLine(hold.granted)}, and one grant holds one kind per folder. Run ${run}. Slices of ${hold.detail} that ask for ${oneLine(hold.granted)} are held until you allow ${oneLine(hold.granted)} again.` };
+      return { code: hold.code, next: run };
+    }
     case 'SLICE_SOURCE_UNSAFE': { const word = shellArg(raw.startsWith('-') ? `./${raw}` : raw); return { code: hold.code, next: hold.errno === undefined ? (word !== null ? `ls -l ${word}` : `Run ls -l on the source file of the slice, ${hold.detail}, and make it a plain file that you own, closed to other users. Then run bowerloom apply.`) : `Bowerloom cannot read ${hold.detail} (${hold.errno}). ${word !== null ? `Run ls -l ${word}` : 'Run ls -l on the source file of the slice'}, let your user read it, then run bowerloom apply.` }; }
     case 'SLICE_EMPTY': return { code: hold.code, next: `Widen include in ${path}, then run bowerloom apply.` };
     default: return { code: 'SLICE_TOO_LARGE', next: 'Narrow the slice, or set summary: none, then run bowerloom apply.' };
@@ -128,8 +134,8 @@ export type SliceTreeHook = (projectDir: string, name: string, root: SliceReques
 
 /** The store lookup of registered folders, for `readSliceTree`: the project-context resolver with the identity cut to what a request carries. */
 export function registeredLookup(home: string, projectId: string, birthtimeNs: string, stateRoot?: string): RegisteredLookup {
-  return (name, path) => {
-    const found = resolveRegisteredRoot(home, name, path, { projectId, birthtimeNs, ...(stateRoot !== undefined ? { stateRoot } : {}) });
+  return (name, path, summary) => {
+    const found = resolveRegisteredRoot(home, name, path, { projectId, birthtimeNs, ...(summary !== undefined ? { summary } : {}), ...(stateRoot !== undefined ? { stateRoot } : {}) });
     if (!found.ok) return found;
     return { ok: true, dir: found.dir, identity: { device: found.identity.device, inode: found.identity.inode, birthtimeNs: found.identity.birthtimeNs }, recordSha256: found.recordSha256 };
   };
@@ -286,6 +292,21 @@ export function requestRoot(item: SliceItem): SliceRequestRoot {
   if (root === null && item.expected.source?.root.kind === 'registered') throw new Error('A registered slice has no root to read.');
   if (root === null || root.kind === 'project') return { kind: 'project' };
   return { kind: 'registered', name: root.name, dir: root.dir, identity: { device: root.identity.device, inode: root.identity.inode, birthtimeNs: root.identity.birthtimeNs } };
+}
+
+/**
+ * Phase B of apply, before the child request: a registered slice looks its grant up again, with the summary kind it copies. The
+ * root and the record must be the ones the approved plan read. A grant that went (`folder deny`), a grant for another kind
+ * (`folder allow` again), or a folder or record that changed since the approval makes apply refuse, and nothing is written.
+ */
+export function checkSliceGrant(item: SliceItem, lookup: RegisteredLookup): void {
+  const root = item.root;
+  if (root === null || root.kind !== 'registered') return;
+  const copies = item.copies, kind = copies === null ? undefined : copies.summary === 'frontmatter' ? `frontmatter:${copies.key}` : copies.summary;
+  const found = lookup(root.name, root.path, kind);
+  // The code of a failed lookup goes into the message, so a user who just denied a grant sees that the grant is the cause.
+  if (!found.ok) throw stale(`The grant or the folder of slice ${item.id} changed since the plan (${found.code}).`);
+  if (found.dir !== root.dir || found.recordSha256 !== root.recordSha256 || found.identity.device !== root.identity.device || found.identity.inode !== root.identity.inode || found.identity.birthtimeNs !== root.identity.birthtimeNs) throw stale(`The folder or the record of slice ${item.id} changed since the plan.`);
 }
 
 /** The child request of one slice. Every field comes from the plan this run computed. */

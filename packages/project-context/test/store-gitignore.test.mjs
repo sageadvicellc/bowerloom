@@ -66,7 +66,7 @@ test('fix 3. folder add and folder allow keep the file as it is when it holds ev
   assert.equal(second.gitignore, 'ok');
   assert.equal(renderFolderAddReview(second).split('\n').some(l => l.includes('.gitignore')), false);
   const allowed = await w.allow('kb');
-  assert.equal(allowed.gitignore, 'ok'); assert.equal(renderFolderAllowReview(allowed).includes('.gitignore'), false);
+  assert.equal(allowed.gitignore, 'ok'); assert.equal(renderFolderAllowReview(allowed).split('\n').filter(l => !l.includes('Warning:')).some(l => l.includes('.gitignore')), false, 'no store .gitignore line; the warning about .claude/skills may name .gitignore');
   assert.equal(w.read(), OURS);
   const after = fs.lstatSync(w.ignore, { bigint: true });
   assert.equal(after.ino, before.ino); assert.equal(after.mtimeNs, before.mtimeNs);

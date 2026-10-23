@@ -50,7 +50,7 @@ import { homedir } from 'node:os';
 import type { PromptItem } from './prompts.js';
 import { ALLOW_FLAG, agentRequest, checkAgentChild, checkClaudeFolders, classifyAgent, orphanAgent, scanAgents } from './agents.js';
 import type { AgentItem } from './agents.js';
-import { agentsMayBeTracked, checkSliceChild, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
+import { agentsMayBeTracked, checkSliceChild, checkSliceGrant, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
 import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
 import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
@@ -407,6 +407,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       }
       for (const item of slices) {
         if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
+        checkSliceGrant(item, registeredLookup(input.home ?? homedir(), input.project.projectId, input.project.identity.birthtimeNs, input.stateRoot));
         const req: ManagedItemRequest = sliceRequest(dir, plan.privateState.itemsRoot, item);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);

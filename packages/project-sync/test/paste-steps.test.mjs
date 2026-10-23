@@ -59,7 +59,7 @@ test('the other notes: a slice file name, an --add-dir folder, and an ls -led fo
   }
   assert.match(notFoundNote('/a', "/p/it's"), /pass --add-dir '\/p\/it'\\''s'\.$/);
   assert.match(notFoundNote('/a', '/p/x\\y'), /pass --add-dir with that folder\.$/);
-  const review = dir => renderFolderAllowReview({ name: 'kb', project: '/p', folderDir: dir, path: 'kb', gitignore: { state: 'present' } });
+  const review = dir => renderFolderAllowReview({ name: 'kb', project: '/p', folderDir: dir, path: 'kb', summary: 'heading', gitignore: { state: 'present' } });
   assert.match(review('/k b'), /run ls -led '\/k b'\./);
   assert.match(review('/k\\b'), /run ls -led on that folder\./);
 });

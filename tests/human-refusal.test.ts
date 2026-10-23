@@ -54,7 +54,7 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['FOLDER_UNSAFE', 'Bowerloom reads only folders that you own and that no other user can change.', 'ls -ld <folder>'],
   ['FOLDER_IN_CLOUD', 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', 'mv <folder> ~/Projects/'],
   ['FOLDER_INVALID', 'Bowerloom reads folder records strictly, so a hand edit can break one.', 'bowerloom folder list'],
-  ['FOLDER_NOT_ALLOWED', 'A registered folder is shared with the projects you allow, one by one.', 'bowerloom folder allow <folder-name>'],
+  ['FOLDER_NOT_ALLOWED', 'A registered folder is shared with the projects you allow, one by one, for one summary kind each.', 'bowerloom folder allow <folder-name> heading'],
 ];
 
 test('renderRefusal prints the fixed plain words of each M1 refusal code, with the code kept visible', () => {

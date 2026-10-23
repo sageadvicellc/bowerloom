@@ -166,13 +166,13 @@ bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] 
 
 ```text
 bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]
-bowerloom folder allow <folder-name> [--approve <revision>] [--json]
+bowerloom folder allow <folder-name> [heading|frontmatter:<key>] [--approve <revision>] [--json]
 bowerloom folder deny <folder-name> [--approve <revision>] [--json]
 bowerloom folder list [--json]
 bowerloom folder remove <folder-name> [--approve <revision>] [--json]
 ```
 
-A registered folder is a folder outside the project, such as a knowledge base, that a slice can select from. The record lives in your store, at `~/.bowerloom/folders/<folder-name>.json`, and names the folder as a path below your home folder. `add`, `list`, and `remove` work from any folder and never look for a project. `allow` and `deny` run inside a project: `allow` shows a plan that prints the project and the absolute folder, then records a grant for that project only, and a slice in a project without a grant is held with `FOLDER_NOT_ALLOWED`. `add`, `allow`, `deny`, and `remove` show a plan first and write only the store. `folder list` reads only and prints `ready`, `missing`, or `refused (<code>)` for each folder; with `--json` it prints the format `bowerloom/folder-list/v1beta1`. Bowerloom reads a registered folder and never writes it. [Context slices for agents](/docs/guides/context-slices/#registered-folders) lists the rules a folder must meet.
+A registered folder is a folder outside the project, such as a knowledge base, that a slice can select from. The record lives in your store, at `~/.bowerloom/folders/<folder-name>.json`, and names the folder as a path below your home folder. `add`, `list`, and `remove` work from any folder and never look for a project. `allow` and `deny` run inside a project: `allow` shows a plan that prints the project and the absolute folder, then records a grant for that project only. The grant also records the summary kind that a slice may copy, `heading` unless you name `frontmatter:<key>`. A slice in a project without a grant, or with another summary kind than the grant records, is held with `FOLDER_NOT_ALLOWED` until you run `allow` again with that kind. A grant made before the kind was recorded has no kind, so it holds every slice, and makes the read guard refuse already installed slices, until you run `allow` again. One grant holds one kind per folder per project, so two slices on one folder that ask for different kinds cannot both be live. A grant file with a kind has the same format name as before, and an older beta.3 build reports `FOLDER_INVALID` for it. `add`, `allow`, `deny`, and `remove` show a plan first and write only the store. `folder list` reads only and prints `ready`, `missing`, or `refused (<code>)` for each folder; with `--json` it prints the format `bowerloom/folder-list/v1beta1`. Bowerloom reads a registered folder and never writes it. [Context slices for agents](/docs/guides/context-slices/#registered-folders) lists the rules a folder must meet.
 
 ## Apply
 
