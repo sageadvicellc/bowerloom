@@ -137,7 +137,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
   unuse: [
     'Usage:',
     '  bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]', '',
-    'Removes an item from bowerloom.json and from bowerloom.lock.json. It removes no copy that sync or apply already made.',
+    'Removes an item from bowerloom.json, and from bowerloom.lock.json when a lock exists. It removes no copy that sync or apply already made.',
     'unuse team <id> also removes the items that were picked only through that team.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),

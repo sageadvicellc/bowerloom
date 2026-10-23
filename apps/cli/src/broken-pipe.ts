@@ -14,3 +14,21 @@ export const readerGone = (error: unknown): boolean => GONE.has(String((error as
 export function quietBrokenPipe(stream: NodeJS.WritableStream): void {
   stream.on('error', (error: unknown) => { if (!readerGone(error)) throw error; });
 }
+
+/** The stderr line of a guard whose answer could not be written. `guard-main.ts` holds the same words, to load nothing. */
+export const GUARD_OUTPUT_LOST_TEXT = 'Bowerloom guard: the hook output could not be written, so the call is blocked.';
+/**
+ * Track 11 of beta.3, follow-up item 2 (decided: fail closed): the hook form of the read guard. Any error on stdout or
+ * stderr, EPIPE among them, means Claude Code may not have its answer, so the process exits 2, which blocks the call.
+ * It prints the reason once on stderr, if stderr still takes it, and never a stack. The exit listener keeps exit 2
+ * even when the guard sets exit 0 after its write.
+ */
+export function failClosedOnBrokenPipe(): void {
+  let lost = false;
+  const broken = (): void => {
+    if (lost) return; lost = true; process.exitCode = 2;
+    try { process.stderr.write(`${GUARD_OUTPUT_LOST_TEXT}\n`); } catch { /* stderr is gone too */ }
+  };
+  process.stdout.on('error', broken); process.stderr.on('error', broken);
+  process.on('exit', () => { if (lost) process.exitCode = 2; });
+}

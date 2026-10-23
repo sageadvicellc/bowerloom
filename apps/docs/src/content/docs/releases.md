@@ -36,7 +36,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `bowerloom status` prints a `Config:` line, one of seven `Lock:` states, and the notes for a stale lock and for a shared project with no lock.
 - `bowerloom up` reads `bowerloom.json`. Only a team that the project or your store defines, and that the file does not list, refuses `TEAM_NOT_SELECTED`. `up --team <unknown>` goes to the team create step. On a clone, `up` works for a listed team.
 - The store keeps a `.gitignore` that leaves out `folders/` and other files of this machine, so `git add -A` in a store you push does not publish registered-folder records or grants. Each machine runs `bowerloom folder add` itself. Bowerloom adds the lines on every store write and keeps every line you added. `bowerloom store status` warns when the lines are missing, when git already tracks something under `folders/`, and when it cannot tell, for example with a split index.
-- A command no longer crashes with `EPIPE` on a reader that closes early, as in `bowerloom use skill <id> | head -1`. It finishes its work and exits with its own status.
+- A command no longer crashes with `EPIPE` on a reader that closes early, as in `bowerloom use skill <id> | head -1`. It finishes its work and exits with its own status. The read guard, `bowerloom-guard` and `bowerloom context guard`, exits 2 instead, which blocks the call.
 - Commands that overlap on one project no longer refuse `PROJECT_LOCK_SLOT_COLLISION` or `MANAGED_SKILL_LOCK_SLOT_COLLISION` by mistake. Each one gets the lock, or it refuses `PROJECT_LOCKED`. The mistake came after another command let go of the lock, or while the command itself was busy.
 
 **Sharing**

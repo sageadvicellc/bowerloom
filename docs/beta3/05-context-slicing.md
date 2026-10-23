@@ -489,7 +489,7 @@ Run with no arguments, or with arguments it cannot parse, `bowerloom-guard` writ
 
 The hook form reads the hook input from stdin and decides. It never prints `allow`. It only blocks or stays silent. So it never approves a call that Claude Code would ask about or block. A guard deny wins over an `allow` from any other hook, because Claude Code ranks `deny` above `defer`, `ask`, and `allow` (section 2, item 16).
 
-1. **Input.** Read stdin to the end, at most 1 MiB, for at most 5 seconds. Parse it with `strictJson`. It must be an object with a string `tool_name`, an object `tool_input`, and an absolute string `cwd`. Otherwise write `Bowerloom guard: the hook input could not be read, so the call is blocked.` to stderr and exit 2. Claude Code shows that text as the reason (`GUARD_INPUT_INVALID`). This is the only output on stderr.
+1. **Input.** Read stdin to the end, at most 1 MiB, for at most 5 seconds. Parse it with `strictJson`. It must be an object with a string `tool_name`, an object `tool_input`, and an absolute string `cwd`. Otherwise write `Bowerloom guard: the hook input could not be read, so the call is blocked.` to stderr and exit 2. Claude Code shows that text as the reason (`GUARD_INPUT_INVALID`). This is the only output on stderr, apart from the line of a broken output pipe (amended by track 11, see step 9).
 2. **Tool.** A `tool_name` other than `Read`, `Grep`, or `Glob` gets no output and exit 0.
 3. **Target.** A path value is `tool_input.file_path` (Read), `tool_input.path` (Grep, Glob), or `tool_input.pattern` (Glob). A missing path means `cwd`. A value that is not a string is `GUARD_INPUT_INVALID`, as in step 1.
    - When the agent has at least one guarded area, deny with `GUARD_OUTSIDE_SLICE` any value that starts or ends with white space, holds a control or format character, holds a `.` or `..` segment, or starts with `~` and is neither `~` nor starts with `~/`.
@@ -523,7 +523,7 @@ The hook form reads the hook input from stdin and decides. It never prints `allo
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<reason>"}}
 ```
 
-The line is `JSON.stringify` of the object, never a template. The route sets `process.exitCode` and never calls `process.exit`, so stdout drains to a pipe on macOS. The route catches every error, a failed dynamic import included, and prints the deny line. If it cannot print, it exits 2. No path of the route exits with any code other than 0 or 2. Silence prints nothing and exits 0. A crash, a timeout, or a missing `bowerloom-guard` blocks the call through `onFailure: "block"`.
+The line is `JSON.stringify` of the object, never a template. The route sets `process.exitCode` and never calls `process.exit`, so stdout drains to a pipe on macOS. The route catches every error, a failed dynamic import included, and prints the deny line. If it cannot print, it exits 2. Amended by track 11 (decided: fail closed): an error on stdout or stderr after the write, such as EPIPE when the reader closed early, also exits 2, and it writes `Bowerloom guard: the hook output could not be written, so the call is blocked.` to stderr if stderr still takes it. It never crashes with exit 1. No path of the route exits with any code other than 0 or 2. Silence prints nothing and exits 0. A crash, a timeout, or a missing `bowerloom-guard` blocks the call through `onFailure: "block"`.
 
 Reasons, verbatim. Paths pass through `plainText` (`apps/cli/src/human.ts:217`). `<ids>` joins the listed slice ids with `, `.
 
@@ -777,7 +777,7 @@ They follow the existing commands:
 
 - `slice create`, `folder add`, `folder remove`, `apply`: 0 done or nothing to change, 3 approval required, 2 usage. A refusal throws.
 - `context show`, `context measure`, `folder list`, `context guard --explain`: 0, or 2 for usage. A refusal throws.
-- `bowerloom-guard` and the `context guard` hook form: 0, with deny output on stdout or no output. 2 only for unreadable input or arguments, with the text on stderr.
+- `bowerloom-guard` and the `context guard` hook form: 0, with deny output on stdout or no output. 2 only for unreadable input or arguments, with the text on stderr, or (amended by track 11) for an output pipe that broke.
 - A hold is not a refusal. A plan with only holds prints `Nothing to change.` and exits 0.
 
 ### 3.15 Codex
@@ -1199,7 +1199,7 @@ It imports only `yaml`, `packages/contracts`, and `packages/skill-sources/src/va
 - `main.ts:122-127` (`helpText`): the help routes of section 3.13. Add `'slice'` to the noun list at line 125.
 - `main.ts:132` (`COMMANDS`): add `'context'`, `'slice'`, and `'folder'`.
 - `main.ts:152-157`: route `slice` to `runCreateCommand`.
-- `main.ts`, after the `apply` branch at lines 173-177: route `context` to `./context.js` and `folder` to `./folder.js`. The `context guard` route reads stdin, writes the decision to stdout, and writes to stderr only for `GUARD_INPUT_INVALID`. It sets the exit code itself and never passes through `reportFailure`.
+- `main.ts`, after the `apply` branch at lines 173-177: route `context` to `./context.js` and `folder` to `./folder.js`. The `context guard` route reads stdin, writes the decision to stdout, and writes to stderr only for `GUARD_INPUT_INVALID`. It sets the exit code itself and never passes through `reportFailure`. Amended by track 11: a broken output pipe makes it exit 2, with one line on stderr.
 - `apps/cli/src/human.ts`: the help text of section 3.13, including the realigned `SECTIONS` at lines 13-31, and the `REFUSALS` entries of section 5 at line 224.
 - `apps/cli/src/held.ts:15`: `HeldItem.kind` gains `'slice'`. `planHolds` (`held.ts:42-47`) takes the slices too.
 - `apps/cli/src/project-status.ts:41` (`editedFiles`): name the edited slice files, as for prompts. Lines 44-45 pass `plan.slices` to `planHolds`, and add the stale-index lines. Line 53 prints them.

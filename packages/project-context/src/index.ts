@@ -97,6 +97,10 @@ export const lockPort = (project: string): number => lockSlot(project).port;
  * banner read. With three or more commands on one project, another command can take the slot and let go again between
  * two binds of this one, so one more bind was not enough. A slot that still refuses every read after these binds is a
  * collision: a holder that lets go does not take the port back each time.
+ * Measured on macOS before this change (one more bind only), with N processes each taking one project's lock once,
+ * 1200 tries: 2 processes, 0 collisions; 3 processes under CPU load, 5; 4 processes, 21. Every collision was a second
+ * let-go (ECONNREFUSED or ECONNRESET on the second probe), never a squatter. With 3 rebinds: 0 of 1200 for 3 processes
+ * under load and for 4 processes. lock.test.mjs keeps the 4-process race; it met a collision in 3 of 5 runs before.
  */
 export const LOCK_REBINDS = 3;
 /** How long a refused writer waits for the slot holder's banner. Only a writer that could not bind ever waits. */

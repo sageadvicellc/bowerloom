@@ -5,7 +5,7 @@
 import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { world, run, mustApprove, project, pushStore, network, NETWORK, shared, gitRaw, git, EMPTY_CONFIG } from './support/config-cli.js';
@@ -128,4 +128,14 @@ test('item 4: in a project with a lock, use and unuse name both files, and the l
   const use = run(dir, ['use', 'skill', 'beta', '--project'], w.env);
   assert.equal(use.status, 3, use.stderr); assert.match(use.stdout, BOTH_USE);
   assert.match(mustApprove(dir, ['use', 'skill', 'beta', '--project'], w.env).applied.stdout, /^Updated bowerloom\.lock\.json\.$/m);
+});
+
+test('follow-up item 4: the help of unuse and use say the lock changes only when there is one, and cli.md agrees', t => {
+  const w = world(t);
+  const unuse = run(w.work, ['help', 'unuse'], w.env), use = run(w.work, ['help', 'use'], w.env);
+  assert.equal(unuse.status, 0); assert.match(unuse.stdout, /^Removes an item from bowerloom\.json, and from bowerloom\.lock\.json when a lock exists\./m);
+  assert.match(use.stdout, /^It changes bowerloom\.json only, and bowerloom\.lock\.json too in a shared project\./m);
+  const doc = readFileSync(new URL('../../apps/docs/src/content/docs/cli.md', import.meta.url), 'utf8');
+  assert.ok(doc.includes('`unuse` removes an item from `bowerloom.json`, and from `bowerloom.lock.json` when a lock exists.'));
+  assert.ok(doc.includes('`use` changes `bowerloom.json` only, and `bowerloom.lock.json` too in a shared project.'));
 });
