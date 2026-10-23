@@ -62,7 +62,9 @@ function validRel(value: unknown): value is string {
 class Gone extends Error { constructor() { super('gone'); } }
 const isGone = (error: unknown): boolean => error instanceof Gone;
 /** Raised inside this module when the project has no grant for the folder. */
-class NotAllowed extends Error { constructor() { super('not allowed'); } }
+class NotAllowed extends Error { constructor(readonly granted?: string, readonly legacy?: boolean) { super('not allowed'); } }
+/** What a grant file says: no grant for this record and project, a grant made without a kind, or a grant with a kind. */
+type Granted = { readonly state: 'none' } | { readonly state: 'legacy' } | { readonly state: 'kind'; readonly kind: string };
 /** A system error becomes STORE_UNREADABLE. An error with no code is a fault of Bowerloom, and it passes. */
 const unreadable = (error: unknown): Error => typeof errno(error) === 'string' ? refuse('STORE_UNREADABLE') : error as Error;
 /** FOLDER_NOT_ALLOWED, which names the folder. The text carries no path. */
@@ -528,6 +530,10 @@ export type RootHold = {
   readonly code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED';
   readonly detail: string;
   readonly cause?: string;
+  /** For FOLDER_NOT_ALLOWED: the kind of the grant of this project, when it has one for another kind. */
+  readonly granted?: string;
+  /** For FOLDER_NOT_ALLOWED: true when the grant was made before the kind was recorded. */
+  readonly legacy?: boolean;
 };
 
 // ------------------------------------------------------------------------------------------------------------------ grants
@@ -546,14 +552,15 @@ function grantsState(store: StoreContext, name: string, hooks: { readonly uid?: 
 }
 /**
  * Reads `<name>.grants/<projectId>`: the summary kind of a plain file of this user whose record hash is the hash of the record now,
- * and null for any other grant. A grant made before the kind was recorded has three keys and no kind. It is null, so it needs
+ * and `none` for any other grant. A grant made before the kind was recorded has three keys and no kind. It is `legacy`, so it needs
  * `folder allow` again (decision 5, option B, of issue 86).
  */
-function readGrant(store: StoreContext, name: string, projectId: string, birthtimeNs: string, recordSha256: string, hooks: { readonly uid?: number }): string | null {
-  if (grantsState(store, name, hooks).identity === null) return null;
+function readGrant(store: StoreContext, name: string, projectId: string, birthtimeNs: string, recordSha256: string, hooks: { readonly uid?: number }): Granted {
+  const NONE: Granted = { state: 'none' };
+  if (grantsState(store, name, hooks).identity === null) return NONE;
   const file = join(grantsPath(store, name), projectId), uid = uidOf(hooks);
   let before: BigIntStats;
-  try { before = lstatSync(file, { bigint: true }); } catch (error) { if (missing(error)) return null; throw unreadable(error); }
+  try { before = lstatSync(file, { bigint: true }); } catch (error) { if (missing(error)) return NONE; throw unreadable(error); }
   if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n || Number(before.uid) !== uid || (Number(before.mode) & 0o022) !== 0) throw refuse('FOLDER_UNSAFE');
   let fd: number;
   try { fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW); }
@@ -578,7 +585,8 @@ function readGrant(store: StoreContext, name: string, projectId: string, birthti
   const grant = value as { format?: unknown; record?: unknown; birth?: unknown; summary?: unknown };
   const kind = keys.length === 4 && keys.includes('summary');
   if (keys.length !== (kind ? 4 : 3) || !keys.includes('format') || !keys.includes('record') || !keys.includes('birth') || (kind && (typeof grant.summary !== 'string' || !GRANT_SUMMARY.test(grant.summary))) || typeof grant.birth !== 'string' || !BIRTH.test(grant.birth) || grant.format !== GRANT_FORMAT || typeof grant.record !== 'string' || !HEX64.test(grant.record)) throw refuse('FOLDER_INVALID');
-  return kind && grant.record === recordSha256 && grant.birth === birthtimeNs ? grant.summary as string : null;
+  if (grant.record !== recordSha256 || grant.birth !== birthtimeNs) return NONE;
+  return kind ? { state: 'kind', kind: grant.summary as string } : { state: 'legacy' };
 }
 
 /**
@@ -594,7 +602,9 @@ function resolveRoot(home: string, store: StoreContext, name: string, path: stri
     if (!PROJECT_ID.test(access.projectId) || !BIRTH.test(access.birthtimeNs)) throw new NotAllowed();
     const granted = readGrant(store, name, access.projectId, access.birthtimeNs, record.sha256, hooks);
     // A slice that asks for another summary kind than the grant records is held until `folder allow` runs again with that kind.
-    if (granted === null || (access.summary !== undefined && access.summary !== 'none' && access.summary !== granted)) throw new NotAllowed();
+    if (granted.state === 'none') throw new NotAllowed();
+    if (granted.state === 'legacy') throw new NotAllowed(undefined, true);
+    if (access.summary !== undefined && access.summary !== 'none' && access.summary !== granted.kind) throw new NotAllowed(granted.kind);
   }
   const checks: FolderHooks = access?.stateRoot !== undefined ? { ...hooks, stateRoot: access.stateRoot } : hooks;
   const folderDir = join(homeDir, record.path), dir = path === '.' ? folderDir : join(folderDir, path);
@@ -625,7 +635,7 @@ export function resolveRegisteredRootWith(home: string, name: string, path: stri
   if (found.state === 'foreign') return { ok: false, code: 'SLICE_ROOT_UNSAFE', detail: '~/.bowerloom' };
   try { return resolveRoot(home, found.context, name, path, hooks, access); }
   catch (error) {
-    if (error instanceof NotAllowed) return { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: name };
+    if (error instanceof NotAllowed) return { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: name, ...(error.granted !== undefined ? { granted: error.granted } : {}), ...(error.legacy === true ? { legacy: true } : {}) };
     if (isGone(error) || errno(error) === 'FOLDER_NOT_FOUND') return { ok: false, code: 'SLICE_ROOT_MISSING', detail: name };
     return holdOf(error, unsafeDetail(found.context, name, path, hooks));
   }

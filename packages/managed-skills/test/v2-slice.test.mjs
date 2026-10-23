@@ -327,17 +327,19 @@ test('S6. the catalog root carries the id of the root folder: a folder replaced 
 });
 test('S1b. the lookup is asked for the summary kind of the slice (decision 5, option B)', t => {
   const { f } = registeredWiki(t), asked = [], look = (name, rootPath, kind) => { asked.push(kind); return { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: name }; };
-  const details = [];
+  const holds = [];
   for (const summary of ['heading', 'frontmatter:title', 'none']) {
-    sliceFile(f, 'wiki', REGISTERED.replace('summary: heading', `summary: ${summary}`)); details.push(readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, look).hold.detail);
+    sliceFile(f, 'wiki', REGISTERED.replace('summary: heading', `summary: ${summary}`)); holds.push(readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, look).hold);
   }
   assert.deepEqual(asked, ['heading', 'frontmatter:title', 'none']);
-  assert.deepEqual(details, ['kb heading', 'kb frontmatter:title', 'kb heading'], 'the next step names the kind to allow; none asks for heading');
+  assert.deepEqual(holds.map(h => [h.detail, h.kind]), [['kb', 'heading'], ['kb', 'frontmatter:title'], ['kb', 'heading']], 'the detail is the folder name only; none asks for heading');
+  const state = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', granted: 'frontmatter:title' })).hold;
+  assert.deepEqual([state.granted, state.legacy], ['frontmatter:title', undefined], 'the state of the grant passes through');
 });
 test('S1. a hold of the lookup keeps its code and cause; FOLDER_NOT_ALLOWED passes through', t => {
   const { f } = registeredWiki(t);
   const r = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' }));
-  assert.deepEqual([r.index, r.hold], [null, { code: 'FOLDER_NOT_ALLOWED', detail: 'kb heading' }], 'the hold carries the summary kind the slice asks for');
+  assert.deepEqual([r.index, r.hold], [null, { code: 'FOLDER_NOT_ALLOWED', detail: 'kb', kind: 'heading' }], 'the folder name stays clean, and the kind is its own field');
   const c = readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live, () => ({ ok: false, code: 'SLICE_ROOT_UNSAFE', detail: '~/kb', cause: 'STORE_UNREADABLE' }));
   assert.deepEqual([c.hold.code, c.hold.errno], ['SLICE_ROOT_UNSAFE', 'STORE_UNREADABLE']);
 });

@@ -577,7 +577,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
   FOLDER_UNSAFE: { sentence: 'Bowerloom reads only folders that you own and that no other user can change.', next: 'ls -ld <folder>' },
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
-  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name> [<summary-kind>]' },
+  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one, for one summary kind each.', next: 'bowerloom folder allow <folder-name> heading' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
   // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.

@@ -213,7 +213,7 @@ test('N3b. decision 5, option B: a slice that asks for another summary kind than
   const { f, kb } = await registeredProject(t); sliceAgent(f, 'lead', ['slice-wiki']); await applied(f, ['claude']);
   rewriteSlice(f, 'wiki', text => text.replace('summary: heading', 'summary: frontmatter:api_key'));
   const p = await plan(f, ['claude']), s = slice(p);
-  assert.deepEqual([s.state, s.action, s.hold.code, s.hold.next, s.members, s.installed], ['held', 'hold', 'FOLDER_NOT_ALLOWED', `bowerloom folder allow ${kb.name} frontmatter:api_key`, [], true]);
+  assert.deepEqual([s.state, s.action, s.hold.code, s.hold.next, s.members, s.installed], ['held', 'hold', 'FOLDER_NOT_ALLOWED', `This project's grant for ${kb.name} allows the summary kind heading, and one grant holds one kind per folder. Run bowerloom folder allow ${kb.name} frontmatter:api_key. Slices of ${kb.name} that ask for heading are held until you allow heading again.`, [], true]);
   const shown = await showSlice({ project: f.project(), stateRoot: f.stateRoot, slice: 'wiki', home: f.home }); assert.deepEqual([shown.hold.code, shown.index, shown.members], ['FOLDER_NOT_ALLOWED', null, []]);
   const measured = await measureContext(measureInput(f)); assert.equal(measured.agents.find(a => a.role === 'lead').start.slices[0].hold, 'FOLDER_NOT_ALLOWED');
   const r = await applied(f, ['claude']); assert.equal(r.result.held.find(h => h.kind === 'slice').code, 'FOLDER_NOT_ALLOWED');
@@ -221,11 +221,21 @@ test('N3b. decision 5, option B: a slice that asks for another summary kind than
   rewriteSlice(f, 'wiki', text => text.replace('summary: frontmatter:api_key', 'summary: none'));
   assert.equal(slice(await plan(f, ['claude'])).hold, null, 'a slice with summary none copies no text');
 });
+test('N3e. the next step names the exact kind, says when the grant holds another kind, and says when the grant has no kind', async t => {
+  const { f, kb } = await registeredProject(t);
+  rewriteSlice(f, 'wiki', text => text.replace('summary: heading', 'summary: frontmatter:api_key'));
+  assert.equal(slice(await plan(f, ['claude'])).hold.next, `This project's grant for ${kb.name} allows the summary kind heading, and one grant holds one kind per folder. Run bowerloom folder allow ${kb.name} frontmatter:api_key. Slices of ${kb.name} that ask for heading are held until you allow heading again.`);
+  const dir = path.join(f.home, '.bowerloom/folders', kb.name + '.grants'), file = path.join(dir, fs.readdirSync(dir)[0]);
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/,"summary":"[^"]*"/, ''));
+  const s = slice(await plan(f, ['claude']));
+  assert.equal(s.hold.next, `The grant for ${kb.name} was made before Bowerloom recorded a summary kind, so it counts as no grant. Run bowerloom folder allow ${kb.name} frontmatter:api_key.`);
+  assert.deepEqual(Object.keys(s.hold), ['code', 'next'], 'a held slice names a code and a next step only, never a folder mixed with a kind');
+});
 test('N3c. a grant made before the kind was recorded holds the slice, and says what to run', async t => {
   const { f, kb } = await registeredProject(t);
   const dir = path.join(f.home, '.bowerloom/folders', kb.name + '.grants'), file = path.join(dir, fs.readdirSync(dir)[0]);
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/,"summary":"[^"]*"/, ''));
-  const s = slice(await plan(f, ['claude'])); assert.deepEqual([s.hold.code, s.hold.next], ['FOLDER_NOT_ALLOWED', `bowerloom folder allow ${kb.name} heading`]);
+  const s = slice(await plan(f, ['claude'])); assert.deepEqual([s.hold.code, s.hold.next], ['FOLDER_NOT_ALLOWED', `The grant for ${kb.name} was made before Bowerloom recorded a summary kind, so it counts as no grant. Run bowerloom folder allow ${kb.name} heading.`]);
   await allowFolder(f, kb.name); assert.equal(slice(await plan(f, ['claude'])).hold, null);
 });
 // Review fix 1: the grant is looked up again in phase B of apply, with the kind, so a change after the approval is stale.

@@ -539,7 +539,7 @@ test('G1. a grant records the summary kind, and a slice that asks for another ki
   assert.match(fs.readFileSync(path.join(isAllowedDir(w, 'kb'), w.project.projectId), 'utf8'), /,"summary":"frontmatter:title"\}\n$/);
   const ask = summary => resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary }, w.hooks);
   assert.equal(ask('frontmatter:title').ok, true);
-  for (const other of ['heading', 'frontmatter:Title', 'frontmatter:tit', 'frontmatter:title2']) assert.deepEqual(ask(other), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' }, other);
+  for (const other of ['heading', 'frontmatter:Title', 'frontmatter:tit', 'frontmatter:title2']) assert.deepEqual(ask(other), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', granted: 'frontmatter:title' }, other);
   assert.equal(ask('none').ok, true, 'a slice with no summary copies no text');
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).ok, true, 'a caller that names no kind, such as the guard, needs the grant only');
   for (const bad of ['', 'Heading', 'frontmatter:', 'frontmatter:a b', 'x'.repeat(5000)]) assert.equal(ask(bad).code, 'FOLDER_NOT_ALLOWED', JSON.stringify(bad));
@@ -556,6 +556,14 @@ test('G3. a grant made without a kind fails closed: it needs folder allow again,
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks).code, 'FOLDER_NOT_ALLOWED');
   await w.allow('kb'); assert.equal(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks).ok, true);
+});
+test('G5. a hold says why: no grant, a grant for another kind, or a grant made without a kind', async t => {
+  const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb' });
+  w.grantNow('kb', w.project.projectId, '111', null);
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', legacy: true });
+  await w.allow('kb', w.project, 'frontmatter:title');
+  assert.deepEqual(resolveRegisteredFolderWith(w.home, 'kb', { ...w.access, summary: 'heading' }, w.hooks), { ok: false, code: 'FOLDER_NOT_ALLOWED', detail: 'kb', granted: 'frontmatter:title' });
 });
 test('G4. folder allow refuses a summary kind that is not heading or frontmatter:<key>, and the kind is bound by the revision', async t => {
   const w = world(t); w.make('kb'); await w.add('kb', '~/kb');
