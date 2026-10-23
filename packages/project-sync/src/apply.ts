@@ -67,33 +67,47 @@ const same = (a: unknown, b: unknown): boolean => revisionOf(a) === revisionOf(b
 const stale = (extra?: string) => syncError('STALE_APPROVAL', extra);
 const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The skill is ${id}.`);
 
+/** Round 7: the identity of each shared folder the 'shared' part made or took, which the 'own' part checks again. */
+export type SharedFolders = ReadonlyMap<string, Identity>;
 /**
  * Creates the planned private folders in order: each one new, mode 0700, owned by this user, its parent fsynced.
  * A shared folder (the state root, a folder above it, or the machine cache) that another project's run created
  * meanwhile is taken as it is, once it passes the same check: a real folder of this user, mode 0700.
+ *
+ * Rounds 6 and 7 of the reviews of PR 101: `part` splits the folders a run makes. 'shared' makes the chain, the skills
+ * cache, and the store cache, before phase A fetches into them, and returns the identity of each one it made or took.
+ * 'own' makes this project's folders (its state root, items, and items/<id>) after phase A, which never writes under them,
+ * and first checks the shared identities again. A fetch that fails then leaves the bound plan as it was, so the same
+ * --approve applies once the network or the registry is back. 'all' is both in one step, for skills migrate apply, whose
+ * plan binds its folders. Each part checks every pin of the plan before and after its writes. A refusal keeps the system
+ * error as its cause, which no output prints.
  */
-/**
- * Round 6 of the reviews of PR 101: `part` splits the folders a run makes. 'shared' makes the chain, the skills cache, and
- * the store cache, before phase A fetches into them. 'own' makes this project's folders (its state root, items, and
- * items/<id>), after phase A, which never writes under them. A fetch that fails then leaves the bound plan as it was, so the
- * same --approve applies once the network or the registry is back. 'all' is both, for a caller with no phase A. Each part
- * checks every pin of the plan, so a folder that changed since the plan refuses before any write of that part.
- */
-export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all'): void {
+export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all', shared: SharedFolders = new Map()): SharedFolders {
+  const made = new Map<string, Identity>();
   try {
     const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
+    const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot, ...(plan.privateState.storeCacheRoot ? [plan.privateState.storeCacheRoot] : [])]);
+    const checkPins = (): void => { for (const pin of plan.privateState.pins) if (!same(directory(pin.path, own.has(pin.path)), pin.identity)) throw syncError('SKILLS_STATE_UNSAFE'); };
+    checkPins();
+    if (part === 'own') for (const [p, identity] of shared) if (!same(directory(p, true), identity)) throw syncError('SKILLS_STATE_UNSAFE');
     for (const p of plan.privateState.create) {
       if ((part === 'shared' && ownFolder(p)) || (part === 'own' && !ownFolder(p))) continue;
       held.assertHeld(dir); directory(dirname(p));
-      if (!ownFolder(p) && exists(p)) { directory(p, true); continue; }
+      if (!ownFolder(p) && exists(p)) { made.set(p, directory(p, true)); continue; }
       absent(p);
-      try { fs.mkdirSync(p, { mode: 0o700 }); } catch (e) { if (!ownFolder(p) && (e as NodeJS.ErrnoException).code === 'EEXIST') { directory(p, true); continue; } throw e; }
-      directory(p, true);
+      try { fs.mkdirSync(p, { mode: 0o700 }); } catch (e) { if (!ownFolder(p) && (e as NodeJS.ErrnoException).code === 'EEXIST') { made.set(p, directory(p, true)); continue; } throw e; }
+      const identity = directory(p, true);
+      if (!ownFolder(p)) made.set(p, identity);
       const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     }
-    const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot, ...(plan.privateState.storeCacheRoot ? [plan.privateState.storeCacheRoot] : [])]);
-    for (const pin of plan.privateState.pins) if (!same(directory(pin.path, own.has(pin.path)), pin.identity)) throw syncError('SKILLS_STATE_UNSAFE');
-  } catch (e) { if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e; throw syncError('SKILLS_STATE_UNSAFE'); }
+    checkPins();
+    return made;
+  } catch (e) {
+    if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e;
+    const unsafe = syncError('SKILLS_STATE_UNSAFE', part === 'own' ? 'Bowerloom fetched the pins into the shared cache before this check, and nothing in the project changed.' : undefined);
+    Object.defineProperty(unsafe, 'cause', { value: e, enumerable: false });
+    throw unsafe;
+  }
 }
 
 // Round 3 of the reviews of PR 101: SKILLS_OFFLINE sorted by its real cause. Only a transport failure is the network.
@@ -437,7 +451,7 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       deps = { ...deps, githubToken: token };
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
       if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
-      createPrivateFolders(plan, held, dir, 'shared');
+      const shared = createPrivateFolders(plan, held, dir, 'shared');
       // Review L2: a run never makes more GitHub requests than the budget, checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
       requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [...work.filter(i => i.lockPin !== null).map(i => ({ kind: 'skill' as const, id: i.id, lockPin: i.lockPin! })), ...plan.storeFetch]), plan.network.maxRequests);
@@ -445,7 +459,7 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       const got = await fetchSkillSources(plan, entries, held, deps);
       const stored = await fetchStoreOnly(plan, held, deps);
       // Round 6: this project's own state folders, only after every fetch succeeded.
-      createPrivateFolders(plan, held, dir, 'own');
+      createPrivateFolders(plan, held, dir, 'own', shared);
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const project = bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
       const children = await planSkillChildren(plan, got, deps, managed);

@@ -182,11 +182,15 @@ export function notShareable(cause: NotShareableCause, place?: SharePlace): Defi
 /** Round 5 of the reviews of PR 101: the last sentence of the next step of a store fault found at approval time. */
 export const APPROVAL_NOTE = 'If you also changed the item, run the command again without --approve.';
 /**
+ * Rounds 6 and 7: the last sentence of the step of a store repository cause at approval time. Fixing the store (a push,
+ * a new remote, or new modes) changes the plan, so the same --approve is stale. It comes last, so "Or adopt a team" stays
+ * an alternative to fixing the store, not to running again.
+ */
+export const APPROVAL_REPO_NOTE = 'After you fix the store, run the command again without --approve.';
+/**
  * A store fault found at approval time (decided in round 4): it surfaces as it is, because once the fault is fixed the
  * same --approve works, unless the item also changed. Its next step says so. Any other error is returned as it is.
  */
-/** Round 6: the step of a store repository cause at approval time. Pushing or adding a remote changes the plan. */
-export const APPROVAL_REPO_NOTE = 'Then run the command again without --approve.';
 export function atApproval(error: unknown): unknown {
   if (!(error instanceof DefinitionError) || !own.has(error) || error.code !== 'STORE_ITEM_NOT_SHAREABLE') return error;
   const next = (error as { next?: unknown }).next, problem = (error as { problem?: unknown }).problem;
@@ -196,8 +200,7 @@ export function atApproval(error: unknown): unknown {
   let value: string;
   if (problem !== undefined) value = `${next} ${APPROVAL_NOTE}`;
   else {
-    const base = next.replace(/\s*Then run the command again\.$/, '');
-    value = base.endsWith(` ${ADOPT}`) ? `${base.slice(0, -ADOPT.length - 1)} ${APPROVAL_REPO_NOTE} ${ADOPT}` : `${base} ${APPROVAL_REPO_NOTE}`;
+    value = `${next.replace(/\s*Then run the command again\.$/, '')} ${APPROVAL_REPO_NOTE}`;
   }
   const noted = new DefinitionError(error.code, error.message); own.add(noted);
   Object.defineProperty(noted, 'next', { value, enumerable: false });

@@ -166,6 +166,12 @@ test('a refusal after a partial write keeps the step of its cause, then the comm
   assert.equal(noted.next, 'Run chmod a-x ~/.bowerloom/skills/x/run.md. A lock records no file with an execute bit. Then run bowerloom store migrate --all.');
   const dns = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.nonpublic, enumerable: false });
   assert.equal((partialRefusal(dns, ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'Check the DNS or proxy configuration of this machine. Then run bowerloom receipt clean.');
+  // Round 7: a step that starts by running the command again runs the command that finishes the run instead, once.
+  const partialOf = (next: string): string => (partialRefusal(Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: next, enumerable: false }), ['one item'], 'bowerloom store migrate --all') as Error & { next?: string }).next!;
+  assert.equal(partialOf(NEXT.other), 'Run bowerloom store migrate --all. If it fails again, report the code and the output of bowerloom --version.');
+  assert.equal(partialOf(NEXT.nocode), 'Run bowerloom store migrate --all. If it fails again, report the error name above and the output of bowerloom --version.');
+  assert.equal(partialOf(NEXT.response), 'Later, run bowerloom store migrate --all. If it fails again, check that the version or commit of the pin still exists on its registry.');
+  for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
 });

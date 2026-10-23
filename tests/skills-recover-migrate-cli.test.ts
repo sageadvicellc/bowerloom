@@ -92,3 +92,30 @@ test('skills migrate: refuses with the exact skills add command, then plans (exi
   const again = run(p, ['skills', 'migrate', 'plan', '--state', v1State]); assert.equal(again.status, 1); assert.equal(errorOf(again.stderr).code, 'SKILLS_MIGRATE_NOTHING');
   assert.deepEqual(p.calls(), []);
 });
+
+// Round 7 of the reviews of PR 101, item 1 (variant A, because bowerloom/skills-migrate-plan/v1beta1 shipped in beta.2):
+// a migrate plan binds its cache operation and folders, so a fetch that fails changes the plan. The step names the plan
+// command with its --state, and following it applies.
+test('skills migrate apply with no network: the step names migrate plan, and a new plan then applies', async t => {
+  const p = project(t), pkg = npmPackage('alpha'), v1State = join(p.home, 'v1-state'), v1Cache = join(p.home, 'v1-cache');
+  fs.mkdirSync(v1State, { mode: 0o700 }); fs.mkdirSync(v1Cache, { mode: 0o700 });
+  const selector = await cachePackage(v1Cache, pkg);
+  const v1 = { operation: 'install', projectDir: p.dir, stateDir: v1State, harness: 'codex', cache: selector, expectedPreviousRevision: null, minFreeBytes: 33554432 };
+  const v1Plan = await planObservedManagedSkill(v1) as { revision: string }; await applyObservedManagedSkill(v1, v1Plan.revision, null);
+  writeManifest(p.dir, [pkg.entry]);
+  fs.rmSync(v1Cache, { recursive: true, force: true });
+  const shown = run(p, ['skills', 'migrate', 'plan', '--state', v1State]);
+  assert.equal(shown.status, 3, shown.stderr); assert.match(shown.stdout, /registry\.npmjs\.org/);
+  const failed = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(shown.stdout), '--json']);
+  assert.equal(errorOf(failed.stderr).code, 'SKILLS_OFFLINE', failed.stderr);
+  assert.equal((JSON.parse(failed.stderr) as { error: { next?: string } }).error.next, `Connect to the network, then run bowerloom skills migrate plan --state ${v1State} to see a new plan.`);
+  // Online again: the step's plan command, then its revision.
+  const files = join(p.home, 'npm'); fs.mkdirSync(files);
+  fs.writeFileSync(join(files, 'meta.json'), pkg.metadata); fs.writeFileSync(join(files, 'alpha.tgz'), pkg.archive);
+  const routes = { 'https://registry.npmjs.org/@synthetic/alpha/1.0.0': join(files, 'meta.json'), 'https://registry.npmjs.org/@synthetic/alpha/-/alpha-1.0.0.tgz': join(files, 'alpha.tgz') };
+  fs.writeFileSync(join(p.home, 'network.json'), JSON.stringify({ log: join(p.home, 'network.log'), routes }));
+  const replanned = run(p, ['skills', 'migrate', 'plan', '--state', v1State]);
+  assert.equal(replanned.status, 3, replanned.stderr);
+  const applied = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(replanned.stdout)]);
+  assert.equal(applied.status, 0, applied.stderr);
+});

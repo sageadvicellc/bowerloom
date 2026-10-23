@@ -19,7 +19,8 @@ import type { TestContext } from 'node:test';
 import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
 import { runWithApproval } from '../apps/cli/src/confirm.js';
 import { notShareable } from '../packages/project-config/src/index.js';
-import { honestShared, MIGRATE_REASON } from '../packages/project-config/src/refusal.js';
+import { atApproval, honestShared, MIGRATE_REASON } from '../packages/project-config/src/refusal.js';
+import { partialRefusal } from '../packages/project-sync/src/refusal.js';
 import { reasonOf } from '../packages/project-sync/src/migrate-store.js';
 import { GITHUB_REQUEST_MAX, TOKEN_STALE_NOTE } from '../packages/project-sync/src/store-git.js';
 
@@ -528,7 +529,7 @@ test('round 6. an unpushed store with --approve says to run again without --appr
   pushStore(w); shell(w.store, "printf 'ffffffffffffffffffffffffffffffffffffffff\\n' > .git/refs/heads/main && rm .git/refs/remotes/origin/main", w);
   const r = run(dir, ['use', 'skill', 'house-style', '--json', '--approve', 'a'.repeat(64)], w.env);
   assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', r.stderr);
-  assert.equal(nextOf(r.stderr), 'Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. Then run the command again without --approve. Or adopt a team into this project with bowerloom team adopt.');
+  assert.equal(nextOf(r.stderr), 'Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. Or adopt a team into this project with bowerloom team adopt. After you fix the store, run the command again without --approve.');
   assert.ok(!nextOf(run(dir, ['use', 'skill', 'house-style', '--json'], w.env).stderr)!.includes('--approve'), 'without --approve, no note');
 });
 
@@ -573,4 +574,14 @@ test('round 6. a step with no plain path gives no command, and its sentences sta
   for (const p of ['names', 'too-many', 'empty-folder']) assert.match(next(p), /^The store item /, p);
   for (const p of ['count', 'total']) assert.match(next(p, 'size'), /^The store item /, p);
   for (const p of ['unreadable', 'unsafe-folder', 'not-folder', 'unsafe-file']) assert.doesNotMatch(next(p), /\bRun (?:ls|chmod)\b/, p);
+});
+
+// Round 7 of the reviews of PR 101, item 2: a partial refusal of a store fault keeps its next step through runWithApproval.
+test('round 7. runWithApproval leaves the next step of a partial refusal of a store fault unchanged', async () => {
+  const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
+  const partial = partialRefusal(atApproval(fault), ['x'], 'bowerloom store migrate --all') as Error & { next?: string };
+  const before = partial.next;
+  const change = { plan: async () => ({}), revision: () => 'c'.repeat(64), review: () => '', apply: async () => { throw partial; } };
+  await assert.rejects(runWithApproval(change, { approve: 'c'.repeat(64), json: true }, { interactive: false, ask: async () => 'n' }),
+    (e: Error & { next?: string }) => e.next === before && (e.next!.match(/Then run/g) ?? []).length === 1);
 });

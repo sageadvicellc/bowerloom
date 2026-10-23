@@ -107,6 +107,29 @@ export function offlineBecause(cause: OfflineCause, extra: string): DefinitionEr
   Object.defineProperty(error, 'next', { value: OFFLINE_NEXT[cause], enumerable: false });
   return error;
 }
+/**
+ * Round 7 of the reviews of PR 101 (variant A): skills migrate plans, a format released in beta.2, bind their cache
+ * operation and folders, so a failed fetch there changes the plan. Each step that runs the command again names the plan
+ * command instead. `command` is the plan command with its arguments. Any other error is returned as it is.
+ */
+export function replanStep(error: unknown, command: string): unknown {
+  if (!(error instanceof DefinitionError) || error.code !== 'SKILLS_OFFLINE') return error;
+  const next = (error as { next?: unknown }).next;
+  const steps: Record<string, string> = {
+    [OFFLINE_NEXT.network]: `Connect to the network, then run ${command} to see a new plan.`,
+    [OFFLINE_NEXT.response]: `Later, run ${command} to see a new plan. If the fetch fails again, check that the version or commit of the pin still exists on its registry.`,
+    [OFFLINE_NEXT.nonpublic]: `Check the DNS or proxy configuration of this machine, then run ${command} to see a new plan.`,
+    [OFFLINE_NEXT.other]: `Run ${command} to see a new plan. If the fetch fails again, report the code and the output of bowerloom --version.`,
+    [OFFLINE_NEXT.nocode]: `Run ${command} to see a new plan. If the fetch fails again, report the error name above and the output of bowerloom --version.`,
+  };
+  if (typeof next !== 'string' || !Object.hasOwn(steps, next)) return error;
+  // The next step of an error is fixed once set, so the step goes on a copy that keeps the code, message, and cause.
+  const copy = new DefinitionError(error.code, error.message); own.add(copy);
+  Object.defineProperty(copy, 'next', { value: steps[next], enumerable: false });
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause !== undefined) Object.defineProperty(copy, 'cause', { value: cause, enumerable: false });
+  return copy;
+}
 /** SKILLS_OFFLINE for a fetch that failed on the network: only a transport failure. */
 export const offlineNetwork = (extra: string): DefinitionError => offlineBecause('network', extra);
 /**
@@ -138,11 +161,15 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   // Second security review M1: the words of a partial refusal, and its Next line, which is the command that finishes it.
   Object.defineProperty(partial, 'hint', { value: PARTIAL_HINT, enumerable: false });
   // Round 4 of the reviews of PR 101: the next step of the cause comes first, then the command that finishes the run.
-  // Round 5: a trailing "Then run ..." of the cause gives way to the command that finishes the run, so "run" is said once.
+  // Rounds 5 to 7: the approval notes and a trailing "run the command again" clause go, and a step that starts with
+  // running the command again runs the command that finishes the run instead, so "run" is said once.
   const existing = error instanceof DefinitionError ? (error as { next?: unknown }).next : undefined;
-  // Round 6: the approval notes and a trailing ", then run ..." clause go too, keeping the step before them.
-  const step = typeof existing === 'string' ? existing.replace(/\s*If you also changed the item, run the command again without --approve\.$/, '').replace(/\s*Then run the command again without --approve\./, '').replace(/\s*Then run [^.]*\.$/, '').replace(/(?:,| and) (?:then )?run the command again\.$/, '.').trim() : '';
-  Object.defineProperty(partial, 'next', { value: step ? `${step} Then run ${rerun}.` : rerun, enumerable: false });
+  const step = typeof existing === 'string' ? existing.replace(/\s*If you also changed the item, run the command again without --approve\.$/, '').replace(/\s*After you fix the store, run the command again without --approve\.$/, '').replace(/\s*Then run [^.]*\.$/, '').replace(/(?:,| and) (?:then )?run the command again\.$/, '.').trim() : '';
+  let next: string;
+  if (step.startsWith('Run the command again later.')) next = `Later, run ${rerun}.${step.slice('Run the command again later.'.length)}`;
+  else if (step.startsWith('Run the command again.')) next = `Run ${rerun}.${step.slice('Run the command again.'.length)}`;
+  else next = step ? `${step} Then run ${rerun}.` : rerun;
+  Object.defineProperty(partial, 'next', { value: next, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }

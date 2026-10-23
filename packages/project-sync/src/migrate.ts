@@ -32,7 +32,7 @@ import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
 import { cacheRoots, checkChild, createPrivateFolders, fetchPin, selectorFor } from './apply.js';
-import { outward, syncError } from './refusal.js';
+import { outward, replanStep, syncError } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
@@ -136,7 +136,12 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       if (plan.bytesFrom === 'legacy-cache') source = { kind: 'cache', selector: plan.legacySelector! };
       else {
         let found = item.cache!;
-        if (plan.bytesFrom === 'fetch') found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps)).lookup;
+        if (plan.bytesFrom === 'fetch') {
+          // Round 7 of the reviews of PR 101 (variant A): this plan binds its cache operation, so the step plans again.
+          const state = /^[A-Za-z0-9_/.:@%+=,-]+$/.test(input.legacyStateDir) ? input.legacyStateDir : '<earlier-state-folder>';
+          try { found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps)).lookup; }
+          catch (error) { throw replanStep(error, `bowerloom skills migrate plan --state ${state}`); }
+        }
         source = { kind: 'cache', selector: await selectorFor(item, pinned, found) };
       }
       const req: ManagedItemRequest = {
