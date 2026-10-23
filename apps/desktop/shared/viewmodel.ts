@@ -3,7 +3,7 @@
  * The renderer only draws these results.
  */
 import type { CacheData, FolderData, ItemContent, ItemKind, LibraryItem, LockMatch, ProjectData, ProjectItem, ProjectStatus, Snapshot, StoreData } from './types.js';
-import { KIND_WORDS, ORIGIN_WORDS, codeWords, humanBytes, plural, titleOf } from './words.js';
+import { KIND_WORDS, ORIGIN_WORDS, codeWords, humanBytes, isPowerful, plural, powerWords, titleOf } from './words.js';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'quiet';
 export interface Chip { label: string; tone: Tone }
@@ -63,12 +63,15 @@ function projectReasons(p: ProjectData): string[] {
     if (i.lock === 'changed') out.push(`${KIND_WORDS[i.kind].one} "${i.id}" changed in your library after the lock was written.`);
     if (i.hold !== null) out.push(`${KIND_WORDS[i.kind].one} "${i.id}": ${codeWords(i.hold.code)}`);
   }
-  for (const h of p.held) if (h.kind === 'agent' || h.kind === 'slice') out.push(`${titleOf(h.kind)} "${h.id}": ${codeWords(h.code)}`);
+  for (const h of p.held) {
+    if (h.kind === 'agent') out.push(`Helper "${h.id}": ${codeWords(h.code)}`);
+    else if (h.kind === 'slice') { const row = p.slices.find(x => x.id === h.id); out.push(`Reading list "${h.id}": ${(row === undefined ? null : sliceReason(row)) ?? codeWords(h.code)}`); }
+  }
   for (const d of p.drift) {
-    if (d.kind === 'unexpected') out.push(`Bowerloom's setup check found something it did not expect in this project: ${d.path}.`);
+    if (d.kind === 'unexpected') out.push('Bowerloom\'s setup check found something in this project that it did not expect.');
     else if (d.kind === 'resolve-error') out.push(codeWords(d.code));
-    else if (d.kind === 'edited') out.push(`A file Bowerloom manages was edited by hand: ${d.path}.`);
-    else if (!['config-invalid', 'lock-invalid', 'lock-orphan'].includes(d.kind)) out.push(`Something differs from what was set up: ${d.path}.`);
+    else if (d.kind === 'edited') out.push('A file that Bowerloom manages was edited by hand.');
+    else if (!['config-invalid', 'lock-invalid', 'lock-orphan'].includes(d.kind)) out.push('Something differs from what was set up.');
   }
   if (p.storeCode !== null) out.push(codeWords(p.storeCode));
   if (p.unavailable !== null) out.push(codeWords(p.unavailable));
@@ -176,23 +179,11 @@ export function libraryRows(s: Snapshot, kind: ItemKind): LibraryRow[] {
 
 // -------------------------------------------------------------------------------------------------------------- item
 
-const POWER_KEYS: [RegExp, string][] = [
-  [/^permissionMode:\s*["']?bypassPermissions["']?\s*$/m, 'Skips permission questions (bypassPermissions)'],
-  [/^hooks:/m, 'Runs commands by itself (hooks)'],
-  [/^mcpServers:/m, 'Connects to outside tools (mcpServers)'],
-];
-export function powerfulSettings(text: string | null): string[] {
-  if (text === null) return [];
-  const m = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n/g, '\n'));
-  if (m === null) return [];
-  return POWER_KEYS.filter(([re]) => re.test(m[1]!)).map(([, label]) => label);
-}
-export const noticeWords = (notice: string): string | null =>
-  notice === 'permissionMode:bypassPermissions' ? 'Skips permission questions (bypassPermissions)' : notice === 'hooks' ? 'Runs commands by itself (hooks)' : notice === 'mcpServers' ? 'Connects to outside tools (mcpServers)' : null;
-
 export interface ItemDetail {
   title: string; kindWords: string; what: string; origin: string; version: string; usedBy: { key: string; name: string }[];
   files: { path: string; text: string | null; note: string | null; powers: string[] }[]; pinned: string[] | null; note: string | null; powers: string[];
+  /** The raw names of the powerful settings, for the Details section only. */
+  rawPowers: string[];
 }
 export function itemDetail(s: Snapshot, kind: ItemKind, id: string, content: ItemContent | null, projectKey: string | null): ItemDetail {
   const lib = (kind === 'skill' ? s.library.skills : kind === 'prompt' ? s.library.prompts : s.library.teams).find(i => i.id === id);
@@ -200,11 +191,16 @@ export function itemDetail(s: Snapshot, kind: ItemKind, id: string, content: Ite
   const row = project?.items.find(i => i.kind === kind && i.id === id);
   const origin = lib?.origin ?? row?.origin ?? 'yours';
   const pin = lib?.pin ?? row?.pin ?? null;
-  const files = (content?.files ?? []).map(f => ({ path: f.path, text: f.text, note: f.note, powers: f.path.includes('agents/') ? powerfulSettings(f.text) : [] }));
+  // The plan's notices are the only authority on what a helper may do: file text is never searched for settings.
+  const owners = lib?.usedBy ?? (project ? [project.key] : []);
+  const agents = kind === 'team' ? s.projects.filter(p => owners.includes(p.key)).flatMap(p => p.agents.filter(a => a.team === id)) : [];
+  const noticesOf = (path: string): string[] => { const m = /^agents\/([^/]+)\.md$/.exec(path); return m === null ? [] : agents.filter(a => a.role === m[1]).flatMap(a => a.notices).filter(isPowerful); };
+  const files = (content?.files ?? []).map(f => ({ path: f.path, text: f.text, note: f.note, powers: [...new Set(noticesOf(f.path).map(powerWords))] }));
+  const raw = [...new Set(agents.flatMap(a => a.notices).filter(isPowerful))];
   return {
     title: titleOf(id), kindWords: KIND_WORDS[kind].one, what: KIND_WORDS[kind].what, origin: ORIGIN_WORDS[origin], version: pinWords(pin, origin),
-    usedBy: (lib?.usedBy ?? (project ? [project.key] : [])).map(key => ({ key, name: pathName(key) })), files, pinned: content?.pinned?.lines ?? null, note: content?.note ?? null,
-    powers: [...new Set(files.flatMap(f => f.powers))],
+    usedBy: owners.map(key => ({ key, name: pathName(key) })), files, pinned: content?.pinned?.lines ?? null, note: content?.note ?? null,
+    powers: [...new Set(raw.map(powerWords))], rawPowers: raw,
   };
 }
 
@@ -221,9 +217,11 @@ export function projectRows(s: Snapshot): ProjectRow[] {
 export interface ProjectDetail {
   name: string; dir: string; chip: Chip; sentence: string; reasons: string[]; technical: string[];
   items: { kind: ItemKind; id: string; label: string; origin: string; version: string; from: string; match: { text: string; tone: Tone }; hold: string | null }[];
-  agents: { role: string; team: string | null; status: string; tone: Tone; powers: string[]; slices: string[] }[];
+  agents: { role: string; team: string | null; status: string; tone: Tone; powers: string[]; rawPowers: string[]; hold: string | null; holdCode: string | null; slices: string[] }[];
   slices: SliceGroup[];
   config: string[]; lock: string[]; lockSentence: string;
+  /** Everything technical about the project, for the Details section: where it is, hashes, codes. */
+  details: string[];
 }
 export interface SliceModel {
   id: string; folder: string | null; where: string; files: string; stateLabel: 'Live' | 'Held'; state: string; tone: Tone;
@@ -319,14 +317,31 @@ export function sliceGroups(p: ProjectData): SliceGroup[] {
   });
 }
 
+/** `sample-co/shared-store commit 5a3c9e1d, hash 5e8c1ea7` becomes a plain sentence; the commit and hash go in Details. */
+export function lockSourceWords(source: string): string {
+  if (source.startsWith('npm ')) return `fixed to the npm package ${source.slice(4)}`;
+  if (source.startsWith('GitHub ')) return `fixed to a copy on GitHub, ${source.slice(7)}`;
+  const m = /^(\S+) commit /.exec(source);
+  return m === null ? 'saved in the lock' : `a saved copy from ${m[1]}`;
+}
+export function projectDetails(p: ProjectData): string[] {
+  return [
+    `Folder: ${p.dir}`, ...(p.configState !== 'absent' ? ['Project list file: bowerloom.json'] : []), `Lock file state: ${p.lockState}${p.lockCode ? ` (${p.lockCode})` : ''}`,
+    ...(p.openCode ? [`Could not open: ${p.openCode}`] : []), ...p.drift.map(d => `Setup check: ${d.kind}${d.code ? ` (${d.code})` : ''}: ${d.path}`), ...(p.unavailable ? [`Plan: ${p.unavailable}`] : []),
+    ...p.held.map(h => `Held ${h.kind} ${h.id}: ${h.code}`), ...p.items.filter(i => i.hold).map(i => `Item ${i.kind} ${i.id}: ${i.hold!.code}`),
+    ...p.lockRows.map(r => `Lock: ${r.kind} ${r.id}: ${r.source}`), ...p.slices.filter(x => x.grantStyle === 'unknown').map(x => `Reading list ${x.id}: permission check failed (${x.grantCode})`),
+  ];
+}
+
 export function projectDetail(p: ProjectData): ProjectDetail {
   const reasons = projectReasons(p);
   return {
     name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], sentence: STATUS_SENTENCE[p.status], reasons,
     technical: [...p.drift.map(d => `${d.kind}${d.code ? ` (${d.code})` : ''}: ${d.path}`), ...(p.lockCode ? [p.lockCode] : []), ...(p.unavailable ? [p.unavailable] : [])],
     items: p.items.map(i => ({ kind: i.kind, id: i.id, label: titleOf(i.id), origin: ORIGIN_WORDS[i.origin], version: pinWords(i.pin, i.origin), from: i.from === 'store' ? 'Your library' : 'This project', match: LOCK_MATCH_WORDS[i.lock], hold: i.hold === null ? null : codeWords(i.hold.code) })),
-    agents: p.agents.map(a => ({ role: a.role, team: a.team, status: a.hold ? 'Waiting for a review' : a.state === 'new' ? 'Not installed yet' : a.state === 'up-to-date' ? 'Installed' : titleOf(a.state), tone: a.hold ? 'warn' : 'quiet', powers: a.notices.map(noticeWords).filter((x): x is string => x !== null), slices: a.slices })),
-    slices: sliceGroups(p), config: configLines(p), lock: p.lockRows.map(r => `${KIND_WORDS[r.kind].one} ${r.id}: ${r.source.replace(/^npm /, 'npm package ')}`), lockSentence: lockSentence(p),
+    agents: p.agents.map(a => ({ role: a.role, team: a.team, status: a.hold ? 'Waiting for a review' : a.state === 'new' ? 'Not installed yet' : a.state === 'up-to-date' ? 'Installed' : titleOf(a.state), tone: a.hold ? 'warn' : 'quiet', powers: [...new Set(a.notices.filter(isPowerful).map(powerWords))], rawPowers: a.notices.filter(isPowerful), hold: a.hold === null ? null : codeWords(a.hold.code), holdCode: a.hold?.code ?? null, slices: a.slices })),
+    slices: sliceGroups(p), config: configLines(p), lock: p.lockRows.map(r => `${KIND_WORDS[r.kind].one} ${r.id}: ${lockSourceWords(r.source)}`), lockSentence: lockSentence(p),
+    details: projectDetails(p),
   };
 }
 

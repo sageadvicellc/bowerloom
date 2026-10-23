@@ -35,7 +35,7 @@ The first time you open your own Bowerloom, the app asks you to add a folder whe
 
 - No buttons that change anything. This is a viewer only.
 - Updates are off until the first release. The footer says "Updates turn on after the first release".
-- The app is not signed. It runs from the command above. A signed installer needs an Apple Developer ID certificate. macOS will not let an unsigned app update itself.
+- The app is not signed with a Developer ID. The macOS build carries only a self-made local signature, which the safety switches need in order to start. A signed installer needs an Apple Developer ID certificate. macOS will not let an unsigned app update itself.
 - Windows and Linux installers are set up in the build settings but have not been built or tried.
 
 ## For developers
@@ -44,7 +44,7 @@ All commands run from the repository root, or with `npm --prefix <repo>`.
 
 - `npm run desktop` opens the app. `npm run desktop:sample` opens it with sample data. `npm run desktop:dev` is the same as sample.
 - `npm run desktop:test` runs the viewer tests (security rules, folder scan, read functions against the sample, and what each screen says).
-- `npm run desktop:build` makes the macOS app, unsigned, in `apps/desktop/release`. It never publishes.
+- `npm run desktop:build` makes the macOS app, with a local signature only, in `apps/desktop/release`. It never publishes. In `apps/desktop`, `npm run verify:fuses` checks the built app's safety switches.
 - In `apps/desktop`: `npm run screenshots` launches the app and saves every screen, light and dark, into `screenshots/`.
 - `npm run sample:make` rebuilds `sample-data/` with the real Bowerloom commands (run `npm run build` at the root first).
 

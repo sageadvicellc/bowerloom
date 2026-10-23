@@ -120,8 +120,8 @@ for (const theme of ['light', 'dark'] as const) {
       await page.evaluate(() => document.getElementById('main')!.scrollBy(0, 150));
       await snap(page, '09d-project-conflict-side-by-side', theme);
       await page.getByRole('button', { name: 'Show the raw files' }).click();
-      await expect(page.locator('pre.file').first()).toBeVisible();
-      await page.locator('pre.file').first().scrollIntoViewIfNeeded();
+      await expect(page.locator('.file-name', { hasText: 'bowerloom.json' }).first()).toBeVisible();
+      await page.locator('.file-name', { hasText: 'bowerloom.json' }).first().scrollIntoViewIfNeeded();
       await snap(page, '10-project-raw-files', theme);
       await nav(page, 'Projects').click();
       await page.getByRole('button', { name: /old-archive/ }).click();
@@ -163,5 +163,27 @@ test('a 900 pixel wide window never scrolls sideways', async () => {
     await snap(page, '15-project-at-900px', 'light');
     const o = await page.evaluate(() => { const m = document.getElementById('main')!; return m.scrollWidth - m.clientWidth; });
     expect(o).toBe(0);
+  } finally { await app.close(); }
+});
+
+test('after a screen change the keyboard moves to the heading and a screen reader is told; Home shows the sample banner and the time', async () => {
+  const { app, page } = await launch(['--sample-data']);
+  try {
+    await expect(page.getByText('You are looking at sample data')).toBeVisible();
+    await expect(page.getByText(/^As of /)).toBeVisible();
+    await nav(page, 'Library').click();
+    await expect(page.locator('main h1')).toBeFocused();
+    await expect(page.locator('#live')).toHaveText('Library');
+    await nav(page, 'Projects').click();
+    await page.getByRole('button', { name: /studio-site/ }).click();
+    await expect(page.locator('main h1')).toBeFocused();
+    await expect(page.locator('#live')).toHaveText('studio-site');
+    await expect(page.locator('main[role="main"] main, main main')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Look again' }).first()).toBeVisible();
+    // Details for the curious is collapsed and holds the path.
+    const details = page.locator('details', { hasText: 'Details for the curious' }).first();
+    await expect(details).not.toHaveAttribute('open', '');
+    await details.locator('summary').click();
+    await expect(details.locator('pre')).toContainText('Folder: ');
   } finally { await app.close(); }
 });

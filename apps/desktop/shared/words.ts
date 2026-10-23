@@ -35,7 +35,7 @@ const CODE_WORDS: Record<string, string> = {
   LOCK_LIMIT: 'The lock file is bigger than Bowerloom allows.',
   LOCK_CONFIG_MISMATCH: 'The lock file and the project list name different items.',
   LOCK_STORE_NOT_PUSHED: 'The library has changes that are not shared on GitHub yet, so the lock cannot point at them.',
-  CONFIG_INVALID: 'The project list (bowerloom.json) cannot be read. It may be out of order or have a typing mistake.',
+  CONFIG_INVALID: 'The project list cannot be read. It may be out of order or have a typing mistake.',
   CONFIG_LIMIT: 'The project list is bigger than Bowerloom allows.',
   CONFIG_DUPLICATE_ID: 'The project list names the same item twice.',
   CONFIG_UNSAFE: 'The project list is a shortcut, or something other people can change, so Bowerloom will not trust it.',
@@ -68,8 +68,35 @@ const CODE_WORDS: Record<string, string> = {
   MANAGED_SKILL_LEGACY_PRESENT: 'This project has skills installed by an older version of Bowerloom.',
   MANAGED_SKILL_RECOVERY_REQUIRED: 'An earlier install stopped part way and needs to be recovered.',
   UNREADABLE: 'It could not be read.',
+  CONFIG_UNREADABLE: 'The project list is there but could not be read.',
+  PROJECT_MOVED: 'The folder moved or is reached by another path, so it was not opened.',
 };
-export const codeWords = (code: string | null | undefined): string => code === null || code === undefined ? '' : CODE_WORDS[code] ?? 'Bowerloom reported a problem it has no plain words for yet. The technical name is shown below.';
+/** Said for a code this viewer has no sentence for. The code itself is in the Details of the screen, with a Copy button. */
+export const GENERIC_CODE_WORDS = 'Bowerloom reported a problem that this viewer cannot describe in plain words yet. Details are below, and you can copy them to send to whoever looks after Bowerloom.';
+export const codeWords = (code: string | null | undefined): string => code === null || code === undefined ? '' : CODE_WORDS[code] ?? GENERIC_CODE_WORDS;
+
+/**
+ * What a powerful setting of a helper means, in plain words. The plan's notices (from Bowerloom's own reading of the helper's
+ * file) are the only authority for which settings a helper has; this only says what each means.
+ */
+const POWER_WORDS: Record<string, string> = {
+  'permissionMode:bypassPermissions': 'Can act without asking.',
+  'permissionMode:dontAsk': 'Does not ask before it acts.',
+  'permissionMode:auto': 'Decides by itself what it may do.',
+  'permissionMode:acceptEdits': 'Changes files without asking first.',
+  'permissionMode:manual': 'Asks before each action.',
+  hooks: 'Can run commands on your computer.',
+  'shell-tools': 'Can run commands on your computer.',
+  mcpServers: 'Can connect to other tools.',
+  'mcp-tools': 'Can use tools from other programs.',
+  'edit-tools': 'Can change files.',
+  'web-tools': 'Can reach the internet.',
+  'agent-tools': 'Can start other helpers.',
+  'all-tools': 'Can use every tool it is given.',
+};
+export const powerWords = (notice: string): string => POWER_WORDS[notice] ?? 'Has a powerful setting this viewer cannot describe yet.';
+/** The notices that matter as warnings (the ones that give a helper power beyond reading). */
+export const isPowerful = (notice: string): boolean => notice !== 'permissionMode:manual';
 
 export const humanBytes = (n: number): string => n < 1024 ? `${n} bytes` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
 /** `house-style` becomes `House style`. */

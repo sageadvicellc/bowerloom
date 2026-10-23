@@ -1,8 +1,8 @@
 // What each screen says. A drifted project says why, in plain words, and no screen shows a command line.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, powerfulSettings, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
-import { codeWords, humanBytes, titleOf } from '../shared/words.js';
+import { lockSourceWords, STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
+import { GENERIC_CODE_WORDS, codeWords, humanBytes, isPowerful, powerWords, titleOf } from '../shared/words.js';
 import { safeLine, safeText } from '../shared/text.js';
 import type { Snapshot } from '../shared/types.js';
 import { clone, sampleSnapshot } from './support.js';
@@ -24,8 +24,9 @@ test('a drifted project says what is different and why, in plain words', async (
   assert.equal(d.chip.label, 'Drifted'); assert.match(d.sentence, /drifted/i);
   assert.ok(d.reasons.includes('Prompt "launch-checklist" changed in your library after the lock was written.'), d.reasons.join('|'));
   assert.ok(d.reasons.some(r => /Skill "old-rules": This project asks for an item that is not in your library any more/.test(r)));
-  assert.ok(d.reasons.some(r => /Agent "publisher": This helper asks for powerful permissions/.test(r)));
+  assert.ok(d.reasons.some(r => /Helper "publisher": This helper asks for powerful permissions/.test(r)));
   assert.ok(d.reasons.includes('The lock file and the project list name different items.'));
+  assert.ok(d.reasons.includes('Reading list "client-history": This folder has not been allowed for this project yet.')); assert.ok(d.reasons.some(r => /^Reading list "meeting-archive-all": This reading list is too big/.test(r)));
   const changed = d.items.find(i => i.id === 'launch-checklist')!; assert.equal(changed.match.text, 'Changed since it was locked'); assert.equal(changed.match.tone, 'warn');
   assert.equal(d.items.find(i => i.id === 'old-rules')!.match.text, 'Not in the lock');
   assert.equal(d.items.find(i => i.id === 'weekly-digest')!.match.text, 'Matches the lock');
@@ -108,21 +109,34 @@ test('pin words', () => {
   assert.equal(pinWords(null, 'yours'), 'Not fixed. It follows your own folder.'); assert.equal(pinWords(null, 'npm'), 'Not fixed to a version.');
 });
 
-test('powerful agent settings are found in the file head, and only there', () => {
-  assert.deepEqual(powerfulSettings('---\nname: a\npermissionMode: bypassPermissions\n---\nbody'), ['Skips permission questions (bypassPermissions)']);
-  assert.deepEqual(powerfulSettings('---\nname: a\nhooks:\n  x: y\nmcpServers:\n  s: {}\n---\n'), ['Runs commands by itself (hooks)', 'Connects to outside tools (mcpServers)']);
-  assert.deepEqual(powerfulSettings('---\nname: a\n---\nhooks:\npermissionMode: bypassPermissions\n'), [], 'words in the body are not settings');
-  assert.deepEqual(powerfulSettings('no head'), []); assert.deepEqual(powerfulSettings(null), []); assert.deepEqual(powerfulSettings('---\nname: a\npermissionMode: plan\n---'), []);
-});
-
-test('item detail: a team shows its helper files, and the powerful setting is a warning', async () => {
-  const s = await sampleSnapshot();
-  const content = { kind: 'team' as const, id: 'newsroom', where: 'project' as const, pinned: null, note: null, files: [{ path: 'agents/publisher.md', text: '---\nname: publisher\npermissionMode: bypassPermissions\n---\n', note: null, bytes: 10 }, { path: 'team.yaml', text: 'x', note: null, bytes: 1 }] };
-  const d = itemDetail(s, 'team', 'newsroom', content, s.projects.find(p => p.name === 'newsletter')!.key);
-  assert.deepEqual(d.powers, ['Skips permission questions (bypassPermissions)']); assert.equal(d.files[0]!.powers.length, 1); assert.equal(d.files[1]!.powers.length, 0);
+test('item detail: powerful settings come from the plan\'s notices, in plain sentences, and the raw names stay in the details', async () => {
+  const s = await sampleSnapshot(), news = s.projects.find(p => p.name === 'newsletter')!;
+  const content = { kind: 'team' as const, id: 'newsroom', where: 'project' as const, pinned: null, note: null, files: [{ path: 'agents/publisher.md', text: 'permissionMode: bypassPermissions', note: null, bytes: 10 }, { path: 'agents/editor.md', text: 'hooks:\nmcpServers:', note: null, bytes: 10 }, { path: 'team.yaml', text: 'x', note: null, bytes: 1 }] };
+  const d = itemDetail(s, 'team', 'newsroom', content, news.key);
+  assert.deepEqual(d.powers, ['Can act without asking.', 'Can use every tool it is given.']); assert.deepEqual(d.rawPowers, ['permissionMode:bypassPermissions', 'all-tools']);
+  assert.deepEqual(d.files[0]!.powers, ['Can act without asking.', 'Can use every tool it is given.']); assert.deepEqual(d.files[1]!.powers, [], 'words in a file are not settings: only the plan decides'); assert.deepEqual(d.files[2]!.powers, []);
   assert.equal(d.title, 'Newsroom'); assert.match(d.what, /group of AI helpers/);
   const lib = itemDetail(s, 'skill', 'house-style', null, null); assert.equal(lib.origin, 'Yours'); assert.equal(lib.usedBy.map(u => u.name).sort().join(), 'old-archive,studio-site');
   assert.equal(itemDetail(s, 'skill', 'brand-voice', null, null).origin, 'From npm');
+  const fm = projectDetail(news).agents.find(a => a.role === 'publisher')!;
+  assert.deepEqual(fm.powers, ['Can act without asking.', 'Can use every tool it is given.']); assert.deepEqual(fm.rawPowers, ['permissionMode:bypassPermissions', 'all-tools']); assert.match(fm.hold!, /powerful permissions/); assert.equal(fm.holdCode, 'AGENT_GRANT_REVIEW_REQUIRED');
+});
+
+test('power words: each setting has a plain sentence, an unknown one is still a sentence, and asking before acting is not a warning', () => {
+  assert.equal(powerWords('hooks'), 'Can run commands on your computer.'); assert.equal(powerWords('mcpServers'), 'Can connect to other tools.'); assert.equal(powerWords('permissionMode:bypassPermissions'), 'Can act without asking.');
+  assert.match(powerWords('something-new'), /cannot describe yet/); assert.equal(isPowerful('permissionMode:manual'), false); assert.equal(isPowerful('hooks'), true);
+});
+
+test('the main words carry no codes, paths, file names, or hashes: those are in the details', async () => {
+  const s = clone(await sampleSnapshot());
+  s.store.git!.problem = 'unpushed'; s.folders[0]!.state = 'missing';
+  const JARGON = /\b[A-Z][A-Z0-9]+_[A-Z0-9_]+\b|bowerloom\.json|bowerloom\.lock|\.bowerloom|\/Users\/|\/private\/|\bhash\b|\bcommit [0-9a-f]{6}|\.md\b|\.yaml\b/;
+  const words = [...allWords(s)]; const home = homeModel(s); words.push(...home.attention.map(a => a.title));
+  for (const w of words) assert.doesNotMatch(w, JARGON, w);
+  for (const p of s.projects) { const d = projectDetail(p); assert.ok(d.details.some(x => x.startsWith('Folder: ')), 'the folder path is in the details'); for (const line of d.lock) assert.doesNotMatch(line, JARGON, line); }
+  assert.ok(projectDetail(s.projects.find(x => x.name === 'old-archive')!).details.some(x => x.includes('LOCK_INVALID')));
+  assert.ok(projectDetail(s.projects.find(x => x.name === 'studio-site')!).details.some(x => /^Lock: .*hash [0-9a-f]{8}/.test(x)));
+  assert.match(lockSourceWords('sample-co/shared-store commit 5a3c9e1d, hash 5e8c1ea7'), /^a saved copy from sample-co\/shared-store$/); assert.equal(lockSourceWords('npm @a/b@1.0.0'), 'fixed to the npm package @a/b@1.0.0');
 });
 
 test('slices: a simple bar compares what an agent reads at the start with reading everything', async () => {
@@ -152,7 +166,7 @@ test('the raw files are rendered as readable sentences, not JSON', async () => {
   const s = await sampleSnapshot(), p = s.projects.find(x => x.name === 'studio-site')!;
   const lines = configLines(p);
   assert.match(lines[0]!, /^It uses 1 team: research-desk \(from your library\)\.$/); assert.match(lines[1]!, /^It uses 2 skills: house-style \(from your library\), meeting-notes/);
-  assert.ok(projectDetail(s.projects.find(x => x.name === 'newsletter')!).lock.includes('Skill brand-voice: npm package @synthetic/brand-voice@1.2.0'));
+  assert.ok(projectDetail(s.projects.find(x => x.name === 'newsletter')!).lock.includes('Skill brand-voice: fixed to the npm package @synthetic/brand-voice@1.2.0'));
   assert.match(lockSentence(p), /good/);
   for (const line of [...lines, ...projectDetail(p).lock]) assert.doesNotMatch(line, /[{}"\[\]]/, 'no JSON');
 });
@@ -161,8 +175,8 @@ test('no screen shows a command line or asks anyone to open a terminal', async (
   const s = clone(await sampleSnapshot());
   s.store.git!.problem = 'unpushed'; s.store.gitignoreMissing = true; s.store.foldersTracked = true; s.folders[0]!.state = 'missing';
   for (const w of allWords(s)) assert.doesNotMatch(w, COMMAND, w);
-  for (const code of ['LOCK_INVALID', 'LOCK_UNSAFE', 'LOCK_LIMIT', 'LOCK_CONFIG_MISMATCH', 'LOCK_STORE_NOT_PUSHED', 'CONFIG_INVALID', 'STORE_ITEM_MISSING', 'AGENT_GRANT_REVIEW_REQUIRED', 'FOLDER_NOT_ALLOWED', 'SKILLS_OFFLINE', 'PROJECT_UNSAFE', 'PROJECT_IN_CLOUD_FOLDER', 'STORE_UNSAFE', 'NOT_FOUND', 'OUTSIDE_ROOT', 'THROUGH_LINK']) { assert.doesNotMatch(codeWords(code), COMMAND, code); assert.doesNotMatch(codeWords(code), /Bowerloom reported a problem it has no plain words/, code); }
-  assert.match(codeWords('SOMETHING_NEW'), /no plain words/); assert.equal(codeWords(null), '');
+  for (const code of ['LOCK_INVALID', 'LOCK_UNSAFE', 'LOCK_LIMIT', 'LOCK_CONFIG_MISMATCH', 'LOCK_STORE_NOT_PUSHED', 'CONFIG_INVALID', 'STORE_ITEM_MISSING', 'AGENT_GRANT_REVIEW_REQUIRED', 'FOLDER_NOT_ALLOWED', 'SKILLS_OFFLINE', 'PROJECT_UNSAFE', 'PROJECT_IN_CLOUD_FOLDER', 'STORE_UNSAFE', 'NOT_FOUND', 'OUTSIDE_ROOT', 'THROUGH_LINK']) { assert.doesNotMatch(codeWords(code), COMMAND, code); assert.notEqual(codeWords(code), GENERIC_CODE_WORDS, code); }
+  assert.equal(codeWords('SOMETHING_NEW'), GENERIC_CODE_WORDS); assert.match(GENERIC_CODE_WORDS, /cannot describe in plain words yet.*copy them/); assert.equal(codeWords(null), '');
 });
 
 test('small helpers: bytes, titles, hidden characters', () => {
@@ -258,5 +272,5 @@ test('words: Ready needs a lock that is used; Drifted never claims nothing is br
   const s = await sampleSnapshot(), reasons = projectDetail(s.projects.find(x => x.name === 'newsletter')!).reasons;
   assert.ok(reasons.some(r => /fixed-version skills have not been downloaded/.test(r)), 'SKILLS_OFFLINE is shown');
   const t = clone(s), p = t.projects.find(x => x.name === 'studio-site')!;
-  for (const code of ['REVISION_PENDING', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_LEGACY_PRESENT']) { p.unavailable = code; assert.ok(projectDetail(p).reasons.length > 0, code); assert.doesNotMatch(projectDetail(p).reasons.join(' '), /no plain words/); }
+  for (const code of ['REVISION_PENDING', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_LEGACY_PRESENT']) { p.unavailable = code; assert.ok(projectDetail(p).reasons.length > 0, code); assert.doesNotMatch(projectDetail(p).reasons.join(' '), /cannot describe in plain words/); }
 });

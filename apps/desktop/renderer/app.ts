@@ -41,6 +41,20 @@ function explain(id: keyof typeof EXPLAINERS): HTMLElement {
   const e = EXPLAINERS[id]!;
   return h('details', { class: 'explain' }, h('summary', { text: `What is this? ${e.title}` }), h('p', {}, h('strong', { text: `${e.title}. ` }), e.body));
 }
+/**
+ * Where the technical parts live: full paths, codes, hashes, file names. Collapsed, so the main words stay plain, with a button that
+ * copies them to send to whoever looks after Bowerloom.
+ */
+function details(lines: readonly string[]): HTMLElement | null {
+  const clean = lines.filter(Boolean);
+  if (clean.length === 0) return null;
+  const text = clean.join('\n');
+  const status = h('span', { class: 'small muted', role: 'status' });
+  return h('details', { class: 'explain' }, h('summary', { text: 'Details for the curious' }),
+    h('pre', { class: 'file', tabindex: 0, text }),
+    h('div', { class: 'toolbar' }, button('Copy details', async () => { const ok = await act('Copying', () => api.copyText(text)); status.textContent = ok ? 'Copied.' : 'Could not copy. You can select the text and copy it yourself.'; }, 'btn secondary'), status));
+}
+const powerChip = (sentence: string): HTMLElement => chip({ label: `Powerful: ${sentence.charAt(0).toLowerCase()}${sentence.slice(1).replace(/\.$/, '')}`, tone: 'warn' });
 function empty(title: string, body: string, action?: HTMLElement): HTMLElement {
   return h('div', { class: 'card empty' }, icon(ICONS.empty, 40), h('h2', { text: title }), h('p', { class: 'muted', text: body }), action);
 }
@@ -59,7 +73,7 @@ const back = (): void => { const prev = state.history.pop(); state.route = prev 
 function backButton(label: string): HTMLElement { return h('button', { type: 'button', class: 'back', on: { click: back } }, `← ${label}`); }
 const rowButton = (onClick: () => void, ...children: (Node | string)[]): HTMLElement => h('button', { type: 'button', class: 'row', on: { click: onClick } }, ...children);
 const fileBlock = (name: string, text: string | null, note: string | null, powers: string[] = []): HTMLElement =>
-  h('div', { class: 'stack' }, h('div', { class: 'toolbar' }, h('span', { class: 'file-name', text: name }), powers.length ? h('span', { class: 'chips' }, ...powers.map(p => chip({ label: `Powerful setting: ${p}`, tone: 'warn' }))) : null),
+  h('div', { class: 'stack' }, h('div', { class: 'toolbar' }, h('span', { class: 'file-name', text: name }), powers.length ? h('span', { class: 'chips' }, ...powers.map(powerChip)) : null),
     text !== null ? h('pre', { class: 'file', tabindex: 0, text }) : h('p', { class: 'muted', text: note ?? 'Nothing to show.' }));
 
 // ------------------------------------------------------------------------------------------------------------- screens
@@ -79,7 +93,7 @@ function homeScreen(s: Snapshot): HTMLElement {
       : h('div', { class: 'row-list' }, ...m.attention.map(a => h('div', { class: `card attention ${a.tone}` },
         h('div', { class: 'toolbar' }, h('h3', { text: a.title }), chip({ label: a.tone === 'bad' ? 'Needs a person' : a.tone === 'warn' ? 'Worth a look' : 'For your information', tone: a.tone })),
         h('p', { text: a.body }), h('p', {}, h('strong', { text: 'What a person would do: ' }), a.todo),
-        h('div', { class: 'toolbar' }, a.link ? button('Take me there', () => go(a.link!), 'btn secondary') : null, a.technical ? h('span', { class: 'tech', text: `Technical name: ${a.technical}` }) : null)))));
+        h('div', { class: 'toolbar' }, a.link ? button('Take me there', () => go(a.link!), 'btn secondary') : null, a.technical ? details([`Technical name: ${a.technical}`]) : null)))));
 }
 
 function libraryScreen(s: Snapshot): HTMLElement {
@@ -112,7 +126,8 @@ function itemScreen(s: Snapshot): HTMLElement {
   return h('div', { class: 'page' },
     backButton('Back'), h('h1', { text: d.title }), h('p', { class: 'lead', text: d.what }),
     h('div', { class: 'card' }, h('dl', { class: 'kv' }, h('dt', { text: 'Kind' }), h('dd', { text: d.kindWords }), h('dt', { text: 'Where it came from' }), h('dd', { text: d.origin }), h('dt', { text: 'Version' }), h('dd', { text: d.version })), d.origin === 'Yours' ? null : explain('pin')),
-    d.powers.length ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'This team has helpers with powerful settings. ' }), d.powers.join('. '), '. Read the helper files below before you trust them.')) : null,
+    d.powers.length ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'This team has helpers with powerful settings. ' }), d.powers.join(' '), ' Read the helper files below before you trust them.')) : null,
+    d.rawPowers.length ? details([`Settings: ${d.rawPowers.join(', ')}`]) : null,
     h('h2', { text: 'Projects that use it' }),
     d.usedBy.length === 0 ? h('p', { class: 'muted', text: 'No project uses this yet.' }) : h('div', { class: 'row-list' }, ...d.usedBy.map(u => rowButton(() => go({ screen: 'project', key: u.key }), h('span', { class: 'title', text: u.name })))),
     h('h2', { text: 'What is inside' }),
@@ -129,7 +144,7 @@ function projectsScreen(s: Snapshot): HTMLElement {
     h('div', { class: 'toolbar' }, h('h1', { text: 'Projects' }), s.mode === 'real' ? addFolder : null),
     h('p', { class: 'lead', text: 'The folders on this computer that use Bowerloom, and whether each one is in good shape.' }),
     rows.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : undefined)
-      : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }), h('span', { class: 'tech', text: r.dir }))))));
+      : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }))))));
 }
 
 function sliceCard(sm: SliceModel): HTMLElement {
@@ -142,7 +157,7 @@ function sliceCard(sm: SliceModel): HTMLElement {
     sm.reason ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'Held. ' }), sm.reason)) : null,
     sm.agents.length ? h('p', { class: 'muted', text: `Read at the start by: ${sm.agents.join(', ')}` }) : h('p', { class: 'muted', text: 'No helper reads this one yet.' }),
     ...sm.bars.map(b => h('div', { class: 'stack' }, bar(`${b.role} reads at the start`, b.percent, `${b.startText} of ${b.wholeText}`), h('p', { class: 'small muted', text: b.percent < 100 ? b.sentence : `${b.role} reads about as much as the whole folder.` }))),
-    sm.technical ? h('p', { class: 'tech', text: `Technical name: ${sm.technical}` }) : null);
+    sm.technical ? details([`Technical name: ${sm.technical}`]) : null);
 }
 function sliceGroupView(g: SliceGroup): HTMLElement {
   return h('div', { class: 'stack' },
@@ -161,9 +176,8 @@ function projectScreen(s: Snapshot): HTMLElement {
     render();
   };
   return h('div', { class: 'page' },
-    backButton('Back'), h('div', { class: 'toolbar' }, h('h1', { text: d.name }), chip(d.chip)), h('p', { class: 'tech', text: d.dir }),
-    h('p', { class: 'lead', text: d.sentence }),
-    d.reasons.length ? h('div', { class: 'card' }, h('h2', { text: 'What is different, and why' }), h('ul', { class: 'sentences' }, ...d.reasons.map(r => h('li', { text: r }))), explain('drift'), d.technical.length ? h('p', { class: 'tech', text: `Technical details: ${d.technical.join('; ')}` }) : null) : null,
+    backButton('Back'), h('div', { class: 'toolbar' }, h('h1', { text: d.name }), chip(d.chip)),     h('p', { class: 'lead', text: d.sentence }),
+    d.reasons.length ? h('div', { class: 'card' }, h('h2', { text: 'What is different, and why' }), h('ul', { class: 'sentences' }, ...d.reasons.map(r => h('li', { text: r }))), explain('drift')) : null,
     h('h2', { text: 'What this project uses' }),
     d.items.length === 0 ? h('p', { class: 'muted', text: 'Nothing is listed.' }) : h('div', { class: 'row-list' }, ...d.items.map(i => rowButton(() => go({ screen: 'item', kind: i.kind, id: i.id, ...(i.from === 'This project' ? { fromProject: p.key } : {}) }),
       h('span', { class: 'title', text: `${i.label} (${KIND_WORDS[i.kind].one.toLowerCase()})` }), chip({ label: i.match.text, tone: i.match.tone }),
@@ -171,14 +185,17 @@ function projectScreen(s: Snapshot): HTMLElement {
     d.agents.length ? h('h2', { text: 'Helpers (agents)' }) : null,
     ...d.agents.map(a => h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('h3', { text: a.role }), chip({ label: a.status, tone: a.tone })),
       a.team ? h('p', { class: 'muted', text: `In the team ${a.team}` }) : null,
-      a.powers.length ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'Powerful settings: ' }), a.powers.join('. '), '.')) : h('p', { class: 'muted', text: 'No powerful settings.' }),
-      a.slices.length ? h('p', { text: `Reads these slices at the start: ${a.slices.join(', ')}` }) : null)),
+      a.powers.length ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), h('div', {}, h('strong', { text: 'Powerful. ' }), a.powers.join(' '))) : h('p', { class: 'muted', text: 'No powerful settings.' }),
+      a.hold ? h('p', { text: a.hold }) : null,
+      a.slices.length ? h('p', { text: `Reads these reading lists at the start: ${a.slices.join(', ')}` }) : null,
+      details([...(a.holdCode ? [`Technical name: ${a.holdCode}`] : []), ...(a.rawPowers.length ? [`Settings: ${a.rawPowers.join(', ')}`] : [])]))),
     d.agents.length ? explain('agent') : null,
     d.slices.length ? h('h2', { text: 'Reading lists (slices)' }) : null, d.slices.length ? explain('slice') : null, ...d.slices.map(sliceGroupView),
     h('h2', { text: 'The project list' }), explain('config'),
     h('div', { class: 'card' }, h('ul', { class: 'sentences' }, ...d.config.map(c => h('li', { text: c })))),
     h('h2', { text: 'The lock file' }), explain('lock'),
     h('div', { class: 'card' }, h('p', { text: d.lockSentence }), d.lock.length ? h('ul', { class: 'sentences' }, ...d.lock.map(l => h('li', { text: l }))) : null),
+    details(d.details),
     h('div', {}, button(showRaw ? 'Hide the raw files' : 'Show the raw files', () => { void toggleRaw(); }, 'btn secondary')),
     showRaw ? h('div', { class: 'stack' }, fileBlock('bowerloom.json', state.raw[`${p.key}:config`]?.text ?? null, state.raw[`${p.key}:config`]?.note ?? null), fileBlock('bowerloom.lock.json', state.raw[`${p.key}:lock`]?.text ?? null, state.raw[`${p.key}:lock`]?.note ?? null)) : null);
 }
