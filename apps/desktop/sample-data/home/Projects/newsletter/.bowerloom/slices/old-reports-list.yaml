@@ -1,0 +1,9 @@
+format: bowerloom/context-slice/v1beta1
+description: Describe what this slice holds and which agents use it.
+root:
+  registered: old-reports
+  path: "."
+include:
+  - "**/*.md"
+summary: heading
+guard: root

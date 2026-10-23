@@ -132,8 +132,24 @@ function sliceDefinition(dir: string, id: string): { folder: string | null; want
     return { folder, wants: null, wantsKey: null };
   } catch { return { folder: null, wants: null, wantsKey: null }; }
 }
-/** This version of Bowerloom keeps no style in a folder permission, so the style of a permission is unknown. One place to change when it does. */
-const grantStyleOf = (): Pick<SliceRow, 'grantStyle' | 'grantKey'> => ({ grantStyle: null, grantKey: null });
+export type Grant = { state: 'absent' } | { state: 'legacy' } | { state: 'kind'; style: 'heading' | 'frontmatter'; key: string | null };
+/**
+ * What this project's permission for a registered folder says, learned from Bowerloom's own lookup (resolveRegisteredFolder).
+ * Asking for the `heading` style: an answer of "ok" means the permission is for headings; a hold names the style the
+ * permission is for (`granted`), says it is an older one (`legacy`), or names neither (no permission).
+ */
+export function grantOf(home: string, folder: string, project: ProjectContext): Grant {
+  try {
+    const found = resolveRegisteredFolder(home, folder, { projectId: project.projectId, birthtimeNs: project.identity.birthtimeNs, summary: 'heading' });
+    if (found.ok) return { state: 'kind', style: 'heading', key: null };
+    if (found.code !== 'FOLDER_NOT_ALLOWED') return { state: 'kind', style: 'heading', key: null };
+    if (found.legacy === true) return { state: 'legacy' };
+    if (found.granted === undefined) return { state: 'absent' };
+    return found.granted.startsWith('frontmatter:') ? { state: 'kind', style: 'frontmatter', key: found.granted.slice(12) } : { state: 'kind', style: 'heading', key: null };
+  } catch { return { state: 'absent' }; }
+}
+const grantFields = (g: Grant | null): Pick<SliceRow, 'grantStyle' | 'grantKey'> =>
+  g === null ? { grantStyle: null, grantKey: null } : g.state === 'absent' ? { grantStyle: 'absent', grantKey: null } : g.state === 'legacy' ? { grantStyle: 'unset', grantKey: null } : { grantStyle: g.style, grantKey: g.key };
 
 export async function readProject(ctx: ReadContext, dir: string): Promise<ProjectData> {
   const data = empty(dir);
@@ -164,7 +180,7 @@ export async function readProject(ctx: ReadContext, dir: string): Promise<Projec
     id: s.id, state: s.state, hold: s.hold ?? null, rootKind: s.root === null ? 'unknown' : s.root.kind, rootName: s.root?.kind === 'registered' ? s.root.name : null, rootPath: s.root?.path ?? null,
     members: s.members.length, agents: s.agents, indexBytes: null, memberBytes: null,
     ...((): Pick<SliceRow, 'folder' | 'wants' | 'wantsKey'> => { const d = sliceDefinition(dir, s.id); return { folder: s.root?.kind === 'registered' ? s.root.name : d.folder, wants: d.wants, wantsKey: d.wantsKey }; })(),
-    ...grantStyleOf(),
+    ...grantFields(((): Grant | null => { const f = sliceDefinition(dir, s.id).folder ?? (s.root?.kind === 'registered' ? s.root.name : null); return f === null ? null : grantOf(ctx.home, f, project); })()),
   }));
 
   // 4. The size comparison, only when there is a slice to compare.
@@ -206,17 +222,20 @@ export function readFolders(ctx: ReadContext, projects: readonly ProjectData[], 
   let list;
   try { list = listFolders(ctx.home); } catch { return []; }
   return list.folders.map(f => {
-    const allowed: string[] = [], outdated: string[] = [];
+    const allowed: string[] = [], outdated: string[] = [], unstyled: string[] = [], styles: FolderData['styles'] = [];
     if (f.state !== 'refused' || f.code !== 'FOLDER_INVALID') {
       let ids: readonly string[] = [];
       try { ids = listFolderGrants(ctx.home, f.name).projectIds; } catch { ids = []; }
       for (const p of projects) {
         const pc = contexts.get(p.key);
         if (pc === undefined || !ids.includes(pc.projectId)) continue;
-        try { (resolveRegisteredFolder(ctx.home, f.name, { projectId: pc.projectId, birthtimeNs: pc.identity.birthtimeNs }).ok ? allowed : outdated).push(p.key); } catch { outdated.push(p.key); }
+        const g = grantOf(ctx.home, f.name, pc);
+        if (g.state === 'kind') { allowed.push(p.key); styles.push({ key: p.key, style: g.style, styleKey: g.key }); }
+        else if (g.state === 'legacy') unstyled.push(p.key);
+        else outdated.push(p.key);
       }
     }
-    return { name: f.name, path: f.path, state: f.state, code: f.code, allowed, outdated };
+    return { name: f.name, path: f.path, state: f.state, code: f.code, allowed, outdated, styles, unstyled };
   });
 }
 

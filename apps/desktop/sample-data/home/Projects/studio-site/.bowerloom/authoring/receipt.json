@@ -3,6 +3,19 @@
   "items": [
     {
       "kind": "slice",
+      "id": "brief-titles",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/brief-titles.yaml",
+          "sha256": "e14579812912d7e522901908675079347eb70dbbfb165ec0dab084a4602c2186",
+          "bytes": 208
+        }
+      ],
+      "planRevision": "061cb9c9dcab382208d71db48ccb476dc0a064167590b25810025943d672aabf"
+    },
+    {
+      "kind": "slice",
       "id": "team-notes",
       "teams": [],
       "files": [
@@ -12,8 +25,8 @@
           "bytes": 204
         }
       ],
-      "planRevision": "37df84921adc4e8b874e944047d455c4c4b4d1a201ecbbac5f563358746c7547"
+      "planRevision": "aea9e961ec1cdbfdf63849dcce9dab7f2abfdc054f616c9f0024af1ea9aec6b8"
     }
   ],
-  "revision": "b2b171c8b7022fd05f3764abd399d886c8e8f57d4f836bdea3e700dc9772881d"
+  "revision": "016450d1c4f01ddeb1da97bdfa5d10bef06549557c5b4491ec18aaa7b1884288"
 }

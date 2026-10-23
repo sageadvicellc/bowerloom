@@ -25,7 +25,7 @@ test('healthy project: every item matches the lock, with no hold and no drift', 
   assert.ok(h.items.every(i => i.lock === 'same' && i.hold === null && i.from === 'store'));
   assert.equal(h.items.find(i => i.id === 'brand-voice')!.origin, 'npm'); assert.equal(h.items.find(i => i.id === 'brand-voice')!.pin, '@synthetic/brand-voice@1.2.0');
   assert.equal(h.lockRows.length, 5); assert.equal(h.shared, true);
-  assert.equal(h.slices.length, 1); assert.equal(h.slices[0]!.rootKind, 'registered'); assert.equal(h.slices[0]!.rootName, 'team-notes'); assert.equal(h.slices[0]!.members, 4);
+  assert.deepEqual(h.slices.map(x => x.id), ['brief-titles', 'team-notes']); const tn = h.slices.find(x => x.id === 'team-notes')!; assert.equal(tn.rootKind, 'registered'); assert.equal(tn.rootName, 'team-notes'); assert.equal(tn.members, 4); assert.ok(h.slices.every(x => x.hold === null), 'both are live');
 });
 
 test('drifted project: a changed item, a missing item, a held agent, and the reasons', async () => {
@@ -36,7 +36,7 @@ test('drifted project: a changed item, a missing item, a held agent, and the rea
   assert.equal(d.items.find(i => i.id === 'weekly-digest')!.lock, 'same');
   assert.equal(d.items.find(i => i.id === 'newsroom')!.from, 'project');
   assert.ok(d.drift.some(x => x.kind === 'unexpected'));
-  assert.deepEqual(d.held.map(h => `${h.kind}:${h.id}`).sort(), ['agent:publisher', 'skill:old-rules', 'slice:client-history']);
+  assert.deepEqual(d.held.map(h => `${h.kind}:${h.id}`).sort(), ['agent:publisher', 'skill:old-rules', 'slice:client-history', 'slice:old-reports-list', 'slice:team-titles']);
 });
 
 test('agents per project: the powerful settings are named, and the slice an agent loads', async () => {
@@ -48,8 +48,9 @@ test('agents per project: the powerful settings are named, and the slice an agen
 
 test('slices: the size comparison comes from the real measure', async () => {
   const d = (await byName()).p('newsletter');
-  assert.deepEqual(d.slices.map(x => [x.id, x.folder, x.wants, x.wantsKey, x.hold?.code ?? null]), [['client-history', 'client-archive', 'heading', null, 'FOLDER_NOT_ALLOWED'], ['team-notes', 'team-notes', 'heading', null, null], ['team-titles', 'team-notes', 'frontmatter', 'title', null]]);
-  assert.ok(d.slices.every(x => x.grantStyle === null), 'this version keeps no style in a permission');
+  assert.deepEqual(d.slices.map(x => [x.id, x.folder, x.wants, x.wantsKey, x.grantStyle, x.grantKey]), [
+    ['client-history', 'client-archive', 'heading', null, 'absent', null], ['old-reports-list', 'old-reports', 'heading', null, 'unset', null],
+    ['team-notes', 'team-notes', 'heading', null, 'heading', null], ['team-titles', 'team-notes', 'frontmatter', 'title', 'heading', null]]);
   assert.equal(d.measureCode, null); assert.ok(d.baselineBytes! > 5000); assert.equal(d.baselineFiles, 4);
   const editor = d.measure.find(m => m.role === 'editor')!;
   assert.ok(editor.startBytes > 0 && editor.startBytes < editor.baselineBytes, 'the short list is smaller than reading everything');
@@ -75,9 +76,12 @@ test('the library: origins, pins, and which projects use each item', async () =>
 
 test('registered folders and their grants', async () => {
   const { s } = await byName(), key = (n: string) => s.projects.find(x => x.name === n)!.key;
-  assert.deepEqual(s.folders.map(f => f.name), ['client-archive', 'team-notes']);
-  assert.deepEqual(s.folders[0]!.allowed, []); assert.deepEqual(s.folders[1]!.allowed.sort(), [key('newsletter'), key('studio-site')].sort());
-  assert.ok(s.folders.every(f => f.state === 'ready' && f.outdated.length === 0));
+  assert.deepEqual(s.folders.map(f => f.name), ['client-archive', 'old-reports', 'project-briefs', 'team-notes']);
+  const f = (n: string) => s.folders.find(x => x.name === n)!;
+  assert.deepEqual(f('client-archive').allowed, []); assert.deepEqual(f('team-notes').allowed.sort(), [key('newsletter'), key('studio-site')].sort());
+  assert.deepEqual(f('team-notes').styles.map(x => x.style), ['heading', 'heading']); assert.deepEqual(f('project-briefs').styles, [{ key: key('studio-site'), style: 'frontmatter', styleKey: 'title' }]);
+  assert.deepEqual(f('old-reports').allowed, [], 'an older grant is not a permission'); assert.deepEqual(f('old-reports').unstyled, [key('newsletter')]);
+  assert.ok(s.folders.every(x => x.state === 'ready' && x.outdated.length === 0));
 });
 
 test('the new read-only export lists grant file names and nothing else', t => {
@@ -86,7 +90,7 @@ test('the new read-only export lists grant file names and nothing else', t => {
   assert.equal(ids.length, 2); assert.ok(ids.every(id => /^[a-f0-9]{32}$/.test(id)));
   assert.deepEqual(listFolderGrants(world.home, 'client-archive').projectIds, []);
   assert.throws(() => listFolderGrants(world.home, '../x'), /FOLDER_NAME_INVALID|name/i);
-  assert.deepEqual(readdirSync(join(storeRootOf(world.home), 'folders')).sort(), ['client-archive.json', 'team-notes.grants', 'team-notes.json']);
+  assert.deepEqual(readdirSync(join(storeRootOf(world.home), 'folders')).sort(), ['client-archive.json', 'old-reports.grants', 'old-reports.json', 'project-briefs.grants', 'project-briefs.json', 'team-notes.grants', 'team-notes.json']);
 });
 
 test('a grant that no longer matches is reported as out of date, not as allowed', async t => {

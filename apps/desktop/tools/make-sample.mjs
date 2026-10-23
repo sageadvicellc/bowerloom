@@ -53,6 +53,8 @@ writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 const FILLER = Array.from({ length: 6 }, (_, i) => `Section ${i + 1}. Our studio keeps notes short and specific. Each note says who it is for, what to do, and who decides. When something changes, we change the note first and tell the team second. This paragraph stands in for the longer text a real knowledge folder would hold.`).join('\n\n');
 for (const [name, text] of [['brand-rules.md', '# Brand rules\n\nThe logo sits top left. Use two colors.\n'], ['clients.md', '# Clients\n\nA list of who we work with and what they asked for.\n'], ['pricing-notes.md', '# Pricing notes\n\nRates are reviewed each January.\n'], ['process/onboarding.md', '# Onboarding\n\nFive steps to start with a new client.\n']]) put(join(home, 'Notes/team-notes', name), `${text}\n${FILLER}`);
 put(join(home, 'Notes/client-archive/2024-projects.md'), '# 2024 projects\n\nThe finished work from last year.\n');
+for (const [name, text] of [['studio-brief.md', '---\ntitle: Studio site brief\n---\n# Brief\n\nThe goals for the new site.\n'], ['launch-brief.md', '---\ntitle: Launch plan\n---\n# Launch\n\nDates and owners.\n']]) put(join(home, 'Notes/project-briefs', name), `${text}\n${FILLER}`);
+put(join(home, 'Notes/old-reports/2023-report.md'), '# 2023 report\n\nWhat we delivered in 2023.\n');
 chmodSync(join(home, 'Notes'), 0o755);
 const projects = join(home, 'Projects'); mkdirSync(projects, { mode: 0o755 });
 const mk = name => { const dir = join(projects, name); mkdirSync(dir, { mode: 0o755 }); return dir; };
@@ -84,7 +86,12 @@ const netEnv = lockEnv(storeFiles(), join(base, 'plan-1.json'));
 for (const args of [['use', 'team', 'research-desk'], ['use', 'skill', 'house-style'], ['use', 'skill', 'brand-voice'], ['use', 'prompt', 'weekly-update']]) approveNet(healthy, args, netEnv);
 approve(healthy, ['folder', 'add', 'team-notes', join(home, 'Notes/team-notes')]);
 approve(healthy, ['folder', 'add', 'client-archive', join(home, 'Notes/client-archive')]);
+approve(healthy, ['folder', 'add', 'project-briefs', join(home, 'Notes/project-briefs')]);
+approve(healthy, ['folder', 'add', 'old-reports', join(home, 'Notes/old-reports')]);
 approve(healthy, ['slice', 'create', 'team-notes', '--registered', 'team-notes', '--include', '**/*.md']);
+approve(healthy, ['slice', 'create', 'brief-titles', '--registered', 'project-briefs', '--include', '**/*.md']);
+const briefFile = join(healthy, '.bowerloom/slices/brief-titles.yaml');
+writeFileSync(briefFile, readFileSync(briefFile, 'utf8').replace(/^summary: .*$/m, 'summary: frontmatter:title'));
 
 // 2. A drifted project: its lock was made, then the store changed, and it names a store item that is gone.
 const drifted = mk('newsletter'); put(join(drifted, 'bowerloom.json'), config()); share(drifted);
@@ -95,6 +102,7 @@ put(join(drifted, '.bowerloom/teams/newsroom/agents/publisher.md'), '---\nname: 
 approve(drifted, ['slice', 'create', 'team-notes', '--registered', 'team-notes', '--include', '**/*.md']);
 // Two more reading lists: one on a folder this project may not read yet, and one that wants each file's title.
 approve(drifted, ['slice', 'create', 'client-history', '--registered', 'client-archive', '--include', '**/*.md']);
+approve(drifted, ['slice', 'create', 'old-reports-list', '--registered', 'old-reports', '--include', '**/*.md']);
 approve(drifted, ['slice', 'create', 'team-titles', '--registered', 'team-notes', '--include', '**/*.md']);
 const titlesFile = join(drifted, '.bowerloom/slices/team-titles.yaml');
 writeFileSync(titlesFile, readFileSync(titlesFile, 'utf8').replace(/^summary: .*$/m, 'summary: frontmatter:title'));
@@ -112,6 +120,6 @@ put(join(broken, 'bowerloom.lock.json'), '<<<<<<< HEAD\n{"format": "bowerloom/lo
 // Copy the authored files only.
 rmSync(out, { recursive: true, force: true });
 cpSync(home, join(out, 'home'), { recursive: true, filter: src => !/(^|\/)(\.git|\.claude|\.codex|\.local)(\/|$)/.test(src.slice(home.length)) });
-writeFileSync(join(out, 'sample.json'), `${JSON.stringify({ storeCommit: COMMIT, storeRemote: 'git@github.com:sample-co/shared-store.git', projectRemote: 'https://github.com/sample-co/studio-site.git', projects: ['studio-site', 'newsletter', 'old-archive'], grants: [{ folder: 'team-notes', project: 'studio-site' }, { folder: 'team-notes', project: 'newsletter' }] }, null, 2)}\n`);
+writeFileSync(join(out, 'sample.json'), `${JSON.stringify({ storeCommit: COMMIT, storeRemote: 'git@github.com:sample-co/shared-store.git', projectRemote: 'https://github.com/sample-co/studio-site.git', projects: ['studio-site', 'newsletter', 'old-archive'], grants: [{ folder: 'team-notes', project: 'studio-site', summary: 'heading' }, { folder: 'team-notes', project: 'newsletter', summary: 'heading' }, { folder: 'project-briefs', project: 'studio-site', summary: 'frontmatter:title' }, { folder: 'old-reports', project: 'newsletter', summary: null }] }, null, 2)}\n`);
 rmSync(base, { recursive: true, force: true });
 console.log(`Sample data written to ${out}`);

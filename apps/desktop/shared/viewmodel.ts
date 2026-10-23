@@ -218,15 +218,21 @@ export function configLines(p: ProjectData): string[] {
   return [list('team'), list('skill'), list('prompt')];
 }
 
-const RANK = { none: 0, heading: 1, frontmatter: 2 } as const;
-const styleWords = (style: 'none' | 'heading' | 'frontmatter', key: string | null): string => style === 'none' ? 'no text from the files' : style === 'heading' ? 'each file\'s first heading' : `each file's \`${key ?? 'key'}\``;
-const allowedWords = (style: 'none' | 'heading' | 'frontmatter', key: string | null): string => style === 'none' ? 'only the file names' : style === 'heading' ? 'headings' : `the \`${key ?? 'key'}\` of each file`;
+type Style = 'none' | 'heading' | 'frontmatter';
+const styleWords = (style: Style, key: string | null): string => style === 'none' ? 'no text from the files' : style === 'heading' ? 'each file\'s first heading' : `each file's \`${key ?? 'key'}\``;
+const allowedWords = (style: Style, key: string | null): string => style === 'none' ? 'only the file names' : style === 'heading' ? 'headings' : `the \`${key ?? 'key'}\` of each file`;
+const sameStyle = (a: Style | null, ak: string | null, b: Style | null, bk: string | null): boolean => a === b && (a !== 'frontmatter' || ak === bk);
 
-/** Why a slice is held, in one sentence of plain words, or null when it is live. */
+/**
+ * Why a slice is held, in one sentence of plain words, or null when it is live. A slice that wants no text (`none`) is never held
+ * by a permission. Otherwise the project's permission for the folder must exist, carry a style, and be the style the slice wants.
+ */
 export function sliceReason(sl: ProjectData['slices'][number]): string | null {
-  if (sl.grantStyle === 'unset') return 'An older permission without a style needs to be set again.';
-  if (sl.grantStyle !== null && sl.wants !== null && (RANK[sl.wants] > RANK[sl.grantStyle] || (sl.wants === 'frontmatter' && sl.grantStyle === 'frontmatter' && sl.wantsKey !== sl.grantKey))) {
-    return `This reading list wants to show ${styleWords(sl.wants, sl.wantsKey)}, but this project was only allowed to show ${allowedWords(sl.grantStyle, sl.grantKey)}.`;
+  if (sl.grantStyle !== null && sl.wants !== 'none') {
+    if (sl.grantStyle === 'absent') return 'This folder has not been allowed for this project yet.';
+    if (sl.grantStyle === 'unset') return 'An older permission without a style needs to be set again.';
+    if (sl.wants !== null && !sameStyle(sl.wants, sl.wantsKey, sl.grantStyle, sl.grantKey)) return `This reading list wants to show ${styleWords(sl.wants, sl.wantsKey)}, but this project was only allowed to show ${allowedWords(sl.grantStyle, sl.grantKey)}.`;
+    if (sl.wants !== null) return null;
   }
   if (sl.hold === null) return null;
   if (sl.hold.code === 'FOLDER_NOT_ALLOWED') return 'This folder has not been allowed for this project yet.';
@@ -246,7 +252,7 @@ export function sliceModels(p: ProjectData): SliceModel[] {
       where: sl.rootKind === 'registered' || sl.folder !== null ? `the knowledge folder "${sl.folder ?? sl.rootName}"` : sl.rootKind === 'project' ? 'this project\'s own files' : 'an unknown place',
       files: sl.rootKind === 'unknown' && sl.members === 0 ? 'no files yet' : plural(sl.members, 'file'), stateLabel: held ? 'Held' : 'Live', state: held ? 'Held' : 'Live', tone: held ? 'warn' : 'good',
       reason, wants: sl.wants === null ? null : `Wants to show ${styleWords(sl.wants, sl.wantsKey)}.`,
-      permission: sl.grantStyle === null ? null : sl.grantStyle === 'unset' ? 'This project\'s permission for the folder has no style yet.' : `This project may show ${allowedWords(sl.grantStyle, sl.grantKey)}.`,
+      permission: sl.grantStyle === null ? null : sl.grantStyle === 'absent' ? 'This project has no permission for this folder.' : sl.grantStyle === 'unset' ? 'This project\'s permission for the folder is an older one with no style.' : `This project may show ${allowedWords(sl.grantStyle, sl.grantKey)} from this folder.`,
       agents: sl.agents, bars, hold: reason, technical: sl.hold?.code ?? null,
     };
   });
@@ -258,7 +264,7 @@ export function sliceGroups(p: ProjectData): SliceGroup[] {
   models.forEach((m, i) => { const key = m.folder ?? `(${p.slices[i]!.rootKind})`; groups.set(key, [...(groups.get(key) ?? []), m]); });
   return [...groups.entries()].map(([folder, slices]) => {
     const rows = p.slices.filter(sl => (sl.folder ?? `(${sl.rootKind})`) === folder);
-    const styled = rows.filter(sl => sl.grantStyle !== null && sl.wants !== null);
+    const styled = rows.filter(sl => sl.grantStyle !== null && sl.wants !== null && sl.wants !== 'none');
     const differ = styled.length >= 2 && new Set(styled.map(sl => `${sl.wants}:${sl.wantsKey ?? ''}`)).size > 1;
     return { folder, slices, conflict: differ ? 'A folder permission holds one style per project, so only one of these can be live.' : null };
   });
@@ -283,8 +289,8 @@ export function folderRows(s: Snapshot): FolderRow[] {
   return s.folders.map((f: FolderData) => ({
     name: f.name, path: f.path ?? 'Unknown place', state: f.state === 'ready' ? 'Ready' : f.state === 'missing' ? 'Missing' : 'Cannot be used', tone: f.state === 'ready' ? 'good' : f.state === 'missing' ? 'warn' : 'bad',
     allowed: f.allowed.map(name), outdated: f.outdated.map(name),
-    styles: f.allowed.flatMap(key => { const p = s.projects.find(x => x.key === key); const sl = p?.slices.find(x => x.folder === f.name && x.grantStyle !== null); return p && sl ? [{ name: p.name, text: sl.grantStyle === 'unset' ? 'Needs a style' : `May show ${allowedWords(sl.grantStyle!, sl.grantKey)}` }] : []; }),
-    styleNote: s.projects.some(p => p.slices.some(x => x.folder === f.name && x.grantStyle !== null)) ? null : 'This version of Bowerloom records only that a project may read the folder. It keeps no style (what may be shown of each file) in the permission.',
+    styles: [...f.styles.map(x => ({ name: name(x.key).name, text: `May show ${allowedWords(x.style, x.styleKey)}` })), ...f.unstyled.map(k => ({ name: name(k).name, text: 'Has an older permission with no style. It needs to be set again' }))],
+    styleNote: f.allowed.length + f.unstyled.length === 0 ? null : 'A folder permission holds one style per project: the first heading of each file, or one named key. A reading list that wants another style is held.',
     note: f.state === 'ready' ? (f.allowed.length === 0 ? 'No project is allowed to read this folder yet.' : `${plural(f.allowed.length, 'project')} can read it.`) : codeWords(f.code) || 'The folder is not at its saved place.',
   }));
 }

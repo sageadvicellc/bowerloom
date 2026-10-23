@@ -10,11 +10,23 @@
   "grants": [
     {
       "folder": "team-notes",
-      "project": "studio-site"
+      "project": "studio-site",
+      "summary": "heading"
     },
     {
       "folder": "team-notes",
-      "project": "newsletter"
+      "project": "newsletter",
+      "summary": "heading"
+    },
+    {
+      "folder": "project-briefs",
+      "project": "studio-site",
+      "summary": "frontmatter:title"
+    },
+    {
+      "folder": "old-reports",
+      "project": "newsletter",
+      "summary": null
     }
   ]
 }

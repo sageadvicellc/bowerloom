@@ -10,7 +10,7 @@ import { GRANT_FORMAT, discoverProject, readFolderRecord, openStore } from '../.
 import { isInside } from './safe.js';
 
 export interface SampleWorld { home: string; projects: string; env: NodeJS.ProcessEnv; state: string }
-interface SampleMeta { storeCommit: string; storeRemote: string; projectRemote: string; projects: string[]; grants: { folder: string; project: string }[] }
+interface SampleMeta { storeCommit: string; storeRemote: string; projectRemote: string; projects: string[]; grants: { folder: string; project: string; summary: string | null }[] }
 
 /** Folders Bowerloom makes (every `.bowerloom`) are private to the owner; everything else is an ordinary folder or file. */
 function setModes(dir: string, inside: boolean): void {
@@ -48,7 +48,9 @@ export function seedSample(appDir: string, sampleDir: string): SampleWorld {
     const dir = join(projects, grant.project), project = discoverProject(dir, home), record = readFolderRecord(store, grant.folder);
     const grants = join(store.dir, 'folders', `${grant.folder}.grants`);
     mkdirSync(grants, { recursive: true, mode: 0o700 });
-    writeFileSync(join(grants, project.projectId), `{"format":"${GRANT_FORMAT}","record":"${record.sha256}","birth":"${project.identity.birthtimeNs}"}\n`, { mode: 0o644 });
+    // The same bytes `folder allow` writes. `summary: null` is an older grant, made before the kind was recorded: three keys.
+    const kind = grant.summary === null ? '' : `,"summary":"${grant.summary}"`;
+    writeFileSync(join(grants, project.projectId), `{"format":"${GRANT_FORMAT}","record":"${record.sha256}","birth":"${project.identity.birthtimeNs}"${kind}}\n`, { mode: 0o644 });
   }
   const state = join(target, 'state');
   mkdirSync(state, { recursive: true, mode: 0o700 });

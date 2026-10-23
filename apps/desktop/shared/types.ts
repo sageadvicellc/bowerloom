@@ -42,8 +42,8 @@ export interface SliceRow {
   folder: string | null;
   /** What the slice wants to show of each file: nothing, the first heading, or one frontmatter key. */
   wants: 'none' | 'heading' | 'frontmatter' | null; wantsKey: string | null;
-  /** What the project's permission for the folder allows. Null: this version of Bowerloom does not record a style in a permission. */
-  grantStyle: 'none' | 'heading' | 'frontmatter' | 'unset' | null; grantKey: string | null;
+  /** What this project's permission for the folder says: no permission (absent), an older one with no style (unset), or a style. Null when the slice has no registered folder. */
+  grantStyle: 'absent' | 'unset' | 'heading' | 'frontmatter' | null; grantKey: string | null;
   /** From `context measure`: the bytes of the index an agent loads, and of the files it points to. */
   indexBytes: number | null; memberBytes: number | null;
 }
@@ -71,6 +71,10 @@ export interface FolderData {
   allowed: string[];
   /** Keys of the projects with a grant file that no longer matches. */
   outdated: string[];
+  /** The style each allowed project's permission records. */
+  styles: { key: string; style: 'heading' | 'frontmatter'; styleKey: string | null }[];
+  /** Projects whose permission is an older one with no style. */
+  unstyled: string[];
 }
 
 export interface CacheRow { id: string; scope: string; label: string | null; status: string; bytes: number | null; files: number | null; usedByStore: boolean | null; usedByProject: boolean | null }

@@ -129,13 +129,13 @@ test('slices: a simple bar compares what an agent reads at the start with readin
   const s = await sampleSnapshot(), m = sliceModels(s.projects.find(p => p.name === 'newsletter')!).find(c => c.id === 'team-notes')!;
   assert.equal(m.id, 'team-notes'); assert.equal(m.where, 'the knowledge folder "team-notes"'); assert.equal(m.files, '4 files'); assert.deepEqual(m.agents, ['editor']);
   assert.equal(m.bars.length, 1); assert.ok(m.bars[0]!.percent > 0 && m.bars[0]!.percent < 50); assert.match(m.bars[0]!.sentence, /^editor reads .* at the start instead of .* if it read every note\.$/);
-  assert.equal(slicesByProject(s).length, 2); assert.equal(slicesByProject(s).find(g => g.project.name === 'newsletter')!.slices.length, 2, 'grouped by folder');
+  assert.equal(slicesByProject(s).length, 2);
   assert.deepEqual(sliceModels(s.projects.find(p => p.name === 'studio-site')!)[0]!.bars, [], 'no agent reads it, so no comparison');
 });
 
 test('knowledge folders: state, who may read, and what to do about an empty list', async () => {
   const s = await sampleSnapshot(), rows = folderRows(s);
-  assert.equal(rows[0]!.note, 'No project is allowed to read this folder yet.'); assert.equal(rows[1]!.note, '2 projects can read it.'); assert.deepEqual(rows[1]!.allowed.map(a => a.name), ['newsletter', 'studio-site']);
+  assert.equal(rows[0]!.note, 'No project is allowed to read this folder yet.'); assert.equal(rows[3]!.note, '2 projects can read it.'); assert.deepEqual(rows[3]!.allowed.map(a => a.name), ['newsletter', 'studio-site']);
   const t = clone(s); t.folders[0]!.state = 'missing'; assert.equal(folderRows(t)[0]!.state, 'Missing');
 });
 
@@ -173,29 +173,44 @@ test('small helpers: bytes, titles, hidden characters', () => {
   assert.equal(safeLine(`ls${String.fromCharCode(0x2028)}x`), 'ls\\u2028x');
 });
 
-test('slice cards: name, folder, files, Live or Held, and one plain sentence of reason when held', async () => {
-  const s = await sampleSnapshot(), cards = sliceModels(s.projects.find(p => p.name === 'newsletter')!), by = (id: string) => cards.find(c => c.id === id)!;
-  assert.deepEqual(cards.map(c => `${c.id}:${c.stateLabel}`), ['client-history:Held', 'team-notes:Live', 'team-titles:Live']);
-  const held = by('client-history'); assert.equal(held.reason, 'This folder has not been allowed for this project yet.'); assert.equal(held.where, 'the knowledge folder "client-archive"'); assert.equal(held.tone, 'warn'); assert.equal(held.technical, 'FOLDER_NOT_ALLOWED');
-  const live = by('team-notes'); assert.equal(live.reason, null); assert.equal(live.tone, 'good'); assert.equal(live.files, '4 files'); assert.equal(live.wants, 'Wants to show each file\'s first heading.');
-  assert.equal(by('team-titles').wants, 'Wants to show each file\'s `title`.');
-  assert.equal(sliceModels(s.projects.find(p => p.name === 'studio-site')!)[0]!.stateLabel, 'Live');
-  assert.match(folderRows(s)[0]!.styleNote!, /records only that a project may read the folder/);
+test('slice cards: every state is shown from the sample, with one plain sentence when held', async () => {
+  const s = await sampleSnapshot(), news = s.projects.find(p => p.name === 'newsletter')!, studio = s.projects.find(p => p.name === 'studio-site')!;
+  const card = (p: typeof news, id: string) => sliceModels(p).find(c => c.id === id)!;
+  // Live, heading style.
+  const heading = card(studio, 'team-notes'); assert.equal(heading.stateLabel, 'Live'); assert.equal(heading.reason, null); assert.equal(heading.tone, 'good'); assert.equal(heading.files, '4 files'); assert.equal(heading.wants, 'Wants to show each file\'s first heading.'); assert.equal(heading.permission, 'This project may show headings from this folder.');
+  // Live, frontmatter style.
+  const front = card(studio, 'brief-titles'); assert.equal(front.stateLabel, 'Live'); assert.equal(front.wants, 'Wants to show each file\'s `title`.'); assert.equal(front.permission, 'This project may show the `title` of each file from this folder.');
+  // Held: the folder is not allowed for this project.
+  const none = card(news, 'client-history'); assert.equal(none.stateLabel, 'Held'); assert.equal(none.reason, 'This folder has not been allowed for this project yet.'); assert.equal(none.where, 'the knowledge folder "client-archive"'); assert.equal(none.tone, 'warn');
+  // Held: the permission is for another style.
+  const other = card(news, 'team-titles'); assert.equal(other.stateLabel, 'Held'); assert.equal(other.reason, 'This reading list wants to show each file\'s `title`, but this project was only allowed to show headings.');
+  // Held: an older permission with no style.
+  const older = card(news, 'old-reports-list'); assert.equal(older.stateLabel, 'Held'); assert.equal(older.reason, 'An older permission without a style needs to be set again.');
+  assert.equal(card(news, 'team-notes').stateLabel, 'Live');
 });
 
-test('slice cards: a permission style that is too narrow, or missing, is explained; two styles on one folder are shown together with the note', async () => {
+test('slice cards: two slices on one folder that need different styles sit side by side with the note', async () => {
+  const s = await sampleSnapshot(), groups = sliceGroups(s.projects.find(p => p.name === 'newsletter')!), g = groups.find(x => x.folder === 'team-notes')!;
+  assert.equal(g.conflict, 'A folder permission holds one style per project, so only one of these can be live.');
+  assert.deepEqual(g.slices.map(c => `${c.id}:${c.stateLabel}`), ['team-notes:Live', 'team-titles:Held']);
+  for (const other of groups.filter(x => x.folder !== 'team-notes')) assert.equal(other.conflict, null, other.folder);
+  assert.ok(sliceGroups(s.projects.find(p => p.name === 'studio-site')!).every(x => x.conflict === null));
+  assert.equal(slicesByProject(s).find(x => x.project.name === 'newsletter')!.slices.length, 3, 'grouped by folder on the folders screen too');
+});
+
+test('slice cards: a slice that wants no text is never held by a permission; the same style on both is no conflict', async () => {
   const s = clone(await sampleSnapshot()), p = s.projects.find(x => x.name === 'newsletter')!;
-  const notes = p.slices.filter(x => x.folder === 'team-notes'); notes[0]!.grantStyle = 'heading'; notes[1]!.grantStyle = 'heading';
-  // team-titles wants a frontmatter key, but the permission allows headings only.
-  const titles = p.slices.find(x => x.id === 'team-titles')!;
-  assert.equal(sliceReason(titles), 'This reading list wants to show each file\'s `title`, but this project was only allowed to show headings.');
-  const g = sliceGroups(p).find(x => x.folder === 'team-notes')!;
-  assert.equal(g.slices.length, 2); assert.equal(g.conflict, 'A folder permission holds one style per project, so only one of these can be live.');
-  assert.deepEqual(g.slices.map(c => c.stateLabel).sort(), ['Held', 'Live']);
-  titles.grantStyle = 'unset'; assert.equal(sliceReason(titles), 'An older permission without a style needs to be set again.');
-  // The same style on every slice of a folder is no conflict.
-  for (const x of notes) { x.grantStyle = 'frontmatter'; x.grantKey = 'title'; x.wants = 'frontmatter'; x.wantsKey = 'title'; }
+  const none = p.slices.find(x => x.id === 'client-history')!; none.wants = 'none'; none.hold = null; assert.equal(sliceReason(none), null);
+  for (const x of p.slices.filter(y => y.folder === 'team-notes')) { x.wants = 'frontmatter'; x.wantsKey = 'title'; x.grantStyle = 'frontmatter'; x.grantKey = 'title'; }
   assert.equal(sliceGroups(p).find(x => x.folder === 'team-notes')!.conflict, null);
-  assert.equal(sliceReason(notes[0]!), null);
-  assert.equal(folderRows(s).find(f => f.name === 'team-notes')!.styleNote, null); assert.match(folderRows(s).find(f => f.name === 'team-notes')!.styles.map(x => x.text).join(), /May show/);
+  assert.ok(sliceGroups(p).find(x => x.folder === 'team-notes')!.slices.every(c => c.stateLabel === 'Live'));
+  const t = p.slices.find(x => x.id === 'team-titles')!; t.wantsKey = 'summary'; assert.match(sliceReason(t)!, /`summary`.*only allowed to show the `title`/);
+});
+
+test('folder cards: the permission style of each project, and the older permission', async () => {
+  const s = await sampleSnapshot(), rows = folderRows(s), r = (n: string) => rows.find(x => x.name === n)!;
+  assert.deepEqual(r('team-notes').styles.map(x => `${x.name}: ${x.text}`), ['newsletter: May show headings', 'studio-site: May show headings']);
+  assert.deepEqual(r('project-briefs').styles.map(x => x.text), ['May show the `title` of each file']);
+  assert.match(r('old-reports').styles[0]!.text, /older permission with no style/); assert.equal(r('old-reports').note, 'No project is allowed to read this folder yet.');
+  assert.equal(r('client-archive').styleNote, null); assert.match(r('team-notes').styleNote!, /one style per project/);
 });
