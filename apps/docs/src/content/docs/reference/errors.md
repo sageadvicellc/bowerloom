@@ -7,7 +7,7 @@ order: 24
 
 Use the actual result from the matching installed version. A status is an observed state. An error identifies a refused operation.
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Status fields
 
@@ -79,8 +79,10 @@ In a terminal, a refusal prints `Refused (<CODE>): <message>`, one plain sentenc
 | `PROJECT_LOCKED` | Two commands must not change one project at the same time. Nothing changed. | Run `bowerloom status`, then try again. |
 | `PROJECT_LOCK_UNAVAILABLE` | The lock uses a local port, and this computer did not give it out. A sandbox that blocks local ports gives this refusal. | Run `bowerloom status`. If an agent sandbox runs Bowerloom, read [Agent sandboxes](/docs/troubleshooting/#agent-sandboxes). |
 | `PROJECT_LOCK_SLOT_COLLISION` | The lock uses a local port. Another program listens on it, or another Bowerloom command is too busy to answer. | Wait for other Bowerloom commands to finish and run the command again. If it repeats, run `lsof -nP -iTCP:<port> -sTCP:LISTEN`. |
-| `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. On a clone, `bowerloom up --team` and `team create` refuse this way, because `.bowerloom/brief.json` stays on the first machine. | Run `bowerloom status`. On a clone, follow the [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine). |
+| `PROJECT_BRIEF_INVALID` | A new team is built from the project brief that setup saved, and it cannot be read. On a clone, `team create` refuses this way, because `.bowerloom/brief.json` stays on the first machine. In a project without `bowerloom.json`, `bowerloom up --team` refuses the same way. | Run `bowerloom status`. On a clone, follow the [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine). |
 | `INSPECTION_LIMIT` | A `.bowerloom` folder holds too many entries to list. | Reduce the entries. |
+| `AUTHORING_DISK_FULL` | The disk has no room, so Bowerloom stopped before it wrote more. | Run `df -h .`. |
+| `AUTHORING_ACCESS_DENIED` | The system refused the write, so Bowerloom stopped before it wrote more. | Run `ls -ld .bowerloom ~/.bowerloom`. |
 
 Create commands also refuse with `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `TEAM_NAME_INVALID`, `TEAM_NOT_FOUND`, `SKILL_EXISTS`, `SKILL_NAME_RESERVED`, `SKILL_NAME_INVALID`, `PROMPT_EXISTS`, `PROMPT_NAME_INVALID`, `REVISION_PENDING`, `AUTHORING_PENDING`, `AUTHORING_RECEIPT_INVALID`, `AUTHORING_UNSAFE_PATH`, `AUTHORING_UNREGISTERED`, `AUTHORING_WRITE_INTERRUPTED`, and `AUTHORING_ITEM_MISSING`. [Create teams, skills, and prompts](/docs/guides/create-items/#if-a-command-refuses) explains them. `AUTHORING_RECEIPT_INVALID` means Bowerloom reads its record of created items strictly, so a hand edit can break it. Run `git diff .bowerloom/authoring/receipt.json`. `AUTHORING_UNSAFE_PATH` means Bowerloom does not read or write through links, shared files, or files others can change. Run `ls -la .bowerloom`. `AUTHORING_ITEM_MISSING` means a created item is gone. Run `git status .bowerloom`. `AUTHORING_DISK_FULL` means the disk has no room, so Bowerloom stopped before it wrote more. Run `df -h .`. `AUTHORING_ACCESS_DENIED` means the system refused the write, so Bowerloom stopped before it wrote more. Run `ls -ld .bowerloom ~/.bowerloom`.
 
@@ -96,7 +98,7 @@ The store is the folder `~/.bowerloom`. `bowerloom store status` reports a store
 | `STORE_UNREADABLE` | Bowerloom cannot read the store or a folder on the way to it. A folder that cannot be read cannot be checked. | Run `ls -ld ~ ~/.bowerloom`. |
 | `STORE_IN_CLOUD_FOLDER` | The store is in a cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep the store safe. | Move the home folder setup out of iCloud. The store must stay at `~/.bowerloom`. |
 | `STORE_STATE_NESTED` | The private state folder and the store must not be inside one another. Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused. | Set `XDG_STATE_HOME` to a folder outside `~/.bowerloom`. |
-| `STORE_WRITE_FAILED` | Bowerloom could not write to the store. The disk refused the write, and the message names the system error, such as `ENOSPC`. | Run `df -h ~ && ls -ld ~/.bowerloom`. |
+| `STORE_WRITE_FAILED` | Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as `ENOSPC`. | Run `df -h ~ && ls -ld ~/.bowerloom`. |
 | `STORE_LOCKED` | Another Bowerloom command is changing the store. Two commands must not change the store at the same time, so nothing was changed. | When the other command is done, run this one again. |
 | `STORE_NOT_A_PROJECT` | The store holds definitions only, so a folder inside it cannot be a project. | Run the command in a project folder outside `~/.bowerloom`. |
 | `CONFIG_INVALID` | `bowerloom.json` does not match the project config format. Bowerloom reads it strictly, so a hand edit can break it. | Run `git diff bowerloom.json`. |
@@ -114,15 +116,15 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | `STORE_ITEM_NOT_FOUND` | Bowerloom picks only items that your store defines. | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` | A listed store item is not in your store and not in the lock, so Bowerloom cannot install it. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
 | `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | Give the store a remote and push it. `bowerloom store status` shows the commands. Or adopt a team into this project with `bowerloom team adopt`. |
-| `STORE_REMOTE_PRIVATE` | GitHub does not show this repository without a token. It may be private or may not exist. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
+| `STORE_REMOTE_PRIVATE` | GitHub does not show this repository without a token. It is private, or it does not exist. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
 | `STORE_REMOTE_AUTH_FAILED` | GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist. | Check that the token can read the repository, and that the repository name is right. |
 | `GITHUB_TOKEN_INVALID` | Bowerloom checks the token's shape before any network call and never shows the value. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
-| `GITHUB_TOKEN_SSO_REQUIRED` | An organization that uses single sign-on refuses a token until it is authorized for that organization. | Authorize the token for the organization on GitHub, under the token's settings, then run the command again. |
+| `GITHUB_TOKEN_SSO_REQUIRED` | An organization that uses single sign-on refuses a token until it is authorized for that organization. | Authorize the token for the organization on GitHub, under the token's `settings`, then run the command again. |
 | `CONFIG_ITEM_SELECTED` | This project already picks that item from that source. | `bowerloom ls` |
 | `CONFIG_ITEM_NOT_SELECTED` | Bowerloom changes only items that `bowerloom.json` lists. | `bowerloom ls` |
 | `CONFIG_ITEM_MISSING` | `bowerloom.json` lists a project item that the project does not define. | `bowerloom <kind> create <id>`, or `bowerloom unuse <kind> <id>`. |
-| `CONFIG_WRITE_UNCONFIRMED` | `bowerloom.json` was written, but it changed again before Bowerloom could read it back. | `git diff bowerloom.json` |
-| `TEAM_NOT_SELECTED` | `up` installs for a team only if `bowerloom.json` lists it. | `bowerloom use team <id>` |
+| `CONFIG_WRITE_UNCONFIRMED` | `bowerloom.json` was written, but it changed again before Bowerloom read it back. | `git diff bowerloom.json` |
+| `TEAM_NOT_SELECTED` | `up` installs only the teams that `bowerloom.json` lists. | `bowerloom use team <id>` |
 | `ITEM_REVIEW_REQUIRED` | Bowerloom shows what an item can do before it installs it. | Run `bowerloom apply --frozen` again to review it. |
 
 These codes come from `bowerloom store migrate`. It also raises the store, config, lock, and token codes above. A refusal after the run wrote part of its work says what it wrote. Its `Next:` line is the command that finishes the run, and its JSON envelope has `partial: true` and that command as `next`. Run it, and its plan finishes the rest. If another command holds the project lock, `store migrate` may already have made an empty store. Then its old plan no longer applies: run the command again without `--approve` to see the next plan.
@@ -153,17 +155,17 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `LOCK_MISSING` | A frozen install needs `bowerloom.lock.json`, and there is none. | `bowerloom lock update` on a machine with the store. |
 | `LOCK_INVALID` | Bowerloom reads the lock strictly, so a hand edit or a merge conflict can break it. | `bowerloom lock verify`. For a merge conflict, take one side for each item, then run it. |
 | `LOCK_UNSAFE` | Bowerloom will not trust a lock file that links or other users can change. | `ls -l bowerloom.lock.json` |
-| `LOCK_LIMIT` | This beta keeps the lock small: 128 skills, 128 prompts, 32 teams, and 4 MiB at most. | `bowerloom lock verify` |
+| `LOCK_LIMIT` | This beta keeps the lock small: 128 skills, 128 prompts, 32 teams, and 4 MiB at most. An item holds at most 126 files, 65536 bytes in a file, and 2 MiB in all. A lock names at most 8 store remotes. | `bowerloom lock verify` |
 | `LOCK_CONFIG_MISSING` | A lock and a config go together, and one of them is missing. | `bowerloom use skill <id>`, or restore `bowerloom.json` from version control. |
 | `LOCK_CONFIG_MISMATCH` | A frozen install must match `bowerloom.json` exactly, as `npm ci` does. | `bowerloom lock update` |
 | `LOCK_HASH_MISMATCH` | Bowerloom installs only bytes that match the lock, so it stopped before any change to the project. | `bowerloom lock verify`, then ask the owner of the store to run `bowerloom lock update`. |
 | `LOCK_STORE_NOT_PUSHED` | A teammate can fetch only what you pushed, and your store differs from the pushed copy. | Commit and push the store, then run the command again. |
 | `LOCK_COMMIT_UNREACHABLE` | The lock needs a commit that GitHub has, and GitHub does not have this one. | Push the store, or pass `--commit <sha>` of a pushed commit. |
 | `LOCK_COMMIT_GONE` | A force-push or a deleted branch removes a commit that a lock still names. GitHub shows the store repository but no longer has the locked commit. | Ask the author of the store to run `bowerloom lock update`, then commit and push `bowerloom.lock.json`. Then pull the project. |
-| `LOCK_WRITE_UNCONFIRMED` | `bowerloom.lock.json` was written, but it changed again before Bowerloom could read it back. | `git diff bowerloom.lock.json` |
+| `LOCK_WRITE_UNCONFIRMED` | `bowerloom.lock.json` was written, but it changed again before Bowerloom read it back. | `git diff bowerloom.lock.json` |
 | `GITHUB_RATE_LIMITED` | GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so. | Wait until the limit resets, at most an hour. Without a token, set `BOWERLOOM_GITHUB_TOKEN` to raise the limit. |
 | `GITHUB_REQUEST_FAILED` | GitHub answered with an error status, so Bowerloom stopped before any change to the project. The message names the status. | Run the command again later. If the status is 401 or 403, make sure that the store repository is public. If this is your store repository, set `BOWERLOOM_GITHUB_TOKEN`. |
-| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests. | `bowerloom lock verify` |
+| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests by default. `apply` and `skills sync` take `--max-github-requests <n>`, up to 5000. | `bowerloom lock verify` |
 | `STORE_ITEM_GONE_AT_COMMIT` | The lock names a store commit that does not hold this item, so Bowerloom cannot install it. | `bowerloom lock verify`, then ask the owner of the store to run `bowerloom lock update`. |
 
 ## Skills and sync refusals
@@ -253,7 +255,7 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `FOLDER_NOT_FOUND` | The store or the record is absent. Only a registered folder can be used or removed. | Run `bowerloom folder list`. |
 | `FOLDER_UNSAFE` | The folder is missing, is not below your home folder, is your home folder, is a link, is not yours, can be written by others, has a hidden segment, touches the store, or its record is not a plain file. Bowerloom reads only folders that you own and that no other user can change. | Run `ls -ld <folder>`. |
 | `FOLDER_IN_CLOUD` | The folder is in an iCloud or cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe. | Move the folder, for example `mv <folder> ~/Projects/`. |
-| `FOLDER_NOT_ALLOWED` | This project is not allowed to read registered folder `<name>`. A registered folder is shared with the projects you allow, one by one. A slice that names it is held back, and `folder deny` refuses when the project has no grant. | Run `bowerloom folder allow <folder-name>` inside the project. |
+| `FOLDER_NOT_ALLOWED` | This project is not allowed to read registered folder `<name>`. A registered folder is shared with the projects you allow, one by one. A slice that names it is held back. If the project has no grant, `folder deny` refuses. | Run `bowerloom folder allow <folder-name>` inside the project. |
 | `FOLDER_INVALID` | A folder record in your store has wrong content. Bowerloom reads folder records strictly, so a hand edit can break one. | Run `bowerloom folder list`. |
 | `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocked the call and exited 2. | Run `claude --debug`. |
 

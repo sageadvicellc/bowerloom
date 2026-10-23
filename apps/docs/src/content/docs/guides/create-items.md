@@ -5,11 +5,11 @@ section: "Guides"
 order: 7.7
 ---
 
-Three commands create files inside `.bowerloom`: `team create`, `skill create`, and `prompt create`. Agents use them most. Each one finds the project, shows a plan, and writes after you approve that exact plan. They write inside `.bowerloom` only. They start no workers and run nothing. You and your agents own the files they make and can edit them.
+Three commands create files inside `.bowerloom`: `team create`, `skill create`, and `prompt create`. Agents use them most. Each one finds the project, shows a plan, and writes after you approve that exact plan. They write inside `.bowerloom` only, or inside your store with `--global`. They start no workers and run nothing. You and your agents own the files they make and can edit them.
 
 ## Before you start
 
-Install Bowerloom and run `bowerloom up --team <name> --goal <goal>` once, so the project holds `.bowerloom`. See [Install Bowerloom](/docs/start/). Keep the project out of iCloud Drive. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`.
+Install Bowerloom and run `bowerloom up --team <name> --goal <goal>` once, so the project holds `.bowerloom` or `bowerloom.json`. See [Install Bowerloom](/docs/start/). Keep the project out of iCloud Drive. A project in a cloud-synced folder refuses with `PROJECT_IN_CLOUD_FOLDER`.
 
 Every command takes `--approve <revision>` and `--json`. Without `--approve`, a terminal asks before it writes. Without a terminal, or with `--json`, the command prints the plan and its revision and exits 3. [Approvals and exit codes](/docs/cli/#approvals-and-exit-codes) explains the flow.
 

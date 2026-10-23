@@ -78,10 +78,13 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 
 | Path | Holds | Commit it |
 | --- | --- | --- |
+| `bowerloom.json` | What the project installs, and where each item comes from | Yes |
+| `bowerloom.lock.json` | Where each store item comes from, with a hash of its bytes | Yes |
 | `.bowerloom/skills.json` | Exact pins and local skill entries | Yes |
 | `.bowerloom/skills/<name>/SKILL.md` | A skill you authored with `skill create` | Yes |
 | `.bowerloom/prompts/<name>.md` | A prompt you created with `prompt create` | Yes |
-| `.bowerloom/teams/<team id>/` | A team: `first-team` from setup, or one you created with `team create`. Its `assets/brief.json` holds the goal text, the team's shared purpose, so read it before you commit it | Yes |
+| `.bowerloom/slices/` | Context slice files | Yes |
+| `.bowerloom/teams/<team id>/` | A team: `first-team` from setup, or one you created with `team create`. Its `assets/brief.json` holds the goal text, the team's shared purpose, so read it before you commit it. Its `agents/` folder holds the team's agents. | Yes |
 | `.bowerloom/skills/personal-assistant/` | The assistant skill that setup makes. Its `profile.json` holds the project name | Yes |
 | `.bowerloom/authoring/receipt.json` | The record of the teams, skills, and prompts you created | Yes |
 | `.bowerloom/installation-receipt.json` | The private setup receipt. It holds absolute paths on your machine | No |
@@ -89,10 +92,11 @@ The fixed graph connects scope to draft and both outputs to review. Its declarat
 | `.bowerloom-revision.json`, `.bowerloom-revision-<revision>/` | Revision marker and private revision history, next to `.bowerloom`. The `previous` folder holds the earlier installation receipt | No |
 | `.bowerloom/managed/` | Managed copies of pinned skills. Bowerloom writes a `.gitignore` inside it | No |
 | `.claude/skills/`, `.claude/commands/`, `.agents/skills/` | Projections: the copies of skills and prompts that Claude Code and Codex read | No |
+| `.claude/agents/` | Agent copies for Claude Code. A guarded copy names this machine's project folder | No |
 
-Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`. On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. The [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine) are the supported path. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines.
+Managed copies and the `.claude` and `.agents` projections stay on each machine. Each machine rebuilds them with `bowerloom skills sync` and `bowerloom apply`, or with `bowerloom apply --frozen`. On a clone, `team create` refuses with `PROJECT_BRIEF_INVALID`, because it reads `.bowerloom/brief.json`, which stays on the first machine. In a project without `bowerloom.json`, `bowerloom up --team <name>` refuses the same way. In a project with `bowerloom.json`, `up` works on a clone for each team that the file lists. The [teammate steps](/docs/guides/add-skills/#get-the-same-skills-on-another-machine) are the supported path. [What to commit](/docs/guides/add-skills/#what-to-commit) gives the exact `.gitignore` lines.
 
-Receipts and the fetch cache live in a private state folder outside the project. That folder is `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, and `~/.local/state/bowerloom` otherwise. Bowerloom makes new folders there with mode 0700. Keep that folder private.
+Receipts and the fetch cache live in a private state folder outside the project. That folder is `$XDG_STATE_HOME/bowerloom` when `XDG_STATE_HOME` is set, and `~/.local/state/bowerloom` otherwise. Bowerloom makes new folders there with mode 0700. Keep that folder private. The store cache, the folder `store-cache` in the same private state folder, keeps the store items fetched from a store remote.
 
 [Add third-party skills](/docs/guides/add-skills/) explains the commands. [Create teams, skills, and prompts](/docs/guides/create-items/) explains the create commands.
 

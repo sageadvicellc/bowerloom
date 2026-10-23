@@ -9,7 +9,7 @@ Bowerloom brings governance to the agent teams, skills, and prompts in your proj
 
 Install the `bowerloom` command from the npm beta stream. Then run one command in a project folder. Each step shows its plan first, and you approve each step.
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 <a id="ask-your-personal-agent"></a>
 
@@ -39,7 +39,7 @@ bowerloom --help
 
 Updates are not automatic. To update, run `npm install -g bowerloom@beta` again. Do not use `npm update -g bowerloom` for this: for a global package, npm updates to the `latest` tag, not to `beta`, and it can downgrade a beta install.
 
-A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`.
+A colleague who was given a `bowerloom-0.7.0-beta.2.tgz` file can still install it by its full path, such as `npm install -g ~/Downloads/bowerloom-0.7.0-beta.2.tgz`. Installing from a downloaded .tgz file gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
 
 npm reports the packages it added and exits 0. In the tests for this release, `bowerloom --version` printed this line:
 

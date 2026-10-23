@@ -15,40 +15,88 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 
 ## 0.7.0-beta.3
 
-- `bowerloom.json` lists what a project installs, from the project or from your store. A project without it installs everything it defines, as before.
+**New commands**
+
 - `bowerloom use` and `bowerloom unuse` pick and drop items, and change only `bowerloom.json` and `bowerloom.lock.json`.
-- `bowerloom.lock.json` records where each store item comes from and a hash of its bytes, so a teammate gets the same items.
 - `bowerloom lock verify` checks the lock with no network. `bowerloom lock update` rewrites it from your store.
-- `apply --frozen` and `skills sync --frozen` install only what the lock records, as `npm ci` does.
 - `bowerloom team adopt` copies a store team into the project, and the project owns the copy.
-- `bowerloom team adopt` also takes a store team that `bowerloom.json` does not list yet. One plan copies the team and lists it as a project item, so it works in a shared project whose store is not pushed. Store skills and prompts tagged to the team stay store items, and the plan names them.
+- `bowerloom store migrate` copies skills, prompts, and teams from a project to your store and lists them in `bowerloom.json`. It deletes nothing. `bowerloom receipt clean` removes the records of items whose files you deleted.
+- `bowerloom cache list` shows the skill bytes that Bowerloom keeps on your machine. `bowerloom cache prune` deletes them after you approve a plan. Bowerloom never deletes the cache by itself.
+
+**Projects and the store**
+
+- `bowerloom.json` lists what a project installs, from the project or from your store. A project without it installs everything it defines, as before.
 - A project with only `bowerloom.json` works with every command. Its first install makes `.bowerloom`, whose engine files git ignores.
-- New plan and result formats: `bowerloom/skills-sync-plan/v1beta2`, `bowerloom/skills-sync-result/v1beta2`, `bowerloom/config-change-plan/v1beta1`, `bowerloom/lock-verify/v1beta1`, `bowerloom/lock-update-result/v1beta1`, and `bowerloom/team-adopt-result/v1beta1`. Plan items name their source.
+- A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`.
+- `--global` on `team create`, `skill create`, `prompt create`, `skills add`, `skills check`, and `ls` works on your store, `~/.bowerloom`. `ls` shows where each item comes from. `ls --json` has a new format, `bowerloom/ls/v1beta2`. The store holds up to 256 skills and a project up to 128.
+- The project folder, `bowerloom.json`, and `bowerloom.lock.json` must be yours and closed to group and other writes. Otherwise Bowerloom refuses with `PROJECT_FOLDER_UNSAFE`, `CONFIG_UNSAFE`, or `LOCK_UNSAFE`. A clone made under `umask 002` refuses until you run `chmod -R go-w .`.
+- `bowerloom store status` shows the `Git:` line of the store, the commands that fix a store with no remote, and the `GitHub token:` line. Its JSON format is `bowerloom/store-status/v1beta1`.
+- `bowerloom status` prints a `Config:` line, one of seven `Lock:` states, and the notes for a stale lock and for a shared project with no lock.
+- `bowerloom up` reads `bowerloom.json`. A team that the file does not list refuses `TEAM_NOT_SELECTED`. On a clone, `up` works for a listed team.
+- The store keeps a `.gitignore` that leaves out `folders/` and other files of this machine, so `git add -A` in a store you push does not publish registered-folder records or grants. Each machine runs `bowerloom folder add` itself. Bowerloom adds the lines on every store write and keeps every line you added. `bowerloom store status` warns when the lines are missing, when git already tracks something under `folders/`, and when it cannot tell, for example with a split index.
+
+**Sharing**
+
+- `bowerloom.lock.json` records where each store item comes from and a hash of its bytes, so a teammate gets the same items.
+- `apply --frozen` and `skills sync --frozen` install only what the lock records, as `npm ci` does.
+- A store in a private GitHub repository works after you set `BOWERLOOM_GITHUB_TOKEN`. Bowerloom sends the token only to `api.github.com`, for that repository. It never stores or prints the token. A token that an organization's single sign-on has not authorized refuses with `GITHUB_TOKEN_SSO_REQUIRED`.
+- A project is shared in two cases. It has `bowerloom.lock.json`, or its git repository has a remote named `origin`. If Bowerloom cannot read one of those files, it treats the project as shared and says so.
+- `apply` and `skills sync` take `--max-github-requests <n>`, up to 5000. One run makes at most 1000 GitHub requests by default. A larger run refuses `GITHUB_REQUEST_BUDGET`.
+- `use`, `lock update`, and `store migrate` take `--commit <sha>` to record a chosen pushed commit of the store remote.
+- Bowerloom holds some store skills and prompts fetched from the lock with `ITEM_REVIEW_REQUIRED`, until a plan shows them. Those are the items that set `allowed-tools`, register hooks, or run shell lines.
+- Plain `apply` never fetches. It holds a lock item that this machine lacks with `SKILLS_OFFLINE`. `skills sync` and `up` fetch lock items into the store cache.
+- `bowerloom team adopt` also takes a store team that `bowerloom.json` does not list yet. One plan copies the team and lists it as a project item, so it works in a shared project whose store is not pushed. Store skills and prompts tagged to the team stay store items, and the plan names them.
+- `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. After a 404 on the commit, one extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
+- The new page [Where your items come from](/docs/guides/item-sources/) explains where each item's bytes come from, what the lock records, and what a teammate needs.
+
+**Agents and context slices**
+
 - `bowerloom slice create` makes a context slice. `apply` turns it into the skill `slice-<id>`, a list of paths that an agent loads at start. Only titles are copied.
 - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
-- The read guard needs Claude Code 2.1.295 or later. On older versions, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
 - `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
 - `bowerloom context show` previews a slice.
-- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it; `folder deny` takes the grant back.
+- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it. `folder deny` takes the grant back.
 - Ids that start with `slice-` are reserved for new skills and prompts.
-- A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
 - In a project with `bowerloom.json`, a context slice stays a project item. `bowerloom.json`, the store, and the lock never hold it.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
 - A bad agent file holds only that agent. A hand-made agent file that equals the copy is adopted. One that differs holds that agent with `AGENT_TARGET_OCCUPIED`.
 - `bowerloom status` no longer reports a team's `agents/` files as edited.
-- Codex agents are not projected in this beta.
-- Known limit: `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
 - An agent that sets `bypassPermissions`, `hooks`, or `mcpServers` is held until `apply --allow-agent <role>:<hash>` names the hash of its file.
 - Hidden files and editor backups in `agents/` are ignored. An agent in a team that is not registered is held with `AGENT_TEAM_UNREGISTERED`.
-- A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
-- A project can be marked by a file named `bowerloom.json`. `~/.bowerloom` is now your store, and it no longer stops project discovery. `bowerloom store status` shows it. `bowerloom status --json` has a new format, `bowerloom/project-status/v1beta2`.
-- `--global` on `team create`, `skill create`, `prompt create`, `skills add`, `skills check`, and `ls` works on your store, `~/.bowerloom`. `ls` shows where each item comes from. `ls --json` has a new format, `bowerloom/ls/v1beta2`. The store holds up to 256 skills and a project up to 128.
+- The package has a second command, `bowerloom-guard`. Claude Code runs it as the read guard.
+
+**Install**
+
 - Installing from a downloaded .tgz file now gives the same dependency versions as the tested build. The file carries its dependencies, so it installs with no network and no npm cache.
-- `bowerloom store migrate` copies skills, prompts, and teams from a project to your store and lists them in `bowerloom.json`. It deletes nothing. `bowerloom receipt clean` removes the records of items whose files you deleted.
-- A store in a private GitHub repository works after you set `BOWERLOOM_GITHUB_TOKEN`. Bowerloom sends the token only to `api.github.com`, for that repository. It never stores or prints the token. A token that an organization's single sign-on has not authorized refuses with `GITHUB_TOKEN_SSO_REQUIRED`.
-- `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. After a 404 on the commit, one extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
-- The store keeps a `.gitignore` that leaves out `folders/` and other files of this machine, so `git add -A` in a store you push does not publish registered-folder records or grants. Each machine runs `bowerloom folder add` itself. Bowerloom adds the lines on every store write and keeps every line you added. `bowerloom store status` warns when the lines are missing, when git already tracks something under `folders/`, and when it cannot tell, for example with a split index.
-- `bowerloom cache list` shows the skill bytes that Bowerloom keeps on your machine. `bowerloom cache prune` deletes them after you approve a plan. Bowerloom never deletes the cache by itself.
+
+**Changed formats**
+
+- Files: `bowerloom/project/v1beta1`, `bowerloom/lock/v1beta1`, `bowerloom/store/v1beta1`, `bowerloom/context-slice/v1beta1`, `bowerloom/store-folder/v1beta1`, and `bowerloom/store-folder-grant/v1beta1`.
+- Reports: `bowerloom/store-status/v1beta1`, `bowerloom/ls/v1beta2`, `bowerloom/project-status/v1beta2`, `bowerloom/skills-manifest-check/v1beta2`, and `bowerloom/lock-verify/v1beta1`.
+- More reports: `bowerloom/cache-list/v1beta1`, `bowerloom/folder-list/v1beta1`, `bowerloom/context-slice-show/v1beta1`, and `bowerloom/context-measure/v1beta1`.
+- Plans and results of skills and apply: `bowerloom/skills-manifest-change/v1beta2`, `bowerloom/skills-sync-plan/v1beta2`, `bowerloom/skills-sync-result/v1beta2`, `bowerloom/project-apply-plan/v1beta2`, and `bowerloom/project-apply-result/v1beta2`. Plan items name their source.
+- Plans and results of create, use, and the lock: `bowerloom/authoring-plan/v1beta2`, `bowerloom/config-change-plan/v1beta1`, `bowerloom/config-change-result/v1beta1`, `bowerloom/lock-update-plan/v1beta1`, and `bowerloom/lock-update-result/v1beta1`.
+- Plans and results of adopt and migrate: `bowerloom/team-adopt-plan/v1beta1`, `bowerloom/team-adopt-result/v1beta1`, `bowerloom/store-migrate-plan/v1beta1`, and `bowerloom/store-migrate-result/v1beta1`.
+- Plans and results of clean and prune: `bowerloom/receipt-clean-plan/v1beta1`, `bowerloom/receipt-clean-result/v1beta1`, `bowerloom/cache-prune-plan/v1beta1`, and `bowerloom/cache-prune-result/v1beta1`.
+- Plans of registered folders: `bowerloom/folder-add-plan/v1beta1`, `bowerloom/folder-allow-plan/v1beta1`, `bowerloom/folder-deny-plan/v1beta1`, and `bowerloom/folder-remove-plan/v1beta1`.
+- Scripts that read `format` must accept the new names.
+- A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
+- A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
+
+**Known limits**
+
+- The read guard needs Claude Code 2.1.295 or later. Before 2.1.295, a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. It runs only in a folder that you trusted, so an untrusted folder skips it.
+- Codex gets neither agents nor context slices in this beta.
+- `bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.
+- The store must be on github.com in this beta.
+- A store team projects no agents. Moving a team with agents to the store stops the projection of its agents.
+- Store items hold only text files within the size limits, so a store item cannot share a script.
+- A lock names at most 8 store remotes.
+- A store whose git uses reftable or SHA-256, or whose `.git` files the group can write, counts as unreadable.
+- Bowerloom reads the store's local git refs and never runs `git fetch`.
+- A rewritten or deleted store branch, or a store repository made private, breaks your teammates' frozen installs. `LOCK_COMMIT_GONE` names the first case.
+- `cache prune --unreferenced` checks only this project and your store.
+- This beta was tested on macOS with Node 24.11.0 only, the delete steps of `cache prune` included.
 
 ## 0.7.0-beta.2
 

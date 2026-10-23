@@ -7,7 +7,7 @@ order: 25
 
 Start with the installed version, actual output, and intended task. Preserve uncertain state before choosing another operation.
 
-Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads skills only from public sources. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
+Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. This beta reads pinned skills only from public sources. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains. See the [beta limits](/docs/guides/add-skills/#current-beta-limits).
 
 ## Ask your agent
 
@@ -105,6 +105,30 @@ Bowerloom keeps the skill bytes it downloads in a cache on this machine, and it 
 3. Read the plan, then run the same command with `--approve <revision>`.
 
 If a fetch stopped part way, `bowerloom cache prune --partial` deletes what it left. If `cache prune` cannot delete a folder, run the `chmod` line that it prints, then run it again. If `bowerloom skills sync` refuses with `STALE_APPROVAL` because the cached pin of a skill was deleted after the fetch, run `bowerloom skills sync` again. It fetches the pin again. [CLI reference](/docs/cli/#cache) lists every selector.
+
+## My teammate cannot install my store items
+
+Your teammate runs `bowerloom apply --frozen`, and it refuses. Find the code, then take its step:
+
+- `LOCK_MISSING` or `LOCK_CONFIG_MISMATCH`: the author runs `bowerloom lock update` and commits the lock.
+- `STORE_REMOTE_PRIVATE`: the store repository is private. See [My store is private](#my-store-is-private).
+- `LOCK_COMMIT_GONE`: the locked commit is gone from GitHub. The author runs `bowerloom lock update`, commits `bowerloom.lock.json`, and pushes. Then the teammate pulls the project.
+- `STORE_ITEM_GONE_AT_COMMIT` or `LOCK_HASH_MISMATCH`: run `bowerloom lock verify`. Then ask the author to run `bowerloom lock update`.
+- `GITHUB_RATE_LIMITED`: wait up to an hour, or set `BOWERLOOM_GITHUB_TOKEN`.
+- A plain `bowerloom apply` holds an item with `SKILLS_OFFLINE`: run `bowerloom apply --frozen`.
+
+[What a teammate does](/docs/guides/item-sources/#teammate-steps) gives every step.
+
+## A clone refuses PROJECT_UNSAFE or PROJECT_FOLDER_UNSAFE
+
+A clone made under `umask 002` has folders and files that the group writes in. Bowerloom refuses them, one code at a time, in this order:
+
+1. `PROJECT_UNSAFE` for the `.bowerloom` folder.
+2. `CONFIG_UNSAFE` for `bowerloom.json`.
+3. `PROJECT_FOLDER_UNSAFE` for the project folder.
+4. `LOCK_UNSAFE` for `bowerloom.lock.json`. `bowerloom status` shows it as `Lock: invalid (LOCK_UNSAFE)`, and `bowerloom apply --frozen` refuses with it.
+
+To fix a clone you have, run `chmod -R go-w .` in the project folder. Git records no write bits, so the change shows no diff. For the next clone, run `umask 022` before `git clone`. See [Before you run](/docs/guides/item-sources/#check-modes).
 
 ## Existing setup
 
