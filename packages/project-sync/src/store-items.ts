@@ -12,7 +12,8 @@ import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve
 import { notShareable } from '../../project-config/src/refusal.js';
 
 export interface ItemRows { rows: AuthoredPin['files']; hash: string; files: { path: string; bytes: Buffer }[] }
-const file = (): never => { throw notShareable('file'); };
+// Round 1 of the reviews of PR 101, M3: `at` is the store path of the file, which the Next: line names when it is plain.
+const file = (at?: string): never => { throw notShareable('file', at); };
 const size = (): never => { throw notShareable('size'); };
 
 /**
@@ -24,13 +25,14 @@ const size = (): never => { throw notShareable('size'); };
 export function localItemRows(storeDir: string, kind: AuthoredKind, id: string): ItemRows {
   const files: { path: string; bytes: Buffer }[] = [];
   let total = 0;
+  const storePath = (rel: string): string => kind === 'prompt' ? authoredPath(kind, id) : `${authoredPath(kind, id)}/${rel}`;
   const take = (abs: string, rel: string): void => {
     let mode: number;
-    try { const s = lstatSync(abs); if (s.isSymbolicLink() || !s.isFile()) file(); mode = s.mode; } catch (error) { if ((error as { code?: unknown }).code === 'STORE_ITEM_NOT_SHAREABLE') throw error; return file(); }
+    try { const s = lstatSync(abs); if (s.isSymbolicLink() || !s.isFile()) file(storePath(rel)); mode = s.mode; } catch (error) { if ((error as { code?: unknown }).code === 'STORE_ITEM_NOT_SHAREABLE') throw error; return file(); }
     let bytes: Buffer;
     try { bytes = readGuarded(abs, LIMITS.fileBytes); } catch { return file(); }
     const fault = storeFileFault(rel, bytes, mode);
-    if (fault === 'large') size(); else if (fault !== null) file();
+    if (fault === 'large') size(); else if (fault !== null) file(storePath(rel));
     if (files.length >= STORE_FILE_LIMITS.files || (total += bytes.length) > STORE_FILE_LIMITS.totalBytes) size();
     files.push({ path: rel, bytes });
   };
@@ -49,7 +51,7 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string):
       if (names.length === 0) file();
       for (const name of names) {
         const childAbs = join(abs, name), childRel = rel ? `${rel}/${name}` : name;
-        let isFolder: boolean; try { const s = lstatSync(childAbs); if (s.isSymbolicLink()) file(); isFolder = s.isDirectory(); } catch (error) { if ((error as { code?: unknown }).code === 'STORE_ITEM_NOT_SHAREABLE') throw error; return file(); }
+        let isFolder: boolean; try { const s = lstatSync(childAbs); if (s.isSymbolicLink()) file(storePath(childRel)); isFolder = s.isDirectory(); } catch (error) { if ((error as { code?: unknown }).code === 'STORE_ITEM_NOT_SHAREABLE') throw error; return file(); }
         if (isFolder) walk(childAbs, childRel, depth + 1); else take(childAbs, childRel);
       }
     };

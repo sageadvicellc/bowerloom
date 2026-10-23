@@ -5,7 +5,9 @@ import './support/isolate-home.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { world, run, mustApprove } from './support/config-cli.js';
+import { world, run, mustApprove, git } from './support/config-cli.js';
+import { chmodSync } from 'node:fs';
+import { join } from 'node:path';
 import { configExample, lockExample, lockValue, writtenRows } from './support/docs-examples.js';
 import { CONFIG_REFUSAL_CODES, NOT_SHAREABLE, lockAgrees, notShareable, parseConfig, parseLock, unknownSharedNote } from '../packages/project-config/src/index.js';
 import type { NotShareableCause } from '../packages/project-config/src/index.js';
@@ -119,6 +121,37 @@ test('E7. the store status fix commands on the page are the ones the CLI prints'
       assert.ok(store.includes(`'${code}'`) || store.includes(`\`${code}\``), `store.ts: ${code}`);
     }
   }
+  // Round 1 of the reviews of PR 101, E7: each other git state, through the built CLI. The printed fix lines, with the
+  // branch name as <branch>, are a text fence of the page. A detached HEAD and no-origin print <branch> themselves.
+  const fixLines = (label: string): string[] => {
+    const r = run(w.home, ['store', 'status'], w.env), lines = r.stdout.trimEnd().split('\n');
+    assert.equal(r.status, 0, `${label}: ${r.stderr}`);
+    assert.ok(lines.includes('  A private repository needs BOWERLOOM_GITHUB_TOKEN on each machine that fetches.'), `${label}: the token line`);
+    const at = lines.indexOf('  To fix this, run these commands yourself:');
+    if (at < 0) return [];
+    const out: string[] = [];
+    for (const line of lines.slice(at + 1)) { if (!line.startsWith('    ')) break; out.push(line.slice(4)); }
+    return out;
+  };
+  git(w.store, ['init', '-q', '.'], w); git(w.store, ['add', '-A'], w); git(w.store, ['commit', '-q', '-m', 'Store'], w);
+  const states: [string, () => void, string[]][] = [
+    ['no-origin', () => {}, cases[0]!],
+    ['no-origin, detached HEAD', () => git(w.store, ['checkout', '-q', '--detach'], w), cases[0]!],
+    ['unsupported-remote', () => { git(w.store, ['checkout', '-q', 'main'], w); git(w.store, ['remote', 'add', 'origin', 'https://gitlab.com/o/store.git'], w); }, cases[1]!],
+    ['unpushed', () => git(w.store, ['remote', 'set-url', 'origin', 'https://github.com/o/store.git'], w), cases[2]!],
+    ['unpushed, detached HEAD', () => git(w.store, ['checkout', '-q', '--detach'], w), cases[2]!],
+  ];
+  for (const [label, step, want] of states) {
+    step();
+    const got = fixLines(label).map(l => l.replace(/ main$/, ' <branch>'));
+    assert.deepEqual(got, want, label);
+    assert.ok(blocks.includes(got.join('\n')), `${label}: a text fence holds the printed lines`);
+  }
+  assert.ok(fixLines('unpushed, detached HEAD').includes('git push -u origin <branch>'), 'a detached HEAD prints <branch>');
+  // unreadable: a .git file that the group can write. store status prints no fix commands.
+  git(w.store, ['checkout', '-q', 'main'], w);
+  chmodSync(join(w.store, '.git', 'config'), 0o664);
+  assert.deepEqual(fixLines('unreadable'), [], 'unreadable prints no commands');
 });
 test('E8. STORE_ITEM_NOT_SHAREABLE: each cause, the rendered refusal, and the honest-shared prefix', () => {
   const text = page();
@@ -166,11 +199,17 @@ test('E10. each flag the page gives for a command is in the help of that command
   }
   assert.deepEqual(bad, []); assert.ok(checked >= 5, `${checked} flags checked`);
 });
-test('E11. request counts', () => {
-  assert.equal(requestCount([{ local: { distinct: 1 } }]), 5);
-  assert.equal(4 + STORE_FILE_LIMITS.files, 130);
-  assert.equal(GITHUB_REQUEST_LIMIT, 1000); assert.equal(GITHUB_REQUEST_MAX, 5000);
-  for (const s of ['A prompt takes 5.', 'One item takes at most 130.', '1000', '5000']) has(page(), s);
+test('E11. request counts, tied to the code', () => {
+  // "A skill or team takes 4 requests plus 1 for each file with different content": requestCount is 4 plus the distinct files.
+  for (const distinct of [1, 2, 7, STORE_FILE_LIMITS.files]) assert.equal(requestCount([{ local: { distinct } }]), 4 + distinct, `${distinct} files`);
+  assert.equal(requestCount([{ local: null }]), 0, 'a pin takes no request');
+  has(page(), 'A skill or team takes 4 requests plus 1 for each file with different content.');
+  // A prompt has one file.
+  has(page(), `A prompt takes ${requestCount([{ local: { distinct: 1 } }])}.`);
+  has(page(), `One item takes at most ${requestCount([{ local: { distinct: STORE_FILE_LIMITS.files } }])}.`);
+  // The budget of one run, from the constants of store-git.ts.
+  has(page(), `\`--max-github-requests <n>\`, a whole number from 1 to ${GITHUB_REQUEST_MAX}. The default is ${GITHUB_REQUEST_LIMIT}.`);
+  has(page(), `\`use\`, \`lock update\`, and \`store migrate\` have a fixed budget of ${GITHUB_REQUEST_LIMIT}.`);
 });
 test('E12. every new code of the four exported code lists has an errors.md row', () => {
   const baseline = new Set(JSON.parse(source('apps/docs/tools/beta2-refusal-codes.json')) as string[]), errors = source('apps/docs/src/content/docs/reference/errors.md');

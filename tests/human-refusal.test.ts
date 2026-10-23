@@ -34,12 +34,13 @@ const M1: ReadonlyArray<readonly [string, string, string]> = [
   ['STORE_UNSAFE', 'Bowerloom will not trust a store that other people or links can change.', 'ls -ld ~/.bowerloom'],
   ['STORE_UNREADABLE', 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', 'ls -ld ~ ~/.bowerloom'],
   ['STORE_IN_CLOUD_FOLDER', 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.'],
-  ['STORE_NOT_A_PROJECT', 'Run this command in a project folder outside ~/.bowerloom.', 'cd <project-folder>'],
+  // Round 1 of the reviews of PR 101: the words of the errors.md row.
+  ['STORE_NOT_A_PROJECT', 'The store holds definitions only, so a folder inside it cannot be a project.', 'Run the command in a project folder outside ~/.bowerloom.'],
   // Spec 04, store writes.
   ['STORE_STATE_NESTED', 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.'],
   ['STORE_LOCKED', 'Two commands must not change the store at the same time, so nothing was changed.', 'When the other command is done, run this one again.'],
   ['MANIFEST_LIMIT', 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', 'bowerloom skills check'],
-  ['STORE_WRITE_FAILED', 'The disk refused the write. The message names the system error.', 'df -h ~ && ls -ld ~/.bowerloom'],
+  ['STORE_WRITE_FAILED', 'Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as ENOSPC.', 'df -h ~ && ls -ld ~/.bowerloom'],
   ['CONFIG_INVALID', 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', 'git diff bowerloom.json'],
   ['CONFIG_UNSAFE', 'Bowerloom will not trust a bowerloom.json that other people or links can change.', 'ls -l bowerloom.json'],
   ['PROJECT_FOLDER_UNSAFE', 'Bowerloom will not trust a project folder that other people can change.', 'ls -ld .'],
@@ -228,7 +229,8 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   for (const [code, sentence] of rows) assert.ok(page.split('\n').some(l => l.startsWith(`| \`${code}\` |`) && l.replace(/`/g, '').includes(sentence.replace(/`/g, ''))), code);
   // Review F6 and F5: the request-failed next step names the token, and the STALE_APPROVAL row says a token change stales a plan.
   // Round 3: a pinned third-party skill never sends the token, so the step names the token for the store repository only.
-  assert.match(renderRefusal('GITHUB_REQUEST_FAILED', 'm.'), /\nNext: Run the command again later\. If the status is 401 or 403, make sure that the store repository is public\. If this is your store repository, set BOWERLOOM_GITHUB_TOKEN\.\n$/);
+  // Round 1 of the reviews of PR 101, B13: the step says to check access, and names the token for a private store.
+  assert.match(renderRefusal('GITHUB_REQUEST_FAILED', 'm.'), /\nNext: Run the command again later\. If the status is 401 or 403, check that you can read the store repository\. For a private store, set BOWERLOOM_GITHUB_TOKEN\.\n$/);
   // Round 3: GITHUB_RATE_LIMITED also covers a 403 whose message names a rate limit, in its message, its words, and its row.
   const { manifestRefusal } = await import('../packages/skill-manifest/src/refusal.js');
   assert.equal(manifestRefusal('GITHUB_RATE_LIMITED').message, 'api.github.com answered 429, or 403 with no requests left or with a message that names a rate limit.');
@@ -236,7 +238,7 @@ test('spec 07: GITHUB_TOKEN_INVALID, STORE_REMOTE_AUTH_FAILED, and the new STORE
   assert.match(renderRefusal('GITHUB_RATE_LIMITED', 'm.'), new RegExp(`^Refused \\(GITHUB_RATE_LIMITED\\): m\\.\\n${rateSentence.replace(/[.,]/g, '\\$&')}\\n`));
   assert.ok(page.split('\n').some(l => l.startsWith('| `GITHUB_RATE_LIMITED` |') && l.includes(rateSentence)));
   assert.match(page, /^\| `STALE_APPROVAL` \|.*BOWERLOOM_GITHUB_TOKEN.*\|$/m);
-  assert.match(page, /^\| `GITHUB_REQUEST_FAILED` \|.*If this is your store repository, set `BOWERLOOM_GITHUB_TOKEN`\. \|$/m);
+  assert.match(page, /^\| `GITHUB_REQUEST_FAILED` \|.*For a private store, set `BOWERLOOM_GITHUB_TOKEN`\. \|$/m);
   assert.match(page, /^\| `STORE_REMOTE_PRIVATE` \|.*Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public\. \|$/m);
   // The JSON envelope of a pipe keeps the fixed message of each code.
   assert.equal(reportFailure(new DefinitionError('GITHUB_TOKEN_INVALID', rows[0]![1]), false).text, `${JSON.stringify({ error: { code: 'GITHUB_TOKEN_INVALID', message: rows[0]![1] } })}\n`);

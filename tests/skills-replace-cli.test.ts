@@ -181,8 +181,9 @@ test('help skills names --replace, and the plain words of SKILLS_ADD_EXISTS poin
   assert.match(topic.stdout, /^ {2}bowerloom skills add github:<owner>\/<repo>@<40-char-commit>:<path> \[--id <id>\] \[--team <team>\]\.\.\. \[--replace\] \[--global\] \[--approve <revision>\] \[--json\]$/m);
   assert.match(topic.stdout, /^--replace moves an existing id to another version or commit of the same package or repository\./m);
   const words = renderRefusal('SKILLS_ADD_EXISTS', 'message');
-  assert.match(words, /\nNext: bowerloom skills add <source> --id <id> --replace\n$/);
-  assert.match(renderRefusal('SKILLS_ADD_SOURCE_CHANGED', 'message'), /\nNext: bowerloom skills check\n$/);
+  // Round 1 of the reviews of PR 101: the words of the errors.md rows.
+  assert.match(words, /\nNext: To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace\.\n$/);
+  assert.match(renderRefusal('SKILLS_ADD_SOURCE_CHANGED', 'message'), /\nNext: Add the other source under a new id\.\n$/);
   assert.match(renderRefusal('SKILLS_ADD_REPLACE_MISSING', 'message'), /\nNext: bowerloom skills check\n$/);
   assert.deepEqual(deny.calls(), []);
 });

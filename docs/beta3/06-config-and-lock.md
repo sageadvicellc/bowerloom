@@ -977,6 +977,15 @@ The `sentence` of each new code in `REFUSALS`:
 - `GITHUB_RATE_LIMITED`: `GitHub allows about 60 requests an hour without a token and about 5,000 with one.`
 - `ITEM_REVIEW_REQUIRED`: `Bowerloom shows what an item can do before it installs it.`
 
+Amended by #101 (round 1 of its reviews, Hanna's choice C on #97: an errors.md row uses the words the terminal prints). The docs words were kept and the CLI changed to match them:
+
+- `STORE_REMOTE_PRIVATE`: `GitHub does not show this repository without a token. It is private, or it does not exist.`
+- `CONFIG_WRITE_UNCONFIRMED`: `bowerloom.json was written, but it changed again before Bowerloom read it back.`
+- `TEAM_NOT_SELECTED`: `up installs only the teams that bowerloom.json lists.` Its next step is `bowerloom use team <id>, or add --project for a team this project defines`.
+- `LOCK_WRITE_UNCONFIRMED`: `bowerloom.lock.json was written, but it changed again before Bowerloom read it back.`
+- `SKILLS_OFFLINE` (an existing code): `A pin or a lock item needs a fetch, and this run does not fetch: --offline was set, or plain apply ran.` Its next step is `Run bowerloom skills sync without --offline, or bowerloom apply --frozen.`
+- The cause `file` of `STORE_ITEM_NOT_SHAREABLE` carries its own next step, which names the file when its path is plain: `Delete ~/.bowerloom/<path>, or make it a file that a lock records. Then run the command again.`
+
 Existing codes keep their meaning. These are the ones used here: `PROJECT_NOT_FOUND`, `TEAM_EXISTS`, `TEAM_ID_RESERVED`, `AUTHORING_PENDING`, `STALE_APPROVAL`, `USAGE`, `SKILLS_SYNC_CONTENT_MISMATCH`, `MANIFEST_NOT_FOUND`, and `PROJECT_BRIEF_INVALID`. The `STORE_*` and `CONFIG_*` codes of spec 03 keep their meaning too.
 
 ## 6. Where to change

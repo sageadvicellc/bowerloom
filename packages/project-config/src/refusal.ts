@@ -72,7 +72,11 @@ export function configRefusal(code: ConfigRefusalCode, message?: string): Defini
  */
 export function honestShared(error: unknown, what: string): unknown {
   if (!(error instanceof DefinitionError) || !own.has(error) || !error.message.startsWith('This project is shared')) return error;
-  const honest = new DefinitionError(error.code, `Bowerloom could not read ${what} and treats this project as shared${error.message.slice('This project is shared'.length)}`); own.add(honest); return honest;
+  const honest = new DefinitionError(error.code, `Bowerloom could not read ${what} and treats this project as shared${error.message.slice('This project is shared'.length)}`); own.add(honest);
+  // Round 1 of the reviews of PR 101, M3: the error's own next step stays with it.
+  const next = (error as { next?: unknown }).next;
+  if (typeof next === 'string') Object.defineProperty(honest, 'next', { value: next, enumerable: false });
+  return honest;
 }
 /** Spec 08, section 5: the reason MIGRATE_ITEM_UNSUPPORTED adds, one per fault of `localItemRows`. */
 export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.' });
@@ -90,9 +94,28 @@ export function migrateTeamMissing(team: string): DefinitionError {
 export function teamListedFromProject(id: string): DefinitionError {
   const error = new DefinitionError('CONFIG_ITEM_NOT_SELECTED', ID.test(id) && id.length <= 64 ? `bowerloom.json already lists team ${id} from the project.` : 'bowerloom.json already lists that team from the project.'); own.add(error); return error;
 }
-/** STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. */
-export function notShareable(cause: NotShareableCause): DefinitionError {
-  const error = new DefinitionError('STORE_ITEM_NOT_SHAREABLE', `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} ${NOT_SHAREABLE[cause]}`); own.add(error); return error;
+/**
+ * Round 1 of the reviews of PR 101, M3: the store path of the file a lock cannot record, as the Next: line names it. Only
+ * a plain path inside a store area is named, so nothing else reaches a terminal: no control character, no space, no `..`.
+ */
+const STORE_FILE = /^(?:skills|prompts|teams)(?:\/[A-Za-z0-9._-]+)+$/;
+const namedFile = (file: string | undefined): string | null =>
+  file !== undefined && file.length <= 256 && STORE_FILE.test(file) && !file.split('/').some(part => /^\.+$/.test(part)) ? file : null;
+/** The Next: line of the cause `file`. It names the file when `namedFile` allows it. */
+export function fileNext(file?: string): string {
+  const named = namedFile(file);
+  return named !== null
+    ? `Delete ~/.bowerloom/${named}, or make it a file that a lock records. Then run the command again.`
+    : 'Delete the file in ~/.bowerloom that a lock cannot record, or fix it. bowerloom help store lists the files a lock records. Then run the command again.';
+}
+/**
+ * STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. The cause `file` carries its own next step (M3), because the
+ * next step of the code, to give the store a remote, does not help: `file` is the store path of the file, when known.
+ */
+export function notShareable(cause: NotShareableCause, file?: string): DefinitionError {
+  const error = new DefinitionError('STORE_ITEM_NOT_SHAREABLE', `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} ${NOT_SHAREABLE[cause]}`); own.add(error);
+  if (cause === 'file') Object.defineProperty(error, 'next', { value: fileNext(file), enumerable: false });
+  return error;
 }
 /** LOCK_CONFIG_MISMATCH naming up to 8 `kind id` pairs, then `and <n> more`. Each pair is checked, so no other text gets in. */
 export function lockMismatch(pairs: readonly string[]): DefinitionError {

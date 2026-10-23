@@ -120,7 +120,7 @@ Required facts:
 4. The subsection `### The sharing model in five lines`, a numbered list with exactly these five lines:
    1. `Your store, ~/.bowerloom, stays on your machine. No teammate reads it.` (Write `~/.bowerloom` in inline code.)
    2. `A shared project has bowerloom.lock.json, or sits in a git repository with a remote named origin.` (File names and `origin` in inline code.)
-   3. `In a shared project, the lock records each store item. A teammate fetches each item you wrote from the GitHub copy of your store.`
+   3. `In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.` (Amended by #101: one name, the store repository.)
    4. `So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.`
 
    A lock pin comes from npm or from its own GitHub repository, never from your store. The proof reads the store repository only for written items (`packages/project-sync/src/change.ts:180-182`). So a store that holds only pins needs no remote.
@@ -212,6 +212,7 @@ Required facts:
    - `CONFIG_UNSAFE` for a `bowerloom.json` that the group or others can write (`discovery.ts:166`).
    - `PROJECT_FOLDER_UNSAFE` for a project folder that is not yours, or that the group or others can write (`discovery.ts:234`, `:261`).
    - `LOCK_UNSAFE` for a `bowerloom.lock.json` that the group or others can write (`packages/project-config/src/lock.ts:145`).
+   Amended by #101, from the terminal: `bowerloom apply --frozen` refuses in the order `PROJECT_UNSAFE`, `CONFIG_UNSAFE`, `PROJECT_FOLDER_UNSAFE`, `LOCK_UNSAFE`, then `MANIFEST_UNSAFE` when the project has `.bowerloom/skills.json`, then `AUTHORING_UNSAFE_PATH` for a folder inside `.bowerloom`. Other commands check the same things in another order. `chmod -R go-w .` clears every one (`tests/item-sources-cli.test.ts`).
    The fix, in a `text` fence: run `umask 022` before `git clone`. In a clone you already have, run `chmod -R go-w .` in the project folder. Git records no write bits, so the change shows no diff.
 3. The steps in a `text` fence, in this order: `git clone <project>`, `cd <project>`, `bowerloom apply --frozen`, read the plan, then `bowerloom apply --frozen --approve <revision>`.
 4. A written store skill that this machine has not fetched shows, in a `text` fence, `install skill: <places> (not on this machine yet; Bowerloom shows what it can do after the fetch)`. Some fetched skills and prompts set `allowed-tools`, register hooks, or run shell lines. If the approved plan did not show that, apply installs nothing of such an item. It holds the item with `ITEM_REVIEW_REQUIRED` (`packages/project-sync/src/notices.ts:43-56`). The `Next:` line names the command that shows the item. That is `bowerloom apply --frozen`, `bowerloom skills sync`, or `bowerloom skills sync --frozen`, in the form `Run <command> again to review it.` (`packages/project-sync/src/apply.ts:64`, `:428`, `apply-project.ts:368`, `:420`).
@@ -400,7 +401,7 @@ Required facts:
 
 A table with the columns code, what it means, and what to do. One row for each code in the list of 5.1. Group the rows under bold labels. Each label is the name of a group in 5.1, such as **Store items**. The labels follow the order of 5.1, and each code sits under the label of its group. Link to `/docs/reference/errors/` for the whole list.
 
-Copy the last two cells of each row from the first row for that code in the merged `reference/errors.md`. The reviews rewrote many of those sentences, so do not copy the cells of the frozen specs. `STALE_APPROVAL` has two rows in `errors.md`. Use the first. Test D6 checks each cell.
+Copy the last two cells of each row from the first row for that code in the merged `reference/errors.md`. The reviews rewrote many of those sentences, so do not copy the cells of the frozen specs. `STALE_APPROVAL` has two rows in `errors.md`. Use the first. Test D6 checks each cell. Amended by #101: use the row of the project tables, which holds the words the terminal prints. Test D6 reads the rows by the table they sit in.
 
 #### Section 14. Words used on this page
 

@@ -1,5 +1,6 @@
-// Spec 10 of beta.3, tests D1 to D29: the page "Where your items come from" and the docs that beta.3 made untrue.
-// It reads files only. The refusal codes and the format strings come from the source, never from a list typed here.
+// Spec 10 of beta.3, tests D1 to D31: the page "Where your items come from" and the docs that beta.3 made untrue.
+// It reads files only. The refusal codes of errors.md, their words, the lock states, and the format strings come from the
+// source. The page list of spec 5.1 (PAGE_GROUPS) is typed here, and D4 checks that each of its codes is a REFUSALS key.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
@@ -30,7 +31,7 @@ export function newCodes(){
 export const PAGE_GROUPS=[
   ['Store',['STORE_NOT_FOUND','STORE_INVALID','STORE_UNSAFE','STORE_IN_CLOUD_FOLDER','STORE_UNREADABLE','STORE_LOCKED','STORE_STATE_NESTED','STORE_NOT_A_PROJECT','STORE_WRITE_FAILED']],
   ['Store items',['STORE_ITEM_NOT_FOUND','STORE_ITEM_MISSING','STORE_ITEM_NOT_SHAREABLE','STORE_ITEM_GONE_AT_COMMIT','SKILLS_ADD_EXISTS','SKILLS_ADD_SOURCE_CHANGED']],
-  ['GitHub and the store remote',['STORE_REMOTE_PRIVATE','STORE_REMOTE_AUTH_FAILED','GITHUB_TOKEN_INVALID','GITHUB_TOKEN_SSO_REQUIRED','GITHUB_RATE_LIMITED','GITHUB_REQUEST_FAILED','GITHUB_REQUEST_BUDGET']],
+  ['GitHub and the store repository',['STORE_REMOTE_PRIVATE','STORE_REMOTE_AUTH_FAILED','GITHUB_TOKEN_INVALID','GITHUB_TOKEN_SSO_REQUIRED','GITHUB_RATE_LIMITED','GITHUB_REQUEST_FAILED','GITHUB_REQUEST_BUDGET']],
   ['Project and config',['PROJECT_FOLDER_UNSAFE','PROJECT_UNSAFE','CONFIG_INVALID','CONFIG_UNSAFE','CONFIG_UNREADABLE','CONFIG_LIMIT','CONFIG_DUPLICATE_ID']],
   ['Config items',['CONFIG_ITEM_SELECTED','CONFIG_ITEM_NOT_SELECTED','CONFIG_ITEM_MISSING','CONFIG_WRITE_UNCONFIRMED','TEAM_NOT_SELECTED']],
   ['Lock',['LOCK_MISSING','LOCK_INVALID','LOCK_UNSAFE','LOCK_LIMIT','LOCK_CONFIG_MISSING','LOCK_CONFIG_MISMATCH','LOCK_WRITE_UNCONFIRMED','LOCK_HASH_MISMATCH','LOCK_STORE_NOT_PUSHED','LOCK_COMMIT_UNREACHABLE','LOCK_COMMIT_GONE']],
@@ -86,14 +87,46 @@ function cells(row){
   parts.push(cur);
   return parts.slice(1,-1).map(c=>c.trim());
 }
-/** The first errors.md row for each code. */
-function errorRows(){
-  const rows=new Map();
+/** The rows of each errors.md table, keyed by the ## heading it sits under, then by code. */
+function errorTables(){
+  const tables=new Map();let heading=null;
   for(const line of lines(doc('reference/errors.md'))){
+    if(line.startsWith('## ')){heading=line.slice(3);continue;}
     const m=/^\| `([A-Z][A-Z0-9_]+)` \|/.exec(line);
-    if(m&&!rows.has(m[1]))rows.set(m[1],cells(line));
+    if(!m||heading===null)continue;
+    if(!tables.has(heading))tables.set(heading,new Map());
+    const table=tables.get(heading);
+    assert.ok(!table.has(m[1]),`${m[1]} has one row in ## ${heading}`);
+    table.set(m[1],cells(line));
+  }
+  return tables;
+}
+// Round 1 of the reviews of PR 101, M1: the tables of the project commands. The setup table and the plumbing tables
+// below them hold other words for some of the same codes, such as STALE_APPROVAL.
+export const PROJECT_TABLES=['Project and approval refusals','Store and config refusals','Lock refusals','Skills and sync refusals','Context slice refusals'];
+/** The row of each code in the project tables. A code sits in one project table only. */
+function errorRows(){
+  const tables=errorTables(),rows=new Map();
+  for(const heading of PROJECT_TABLES){
+    assert.ok(tables.has(heading),`errors.md holds ## ${heading}`);
+    for(const [code,row] of tables.get(heading)){assert.ok(!rows.has(code),`${code} sits in one project table`);rows.set(code,row);}
   }
   return rows;
+}
+/** The sentence and next step of each code in REFUSALS and GATE_REFUSALS of human.ts, read from the source. */
+function humanWords(){
+  const text=read(join(repo,'apps/cli/src/human.ts')),words=new Map();
+  const init=/^const INIT_NEXT = '([^']+)';$/m.exec(text);
+  assert.ok(init,'INIT_NEXT in human.ts');
+  const literal=String.raw`('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|INIT_NEXT)`;
+  const entry=new RegExp(String.raw`^  ([A-Z][A-Z0-9_]+): \{ sentence: ${literal}, next: ${literal} \},`,'gm');
+  const value=v=>v==='INIT_NEXT'?init[1]:v.slice(1,-1).replace(/\\(.)/g,'$1');
+  for(const name of ['REFUSALS','GATE_REFUSALS']){
+    const start=text.indexOf(`const ${name}`),end=text.indexOf('\n};\n',start);
+    assert.ok(start>=0&&end>start,`${name} in human.ts`);
+    for(const m of text.slice(start,end).matchAll(entry))words.set(m[1],{sentence:value(m[2]),next:value(m[3])});
+  }
+  return words;
 }
 /** Every .md page under the docs content folder. */
 function allPages(dir=docs){
@@ -128,10 +161,14 @@ test('D3. each ### heading of 3.1 sits under its ## parent, with its anchor line
   }
 });
 
-test('D4. every code of 5.1 appears on the page inside backticks',()=>{
+test('D4. every code of 5.1 appears on the page inside backticks, and is a REFUSALS key of human.ts',()=>{
   const text=page();
   const missing=pageCodes.filter(code=>!text.includes(`\`${code}\``));
   assert.deepEqual(missing,[]);
+  const all=lines(read(join(repo,'apps/cli/src/human.ts')));
+  const start=all.findIndex(l=>l.startsWith('const REFUSALS')),end=all.findIndex(l=>l.startsWith('const GATE_REFUSALS'));
+  const keys=new Set(all.slice(start,end).map(l=>CODE_LINE.exec(l)?.[1]).filter(Boolean));
+  assert.deepEqual(pageCodes.filter(code=>!keys.has(code)),[]);
 });
 
 test('D5. every new refusal code has a row in errors.md',()=>{
@@ -332,7 +369,8 @@ test('D27. teams-and-files links the page, and create-items names the store',()=
 const FIVE_LINES=[
   'Your store, ~/.bowerloom, stays on your machine. No teammate reads it.',
   'A shared project has bowerloom.lock.json, or sits in a git repository with a remote named origin.',
-  'In a shared project, the lock records each store item. A teammate fetches each item you wrote from the GitHub copy of your store.',
+  // Round 1 of the reviews of PR 101: one name, the store repository, for the copy of the store on GitHub.
+  'In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.',
   'So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.',
   'Commit bowerloom.json and bowerloom.lock.json. A teammate runs bowerloom apply --frozen.',
 ];
@@ -344,8 +382,47 @@ test('D28. the sharing model in five lines, exactly',()=>{
 
 test('D29. no docs page and not the README names a private path',()=>{
   const forms=['Sage\\ Advice','~/Sage Advice','/Sage Advice/'];
+  // Round 1 of the reviews of PR 101, D29: a home folder or a temporary folder of this machine. `/Users/<name>` is a placeholder.
+  const patterns=[/\/Users\/(?!<)/,/\/private\/var\/folders/,/\/var\/folders/];
   for(const p of [...allPages(),join(repo,'README.md')]){
     const text=read(p);
     for(const form of forms)assert.ok(!text.includes(form),`${relative(repo,p)}: ${form}`);
+    for(const pattern of patterns)assert.doesNotMatch(text,pattern,`${relative(repo,p)}: ${pattern}`);
   }
+});
+
+// Round 1 of the reviews of PR 101, D (Hanna's choice C on #97): an errors.md row uses the words the terminal prints.
+// The meaning cell holds the sentence of human.ts, and the next-step cell holds its next step, backticks aside. A sentence
+// starts with a capital letter in a cell, so the first letter is compared without its case.
+// Each code listed here is not compared, for the reason given.
+const WORDS_EXEMPT=new Map([
+  ['INSPECTION_LIMIT','human.ts has no words for it, so the terminal prints the generic words of an unknown refusal.'],
+  ...['GUARD_OUTSIDE_SLICE','GUARD_SLICE_NOT_INSTALLED','GUARD_ROOT_MISSING','GUARD_PROJECT_MISMATCH','GUARD_INTERNAL_ERROR','GUARD_INPUT_INVALID']
+    .map(code=>[code,'The read guard prints its own reason to Claude Code, never these words.']),
+]);
+const holds=(cell,words)=>{const plain=cell.replaceAll('`','');return plain.includes(words)||plain.includes(words[0].toUpperCase()+words.slice(1));};
+test('D30. each row of the project tables of errors.md holds the sentence and the next step that the terminal prints',()=>{
+  const rows=errorRows(),words=humanWords(),bad=[];
+  assert.ok(rows.size>=140,`${rows.size} rows`);assert.ok(words.size>=170,`${words.size} codes with words`);
+  for(const [code,row] of rows){
+    if(WORDS_EXEMPT.has(code))continue;
+    const w=words.get(code);
+    if(!w){bad.push(`${code}: no words in human.ts`);continue;}
+    if(!holds(row[1],w.sentence))bad.push(`${code} meaning: ${w.sentence}`);
+    if(!holds(row[2],w.next))bad.push(`${code} next: ${w.next}`);
+  }
+  assert.deepEqual(bad,[]);
+  for(const code of WORDS_EXEMPT.keys())assert.ok(rows.has(code),`${code} is exempt and has a row`);
+});
+
+// Round 1 of the reviews of PR 101, B4: the page names the Lock: states of status, and they are those of LockState.
+test('D31. the Lock: states on the page equal the LockState union of resolve.ts',()=>{
+  const m=/^export type LockState = ([^;]+);$/m.exec(read(join(repo,'packages/project-sync/src/resolve.ts')));
+  assert.ok(m,'LockState in resolve.ts');
+  const states=[...m[1].matchAll(/'([a-z-]+)'/g)].map(x=>x[1]).sort();
+  const line=lines(page()).find(l=>l.includes('`Lock:` states:'));
+  assert.ok(line,'the page lists the Lock: states');
+  const named=[...line.slice(line.indexOf('states:')).matchAll(/`([a-z-]+)`/g)].map(x=>x[1]).sort();
+  assert.deepEqual(named,states);
+  assert.ok(line.includes(`one of ${['zero','one','two','three','four','five','six','seven','eight'][states.length]} \`Lock:\` states`),line);
 });

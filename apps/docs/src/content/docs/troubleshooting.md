@@ -121,14 +121,16 @@ Your teammate runs `bowerloom apply --frozen`, and it refuses. Find the code, th
 
 ## A clone refuses PROJECT_UNSAFE or PROJECT_FOLDER_UNSAFE
 
-A clone made under `umask 002` has folders and files that the group writes in. Bowerloom refuses them, one code at a time, in this order:
+A clone made under `umask 002` has folders and files that the group writes in. Bowerloom refuses them, one code at a time. `bowerloom apply --frozen` checks them in this order:
 
 1. `PROJECT_UNSAFE` for the `.bowerloom` folder.
 2. `CONFIG_UNSAFE` for `bowerloom.json`.
 3. `PROJECT_FOLDER_UNSAFE` for the project folder.
 4. `LOCK_UNSAFE` for `bowerloom.lock.json`. `bowerloom status` shows it as `Lock: invalid (LOCK_UNSAFE)`, and `bowerloom apply --frozen` refuses with it.
+5. `MANIFEST_UNSAFE` for `.bowerloom/skills.json`, when the project has that file.
+6. `AUTHORING_UNSAFE_PATH` for a folder inside `.bowerloom`, such as `.bowerloom/teams` or `.bowerloom/skills`.
 
-To fix a clone you have, run `chmod -R go-w .` in the project folder. Git records no write bits, so the change shows no diff. For the next clone, run `umask 022` before `git clone`. See [Before you run](/docs/guides/item-sources/#check-modes).
+Other commands check the same things in another order. To fix a clone you have, run `chmod -R go-w .` in the project folder. It clears every code above. Git records no write bits, so the change shows no diff. For the next clone, run `umask 022` before `git clone`. See [Before you run](/docs/guides/item-sources/#check-modes).
 
 ## Existing setup
 
