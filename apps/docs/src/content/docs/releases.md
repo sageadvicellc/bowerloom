@@ -41,13 +41,14 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `apply --frozen` and `skills sync --frozen` install only what the lock records, as `npm ci` does.
 - A store in a private GitHub repository works after you set `BOWERLOOM_GITHUB_TOKEN`. Bowerloom sends the token only to `api.github.com`, for that repository. It never stores or prints the token. A token that an organization's single sign-on has not authorized refuses with `GITHUB_TOKEN_SSO_REQUIRED`.
 - A project is shared in two cases. It has `bowerloom.lock.json`, or its git repository has a remote named `origin`. If Bowerloom cannot read one of those files, it treats the project as shared and says so.
-- `apply` and `skills sync` take `--max-github-requests <n>`, up to 5000. One run makes at most 1000 GitHub requests by default. A larger run refuses `GITHUB_REQUEST_BUDGET`.
-- `use`, `lock update`, and `store migrate` take `--commit <sha>` to record a chosen pushed commit of the store remote.
+- `apply`, `skills sync`, and `use` take `--max-github-requests <n>`, up to 5000. One run makes at most 1000 GitHub requests by default. A larger run refuses `GITHUB_REQUEST_BUDGET`.
+- `use`, `lock update`, and `store migrate` take `--commit <sha>` to record a chosen pushed commit of the store repository.
 - Bowerloom holds some store skills and prompts fetched from the lock with `ITEM_REVIEW_REQUIRED`, until a plan shows them. Those are the items that set `allowed-tools`, register hooks, or run shell lines.
 - Plain `apply` never fetches. It holds a lock item that this machine lacks with `SKILLS_OFFLINE`. `skills sync` and `up` fetch lock items into the store cache.
 - `bowerloom team adopt` also takes a store team that `bowerloom.json` does not list yet. One plan copies the team and lists it as a project item, so it works in a shared project whose store is not pushed. Store skills and prompts tagged to the team stay store items, and the plan names them.
 - `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. After a 404 on the commit, one extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
-- A store item that holds a file a lock cannot record, such as `.DS_Store`, refuses `STORE_ITEM_NOT_SHAREABLE` before any network call. Its `Next:` line names the file.
+- A store item that holds a file a lock cannot record, such as `.DS_Store`, refuses `STORE_ITEM_NOT_SHAREABLE` before any network call. Its `Next:` line names the file or folder and its fix. Each other cause of the code has a `Next:` line of its own too.
+- A fetch that fails because the network is not reachable refuses `SKILLS_OFFLINE` with the next step `Connect to the network and run the command again.`
 - The new page [Where your items come from](/docs/guides/item-sources/) explains where each item's bytes come from, what the lock records, and what a teammate needs.
 
 **Agents and context slices**
@@ -92,7 +93,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - The store must be on github.com in this beta.
 - A store team projects no agents. Moving a team with agents to the store stops the projection of its agents.
 - Store items hold only text files within the size limits, so a store item cannot share a script.
-- A lock names at most 8 store remotes.
+- A lock names at most 8 store repositories.
 - A store whose git uses reftable or SHA-256, or whose `.git` files the group can write, counts as unreadable.
 - Bowerloom reads the store's local git refs and never runs `git fetch`.
 - A rewritten or deleted store branch, or a store repository made private, breaks your teammates' frozen installs. `LOCK_COMMIT_GONE` names the first case.

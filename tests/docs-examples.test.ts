@@ -12,7 +12,7 @@ import { configExample, lockExample, lockValue, writtenRows } from './support/do
 import { CONFIG_REFUSAL_CODES, NOT_SHAREABLE, lockAgrees, notShareable, parseConfig, parseLock, unknownSharedNote } from '../packages/project-config/src/index.js';
 import type { NotShareableCause } from '../packages/project-config/src/index.js';
 import { honestShared } from '../packages/project-config/src/refusal.js';
-import { renderRefusal, TOPICS } from '../apps/cli/src/human.js';
+import { renderRefusal, reportFailure, TOPICS } from '../apps/cli/src/human.js';
 import { NETWORK_LINE, NO_TOKEN_LINE, requestCount } from '../packages/project-sync/src/change.js';
 import { SHARED_NO_LOCK_NOTE, STALE_NOTE } from '../packages/project-sync/src/resolve.js';
 import { offlineHold } from '../packages/project-sync/src/plan.js';
@@ -152,6 +152,8 @@ test('E7. the store status fix commands on the page are the ones the CLI prints'
   git(w.store, ['checkout', '-q', 'main'], w);
   chmodSync(join(w.store, '.git', 'config'), 0o664);
   assert.deepEqual(fixLines('unreadable'), [], 'unreadable prints no commands');
+  // Round 2: the Git: line says what is wrong.
+  assert.ok(run(w.home, ['store', 'status'], w.env).stdout.split('\n').includes('  Git: Bowerloom cannot read the git files of the store.'), 'the Git: line of unreadable');
 });
 test('E8. STORE_ITEM_NOT_SHAREABLE: each cause, the rendered refusal, and the honest-shared prefix', () => {
   const text = page();
@@ -160,7 +162,10 @@ test('E8. STORE_ITEM_NOT_SHAREABLE: each cause, the rendered refusal, and the ho
     assert.ok(message.startsWith(fixed));
     has(text, message.slice(fixed.length), cause);
   }
-  for (const line of renderRefusal('STORE_ITEM_NOT_SHAREABLE', notShareable('none').message).trimEnd().split('\n')) has(text, line);
+  // Round 2: the terminal words, with the Next: line that the cause carries.
+  const terminal = reportFailure(notShareable('none'), true).text;
+  assert.ok(!terminal.includes('Give the store a remote'), terminal);
+  for (const line of terminal.trimEnd().split('\n')) has(text, line);
   const honest = (honestShared(notShareable('none'), '.git') as Error).message;
   const prefix = 'Bowerloom could not read .git and treats this project as shared';
   assert.ok(honest.startsWith(prefix));
@@ -208,8 +213,12 @@ test('E11. request counts, tied to the code', () => {
   has(page(), `A prompt takes ${requestCount([{ local: { distinct: 1 } }])}.`);
   has(page(), `One item takes at most ${requestCount([{ local: { distinct: STORE_FILE_LIMITS.files } }])}.`);
   // The budget of one run, from the constants of store-git.ts.
-  has(page(), `\`--max-github-requests <n>\`, a whole number from 1 to ${GITHUB_REQUEST_MAX}. The default is ${GITHUB_REQUEST_LIMIT}.`);
-  has(page(), `\`use\`, \`lock update\`, and \`store migrate\` have a fixed budget of ${GITHUB_REQUEST_LIMIT}.`);
+  assert.equal(GITHUB_REQUEST_LIMIT, 1000); assert.equal(GITHUB_REQUEST_MAX, 5000);
+  has(page(), `\`apply\`, \`skills sync\`, and \`use\` take \`--max-github-requests <n>\`, a whole number from 1 to ${GITHUB_REQUEST_MAX}. The default is ${GITHUB_REQUEST_LIMIT}.`);
+  has(page(), `\`lock update\` and \`store migrate\` have a fixed budget of ${GITHUB_REQUEST_LIMIT}.`);
+  // "up to 5000" in the help of each command that takes the flag, and in the GITHUB_REQUEST_BUDGET words.
+  for (const topic of ['apply', 'skills', 'use']) assert.ok(TOPICS[topic]!.includes(`--max-github-requests <n> lets one run make up to n GitHub requests, at most ${GITHUB_REQUEST_MAX}. The default is ${GITHUB_REQUEST_LIMIT}.`), topic);
+  assert.ok(renderRefusal('GITHUB_REQUEST_BUDGET', 'm').includes(`--max-github-requests <n>, up to ${GITHUB_REQUEST_MAX}.`));
 });
 test('E12. every new code of the four exported code lists has an errors.md row', () => {
   const baseline = new Set(JSON.parse(source('apps/docs/tools/beta2-refusal-codes.json')) as string[]), errors = source('apps/docs/src/content/docs/reference/errors.md');

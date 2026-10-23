@@ -89,7 +89,7 @@ If a skill copy is held for local drift, Bowerloom never overwrites it. Follow t
 
 If `STORE_REMOTE_PRIVATE` appears, GitHub did not show the store repository without a token.
 
-1. Make a GitHub token that can read the store repository. Read access to that one repository is enough. See [Trust and security boundaries](/docs/security/#the-github-token-for-a-private-store).
+1. Make a GitHub token that can read the store repository. Read access to that one repository is enough. If a personal account owns the store repository and you are a collaborator, a fine-grained token does not work, and you need a classic token. See [A store in a private repository](/docs/guides/item-sources/#private-store) and [Trust and security boundaries](/docs/security/#the-github-token-for-a-private-store).
 2. Set it in the shell that runs Bowerloom, and keep it out of your shell history: run `read -rs BOWERLOOM_GITHUB_TOKEN`, paste the token, press Return, then run `export BOWERLOOM_GITHUB_TOKEN`. Do not put it in a file in the project.
 3. If your store has a git remote, `bowerloom store status` prints `GitHub token: BOWERLOOM_GITHUB_TOKEN is set`.
 4. Run the command again without `--approve`. The plan shows a `Credentials:` line. Read it, then approve.

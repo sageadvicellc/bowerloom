@@ -47,7 +47,7 @@ Bowerloom sends the token to one host, `api.github.com`, and only for the reposi
 
 In a project you did not write, read the `Credentials:` line before you approve. The lock of that project names the repositories, and the token goes to each one it names. Do not script `--approve` in a loop, in CI or anywhere else: a script that approves every plan it sees also approves a repository it has never seen.
 
-Give the token read access to the store repository and nothing more. We advise a fine-grained token limited to that one repository. A classic token needs the `repo` scope, which grants write access to every private repository you can reach. This is advice: Bowerloom does not check the scope of the token.
+Give the token read access to the store repository and nothing more. If an organization owns the store repository and you are a member, use a fine-grained token limited to that one repository. A fine-grained token does not work for a repository of a personal account where you are a collaborator, or of an organization where you are an outside collaborator. Those cases need a classic token with the `repo` scope, which grants read and write access to every private repository you can reach. No classic scope gives read-only access to private repositories. So keep a team store in an organization, or use a separate GitHub account that can read only the store repository. This is advice: Bowerloom does not check the scope of the token. [A store in a private repository](/docs/guides/item-sources/#private-store) has the cases for a team.
 
 <a id="installed-security-acceptance"></a>
 

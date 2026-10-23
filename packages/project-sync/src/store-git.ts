@@ -26,7 +26,7 @@ import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
-import { syncError } from './refusal.js';
+import { offlineNetwork, syncError } from './refusal.js';
 import { DefinitionError } from '../../contracts/src/index.js';
 
 export const STORE_CACHE_FOLDER = 'store-cache';
@@ -266,7 +266,7 @@ function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolea
   // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
   if (!(error instanceof DefinitionError)) return error;
   const code = error.code;
-  if (code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+  if (code === 'SKILLS_ADD_NETWORK') return offlineNetwork(`Fetching ${id} needs api.github.com, and the network was not reachable.`);
   if (code === 'SKILLS_ADD_NOT_FOUND') {
     if (!commitMissing) return configRefusal('STORE_ITEM_GONE_AT_COMMIT');
     if (check?.state === 'readable') return syncError('LOCK_COMMIT_GONE');
@@ -274,7 +274,7 @@ function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolea
     if (check?.state !== 'unknown') return old;
     const failure = check.error;
     if (!(failure instanceof DefinitionError)) return failure;
-    if (failure.code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+    if (failure.code === 'SKILLS_ADD_NETWORK') return offlineNetwork(`Fetching ${id} needs api.github.com, and the network was not reachable.`);
     if (OWN_CODES.has(failure.code)) return failure;
     return new DefinitionError(old.code, `${old.message} Bowerloom could not check the repository: ${/^[A-Z][A-Z0-9_]{0,63}$/.test(failure.code) ? failure.code : 'UNKNOWN'}.`);
   }

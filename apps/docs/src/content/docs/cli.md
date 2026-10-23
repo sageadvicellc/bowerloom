@@ -67,7 +67,7 @@ bowerloom store migrate [--skill <id>]... [--prompt <id>]... [--team <id>]... [-
 bowerloom receipt clean [--global] [--approve <revision>] [--json]
 bowerloom cache list [--json]
 bowerloom cache prune [--unreferenced] [--partial] [--legacy] [--all] [--entry <id-prefix>]... [--approve <revision>] [--json]
-bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]
+bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--max-github-requests <n>] [--approve <revision>] [--json]
 bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]
 bowerloom lock verify [--json]
 bowerloom lock update [--item <kind>:<id>]... [--commit <sha>] [--approve <revision>] [--json]
@@ -75,11 +75,11 @@ bowerloom lock update [--item <kind>:<id>]... [--commit <sha>] [--approve <revis
 
 A project is marked by `.bowerloom`, by `bowerloom.json`, or by both. A project with only `bowerloom.json` works with every command; its first install makes a `.bowerloom` whose engine files git ignores.
 
-`use` picks an item for this project. By default the item comes from your store, `~/.bowerloom`; `--project` picks an item this project defines in `.bowerloom` that `bowerloom.json` does not list yet. If `bowerloom.json` is missing, `use` creates it and lists the items this project defines now, with the source project. `use team <id>` also picks the store skills and prompts that name that team. In a shared project the item must be fetchable by your team, and `bowerloom.lock.json` records where. `--commit <sha>` records that commit of the store remote instead of the pushed commit of the current branch. `use` changes `bowerloom.json` and `bowerloom.lock.json` only; run `bowerloom skills sync` and `bowerloom apply` to put the copies in place.
+`use` picks an item for this project. By default the item comes from your store, `~/.bowerloom`; `--project` picks an item this project defines in `.bowerloom` that `bowerloom.json` does not list yet. If `bowerloom.json` is missing, `use` creates it and lists the items this project defines now, with the source project. `use team <id>` also picks the store skills and prompts that name that team. In a shared project the item must be fetchable by your team, and `bowerloom.lock.json` records where. `--commit <sha>` records that commit of the store remote instead of the pushed commit of the current branch. `--max-github-requests <n>` lets one run make up to n GitHub requests, at most 5000. The default is 1000. `use` changes `bowerloom.json` and `bowerloom.lock.json` only; run `bowerloom skills sync` and `bowerloom apply` to put the copies in place.
 
 `unuse` removes an item from `bowerloom.json` and from `bowerloom.lock.json`. It removes no copy that sync or apply already made, and the plan names where the copies stay. `unuse team <id>` also removes the items that were picked only through that team.
 
-`lock verify` reads only. It checks `bowerloom.lock.json`, its hashes, and that it agrees with `bowerloom.json`, and it uses no network. `lock update` looks at your store again and rewrites the lock items; `--item <kind>:<id>` refreshes some. A pinned skill needs no network. A skill, prompt, or team written in the store is checked against its pushed copy on github.com. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file. A git-ignored file or a `.DS_Store` in a store item makes the check fail, and so can `core.autocrlf` or a git filter, because they change the bytes the check compares.
+`lock verify` reads only. It checks `bowerloom.lock.json`, its hashes, and that it agrees with `bowerloom.json`, and it uses no network. `lock update` looks at your store again and rewrites the lock items; `--item <kind>:<id>` refreshes some. A pinned skill needs no network. A skill, prompt, or team written in the store is checked against its pushed copy on github.com. Without a token, GitHub allows about 60 requests an hour. Each item takes about 4 plus one per file. A file that a lock cannot record, such as a `.DS_Store`, refuses with `STORE_ITEM_NOT_SHAREABLE`, and the `Next:` line names it. A git-ignored file makes the check fail, and so can `core.autocrlf` or a git filter, because they change the bytes the check compares.
 
 In plan output each item line ends with its source tag: `[project]`, `[store]`, or `[store, from the lock: ...]`.
 

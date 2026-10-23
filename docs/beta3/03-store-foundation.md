@@ -453,6 +453,8 @@ Add each code to the `MESSAGES` object of its package and to `REFUSALS` in `apps
 | `STORE_UNREADABLE` | Bowerloom cannot read the store or a folder on the way to it. | A folder that cannot be read cannot be checked, so Bowerloom does not use it. | `ls -ld ~ ~/.bowerloom` |
 | `STORE_IN_CLOUD_FOLDER` | The store is in a cloud-synced folder. | Cloud sync changes file times and moves files, which breaks the checks that keep the store safe. | Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom. |
 | `STORE_NOT_A_PROJECT` | The store holds definitions only, so a folder inside it cannot be a project. | Run this command in a project folder outside ~/.bowerloom. | `cd <project-folder>` |
+
+Amended by #101 (round 1 of its reviews, Hanna's choice C on #97): the terminal now prints the words of the errors.md row. The sentence of `STORE_NOT_A_PROJECT` is `The store holds definitions only, so a folder inside it cannot be a project.` and its next step is `Run the command in a project folder outside ~/.bowerloom.`
 | `CONFIG_INVALID` | bowerloom.json does not match the project config format. | Bowerloom reads bowerloom.json strictly, so a hand edit can break it. | `git diff bowerloom.json` |
 | `CONFIG_UNSAFE` | bowerloom.json is not safe to read. It must be a plain file that you own, with one link, no write access for others, and at most 1 MiB. | Bowerloom will not trust a bowerloom.json that other people or links can change. | `ls -l bowerloom.json` |
 | `CONFIG_LIMIT` | bowerloom.json lists too many items. | This beta keeps bowerloom.json small: 128 skills, 128 prompts, and 32 teams at most. | `bowerloom status` |

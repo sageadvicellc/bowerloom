@@ -80,6 +80,17 @@ export function syncError(code: SyncCode, extra?: string): DefinitionError {
   if (!Object.hasOwn(MESSAGES, code)) throw new TypeError('syncError takes a listed code only.');
   const error = new DefinitionError(code, extra ? `${MESSAGES[code]} ${extra}` : MESSAGES[code]); own.add(error); return error;
 }
+/** The next step of a fetch that failed on the network (round 2 of the reviews of PR 101). */
+export const NETWORK_NEXT = 'Connect to the network and run the command again.';
+/**
+ * Round 2 of the reviews of PR 101, item 1: SKILLS_OFFLINE for a fetch that failed on the network. It carries its own next
+ * step, so the words of the code, which cover --offline and plain apply too, never send a person back to the same command.
+ */
+export function offlineNetwork(extra: string): DefinitionError {
+  const error = syncError('SKILLS_OFFLINE', extra);
+  Object.defineProperty(error, 'next', { value: NETWORK_NEXT, enumerable: false });
+  return error;
+}
 /**
  * Review M5 finding 2: STALE_APPROVAL after earlier children of the run applied. Its fixed message never says that
  * nothing was applied; it names the finished items, which are complete, and the item that changed.

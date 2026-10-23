@@ -12,7 +12,7 @@ import type { HeldProjectLock, ProjectContext } from '../../project-context/src/
 import { readConfig } from '../../project-config/src/config.js';
 import { CONFIG_FORMAT, serializeConfig } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
-import { configRefusal, honestShared, notShareable, refusalWithNext } from '../../project-config/src/refusal.js';
+import { configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
@@ -30,9 +30,9 @@ import { readStoreDefinitions } from './resolve.js';
 import type { StoreDefinitions } from './resolve.js';
 import { localItemRows } from './store-items.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
+import { credentialsFor, onceTokenSource, repositoryOf, requestLimit, requireRequestBudget } from './store-git.js';
 import type { GithubToken } from '../../skill-manifest/src/github-token.js';
-import { syncError } from './refusal.js';
+import { offlineNetwork, syncError } from './refusal.js';
 import { join } from 'node:path';
 export { localItemRows } from './store-items.js';
 
@@ -66,8 +66,8 @@ export interface ConfigChangePlan {
   scratch: string[];
   store: StoreBindingRead | null;
   projectManifest: Read | null;
-  /** `credentials` (spec 07, 4.3): the store repository when a token proves an authored item; else null. Bound. */
-  network: { hosts: string[]; credentials: Credentials | null };
+  /** `credentials` (spec 07, 4.3): the store repository when a token proves an authored item; else null. Bound. `maxRequests`: the limit the person set with --max-github-requests, when set. */
+  network: { hosts: string[]; credentials: Credentials | null; maxRequests?: number };
   /** The hash of each added authored item's live bytes, which apply reads again. */
   authored: { kind: Kind; id: string; hash: string }[];
   /** What the review shows of the picked item: its source line, teams, and cache. Null for unuse and adopt. */
@@ -89,6 +89,8 @@ export interface ChangeInput {
   tokenSet?: boolean;
   /** Spec 07: the token of a private store remote, or the CLI's reader. Read only when an authored item is proved. */
   githubToken?: TokenSource;
+  /** Round 2 of the reviews of PR 101, item 3: `use --max-github-requests <n>`, 1 to GITHUB_REQUEST_MAX. */
+  maxGithubRequests?: number;
 }
 export interface ChangeHooks { readonly afterConfig?: () => void }
 
@@ -168,6 +170,8 @@ function lockNeed(defs: StoreDefinitions, kind: Kind, id: string): LockNeed {
 /** The requests the proofs of `needs` take: 4 plus one per distinct sha256 each (3.10). */
 export const requestCount = (needs: readonly { local: { distinct: number } | null }[]): number => needs.reduce((n, x) => n + (x.local ? 4 + x.local.distinct : 0), 0);
 export const NETWORK_LINE = (n: number, r: number): string => `Network: reads api.github.com, to check the pushed copy of ${n} ${n === 1 ? 'item' : 'items'}, about ${r} requests to api.github.com.`;
+/** The request line of a run whose limit the person set, in the words of the sync and apply plans (`requestLine`). */
+export const REQUEST_LINE = (r: number, max: number): string => `GitHub requests: at most ${r}, of the ${max} this run allows.`;
 export const NO_TOKEN_LINE = 'Without a token GitHub allows about 60 requests an hour. Set BOWERLOOM_GITHUB_TOKEN, or run the command again after an hour to finish.';
 
 /**
@@ -196,7 +200,7 @@ async function prove(defs: StoreDefinitions, needs: readonly LockNeed[], commit:
       if (signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
       // Review F3: only a network failure of the transport is offline; any other error keeps its code, or is rethrown.
       const code = error instanceof DefinitionError ? error.code : null;
-      if (code === 'SKILLS_ADD_NETWORK') throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
+      if (code === 'SKILLS_ADD_NETWORK') throw offlineNetwork(`Checking ${ids} needs api.github.com, and the network was not reachable.`);
       if (code === 'SKILLS_ADD_UNSAFE_CONTENT' || code === 'SKILLS_ADD_NOT_FOUND') throw configRefusal('LOCK_STORE_NOT_PUSHED');
       throw error;
     } finally { transport?.close(); }
@@ -229,6 +233,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
   // bowerloom.json lists skills, prompts and teams only. A context slice is a project item (spec 10, 2), and any other kind is no item.
   if (kind !== 'skill' && kind !== 'prompt' && kind !== 'team') throw new DefinitionError('USAGE', 'Use bowerloom use or unuse with skill, prompt, or team.');
   if (input.commit !== undefined && input.commit !== null && !HEX40.test(input.commit)) throw new DefinitionError('USAGE', 'Use --commit with the 40 lower-case hex characters of a pushed commit.');
+  const maxRequests = requestLimit(input.maxGithubRequests);
   verifyProjectPins(project);
   const read = readConfig(project);
   if (read.state === 'invalid') throw configRefusal(read.code);
@@ -310,7 +315,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
         // Spec 07, 3.2: the token is read only for a proof, before any network read.
         const token = authoredNeeds.length ? tokenOnce() : null;
         if (authoredNeeds.length) {
-          const r = requestCount(authoredNeeds); requireRequestBudget(r); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (r > 60 && !input.tokenSet && token === null) notes.push(NO_TOKEN_LINE);
+          const r = requestCount(authoredNeeds); requireRequestBudget(r, maxRequests); notes.push(NETWORK_LINE(authoredNeeds.length, r)); if (input.maxGithubRequests !== undefined) notes.push(REQUEST_LINE(r, maxRequests)); if (r > 60 && !input.tokenSet && token === null) notes.push(NO_TOKEN_LINE);
           hosts = ['api.github.com']; authored = authoredNeeds.map(n => ({ kind: n.kind, id: n.id, hash: n.local!.hash }));
         }
         for (const [pair, item] of await prove(defs, needs, input.commit ?? null, input, notes, token, proof)) { items.set(pair, item); lockAdds.push(pair); }
@@ -326,7 +331,7 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     bowerloomFolder: op === 'adopt' && project.bowerloomIdentity === null ? 'create' : 'present',
     adds, removes, direct, config: { before: read.state === 'valid' ? { sha256: read.sha256, bytes: read.bytes } : null, after: { sha256: sha(text), bytes: Buffer.byteLength(text) }, text },
     lock, lockBefore: current.read, scratch: scratchFiles(project.dir), store: defs ? storeRead(defs) : null, projectManifest: initial?.manifest ?? null,
-    network: { hosts, credentials: proof.credentials }, authored, detail, listed: initial?.listed ?? 0, notes, writesAuthorized: false, executionAuthorized: false,
+    network: { hosts, credentials: proof.credentials, ...(input.maxGithubRequests !== undefined ? { maxRequests } : {}) }, authored, detail, listed: initial?.listed ?? 0, notes, writesAuthorized: false, executionAuthorized: false,
   };
   return { ...body, revision: sha(canonicalJson(body)) };
 }
@@ -414,7 +419,10 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
   for (const pair of [...items.keys()]) if (!wanted.includes(pair)) { const [k, i] = pair.split(' ') as [Kind, string]; updated.push({ kind: k, id: i, change: 'removed', from: lockSourceLabel(items.get(pair)!), to: null }); items.delete(pair); }
   let defs: StoreDefinitions | null = null, authored: LockUpdatePlan['authored'] = [], hosts: string[] = [];
   const proof: { credentials: Credentials | null } = { credentials: null };
-  if (wanted.length) {
+  // Round 2 of the reviews of PR 101: lock update checks each item in any project. Its refusal says the project is shared
+  // only when it is, and says when that is only unknown.
+  const sharedState = isSharedProject(project);
+  if (wanted.length) try {
     defs = openStoreDefinitions(input.home);
     const selected = input.items === null ? wanted : input.items.map(x => `${x.kind} ${x.id}`);
     for (const p of selected) if (!wanted.includes(p)) throw configRefusal('CONFIG_ITEM_NOT_SELECTED');
@@ -449,7 +457,7 @@ export async function planLockUpdate(input: LockUpdateInput): Promise<LockUpdate
         updated.push({ kind: k, id: i, change, from: old ? lockSourceLabel(old) : null, to: lockSourceLabel(item) }); items.set(pair, item);
       }
     }
-  }
+  } catch (error) { throw !sharedState.shared ? notSharedYet(error) : sharedState.unknown !== undefined ? honestShared(error, sharedState.unknown) : error; }
   updated.sort((a, b) => byteOrder(`${a.kind} ${a.id}`, `${b.kind} ${b.id}`));
   const text = serializeLock(lockFrom(items));
   const body: Omit<LockUpdatePlan, 'revision'> = {

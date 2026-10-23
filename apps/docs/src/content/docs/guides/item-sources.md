@@ -24,14 +24,14 @@ The page covers Bowerloom 0.7.0-beta.3 and later. A project without `bowerloom.j
 
 ### The sharing model in five lines
 
-Bowerloom decides whether a project is shared. You do not. It treats a project as shared when the project folder holds `bowerloom.lock.json`, even an empty one, or when the project sits in a git repository whose remote `origin` has a URL. A private repository that only you use is shared. [If you share a project](#share-a-project) gives the full rule.
+Bowerloom decides whether a project is shared. You do not. It treats a project as shared when the project folder holds `bowerloom.lock.json`, even an empty one, or when the project sits in a git repository whose remote `origin` has a URL. A private repository that only you use is shared when it has an `origin` with a URL. [If you share a project](#share-a-project) gives the full rule. To lock an item is to record it in `bowerloom.lock.json`.
 
 1. Your store, `~/.bowerloom`, stays on your machine. No teammate reads it.
-2. A shared project has `bowerloom.lock.json`, or sits in a git repository with a remote named `origin`.
+2. A shared project has `bowerloom.lock.json`, or sits in a git repository with a remote `origin` that has a URL.
 3. In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.
 4. So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.
 
-   A pin is an exact version of a published skill. A pin in the lock comes from npm or from the GitHub repository of that skill, never from your store. Bowerloom reads the store repository only for the items you wrote. So a store that holds only pins needs no store repository.
+   A pin is an exact npm version or a full GitHub commit of a published skill, with the hashes of its files. A pin in the lock comes from npm or from the GitHub repository of that skill, never from your store. Bowerloom reads the store repository only for the items you wrote. So a store that holds only pins needs no store repository.
 5. Commit `bowerloom.json` and `bowerloom.lock.json`. A teammate runs `bowerloom apply --frozen`.
 
 A teammate needs these things:
@@ -43,7 +43,7 @@ A teammate needs these things:
 - for a store in a private repository, read access to the store repository and a token of their own, as [A store in a private repository](#private-store) explains
 - enough GitHub requests: GitHub allows about 60 requests an hour without a token, and [GitHub request limits](#rate-limit) says what that means
 
-Run `bowerloom help store` for the store, store migrate, receipt clean, and cache commands. Run `bowerloom help use` and `bowerloom help lock` for the rest.
+Run `bowerloom help store` for the commands of the store, `store migrate`, `receipt clean`, and the cache. The receipt is the file `.bowerloom/authoring/receipt.json`, the record of the items that the create commands made, and `receipt clean` tidies it. Run `bowerloom help use` and `bowerloom help lock` for the rest.
 
 <a id="four-kinds-of-item"></a>
 
@@ -61,7 +61,7 @@ The store is the folder `~/.bowerloom` on your machine. It holds definitions, an
 
 The store repository is the copy of your store on GitHub. Git pushes to it through the remote `origin` of the store.
 
-A pin is an exact npm version or a full GitHub commit, with the hashes of the files.
+A pin is an exact npm version or a full GitHub commit of a published skill, with the hashes of its files.
 
 Bowerloom keeps two caches:
 
@@ -316,7 +316,7 @@ bowerloom apply
 - `skills sync` installs the skill into `.bowerloom/managed`, `.claude/skills`, and `.agents/skills`.
 - `apply` puts prompts and agents in place, and any skill copy that is still missing.
 
-A project is shared in two cases. Either `bowerloom.lock.json` exists, or the project sits in a git repository with a remote named `origin`. Any remote on any host counts, a private repository that only you use included. [If you share a project](#share-a-project) gives the full rule.
+A project is shared in two cases. Either `bowerloom.lock.json` exists, or the project sits in a git repository with a remote named `origin`. An `origin` on any host counts, a private repository that only you use included. [If you share a project](#share-a-project) gives the full rule.
 
 If your project is not shared, `use` writes no lock and makes no network call.
 
@@ -324,7 +324,7 @@ The folder must already be a project. In a new folder, run `bowerloom up --team 
 
 In a terminal, each command asks `Apply plan <short revision>? [y/N]`. Without a terminal, or with `--json`, it prints the plan and exits 3. Then run it again with `--approve <revision>`.
 
-If you add a remote later and `bowerloom.json` lists a store item, the project becomes shared with no lock. `bowerloom status` then shows `Lock: absent` and this note:
+If you add a remote named `origin` later and `bowerloom.json` lists a store item, the project becomes shared with no lock. `bowerloom status` then shows `Lock: absent` and this note:
 
 ```text
 This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.
@@ -351,6 +351,7 @@ Bowerloom treats a project as shared in these cases:
 - Bowerloom reads files and starts no process.
 - A project with a lock stays shared until you delete the file. `use` creates a lock only in a shared project whose config lists a store item. It keeps an existing lock up to date, even an empty one.
 - `bowerloom lock update` creates a lock in any project whose config lists a store item, shared or not. The new lock makes the project shared. From then on, `use` of an item you wrote needs a pushed store repository on GitHub.
+- `lock update` first checks each item you wrote against the store repository. With a store that is not pushed, it refuses with `STORE_ITEM_NOT_SHAREABLE`, even in a project that is not shared yet. For a store that is not a git repository, it prints `Refused (STORE_ITEM_NOT_SHAREABLE): A lock records this item, and a teammate cannot fetch it. The store is not a git repository.`
 
 In a shared project, `use` checks that a teammate is able to fetch each store item. A pinned npm or GitHub skill is always fetchable.
 
@@ -485,7 +486,7 @@ An agent copy with the read guard names the project folder of your machine. If t
 In a shared project, a store item must be fetchable by your team. Otherwise Bowerloom refuses with `STORE_ITEM_NOT_SHAREABLE` and adds the cause:
 
 - `none`: `The store is not a git repository.`
-- `no-origin`: `The store repository has no remote named origin.`
+- `no-origin`: `The git repository of the store has no remote named origin.`
 - `unsupported-remote`: `The store remote is not a github.com repository.`
 - `unreadable`: `Bowerloom cannot read the git files of the store.`
 - `unpushed`: `The store has no pushed commit for this branch.`
@@ -503,7 +504,7 @@ In a shared project, `use` refuses. For the cause `none`, a terminal shows:
 ```text
 Refused (STORE_ITEM_NOT_SHAREABLE): This project is shared, and a teammate cannot fetch this store item. The store is not a git repository.
 A shared project needs every store item to be fetchable by your team.
-Next: Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.
+Next: Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.
 ```
 
 `bowerloom store status` shows the state of the git repository of the store. Every git state prints this line:
@@ -530,7 +531,7 @@ git push -u origin <branch>
 
 The `git rm` line keeps `folders/` out of the first commit. It works with no `.gitignore` in the store too. The output prints `<branch>` for `none`, for `no-origin`, and for a detached HEAD. Put the name of your branch in its place.
 
-If the store repository has no remote named `origin`, `store status` prints:
+If the git repository of the store has no remote named `origin`, `store status` prints:
 
 ```text
 cd ~/.bowerloom
@@ -590,7 +591,7 @@ These are the ways out:
 2. For a team, run `bowerloom team adopt <id>`. This works for a store team that `bowerloom.json` does not list yet. One approved plan copies the team into the project and lists it as a project item. Store skills and prompts that name the team stay store items. They still need a pushed store, and the plan names them.
 3. For a skill or a prompt, read the config first. If it lists the item, run `bowerloom unuse <kind> <id>`. Then run `bowerloom <kind> create <id>`. Then copy the files from `~/.bowerloom` into the new project item yourself.
 4. For a skill, pin a published copy in the store under a new id: `bowerloom skills add <source> --id <new-id> --global`. Then run `bowerloom use skill <new-id>`. If the config lists the old id, run `bowerloom unuse skill <id>` first. The same id refuses. `skills add` without `--replace` refuses with `SKILLS_ADD_EXISTS`. With `--replace` over a skill you wrote, it refuses with `SKILLS_ADD_SOURCE_CHANGED`.
-5. If the cause is `file`, delete the file that the `Next:` line names. On a Mac, run `find ~/.bowerloom -name .DS_Store -delete` to delete every `.DS_Store` in the store. The `.gitignore` of the store hides `.DS_Store` from `git status`, so git does not show you the file.
+5. If the cause is `file` or `size`, follow the `Next:` line. It names the file or folder and its fix, such as `chmod a-x` for a file with an execute bit. For a file that you do not need, such as a `.DS_Store`, delete it. On a Mac, run `find ~/.bowerloom -name .DS_Store -delete` to delete every `.DS_Store` in the store. The `.gitignore` of the store hides `.DS_Store` from `git status`, so git does not show you the file.
 
 <a id="private-store"></a>
 
@@ -604,7 +605,9 @@ Bowerloom takes a classic token and a fine-grained token alike. It checks only t
 
 - Each teammate needs read access to the store repository and a token of their own, set on their own machine. Never share a token.
 - If an organization owns the store repository and the teammate is a member, use a fine-grained token limited to that one repository.
-- If a personal account owns the store repository and the teammate is a collaborator, a fine-grained token does not work. GitHub gives an outside collaborator access through a classic token only. The teammate then needs a classic token with the `repo` scope. That scope grants read and write access to every private repository the teammate reaches. So keep the store of a team in an organization.
+- If a personal account owns the store repository and the teammate is a collaborator, a fine-grained token does not work. The teammate then needs a classic token with the `repo` scope. That scope grants read and write access to every private repository the teammate reaches.
+- An outside collaborator on an organization repository also needs a classic token.
+- A classic token has no read-only scope for private repositories. Keep a team store in an organization, or use a separate GitHub account that has read access to this repository only.
 - One fine-grained token reaches the repositories of one owner only. Bowerloom reads one variable and sends that one token for every store repository that the lock names. If the lock names private store repositories of two owners, the repository of the other owner refuses with `STORE_REMOTE_AUTH_FAILED`. Keep those store repositories under one owner, or use a classic token.
 
 Bowerloom makes these promises:
@@ -665,7 +668,7 @@ A skill or team takes 4 requests plus 1 for each file with different content. A 
 
 These commands spend requests. `use`, `lock update`, and `store migrate` check a written item against its pushed copy. `apply --frozen`, `skills sync`, and the sync step of `up` fetch a written item that this machine lacks. `lock update` skips an unchanged item. A cached item costs nothing.
 
-`apply` and `skills sync` take `--max-github-requests <n>`, a whole number from 1 to 5000. The default is 1000. `use`, `lock update`, and `store migrate` have a fixed budget of 1000. A run over its budget refuses with `GITHUB_REQUEST_BUDGET`.
+`apply`, `skills sync`, and `use` take `--max-github-requests <n>`, a whole number from 1 to 5000. The default is 1000. `lock update` and `store migrate` have a fixed budget of 1000. A run over its budget refuses with `GITHUB_REQUEST_BUDGET`.
 
 During a fetch, GitHub answers 404 for a locked commit that it does not show. Then Bowerloom makes one more request, to the repository itself. That request counts in the budget. It tells a removed commit from a private repository. A refused token gets no such request.
 
@@ -690,7 +693,7 @@ The request line is a second line:
 GitHub requests: at most <r>, of the <max> this run allows.
 ```
 
-The sync and apply plans print it in two cases: the run makes requests, or you set the limit. Over the limit, the line ends with `Run it with --max-github-requests <r> or more.`
+The sync and apply plans print it in two cases: the run makes requests, or you set the limit. The plan of `use` prints it after its `Network:` line when you set the limit. Over the limit, the line ends with `Run it with --max-github-requests <r> or more.`
 
 With `BOWERLOOM_GITHUB_TOKEN` set, store items count against the limit of 5,000, for a public store too. Pinned GitHub skills never send the token, so they stay at 60.
 
@@ -888,7 +891,7 @@ These are the codes this page names. [Errors](/docs/reference/errors/) lists eve
 | --- | --- | --- |
 | `STORE_ITEM_NOT_FOUND` | Bowerloom picks only items that your store defines. | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` | A listed store item is not in your store and not in the lock, so Bowerloom cannot install it. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
-| `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | Give the store a remote and push it. `bowerloom store status` shows the commands. Or adopt a team into this project with `bowerloom team adopt`. |
+| `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | The `Next:` line names the cause, or the file or folder of the item, and its fix. For the cause `file`, a `.DS_Store` among them, it names the file. Fix the cause that the message names. `bowerloom store status` shows the git state of the store. Or adopt a team into this project with `bowerloom team adopt`. |
 | `STORE_ITEM_GONE_AT_COMMIT` | The lock names a store commit that does not hold this item, so Bowerloom cannot install it. | `bowerloom lock verify`, then ask the owner of the store to run `bowerloom lock update`. |
 | `SKILLS_ADD_EXISTS` | `skills.json` already holds a skill with this id or this source. | To move that id to another version or commit, add `--replace`: `bowerloom skills add <source> --id <id> --replace`. |
 | `SKILLS_ADD_SOURCE_CHANGED` | `--replace` keeps the npm package or GitHub repository and moves only its version or commit. | Add the other source under a new id. |
@@ -902,8 +905,8 @@ These are the codes this page names. [Errors](/docs/reference/errors/) lists eve
 | `GITHUB_TOKEN_INVALID` | Bowerloom checks the token's shape before any network call and never shows the value. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
 | `GITHUB_TOKEN_SSO_REQUIRED` | An organization that uses single sign-on refuses a token until it is authorized for that organization. | Authorize the token for the organization on GitHub, under the token's `settings`, then run the command again. |
 | `GITHUB_RATE_LIMITED` | GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so. | Wait until the limit resets, at most an hour. Without a token, set `BOWERLOOM_GITHUB_TOKEN` to raise the limit (see `bowerloom help store`). |
-| `GITHUB_REQUEST_FAILED` | GitHub answered with an error status, so Bowerloom stopped before any change to the project. The message names the status. | Run the command again later. If the status is 401 or 403, check that you can read the store repository. For a private store, set `BOWERLOOM_GITHUB_TOKEN`. |
-| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests by default. `apply` and `skills sync` take `--max-github-requests <n>`, up to 5000. | For `apply` and `skills sync`, run it again with `--max-github-requests <n>`, up to 5000. For `lock update`, lock fewer items in one run with `--item <kind>:<id>`. For `store migrate`, move fewer items in one run. |
+| `GITHUB_REQUEST_FAILED` | GitHub answered with an error status, so Bowerloom stopped before any change to the project. The message names the status. | Run the command again later. If the status is 401 or 403, check that you can read the repository. For a private store repository, set `BOWERLOOM_GITHUB_TOKEN`. |
+| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests by default. `apply`, `skills sync`, and `use` take `--max-github-requests <n>`, up to 5000. | For `apply`, `skills sync`, and `use`, run it again with `--max-github-requests <n>`, up to 5000. For `lock update`, lock fewer items in one run with `--item <kind>:<id>`. For `store migrate`, move fewer items in one run. |
 
 **Project and config**
 
@@ -947,7 +950,7 @@ These are the codes this page names. [Errors](/docs/reference/errors/) lists eve
 
 | Code | What it means | What to do |
 | --- | --- | --- |
-| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run does not fetch: `--offline` was set, or plain `apply` ran. Nothing changed in the project. | Run `bowerloom skills sync` without `--offline`, or `bowerloom apply --frozen`. |
+| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run did not fetch it: `--offline` was set, plain `apply` ran, or the network was not reachable. Nothing changed in the project. | Connect to the network and run the command again. After plain `apply` or `--offline`, run `bowerloom skills sync` without `--offline`, or `bowerloom apply --frozen`. A failed fetch prints only the network step. |
 | `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom installs only bytes that match `skills.json` exactly, so it stopped before any change to the project. | Run `bowerloom skills check`. |
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
 | `STALE_APPROVAL` | The plan changed after you saw it, so nothing was applied. Setting or removing `BOWERLOOM_GITHUB_TOKEN` after the plan also changes it, and the refusal then says so. | Run the same command again, without `--approve`, to see the new plan. |
@@ -984,7 +987,7 @@ store item
 : A skill, prompt, or team that your store defines and a project picks with `bowerloom use`.
 
 pin
-: An exact npm version or a full GitHub commit, with the hashes of the files.
+: An exact npm version or a full GitHub commit of a published skill, with the hashes of its files.
 
 lock
 : The file `bowerloom.lock.json`, which records where each store item comes from and a hash of its bytes.

@@ -119,7 +119,7 @@ Required facts:
 3. One sentence says the page covers beta.3 and later. A second sentence says that a project without `bowerloom.json` keeps working, and that beta.3 changes a few things for it. It links to the section "Move a project to the store", which lists them. Do not write "works as in beta.2". That claim is false (section 12, fact 6).
 4. The subsection `### The sharing model in five lines`, a numbered list with exactly these five lines:
    1. `Your store, ~/.bowerloom, stays on your machine. No teammate reads it.` (Write `~/.bowerloom` in inline code.)
-   2. `A shared project has bowerloom.lock.json, or sits in a git repository with a remote named origin.` (File names and `origin` in inline code.)
+   2. `A shared project has bowerloom.lock.json, or sits in a git repository with a remote origin that has a URL.` (File names and `origin` in inline code. Amended by #101: a remote counts only when it is named origin and has a URL.)
    3. `In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.` (Amended by #101: one name, the store repository.)
    4. `So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.`
 

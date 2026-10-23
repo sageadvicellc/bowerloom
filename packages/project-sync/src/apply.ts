@@ -41,7 +41,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
-import { managedCode, outward, staleAfterApplied, syncError } from './refusal.js';
+import { managedCode, offlineNetwork, outward, staleAfterApplied, syncError } from './refusal.js';
 import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
 import type { Credentials } from './store-git.js';
 import { promptNotices } from './notices.js';
@@ -98,7 +98,9 @@ function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string): Er
   if (code.endsWith('_ABORTED')) return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
   if (CONTENT.test(code)) return syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The fetched bytes of ${id} do not match its pin (${code}).`);
   if (code.startsWith('NPM_CACHE') || code.startsWith('GIT_CACHE')) return syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The private cache refused the fetch of ${id} (${code}).`);
-  return syncError('SKILLS_OFFLINE', `Bowerloom could not fetch it. The skill is ${id}${NETWORK.has(code) ? ` (${code})` : ''}. Check the network, then run bowerloom skills sync again. Pins that are already cached also sync with --offline.`);
+  // Round 2 of the reviews of PR 101: a network failure carries the network step; any other fetch failure keeps the words of the code.
+  if (NETWORK.has(code)) return offlineNetwork(`Bowerloom could not fetch it, because the network was not reachable. The skill is ${id} (${code}). Pins that are already cached also sync with --offline.`);
+  return syncError('SKILLS_OFFLINE', `Bowerloom could not fetch it. The skill is ${id}. Run bowerloom skills sync again. Pins that are already cached also sync with --offline.`);
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */

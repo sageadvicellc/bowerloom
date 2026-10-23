@@ -121,12 +121,20 @@ function humanWords(){
   const literal=String.raw`('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|INIT_NEXT)`;
   const entry=new RegExp(String.raw`^  ([A-Z][A-Z0-9_]+): \{ sentence: ${literal}, next: ${literal} \},`,'gm');
   const value=v=>v==='INIT_NEXT'?init[1]:v.slice(1,-1).replace(/\\(.)/g,'$1');
+  const keys=new Set();
   for(const name of ['REFUSALS','GATE_REFUSALS']){
     const start=text.indexOf(`const ${name}`),end=text.indexOf('\n};\n',start);
     assert.ok(start>=0&&end>start,`${name} in human.ts`);
-    for(const m of text.slice(start,end).matchAll(entry))words.set(m[1],{sentence:value(m[2]),next:value(m[3])});
+    const block=text.slice(start,end);
+    for(const m of block.matchAll(/^  ([A-Z][A-Z0-9_]+): \{/gm))keys.add(m[1]);
+    for(const m of block.matchAll(entry)){
+      assert.ok(!words.has(m[1]),`${m[1]} has one entry in human.ts`);
+      const w={sentence:value(m[2]),next:value(m[3])};
+      assert.ok(w.sentence.trim().length>0&&w.next.trim().length>0,`${m[1]}: a sentence and a next step`);
+      words.set(m[1],w);
+    }
   }
-  return words;
+  return {words,keys};
 }
 /** Every .md page under the docs content folder. */
 function allPages(dir=docs){
@@ -368,7 +376,8 @@ test('D27. teams-and-files links the page, and create-items names the store',()=
 
 const FIVE_LINES=[
   'Your store, ~/.bowerloom, stays on your machine. No teammate reads it.',
-  'A shared project has bowerloom.lock.json, or sits in a git repository with a remote named origin.',
+  // Round 2 of the reviews of PR 101: a remote counts only when it is named origin and has a URL.
+  'A shared project has bowerloom.lock.json, or sits in a git repository with a remote origin that has a URL.',
   // Round 1 of the reviews of PR 101: one name, the store repository, for the copy of the store on GitHub.
   'In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.',
   'So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.',
@@ -397,19 +406,25 @@ test('D29. no docs page and not the README names a private path',()=>{
 // Each code listed here is not compared, for the reason given.
 const WORDS_EXEMPT=new Map([
   ['INSPECTION_LIMIT','human.ts has no words for it, so the terminal prints the generic words of an unknown refusal.'],
-  ...['GUARD_OUTSIDE_SLICE','GUARD_SLICE_NOT_INSTALLED','GUARD_ROOT_MISSING','GUARD_PROJECT_MISMATCH','GUARD_INTERNAL_ERROR','GUARD_INPUT_INVALID']
-    .map(code=>[code,'The read guard prints its own reason to Claude Code, never these words.']),
 ]);
-const holds=(cell,words)=>{const plain=cell.replaceAll('`','');return plain.includes(words)||plain.includes(words[0].toUpperCase()+words.slice(1));};
+// Round 2: the refusal tables of errors.md that are not project tables, typed here, so a new table is never skipped by accident.
+const EXCLUDED_TABLES=['Setup refusals','Request-file skills refusals'];
+const capital=words=>words[0].toUpperCase()+words.slice(1);
+/** The meaning cell, backticks aside and trimmed, equals the sentence, starts with it, or holds it as whole sentences. */
+const holdsSentence=(cell,words)=>{const plain=cell.replaceAll('`','').trim();return [words,capital(words)].some(w=>plain===w||plain.startsWith(w)||plain.includes(`. ${w}`));};
+/** The next-step cell, backticks aside, holds the next step. A cell may put Run before a bare command. */
+const holdsNext=(cell,words)=>{const plain=cell.replaceAll('`','');return plain.includes(words)||plain.includes(capital(words));};
 test('D30. each row of the project tables of errors.md holds the sentence and the next step that the terminal prints',()=>{
-  const rows=errorRows(),words=humanWords(),bad=[];
-  assert.ok(rows.size>=140,`${rows.size} rows`);assert.ok(words.size>=170,`${words.size} codes with words`);
+  const headings=lines(doc('reference/errors.md')).filter(l=>/^## .* refusals$/.test(l)).map(l=>l.slice(3));
+  assert.deepEqual(headings.filter(h=>!PROJECT_TABLES.includes(h)&&!EXCLUDED_TABLES.includes(h)),[],'every refusal table is a project table or excluded by name');
+  const rows=errorRows(),{words,keys}=humanWords(),bad=[];
   for(const [code,row] of rows){
-    if(WORDS_EXEMPT.has(code))continue;
+    if(WORDS_EXEMPT.has(code)){assert.ok(!keys.has(code),`${code} is exempt because human.ts has no words for it`);continue;}
+    if(keys.has(code)&&!words.has(code)){bad.push(`${code}: human.ts holds an entry that this test cannot read`);continue;}
     const w=words.get(code);
     if(!w){bad.push(`${code}: no words in human.ts`);continue;}
-    if(!holds(row[1],w.sentence))bad.push(`${code} meaning: ${w.sentence}`);
-    if(!holds(row[2],w.next))bad.push(`${code} next: ${w.next}`);
+    if(!holdsSentence(row[1],w.sentence))bad.push(`${code} meaning: ${w.sentence}`);
+    if(!holdsNext(row[2],w.next))bad.push(`${code} next: ${w.next}`);
   }
   assert.deepEqual(bad,[]);
   for(const code of WORDS_EXEMPT.keys())assert.ok(rows.has(code),`${code} is exempt and has a row`);

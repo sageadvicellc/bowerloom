@@ -43,8 +43,8 @@ test('2. with no store .git: STORE_ITEM_NOT_SHAREABLE with its sentence and the 
   mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
   const r = run(dir, ['use', 'skill', 'house-style', '--json'], w.env);
   assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE'); assert.equal(errorMessage(r.stderr), 'This project is shared, and a teammate cannot fetch this store item. The store is not a git repository.');
-  // The terminal words carry the Next: text of REFUSALS.
-  assert.match(renderRefusal('STORE_ITEM_NOT_SHAREABLE', errorMessage(r.stderr)), /Give the store a remote and push it\. bowerloom store status shows the commands\. Or adopt a team into this project with bowerloom team adopt\./);
+  // Round 2 of the reviews of PR 101: the cause carries its own Next: text.
+  assert.equal((JSON.parse(r.stderr) as { error: { next?: string } }).error.next, 'Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.');
 });
 
 test('3 and 8. an edit after the push gives LOCK_STORE_NOT_PUSHED; a private repository gives STORE_REMOTE_PRIVATE', t => {

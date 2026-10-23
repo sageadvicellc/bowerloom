@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { PARTIAL_HINT, partialRefusal, staleBecause, syncError } from './refusal.js';
+import { offlineNetwork, PARTIAL_HINT, partialRefusal, staleBecause, syncError } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -277,7 +277,7 @@ async function prove(store: StoreState, needs: readonly Found[], commit: string 
     catch (error) {
       if (mode.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
       const code = error instanceof DefinitionError ? error.code : null;
-      if (code === 'SKILLS_ADD_NETWORK') throw syncError('SKILLS_OFFLINE', `Checking ${ids} needs api.github.com. Connect to the network and run the command again.`);
+      if (code === 'SKILLS_ADD_NETWORK') throw offlineNetwork(`Checking ${ids} needs api.github.com, and the network was not reachable.`);
       // Review L2: a pushed file Bowerloom cannot check is not the same finding as a pushed copy that differs.
       if (code === 'SKILLS_ADD_UNSAFE_CONTENT') { byPair.set(pairOf(need), { switch: false, code: 'SKILLS_ADD_UNSAFE_CONTENT', sentence: 'The pushed copy holds a file that Bowerloom cannot check' }); continue; }
       if (code === 'SKILLS_ADD_NOT_FOUND') { byPair.set(pairOf(need), { switch: false, code: 'LOCK_STORE_NOT_PUSHED', sentence: 'The pushed copy differs from your store' }); continue; }

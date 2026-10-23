@@ -115,7 +115,7 @@ These store and config codes come from `use`, `unuse`, `team adopt`, and the pla
 | --- | --- | --- |
 | `STORE_ITEM_NOT_FOUND` | Bowerloom picks only items that your store defines. | `bowerloom ls --global` |
 | `STORE_ITEM_MISSING` | A listed store item is not in your store and not in the lock, so Bowerloom cannot install it. | Create it with `bowerloom <kind> create <id> --global`, or run `bowerloom unuse <kind> <id>`. |
-| `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | Give the store a remote and push it. `bowerloom store status` shows the commands. Or adopt a team into this project with `bowerloom team adopt`. |
+| `STORE_ITEM_NOT_SHAREABLE` | A shared project needs every store item to be fetchable by your team. | The `Next:` line names the cause, or the file or folder of the item, and its fix. For the cause `file`, a `.DS_Store` among them, it names the file. Fix the cause that the message names. `bowerloom store status` shows the git state of the store. Or adopt a team into this project with `bowerloom team adopt`. |
 | `STORE_REMOTE_PRIVATE` | GitHub does not show this repository without a token. It is private, or it does not exist. | Set `BOWERLOOM_GITHUB_TOKEN` to a GitHub token that can read the repository, or make the repository public. |
 | `STORE_REMOTE_AUTH_FAILED` | GitHub answers the same way for a token that cannot read the repository and for a repository that does not exist. | Check that the token can read the repository, and that the repository name is right. |
 | `GITHUB_TOKEN_INVALID` | Bowerloom checks the token's shape before any network call and never shows the value. | Set it to a token with letters, digits, `_` or `-`, 20 to 255 characters. |
@@ -164,8 +164,8 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `LOCK_COMMIT_GONE` | A force-push or a deleted branch removes a commit that a lock still names. GitHub shows the store repository but no longer has the locked commit. | Ask the author of the store to run `bowerloom lock update`, then commit and push `bowerloom.lock.json`. Then pull the project. |
 | `LOCK_WRITE_UNCONFIRMED` | `bowerloom.lock.json` was written, but it changed again before Bowerloom read it back. | `git diff bowerloom.lock.json` |
 | `GITHUB_RATE_LIMITED` | GitHub allows about 60 requests an hour without a token and about 5,000 with one. It also limits bursts of requests, and a 403 answer can say so. | Wait until the limit resets, at most an hour. Without a token, set `BOWERLOOM_GITHUB_TOKEN` to raise the limit (see `bowerloom help store`). |
-| `GITHUB_REQUEST_FAILED` | GitHub answered with an error status, so Bowerloom stopped before any change to the project. The message names the status. | Run the command again later. If the status is 401 or 403, check that you can read the store repository. For a private store, set `BOWERLOOM_GITHUB_TOKEN`. |
-| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests by default. `apply` and `skills sync` take `--max-github-requests <n>`, up to 5000. | For `apply` and `skills sync`, run it again with `--max-github-requests <n>`, up to 5000. For `lock update`, lock fewer items in one run with `--item <kind>:<id>`. For `store migrate`, move fewer items in one run. |
+| `GITHUB_REQUEST_FAILED` | GitHub answered with an error status, so Bowerloom stopped before any change to the project. The message names the status. | Run the command again later. If the status is 401 or 403, check that you can read the repository. For a private store repository, set `BOWERLOOM_GITHUB_TOKEN`. |
+| `GITHUB_REQUEST_BUDGET` | A lock this large needs several runs or a smaller selection. One run makes at most 1,000 GitHub requests by default. `apply`, `skills sync`, and `use` take `--max-github-requests <n>`, up to 5000. | For `apply`, `skills sync`, and `use`, run it again with `--max-github-requests <n>`, up to 5000. For `lock update`, lock fewer items in one run with `--item <kind>:<id>`. For `store migrate`, move fewer items in one run. |
 | `STORE_ITEM_GONE_AT_COMMIT` | The lock names a store commit that does not hold this item, so Bowerloom cannot install it. | `bowerloom lock verify`, then ask the owner of the store to run `bowerloom lock update`. |
 
 ## Skills and sync refusals
@@ -175,7 +175,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `MANIFEST_NOT_FOUND` | `skills.json` does not exist. There is nothing to check yet. | Run `bowerloom skills add npm:<package>@<version>:<path>`. |
 | `MANIFEST_INVALID` | Bowerloom reads `skills.json` strictly, so a hand edit can break it. | Run `git diff .bowerloom/skills.json`. |
 | `MANIFEST_UNSAFE` | Bowerloom will not trust a `skills.json` that other people or links can change. | Run `ls -l .bowerloom/skills.json`. |
-| `MANIFEST_WRITE_UNCONFIRMED` | `skills.json` was written, but it changed again before Bowerloom read it back. | Check it, then run `bowerloom skills check`. |
+| `MANIFEST_WRITE_UNCONFIRMED` | `skills.json` was written, but it changed again before Bowerloom read it back. | Check `skills.json`, then run `bowerloom skills check`. |
 | `MANIFEST_PIN_NOT_EXACT` | A pin that can move would install different files on different machines. | Run `bowerloom help skills`. |
 | `MANIFEST_LICENSE_UNSUPPORTED` | This beta installs MIT and Apache-2.0 skills only. | Choose another skill, or run `bowerloom help skills`. |
 | `MANIFEST_DUPLICATE_ID` | Each skill needs its own id. | Run `git diff .bowerloom/skills.json`. |
@@ -191,7 +191,7 @@ These codes come from `bowerloom cache prune`. It also raises `STALE_APPROVAL`, 
 | `SKILLS_ADD_UNSAFE_CONTENT` | Skills here are text files only, and nothing in them is run. | Choose another skill, or run `bowerloom help skills`. |
 | `SKILLS_ADD_NETWORK` | The fetch failed. Nothing was changed. | Run the same command again. |
 | `SKILLS_ADD_HOST_REFUSED` | Bowerloom reads only `registry.npmjs.org` and `api.github.com`. Bowerloom asked no other host, and nothing was changed. | Run `bowerloom help skills`. |
-| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run does not fetch: `--offline` was set, or plain `apply` ran. Nothing changed in the project. | Run `bowerloom skills sync` without `--offline`, or `bowerloom apply --frozen`. |
+| `SKILLS_OFFLINE` | A pin or a lock item needs a fetch, and this run did not fetch it: `--offline` was set, plain `apply` ran, or the network was not reachable. Nothing changed in the project. | Connect to the network and run the command again. After plain `apply` or `--offline`, run `bowerloom skills sync` without `--offline`, or `bowerloom apply --frozen`. A failed fetch prints only the network step. |
 | `SKILLS_SYNC_CONTENT_MISMATCH` | Fetched bytes do not match the pin. Bowerloom installs only bytes that match `skills.json` exactly, so it stopped before any change to the project. | Run `bowerloom skills check`. |
 | `SKILLS_SYNC_INTERRUPTED` | Every skill it finished is complete, and the rest are untouched. | Run `bowerloom skills sync`. |
 | `SKILLS_SYNC_LIMIT` | This beta syncs at most 256 skills at once. | Run `bowerloom skills check`. |
@@ -245,11 +245,11 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `CONTEXT_AGENT_NOT_FOUND` | `--agent` or `--explain` names a role that no team of this project holds. Bowerloom measures the agents in `.bowerloom/teams/*/agents`. | Run `bowerloom ls teams`. |
 | `CONTEXT_BASELINE_INVALID` | The `--baseline` folder does not exist or is not safe to read. The baseline must be a folder you own. | Run `bowerloom help context`. |
 | `CONTEXT_MEASURE_LIMIT` | The baseline folder holds too many entries. This beta measures at most 100000 entries. | Run `bowerloom context measure --baseline <narrower-folder>`. |
-| `GUARD_OUTSIDE_SLICE` | The read guard blocked a Read, Grep, or Glob that reaches a file under a guarded folder when no slice of the agent lists it. | Run `bowerloom context show <slice>`. To widen a slice, edit its file and run `bowerloom apply`. |
-| `GUARD_SLICE_NOT_INSTALLED` | A slice of the agent is not installed, or its catalog changed. The guard blocked every call. | Run `bowerloom apply`. |
-| `GUARD_ROOT_MISSING` | The folder of a slice cannot be found, or it changed since `apply`. The guard blocked every call. | Run `bowerloom apply`. |
-| `GUARD_PROJECT_MISMATCH` | The project path or id in the agent copy matches no project that manages the agent. The guard blocked every call. | Run `bowerloom apply` in the project that holds `.claude/agents/<role>.md`. |
-| `GUARD_INTERNAL_ERROR` | The guard met an error it did not expect, such as a folder it may not read, a link loop, or a name that is too long. It blocked the call. | Run `claude --debug`, then `bowerloom apply`. |
+| `GUARD_OUTSIDE_SLICE` | The read guard blocked a Read, Grep, or Glob that reaches a file under a guarded folder when no slice of the agent lists it. A slice lists the files an agent reads under its folder. | Run `bowerloom context show <slice>`. To widen a slice, edit its file and run `bowerloom apply`. |
+| `GUARD_SLICE_NOT_INSTALLED` | A slice of the agent is not installed, or its catalog changed. The guard fails closed when it cannot read a slice. It blocked every call. | Run `bowerloom apply`. |
+| `GUARD_ROOT_MISSING` | The folder of a slice cannot be found, or it changed since `apply`. The guard fails closed when a slice's folder is gone. It blocked every call. | Run `bowerloom apply`. |
+| `GUARD_PROJECT_MISMATCH` | The project path or id in the agent copy matches no project that manages the agent. A guarded copy works only in the project folder that apply wrote it for. The guard blocked every call. | Run `bowerloom apply` in the project that holds `.claude/agents/<role>.md`. |
+| `GUARD_INTERNAL_ERROR` | The guard met an error it did not expect, such as a folder it may not read, a link loop, or a name that is too long. The guard blocks a call when it meets an error it cannot explain, such as a folder it may not read. | Run `claude --debug`, then `bowerloom apply`. |
 | `FOLDER_NAME_INVALID` | A folder name is lower-case letters and digits in words joined by single hyphens, at most 64 characters. The name becomes a file name in your store. | Run `bowerloom help context`. |
 | `FOLDER_EXISTS` | Your store already has a folder with that name, or one that differs only in case. Each registered folder needs its own name. | Run `bowerloom folder list`. |
 | `FOLDER_NOT_FOUND` | The store or the record is absent. Only a registered folder can be used or removed. | Run `bowerloom folder list`. |
@@ -257,7 +257,7 @@ A hold keeps one slice or one agent back, and the rest of `apply` goes on. A ref
 | `FOLDER_IN_CLOUD` | The folder is in an iCloud or cloud-synced folder. Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe. | Move the folder, for example `mv <folder> ~/Projects/`. |
 | `FOLDER_NOT_ALLOWED` | This project is not allowed to read registered folder `<name>`. A registered folder is shared with the projects you allow, one by one. A slice that names it is held back. If the project has no grant, `folder deny` refuses. | Run `bowerloom folder allow <folder-name>` inside the project. |
 | `FOLDER_INVALID` | A folder record in your store has wrong content. Bowerloom reads folder records strictly, so a hand edit can break one. | Run `bowerloom folder list`. |
-| `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocked the call and exited 2. | Run `claude --debug`. |
+| `GUARD_INPUT_INVALID` | The hook input from Claude Code could not be read. The guard blocks a call it cannot check. It exited 2. | Run `claude --debug`. |
 
 ## Request-file skills refusals
 

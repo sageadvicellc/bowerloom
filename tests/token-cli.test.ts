@@ -296,5 +296,5 @@ test('GITHUB_REQUEST_FAILED: a pinned GitHub skill with the variable set and a s
   const { mate, dir: copy, routes: storeRoutes } = clone(t), storeNet = network(mate, { ...storeRoutes, ...NPM_ROUTES, [COMMIT_URL]: { status: 401, file: null } });
   assert.equal(errorCode(approve(copy, ['apply', '--frozen'], storeNet.env, NETWORK).applied.stderr), 'GITHUB_REQUEST_FAILED');
   const next = renderRefusal('GITHUB_REQUEST_FAILED', 'm.').split('\n').find(l => l.startsWith('Next: '))!;
-  assert.equal(next, 'Next: Run the command again later. If the status is 401 or 403, check that you can read the store repository. For a private store, set BOWERLOOM_GITHUB_TOKEN.');
+  assert.equal(next, 'Next: Run the command again later. If the status is 401 or 403, check that you can read the repository. For a private store repository, set BOWERLOOM_GITHUB_TOKEN.');
 });

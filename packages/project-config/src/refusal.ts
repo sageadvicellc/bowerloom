@@ -49,7 +49,8 @@ export const CONFIG_REFUSAL_CODES: readonly ConfigRefusalCode[] = Object.freeze(
 /** The added sentence of STORE_ITEM_NOT_SHAREABLE, one per cause (spec 06, 3.10 and section 5). */
 export const NOT_SHAREABLE = Object.freeze({
   none: 'The store is not a git repository.',
-  'no-origin': 'The store repository has no remote named origin.',
+  // Round 2 of the reviews of PR 101: the store repository is only the copy on GitHub.
+  'no-origin': 'The git repository of the store has no remote named origin.',
   'unsupported-remote': 'The store remote is not a github.com repository.',
   unreadable: 'Bowerloom cannot read the git files of the store.',
   unpushed: 'The store has no pushed commit for this branch.',
@@ -95,27 +96,76 @@ export function teamListedFromProject(id: string): DefinitionError {
   const error = new DefinitionError('CONFIG_ITEM_NOT_SELECTED', ID.test(id) && id.length <= 64 ? `bowerloom.json already lists team ${id} from the project.` : 'bowerloom.json already lists that team from the project.'); own.add(error); return error;
 }
 /**
- * Round 1 of the reviews of PR 101, M3: the store path of the file a lock cannot record, as the Next: line names it. Only
- * a plain path inside a store area is named, so nothing else reaches a terminal: no control character, no space, no `..`.
+ * Rounds 1 and 2 of the reviews of PR 101: each cause and each fault of STORE_ITEM_NOT_SHAREABLE carries its own next
+ * step, because the next step of the code, to give the store a remote, does not fit them. A store path is named only
+ * when it is plain, inside a store area, so nothing else reaches a terminal: no control character, no space, no `..`.
+ * For a path that is not plain, the line names the item folder, and for an item that is not plain, "the store item".
  */
-const STORE_FILE = /^(?:skills|prompts|teams)(?:\/[A-Za-z0-9._-]+)+$/;
-const namedFile = (file: string | undefined): string | null =>
-  file !== undefined && file.length <= 256 && STORE_FILE.test(file) && !file.split('/').some(part => /^\.+$/.test(part)) ? file : null;
-/** The Next: line of the cause `file`. It names the file when `namedFile` allows it. */
-export function fileNext(file?: string): string {
-  const named = namedFile(file);
-  return named !== null
-    ? `Delete ~/.bowerloom/${named}, or make it a file that a lock records. Then run the command again.`
-    : 'Delete the file in ~/.bowerloom that a lock cannot record, or fix it. bowerloom help store lists the files a lock records. Then run the command again.';
+const STORE_PATH = /^(?:skills|prompts|teams)(?:\/[A-Za-z0-9._-]+)+$/;
+const plainPath = (path: string | undefined): string | null =>
+  path !== undefined && path.length <= 256 && STORE_PATH.test(path) && !path.split('/').some(part => /^\.+$/.test(part)) ? `~/.bowerloom/${path}` : null;
+/** The place of a fault: `path` is the store path of the file or folder, `item` the store path of the item folder. */
+export type ShareProblem = 'name' | 'empty' | 'mode' | 'bom' | 'encoding' | 'link' | 'special' | 'unsafe-file' | 'unsafe-folder' | 'unreadable'
+  | 'empty-folder' | 'too-deep' | 'not-folder' | 'area' | 'large' | 'count' | 'total';
+export interface SharePlace { readonly problem: ShareProblem; readonly path?: string; readonly item?: string }
+const AGAIN = 'Then run the command again.';
+const RECORDS = 'a lock records only md, txt, json, yaml, yml, and csv files, and LICENSE and NOTICE files.';
+const ADOPT = 'Or adopt a team into this project with bowerloom team adopt.';
+const CAUSE_NEXT: Readonly<Record<Exclude<NotShareableCause, 'file' | 'size'>, string>> = {
+  none: `Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. ${ADOPT}`,
+  'no-origin': `Add the remote origin of a github.com repository to the store and push it. bowerloom store status shows the commands. ${ADOPT}`,
+  'unsupported-remote': `Point the remote origin of the store at a github.com repository. bowerloom store status shows the command. ${ADOPT}`,
+  unpushed: `Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. ${ADOPT}`,
+  unreadable: `Bowerloom reads the git files of the store itself. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom/.git. A store whose git uses reftable or SHA-256 cannot be read in this beta. ${ADOPT}`,
+};
+const GENERIC_NEXT = { file: `Find the file or folder of the item in ~/.bowerloom that a lock cannot record, and fix it. bowerloom help store lists the files a lock records. ${AGAIN}`, size: `Make the item in ~/.bowerloom smaller. bowerloom help store gives the limits. ${AGAIN}` };
+/** The next step of one fault, naming its path when `plainPath` allows, else its item folder. */
+export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
+  if (place === undefined) return GENERIC_NEXT[cause];
+  const p = plainPath(place.path), item = plainPath(place.item) ?? 'the store item';
+  const sub = p ?? `A file in ${item}`;
+  switch (place.problem) {
+    case 'name': return p ? `If you do not need ${p}, delete it. Otherwise rename it: ${RECORDS} ${AGAIN}` : `${sub} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it: ${RECORDS} ${AGAIN}`;
+    case 'empty': return p ? `${p} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}` : `${sub} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}`;
+    case 'mode': return p ? `Run chmod a-x ${p}. A lock records no file with an execute bit. ${AGAIN}` : `${sub} has an execute bit. Run chmod a-x on it. ${AGAIN}`;
+    case 'bom': return p ? `Remove the byte order mark at the start of ${p}. ${AGAIN}` : `${sub} starts with a byte order mark. Remove it. ${AGAIN}`;
+    case 'encoding': return p ? `Save ${p} as UTF-8 text. ${AGAIN}` : `${sub} is not UTF-8 text. Save it as UTF-8 text. ${AGAIN}`;
+    case 'link': return `${p ?? `A file or folder in ${item}`} is a link, and a lock records no link. Put a copy of what it points to in its place. ${AGAIN}`;
+    case 'special': return `${p ?? `An entry in ${item}`} is not a plain file or folder. Move it out of the item. ${AGAIN}`;
+    case 'unsafe-file': return p ? `Bowerloom could not read ${p} safely. It must be a plain file that you own, with one link, closed to other users. Run ls -l ${p}. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`
+      : `Bowerloom could not read a file in ${item} safely. Each file must be a plain file that you own, with one link, closed to other users. Run ls -la ${item}. ${AGAIN}`;
+    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users, with at most 256 names. Run ls -la ${f}. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`; }
+    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. Run ls -la ${f}, and fix what it shows. ${AGAIN}`; }
+    case 'empty-folder': return `${p ?? item} is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`;
+    case 'too-deep': return `${p ?? `A folder in ${item}`} sits too deep in the item. A lock records at most 7 levels of folders inside an item. Move its files up. ${AGAIN}`;
+    case 'not-folder': return `${item} is not a real folder that you own. Run ls -ld ${item}. ${AGAIN}`;
+    case 'area': { const a = place.path !== undefined && /^(?:skills|prompts|teams)$/.test(place.path) ? `~/.bowerloom/${place.path}` : 'A folder of the store'; return `${a} is a link or not a real folder of the store. Make it a real folder in ~/.bowerloom. ${AGAIN}`; }
+    case 'large': return `${p ?? `A file in ${item}`} is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. ${AGAIN}`;
+    case 'count': return `${item} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`;
+    case 'total': return `${item} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`;
+  }
 }
 /**
- * STORE_ITEM_NOT_SHAREABLE with the sentence of its cause. The cause `file` carries its own next step (M3), because the
- * next step of the code, to give the store a remote, does not help: `file` is the store path of the file, when known.
+ * STORE_ITEM_NOT_SHAREABLE with the sentence of its cause and a next step of its own. For `file` and `size`, `place` says
+ * which file or folder and what is wrong with it.
  */
-export function notShareable(cause: NotShareableCause, file?: string): DefinitionError {
+export function notShareable(cause: NotShareableCause, place?: SharePlace): DefinitionError {
   const error = new DefinitionError('STORE_ITEM_NOT_SHAREABLE', `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} ${NOT_SHAREABLE[cause]}`); own.add(error);
-  if (cause === 'file') Object.defineProperty(error, 'next', { value: fileNext(file), enumerable: false });
+  const next = cause === 'file' || cause === 'size' ? shareNext(cause, place) : CAUSE_NEXT[cause];
+  Object.defineProperty(error, 'next', { value: next, enumerable: false });
   return error;
+}
+/**
+ * Round 2 of the reviews of PR 101: in a project that is not shared, a lock update still checks each item it records, and
+ * the words say so instead of "This project is shared". Any other error is returned as it is.
+ */
+export function notSharedYet(error: unknown): unknown {
+  const prefix = `${MESSAGES.STORE_ITEM_NOT_SHAREABLE} `;
+  if (!(error instanceof DefinitionError) || !own.has(error) || error.code !== 'STORE_ITEM_NOT_SHAREABLE' || !error.message.startsWith(prefix)) return error;
+  const plain = new DefinitionError(error.code, `A lock records this item, and a teammate cannot fetch it. ${error.message.slice(prefix.length)}`); own.add(plain);
+  const next = (error as { next?: unknown }).next;
+  if (typeof next === 'string') Object.defineProperty(plain, 'next', { value: next, enumerable: false });
+  return plain;
 }
 /** LOCK_CONFIG_MISMATCH naming up to 8 `kind id` pairs, then `and <n> more`. Each pair is checked, so no other text gets in. */
 export function lockMismatch(pairs: readonly string[]): DefinitionError {

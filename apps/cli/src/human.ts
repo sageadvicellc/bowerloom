@@ -113,7 +113,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
   use: [
     'Usage:',
-    '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]', '',
+    '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--max-github-requests <n>] [--approve <revision>] [--json]', '',
     'Picks an item for this project. By default the item comes from your store, ~/.bowerloom.',
     '--project picks an item that this project defines in .bowerloom and that bowerloom.json does not list yet.',
     'bowerloom.json lists everything this project installs. If it is missing, use creates it and lists the items',
@@ -121,6 +121,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'use team <id> also picks the store skills and prompts that name that team.',
     'In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.',
     '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
     'It changes bowerloom.json and bowerloom.lock.json only. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
@@ -434,7 +435,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   // Spec 06, section 5.
   STORE_ITEM_NOT_FOUND: { sentence: 'Bowerloom picks only items that your store defines.', next: 'bowerloom ls --global' },
   STORE_ITEM_MISSING: { sentence: 'A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.', next: 'Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.' },
-  STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.' },
+  // Round 2 of the reviews of PR 101: each cause and each fault carries its own next step, which names the file or folder.
+  STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Fix the cause that the message names. bowerloom store status shows the git state of the store. Or adopt a team into this project with bowerloom team adopt.' },
   STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It is private, or it does not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
   // Spec 07, section 5: the sentence is the fixed message, and the next step the table's.
   // Review R2 of PR 97 (option C): each sentence says why, instead of repeating the message.
@@ -468,8 +470,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   LOCK_STORE_NOT_PUSHED: { sentence: 'A teammate can fetch only what you pushed, and your store differs from the pushed copy.', next: 'Commit and push the store, then run the command again.' },
   LOCK_COMMIT_UNREACHABLE: { sentence: 'The lock needs a commit that GitHub has, and GitHub does not have this one.', next: 'Push the store, or pass --commit <sha> of a pushed commit.' },
   LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom read it back.', next: 'git diff bowerloom.lock.json' },
-  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, check that you can read the store repository. For a private store, set BOWERLOOM_GITHUB_TOKEN.' },
-  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'For apply and skills sync, run it again with --max-github-requests <n>, up to 5000. For lock update, lock fewer items in one run with --item <kind>:<id>. For store migrate, move fewer items in one run.' },
+  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, check that you can read the repository. For a private store repository, set BOWERLOOM_GITHUB_TOKEN.' },
+  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'For apply, skills sync, and use, run it again with --max-github-requests <n>, up to 5000. For lock update, lock fewer items in one run with --item <kind>:<id>. For store migrate, move fewer items in one run.' },
   // Beta.3 docs review, fix 2.
   LOCK_COMMIT_GONE: { sentence: 'A force-push or a deleted branch removes a commit that a lock still names.', next: 'Ask the author of the store to run bowerloom lock update, then commit and push bowerloom.lock.json. Then pull the project.' },
   STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
@@ -481,7 +483,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_NOT_FOUND: { sentence: 'There is nothing to check yet.', next: 'bowerloom skills add npm:<package>@<version>:<path>' },
   MANIFEST_INVALID: { sentence: 'Bowerloom reads skills.json strictly, so a hand edit can break it.', next: 'git diff .bowerloom/skills.json' },
   MANIFEST_UNSAFE: { sentence: 'Bowerloom will not trust a skills.json that other people or links can change.', next: 'ls -l .bowerloom/skills.json' },
-  MANIFEST_WRITE_UNCONFIRMED: { sentence: 'skills.json was written, but it changed again before Bowerloom read it back.', next: 'Check it, then run bowerloom skills check.' },
+  MANIFEST_WRITE_UNCONFIRMED: { sentence: 'skills.json was written, but it changed again before Bowerloom read it back.', next: 'Check skills.json, then run bowerloom skills check.' },
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
@@ -562,7 +564,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
   FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
-  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs a fetch, and this run does not fetch: --offline was set, or plain apply ran.', next: 'Run bowerloom skills sync without --offline, or bowerloom apply --frozen.' },
+  // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
+  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs a fetch, and this run did not fetch it: --offline was set, plain apply ran, or the network was not reachable.', next: 'Connect to the network and run the command again. After plain apply or --offline, run bowerloom skills sync without --offline, or bowerloom apply --frozen.' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 256 skills at once.', next: 'bowerloom skills check' },

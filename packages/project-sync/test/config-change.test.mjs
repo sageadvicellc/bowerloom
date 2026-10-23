@@ -135,7 +135,7 @@ test('the proof refuses a store with no git, no origin, an unpushed edit, a priv
   const warned = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo2) });
   assert.ok(warned.notes.includes(`Your store has commits that are not pushed (HEAD differs from origin/main). The lock records the pushed commit ${repo2.commit.slice(0, 8)}.`));
   fs.writeFileSync(path.join(w.store, '.git', 'config'), '[core]\n');
-  await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The store repository has no remote named origin.'));
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The git repository of the store has no remote named origin.'));
   // A file a lock cannot record refuses before any network read.
   fs.writeFileSync(path.join(w.store, 'skills/house-style/empty.md'), '', { mode: 0o600 });
   await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The item holds a file that a lock cannot record.'));
