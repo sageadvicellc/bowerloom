@@ -62,11 +62,15 @@ test('the built binary has those fuses (checked when a macOS build is present)',
   if (existsSync(x64)) assert.equal(spawnSync(process.execPath, [join(DESKTOP, 'tools', 'check-fuses.mjs'), x64], { encoding: 'utf8' }).status, 0);
 });
 
-test('the launcher gives install scripts a minimal environment: no token reaches them', async () => {
+test('the launcher gives install scripts a minimal environment: no token reaches them, names match whatever the case', async () => {
   const { installEnv, marker } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { installEnv(s: Record<string, string | undefined>): Record<string, string>; marker(d: string): string };
-  const env = installEnv({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', BOWERLOOM_GITHUB_TOKEN: 'ghp_secret', NPM_TOKEN: 'npm_secret', GH_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'y', npm_config_registry: 'https://registry.example/', npm_config_proxy: 'http://p:1', 'npm_config__authToken': 'z', npm_config_cafile: '/ca.pem', npm_config__password: 'w', HTTPS_PROXY: 'http://p:2', SYSTEMROOT: 'C:\\Windows', ANTHROPIC_API_KEY: 'k' });
-  assert.deepEqual(Object.keys(env).sort(), ['HOME', 'HTTPS_PROXY', 'PATH', 'SYSTEMROOT', 'TMPDIR', 'npm_config_cafile', 'npm_config_proxy', 'npm_config_registry'].sort());
+  const env = installEnv({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', BOWERLOOM_GITHUB_TOKEN: 'ghp_secret', NPM_TOKEN: 'npm_secret', GH_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'y', npm_config_registry: 'https://registry.example/', npm_config_proxy: 'http://p:1', 'npm_config__authToken': 'z', npm_config_cafile: '/ca.pem', npm_config__password: 'w', HTTPS_PROXY: 'http://p:2', SYSTEMROOT: 'C:\\Windows', ANTHROPIC_API_KEY: 'k',
+    NODE_EXTRA_CA_CERTS: '/extra.pem', SSL_CERT_FILE: '/ssl.pem', ALL_PROXY: 'http://p:3', XDG_CONFIG_HOME: '/xdg', ELECTRON_SKIP_BINARY_DOWNLOAD: '1', ELECTRON_GET_USE_PROXY: '1', GLOBAL_AGENT_HTTPS_PROXY: 'http://p:4', GLOBAL_AGENT_NO_PROXY: 'x', GLOBAL_AGENT_TOKEN: 'secret-agent' });
+  assert.deepEqual(Object.keys(env).sort(), ['ALL_PROXY', 'ELECTRON_GET_USE_PROXY', 'ELECTRON_SKIP_BINARY_DOWNLOAD', 'GLOBAL_AGENT_HTTPS_PROXY', 'GLOBAL_AGENT_NO_PROXY', 'HOME', 'HTTPS_PROXY', 'NODE_EXTRA_CA_CERTS', 'PATH', 'SSL_CERT_FILE', 'SYSTEMROOT', 'TMPDIR', 'XDG_CONFIG_HOME', 'npm_config_cafile', 'npm_config_proxy', 'npm_config_registry'].sort());
   for (const value of Object.values(env)) assert.doesNotMatch(value, /secret|^z$|^w$|^k$/);
+  // Windows spells names with mixed case: Path, SystemRoot, ComSpec, PathExt. They are kept, under the name they have.
+  const win = installEnv({ Path: 'C:\\bin', SystemRoot: 'C:\\Windows', ComSpec: 'cmd.exe', PathExt: '.EXE', Temp: 'C:\\t', UserProfile: 'C:\\u', AppData: 'C:\\a', Https_Proxy: 'http://p', Bowerloom_Github_Token: 'ghp_x', NPM_TOKEN: 'n', Npm_Config__AuthToken: 'z', Global_Agent_Token: 'g' });
+  assert.deepEqual(Object.keys(win).sort(), ['AppData', 'ComSpec', 'Https_Proxy', 'Path', 'PathExt', 'SystemRoot', 'Temp', 'UserProfile']);
   assert.equal(marker('/x'), '/x/node_modules/.bowerloom-install-ok');
 });
 
@@ -77,8 +81,18 @@ test('the launcher refuses an unknown flag with a plain message, and both modes 
   }
 });
 
-test('the launcher source: a failed or signalled step exits non-zero, spawn errors are printed, Windows uses npm.cmd, and a marker proves an install finished', () => {
+test('the launcher source: a failed or signalled step exits non-zero, spawn errors are printed, no shell is used, and a marker proves an install finished', () => {
   const src = readFileSync(join(DESKTOP, 'tools', 'run.mjs'), 'utf8');
-  for (const needle of ['r.error', 'r.signal', "'npm.cmd'", 'bowerloom-install-ok', "child.on('error'", "child.on('exit', (code, signal)"]) assert.ok(src.includes(needle), needle);
+  for (const needle of ['r.error', 'r.signal', 'npm_execpath', 'npm-cli.js', 'path.txt', 'bowerloom-install-ok', "child.on('error'", "child.on('exit', (code, signal)"]) assert.ok(src.includes(needle), needle);
+  assert.doesNotMatch(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''), /shell\s*:\s*true|\.cmd\b|\.bin/, 'no shell, no .cmd shim');
   assert.match(src, /step\('Installing the viewer[^\n]*clean\)/); assert.match(src, /step\('Downloading the app window[^\n]*clean\)/); assert.match(src, /step\('Installing Bowerloom[^\n]*clean\)/);
 });
+
+test('the launcher finds npm and the app binary without a shell', async () => {
+  const { npmCommand, electronBinary } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as { npmCommand(env: Record<string, string | undefined>, node: string): { command: string; prefix: string[] }; electronBinary(desktop: string, platform: string): string | null };
+  const viaNpm = npmCommand({ npm_execpath: '/usr/lib/npm/bin/npm-cli.js' }, '/usr/bin/node'); assert.deepEqual(viaNpm, { command: '/usr/bin/node', prefix: ['/usr/lib/npm/bin/npm-cli.js'] });
+  const beside = npmCommand({}, '/opt/node/bin/node'); assert.equal(beside.command, '/opt/node/bin/node'); assert.match(beside.prefix[0]!, /node_modules\/npm\/bin\/npm-cli\.js$/);
+  const bin = electronBinary(DESKTOP, process.platform); assert.ok(bin === null || bin.includes(`${join('node_modules', 'electron', 'dist')}`), String(bin));
+  assert.equal(electronBinary('/nowhere', 'darwin'), null);
+});
+
