@@ -8,7 +8,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { withCacheLock, cacheLockSlot, lockSlot, LOCK_REBINDS } from '../../../dist/packages/project-context/src/index.js';
+import { withCacheLock, cacheLockSlot, lockSlot, LOCK_REBINDS, CACHE_LOCK_POLL_MS } from '../../../dist/packages/project-context/src/index.js';
 
 const listen = (server, port) => new Promise((resolve, reject) => { server.once('error', reject); server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
 const close = server => new Promise(resolve => server.close(resolve));
@@ -29,15 +29,23 @@ test('the cache lock is keyed apart from the project lock of the same folder', a
   assert.match(cacheLockSlot(dir).banner, /^bowerloom-cache-lock\/v1 [a-f0-9]{64}\n$/);
 });
 
-test('a second holder of one cache lock waits for the first, then runs', async t => {
+// PR 102 round 3, items 2 and 3: plain node:test, so a collision is a failure, never a retry. The waiter pauses
+// CACHE_LOCK_POLL_MS after each answer of the holder, so it probes about once per pause, never in a tight loop.
+nodeTest('a second holder of one cache lock waits for the first, probing about once per poll, then runs', async t => {
   const dir = await freshCache(t), order = [], signal = new AbortController().signal;
   let release; const gate = new Promise(r => { release = r; });
   const first = withCacheLock(dir, signal, async held => { order.push('first in'); held.assertHeld(); await gate; order.push('first out'); return 1; });
   await new Promise(r => setTimeout(r, 50));
+  const connect = net.connect; let probes = 0;
+  t.mock.method(net, 'connect', (...args) => { probes++; return connect.apply(net, args); });
   const second = withCacheLock(dir, signal, async () => { order.push('second in'); return 2; });
-  await new Promise(r => setTimeout(r, 300));
-  assert.deepEqual(order, ['first in']);
-  release();
+  const window = 300; await new Promise(r => setTimeout(r, window));
+  const seen = probes; t.mock.restoreAll();
+  // The gate opens whatever the checks say, so a failed check never leaves the waiter probing.
+  try {
+    assert.deepEqual(order, ['first in']);
+    assert.ok(seen >= 1 && seen <= Math.ceil(window / CACHE_LOCK_POLL_MS) + 1, `${seen} probes in ${window} ms`);
+  } finally { release(); }
   assert.deepEqual(await Promise.all([first, second]), [1, 2]);
   assert.deepEqual(order, ['first in', 'first out', 'second in']);
 });
@@ -77,7 +85,7 @@ await withCacheLock(${JSON.stringify(dir)}, new AbortController().signal, async 
   return { held, exited };
 }
 
-test('a holder in another process that blocks its event loop past the banner timeout is waited for, not refused', async t => {
+nodeTest('a holder in another process that blocks its event loop past the banner timeout is waited for, not refused', async t => {
   const dir = await freshCache(t), holder = busyHolder(dir, 2500);
   await holder.held;
   let ranAt = 0;
@@ -150,4 +158,26 @@ nodeTest('a program that ends, resets, and ignores connections in turn refuses L
   await assert.rejects(withCacheLock(dir, new AbortController().signal, async () => { ran = true; }), e => e?.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
   const took = Date.now() - started;
   assert.equal(ran, false); assert.ok(took < 10000, `${took} ms`); assert.ok(n <= 3 * (LOCK_REBINDS + 1), `${n} connections`);
+});
+
+// PR 102 round 3, item 1: the silent limit runs per holder. A 'gone' answer, a holder that let go, starts the wait again,
+// so two busy holders in turn, each silent for less than the limit, are waited for. letGos stays counted since the last
+// answer of this lock, so the wait is still bounded, at about (LOCK_REBINDS + 1) x silentMs.
+nodeTest('two holders in turn, each silent for less than the silent limit, are waited for and do not refuse', async t => {
+  const dir = await freshCache(t), port = cacheLockSlot(dir).port; let squatter = net.createServer(); await listen(squatter, port);
+  t.after(() => new Promise(resolve => squatter.close(() => resolve())));
+  // Holder one is busy for two probes, lets go; holder two takes the slot, is busy for two probes, lets go for good.
+  const script = ['silent', 'silent', 'gone', 'silent', 'silent', 'free'];
+  let step = 0;
+  t.mock.method(net, 'connect', () => {
+    const socket = new net.Socket(), turn = script[step++] ?? 'free';
+    if (turn === 'silent') return socket;
+    const refused = () => process.nextTick(() => socket.emit('error', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })));
+    if (turn === 'free') squatter.close(refused); else refused();
+    return socket;
+  });
+  let ran = false; const started = Date.now();
+  await withCacheLock(dir, new AbortController().signal, async () => { ran = true; }, { silentMs: 2500 });
+  t.mock.restoreAll();
+  assert.equal(ran, true); assert.equal(step, script.length); assert.ok(Date.now() - started >= 4000, 'each holder was waited out');
 });

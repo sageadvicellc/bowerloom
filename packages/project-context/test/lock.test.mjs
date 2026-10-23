@@ -37,8 +37,11 @@ test('lockPort keys on the folder device and inode, not the path string', async 
   assert.equal(lockPort(dir), formula(dir));
   assert.ok(lockPort(dir) >= 20000 && lockPort(dir) < 50000);
   // A symlink to the folder names the same inode, so it names the same lock.
-  const link = dir + '-link'; fs.symlinkSync(dir, link); t.after(() => fs.rmSync(link, { force: true }));
-  assert.equal(lockPort(link), lockPort(dir));
+  // PR 102 round 3, item 4: the link is removed here, before the folder. Once the folder is gone, rmSync of the
+  // dangling link left it in TMPDIR on every run; unlinkSync removes the link itself.
+  const link = dir + '-link'; fs.symlinkSync(dir, link);
+  try { assert.equal(lockPort(link), lockPort(dir)); } finally { fs.unlinkSync(link); }
+  assert.equal(fs.existsSync(link) || (() => { try { fs.lstatSync(link); return true; } catch { return false; } })(), false, 'no -link is left');
   // A path that names no folder has no lock slot.
   assert.throws(() => lockPort(path.join(dir, 'missing')), code('PROJECT_LOCK_UNAVAILABLE'));
   fs.writeFileSync(path.join(dir, 'file'), 'x'); assert.throws(() => lockPort(path.join(dir, 'file')), code('PROJECT_LOCK_UNAVAILABLE'));

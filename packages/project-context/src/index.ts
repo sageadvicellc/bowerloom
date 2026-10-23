@@ -297,9 +297,11 @@ function cacheSlotCollision(port: number): DefinitionError & { readonly port: nu
  * A refused connection ('gone') or one that ends cleanly before any byte ('closed') is a holder that let go, so the
  * writer binds again. More than LOCK_REBINDS such answers since this lock last answered count as another program (PR
  * 102 rounds 1 and 2): one that accepts and ends every connection, or keeps the port bound and refuses every
- * connection, refuses in well under a second. Silence and resets count only against `silentMs`, which runs from the
- * first answer that was not this lock's; so a program that mixes the answers also refuses, at the latest then. Each
- * wait pauses CACHE_LOCK_POLL_MS before the next bind, except after the first 'gone' in a row.
+ * connection, refuses in well under a second. Silence and resets count against `silentMs`, which runs from the first
+ * answer of the current holder that was not this lock's; a 'gone', a holder that let go, starts it again (round 3),
+ * so two busy holders in turn are each waited out. Since `letGos` keeps counting, a program that mixes the answers
+ * still refuses, after at most about (LOCK_REBINDS + 1) x `silentMs`. Each wait pauses CACHE_LOCK_POLL_MS before the
+ * next bind, except after the first 'gone' in a row.
  * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
  */
 /** Round 3 of the reviews of PR 99, L-e: the cache lock refuses in its own words, not the project lock's. */
@@ -308,8 +310,9 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
   let first: LockSlot; try { first = cacheLockSlot(cacheRoot); } catch (error) { if ((error as { code?: unknown }).code === 'PROJECT_LOCK_UNAVAILABLE') throw cacheLockRefusal(); throw error; }
   const slot = first, deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
   const silentLimit = options.silentMs ?? CACHE_LOCK_SILENT_LIMIT_MS;
-  // PR 102 round 2, item 2: one record of the wait since this lock last answered. `waitingSince` is when the first other
-  // answer came, `letGos` counts the answers of a holder that let go ('gone' and 'closed'), and `goneInRow` lets the
+  // PR 102 rounds 2 and 3: one record of the wait. `letGos` counts the answers of a holder that let go ('gone' and
+  // 'closed') since this lock last answered. `waitingSince` is when the current holder's first other answer came: a
+  // 'gone' starts it again, so each holder gets the full silent limit. `goneInRow` lets the
   // first 'gone' in a row bind again at once.
   let waitingSince: number | undefined, letGos = 0, goneInRow = 0;
   const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
@@ -325,7 +328,7 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     if (outcome.ok) break;
     if (outcome.code !== 'EADDRINUSE') throw cacheLockRefusal();
     const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
-    if (holder === 'this') { waitingSince = undefined; letGos = 0; } else waitingSince ??= Date.now();
+    if (holder === 'this') { waitingSince = undefined; letGos = 0; } else if (holder === 'gone') waitingSince = undefined; else waitingSince ??= Date.now();
     if (holder === 'gone' || holder === 'closed') letGos++;
     goneInRow = holder === 'gone' ? goneInRow + 1 : 0;
     if (holder === 'other' || letGos > LOCK_REBINDS || (waitingSince !== undefined && Date.now() - waitingSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
