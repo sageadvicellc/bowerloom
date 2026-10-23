@@ -15,7 +15,6 @@ export const CSP = [
   "base-uri 'none'",
   "form-action 'none'",
   "frame-src 'none'",
-  "frame-ancestors 'none'",
 ].join('; ');
 
 export const webPreferences = (preload: string) => ({
