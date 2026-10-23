@@ -1,5 +1,5 @@
 /** The app's own settings, kept in its own folder (Electron userData). Nothing here is Bowerloom's data. */
-import { chmodSync, copyFileSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, copyFileSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import type { AppSettings } from '../shared/types.js';
 
@@ -45,13 +45,27 @@ export function loadSettings(dir: string): Loaded {
   return { settings: parsed, notice: listed > parsed.roots.length ? `Some folders in the viewer's list were left out (a list holds at most ${MAX_ROOTS} folders, and each must be a full path).` : null };
 }
 
-/** Saves the settings. An older file is first copied to `.bak`. On any failure the temporary file is removed and the error is thrown. */
+const refuseLink = (path: string): void => {
+  let stat; try { stat = lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('A link or a folder is where the viewer keeps a file, so nothing was written.');
+};
+
+/**
+ * Saves the settings. An older file is first copied to `.bak`. Neither the `.bak` nor the temporary file may be a link or
+ * anything but a plain file: a link there would send the write somewhere else, so the save is refused. The temporary file is
+ * made new, with the flags that refuse a link, and every file is private to the owner. On any failure the temporary file is
+ * removed and the error is thrown.
+ */
 export function saveSettings(dir: string, settings: AppSettings): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const file = join(dir, CONFIG_FILE), temp = `${file}.tmp`;
+  const file = join(dir, CONFIG_FILE), temp = `${file}.tmp`, backup = `${file}.bak`;
+  refuseLink(backup); refuseLink(temp); refuseLink(file);
   try {
-    try { if (lstatSync(file).isFile()) copyFileSync(file, `${file}.bak`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    writeFileSync(temp, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+    // A leftover plain temporary file from a stopped save is replaced, not trusted.
+    rmSync(temp, { force: true });
+    try { if (lstatSync(file).isFile()) { copyFileSync(file, backup); chmodSync(backup, 0o600); } } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try { const data = Buffer.from(`${JSON.stringify(settings, null, 2)}\n`); let at = 0; while (at < data.length) at += writeSync(fd, data, at); } finally { closeSync(fd); }
     chmodSync(temp, 0o600);
     renameSync(temp, file);
   } catch (error) {

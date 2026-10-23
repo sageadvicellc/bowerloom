@@ -146,3 +146,30 @@ test('updates when turned on: ask the GitHub feed once, never download by themse
   assert.deepEqual(calls, [JSON.stringify(UPDATE_FEED), 'check']); assert.equal(ok.status, 'Checked just now.');
   const bad = await checkForUpdates(initialUpdateState(true), async () => { throw new Error('offline'); }); assert.match(bad.status, /Could not check/);
 });
+
+test('saving settings refuses a link where the backup or the temporary file goes, keeps the backup private, and never writes through a link', async t => {
+  const dir = tempDir(t), target = join(tempDir(t), 'victim'); writeFileSync(target, 'precious');
+  saveSettings(dir, { theme: 'dark', roots: [], mode: null });
+  // 1. The .bak is a link: the save is refused, and the target of the link is untouched.
+  symlinkSync(target, join(dir, `${CONFIG_FILE}.bak`));
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'dark', 'the settings file was not changed');
+  rmSync(join(dir, `${CONFIG_FILE}.bak`));
+  // 2. The .tmp is a link: refused, target untouched.
+  symlinkSync(target, join(dir, `${CONFIG_FILE}.tmp`));
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  rmSync(join(dir, `${CONFIG_FILE}.tmp`));
+  // 3. With no links: it works, and the backup is private to the owner.
+  saveSettings(dir, { theme: 'light', roots: [], mode: null });
+  assert.equal(lstatSync(join(dir, `${CONFIG_FILE}.bak`)).mode & 0o777, 0o600); assert.equal(lstatSync(join(dir, CONFIG_FILE)).mode & 0o777, 0o600);
+  assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
+  // 4. A leftover plain .tmp from a stopped save is replaced, not trusted.
+  writeFileSync(join(dir, `${CONFIG_FILE}.tmp`), 'stale', { mode: 0o666 });
+  saveSettings(dir, { theme: 'system', roots: [], mode: null }); assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'system'); assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
+});
+
+test('the controller reports a refused save in plain words and keeps the old value', async t => {
+  const h = host(t); mkdirSync(h.app, { recursive: true }); const c = createController(h.host); await c.setTheme('dark');
+  symlinkSync('/etc/hosts', join(h.app, `${CONFIG_FILE}.bak`));
+  const r = await c.setTheme('light'); assert.match(r.message!, /could not be saved/); assert.equal(r.settings.theme, 'dark');
+});
