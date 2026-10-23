@@ -8,6 +8,7 @@
   - Decision 2, roots outside the project: "A slice can name a root outside its layer, such as the knowledge base, through a named root registered in the store (spec 03). This builds after the store foundation."
   - Decision 3, read guard: "`bowerloom context guard`, added as a per-agent `PreToolUse` hook, blocks Read, Grep, and Glob outside the agent's slices. It needs workspace trust. Shell access stays a documented gap, and the plan notes it."
   - Decision 4, create command: "Add `bowerloom slice create <id>`, with a plan, like `skill create`. `bowerloom context show` previews what a slice selects."
+  - Decision 5 of the registered-folder round, option B, https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6342862841 (Hanna, 2026-10-23): "The grant also records the summary kind. `folder allow` names `heading` or `frontmatter:<key>`. A slice that asks for a different kind is held with `FOLDER_NOT_ALLOWED` until you run `folder allow` again."
 - Defaults that the issue records, and that bind this spec until Hanna overrides one:
   - An agent names a slice with `skills: slice-<id>`. There is no new frontmatter key.
   - An agent with slices and without `omitClaudeMd: true` gets a plan note.
@@ -171,6 +172,8 @@ Exit codes: 0 when the create finished, 3 when approval is required, 2 for a usa
 ### 3.3 Registered folders: `bowerloom folder add`, `folder list`, `folder remove` (Part B)
 
 A registered folder lets a slice select from a folder outside its project, such as the workbench knowledge base for an agent of the `code` layer. The record lives in the store at `~/.bowerloom/folders/<folder-name>.json`. Its path is relative to the home folder, so a store that spec 07 syncs to another machine names the same place there. **Amendment, 2026-10-22, sageadvicellc/bowerloom#100:** owner decision A (https://github.com/sageadvicellc/bowerloom/pull/100#issuecomment-6352722384): records and grants do not travel. The store's `.gitignore` leaves out `folders/`, and each machine runs `bowerloom folder add` itself.
+
+**Amendment, 2026-10-23, decision 5, option B (https://github.com/sageadvicellc/bowerloom/issues/86#issuecomment-6342862841):** `bowerloom folder allow <folder-name> [heading|frontmatter:<key>] [--approve <revision>] [--json]` grants one project the folder, and the grant records the summary kind. The kind is `heading` when left out. A kind that is not `heading` or `frontmatter:<key>` (key of 1 to 64 characters from `A-Za-z0-9_-`) is a usage error, and `none` is not a grant kind. The grant file adds a `summary` key after `birth`: `{"format":"bowerloom/store-folder-grant/v1beta1","record":"<sha256>","birth":"<ns>","summary":"<kind>"}`. Every reader that opens a slice (`apply`, `status`, `context show`, `context measure`) passes the kind the slice asks for. A kind other than the grant's holds the slice with `FOLDER_NOT_ALLOWED`, and the next step is `bowerloom folder allow <name> <kind>`. A slice with `summary: none` copies no text and is never held for its kind. The read guard does not know a slice's summary, so it needs a grant that records a kind and no more. A grant with no `summary` key, made before this amendment, fails closed: it counts as no grant until `folder allow` runs again. The apply plan keeps its copy note.
 
 Usage, verbatim:
 

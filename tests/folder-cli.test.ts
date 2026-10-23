@@ -12,7 +12,7 @@ import { approve, folder, run, put, revisionIn, sliceProject } from './support/s
 
 const errorOf = (stderr: string) => (JSON.parse(stderr) as { error: { code: string; message: string } }).error;
 const heading = (() => { const r = readInstalledRelease(); return `Bowerloom ${r.version}: open beta\n${r.execution}\n\n`; })();
-const USAGE = 'Use bowerloom folder add <folder-name> <path>, bowerloom folder allow <folder-name>, bowerloom folder deny <folder-name>, bowerloom folder list, or bowerloom folder remove <folder-name>, with optional --approve <revision> and --json.';
+const USAGE = 'Use bowerloom folder add <folder-name> <path>, bowerloom folder allow <folder-name> [heading|frontmatter:<key>], bowerloom folder deny <folder-name>, bowerloom folder list, or bowerloom folder remove <folder-name>, with optional --approve <revision> and --json.';
 
 /** A home with a folder `kb` in it, and a working folder that is no project. */
 function world(t: TestContext) {
@@ -75,16 +75,16 @@ test('6. help folder and folder --help print TOPICS.context', t => {
   const w = world(t);
   for (const args of [['help', 'folder'], ['folder', '--help'], ['help', 'context'], ['help', 'slice']]) { const r = run(w.work, args, w.home); assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, heading + TOPICS.context!, args.join(' ')); }
   assert.match(TOPICS.context!, /^ {2}bowerloom folder add <folder-name> <path> \[--approve <revision>\] \[--json\]$/m);
-  assert.match(TOPICS.context!, /^ {2}bowerloom folder allow <folder-name> \[--approve <revision>\] \[--json\]$/m);
+  assert.match(TOPICS.context!, /^ {2}bowerloom folder allow <folder-name> \[heading\|frontmatter:<key>\] \[--approve <revision>\] \[--json\]$/m);
   assert.match(TOPICS.context!, /^ {2}bowerloom folder deny <folder-name> \[--approve <revision>\] \[--json\]$/m);
   assert.match(TOPICS.context!, /^ {2}bowerloom folder list \[--json\]$/m);
   assert.match(TOPICS.context!, /^ {2}bowerloom folder remove <folder-name> \[--approve <revision>\] \[--json\]$/m);
   assert.match(TOPICS.context!, /\[--registered <folder-name>\]/);
-  assert.match(TOPICS.context!, /folder add registers a folder outside this project, such as a knowledge base, in your store\. A slice then names it\nwith root: \{ registered: <folder-name> \} and --registered on slice create\. Bowerloom reads it and never writes it\.\nThe folder must be yours, below your home folder, outside iCloud folders, and not writable by other users\.\nfolder allow, run in a project, lets that project read the folder after you approve a plan that names it\. Every other project\nstays shut out until you allow it\. folder deny takes the grant back\. folder remove deletes the record and its grants only\.\nThe folder stays\. A slice of a registered folder copies text from it into \.claude\/skills, so keep that folder out of git\.\n/);
+  assert.match(TOPICS.context!, /folder add registers a folder outside this project, such as a knowledge base, in your store\. A slice then names it\nwith root: \{ registered: <folder-name> \} and --registered on slice create\. Bowerloom reads it and never writes it\.\nThe folder must be yours, below your home folder, outside iCloud folders, and not writable by other users\.\nfolder allow, run in a project, lets that project read the folder after you approve a plan that names it\. Every other project\nstays shut out until you allow it\. The grant also records the summary kind, heading by default\. A slice that asks for another\nsummary kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind\. A grant made before the kind\nwas recorded needs folder allow again\. folder deny takes the grant back\. folder remove deletes the record and its grants only\.\nThe folder stays\. A slice of a registered folder copies text from it into \.claude\/skills, so keep that folder out of git\.\n/);
 });
 test('7. the usage text, exit 2, for a bare folder, a missing word, an extra word, a repeated flag, and an unknown subcommand', t => {
   const w = world(t);
-  for (const args of [['folder', 'allow'], ['folder', 'deny', 'a', 'b'], ['folder'], ['folder', 'add'], ['folder', 'add', 'kb'], ['folder', 'add', 'kb', w.kb, 'extra'], ['folder', 'list', 'x'], ['folder', 'remove'], ['folder', 'remove', 'a', 'b'], ['folder', 'rename', 'a'], ['folder', 'list', '--json', '--json'], ['folder', 'add', 'kb', w.kb, '--yes']]) {
+  for (const args of [['folder', 'allow'], ['folder', 'allow', 'a', 'heading', 'x'], ['folder', 'deny', 'a', 'heading'], ['folder', 'deny', 'a', 'b'], ['folder'], ['folder', 'add'], ['folder', 'add', 'kb'], ['folder', 'add', 'kb', w.kb, 'extra'], ['folder', 'list', 'x'], ['folder', 'remove'], ['folder', 'remove', 'a', 'b'], ['folder', 'rename', 'a'], ['folder', 'list', '--json', '--json'], ['folder', 'add', 'kb', w.kb, '--yes']]) {
     const r = run(w.work, args, w.home); assert.equal(r.status, 2, args.join(' ') + r.stdout); assert.equal(errorOf(r.stderr).code, 'USAGE', args.join(' '));
   }
   assert.deepEqual(errorOf(run(w.work, ['folder'], w.home).stderr), { code: 'USAGE', message: USAGE });
@@ -140,7 +140,7 @@ test('13. folder allow <name> run in a project plans the absolute folder, writes
   const p = sliceProject(t, { apply: false, registered: true });
   add({ home: p.home, kb: p.kb!, work: p.dir, folders: join(p.home, '.bowerloom/folders') }, 'two', p.kb!, p.dir); // a second name for the same folder is allowed
   const planned = run(p.dir, ['folder', 'allow', 'two'], p.home); assert.equal(planned.status, 3, planned.stderr);
-  assert.match(planned.stdout, new RegExp(`^Allow this project to read registered folder two\\n  Project: ${p.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n  Folder: ${p.kb!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(~/kb\\)\\n  Bowerloom reads the mode of the folder only\\. To see access control entries, run ls -led [^\\n]+\\.\\n  A slice of this project that names it can copy text from it into \\.claude/skills\\. Bowerloom never writes the folder\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\.`));
+  assert.match(planned.stdout, new RegExp(`^Allow this project to read registered folder two\\n  Project: ${p.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n  Folder: ${p.kb!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(~/kb\\)\\n  Bowerloom reads the mode of the folder only\\. To see access control entries, run ls -led [^\\n]+\\.\\n  A slice of this project that names it can copy text from it into \\.claude/skills\\. Bowerloom never writes the folder\\.\\n  Summary kind: heading\\. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind\\.\\nThis writes the store only\\. It changes no project, and it installs nothing\\.\\nRevision: [a-f0-9]{64}\\nApproval required\\.`));
   assert.equal(existsSync(join(p.home, '.bowerloom/folders/two.grants')), false);
   const done = run(p.dir, ['folder', 'allow', 'two', '--approve', revisionIn(planned.stdout)], p.home); assert.equal(done.status, 0, done.stderr);
   assert.equal(readdirSync(join(p.home, '.bowerloom/folders/two.grants')).length, 1);
@@ -149,6 +149,17 @@ test('13. folder allow <name> run in a project plans the absolute folder, writes
   assert.equal(readdirSync(join(p.home, '.bowerloom/folders/two.grants')).length, 0);
   const again = run(p.dir, ['folder', 'deny', 'two'], p.home); assert.equal(again.status, 1); assert.equal(errorOf(again.stderr).code, 'FOLDER_NOT_ALLOWED');
   assert.equal(errorOf(again.stderr).message, 'This project is not allowed to read registered folder two.');
+});
+test('13b. folder allow <name> frontmatter:<key> records the kind, and a bad kind is a usage error', t => {
+  const p = sliceProject(t, { apply: false, registered: true });
+  const grant = (): string => { const dir = join(p.home, '.bowerloom/folders/kb.grants'); return readFileSync(join(dir, readdirSync(dir)[0]!), 'utf8'); };
+  assert.match(grant(), /,"summary":"heading"\}\n$/, 'the default kind is heading');
+  const planned = run(p.dir, ['folder', 'allow', 'kb', 'frontmatter:title'], p.home); assert.equal(planned.status, 3, planned.stderr);
+  assert.match(planned.stdout, /\n {2}Summary kind: frontmatter:title\. /);
+  assert.equal(run(p.dir, ['folder', 'allow', 'kb', 'frontmatter:title', '--approve', revisionIn(planned.stdout)], p.home).status, 0);
+  assert.match(grant(), /,"summary":"frontmatter:title"\}\n$/);
+  for (const bad of ['none', 'frontmatter:', 'frontmatter:a/b', 'Heading']) { const r = run(p.dir, ['folder', 'allow', 'kb', bad], p.home); assert.equal(r.status, 2, bad + r.stdout); assert.equal(errorOf(r.stderr).code, 'USAGE', bad); }
+  const wrong = run(p.dir, ['folder', 'allow', 'kb', 'heading', '--approve', revisionIn(planned.stdout)], p.home); assert.equal(errorOf(wrong.stderr).code, 'STALE_APPROVAL', 'the kind is bound by the revision');
 });
 test('14. folder allow needs a project, a known name, and an unchanged plan', t => {
   const w = world(t); add(w, 'kb', w.kb);
@@ -165,9 +176,9 @@ test('15. folder list skips the grants folders, folder remove removes them, and 
 });
 test('16. a slice in a project without a grant: apply holds it, show and measure agree, status names it', t => {
   const p = sliceProject(t, { apply: false, registered: true }); approve(p.dir, ['folder', 'deny', 'kb'], p.home);
-  const plan = run(p.dir, ['apply', '--harness', 'claude'], p.home); assert.match(plan.stdout, /^ {2}wiki +slice held \(FOLDER_NOT_ALLOWED\)\n {2} +Next: bowerloom folder allow kb$/m);
-  const show = run(p.dir, ['context', 'show', 'wiki'], p.home); assert.match(show.stdout, /\nHeld: FOLDER_NOT_ALLOWED\. Next: bowerloom folder allow kb\n/); assert.doesNotMatch(show.stdout, /Alpha/);
-  const status = run(p.dir, ['status'], p.home); assert.match(status.stdout, /slice wiki: held \(FOLDER_NOT_ALLOWED\)\. Next: bowerloom folder allow kb/);
+  const plan = run(p.dir, ['apply', '--harness', 'claude'], p.home); assert.match(plan.stdout, /^ {2}wiki +slice held \(FOLDER_NOT_ALLOWED\)\n {2} +Next: bowerloom folder allow kb heading$/m);
+  const show = run(p.dir, ['context', 'show', 'wiki'], p.home); assert.match(show.stdout, /\nHeld: FOLDER_NOT_ALLOWED\. Next: bowerloom folder allow kb heading\n/); assert.doesNotMatch(show.stdout, /Alpha/);
+  const status = run(p.dir, ['status'], p.home); assert.match(status.stdout, /slice wiki: held \(FOLDER_NOT_ALLOWED\)\. Next: bowerloom folder allow kb heading/);
   const measure = run(p.dir, ['context', 'measure', '--agent', 'lead'], p.home); assert.equal(measure.status, 0, measure.stderr);
 });
 test('17. C2: slice create --registered checks the folder after the create checks of spec 3.2, and a recorded folder that is gone refuses', t => {

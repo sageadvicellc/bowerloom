@@ -220,8 +220,10 @@ export function readSliceTree(projectDir: string, name: string, root: SliceReque
         if (root.name !== folderName) return staleFile();
         at = root.dir; identityWanted = root.identity;
       } else if (registered !== undefined) {
-        const found = registered(folderName, rootPath);
-        if (!found.ok) return held({ code: found.code, detail: found.detail, ...(found.cause !== undefined ? { errno: found.cause } : {}) });
+        const kind = def.summary.kind === 'frontmatter' ? `frontmatter:${def.summary.key}` : def.summary.kind;
+        const found = registered(folderName, rootPath, kind);
+        // A slice that is not allowed carries the kind it asks for, so the next step names the grant that lets it in. `none` copies no text, so a grant for `heading` is the one to ask for.
+        if (!found.ok) return held({ code: found.code, detail: found.code === 'FOLDER_NOT_ALLOWED' ? `${found.detail} ${kind === 'none' ? 'heading' : kind}` : found.detail, ...(found.cause !== undefined ? { errno: found.cause } : {}) });
         at = found.dir; recordSha256 = found.recordSha256;
       } else return held({ code: 'SLICE_ROOT_MISSING', detail: folderName });
       let s: fs.BigIntStats;

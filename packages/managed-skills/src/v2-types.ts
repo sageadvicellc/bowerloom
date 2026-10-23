@@ -35,7 +35,7 @@ export type SliceRequestRoot = { kind: 'project' } | { kind: 'registered'; name:
  * How the planner finds a registered root: the store lookup of project-context, passed in because managed-skills reads no
  * store. It returns the root, or the hold of the slice.
  */
-export type RegisteredLookup = (name: string, path: string) =>
+export type RegisteredLookup = (name: string, path: string, summary?: string) =>
   | { ok: true; dir: string; identity: RootIdentity; recordSha256: string }
   | { ok: false; code: 'SLICE_ROOT_MISSING' | 'SLICE_ROOT_UNSAFE' | 'FOLDER_NOT_ALLOWED'; detail: string; cause?: string };
 export type ItemSource = { kind: 'cache'; selector: AcquiredSkillCacheSelector } | { kind: 'local'; path: string } | { kind: 'prompt'; name: string }

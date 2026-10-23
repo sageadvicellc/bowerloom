@@ -271,7 +271,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     '  bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json]',
     '  bowerloom context guard --agent <role> --explain <path> [--tool Read|Grep|Glob] [--slice <id>]...',
     '  bowerloom folder add <folder-name> <path> [--approve <revision>] [--json]',
-    '  bowerloom folder allow <folder-name> [--approve <revision>] [--json]',
+    '  bowerloom folder allow <folder-name> [heading|frontmatter:<key>] [--approve <revision>] [--json]',
     '  bowerloom folder deny <folder-name> [--approve <revision>] [--json]',
     '  bowerloom folder list [--json]',
     '  bowerloom folder remove <folder-name> [--approve <revision>] [--json]', '',
@@ -294,7 +294,9 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'with root: { registered: <folder-name> } and --registered on slice create. Bowerloom reads it and never writes it.',
     'The folder must be yours, below your home folder, outside iCloud folders, and not writable by other users.',
     'folder allow, run in a project, lets that project read the folder after you approve a plan that names it. Every other project',
-    'stays shut out until you allow it. folder deny takes the grant back. folder remove deletes the record and its grants only.',
+    'stays shut out until you allow it. The grant also records the summary kind, heading by default. A slice that asks for another',
+    'summary kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind. A grant made before the kind',
+    'was recorded needs folder allow again. folder deny takes the grant back. folder remove deletes the record and its grants only.',
     'The folder stays. A slice of a registered folder copies text from it into .claude/skills, so keep that folder out of git.',
     'The commands that change something show the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
@@ -575,7 +577,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
   FOLDER_UNSAFE: { sentence: 'Bowerloom reads only folders that you own and that no other user can change.', next: 'ls -ld <folder>' },
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
-  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
+  FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name> [<summary-kind>]' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
   // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.

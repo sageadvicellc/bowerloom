@@ -34,8 +34,10 @@ const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 /** The test hooks of discovery, and the private state folder, which no registered folder may be, hold, or sit in. */
 export interface FolderHooks extends DiscoveryHooks { readonly stateRoot?: string }
 /** Who asks for a registered root: the project, by its id, and the private state folder of this machine. A grant is for one project. */
-export interface RootAccess { readonly projectId: string; /** The birth time of the project folder, in nanoseconds. A grant is for the folder that ran `folder allow`, not for another that took its inode. */ readonly birthtimeNs: string; readonly stateRoot?: string }
+export interface RootAccess { readonly projectId: string; /** The summary kind the slice asks for: `heading`, `frontmatter:<key>`, or `none`. A grant records one kind, and a slice that asks for another is not allowed. A caller with no slice, such as the guard, leaves it out and needs the grant only. */ readonly summary?: string; /** The birth time of the project folder, in nanoseconds. A grant is for the folder that ran `folder allow`, not for another that took its inode. */ readonly birthtimeNs: string; readonly stateRoot?: string }
 export const GRANT_FORMAT = 'bowerloom/store-folder-grant/v1beta1';
+/** The summary kinds a grant can record. `none` copies no text, so it is never recorded and never held. */
+const GRANT_SUMMARY = /^(?:heading|frontmatter:[A-Za-z0-9_-]{1,64})$/;
 const GRANTS = /^[a-z0-9]+(?:-[a-z0-9]+)*\.grants$/;
 const PROJECT_ID = /^[a-f0-9]{32}$/;
 const REGISTRATION_ID = /^[a-f0-9]{32}$/;
@@ -542,12 +544,16 @@ function grantsState(store: StoreContext, name: string, hooks: { readonly uid?: 
   try { names = readdirSync(dir); } catch (error) { throw unreadable(error); }
   return { identity: identityFrom(stat), names: names.sort(cmp) };
 }
-/** Reads `<name>.grants/<projectId>`: true only for a plain file of this user whose record hash is the hash of the record now. */
-function readGrant(store: StoreContext, name: string, projectId: string, birthtimeNs: string, recordSha256: string, hooks: { readonly uid?: number }): boolean {
-  if (grantsState(store, name, hooks).identity === null) return false;
+/**
+ * Reads `<name>.grants/<projectId>`: the summary kind of a plain file of this user whose record hash is the hash of the record now,
+ * and null for any other grant. A grant made before the kind was recorded has three keys and no kind. It is null, so it needs
+ * `folder allow` again (decision 5, option B, of issue 86).
+ */
+function readGrant(store: StoreContext, name: string, projectId: string, birthtimeNs: string, recordSha256: string, hooks: { readonly uid?: number }): string | null {
+  if (grantsState(store, name, hooks).identity === null) return null;
   const file = join(grantsPath(store, name), projectId), uid = uidOf(hooks);
   let before: BigIntStats;
-  try { before = lstatSync(file, { bigint: true }); } catch (error) { if (missing(error)) return false; throw unreadable(error); }
+  try { before = lstatSync(file, { bigint: true }); } catch (error) { if (missing(error)) return null; throw unreadable(error); }
   if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1n || Number(before.uid) !== uid || (Number(before.mode) & 0o022) !== 0) throw refuse('FOLDER_UNSAFE');
   let fd: number;
   try { fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW); }
@@ -569,9 +575,10 @@ function readGrant(store: StoreContext, name: string, projectId: string, birthti
   let value: unknown;
   try { value = strictJson(text, RECORD_LIMIT); } catch { throw refuse('FOLDER_INVALID'); }
   const keys = value !== null && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
-  const grant = value as { format?: unknown; record?: unknown; birth?: unknown };
-  if (keys.length !== 3 || !keys.includes('format') || !keys.includes('record') || !keys.includes('birth') || typeof grant.birth !== 'string' || !BIRTH.test(grant.birth) || grant.format !== GRANT_FORMAT || typeof grant.record !== 'string' || !HEX64.test(grant.record)) throw refuse('FOLDER_INVALID');
-  return grant.record === recordSha256 && grant.birth === birthtimeNs;
+  const grant = value as { format?: unknown; record?: unknown; birth?: unknown; summary?: unknown };
+  const kind = keys.length === 4 && keys.includes('summary');
+  if (keys.length !== (kind ? 4 : 3) || !keys.includes('format') || !keys.includes('record') || !keys.includes('birth') || (kind && (typeof grant.summary !== 'string' || !GRANT_SUMMARY.test(grant.summary))) || typeof grant.birth !== 'string' || !BIRTH.test(grant.birth) || grant.format !== GRANT_FORMAT || typeof grant.record !== 'string' || !HEX64.test(grant.record)) throw refuse('FOLDER_INVALID');
+  return kind && grant.record === recordSha256 && grant.birth === birthtimeNs ? grant.summary as string : null;
 }
 
 /**
@@ -583,7 +590,12 @@ function readGrant(store: StoreContext, name: string, projectId: string, birthti
  */
 function resolveRoot(home: string, store: StoreContext, name: string, path: string, hooks: FolderHooks, access: RootAccess | null): ResolvedRoot {
   const record = readFolderRecord(store, name, hooks), homeDir = realHome(home);
-  if (access !== null && (!PROJECT_ID.test(access.projectId) || !BIRTH.test(access.birthtimeNs) || !readGrant(store, name, access.projectId, access.birthtimeNs, record.sha256, hooks))) throw new NotAllowed();
+  if (access !== null) {
+    if (!PROJECT_ID.test(access.projectId) || !BIRTH.test(access.birthtimeNs)) throw new NotAllowed();
+    const granted = readGrant(store, name, access.projectId, access.birthtimeNs, record.sha256, hooks);
+    // A slice that asks for another summary kind than the grant records is held until `folder allow` runs again with that kind.
+    if (granted === null || (access.summary !== undefined && access.summary !== 'none' && access.summary !== granted)) throw new NotAllowed();
+  }
   const checks: FolderHooks = access?.stateRoot !== undefined ? { ...hooks, stateRoot: access.stateRoot } : hooks;
   const folderDir = join(homeDir, record.path), dir = path === '.' ? folderDir : join(folderDir, path);
   checkBelowHome(dir, homeDir, checks, () => { throw new Gone(); });
@@ -649,6 +661,8 @@ export interface FolderAllowPlan {
   readonly store: StorePins;
   readonly record: { readonly sha256: string; readonly device: string; readonly inode: string };
   readonly grants: { readonly identity: DirectoryIdentity | null; readonly names: readonly string[] };
+  /** The summary kind the grant records: `heading` or `frontmatter:<key>`. Bound. */
+  readonly summary: string;
   /** Fix 3 of the beta.3 docs review: what the store's .gitignore needs. Bound. */
   readonly gitignore: StoreGitignoreState['state'];
   readonly writesAuthorized: false;
@@ -675,23 +689,24 @@ function existingStore(home: string, hooks: FolderHooks, inside?: StoreContext):
   if (found.state === 'foreign') throw refuse('STORE_INVALID');
   return found.context;
 }
-function buildAllow(home: string, project: GrantProject, name: string, hooks: FolderHooks, inside?: StoreContext): FolderAllowPlan {
+function buildAllow(home: string, project: GrantProject, name: string, hooks: FolderHooks, summary: string, inside?: StoreContext): FolderAllowPlan {
   if (!isFolderName(name)) throw refuse('FOLDER_NAME_INVALID');
   checkProject(project);
+  if (typeof summary !== 'string' || !GRANT_SUMMARY.test(summary)) throw new DefinitionError('USAGE', 'Use heading or frontmatter:<key> as the summary kind.');
   const store = existingStore(home, hooks, inside), pins = pinsOf(store), record = readFolderRecord(store, name, hooks);
   let root: ResolvedRoot;
   try { root = resolveRoot(home, store, name, '.', hooks, null); } catch (error) { throw isGone(error) ? refuse('FOLDER_UNSAFE', 'The folder does not exist.') : error; }
   const grants = grantsState(store, name, hooks), ignore = storeGitignoreState(store.dir, uidOf(hooks));
   const body = {
     format: 'bowerloom/folder-allow-plan/v1beta1' as const, name, project: project.dir, projectId: project.projectId, birthtimeNs: project.birthtimeNs, path: record.path, folderDir: root.dir, folder: root.identity, store: pins,
-    record: { sha256: record.sha256, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants: { identity: grants.identity, names: grants.names }, gitignore: ignore.state, writesAuthorized: false as const,
+    record: { sha256: record.sha256, device: record.fileIdentity.device, inode: record.fileIdentity.inode }, grants: { identity: grants.identity, names: grants.names }, summary, gitignore: ignore.state, writesAuthorized: false as const,
   };
   const revision = digest([body.format, name, project.dir, project.projectId, project.birthtimeNs, record.path, root.dir, identityKey(root.identity), identityKey(pins.identity), pins.file.device, pins.file.inode, pins.file.size, pins.file.ctimeNs,
-    record.sha256, record.fileIdentity.device, record.fileIdentity.inode, grants.identity === null ? null : identityKey(grants.identity), grants.names, ignore.state, ignore.sha256]);
+    record.sha256, record.fileIdentity.device, record.fileIdentity.inode, grants.identity === null ? null : identityKey(grants.identity), grants.names, summary, ignore.state, ignore.sha256]);
   return Object.freeze({ ...body, revision });
 }
-/** Plans `folder allow`: this project may read the registered folder. Reads only. The plan names the project and the absolute folder. */
-export function planFolderAllowWith(home: string, project: GrantProject, name: string, hooks: FolderHooks = {}): FolderAllowPlan { return buildAllow(home, project, name, hooks); }
+/** Plans `folder allow`: this project may read the registered folder, for slices with the summary kind `summary`. Reads only. The plan names the project and the absolute folder. */
+export function planFolderAllowWith(home: string, project: GrantProject, name: string, hooks: FolderHooks = {}, summary = 'heading'): FolderAllowPlan { return buildAllow(home, project, name, hooks, summary); }
 
 function writeGrant(store: StoreContext, plan: FolderAllowPlan): void {
   const dir = grantsPath(store, plan.name), folders = join(store.dir, FOLDERS_DIR);
@@ -704,7 +719,7 @@ function writeGrant(store: StoreContext, plan: FolderAllowPlan): void {
       const fd = openSync(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); made = true;
       try {
         fchmodSync(fd, 0o644);
-        const data = Buffer.from(`{"format":"${GRANT_FORMAT}","record":"${plan.record.sha256}","birth":"${plan.birthtimeNs}"}\n`);
+        const data = Buffer.from(`{"format":"${GRANT_FORMAT}","record":"${plan.record.sha256}","birth":"${plan.birthtimeNs}","summary":"${plan.summary}"}\n`);
         let at = 0; while (at < data.length) at += writeSync(fd, data, at);
         fsyncSync(fd);
       } finally { closeSync(fd); }
@@ -714,13 +729,13 @@ function writeGrant(store: StoreContext, plan: FolderAllowPlan): void {
   });
 }
 /** Applies a `folder allow` plan under the store lock: plans again, checks the revision, and writes the grant. The store is never made here. */
-export async function applyFolderAllowWith(home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal, hooks: FolderHooks = {}): Promise<{ name: string }> {
+export async function applyFolderAllowWith(home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal, hooks: FolderHooks = {}, summary = 'heading'): Promise<{ name: string }> {
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw refuse('STALE_APPROVAL');
   const found = inspectStoreWith(home, hooks);
   if (found.state !== 'store') throw refuse(found.state === 'foreign' ? 'STORE_INVALID' : 'STALE_APPROVAL');
   return withStoreForWriteWith(home, signal, async (store, held) => {
     let plan: FolderAllowPlan;
-    try { plan = buildAllow(home, project, name, hooks, store); } catch (error) { throw errno(error) === 'FOLDER_NOT_FOUND' ? refuse('STALE_APPROVAL') : error; }
+    try { plan = buildAllow(home, project, name, hooks, summary, store); } catch (error) { throw errno(error) === 'FOLDER_NOT_FOUND' ? refuse('STALE_APPROVAL') : error; }
     if (plan.revision !== revision) throw refuse('STALE_APPROVAL');
     held.assertHeld(store.dir);
     // Fix 3: the store's .gitignore leaves out folders/ before a grant is there.
@@ -773,6 +788,7 @@ export function renderFolderAllowReview(plan: FolderAllowPlan): string {
     `  Folder: ${plan.folderDir} (~/${plan.path})`,
     `  Bowerloom reads the mode of the folder only. To see access control entries, ${lsStep(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
+    `  Summary kind: ${plan.summary}. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind.`,
     ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');
@@ -831,7 +847,7 @@ export const applyFolderRemove = (home: string, name: string, revision: string, 
 export const listFolders = (home: string): FolderList => listFoldersWith(home);
 export const resolveRegisteredFolder = (home: string, name: string, access: RootAccess): ResolvedRoot | RootHold => resolveRegisteredFolderWith(home, name, access);
 export const resolveRegisteredRoot = (home: string, name: string, path: string, access: RootAccess): ResolvedRoot | RootHold => resolveRegisteredRootWith(home, name, path, access);
-export const planFolderAllow = (home: string, project: GrantProject, name: string, stateRoot?: string): FolderAllowPlan => planFolderAllowWith(home, project, name, stateRoot === undefined ? {} : { stateRoot });
-export const applyFolderAllow = (home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal, stateRoot?: string): Promise<{ name: string }> => applyFolderAllowWith(home, project, name, revision, signal, stateRoot === undefined ? {} : { stateRoot });
+export const planFolderAllow = (home: string, project: GrantProject, name: string, stateRoot?: string, summary = 'heading'): FolderAllowPlan => planFolderAllowWith(home, project, name, stateRoot === undefined ? {} : { stateRoot }, summary);
+export const applyFolderAllow = (home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal, stateRoot?: string, summary = 'heading'): Promise<{ name: string }> => applyFolderAllowWith(home, project, name, revision, signal, stateRoot === undefined ? {} : { stateRoot }, summary);
 export const planFolderDeny = (home: string, project: GrantProject, name: string): FolderDenyPlan => planFolderDenyWith(home, project, name);
 export const applyFolderDeny = (home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal): Promise<{ name: string }> => applyFolderDenyWith(home, project, name, revision, signal);

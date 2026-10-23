@@ -65,7 +65,7 @@ This release adds a store for items that you share across projects, a lock file 
 - An agent whose copy names a guarded slice gets the read guard, `bowerloom context guard`, as a `PreToolUse` hook. It checks Read, Grep, and Glob. It does not check shell, MCP, or LSP tools, nested agents, or claude -p runs. The copy names this machine's project folder.
 - `bowerloom context measure` compares each agent's context at start with a full load of the knowledge base. Bytes are exact. Tokens are an estimate.
 - `bowerloom context show` previews a slice.
-- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it. `folder deny` takes the grant back.
+- `bowerloom folder add` registers a folder outside the project for slices. A slice names it with `root: { registered: <folder-name> }`, and `slice create --registered` writes that. `folder list` and `folder remove` list and remove the records. Bowerloom reads a registered folder and never writes it. A registered folder is shared with a project only after `bowerloom folder allow <name>` runs in it. The grant also records the summary kind, `heading` or `frontmatter:<key>`. A slice that asks for another kind is held with `FOLDER_NOT_ALLOWED` until you run `folder allow` again with that kind. A grant made before the kind was recorded counts as no grant, so run `folder allow <name>` again in that project. `folder deny` takes the grant back.
 - Ids that start with `slice-` are reserved for new skills and prompts.
 - In a project with `bowerloom.json`, a context slice stays a project item. `bowerloom.json`, the store, and the lock never hold it.
 - `apply` copies the agents of a team, first-team included, to `.claude/agents` for Claude Code.
@@ -89,6 +89,7 @@ This release adds a store for items that you share across projects, a lock file 
 - Plans and results of adopt and migrate: `bowerloom/team-adopt-plan/v1beta1`, `bowerloom/team-adopt-result/v1beta1`, `bowerloom/store-migrate-plan/v1beta1`, and `bowerloom/store-migrate-result/v1beta1`.
 - Plans and results of clean and prune: `bowerloom/receipt-clean-plan/v1beta1`, `bowerloom/receipt-clean-result/v1beta1`, `bowerloom/cache-prune-plan/v1beta1`, and `bowerloom/cache-prune-result/v1beta1`.
 - Plans of registered folders: `bowerloom/folder-add-plan/v1beta1`, `bowerloom/folder-allow-plan/v1beta1`, `bowerloom/folder-deny-plan/v1beta1`, and `bowerloom/folder-remove-plan/v1beta1`.
+- A grant file of `bowerloom/store-folder-grant/v1beta1` holds a `summary` key, and `bowerloom/folder-allow-plan/v1beta1` holds a `summary` field. A grant file without `summary` counts as no grant.
 - Scripts that read `format` must accept the new names.
 - A project that holds slices cannot be read by a 0.7.0-beta.2 CLI.
 - A project that holds agent catalogs cannot be read by a 0.7.0-beta.2 CLI. The old CLI refuses it.
