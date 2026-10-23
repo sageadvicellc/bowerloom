@@ -68,7 +68,7 @@ import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
-import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames, LOCK_REBINDS, LOCK_BANNER_TIMEOUT_MS } from '../../project-context/src/index.js';
+import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames, LOCK_REBINDS, rebindPause, LOCK_BANNER_TIMEOUT_MS } from '../../project-context/src/index.js';
 import { createServer } from 'node:net';
 import type { Server } from 'node:net';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
@@ -137,7 +137,7 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
         if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
         life.check(); verdict = await slotRefusal(slot, attempt < LOCK_REBINDS);
         if (verdict !== 'free') throw e;
-        server = lockServer(slot);
+        await rebindPause(attempt); server = lockServer(slot);
       }
     }
     // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.

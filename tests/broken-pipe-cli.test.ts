@@ -5,7 +5,8 @@ import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { quietBrokenPipe, readerGone } from '../apps/cli/src/broken-pipe.js';
@@ -16,14 +17,14 @@ import type { World } from './support/config-cli.js';
 interface Closed { status: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string; errors: string[] }
 /** PR 102 round 1, item 4: a preload records each stdout and stderr error, so a test proves that the pipe broke. */
 const RECORDER = fileURLToPath(new URL('./support/record-stdio-errors.js', import.meta.url));
-let records = 0;
 /**
  * Runs the CLI with the read end of stdout (or stderr) closed before the child writes a byte. Node starts in tens of
  * milliseconds, and the pipe closes at once after the spawn, so every write of the child meets a reader that is gone.
  */
 function closedReader(cwd: string, args: string[], env: Record<string, string>, close: 'stdout' | 'stderr' = 'stdout'): Promise<Closed> {
   return new Promise((resolve, reject) => {
-    const log = join(env.HOME!, '..', `stdio-errors-${process.pid}-${++records}.log`);
+    // PR 102 round 2, item 5: the record goes in a folder of its own, removed once it is read.
+    const logDir = mkdtempSync(join(tmpdir(), 'bowerloom-stdio-errors-')), log = join(logDir, 'errors.log');
     const child = spawn(process.execPath, ['--import', RECORDER, cli, ...args], { cwd, env: { ...baseEnv(), ...env, TEST_STDIO_LOG: log }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '', stdout = '';
     child[close].destroy();
@@ -31,7 +32,7 @@ function closedReader(cwd: string, args: string[], env: Record<string, string>, 
     other.setEncoding('utf8'); other.on('data', (d: string) => { if (close === 'stdout') stderr += d; else stdout += d; });
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`${args.join(' ')} did not exit`)); }, 60000);
     child.on('error', reject);
-    child.on('close', (status, signal) => { clearTimeout(timer); let errors: string[] = []; try { errors = readFileSync(log, 'utf8').split('\n').filter(Boolean); } catch { /* no error was recorded */ } resolve({ status, signal, stderr, stdout, errors }); });
+    child.on('close', (status, signal) => { clearTimeout(timer); let errors: string[] = []; try { errors = readFileSync(log, 'utf8').split('\n').filter(Boolean); } catch { /* no error was recorded */ } rmSync(logDir, { recursive: true, force: true }); resolve({ status, signal, stderr, stdout, errors }); });
   });
 }
 const noCrash = (r: Closed, what: string, stream: 'stdout' | 'stderr' = 'stdout'): void => {

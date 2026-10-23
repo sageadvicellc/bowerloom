@@ -245,19 +245,26 @@ test('a holder that lets go again after a rebind is not a collision: each let-go
   }
 });
 
-test('a slot that refuses the banner read after every bind is a collision once LOCK_REBINDS binds are spent', async t => {
-  const dir = await freshProject(t), port = formula(dir); let squatter = net.createServer(); await listen(squatter, port);
-  t.after(() => new Promise(resolve => squatter.close(() => resolve())));
-  let connects = 0;
-  // Something takes the port back before each bind, and refuses each read: no holder that let go acts so.
-  t.mock.method(net, 'connect', () => { connects++; return refusedConnect(done => squatter.close(() => { squatter = net.createServer(); listen(squatter, port).then(done); })); });
-  let ran = false;
-  await assert.rejects(withProjectLock(dir, new AbortController().signal, async () => { ran = true; }), e => e.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
-  t.mock.restoreAll(); assert.equal(connects, LOCK_REBINDS + 1); assert.equal(ran, false);
-  assert.ok(LOCK_REBINDS >= 2 && LOCK_REBINDS <= 5);
+// PR 102 round 2, item 1: every lock user pauses 1 to 5 ms before each rebind, and binds again up to LOCK_REBINDS times.
+// A slot that keeps refusing is still a prompt collision: LOCK_REBINDS + 1 probes and LOCK_REBINDS short pauses.
+test('a slot that refuses the banner read after every bind is a prompt collision once LOCK_REBINDS binds are spent, for all four lock users', async t => {
+  for (const user of lockUsers) {
+    const dir = await freshProject(t), port = formula(dir); let squatter = net.createServer(); await listen(squatter, port);
+    let connects = 0;
+    // Something takes the port back before each bind, and refuses each read: no holder that let go acts so.
+    t.mock.method(net, 'connect', () => { connects++; return refusedConnect(done => squatter.close(() => { squatter = net.createServer(); listen(squatter, port).then(done); })); });
+    let ran = false; const started = performance.now(); let outcome; try { outcome = await user.run(dir, () => { ran = true; }); } catch (error) { outcome = error; }
+    const took = performance.now() - started;
+    t.mock.restoreAll(); await close(squatter);
+    assert.match(String(outcome?.code ?? outcome?.message ?? ''), /LOCK_SLOT_COLLISION/, user.name);
+    assert.equal(connects, LOCK_REBINDS + 1, user.name); assert.equal(ran, false, user.name);
+    assert.ok(took < 1000, `${user.name}: ${took} ms`);
+  }
+  assert.ok(LOCK_REBINDS >= 5 && LOCK_REBINDS <= 10, String(LOCK_REBINDS));
 });
 
-test('a holder that closes the banner connection with no byte and lets go is not a collision (track 11, item 5)', async t => {
+// PR 102 round 2, item 3: plain node:test, so a collision here is a failure, never a retry.
+nodeTest('a holder that closes the banner connection with no byte and lets go is not a collision (track 11, item 5)', async t => {
   for (const user of lockUsers) {
     const dir = await freshProject(t), port = formula(dir);
     // A listener on the slot that ends each connection with no byte and stops listening: a holder that let go.

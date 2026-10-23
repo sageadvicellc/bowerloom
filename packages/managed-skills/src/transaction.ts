@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
 import type { Server } from 'node:net';
-import { lockSlot, lockServer, slotRefusal, slotStillNames, LOCK_REBINDS } from '../../project-context/src/index.js';
+import { lockSlot, lockServer, slotRefusal, slotStillNames, LOCK_REBINDS, rebindPause } from '../../project-context/src/index.js';
 import { readAcquiredSkillCache } from '../../skill-sources/src/cache.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, MARKER, POLICY, check, fail, boundary, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, tree, surface, stablePins, matches, locate, request, bindings, capacity, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker, formPlan, materialPins, validatePlan, planWithLifetime, receiptAt, receiptKeys } from './observed.js';
@@ -66,7 +66,7 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
         if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
         life.check(); verdict = await slotRefusal(slot, attempt < LOCK_REBINDS);
         if (verdict !== 'free') throw e;
-        server = lockServer(slot);
+        await rebindPause(attempt); server = lockServer(slot);
       }
     }
     // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.

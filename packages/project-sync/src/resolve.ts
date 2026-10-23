@@ -93,6 +93,9 @@ function noteSource(item: Pick<ResolvedItem, 'resolvedFrom' | 'entry' | 'lockPin
   if (item.lockPin !== null) return 'the lock and the store repository';
   const kind = (item.entry?.source as { kind?: unknown } | undefined)?.kind;
   if (kind === 'npm') return 'the lock and npm';
+  // PR 102 round 2, item 6: a git pin is always on github.com. readLock checks each pin with validateEntry, and the
+  // schema takes only `host: GIT_HOST`, which is 'github.com' (skill-manifest/src/schema.ts); any other host is
+  // LOCK_INVALID. So "GitHub" is exact here, not a guess.
   if (kind === 'git') return 'the lock and its GitHub repository';
   // A skill the person wrote resolves from the lock with a local entry and its lockPin, handled above.
   return 'the lock';
