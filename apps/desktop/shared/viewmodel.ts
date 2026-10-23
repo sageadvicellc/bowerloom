@@ -253,8 +253,8 @@ export function configLines(p: ProjectData): string[] {
 }
 
 type Style = 'none' | 'heading' | 'frontmatter';
-const styleWords = (style: Style, key: string | null): string => style === 'none' ? 'no text from the files' : style === 'heading' ? 'each file\'s first heading' : `each file's \`${key ?? 'key'}\``;
-const allowedWords = (style: Style, key: string | null): string => style === 'none' ? 'only the file names' : style === 'heading' ? 'headings' : `the \`${key ?? 'key'}\` of each file`;
+const styleWords = (style: Style, key: string | null): string => style === 'none' ? 'no text from the files' : style === 'heading' ? 'each file\'s first heading' : `each file's ${key ?? 'key'}`;
+const allowedWords = (style: Style, key: string | null): string => style === 'none' ? 'only the file names' : style === 'heading' ? 'headings' : `the ${key ?? 'key'} of each file`;
 const sameStyle = (a: Style | null, ak: string | null, b: Style | null, bk: string | null): boolean => a === b && (a !== 'frontmatter' || ak === bk);
 
 const HOLD_WORDS: Record<string, string> = {
@@ -297,7 +297,7 @@ export function sliceModels(p: ProjectData): SliceModel[] {
     return {
       id: sl.id, folder: sl.folder,
       where: sl.rootKind === 'registered' || sl.folder !== null ? `the knowledge folder "${sl.folder ?? sl.rootName}"` : sl.rootKind === 'project' ? 'this project\'s own files' : 'an unknown place',
-      files: sl.rootKind === 'unknown' && sl.members === 0 ? 'no files yet' : plural(sl.members, 'file'), stateLabel: held ? 'Held' : 'Live', state: held ? 'Held' : 'Live', tone: held ? 'warn' : 'good',
+      files: held && sl.members === 0 ? 'Not counted while held' : plural(sl.members, 'file'), stateLabel: held ? 'Held' : 'Live', state: held ? 'Held' : 'Live', tone: held ? 'warn' : 'good',
       reason, note: sliceCheckNote(sl), wants: sl.wants === null ? null : `Wants to show ${styleWords(sl.wants, sl.wantsKey)}.`,
       permission: sl.grantStyle === null || sl.grantStyle === 'unknown' ? null : sl.grantStyle === 'absent' ? 'This project has no permission for this folder.' : sl.grantStyle === 'unset' ? 'This project\'s permission for the folder is an older one with no style.' : `This project may show ${allowedWords(sl.grantStyle, sl.grantKey)} from this folder.`,
       agents: sl.agents, bars, hold: reason, technical: sl.hold?.code ?? null,

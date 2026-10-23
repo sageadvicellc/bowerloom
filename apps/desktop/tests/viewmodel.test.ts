@@ -193,11 +193,11 @@ test('slice cards: every state is shown from the sample, with one plain sentence
   // Live, heading style.
   const heading = card(studio, 'team-notes'); assert.equal(heading.stateLabel, 'Live'); assert.equal(heading.reason, null); assert.equal(heading.tone, 'good'); assert.equal(heading.files, '4 files'); assert.equal(heading.wants, 'Wants to show each file\'s first heading.'); assert.equal(heading.permission, 'This project may show headings from this folder.');
   // Live, frontmatter style.
-  const front = card(studio, 'brief-titles'); assert.equal(front.stateLabel, 'Live'); assert.equal(front.wants, 'Wants to show each file\'s `title`.'); assert.equal(front.permission, 'This project may show the `title` of each file from this folder.');
+  const front = card(studio, 'brief-titles'); assert.equal(front.stateLabel, 'Live'); assert.equal(front.wants, 'Wants to show each file\'s title.'); assert.equal(front.permission, 'This project may show the title of each file from this folder.');
   // Held: the folder is not allowed for this project.
   const none = card(news, 'client-history'); assert.equal(none.stateLabel, 'Held'); assert.equal(none.reason, 'This folder has not been allowed for this project yet.'); assert.equal(none.where, 'the knowledge folder "client-archive"'); assert.equal(none.tone, 'warn');
   // Held: the permission is for another style.
-  const other = card(news, 'team-titles'); assert.equal(other.stateLabel, 'Held'); assert.equal(other.reason, 'This reading list wants to show each file\'s `title`, but this project was only allowed to show headings.');
+  const other = card(news, 'team-titles'); assert.equal(other.stateLabel, 'Held'); assert.equal(other.reason, 'This reading list wants to show each file\'s title, but this project was only allowed to show headings.');
   // Held: an older permission with no style.
   const older = card(news, 'old-reports-list'); assert.equal(older.stateLabel, 'Held'); assert.equal(older.reason, 'An older permission without a style needs to be set again.');
   assert.equal(card(news, 'team-notes').stateLabel, 'Live');
@@ -218,13 +218,13 @@ test('slice cards: a slice that wants no text is never held by a permission; the
   for (const x of p.slices.filter(y => y.folder === 'team-notes')) { x.hold = null; x.wants = 'frontmatter'; x.wantsKey = 'title'; x.grantStyle = 'frontmatter'; x.grantKey = 'title'; }
   assert.equal(sliceGroups(p).find(x => x.folder === 'team-notes')!.conflict, null);
   assert.ok(sliceGroups(p).find(x => x.folder === 'team-notes')!.slices.every(c => c.stateLabel === 'Live'));
-  const t = p.slices.find(x => x.id === 'team-titles')!; t.wantsKey = 'summary'; assert.match(sliceReason(t)!, /`summary`.*only allowed to show the `title`/);
+  const t = p.slices.find(x => x.id === 'team-titles')!; t.wantsKey = 'summary'; assert.match(sliceReason(t)!, /summary.*only allowed to show the title/);
 });
 
 test('folder cards: the permission style of each project, and the older permission', async () => {
   const s = await sampleSnapshot(), rows = folderRows(s), r = (n: string) => rows.find(x => x.name === n)!;
   assert.deepEqual(r('team-notes').styles.map(x => `${x.name}: ${x.text}`), ['newsletter: May show headings', 'studio-site: May show headings']);
-  assert.deepEqual(r('project-briefs').styles.map(x => x.text), ['May show the `title` of each file']);
+  assert.deepEqual(r('project-briefs').styles.map(x => x.text), ['May show the title of each file']);
   assert.match(r('old-reports').styles[0]!.text, /older permission with no style/); assert.equal(r('old-reports').note, 'No project is allowed to read this folder yet.');
   assert.equal(r('client-archive').styleNote, null); assert.match(r('team-notes').styleNote!, /one style per project/);
 });
@@ -273,4 +273,21 @@ test('words: Ready needs a lock that is used; Drifted never claims nothing is br
   assert.ok(reasons.some(r => /fixed-version skills have not been downloaded/.test(r)), 'SKILLS_OFFLINE is shown');
   const t = clone(s), p = t.projects.find(x => x.name === 'studio-site')!;
   for (const code of ['REVISION_PENDING', 'MANAGED_SKILL_RECOVERY_REQUIRED', 'MANAGED_SKILL_LEGACY_PRESENT']) { p.unavailable = code; assert.ok(projectDetail(p).reasons.length > 0, code); assert.doesNotMatch(projectDetail(p).reasons.join(' '), /cannot describe in plain words/); }
+});
+
+test('field names are plain words, never literal backticks, anywhere in what the screens say', async () => {
+  const s = clone(await sampleSnapshot());
+  for (const w of allWords(s)) assert.doesNotMatch(w, /`/, w);
+  const p = s.projects.find(x => x.name === 'newsletter')!, t = p.slices.find(x => x.id === 'team-titles')!;
+  t.wantsKey = 'summary'; t.grantStyle = 'frontmatter'; t.grantKey = 'title';
+  assert.equal(sliceReason(t), "This reading list wants to show each file's summary, but this project was only allowed to show the title of each file.");
+  for (const c of sliceModels(p)) for (const text of [c.reason, c.wants, c.permission, c.note]) if (text !== null) assert.doesNotMatch(text, /`/, text);
+  for (const f of folderRows(s)) for (const text of [...f.styles.map(x => x.text), f.styleNote ?? '']) assert.doesNotMatch(text, /`/, text);
+});
+
+test('a held reading list that has no counted files says so, not "no files yet"', async () => {
+  const s = await sampleSnapshot(), cards = sliceModels(s.projects.find(x => x.name === 'newsletter')!), by = (id: string) => cards.find(c => c.id === id)!;
+  for (const id of ['client-history', 'meeting-archive-all', 'old-reports-list', 'team-titles']) { assert.equal(by(id).stateLabel, 'Held', id); assert.equal(by(id).files, 'Not counted while held', id); }
+  assert.equal(by('team-notes').files, '4 files');
+  const t = clone(s), live = t.projects.find(x => x.name === 'newsletter')!.slices.find(x => x.id === 'team-notes')!; live.members = 0; assert.equal(sliceModels(t.projects.find(x => x.name === 'newsletter')!).find(c => c.id === 'team-notes')!.files, '0 files', 'a live list with none really has none');
 });
