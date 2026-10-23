@@ -33,7 +33,7 @@ import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces,
 import type { SyncItem } from './plan.js';
 import { FETCHED_NOTHING, cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
 import { oneLine } from '../../contracts/src/index.js';
-import { command, outward, shellPath, syncError, withNext } from './refusal.js';
+import { command, outward, shellPath, syncError, withStep } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
@@ -149,7 +149,8 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       try { observed = await observeMigrate(input); } catch (error) { throw recoveryInFlow(error, flow); }
       const { plan, pinned } = observed;
       if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-      if (deps.signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `Nothing was changed. Run ${replan} to see a new plan.`), `Run ${replan} to see a new plan.`);
+      // Round 14 of the reviews of PR 101: fix is the plan command, only when it was built as one (not the words).
+      if (deps.signal.aborted) throw withStep(syncError('SKILLS_SYNC_INTERRUPTED', `Nothing was changed. Run ${replan} to see a new plan.`), `Run ${replan} to see a new plan.`, replan);
       // Round 9 of the reviews of PR 101: a folder failure names the plan command too.
       createPrivateFolders(plan, held, plan.project.dir, 'all', new Map(), FETCHED_NOTHING, flow);
       const item = plan.item;

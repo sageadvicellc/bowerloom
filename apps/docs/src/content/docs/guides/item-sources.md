@@ -302,7 +302,7 @@ Bowerloom writes one `.gitignore` of its own in a project, inside `.bowerloom/ma
 
 ## If you work alone
 
-A project that has no `bowerloom.lock.json` and no `origin` remote is not shared, even when only you use it. It needs no lock. Run these commands in order:
+A project that has no `bowerloom.lock.json` and no `origin` remote is not shared. It needs no lock. Run these commands in order:
 
 ```text
 bowerloom skill create house-style --global

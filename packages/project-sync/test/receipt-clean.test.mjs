@@ -213,3 +213,17 @@ test('H1 and P8. skills.json changed after the config write: the refusal names w
   await cleanProject(w);
   assert.deepEqual(receiptIds(bl(w)), ['skill keeper']);
 });
+
+// Round 14 of the reviews of PR 101: a receipt clean that stops after a write is a partial refusal, and its fix is the
+// command that finishes it, in both scopes.
+test('a receipt clean that stops after a write: next says to run the command, and fix is that command, in both scopes', async t => {
+  const boom = Object.assign(new Error('crash'), { code: 'TEST_CRASH' });
+  const w = await fullProject(t); goneAll(w);
+  await assert.rejects(cleanProject(w, { afterConfig: () => { throw boom; } }),
+    e => e.hint === 'partial' && e.fix === 'bowerloom receipt clean' && /^Run bowerloom receipt clean\.$|Then run bowerloom receipt clean\.$/.test(e.next));
+  const s = configWorld(t, { folder: true }); writeConfig(s, {});
+  await storeItem(s, 'skill', 'gone-skill'); await storeItem(s, 'skill', 'kept');
+  fs.rmSync(path.join(s.store, 'skills/gone-skill'), { recursive: true });
+  await assert.rejects(cleanStore(s, { afterManifest: () => { throw boom; } }),
+    e => e.hint === 'partial' && e.fix === 'bowerloom receipt clean --global' && /bowerloom receipt clean --global\.$/.test(e.next));
+});

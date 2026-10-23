@@ -8,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { acquisitionRefusal, interrupted, prunedPin, syncRerun } from '../../../dist/packages/project-sync/src/apply.js';
 import { command, runnable, SYNC_COMMAND } from '../../../dist/packages/project-sync/src/refusal.js';
-import { migrateFlow, } from '../../../dist/packages/project-sync/src/migrate.js';
+import { migrateFlow } from '../../../dist/packages/project-sync/src/migrate.js';
+import { applyRerun } from '../../../dist/packages/project-sync/src/apply-project.js';
 import { NpmAcquisitionError } from '../../../dist/packages/skill-sources/src/npm.js';
 
 const live = new AbortController().signal;
@@ -56,4 +57,12 @@ test('a pin pruned after the fetch: fix for a real rerun, none for words', t => 
   assert.equal(real.code, 'STALE_APPROVAL'); assert.equal(real.next, 'Run bowerloom skills sync again.'); assert.equal(real.fix, 'bowerloom skills sync');
   const words = prunedPin('alpha', cache, 'a'.repeat(32), { rerun: WORDS, stateRoot, cacheIdentity });
   assert.equal(words.next, `Run ${WORDS} again.`); assert.equal(words.fix, undefined);
+});
+
+// Round 14 of the reviews of PR 101: the up --team rerun is marked when applyRerun builds it; its words fallback is not.
+test('applyRerun marks the up --team command and the apply command, never their words', () => {
+  assert.equal(runnable(applyRerun({ team: 'research', harnesses: ['claude', 'codex'], frozen: false })), true);
+  assert.equal(interrupted([], ['a'], applyRerun({ team: 'research', harnesses: ['claude', 'codex'], frozen: false })).fix, 'bowerloom up --team research');
+  assert.equal(runnable(applyRerun({ harnesses: ['claude'], frozen: true })), true);
+  assert.equal(runnable(applyRerun({ team: 'a b', harnesses: ['claude', 'codex'] })), false);
 });

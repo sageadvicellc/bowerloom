@@ -201,3 +201,22 @@ test('skills migrate apply: a private folder that fails after another was made n
   const replanned = run(p, ['skills', 'migrate', 'plan', '--state', v1State]); assert.equal(replanned.status, 3, replanned.stderr);
   assert.equal(run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(replanned.stdout)]).status, 0);
 });
+
+// Round 14 of the reviews of PR 101: a stop before any change names the plan command, and fix is that command only when
+// the state path can go into one. A state path with a backslash, a control or a format character refuses
+// SKILLS_MIGRATE_STATE_INVALID before this point, so the words case uses U+2028, which the state rule allows and no
+// command can carry.
+test('skills migrate apply stopped before any change: fix is the plan command for a plain path, none for a path no command can carry', async t => {
+  for (const [name, fixed] of [['v1-state', true], ['v1\u2028state', false]] as const) {
+    const p = project(t), { v1State } = await legacyInstall(p, name);
+    const input = { project: discoverProject(p.dir, p.home), stateRoot: p.stateRoot, legacyStateDir: v1State };
+    const plan = await planMigrate(input), never = async () => { throw new Error('no fetch in this test'); };
+    await assert.rejects(applyMigrate(input, plan.revision, { acquirer: { npm: never, git: never } as never, signal: AbortSignal.abort() }),
+      (e: Error & { code?: string; next?: string; fix?: string }) => {
+        assert.equal(e.code, 'SKILLS_SYNC_INTERRUPTED');
+        if (fixed) { assert.equal(e.fix, `bowerloom skills migrate plan --state ${v1State}`); assert.equal(e.next, `Run bowerloom skills migrate plan --state ${v1State} to see a new plan.`); }
+        else { assert.equal(e.fix, undefined); assert.match(e.next!, /^Run bowerloom skills migrate plan with --state and the path of the earlier state folder \(/); }
+        return true;
+      });
+  }
+});
