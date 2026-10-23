@@ -801,7 +801,7 @@ export function renderFolderAllowReview(plan: FolderAllowPlan): string {
     `  Bowerloom reads the mode of the folder only. To see access control entries, ${lsStep(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     `  Summary kind: ${plan.summary}. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind.`,
-    ...(plan.summary.startsWith('frontmatter:') ? [`  Warning: the values of the key ${plan.summary.slice(12)} in the files of this folder will be copied into a skill file under .claude/skills in this project. If git does not ignore .claude/skills, they can end up in git.`] : []),
+    `  Warning: ${plan.summary.startsWith('frontmatter:') ? `the values of the key ${plan.summary.slice(12)} in the files of this folder` : 'the first heading of each file in this folder'} will be copied into a skill file under .claude/skills in this project. Add .claude/skills to .gitignore to keep it out of git.`,
     ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n');

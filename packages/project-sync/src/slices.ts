@@ -304,7 +304,9 @@ export function checkSliceGrant(item: SliceItem, lookup: RegisteredLookup): void
   if (root === null || root.kind !== 'registered') return;
   const copies = item.copies, kind = copies === null ? undefined : copies.summary === 'frontmatter' ? `frontmatter:${copies.key}` : copies.summary;
   const found = lookup(root.name, root.path, kind);
-  if (!found.ok || found.dir !== root.dir || found.recordSha256 !== root.recordSha256 || found.identity.device !== root.identity.device || found.identity.inode !== root.identity.inode || found.identity.birthtimeNs !== root.identity.birthtimeNs) throw stale(`The grant or the folder of slice ${item.id} changed since the plan.`);
+  // The code of a failed lookup goes into the message, so a user who just denied a grant sees that the grant is the cause.
+  if (!found.ok) throw stale(`The grant or the folder of slice ${item.id} changed since the plan (${found.code}).`);
+  if (found.dir !== root.dir || found.recordSha256 !== root.recordSha256 || found.identity.device !== root.identity.device || found.identity.inode !== root.identity.inode || found.identity.birthtimeNs !== root.identity.birthtimeNs) throw stale(`The folder or the record of slice ${item.id} changed since the plan.`);
 }
 
 /** The child request of one slice. Every field comes from the plan this run computed. */

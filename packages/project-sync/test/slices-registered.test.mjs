@@ -250,7 +250,7 @@ for (const [label, change] of [
     const approved = await plan(f, ['claude']); assert.equal(slice(approved).action, 'install');
     const dir = path.join(f.home, '.bowerloom/folders', kb.name + '.grants'); let changed = false;
     const hook = (...args) => { const r = readSliceTree(...args); if (!changed) { changed = true; change(path.join(dir, fs.readdirSync(dir)[0])); } return r; };
-    await assert.rejects(applyProjectApply(f.input(['claude'], { sliceTree: hook }), approved.revision, signal()), code('STALE_APPROVAL'));
+    await assert.rejects(applyProjectApply(f.input(['claude'], { sliceTree: hook }), approved.revision, signal()), e => { code('STALE_APPROVAL')(e); assert.match(e.message, new RegExp(`The grant or the folder of slice wiki changed since the plan \\(FOLDER_NOT_ALLOWED\\)`)); return true; });
     assert.equal(changed, true);
     assert.equal(exists(f, '.claude/skills/slice-wiki/SKILL.md'), false, 'no frontmatter value is written');
   });

@@ -299,6 +299,7 @@ test('30. folder allow plans the absolute folder and the project, and writes a g
     `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led '${path.join(w.home, 'My Notes/kb')}'.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     '  Summary kind: heading. A slice that asks for another kind is held with FOLDER_NOT_ALLOWED until you run folder allow again with that kind.',
+    '  Warning: the first heading of each file in this folder will be copied into a skill file under .claude/skills in this project. Add .claude/skills to .gitignore to keep it out of git.',
     'This writes the store only. It changes no project, and it installs nothing.',
   ].join('\n'));
   assert.equal(fs.existsSync(isAllowedDir(w, 'kb')), false, 'planning writes nothing');
@@ -572,6 +573,6 @@ test('G4. folder allow refuses a summary kind that is not heading or frontmatter
   assert.notEqual(a.revision, b.revision);
   await assert.rejects(applyFolderAllowWith(w.home, w.project, 'kb', a.revision, signal(), w.hooks, 'frontmatter:title'), code('STALE_APPROVAL'));
   assert.match(renderFolderAllowReview(b), /\n {2}Summary kind: frontmatter:title\. /);
-  assert.match(renderFolderAllowReview(b), /\n {2}Warning: the values of the key title in the files of this folder will be copied into a skill file under \.claude\/skills in this project\. If git does not ignore \.claude\/skills, they can end up in git\.\n/);
-  assert.doesNotMatch(renderFolderAllowReview(a), /Warning:/, 'the heading kind copies titles only');
+  assert.match(renderFolderAllowReview(b), /\n {2}Warning: the values of the key title in the files of this folder will be copied into a skill file under \.claude\/skills in this project\. Add \.claude\/skills to \.gitignore to keep it out of git\.\n/);
+  assert.match(renderFolderAllowReview(a), /\n {2}Warning: the first heading of each file in this folder will be copied into a skill file under \.claude\/skills in this project\. Add \.claude\/skills to \.gitignore to keep it out of git\.\n/);
 });
