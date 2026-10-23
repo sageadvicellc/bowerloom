@@ -4,7 +4,7 @@ import { dirname, isAbsolute, resolve, join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, SHELL_UNSAFE } from '../../contracts/src/index.js';
 import { SkillSourceError, closed, captureSkillData, freezeSkillData, revisionOf } from './validation.js';
 import { NPM_LIMITS, NpmAcquisitionError, npmCheck, npmRefuse, sha256, validateNpmPlan, verifyNpmPayload } from './npm.js';
 import type { NpmAcquisitionPlan, ObservedNpmPayload, ExpectedSkillFile } from './npm.js';
@@ -514,8 +514,9 @@ export function shellPath(path: string): string {
   return `'${visible.replaceAll("'", "'\\''")}'`;
 }
 /** Round 5 of the reviews of PR 99, L-3: a path with a control character gets this guidance in place of a command. */
-export const NO_COMMAND = 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
-const CONTROL = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+export const NO_COMMAND = 'Its name holds control characters or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
+// Round 9 of the reviews of PR 101: a backslash too, because fish reads \' and \\ inside single quotes (SHELL_UNSAFE).
+const CONTROL = new RegExp(`[\\p{Cf}]|${SHELL_UNSAFE.source}`, 'u');
 /** The command that lets a stuck leftover tree be deleted (round 3, M-A), or null for a name that no command can name. */
 export const leftoverTreeFix = (path: string): string | null => CONTROL.test(path) ? null : `chmod -R -- u+rwx ${shellPath(path)}`;
 /** The command that clears a leftover name, or the guidance for a name with a control character. */

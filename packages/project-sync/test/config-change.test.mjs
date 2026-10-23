@@ -299,3 +299,11 @@ test('round 4. at apply, a store fault keeps its code and next step; a content c
   fs.chmodSync(file, 0o644);
   await assert.rejects(apply(), code('STALE_APPROVAL'));
 });
+
+// Round 9 of the reviews of PR 101, item 2: a stop while checking the pushed copy names the command that ran, not skills sync.
+test('a stop while checking the pushed copy names the use command that ran, with its flags', async t => {
+  const { w } = await sharedWorld(t), controller = new AbortController(), commit = 'e'.repeat(40);
+  const stopping = () => { controller.abort(); throw new Error('stopped'); };
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: stopping, signal: controller.signal, commit }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === `Run bowerloom use skill house-style --commit ${commit} again.` && e.message.endsWith(`before any change. Run bowerloom use skill house-style --commit ${commit} again.`));
+});

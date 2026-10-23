@@ -642,3 +642,13 @@ test('round 4. apply keeps a store fault with its next step; a content change is
   fs.appendFileSync(file, 'edited\n');
   await assert.rejects(apply(w, proved), code('STALE_APPROVAL'));
 });
+
+// Round 9 of the reviews of PR 101, item 2: a stop while checking the pushed copy names this store migrate command.
+test('a stop while checking the pushed copy names the store migrate command that ran', async t => {
+  const w = await fourItems(t); originProject(w);
+  await apply(w, await plan(w, { all: true }));
+  push(w);
+  const controller = new AbortController(), stopping = () => { controller.abort(); throw new Error('stopped'); };
+  await assert.rejects(planStoreMigrate({ project: ctx(w), home: w.home, selectors: selectors({ skills: ['house-style'] }), all: false, commit: null, githubToken: null, storeTransport: stopping, signal: controller.signal }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom store migrate --skill house-style again.');
+});

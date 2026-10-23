@@ -106,3 +106,13 @@ test('F2. a lock that cannot be read is rebuilt, and the plan says the old pins 
   const { renderLockUpdate } = await import('../../../dist/apps/cli/src/lock.js');
   assert.match(renderLockUpdate(p), /could not be read \(LOCK_INVALID\); it is rebuilt from your store\. The old pins are dropped\./);
 });
+
+// Round 9 of the reviews of PR 101, item 2: a stop while checking the pushed copy names lock update, not skills sync.
+test('a stop while checking the pushed copy names the lock update command that ran, with its items', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] });
+  const repo = pushStore(w); gitStore(w, repo);
+  const controller = new AbortController(), stopping = () => { controller.abort(); throw new Error('stopped'); };
+  await assert.rejects(plan(w, { items: [{ kind: 'skill', id: 'house-style' }], storeTransport: stopping, signal: controller.signal }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom lock update --item skill:house-style again.');
+});

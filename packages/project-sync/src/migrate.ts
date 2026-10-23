@@ -31,7 +31,7 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
-import { cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
+import { FETCHED_NOTHING, cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
 import { outward, shellPath, syncError, withNext } from './refusal.js';
 import type { FetchFlow } from './refusal.js';
 
@@ -146,7 +146,8 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       const { plan, pinned } = observed;
       if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
       if (deps.signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `Nothing was changed. Run ${replan} to see a new plan.`), `Run ${replan} to see a new plan.`);
-      createPrivateFolders(plan, held, plan.project.dir);
+      // Round 9 of the reviews of PR 101: a folder failure names the plan command too.
+      createPrivateFolders(plan, held, plan.project.dir, 'all', new Map(), FETCHED_NOTHING, flow);
       const item = plan.item;
       let source: ItemSource;
       if (plan.bytesFrom === 'legacy-cache') source = { kind: 'cache', selector: plan.legacySelector! };

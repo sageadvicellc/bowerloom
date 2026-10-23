@@ -17,7 +17,8 @@ import { runSyncCommand } from '../apps/cli/src/sync.js';
 import { acquisitionRefusal, fetchPin, recoveryInFlow } from '../packages/project-sync/src/apply.js';
 import { ALL_IDS_USED_NEXT, cacheOperationId } from '../packages/project-sync/src/cache-index.js';
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
-import { offlineBecause, partialRefusal, REPLAN_NEXT, syncError, withNext } from '../packages/project-sync/src/refusal.js';
+import { offlineBecause, partialRefusal, REPLAN_NEXT, shellPath, syncError, withNext } from '../packages/project-sync/src/refusal.js';
+import { shellWord } from '../apps/cli/src/human.js';
 import type { OfflineCause } from '../packages/project-sync/src/refusal.js';
 import { notShareable } from '../packages/project-config/src/index.js';
 import { atApproval } from '../packages/project-config/src/refusal.js';
@@ -174,7 +175,10 @@ test('a refusal after a partial write keeps the step of its cause, then the comm
   assert.equal(partialOf(NEXT.other), 'Run bowerloom store migrate --all. If it fails again, report the code and the output of bowerloom --version.');
   assert.equal(partialOf(NEXT.nocode), 'Run bowerloom store migrate --all. If it fails again, report the error name above and the output of bowerloom --version.');
   assert.equal(partialOf(NEXT.response), 'Later, run bowerloom store migrate --all. If it fails again, check that the version or commit of the pin still exists on its registry.');
-  // Round 8: every step that starts by running the command again does so, whatever follows it.
+  // Round 8: every step that starts by running the command again does so, whatever follows it. store migrate and receipt
+  // clean never fetch, so the offline and approved causes never reach partialRefusal there; these lines pin the rule only.
+  // Round 9: a $ in the command is text, never a replacement pattern.
+  assert.equal((partialRefusal(Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.other, enumerable: false }), ['one item'], "bowerloom x --a '$&$1'") as Error & { next?: string }).next, "Run bowerloom x --a '$&$1'. If it fails again, report the code and the output of bowerloom --version.");
   assert.equal(partialOf(NEXT.offline), 'Run bowerloom store migrate --all without --offline and without --approve.');
   assert.equal(partialOf(NEXT.approved), 'Run bowerloom store migrate --all without --offline and without --approve, to see a plan that fetches it.');
   for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic, NEXT.offline, NEXT.approved]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
@@ -364,4 +368,36 @@ test('a flow that plans again: an approved plan with no host, and a pin with all
     (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_CACHE_RECOVERY_REQUIRED' && e.next === `Run bowerloom cache prune --partial to delete the unfinished fetches, then run ${PLAN_CMD} to see a new plan.`);
   await assert.rejects(fetchPin(fullItem, full, roots, ['registry.npmjs.org'], deps),
     (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_CACHE_RECOVERY_REQUIRED' && e.next === ALL_IDS_USED_NEXT);
+});
+
+// Round 9 of the reviews of PR 101, item 4: a printed path is single-quoted unless it holds a character that changes what a
+// terminal shows, has no UTF-8 form, or ends a single-quoted word in fish (a backslash). Those print the placeholder.
+test('a printed path: other format characters are quoted; control, bidirectional, surrogate and backslash characters print the placeholder', () => {
+  const P = '<earlier-state-folder>';
+  assert.equal(shellPath('/home/a/plain-path_1', P), '/home/a/plain-path_1');
+  assert.equal(shellPath('/home/a/My Notes', P), "'/home/a/My Notes'");
+  assert.equal(shellPath("/home/a/it's", P), "'/home/a/it'\\''s'");
+  assert.equal(shellPath('/home/a/\u0645\u200C\u0627', P), "'/home/a/\u0645\u200C\u0627'", 'ZWNJ is quoted');
+  assert.equal(shellPath('/home/a/\u{1F468}\u200D\u{1F469}', P), "'/home/a/\u{1F468}\u200D\u{1F469}'", 'ZWJ is quoted');
+  for (const odd of ['/a/\u202Etxt', '/a/\u2066x\u2069', '/a/\u061Cx', '/a/\u200Fx', '/a/x\\y', '/a/x\\', '/a/\uD800x', '/a/\uDC00', '/a/x\u0007', '/a/x\u2028y', 'relative/path', ''])
+    assert.equal(shellPath(odd, P), P, JSON.stringify(odd));
+  assert.equal(shellWord('/a/x\\y'), '<folder>'); assert.equal(shellWord('/a/\u202Ex'), '<folder>');
+  assert.equal(shellWord('/a/\u200Cx'), "'/a/\u200Cx'"); assert.equal(shellWord('/a b'), "'/a b'"); assert.equal(shellWord('/a/b'), '/a/b');
+});
+
+// Round 9, item 5: skills sync and bowerloom apply keep their own command in these steps, with its flags.
+test('the default flow: an unclear fetch and a stopped fetch name the command that ran', async t => {
+  const live = new AbortController().signal;
+  const unclear = (flow?: { rerun: string }) => acquisitionRefusal(new NpmAcquisitionError('NPM_NETWORK', ['NPM_CACHE_RELEASE_UNCERTAIN']), live, 'x', flow) as Error & { code: string; next?: string };
+  assert.equal(unclear().code, 'SKILLS_CACHE_RECOVERY_REQUIRED'); assert.equal(unclear().next, 'Run bowerloom skills sync again.');
+  assert.ok(unclear().message.endsWith('Run bowerloom skills sync again: it leaves that operation as it is and fetches into a new one.'));
+  assert.equal(unclear({ rerun: 'bowerloom apply --frozen' }).next, 'Run bowerloom apply --frozen again.');
+  // A fetch whose signal stops while it waits for the cache lock.
+  const digest = 'e'.repeat(64), pin = { digest, kind: 'npm' } as unknown as Parameters<typeof fetchPin>[1];
+  const item = { id: 'x', requestDigest: digest, cacheOperationId: 'a'.repeat(32) } as unknown as Parameters<typeof fetchPin>[0];
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-stop-'))); t.after(() => rmSync(base, { recursive: true, force: true }));
+  const cacheRoot = join(base, 'cache'); mkdirSync(cacheRoot, { mode: 0o700 }); chmodSync(base, 0o700);
+  const roots = { cacheRoot, legacyCacheRoot: null } as never, stopped = { signal: AbortSignal.abort() } as never;
+  await assert.rejects(fetchPin(item, pin, roots, ['registry.npmjs.org'], stopped), (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom skills sync again.');
+  await assert.rejects(fetchPin(item, pin, roots, ['registry.npmjs.org'], stopped, { rerun: 'bowerloom apply --frozen' }), (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom apply --frozen again.');
 });

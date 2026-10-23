@@ -352,7 +352,7 @@ test('M2 (round 4). printed commands quote each path for a POSIX shell and put -
 // the escaped text.
 test('14. a leftover whose name holds a control character gets guidance, not a command', async t => {
   const w = stateWorld(t), name = 'op-' + OP, odd = path.join(w.cacheRoot, '.prune-x\u0007y');
-  assert.equal(leftoverFix(odd), 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
+  assert.equal(leftoverFix(odd), 'Its name holds control characters or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
   const dir = entry(w.cacheRoot, name), sub = path.join(dir, 'locked'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
   t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } });
   // A leftover name of the delete step is always plain; the guidance applies to names that someone else made.

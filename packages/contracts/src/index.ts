@@ -144,6 +144,21 @@ export function canonicalJson(value: unknown): string {
   throw new DefinitionError('INVALID_VALUE', 'The definition contains a value outside JSON.');
 }
 
+/**
+ * Round 9 of the reviews of PR 101: the characters that no printed shell word holds. Control characters, the line and
+ * paragraph separators, and the bidirectional controls change what a terminal shows. A lone surrogate has no UTF-8 form.
+ * A backslash ends a single-quoted word early in fish, which reads \' and \\ inside single quotes.
+ */
+export const SHELL_UNSAFE = /[\p{Cc}\p{Cs}\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\\]/u;
+/**
+ * A path as one shell word for a person to paste: plain characters stay, any other path is single-quoted, with each '
+ * written as '\''. A path that holds a character of SHELL_UNSAFE is `placeholder`, which names it in words.
+ */
+export function shellArg(path: string, placeholder: string): string {
+  if (path.length === 0 || SHELL_UNSAFE.test(path)) return placeholder;
+  return /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+}
+
 export function digest(value: string | Uint8Array): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }

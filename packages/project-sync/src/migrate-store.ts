@@ -47,7 +47,7 @@ import { initialConfig, NETWORK_LINE, NO_TOKEN_LINE, requestCount, scratchFiles 
 import { isStoreFault, localItemRows } from './store-items.js';
 import { TOKEN_STALE_NOTE, credentialsFor, onceTokenSource, repositoryOf, requireRequestBudget } from './store-git.js';
 import type { Credentials, StoreTransportFactory, TokenSource } from './store-git.js';
-import { offlineNetwork, PARTIAL_HINT, partialRefusal, staleBecause, syncError } from './refusal.js';
+import { offlineNetwork, PARTIAL_HINT, partialRefusal, staleBecause, syncError, withNext } from './refusal.js';
 
 export const STORE_MIGRATE_PLAN_FORMAT = 'bowerloom/store-migrate-plan/v1beta1' as const;
 export const STORE_MIGRATE_RESULT_FORMAT = 'bowerloom/store-migrate-result/v1beta1' as const;
@@ -264,7 +264,7 @@ type Mode =
 function problemSentence(problem: keyof typeof NOT_SHAREABLE): string { return NOT_SHAREABLE[problem].replace(/\.$/, ''); }
 
 /** Proves the present written items of a shared project (rule 9). Reads the token and the network only when it must. */
-async function prove(store: StoreState, needs: readonly Found[], commit: string | null, mode: Extract<Mode, { kind: 'plan' }>): Promise<Proofs> {
+async function prove(store: StoreState, needs: readonly Found[], commit: string | null, mode: Extract<Mode, { kind: 'plan' }>, again = 'bowerloom store migrate'): Promise<Proofs> {
   const byPair = new Map<string, Proof>(), notes: string[] = [];
   if (!needs.length) return { byPair, notes, hosts: [], credentials: null, commit: null };
   const repo = readStoreRepo(store.dir, commit);
@@ -285,7 +285,8 @@ async function prove(store: StoreState, needs: readonly Found[], commit: string 
     let outcome, transport: ReturnType<typeof make> | null = null;
     try { transport = make(); outcome = await proveAuthored(transport, { remote: repo.remote!, commit: repo.pushed!, kind: need.kind, id: need.id, ...(need.kind !== 'team' ? { teams: need.teams } : {}) }, local.hash, mode.signal, make); }
     catch (error) {
-      if (mode.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'It stopped while checking the pushed copy, before any change.');
+      // Round 9 of the reviews of PR 101: the step names this store migrate command, not skills sync.
+      if (mode.signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while checking the pushed copy, before any change. Run ${again} again.`), `Run ${again} again.`);
       const code = error instanceof DefinitionError ? error.code : null;
       if (code === 'SKILLS_ADD_NETWORK') throw offlineNetwork(`Checking ${ids} needs api.github.com, and the network was not reachable.`);
       // Review L2: a pushed file Bowerloom cannot check is not the same finding as a pushed copy that differs.
@@ -527,7 +528,7 @@ async function build(input: MigrateInput, mode: Mode): Promise<StoreMigratePlan>
   let proofs: Proofs;
   try {
     const needs = shared ? kept.filter(f => f.how === 'local' && stateOf(f) === 'present') : [];
-    proofs = mode.kind === 'plan' ? await prove(store, needs, input.commit, mode) : boundProofs(mode.plan, store);
+    proofs = mode.kind === 'plan' ? await prove(store, needs, input.commit, mode, rerunOf({ ...input.selectors, all: input.all, commit: input.commit })) : boundProofs(mode.plan, store);
   } catch (error) { throw sharedState.unknown !== undefined ? honestShared(error, sharedState.unknown) : error; }
   const items: MigrateItem[] = kept.map(f => {
     let sw = true, notSwitched: MigrateItem['notSwitched'] = null;

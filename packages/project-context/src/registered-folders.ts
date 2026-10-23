@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, shellArg } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { checkProjectPathWith, fold, homesOf, identityFrom, syncOn } from './discovery.js';
 import type { DiscoveryHooks } from './discovery.js';
@@ -764,7 +764,8 @@ export async function applyFolderDenyWith(home: string, project: GrantProject, n
     return { name };
   }, hooks);
 }
-const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+/** Round 9 of the reviews of PR 101: the rule of shellWord in apps/cli/src/human.ts. The review names the folder above. */
+const shellWord = (path: string): string => shellArg(path, '<folder>');
 export function renderFolderAllowReview(plan: FolderAllowPlan): string {
   return [
     `Allow this project to read registered folder ${plan.name}`,

@@ -18,7 +18,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, shellArg } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { inspectSkillCache, observeSkillCacheRoot, refusalSummary } from '../../skill-sources/src/cache.js';
 import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
@@ -70,23 +70,42 @@ const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The 
 
 /** Round 7: the identity of each shared folder the 'shared' part made or took, which the 'own' part checks again. */
 export type SharedFolders = ReadonlyMap<string, Identity>;
-/** Round 8: the caches that phase A of this run fetched into before the 'own' part ran. */
-export interface FetchedInto { readonly skills: boolean; readonly store: boolean }
-export const FETCHED_NOTHING: FetchedInto = Object.freeze({ skills: false, store: false });
-/** Round 8: the caches that phase A fetched into. A pinned skill goes to the skills cache, an authored item to the store cache. */
-export function fetchedInto(entries: ReadonlyMap<string, Entry>, skills: readonly string[], store: number): FetchedInto {
-  return { skills: skills.some(id => entries.get(id)?.source.kind !== 'local'), store: store > 0 || skills.some(id => entries.get(id)?.source.kind === 'local') };
+/**
+ * Round 8: the caches that phase A of this run fetched into before the 'own' part ran. Round 9: `planChanged` is true
+ * when a fetch changed what the plan binds, so the same --approve no longer matches.
+ */
+export interface FetchedInto { readonly skills: boolean; readonly store: boolean; readonly planChanged: boolean }
+export const FETCHED_NOTHING: FetchedInto = Object.freeze({ skills: false, store: false, planChanged: false });
+/**
+ * Round 8: the caches that phase A fetched into. A pinned skill goes to the skills cache, an authored item to the store
+ * cache. Round 9 of the reviews of PR 101, proved for each kind: the revision drops whether a pin is cached, and whether a
+ * store-only prompt or team (`storeOnly`) is in the store cache. It keeps the notices of an authored skill and of a
+ * prompt that `bowerloom apply` installs, which a fetch reads (`planBound`). Only those change the plan.
+ */
+export function fetchedInto(entries: ReadonlyMap<string, Entry>, skills: readonly string[], storeOnly: number, planBound = 0): FetchedInto {
+  const written = skills.some(id => entries.get(id)?.source.kind === 'local');
+  return { skills: skills.some(id => entries.get(id)?.source.kind !== 'local'), store: written || storeOnly > 0 || planBound > 0, planChanged: written || planBound > 0 };
 }
 /**
  * Round 8: the step of SKILLS_STATE_UNSAFE after a run changed what its plan binds: it made some of this project's own
- * folders, or phase A fetched a pin, which is cached now. The same --approve no longer matches, so the step plans again.
+ * folders, or phase A fetched an item whose notices the plan binds. The same --approve no longer matches, so the step
+ * plans again. Round 9: `createPrivateFolders` names the plan command instead for a flow that has one.
  */
 export const STATE_REPLAN_NEXT = 'Check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom. Then run the command again without --approve, to see a new plan.';
 const SYSTEM_CODE = /^[A-Z][A-Z0-9_]{0,31}$/;
+/**
+ * Round 9: a system error of Node's fs, with its code. It has a numeric errno or a string syscall too, so an error that
+ * only carries a code (such as ABORT_ERR) is not one.
+ */
+function systemCode(cause: unknown): string | null {
+  if (!(cause instanceof Error) || cause instanceof DefinitionError || cause instanceof ManagedSkillError) return null;
+  const { code, errno, syscall } = cause as { code?: unknown; errno?: unknown; syscall?: unknown };
+  return typeof code === 'string' && SYSTEM_CODE.test(code) && (typeof errno === 'number' || typeof syscall === 'string') ? code : null;
+}
 /** Round 8: the words of SKILLS_STATE_UNSAFE: the system error, if any, what phase A fetched, and that the project is unchanged. */
 function unsafeWords(cause: unknown, fetched: FetchedInto): string {
-  const system = cause instanceof Error && !(cause instanceof DefinitionError) && !(cause instanceof ManagedSkillError) ? (cause as { code?: unknown }).code : undefined;
-  const words = typeof system === 'string' && SYSTEM_CODE.test(system) ? [`A folder step failed with a system error (${system}).`] : [];
+  const system = systemCode(cause);
+  const words = system !== null ? [`A folder step failed with a system error (${system}).`] : [];
   const into = [fetched.skills ? "this machine's skills cache" : '', fetched.store ? 'the store cache' : ''].filter(Boolean);
   if (into.length) words.push(`Before this check, this run fetched into ${into.join(' and ')}.`);
   return [...words, 'Nothing in the project changed.'].join(' ');
@@ -104,9 +123,9 @@ function unsafeWords(cause: unknown, fetched: FetchedInto): string {
  * plan binds its folders. Each part checks every pin of the plan before and after its writes. A refusal keeps the system
  * error as its cause, which no output prints.
  */
-export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all', shared: SharedFolders = new Map(), fetched: FetchedInto = FETCHED_NOTHING): SharedFolders {
+export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all', shared: SharedFolders = new Map(), fetched: FetchedInto = FETCHED_NOTHING, flow: FetchFlow = SYNC_FLOW): SharedFolders {
   const made = new Map<string, Identity>();
-  let ownMade = false;
+  let ownMade = false, anyMade = false;
   try {
     const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
     const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot, ...(plan.privateState.storeCacheRoot ? [plan.privateState.storeCacheRoot] : [])]);
@@ -119,7 +138,7 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
       if (!ownFolder(p) && exists(p)) { made.set(p, directory(p, true)); continue; }
       absent(p);
       try { fs.mkdirSync(p, { mode: 0o700 }); } catch (e) { if (!ownFolder(p) && (e as NodeJS.ErrnoException).code === 'EEXIST') { made.set(p, directory(p, true)); continue; } throw e; }
-      if (ownFolder(p)) ownMade = true;
+      anyMade = true; if (ownFolder(p)) ownMade = true;
       const identity = directory(p, true);
       if (!ownFolder(p)) made.set(p, identity);
       const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
@@ -130,8 +149,11 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
     if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e;
     const unsafe = syncError('SKILLS_STATE_UNSAFE', unsafeWords(e, fetched));
     Object.defineProperty(unsafe, 'cause', { value: e, enumerable: false });
-    // Round 8: an own folder this run made, or a pin it fetched, is in the next plan, so the same --approve no longer matches.
-    if (ownMade || fetched.skills || fetched.store) Object.defineProperty(unsafe, 'next', { value: STATE_REPLAN_NEXT, enumerable: false });
+    // Rounds 8 and 9: an own folder this run made, or a fetched item whose notices the plan binds, is in the next plan,
+    // so the same --approve no longer matches. A flow that binds its folders (skills migrate) names its plan command.
+    const next = flow.replan !== undefined ? STATE_REPLAN_NEXT.replace(/Then run .*$/, () => `Then run ${flow.replan} to see a new plan.`) : STATE_REPLAN_NEXT;
+    // A skills migrate plan binds every folder it creates, shared ones too.
+    if (ownMade || fetched.planChanged || (flow.replan !== undefined && anyMade)) Object.defineProperty(unsafe, 'next', { value: next, enumerable: false });
     throw unsafe;
   }
 }
@@ -282,14 +304,14 @@ export function prunedPin(id: string, root: string, operationId: string, context
   }
 }
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */
-export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null): Promise<{ dir: string; fetched: boolean }> {
+export async function authoredFolder(item: { kind: 'skill' | 'prompt' | 'team'; id: string; requestDigest: string | null; lockPin: SyncItem['lockPin'] }, privateState: { cacheRoot: string; storeCacheRoot: string }, hosts: readonly string[], deps: SyncDeps, credentials: Credentials | null = null, rerun: Rerun = 'bowerloom skills sync'): Promise<{ dir: string; fetched: boolean }> {
   const pin = item.lockPin;
   if (pin === null) throw stale();
   await deps.beforeStoreRead?.({ kind: item.kind, id: item.id });
   let cached: { dir: string } | null = null;
   try { cached = readStoreCache(privateState.storeCacheRoot, item.kind, item.id, pin.hash); } catch { cached = null; }
   if (cached !== null) return { dir: cached.dir, fetched: false };
-  return fetchStoreGit({ kind: item.kind, id: item.id, requestDigest: item.requestDigest, lockPin: pin }, privateState, hosts, { signal: deps.signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}), githubToken: deps.githubToken ?? null }, credentials);
+  return fetchStoreGit({ kind: item.kind, id: item.id, requestDigest: item.requestDigest, lockPin: pin }, privateState, hosts, { signal: deps.signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}), githubToken: deps.githubToken ?? null, rerun }, credentials);
 }
 /** The text of one file of a store cache folder, read with the store reader. */
 function storeText(project: string, kind: 'skill' | 'prompt', id: string, dir: string): string {
@@ -358,10 +380,18 @@ function sameExceptShared(b: ManagedItemPlan, c: ManagedItemPlan | UpToDateV2, c
   return c as ManagedItemPlan;
 }
 
-/** The command a person runs again to finish: `bowerloom skills sync`, or `bowerloom apply` for M6. */
-export type Rerun = 'bowerloom skills sync' | 'bowerloom apply';
-export const interrupted = (done: string[], left: string[], rerun: Rerun = 'bowerloom skills sync') => syncError('SKILLS_SYNC_INTERRUPTED',
-  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run ${rerun} to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`);
+/**
+ * The command a person runs again to finish: `bowerloom skills sync`, or `bowerloom apply` for M6. Round 9 of the reviews
+ * of PR 101: with each flag that changes the plan, from syncRerun or applyRerun.
+ */
+export type Rerun = string;
+/** Round 9: `skills sync` with each flag of `input` that changes its plan. */
+export function syncRerun(input: Pick<SyncInput, 'offline' | 'team' | 'frozen' | 'maxGithubRequests'>): string {
+  return ['bowerloom skills sync', ...(input.offline ? ['--offline'] : []), ...(input.team ? [`--team ${shellArg(input.team, '<team>')}`] : []), ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? [`--max-github-requests ${input.maxGithubRequests}`] : [])].join(' ');
+}
+/** Round 9: the interrupted refusal between skills. Its step finishes the run with the same command. */
+export const interrupted = (done: string[], left: string[], rerun: Rerun = 'bowerloom skills sync') => withNext(syncError('SKILLS_SYNC_INTERRUPTED',
+  `${done.length ? `Finished: ${done.join(', ')}.` : 'No skill was changed.'} Not started: ${left.join(', ')}. Run ${rerun} to finish. If bowerloom status names an unfinished skill, run bowerloom skills recover plan --item <id>.`), `Run ${rerun} to finish.`);
 function childFailure(error: unknown, id: string, done: string[], rerun: Rerun): Error {
   const code = managedCode(error), before = done.length ? ` Finished before it: ${done.join(', ')}.` : '';
   if (code === 'MANAGED_SKILL_RECOVERY_REQUIRED') return syncError(code, `It belongs to ${id}, which stopped inside its change.${before} Run bowerloom skills recover plan --item ${id}, then ${rerun}.`);
@@ -389,7 +419,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
       if (item.origin === 'project') { sources.set(item.id, { kind: 'local', path: 'skills/' + item.id }); continue; }
       if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: plan.store.dir }); continue; }
       held.assertHeld(dir);
-      const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null);
+      const got = await authoredFolder({ kind: 'skill', id: item.id, requestDigest: item.requestDigest, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null, rerun);
       if (got.fetched) fetched.push(item.id);
       if (needsReview(dir, item, got.dir)) { review.push(item.id); continue; }
       sources.set(item.id, { kind: 'store', path: 'skills/' + item.id, storeDir: got.dir });
@@ -471,11 +501,11 @@ export async function applyChildren(children: readonly Child[], held: HeldProjec
 /** The origin fields of a plan item, for a result entry. */
 export const originOf = (i: { origin: 'store' | 'project' | null; resolvedFrom: 'store' | 'lock' | 'project' }): ResultOrigin => ({ origin: i.origin, resolvedFrom: i.resolvedFrom });
 /** Fetches the authored lock items a plan puts in the store cache only (3.16): prompts for skills sync, teams for a frozen run. */
-export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[]; credentials?: Credentials | null }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps): Promise<string[]> {
+export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'prompt' | 'team'; id: string; lockPin: NonNullable<SyncItem['lockPin']> }[]; privateState: { cacheRoot: string; storeCacheRoot: string }; network: { hosts: string[]; credentials?: Credentials | null }; project: { dir: string } }, held: HeldProjectLock, deps: SyncDeps, rerun: Rerun = 'bowerloom skills sync'): Promise<string[]> {
   const fetched: string[] = [];
   for (const f of plan.storeFetch) {
     held.assertHeld(plan.project.dir);
-    const got = await authoredFolder({ kind: f.kind, id: f.id, requestDigest: f.lockPin.hash, lockPin: f.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null);
+    const got = await authoredFolder({ kind: f.kind, id: f.id, requestDigest: f.lockPin.hash, lockPin: f.lockPin }, plan.privateState, plan.network.hosts, deps, plan.network.credentials ?? null, rerun);
     if (got.fetched) fetched.push(`${f.kind} ${f.id}`);
   }
   return fetched;
@@ -485,7 +515,9 @@ export async function fetchStoreOnly(plan: { storeFetch: readonly { kind: 'promp
 export async function applySync(input: SyncInput, revision: string, deps: SyncDeps): Promise<SyncResult> {
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw stale();
   if (!(deps?.signal instanceof AbortSignal) || typeof deps.acquirer?.npm !== 'function' || typeof deps.acquirer?.git !== 'function') throw new TypeError('applySync needs an acquirer and a signal.');
-  if (deps.signal.aborted) throw interrupted([], ['every skill']);
+  // Round 9 of the reviews of PR 101: every step names the command that ran, with its flags.
+  const rerun = syncRerun(input);
+  if (deps.signal.aborted) throw interrupted([], ['every skill'], rerun);
   const managed: ManagedPort = deps.managed ?? managedPort;
   // The lock's own signal is not the person's interrupt: a child holds the lock to its end.
   const lock = new AbortController();
@@ -496,26 +528,26 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       // Spec 07: the token this run read for the plan, and only that one, reaches the store fetch.
       deps = { ...deps, githubToken: token };
       const dir = plan.project.dir, work = plan.items.filter(isActionable);
-      if (deps.signal.aborted) throw interrupted([], work.map(i => i.id));
+      if (deps.signal.aborted) throw interrupted([], work.map(i => i.id), rerun);
       const shared = createPrivateFolders(plan, held, dir, 'shared');
       // Review L2: a run never makes more GitHub requests than the budget, checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
       requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [...work.filter(i => i.lockPin !== null).map(i => ({ kind: 'skill' as const, id: i.id, lockPin: i.lockPin! })), ...plan.storeFetch]), plan.network.maxRequests);
       // Phase A: the private caches only.
-      const got = await fetchSkillSources(plan, entries, held, deps);
-      const stored = await fetchStoreOnly(plan, held, deps);
+      const got = await fetchSkillSources(plan, entries, held, deps, rerun);
+      const stored = await fetchStoreOnly(plan, held, deps, rerun);
       // Round 6: this project's own state folders, only after every fetch succeeded.
       createPrivateFolders(plan, held, dir, 'own', shared, fetchedInto(entries, got.fetched, stored.length));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const project = bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
-      const children = await planSkillChildren(plan, got, deps, managed);
+      const children = await planSkillChildren(plan, got, deps, managed, rerun);
       verifyProjectPins(project);
-      const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, deps.signal);
+      const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, deps.signal, rerun);
       const byId = new Map(plan.items.map(i => [i.id, i]));
       return {
         format: SYNC_RESULT_FORMAT, planRevision: plan.revision,
         applied: applied.map(a => ({ ...a, ...originOf(byId.get(a.id)!) })),
-        held: [...plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...got.review.map(id => ({ id, ...reviewHold(plan.frozen ? 'bowerloom skills sync --frozen' : 'bowerloom skills sync'), ...originOf(byId.get(id)!) }))],
+        held: [...plan.items.filter(i => i.action === 'hold').map(i => ({ id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...got.review.map(id => ({ id, ...reviewHold(rerun), ...originOf(byId.get(id)!) }))],
         upToDate: plan.items.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ id: i.id, ...originOf(i) })),
         orphaned: plan.items.filter(i => i.state === 'orphaned').map(i => i.id), fetched: [...got.fetched, ...stored], executionAuthorized: false,
       };

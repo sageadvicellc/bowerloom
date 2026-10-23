@@ -4,7 +4,7 @@
  * Each code has a fixed message. A message may add checked item ids and Bowerloom commands, never fetched text.
  * MANAGED_SKILL_* codes from managed-skills pass through under their own code, with words of their own here.
  */
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, shellArg } from '../../contracts/src/index.js';
 import { ManagedSkillError } from '../../managed-skills/src/observed.js';
 import { MANAGED_ITEM_CODES } from '../../managed-skills/src/v2-observed.js';
 
@@ -136,12 +136,11 @@ export function withNext(error: DefinitionError, next: string): DefinitionError 
   return copy;
 }
 /**
- * Round 8: a path as one shell word, as `shellWord` in apps/cli/src/human.ts writes it: plain characters stay, anything
- * else is single-quoted. A path that is not absolute, or that holds a control or format character, is `placeholder`.
+ * Rounds 8 and 9 of the reviews of PR 101: an absolute path as one shell word, by the rule of `shellArg` that
+ * `shellWord` in apps/cli/src/human.ts uses too. A path that is not absolute is `placeholder`.
  */
 export function shellPath(path: string, placeholder: string): string {
-  if (!path.startsWith('/') || /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(path)) return placeholder;
-  return /^\/[A-Za-z0-9_/.:@%+=,-]*$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+  return path.startsWith('/') ? shellArg(path, placeholder) : placeholder;
 }
 /** SKILLS_OFFLINE for a fetch that failed on the network: only a transport failure. */
 export const offlineNetwork = (extra: string, replan?: string): DefinitionError => offlineBecause('network', extra, replan);
@@ -181,7 +180,7 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   let next: string;
   if (step.startsWith('Run the command again later.')) next = `Later, run ${rerun}.${step.slice('Run the command again later.'.length)}`;
   // Round 8: any other step that starts by running the command again, such as the --offline steps, keeps what follows.
-  else if (/^Run the command again\b/.test(step)) next = step.replace(/^Run the command again\b/, `Run ${rerun}`);
+  else if (/^Run the command again\b/.test(step)) next = step.replace(/^Run the command again\b/, () => `Run ${rerun}`);
   else next = step ? `${step} Then run ${rerun}.` : rerun;
   Object.defineProperty(partial, 'next', { value: next, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });

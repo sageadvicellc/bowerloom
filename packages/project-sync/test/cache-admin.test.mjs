@@ -794,5 +794,5 @@ test('L-2 (round 5). a blocked .prune- leftover goes after every leftover that c
 test('L-3 (round 5). an unlisted leftover whose name holds a control character gets guidance, not a command', async t => {
   const w = world(t); stateFolders(w); const odd = path.join(w.cacheRoot, '.prune-x\u0007y'); fs.mkdirSync(odd, { mode: 0o750 }); fs.chmodSync(odd, 0o750);
   const list = await listCache(w.input());
-  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
+  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds control characters or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
 });

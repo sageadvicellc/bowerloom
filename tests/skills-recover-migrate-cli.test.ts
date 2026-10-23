@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { discoverProject, privateStateRoot } from '../packages/project-context/src/index.js';
-import { planSync, applySync } from '../packages/project-sync/src/index.js';
+import { planSync, applySync, planMigrate, applyMigrate } from '../packages/project-sync/src/index.js';
 import { planObservedManagedSkill } from '../packages/managed-skills/src/observed.js';
 import { applyObservedManagedSkill } from '../packages/managed-skills/src/transaction.js';
 import { serializeManifest, validateManifest, MANIFEST_LIMITS } from '../packages/skill-manifest/src/schema.js';
@@ -161,6 +161,10 @@ test('skills migrate apply after 8 failed fetches: the step prunes, then plans a
     const failed = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(shown.stdout), '--json']);
     assert.equal(errorOf(failed.stderr).code, 'SKILLS_OFFLINE', `failure ${i + 1}`);
   }
+  // Round 9: skills migrate plan itself keeps "run the command again", which is that plan command.
+  const planFull = run(p, ['skills', 'migrate', 'plan', '--state', v1State, '--json']);
+  assert.equal(errorOf(planFull.stderr).code, 'SKILLS_CACHE_RECOVERY_REQUIRED', planFull.stderr);
+  assert.equal(nextIn(planFull.stderr), 'Run bowerloom cache prune --partial to delete the unfinished fetches, then run the command again.');
   const full = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', first, '--json']);
   assert.equal(errorOf(full.stderr).code, 'SKILLS_CACHE_RECOVERY_REQUIRED', full.stderr);
   assert.equal(nextIn(full.stderr), `Run bowerloom cache prune --partial to delete the unfinished fetches, then run bowerloom skills migrate plan --state ${v1State} to see a new plan.`);
@@ -171,4 +175,29 @@ test('skills migrate apply after 8 failed fetches: the step prunes, then plans a
   const replanned = run(p, ['skills', 'migrate', 'plan', '--state', v1State]); assert.equal(replanned.status, 3, replanned.stderr);
   const applied = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(replanned.stdout)]);
   assert.equal(applied.status, 0, applied.stderr);
+});
+
+// Round 9 of the reviews of PR 101, item 3: a skills migrate plan binds every folder it creates, so a folder failure after
+// it made one names the migrate plan command, not "run the command again without --approve".
+test('skills migrate apply: a private folder that fails after another was made names migrate plan, and following it applies', async t => {
+  const p = project(t), { pkg, v1State } = await legacyInstall(p, 'v1-state');
+  const input = { project: discoverProject(p.dir, p.home), stateRoot: p.stateRoot, legacyStateDir: v1State };
+  const plan = await planMigrate(input), last = plan.privateState.create.at(-1)!;
+  assert.ok(plan.privateState.create.length > 1, 'the plan makes more than one folder');
+  const real = fs.mkdirSync, never = async () => { throw new Error('no fetch in this test'); };
+  (fs as { mkdirSync: unknown }).mkdirSync = (dir: fs.PathLike, ...rest: unknown[]) => {
+    if (dir === last) throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC', errno: -28, syscall: 'mkdir' });
+    return (real as (...a: unknown[]) => unknown)(dir, ...rest);
+  };
+  try {
+    await assert.rejects(applyMigrate(input, plan.revision, { acquirer: { npm: never, git: never } as never, signal: new AbortController().signal }),
+      (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_STATE_UNSAFE' && e.message.includes('(ENOSPC)')
+        && e.next === `Check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom. Then run bowerloom skills migrate plan --state ${v1State} to see a new plan.`);
+  } finally { (fs as { mkdirSync: unknown }).mkdirSync = real; }
+  // The plan changed, so the same --approve is stale; the step's plan command, then its revision, applies.
+  online(p, pkg);
+  const stale = run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', plan.revision, '--json']);
+  assert.equal(errorOf(stale.stderr).code, 'STALE_APPROVAL', stale.stderr);
+  const replanned = run(p, ['skills', 'migrate', 'plan', '--state', v1State]); assert.equal(replanned.status, 3, replanned.stderr);
+  assert.equal(run(p, ['skills', 'migrate', 'apply', '--state', v1State, '--approve', revisionIn(replanned.stdout)]).status, 0);
 });

@@ -1,4 +1,4 @@
-import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
+import { canonicalJson, DefinitionError, shellArg } from '../../../packages/contracts/src/index.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -666,5 +666,9 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
 }
 
-/** A path as one shell word: plain characters stay, anything else is single-quoted. */
-export const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+/**
+ * A path as one shell word: plain characters stay, anything else is single-quoted. Round 9 of the reviews of PR 101: a
+ * path with a character that no shell word holds (SHELL_UNSAFE: a control character, a bidirectional control, or a
+ * backslash) prints <folder>, and the sentence names the folder.
+ */
+export const shellWord = (path: string): string => shellArg(path, '<folder>');
