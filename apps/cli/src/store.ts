@@ -14,7 +14,7 @@ import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import type { ApprovalIo } from './confirm.js';
-import { parseApprovalFlags, runWithApproval } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
 import { terminalIo } from './manifest.js';
 import { discoverProject } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
@@ -295,7 +295,7 @@ async function runMigrate(words: readonly string[], cwd: string, home: string, w
   const githubToken = githubTokenReader(env);
   const plans = new Map<string, StoreMigratePlan>();
   const plan = async (): Promise<StoreMigratePlan> => { const p = await planStoreMigrate({ project, home, ...selection, githubToken, signal: controller.signal }); plans.set(p.revision, p); return p; };
-  const first = await plan();
+  let first: StoreMigratePlan; try { first = await plan(); } catch (error) { throw approvalFault(error, approval.approve); }
   const json = approval.json;
   if (first.items.length === 0) {
     // Review H2: the old copies of items listed from the store are named, with the lines that remove them.

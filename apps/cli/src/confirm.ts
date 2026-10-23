@@ -1,4 +1,5 @@
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { atApproval } from '../../../packages/project-config/src/refusal.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { takeStoreGitignoreFailure } from '../../../packages/project-context/src/store-gitignore.js';
 import { newCommandJson, plainText } from './human.js';
@@ -49,8 +50,14 @@ const stale = (note?: string | null): DefinitionError => new DefinitionError('ST
  * - In a terminal without `--json`: shows the plan, asks, plans again, and applies only if the revision is unchanged.
  * - Otherwise: prints the plan and its revision and returns exit code 3 (APPROVAL_REQUIRED). Nothing is written.
  */
+/**
+ * Round 5 of the reviews of PR 101: a store fault met on a run with --approve, when the plan is made again, says what to do
+ * if the item also changed: then the same --approve is stale. Any other error is returned as it is.
+ */
+export const approvalFault = (error: unknown, approve: string | undefined): unknown => approve !== undefined ? atApproval(error) : error;
 export async function runWithApproval<P>(change: PlannedChange<P>, flags: ApprovalFlags, io: ApprovalIo): Promise<{ output: string; exitCode: 0 | 3 }> {
-  const plan = await change.plan(), revision = change.revision(plan);
+  let plan: P; try { plan = await change.plan(); } catch (error) { throw approvalFault(error, flags.approve); }
+  const revision = change.revision(plan);
   if (!REVISION.test(revision)) throw new DefinitionError('IO_ERROR', 'The plan has no valid revision, so nothing was applied.');
   const applied = async (value: string): Promise<{ output: string; exitCode: 0 }> => {
     takeStoreGitignoreFailure();

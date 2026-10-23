@@ -13,11 +13,11 @@ import { applyProjectApply, planProjectApply, syncError } from '../../../package
 import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
-import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText, shellWord } from './human.js';
 import { terminalIo } from './manifest.js';
-import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt, withRequestNote } from './sync.js';
+import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 
 const APPLY_USAGE = 'Use bowerloom apply [--harness claude|codex|both] [--allow-agent <role>:<hash>]... [--frozen] [--max-github-requests <n>], with optional --approve <revision> and --json.';
@@ -178,7 +178,7 @@ export function applyStaleNote(plan: ApplyPlan): string | null {
   return needs ? TOKEN_STALE_NOTE : null;
 }
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
-export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
+export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
   const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
@@ -202,7 +202,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
     ...(plan.codexAgentsSkipped || plan.codexSlicesSkipped ? ['Codex agents and context slices are not projected in this beta. See the capability model design.'] : []),
     ...credentialsLines(plan.network?.credentials),
     network,
-    ...requestLine(plan.network),
+    ...requestLine(plan.network, maxSet),
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
@@ -286,15 +286,15 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   // Spec 07: only a frozen apply reads the token, and only when an authored lock item needs its repository.
   const githubToken = parsedHarness.frozen ? githubTokenReader(env) : null;
   const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
-  const first = await planProjectApply(input());
+  let first: ApplyPlan; try { first = await planProjectApply(input()); } catch (error) { throw approvalFault(error, approval.approve); }
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {
-    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(withRequestNote(renderApplyReview(first, io.interactive), max, first.network?.hosts), true)}\nNothing to change.\n`); return 0;
+    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first, io.interactive, max !== undefined), true)}\nNothing to change.\n`); return 0;
   }
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
-    revision: plan => plan.revision, review: plan => withRequestNote(renderApplyReview(plan, io.interactive && !approval.json), max, plan.network?.hosts), staleNote: applyStaleNote,
+    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json, max !== undefined), staleNote: applyStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },

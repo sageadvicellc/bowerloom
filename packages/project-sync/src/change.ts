@@ -12,7 +12,7 @@ import type { HeldProjectLock, ProjectContext } from '../../project-context/src/
 import { readConfig } from '../../project-config/src/config.js';
 import { CONFIG_FORMAT, serializeConfig } from '../../project-config/src/schema.js';
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
-import { configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
+import { atApproval, configRefusal, honestShared, notShareable, notSharedYet, refusalWithNext } from '../../project-config/src/refusal.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockItem, lockSourceLabel, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
@@ -172,7 +172,13 @@ export const requestCount = (needs: readonly { local: { distinct: number } | nul
 export const NETWORK_LINE = (n: number, r: number): string => `Network: reads api.github.com, to check the pushed copy of ${n} ${n === 1 ? 'item' : 'items'}, about ${r} requests to api.github.com.`;
 /** The request line of a run whose limit the person set, in the words of the sync and apply plans (`requestLine`). */
 export const REQUEST_LINE = (r: number, max: number): string => `GitHub requests: at most ${r}, of the ${max} this run allows.`;
-export const NO_REQUEST_NOTE = 'No GitHub request is needed, so --max-github-requests has no effect.';
+export const NO_REQUEST_NOTE = 'This run makes no GitHub request for a store item, so --max-github-requests has no effect.';
+/**
+ * Round 5 of the reviews of PR 101 (decided): the one rule of the note, for use, apply, and skills sync. It prints when the
+ * person set --max-github-requests and the run makes no GitHub request: api.github.com is not a host, or it gets 0 requests.
+ */
+export const requestNote = (maxSet: boolean, hosts: readonly string[], githubRequests: number): string[] =>
+  maxSet && (!hosts.includes('api.github.com') || githubRequests === 0) ? [NO_REQUEST_NOTE] : [];
 export const NO_TOKEN_LINE = 'Without a token GitHub allows about 60 requests an hour. Set BOWERLOOM_GITHUB_TOKEN, or run the command again after an hour to finish.';
 
 /**
@@ -326,7 +332,8 @@ export async function planConfigChange(input: ChangeInput): Promise<ConfigChange
     lock = { before: current.read, after: { sha256: sha(lockText), bytes: Buffer.byteLength(lockText) }, text: lockText, adds: lockAdds.sort(byteOrder), removes: lockRemoves.sort(byteOrder) };
   } catch (error) { throw sharedState.unknown !== undefined ? honestShared(error, sharedState.unknown) : error; }
   // Round 3 of the reviews of PR 101 (decided): a script may always pass the flag, so a run with no GitHub request says so.
-  if (input.maxGithubRequests !== undefined && hosts.length === 0) notes.push(NO_REQUEST_NOTE);
+  // Each proved item makes at least 4 requests, so a plan with no proved item makes none.
+  notes.push(...requestNote(input.maxGithubRequests !== undefined, hosts, authored.length));
   const body: Omit<ConfigChangePlan, 'revision'> = {
     format: CONFIG_CHANGE_FORMAT,
     project: { dir: project.dir, identity: project.identity, ancestry: project.ancestry, bowerloomIdentity: project.bowerloomIdentity },
@@ -350,7 +357,7 @@ function recheck(project: ProjectContext, home: string, plan: { revision: string
     let defs: StoreDefinitions; try { defs = openStoreDefinitions(home); } catch { throw stale(); }
     if (canonicalJson(storeRead(defs)) !== canonicalJson(plan.store)) throw stale();
     // Round 3 of the reviews of PR 101: a store fault keeps its code and its next step; only a real change is stale.
-    for (const a of plan.authored) { let h: string; try { h = localItemRows(plan.store.dir, a.kind, a.id).hash; } catch (error) { if (isStoreFault(error)) throw error; throw stale(); } if (h !== a.hash) throw stale(); }
+    for (const a of plan.authored) { let h: string; try { h = localItemRows(plan.store.dir, a.kind, a.id).hash; } catch (error) { if (isStoreFault(error)) throw atApproval(error); throw stale(); } if (h !== a.hash) throw stale(); }
   }
 }
 /** Removes the leftover scratch files a plan listed: still regular files the user owns. */

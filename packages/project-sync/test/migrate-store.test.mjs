@@ -181,7 +181,7 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   assert.deepEqual(goneAll.skipped.find(s => s.id === 'gone'), { kind: 'prompt', id: 'gone', line: 'its files are gone, so it stays as it is.' }, 'review M1: --all names an item whose files are gone');
   // A skill with an empty file, and one with a script: explicit refuses with the reason, --all keeps it with a line.
   await projectItem(w, 'skill', 'empty'); fs.writeFileSync(bl(w, 'skills/empty/notes.md'), '');
-  await assert.rejects(plan(w, { skills: ['empty'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It holds a file that a store item cannot hold.'));
+  await assert.rejects(plan(w, { skills: ['empty'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It holds an empty file, which a store item cannot hold.'));
   localSkill({ projectDir: w.projectDir }, 'big', { 'SKILL.md': '# big\n', 'references/a.md': 'x'.repeat(70000) });
   const manifest = parseManifest(fs.readFileSync(bl(w, 'skills.json')), MANIFEST_LIMITS).skills;
   writeManifest({ projectDir: w.projectDir }, [...manifest, { id: 'big', source: { kind: 'local', path: 'skills/big' } }]);
@@ -190,7 +190,7 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   assert.deepEqual(all.skipped.filter(s => s.id === 'empty' || s.id === 'big'), [
     // Round 3 of the reviews of PR 101: the skip names the file and gives its step.
     { kind: 'skill', id: 'big', line: 'stays in this project. It is larger than a store item can be. .bowerloom/skills/big/references/a.md is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. Then run the command again.' },
-    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds a file that a store item cannot hold. .bowerloom/skills/empty/notes.md is empty. Add content to it, or delete it if you do not need it. Then run the command again.' },
+    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds an empty file, which a store item cannot hold. .bowerloom/skills/empty/notes.md is empty. Add content to it, or delete it if you do not need it. Then run the command again.' },
   ]);
   // CONFIG_ITEM_SELECTED: the config lists the item from the store already. --all skips it.
   await migrate(w, { prompts: ['brief'] });
@@ -348,7 +348,7 @@ test('11b. shared: a private remote refuses STORE_REMOTE_PRIVATE, no network ref
   const repo = push(w);
   const before = { store: snapshot(w.store), project: snapshot(w.projectDir) };
   await assert.rejects(plan(w, { all: true, transport: storeTransport({ responses: new Map() }) }), code('STORE_REMOTE_PRIVATE'));
-  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com, and the network was not reachable.') && e.next === 'Connect to the network and run the command again.');
+  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com, and the network was not reachable.') && e.next === 'Connect to the network, then run the command again without --approve to see a new plan.');
   assert.deepEqual({ store: snapshot(w.store), project: snapshot(w.projectDir) }, before, 'nothing is written');
   const withToken = await plan(w, { all: true, transport: storeTransport(repo), token: TOKEN() });
   assert.deepEqual(withToken.network.credentials, { variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories: ['sageadvicellc/store'] });
@@ -637,7 +637,7 @@ test('round 4. apply keeps a store fault with its next step; a content change is
   assert.ok(proved.items.every(i => i.switch));
   const file = path.join(w.store, 'prompts', 'brief.md');
   fs.chmodSync(file, 0o755);
-  await assert.rejects(apply(w, proved), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/prompts/brief.md. A lock records no file with an execute bit. Then run the command again.');
+  await assert.rejects(apply(w, proved), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/prompts/brief.md. A lock records no file with an execute bit. Then run the command again. If you also changed the item, run the command again without --approve.');
   fs.chmodSync(file, 0o644);
   fs.appendFileSync(file, 'edited\n');
   await assert.rejects(apply(w, proved), code('STALE_APPROVAL'));

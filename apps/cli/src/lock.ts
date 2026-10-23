@@ -9,7 +9,7 @@ import type { PlannedChange } from '../../../packages/project-context/src/types.
 import { LOCK_LISTS, lockAgrees, lockMismatch, lockSourceLabel, readConfig, readLock, configRefusal } from '../../../packages/project-config/src/index.js';
 import { applyLockUpdate, lockUpdateIsNoop, planLockUpdate } from '../../../packages/project-sync/src/index.js';
 import type { LockUpdatePlan, LockUpdateResult } from '../../../packages/project-sync/src/index.js';
-import { parseApprovalFlags, runWithApproval } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
@@ -59,7 +59,7 @@ async function update(words: readonly string[], cwd: string, home: string, write
   // Spec 07: the planner reads the token through this reader only for the proof of an authored store item.
   const githubToken = githubTokenReader(env);
   const plan = () => planLockUpdate({ project, home, items: itemsGiven ? items : null, commit, signal: controller.signal, githubToken });
-  const first = await plan(); plans.set(first.revision, first);
+  let first: Awaited<ReturnType<typeof plan>>; try { first = await plan(); } catch (error) { throw approvalFault(error, approval.approve); } plans.set(first.revision, first);
   if (first.nothing) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : 'Nothing to lock.\n'); return 0; }
   if (lockUpdateIsNoop(first) && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderLockUpdate(first), true)}\nNothing to change.\n`); return 0; }
   let pending: LockUpdatePlan | null = first, result: LockUpdateResult | null = null;

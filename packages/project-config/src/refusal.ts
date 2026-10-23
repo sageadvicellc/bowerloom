@@ -80,7 +80,9 @@ export function honestShared(error: unknown, what: string): unknown {
   return honest;
 }
 /** Spec 08, section 5: the reason MIGRATE_ITEM_UNSUPPORTED adds, one per fault of `localItemRows`. */
-export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.', unreadable: 'Bowerloom could not read all of it safely.', names: 'It holds names that Bowerloom does not read.' });
+export const MIGRATE_REASON = Object.freeze({ file: 'It holds a file that a store item cannot hold.', size: 'It is larger than a store item can be.', unreadable: 'Bowerloom could not read all of it safely.', names: 'It holds names that Bowerloom does not read.',
+  // Round 5 of the reviews of PR 101: the faults that are not about the content of a file.
+  folder: 'It holds a folder that a store item cannot hold.', link: 'It holds a link or a special file that a store item cannot hold.', empty: 'It holds an empty file, which a store item cannot hold.', count: 'It holds more files than a store item can hold.' });
 export type MigrateReason = keyof typeof MIGRATE_REASON;
 /** MIGRATE_ITEM_UNSUPPORTED with its reason. */
 export function migrateUnsupported(reason: MigrateReason, next?: string): DefinitionError {
@@ -113,7 +115,7 @@ const plainPath = (path: string | undefined, root: ShareRoot): string | null =>
 /** The place of a fault: `path` is the store path of the file or folder, `item` the store path of the item folder. */
 export type ShareProblem = 'name' | 'folder-name' | 'names' | 'too-many' | 'empty' | 'mode' | 'bom' | 'encoding' | 'link' | 'special' | 'unsafe-file' | 'unsafe-folder' | 'unreadable'
   | 'empty-folder' | 'too-deep' | 'not-folder' | 'area' | 'large' | 'count' | 'total';
-export interface SharePlace { readonly problem: ShareProblem; readonly path?: string; readonly item?: string; readonly root?: ShareRoot }
+export interface SharePlace { readonly problem: ShareProblem; readonly path?: string; readonly item?: string; readonly root?: ShareRoot; /** The most files a lock records in one item, for the step of 'too-many'. */ readonly files?: number }
 const AGAIN = 'Then run the command again.';
 // Round 3: the rules of skillFilePath (packages/skill-sources/src/validation.ts, relativeSkillPath).
 const NAMES = 'A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot. The first name in the item starts with a letter or a digit.';
@@ -136,12 +138,14 @@ export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
   const p = plainPath(place.path, root), item = plainPath(place.item, root) ?? 'the store item';
   // Round 4 of the reviews of PR 101: a path under the .bowerloom of a project is relative to the project folder.
   const run = (command: string): string => root === '.bowerloom' ? `In the project folder, run ${command}.` : `Run ${command}.`;
+  // Round 5: a command needs a real path. With no plain path to name, the step gives no command (ls -la the store item).
+  const runOn = (command: string, target: string): string => target === 'the store item' ? '' : `${run(`${command} ${target}`)} `;
   const sub = p ?? `A file in ${item}`;
   switch (place.problem) {
     case 'name': return p ? `If you do not need ${p}, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}` : `${sub} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`;
     case 'folder-name': return `${p ?? `A folder in ${item}`} is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`;
     case 'names': { const f = p ?? item; return `${f} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`; }
-    case 'too-many': { const f = p ?? item; return `${f} holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer. ${AGAIN}`; }
+    case 'too-many': { const f = p ?? item; return `${f} holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer.${place.files !== undefined ? ` A lock records at most ${place.files} files in one item.` : ''} ${AGAIN}`; }
     case 'empty': return p ? `${p} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}` : `${sub} is empty. Add content to it, or delete it if you do not need it. ${AGAIN}`;
     case 'mode': return p ? `${run(`chmod a-x ${p}`)} A lock records no file with an execute bit. ${AGAIN}` : `${sub} has an execute bit. Run chmod a-x on it. ${AGAIN}`;
     case 'bom': return p ? `Remove the byte order mark at the start of ${p}. ${AGAIN}` : `${sub} starts with a byte order mark. Remove it. ${AGAIN}`;
@@ -149,12 +153,12 @@ export function shareNext(cause: 'file' | 'size', place?: SharePlace): string {
     case 'link': return `${p ?? `A file or folder in ${item}`} is a link, and a lock records no link. Put a copy of what it points to in its place. ${AGAIN}`;
     case 'special': return `${p ?? `An entry in ${item}`} is not a plain file or folder. Move it out of the item. ${AGAIN}`;
     case 'unsafe-file': return p ? `Bowerloom could not read ${p} safely. It must be a plain file that you own, with one link, closed to other users. ${run(`ls -l ${p}`)} If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`
-      : `Bowerloom could not read a file in ${item} safely. Each file must be a plain file that you own, with one link, closed to other users. ${run(`ls -la ${item}`)} ${AGAIN}`;
-    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users. ${run(`ls -ld ${f}`)} If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`; }
-    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. ${run(`ls -la ${f}`)} Give yourself read access to what it shows. ${AGAIN}`; }
+      : `Bowerloom could not read a file in ${item} safely. Each file must be a plain file that you own, with one link, closed to other users. ${runOn('ls -la', item)}${AGAIN}`;
+    case 'unsafe-folder': { const f = p ?? item; return `Bowerloom could not read the folder ${f} safely. It must be a real folder that you own, closed to other users. ${runOn('ls -ld', f)}If it was made under umask 002, ${root === '.bowerloom' ? 'in the project folder, ' : ''}run chmod -R go-w ${root}. ${AGAIN}`; }
+    case 'unreadable': { const f = p ?? item; return `Bowerloom could not read ${f}. ${runOn('ls -la', f)}Give yourself read access to what it shows. ${AGAIN}`; }
     case 'empty-folder': return `${p ?? item} is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`;
     case 'too-deep': return `${p ?? `A folder in ${item}`} sits too deep in the item. A lock records at most 7 levels of folders inside an item. Move its files up. ${AGAIN}`;
-    case 'not-folder': return `${item} is not a real folder that you own. ${run(`ls -ld ${item}`)} ${AGAIN}`;
+    case 'not-folder': return `${item} is not a real folder that you own. ${runOn('ls -ld', item)}${AGAIN}`;
     case 'area': { const a = place.path !== undefined && /^(?:skills|prompts|teams)$/.test(place.path) ? `${root}/${place.path}` : 'A folder of the store'; return `${a} is a link or not a real folder. Make it a real folder in ${root}. ${AGAIN}`; }
     case 'large': return `${p ?? `A file in ${item}`} is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. ${AGAIN}`;
     case 'count': return `${item} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`;
@@ -172,6 +176,22 @@ export function notShareable(cause: NotShareableCause, place?: SharePlace): Defi
   // Round 4: the fault, so store migrate names it in words of its own.
   if (place !== undefined) Object.defineProperty(error, 'problem', { value: place.problem, enumerable: false });
   return error;
+}
+/** Round 5 of the reviews of PR 101: the last sentence of the next step of a store fault found at approval time. */
+export const APPROVAL_NOTE = 'If you also changed the item, run the command again without --approve.';
+/**
+ * A store fault found at approval time (decided in round 4): it surfaces as it is, because once the fault is fixed the
+ * same --approve works, unless the item also changed. Its next step says so. Any other error is returned as it is.
+ */
+export function atApproval(error: unknown): unknown {
+  if (!(error instanceof DefinitionError) || !own.has(error) || error.code !== 'STORE_ITEM_NOT_SHAREABLE') return error;
+  const next = (error as { next?: unknown }).next;
+  if (typeof next !== 'string' || next.endsWith(APPROVAL_NOTE)) return error;
+  const noted = new DefinitionError(error.code, error.message); own.add(noted);
+  Object.defineProperty(noted, 'next', { value: `${next} ${APPROVAL_NOTE}`, enumerable: false });
+  const problem = (error as { problem?: unknown }).problem;
+  if (problem !== undefined) Object.defineProperty(noted, 'problem', { value: problem, enumerable: false });
+  return noted;
 }
 /**
  * Round 2 of the reviews of PR 101: in a project that is not shared, a lock update still checks each item it records, and

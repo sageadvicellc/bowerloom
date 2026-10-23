@@ -568,7 +568,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
   // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
   // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.
-  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs a fetch, and this run did not fetch it. The message says why.', next: 'After --offline, run the command again without --offline. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.' },
+  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs bytes that this run could not get. The message says why.', next: 'After --offline, run the command again without --offline and without --approve. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 256 skills at once.', next: 'bowerloom skills check' },

@@ -16,6 +16,7 @@ import { runSyncCommand } from '../apps/cli/src/sync.js';
 import { acquisitionRefusal, fetchPin } from '../packages/project-sync/src/apply.js';
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
 import { partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
+import { notShareable } from '../packages/project-config/src/index.js';
 import { GitAcquisitionError } from '../packages/skill-sources/src/git.js';
 import { NpmAcquisitionError } from '../packages/skill-sources/src/npm.js';
 
@@ -23,16 +24,17 @@ const fixtures = fileURLToPath(new URL('../../packages/skill-manifest/test/fixtu
 const NPM_SPEC = 'npm:@synthetic/db-skills@0.0.1:skills/synthetic-db/collections';
 const META = 'https://registry.npmjs.org/@synthetic/db-skills/0.0.1', TGZ = 'https://registry.npmjs.org/@synthetic/db-skills/-/db-skills-0.0.1.tgz';
 const NPM_ROUTES = { [META]: join(fixtures, 'npm-db-skills', 'metadata.json'), [TGZ]: join(fixtures, 'npm-db-skills', 'archive.tgz') };
-const FIXED = "This run needs a fetch that did not happen. Nothing in the project changed.";
-const SENTENCE = 'A pin or a lock item needs a fetch, and this run did not fetch it. The message says why.';
+const FIXED = "This run could not get bytes that it needs. Nothing in the project changed.";
+const SENTENCE = 'A pin or a lock item needs bytes that this run could not get. The message says why.';
 const NEXT = {
-  network: 'Connect to the network and run the command again.',
-  response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
-  nonpublic: 'Check the DNS or proxy configuration of this machine.',
-  other: 'Run the command again. If it fails again, report the code and the output of bowerloom --version.',
+  network: 'Connect to the network, then run the command again without --approve to see a new plan.',
+  response: 'Run the command again later, without --approve, to see a new plan. If it fails again, check that the version or commit of the pin still exists on its registry.',
+  nonpublic: 'Check the DNS or proxy configuration of this machine. Then run the command again without --approve to see a new plan.',
+  other: 'Run the command again without --approve to see a new plan. If it fails again, report the code and the output of bowerloom --version.',
+  nocode: 'Run the command again without --approve to see a new plan. If it fails again, report the error name above and the output of bowerloom --version.',
   requests: 'Check with bowerloom skills check that the pin names the package or commit you expect. If it does, report the code and the output of bowerloom --version.',
   approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
-  offline: 'Run the command again without --offline.',
+  offline: 'Run the command again without --offline and without --approve.',
   apply: 'Run bowerloom skills sync, then bowerloom apply.',
 };
 const nextOf = (stderr: string): string | undefined => (JSON.parse(stderr) as { error: { next?: string } }).error.next;
@@ -105,14 +107,19 @@ test('the fallback of a fetch: a known code is named, never called offline; an e
   // Round 4: an error with no code keeps SKILLS_OFFLINE, names the kind of error, never its message, and keeps the cause.
   const plain = new TypeError('a secret detail of someone');
   const wrapped = acquisitionRefusal(plain, signal, 'x') as Error & { code: string; next?: string; cause?: unknown };
-  assert.equal(wrapped.code, 'SKILLS_OFFLINE'); assert.equal(wrapped.message, `${FIXED} Bowerloom could not fetch x (TypeError).`);
-  assert.equal(wrapped.next, NEXT.other); assert.equal(wrapped.cause, plain);
+  assert.equal(wrapped.code, 'SKILLS_OFFLINE'); assert.equal(wrapped.message, `${FIXED} The fetch of x failed with an error that has no Bowerloom code (TypeError).`);
+  assert.equal(wrapped.next, NEXT.nocode); assert.equal(wrapped.cause, plain);
   assert.ok(!Object.keys(wrapped).includes('cause'), 'the cause is not enumerable');
   const terminal = reportFailure(wrapped, true).text + reportFailure(wrapped, false).text;
   assert.doesNotMatch(terminal, /secret|someone/, 'no output prints the message of the cause');
-  assert.ok(reportFailure(wrapped, true).text.endsWith(`Next: ${NEXT.other}\n`));
+  assert.ok(reportFailure(wrapped, true).text.endsWith(`Next: ${NEXT.nocode}\n`));
+  // Round 5: a fixed code keeps the original too, and a name getter that throws cannot escape.
+  const coded = new NpmAcquisitionError('NPM_PLAN_REFUSED');
+  assert.equal((acquisitionRefusal(coded, signal, 'x') as Error & { cause?: unknown }).cause, coded);
+  const hostile = Object.defineProperty(new Error('x'), 'name', { get() { throw new Error('boom'); } });
+  assert.equal(acquisitionRefusal(hostile, signal, 'x').message, `${FIXED} The fetch of x failed with an error that has no Bowerloom code (Error).`);
   const odd = acquisitionRefusal({ name: 'bad name\u001b' }, signal, 'x') as Error;
-  assert.equal(odd.message, `${FIXED} Bowerloom could not fetch x (Error).`);
+  assert.equal(odd.message, `${FIXED} The fetch of x failed with an error that has no Bowerloom code (Error).`);
 });
 
 test('each fetch code goes to its cause, for npm and for GitHub alike', () => {
@@ -146,9 +153,13 @@ test('an approved plan that names no host for a fetch refuses with the step to r
 });
 
 test('a refusal after a partial write keeps the step of its cause, then the command that finishes the run', () => {
-  const fault = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.network, enumerable: false });
-  const partial = partialRefusal(fault, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
+  const network = Object.defineProperty(syncError('SKILLS_OFFLINE', 'x.'), 'next', { value: NEXT.network, enumerable: false });
+  const partial = partialRefusal(network, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
   assert.equal(partial.next, `${NEXT.network} Then run bowerloom store migrate --all.`);
+  // Round 5: a cause whose step ends with "Then run the command again." says run once.
+  const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
+  const faulted = partialRefusal(fault, ['one item'], 'bowerloom store migrate --all') as Error & { next?: string };
+  assert.equal(faulted.next, 'Run chmod a-x ~/.bowerloom/skills/x/run.md. A lock records no file with an execute bit. Then run bowerloom store migrate --all.');
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
 });
@@ -172,7 +183,7 @@ test('a GitHub pin whose repository answers 500 is not called offline', t => {
 test('the words of the code: a neutral sentence, and a table next step that names each case', () => {
   const words = renderRefusal('SKILLS_OFFLINE', FIXED).split('\n');
   assert.equal(words[1], SENTENCE);
-  assert.equal(words[2], 'Next: After --offline, run the command again without --offline. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.');
+  assert.equal(words[2], 'Next: After --offline, run the command again without --offline and without --approve. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.');
 });
 
 // Round 4: an acquirer that throws an error with no Bowerloom code, through the skills sync command. No network failure
@@ -187,7 +198,32 @@ test('skills sync with an acquirer that throws a TypeError refuses SKILLS_OFFLIN
   try { await runSyncCommand(['skills', 'sync', '--approve', revision], dir, w.home, () => {}, { interactive: false, ask: async () => 'n' }, { ...process.env, ...w.env }, throwing as never); }
   catch (error) { caught = error; }
   const e = caught as Error & { code?: string; next?: string; cause?: unknown };
-  assert.equal(e?.code, 'SKILLS_OFFLINE', String(caught)); assert.equal(e.next, NEXT.other); assert.ok(e.cause instanceof TypeError);
+  assert.equal(e?.code, 'SKILLS_OFFLINE', String(caught)); assert.equal(e.next, NEXT.nocode); assert.ok(e.cause instanceof TypeError);
   const words = reportFailure(e, true).text;
-  assert.match(words, /Bowerloom could not fetch synthetic-db-collections \(TypeError\)\./); assert.doesNotMatch(words, /private detail/);
+  assert.match(words, /The fetch of synthetic-db-collections failed with an error that has no Bowerloom code \(TypeError\)\./); assert.doesNotMatch(words, /private detail/);
+});
+
+// Round 5 of the reviews of PR 101, item 1: a failed fetch keeps its cache operation (the cache keeps every operation it
+// opened until cache prune deletes it), so the next plan names a new one. The step says to leave out --approve, and
+// following it lifts the refusal once the registry or the network is back.
+test('after a failed fetch, the step leaves out --approve, and a new plan then installs, for npm and for git', t => {
+  const { w, dir } = pinned(t);
+  const first = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+  const failed = run(dir, ['skills', 'sync', '--json', '--approve', first.revision], net(w, { routes: { ...NPM_ROUTES, [META]: { status: 500, file: null } } }), NETWORK);
+  assert.equal(nextOf(failed.stderr), NEXT.response);
+  assert.equal(errorCode(run(dir, ['skills', 'sync', '--json', '--approve', first.revision], net(w, { routes: NPM_ROUTES }), NETWORK).stderr), 'STALE_APPROVAL', 'the same --approve is stale, as the step says');
+  const again = JSON.parse(run(dir, ['skills', 'sync', '--json'], net(w, { routes: NPM_ROUTES }), NETWORK).stdout) as { revision: string };
+  assert.equal(run(dir, ['skills', 'sync', '--approve', again.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0, 'a new plan installs');
+  // git: a DNS failure, then the step.
+  const g = world(t), gd = project(g, 'app', EMPTY_CONFIG);
+  const recorded = JSON.parse(readFileSync(join(fixtures, 'github-skills-repo.json'), 'utf8')) as { responses: Record<string, string> };
+  const routes: Record<string, string> = {};
+  Object.entries(recorded.responses).forEach(([url, body], i) => { const file = join(g.base, `gh-${i}.json`); writeFileSync(file, Buffer.from(body, 'base64')); routes[url] = file; });
+  mustApprove(gd, ['skills', 'add', `github:synthetic-owner/skills-repo@${'c0ffee00'.repeat(5)}:skills/verification-loop`], net(g, { routes }), NETWORK);
+  rmSync(join(g.state, 'bowerloom', 'cache'), { recursive: true, force: true });
+  const gp = JSON.parse(run(gd, ['skills', 'sync', '--json'], net(g, { routes }), NETWORK).stdout) as { revision: string };
+  const down = run(gd, ['skills', 'sync', '--json', '--approve', gp.revision], net(g, {}), NETWORK);
+  assert.equal(nextOf(down.stderr), NEXT.network);
+  const gp2 = JSON.parse(run(gd, ['skills', 'sync', '--json'], net(g, { routes }), NETWORK).stdout) as { revision: string };
+  assert.equal(run(gd, ['skills', 'sync', '--approve', gp2.revision], net(g, { routes }), NETWORK).status, 0, 'a new plan installs');
 });

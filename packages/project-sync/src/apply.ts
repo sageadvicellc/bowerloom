@@ -112,13 +112,13 @@ export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: stri
   if (REQUESTS.has(code)) return offlineBecause('requests', `Fetching the pin needs more requests than Bowerloom makes for one pin: 2 for npm and 130 for GitHub (${code}). The skill is ${id}.`);
   // Round 4: a plan that changed under the fetch is a stale approval.
   if (PLAN_CHANGED.has(code)) return stale(`The fetch plan of ${id} changed (${code}).`);
-  if (FIXED_CODE.test(code)) return offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`);
-  // Round 4 of the reviews of PR 101: an error with no fixed code keeps SKILLS_OFFLINE, names the fetch and the kind of
-  // error only, never its message, and keeps the original as a cause that no output prints.
-  const name = error instanceof Error && ERROR_NAME.test(error.name) ? error.name : 'Error';
-  const wrapped = offlineBecause('other', `Bowerloom could not fetch ${id} (${name}).`);
-  Object.defineProperty(wrapped, 'cause', { value: error, enumerable: false });
-  return wrapped;
+  // Rounds 4 and 5 of the reviews of PR 101: the original error stays as a cause that no output prints, and its message
+  // is never shown. An error with no fixed code names only its class, read so that a throwing getter cannot escape.
+  const keep = (wrapped: DefinitionError): DefinitionError => { Object.defineProperty(wrapped, 'cause', { value: error, enumerable: false }); return wrapped; };
+  if (FIXED_CODE.test(code)) return keep(offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`));
+  let name = 'Error';
+  try { const n = error instanceof Error ? error.name : undefined; if (typeof n === 'string' && ERROR_NAME.test(n)) name = n; } catch { name = 'Error'; }
+  return keep(offlineBecause('nocode', `The fetch of ${id} failed with an error that has no Bowerloom code (${name}).`));
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */

@@ -49,8 +49,7 @@ Setup does not start workers, grant runtime access, or authorize connected actio
 - `apply --frozen` and `skills sync` refuse with `LOCK_COMMIT_GONE` when the locked commit is gone from a store repository that GitHub still shows, for example after a force-push or a deleted branch. After a 404 on the commit, one extra request to the repository tells this apart from a private repository, which keeps `STORE_REMOTE_PRIVATE`, or `STORE_REMOTE_AUTH_FAILED` with a token.
 - A store item that holds a file a lock cannot record, such as `.DS_Store`, refuses `STORE_ITEM_NOT_SHAREABLE` before any network call. Its `Next:` line names the file or folder and its fix. Each other cause of the code has a `Next:` line of its own too.
 - `SKILLS_OFFLINE` names its real cause, and each cause has its own next step: the network, a wrong answer of the registry, a pin that needs too many requests, an address that is not public, another fetch failure, `--offline`, plain `apply`, and an approved plan that names no host for the fetch.
-- Two `--json` outputs gained an optional field. The `store migrate` plan gives `notSwitched.next`, and `cache list` gives `unreadable[].next`. Their formats keep their versions.
-- `apply`, `skills sync`, and `use` given `--max-github-requests` when they read no host print `No GitHub request is needed, so --max-github-requests has no effect.`
+- `apply`, `skills sync`, and `use` given `--max-github-requests` when they make no GitHub request for a store item print `This run makes no GitHub request for a store item, so --max-github-requests has no effect.`
 - The new page [Where your items come from](/docs/guides/item-sources/) explains where each item's bytes come from, what the lock records, and what a teammate needs.
 
 **Agents and context slices**

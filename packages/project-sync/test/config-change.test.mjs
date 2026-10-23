@@ -287,8 +287,15 @@ test('round 4. at apply, a store fault keeps its code and next step; a content c
   const file = path.join(w.store, 'skills', 'house-style', 'SKILL.md');
   const apply = () => withProjectLock(w.projectDir, new AbortController().signal, async held => applyConfigChange(p, p.revision, held, ctx(w), w.home));
   fs.chmodSync(file, 0o755);
-  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/skills/house-style/SKILL.md. A lock records no file with an execute bit. Then run the command again.');
+  const STEP = 'Run chmod a-x ~/.bowerloom/skills/house-style/SKILL.md. A lock records no file with an execute bit. Then run the command again. If you also changed the item, run the command again without --approve.';
+  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === STEP);
+  // The fault fixed and nothing else changed: the same approval applies.
   fs.chmodSync(file, 0o644);
-  fs.appendFileSync(file, 'More words.\n');
+  const p2 = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo) });
+  assert.equal(p2.revision, p.revision, 'the plan is the same once the fault is fixed');
+  // Round 5: faulted and changed together. The step said what to do; the same --approve is then stale.
+  fs.appendFileSync(file, 'More words.\n'); fs.chmodSync(file, 0o755);
+  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next.endsWith('If you also changed the item, run the command again without --approve.'));
+  fs.chmodSync(file, 0o644);
   await assert.rejects(apply(), code('STALE_APPROVAL'));
 });

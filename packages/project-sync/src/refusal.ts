@@ -11,7 +11,7 @@ import { MANAGED_ITEM_CODES } from '../../managed-skills/src/v2-observed.js';
 const MESSAGES = {
   STALE_APPROVAL: 'The plan changed after it was approved. Nothing was applied. Run the command again to see the new plan.',
   // Round 3 of the reviews of PR 101: true for a written store item too.
-  SKILLS_OFFLINE: 'This run needs a fetch that did not happen. Nothing in the project changed.',
+  SKILLS_OFFLINE: 'This run could not get bytes that it needs. Nothing in the project changed.',
   SKILLS_SYNC_CONTENT_MISMATCH: 'The bytes Bowerloom holds for a skill do not match the pins and file hashes in .bowerloom/skills.json. Nothing in the project changed.',
   SKILLS_SYNC_INTERRUPTED: 'skills sync stopped between two skills, as asked. Each skill it finished is complete; no skill was left half done.',
   SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 256 skills at most, counting the skills that are no longer in skills.json.',
@@ -85,13 +85,17 @@ export function syncError(code: SyncCode, extra?: string): DefinitionError {
  * Rounds 2 and 3 of the reviews of PR 101: the next step of SKILLS_OFFLINE for each real cause. Each raise site carries
  * the step of its cause, so a person is never sent back to the command that just failed in the same conditions.
  */
+// Round 5 of the reviews of PR 101: a failed fetch leaves its cache operation and the private folders it made, as the
+// cache keeps every operation it opened until cache prune deletes it. The next plan names a new operation, so a step that
+// runs the command again says to leave out --approve and see the new plan.
 export const OFFLINE_NEXT = Object.freeze({
-  network: 'Connect to the network and run the command again.',
-  response: 'Run the command again later. If it fails again, check that the version or commit of the pin still exists on its registry.',
-  nonpublic: 'Check the DNS or proxy configuration of this machine.',
+  network: 'Connect to the network, then run the command again without --approve to see a new plan.',
+  response: 'Run the command again later, without --approve, to see a new plan. If it fails again, check that the version or commit of the pin still exists on its registry.',
+  nonpublic: 'Check the DNS or proxy configuration of this machine. Then run the command again without --approve to see a new plan.',
   requests: 'Check with bowerloom skills check that the pin names the package or commit you expect. If it does, report the code and the output of bowerloom --version.',
-  other: 'Run the command again. If it fails again, report the code and the output of bowerloom --version.',
-  offline: 'Run the command again without --offline.',
+  other: 'Run the command again without --approve to see a new plan. If it fails again, report the code and the output of bowerloom --version.',
+  nocode: 'Run the command again without --approve to see a new plan. If it fails again, report the error name above and the output of bowerloom --version.',
+  offline: 'Run the command again without --offline and without --approve.',
   apply: 'Run bowerloom skills sync, then bowerloom apply.',
   approved: 'Run the command again without --offline and without --approve, to see a plan that fetches it.',
 });
@@ -134,8 +138,10 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   // Second security review M1: the words of a partial refusal, and its Next line, which is the command that finishes it.
   Object.defineProperty(partial, 'hint', { value: PARTIAL_HINT, enumerable: false });
   // Round 4 of the reviews of PR 101: the next step of the cause comes first, then the command that finishes the run.
+  // Round 5: a trailing "Then run ..." of the cause gives way to the command that finishes the run, so "run" is said once.
   const existing = error instanceof DefinitionError ? (error as { next?: unknown }).next : undefined;
-  Object.defineProperty(partial, 'next', { value: typeof existing === 'string' ? `${existing} Then run ${rerun}.` : rerun, enumerable: false });
+  const step = typeof existing === 'string' ? existing.replace(/\s*Then run [^.]*\.$/, '').trim() : '';
+  Object.defineProperty(partial, 'next', { value: step ? `${step} Then run ${rerun}.` : rerun, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;
 }

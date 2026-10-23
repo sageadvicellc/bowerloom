@@ -77,7 +77,8 @@ export function localItemRows(storeDir: string, kind: AuthoredKind, id: string, 
       let names: string[]; try { names = folderNames(abs); } catch {
         try { realFolder(abs); } catch { return file('unsafe-folder', here, item); }
         let count: number; try { count = readdirSync(abs).length; } catch { return file('unreadable', here, item); }
-        return file(count > LIMITS.folderNames ? 'too-many' : 'names', here, item);
+        if (count > LIMITS.folderNames) throw notShareable('file', { problem: 'too-many', root, path: here, item, files: STORE_FILE_LIMITS.files });
+        return file('names', here, item);
       }
       if (names.length === 0) file('empty-folder', here, item);
       for (const name of names) {

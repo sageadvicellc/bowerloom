@@ -31,7 +31,7 @@ import { CONFIG_FILE, serializeConfig } from '../../project-config/src/schema.js
 import type { ConfigEntry, ProjectConfig } from '../../project-config/src/schema.js';
 import { LOCK_FILE, LOCK_FORMAT, LOCK_LISTS, lockAgrees, lockItem, lockSourceLabel, parseLock, readLock, serializeLock } from '../../project-config/src/lock.js';
 import type { LockItem, ProjectLock } from '../../project-config/src/lock.js';
-import { MIGRATE_REASON, NOT_SHAREABLE, causeNext, configRefusal, honestShared, lockMismatch, migrateTeamMissing, migrateUnsupported, refusalWithNext } from '../../project-config/src/refusal.js';
+import { MIGRATE_REASON, NOT_SHAREABLE, atApproval, causeNext, configRefusal, honestShared, lockMismatch, migrateTeamMissing, migrateUnsupported, refusalWithNext } from '../../project-config/src/refusal.js';
 import type { MigrateReason } from '../../project-config/src/refusal.js';
 import { isSharedProject } from '../../project-config/src/shared.js';
 import { readStoreRepo } from '../../project-config/src/git.js';
@@ -240,10 +240,15 @@ function pastTreeLimits(root: string): boolean {
   return walk(root, 1);
 }
 // Round 4 of the reviews of PR 101: a fault that is not about a file's content has a sentence of its own.
-const reasonOf = (error: unknown): MigrateReason => {
+// Round 5: each fault kind maps to a reason that is true of it. Exported for its tests.
+const REASON_OF: Readonly<Record<string, MigrateReason>> = {
+  unreadable: 'unreadable', 'unsafe-file': 'unreadable', 'unsafe-folder': 'unreadable', names: 'names', 'too-many': 'names',
+  'not-folder': 'folder', area: 'folder', 'empty-folder': 'folder', 'too-deep': 'folder', 'folder-name': 'folder',
+  link: 'link', special: 'link', empty: 'empty', count: 'count', large: 'size', total: 'size',
+};
+export const reasonOf = (error: unknown): MigrateReason => {
   const problem = (error as { problem?: unknown } | null)?.problem;
-  if (problem === 'unreadable' || problem === 'unsafe-file' || problem === 'unsafe-folder') return 'unreadable';
-  if (problem === 'names' || problem === 'too-many') return 'names';
+  if (typeof problem === 'string' && Object.hasOwn(REASON_OF, problem)) return REASON_OF[problem]!;
   return (error as Error | null)?.message?.endsWith(NOT_SHAREABLE.size) ? 'size' : 'file';
 };
 
@@ -657,8 +662,8 @@ async function work(plan: StoreMigratePlan, store: StoreContext, heldStore: Held
     } catch (error) {
       // Any refusal of the plan made again is a change since the approval. Review M3: its code is kept as the cause.
       // Round 4 of the reviews of PR 101 (decided): a store fault surfaces as it is, with its own next step. Once the file is
-      // fixed, the approved plan is unchanged and the same --approve works, so STALE_APPROVAL would send the person to re-plan.
-      if (isStoreFault(error)) throw error;
+      // fixed, the same --approve works if the item did not also change. The step says what to do if it did (round 5).
+      if (isStoreFault(error)) throw atApproval(error);
       if (error instanceof DefinitionError && error.code !== 'STORE_LOCKED' && error.code !== 'PROJECT_LOCKED') throw error.code === 'STALE_APPROVAL' ? error : staleBecause(error);
       throw error;
     }
