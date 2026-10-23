@@ -19,7 +19,9 @@ import { projectIdOfDir, readLocalAgent } from '../../managed-skills/src/local-s
 import { claudeCopyBytes, guardConflict } from '../../managed-skills/src/agent-copy.js';
 import { catalogPath, currentV2, locateV2, ownSurface, surfaceV2 } from '../../managed-skills/src/v2-observed.js';
 import type { InventoryRow, ItemClosure, ItemRef, LocalClosure, ManagedItemPlan, ManagedItemReceipt, ManagedItemRequest, UpToDateV2 } from '../../managed-skills/src/v2-types.js';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, oneLine } from '../../contracts/src/index.js';
+/** Round 11 of the reviews of PR 101: a hold names file names of the project, which a cloned repository controls, so its step is one line. */
+const oneHold = (hold: Hold | null): Hold | null => hold === null ? null : { code: hold.code, next: oneLine(hold.next) };
 import { AGENT_STEM, AGENT_STEM_MAX, parseAgent, skippedAgentName } from '../../project-authoring/src/agent-file.js';
 import type { AgentParseCode, ParsedAgent } from '../../project-authoring/src/agent-file.js';
 import { folderNames, lstatOrNull, realFolder } from '../../project-authoring/src/files.js';
@@ -142,7 +144,7 @@ function parseHold(code: AgentParseCode, detail: string, stem: string, path: str
 /** An unsafe folder keeps its code and names the folder, so a person knows where to look. */
 function named<T>(where: string, work: () => T): T {
   try { return work(); }
-  catch (e) { if (isAuthoringRefusal(e) && e.code === 'AUTHORING_UNSAFE_PATH') throw new DefinitionError(e.code, `${e.message} The folder is ${where}.`); throw e; }
+  catch (e) { if (isAuthoringRefusal(e) && e.code === 'AUTHORING_UNSAFE_PATH') throw new DefinitionError(e.code, `${e.message} The folder is ${oneLine(where)}.`); throw e; }
 }
 const UNREGISTERED: Hold = { code: 'AGENT_TEAM_UNREGISTERED', next: 'Create the team with bowerloom team create, or move the agent into a registered team.' };
 export function scanAgents(dir: string): AgentScan {
@@ -213,7 +215,7 @@ export function agentSurfaces(project: string, id: string): { id: ItemSurface['i
 
 const heldItem = (s: ScannedAgent, context: AgentContext = EMPTY_CONTEXT, hold: Hold | null = s.hold): AgentItem => ({
   id: s.role, team: s.team, itemId: 'agent_' + s.role, state: 'held', action: 'hold', harnesses: ['claude'],
-  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold, notices: [], newNotices: [], installed: null, sourceSha256: null,
+  expected: { files: [], surfaces: [], source: null }, before: [], previousReceiptRevision: null, history: 0, hold: oneHold(hold), notices: [], newNotices: [], installed: null, sourceSha256: null,
   builtin: false, userCopy: false, capabilities: null, enforcement: [], context,
 });
 
@@ -311,7 +313,7 @@ export function classifyAgent(project: string, itemsRoot: string, s: ScannedAgen
   return {
     id: role, team: s.team, itemId, state, action, harnesses: ['claude'],
     expected: { files, surfaces: surfaces.map(x => ({ id: x.id, path: relative(project, x.path) })), source: { kind: 'agent', path: sourcePath, guard: context.guard } }, before,
-    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold, notices, newNotices: newOnes, installed: action === 'hold' && previous !== null ? installedCopy(project, role, s.team) : null, sourceSha256: hash, builtin: isBuiltinAgentName(role),
+    previousReceiptRevision: previous?.revision ?? null, history: ops.length, hold: oneHold(hold), notices, newNotices: newOnes, installed: action === 'hold' && previous !== null ? installedCopy(project, role, s.team) : null, sourceSha256: hash, builtin: isBuiltinAgentName(role),
     userCopy: userCopy(role), capabilities: null, enforcement: [], context,
   };
 }

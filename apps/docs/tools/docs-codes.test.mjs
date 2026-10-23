@@ -1,0 +1,445 @@
+// Spec 10 of beta.3, tests D1 to D31: the page "Where your items come from" and the docs that beta.3 made untrue.
+// It reads files only. The refusal codes of errors.md, their words, the lock states, and the format strings come from the
+// source. The page list of spec 5.1 (PAGE_GROUPS) is typed here, and D4 checks that each of its codes is a REFUSALS key.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync,statSync} from 'node:fs';
+import {resolve,join,relative} from 'node:path';
+
+const docsApp=resolve(import.meta.dirname,'..');
+const repo=resolve(docsApp,'../..');
+const docs=resolve(docsApp,'src/content/docs');
+const read=path=>readFileSync(path,'utf8');
+const doc=name=>read(join(docs,name));
+const PAGE_FILE=join(docs,'guides/item-sources.md');
+const page=()=>read(PAGE_FILE);
+const lines=text=>text.split('\n');
+
+// 4.2: the refusal codes new since beta.2, from the REFUSALS block of the CLI.
+const CODE_LINE=/^  ([A-Z][A-Z0-9_]+): \{/;
+const baseline=new Set(JSON.parse(read(resolve(import.meta.dirname,'beta2-refusal-codes.json'))));
+export function newCodes(){
+  const all=lines(read(join(repo,'apps/cli/src/human.ts')));
+  const start=all.findIndex(l=>l.startsWith('const REFUSALS')),end=all.findIndex(l=>l.startsWith('const GATE_REFUSALS'));
+  assert.ok(start>=0&&end>start,'human.ts holds const REFUSALS before const GATE_REFUSALS');
+  const out=[];
+  for(const l of all.slice(start,end)){const m=CODE_LINE.exec(l);if(m&&!baseline.has(m[1])&&!out.includes(m[1]))out.push(m[1]);}
+  return out;
+}
+
+// 5.1: the codes the page explains, in their groups. The group names are the bold labels of the page's refusal table.
+export const PAGE_GROUPS=[
+  ['Store',['STORE_NOT_FOUND','STORE_INVALID','STORE_UNSAFE','STORE_IN_CLOUD_FOLDER','STORE_UNREADABLE','STORE_LOCKED','STORE_STATE_NESTED','STORE_NOT_A_PROJECT','STORE_WRITE_FAILED']],
+  ['Store items',['STORE_ITEM_NOT_FOUND','STORE_ITEM_MISSING','STORE_ITEM_NOT_SHAREABLE','STORE_ITEM_GONE_AT_COMMIT','SKILLS_ADD_EXISTS','SKILLS_ADD_SOURCE_CHANGED']],
+  ['GitHub and the store repository',['STORE_REMOTE_PRIVATE','STORE_REMOTE_AUTH_FAILED','GITHUB_TOKEN_INVALID','GITHUB_TOKEN_SSO_REQUIRED','GITHUB_RATE_LIMITED','GITHUB_REQUEST_FAILED','GITHUB_REQUEST_BUDGET']],
+  ['Project and config',['PROJECT_FOLDER_UNSAFE','PROJECT_UNSAFE','CONFIG_INVALID','CONFIG_UNSAFE','CONFIG_UNREADABLE','CONFIG_LIMIT','CONFIG_DUPLICATE_ID']],
+  ['Config items',['CONFIG_ITEM_SELECTED','CONFIG_ITEM_NOT_SELECTED','CONFIG_ITEM_MISSING','CONFIG_WRITE_UNCONFIRMED','TEAM_NOT_SELECTED']],
+  ['Lock',['LOCK_MISSING','LOCK_INVALID','LOCK_UNSAFE','LOCK_LIMIT','LOCK_CONFIG_MISSING','LOCK_CONFIG_MISMATCH','LOCK_WRITE_UNCONFIRMED','LOCK_HASH_MISMATCH','LOCK_STORE_NOT_PUSHED','LOCK_COMMIT_UNREACHABLE','LOCK_COMMIT_GONE']],
+  ['Install and sync',['SKILLS_OFFLINE','SKILLS_SYNC_CONTENT_MISMATCH','SKILLS_SYNC_INTERRUPTED','STALE_APPROVAL','ITEM_REVIEW_REQUIRED','SLICE_ROOT_MISSING','FOLDER_NOT_ALLOWED','AGENT_TARGET_OCCUPIED']],
+  ['Migrate and cache',['MIGRATE_ID_EXISTS','MIGRATE_ITEM_NOT_FOUND','MIGRATE_ITEM_UNSUPPORTED','MIGRATE_RESERVED','MIGRATE_TEAM_MISSING','MIGRATE_LIMIT','CACHE_ENTRY_NOT_FOUND','CACHE_ENTRY_BUSY','CACHE_PRUNE_FAILED']],
+];
+export const pageCodes=PAGE_GROUPS.flatMap(([,codes])=>codes);
+
+// 3.1: the headings, their anchors, and the subsections.
+const H2=[
+  ['What this page answers','page-questions'],['Four places an item comes from','four-kinds-of-item'],['The two files','config-and-lock'],
+  ['If you work alone','work-alone'],['If you share a project','share-a-project'],['What a teammate does','teammate-steps'],
+  ['When the store has no remote','store-has-no-remote'],['A store in a private repository','private-store'],['GitHub request limits','rate-limit'],
+  ['Frozen installs and plain apply','frozen-and-plain'],['Change an item','item-changes'],['Merge conflicts in the lock','lock-conflicts'],
+  ['Move a project to the store','move-to-store'],['Refusals','item-source-refusals'],['Words used on this page','words'],
+];
+const H3=[
+  ['The sharing model in five lines','What this page answers','sharing-model'],['What to commit','If you share a project','commit-list'],
+  ['Before you run','What a teammate does','check-modes'],['Every case of an unpushed store item','When the store has no remote','unpushed-cases'],
+];
+
+/** The lines of a Markdown text that sit outside fenced blocks, with their index. */
+function outsideFences(text){
+  const out=[];let fence=null;
+  lines(text).forEach((line,index)=>{
+    const m=/^\s*(`{3,}|~{3,})/.exec(line);
+    if(m){if(fence===null){fence=m[1][0];return;}if(m[1][0]===fence){fence=null;return;}}
+    if(fence===null)out.push({line,index});
+  });
+  return out;
+}
+/** The text of a page section: from the anchor line of `id` to the next anchor line of any level. */
+function sectionOf(text,id){
+  const all=lines(text),start=all.indexOf(`<a id="${id}"></a>`);
+  assert.ok(start>=0,`anchor ${id} is on the page`);
+  const level=all[start+2]?.startsWith('### ')?3:2;
+  let end=all.length;
+  for(let i=start+1;i<all.length;i++){
+    if(!/^<a id="[^"]+"><\/a>$/.test(all[i]))continue;
+    const next=all[i+2]??'';
+    if(level===3||next.startsWith('## ')){end=i;break;}
+  }
+  return all.slice(start,end).join('\n');
+}
+/** The cells of one Markdown table row, split on pipes that are not escaped. */
+function cells(row){
+  const parts=[];let cur='';
+  for(let i=0;i<row.length;i++){
+    if(row[i]==='\\'&&row[i+1]==='|'){cur+='\\|';i++;continue;}
+    if(row[i]==='|'){parts.push(cur);cur='';continue;}
+    cur+=row[i];
+  }
+  parts.push(cur);
+  return parts.slice(1,-1).map(c=>c.trim());
+}
+/** The rows of each errors.md table, keyed by the ## heading it sits under, then by code. */
+function errorTables(){
+  const tables=new Map();let heading=null;
+  for(const line of lines(doc('reference/errors.md'))){
+    if(line.startsWith('## ')){heading=line.slice(3);continue;}
+    const m=/^\| `([A-Z][A-Z0-9_]+)` \|/.exec(line);
+    if(!m||heading===null)continue;
+    if(!tables.has(heading))tables.set(heading,new Map());
+    const table=tables.get(heading);
+    assert.ok(!table.has(m[1]),`${m[1]} has one row in ## ${heading}`);
+    table.set(m[1],cells(line));
+  }
+  return tables;
+}
+// Round 1 of the reviews of PR 101, M1: the tables of the project commands. The setup table and the plumbing tables
+// below them hold other words for some of the same codes, such as STALE_APPROVAL.
+export const PROJECT_TABLES=['Project and approval refusals','Store and config refusals','Lock refusals','Skills and sync refusals','Context slice refusals'];
+/** The row of each code in the project tables. A code sits in one project table only. */
+function errorRows(){
+  const tables=errorTables(),rows=new Map();
+  for(const heading of PROJECT_TABLES){
+    assert.ok(tables.has(heading),`errors.md holds ## ${heading}`);
+    for(const [code,row] of tables.get(heading)){assert.ok(!rows.has(code),`${code} sits in one project table`);rows.set(code,row);}
+  }
+  return rows;
+}
+/** The sentence and next step of each code in REFUSALS and GATE_REFUSALS of human.ts, read from the source. */
+function humanWords(){
+  const text=read(join(repo,'apps/cli/src/human.ts')),words=new Map();
+  const init=/^const INIT_NEXT = '([^']+)';$/m.exec(text);
+  assert.ok(init,'INIT_NEXT in human.ts');
+  const literal=String.raw`('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|INIT_NEXT)`;
+  const entry=new RegExp(String.raw`^  ([A-Z][A-Z0-9_]+): \{ sentence: ${literal}, next: ${literal} \},`,'gm');
+  const value=v=>v==='INIT_NEXT'?init[1]:v.slice(1,-1).replace(/\\(.)/g,'$1');
+  const keys=new Set();
+  for(const name of ['REFUSALS','GATE_REFUSALS']){
+    const start=text.indexOf(`const ${name}`),end=text.indexOf('\n};\n',start);
+    assert.ok(start>=0&&end>start,`${name} in human.ts`);
+    const block=text.slice(start,end);
+    for(const m of block.matchAll(/^  ([A-Z][A-Z0-9_]+): \{/gm))keys.add(m[1]);
+    for(const m of block.matchAll(entry)){
+      assert.ok(!words.has(m[1]),`${m[1]} has one entry in human.ts`);
+      const w={sentence:value(m[2]),next:value(m[3])};
+      assert.ok(w.sentence.trim().length>0&&w.next.trim().length>0,`${m[1]}: a sentence and a next step`);
+      words.set(m[1],w);
+    }
+  }
+  return {words,keys};
+}
+/** Every .md page under the docs content folder. */
+function allPages(dir=docs){
+  return readdirSync(dir).flatMap(name=>{const p=join(dir,name);return statSync(p).isDirectory()?allPages(p):name.endsWith('.md')?[p]:[];});
+}
+const stripInlineCode=line=>line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g,' ');
+
+test('D1. the page exists with the exact front matter of 3.1',()=>{
+  const text=page();
+  assert.ok(text.startsWith('---\ntitle: "Where your items come from"\ndescription: "See where each skill, prompt, and team comes from, what bowerloom.lock.json records, and what a teammate needs."\nsection: "Guides"\norder: 7.75\n---\n'),'front matter');
+});
+
+test('D2. the ## headings are those of 3.1, in order, each under its anchor line and one blank line',()=>{
+  const text=page(),body=outsideFences(text),all=lines(text);
+  const found=body.filter(({line})=>line.startsWith('## ')).map(({line,index})=>({title:line.slice(3),index}));
+  assert.deepEqual(found.map(f=>f.title),H2.map(([t])=>t));
+  for(const [i,f] of found.entries()){
+    assert.equal(all[f.index-1],'',`${f.title}: one blank line above`);
+    assert.equal(all[f.index-2],`<a id="${H2[i][1]}"></a>`,`${f.title}: anchor line`);
+  }
+});
+
+test('D3. each ### heading of 3.1 sits under its ## parent, with its anchor line and one blank line',()=>{
+  const text=page(),all=lines(text),body=outsideFences(text);
+  for(const [title,parent,id] of H3){
+    const at=body.find(({line})=>line===`### ${title}`);
+    assert.ok(at,`### ${title}`);
+    assert.equal(all[at.index-1],'',`${title}: one blank line above`);
+    assert.equal(all[at.index-2],`<a id="${id}"></a>`,`${title}: anchor line`);
+    const above=body.filter(({line,index})=>line.startsWith('## ')&&index<at.index).pop();
+    assert.equal(above?.line,`## ${parent}`,`${title} sits under ${parent}`);
+  }
+});
+
+test('D4. every code of 5.1 appears on the page inside backticks, and is a REFUSALS key of human.ts',()=>{
+  const text=page();
+  const missing=pageCodes.filter(code=>!text.includes(`\`${code}\``));
+  assert.deepEqual(missing,[]);
+  const all=lines(read(join(repo,'apps/cli/src/human.ts')));
+  const start=all.findIndex(l=>l.startsWith('const REFUSALS')),end=all.findIndex(l=>l.startsWith('const GATE_REFUSALS'));
+  const keys=new Set(all.slice(start,end).map(l=>CODE_LINE.exec(l)?.[1]).filter(Boolean));
+  assert.deepEqual(pageCodes.filter(code=>!keys.has(code)),[]);
+});
+
+test('D5. every new refusal code has a row in errors.md',()=>{
+  const codes=newCodes(),text=doc('reference/errors.md');
+  assert.ok(codes.length>=94,`${codes.length} codes`);
+  assert.ok(codes.includes('LOCK_COMMIT_GONE'));
+  const missing=codes.filter(code=>!new RegExp(`^\\| \`${code}\` \\|`,'m').test(text));
+  assert.deepEqual(missing,[]);
+});
+
+test('D6. the refusal table holds the codes of 5.1 under the eight labels, with the cells of errors.md',()=>{
+  const section=sectionOf(page(),'item-source-refusals'),rows=errorRows();
+  const groups=[];let label=null;
+  for(const line of lines(section)){
+    const bold=/^\*\*([^*]+)\*\*$/.exec(line);
+    if(bold){label=bold[1];groups.push([label,[]]);continue;}
+    const m=/^\| `([A-Z][A-Z0-9_]+)` \|/.exec(line);
+    if(!m)continue;
+    assert.ok(label!==null,`${m[1]} sits under a label`);
+    groups.at(-1)[1].push(m[1]);
+    const want=rows.get(m[1]),got=cells(line);
+    assert.ok(want,`${m[1]} has an errors.md row`);
+    assert.equal(got.length,3,`${m[1]}: three cells`);
+    assert.equal(got[1],want[1],`${m[1]}: what it means`);
+    assert.equal(got[2],want[2],`${m[1]}: what to do`);
+  }
+  assert.deepEqual(groups,PAGE_GROUPS);
+  assert.match(section,/\(\/docs\/reference\/errors\/\)/);
+});
+
+const RELEASE_LABELS=['New commands','Projects and the store','Sharing','Agents and context slices','Install','Changed formats','Known limits'];
+function betaThree(){
+  const text=doc('releases.md'),start=text.indexOf('\n## 0.7.0-beta.3\n');
+  assert.ok(start>=0,'releases.md holds ## 0.7.0-beta.3');
+  const end=text.indexOf('\n## ',start+1);
+  return text.slice(start,end<0?undefined:end);
+}
+test('D7. releases.md groups beta.3 under the seven labels, in order, with no Fixes label',()=>{
+  const section=betaThree(),found=lines(section).filter(l=>/^\*\*[^*]+\*\*$/.test(l)).map(l=>l.slice(2,-2));
+  assert.deepEqual(found,RELEASE_LABELS);
+  assert.doesNotMatch(section,/^\*\*Fixes\*\*$/m);
+  for(const label of RELEASE_LABELS)assert.match(section,new RegExp(`^\\*\\*${label}\\*\\*\\n\\n- `,'m'),`${label}: a blank line, then the list`);
+});
+
+const FORMAT=/bowerloom\/[a-z-]+\/v1(?:alpha|beta)[0-9]+/g;
+function sourceFormats(){
+  const out=new Set();
+  const walk=dir=>{for(const name of readdirSync(dir)){const p=join(dir,name);if(statSync(p).isDirectory())walk(p);else if(/\.(ts|mts|js|mjs)$/.test(name))for(const m of read(p).matchAll(FORMAT))out.add(m[0]);}};
+  for(const pkg of readdirSync(join(repo,'packages'))){const src=join(repo,'packages',pkg,'src');try{if(statSync(src).isDirectory())walk(src);}catch{}}
+  walk(join(repo,'apps/cli/src'));
+  return [...out].sort();
+}
+test('D8. every format string new since beta.2 appears in the beta.3 release notes',()=>{
+  const old=new Set(JSON.parse(read(resolve(import.meta.dirname,'beta2-formats.json')))),section=betaThree();
+  const added=sourceFormats().filter(f=>!old.has(f));
+  assert.ok(added.length>=37,`${added.length} new formats`);
+  assert.deepEqual(added.filter(f=>!section.includes(`\`${f}\``)),[]);
+  assert.match(section,/Scripts that read `format` must accept the new names\./);
+});
+
+test('D9. the private-store section holds the token promises and names the commands that read it',()=>{
+  const section=sectionOf(page(),'private-store');
+  for(const phrase of ['api.github.com','never stores','never prints','refuses redirects','Credentials:','--approve'])assert.ok(section.includes(phrase),phrase);
+  for(const command of ['apply --frozen','skills sync','use','lock update','store migrate'])assert.ok(section.includes(`\`${command}\``),command);
+  assert.ok(section.includes('sync step of `up`'),'sync step of `up`');
+});
+
+const BANNED=/\b(can|could|may|might|should|would)\b/i;
+test('D10. outside code and the refusal table, the page has no semicolon and none of the banned words',()=>{
+  const text=page(),all=lines(text);
+  const tableStart=all.indexOf('<a id="item-source-refusals"></a>'),tableEnd=all.indexOf('<a id="words"></a>');
+  assert.ok(tableStart>0&&tableEnd>tableStart);
+  const front=all.indexOf('---',1);
+  const offenders=[];
+  for(const {line,index} of outsideFences(text)){
+    if(index<=front||(index>=tableStart&&index<tableEnd))continue;
+    const prose=stripInlineCode(line);
+    if(prose.includes(';')||BANNED.test(prose))offenders.push(`${index+1}: ${line}`);
+  }
+  assert.deepEqual(offenders,[]);
+});
+
+test('D11. the page names neither Fearless nor Advanced Metrics',()=>{
+  assert.doesNotMatch(page(),/Fearless|Advanced Metrics/i);
+});
+
+test('D12. the project folder line of cli.md names bowerloom.json',()=>{
+  const line=lines(doc('cli.md')).find(l=>l.startsWith('These commands work in a project folder.'));
+  assert.ok(line?.includes('bowerloom.json'));
+});
+
+test('D13. add-skills.md points private stores at the page and drops the old limit sentences',()=>{
+  const text=doc('guides/add-skills.md');
+  assert.ok(text.includes('without credentials'));
+  assert.ok(text.includes('/docs/guides/item-sources/#private-store'));
+  const share=text.slice(text.indexOf('\n## Share a project\n'),text.indexOf('\n## ',text.indexOf('\n## Share a project\n')+1));
+  assert.ok(share.includes('(/docs/guides/item-sources/)'),'## Share a project links the page');
+  assert.ok(!text.includes('Private registries and private repositories are not supported in this beta.'));
+  assert.ok(!text.includes('Private registries and private repositories are not supported.'));
+});
+
+test('D14. guides/index.md links the page',()=>{assert.ok(doc('guides/index.md').includes('(/docs/guides/item-sources/)'));});
+
+test('D15. check-brand.mjs lists guides/item-sources',()=>{assert.ok(read(resolve(import.meta.dirname,'check-brand.mjs')).includes("'guides/item-sources'"));});
+
+test('D16. the pages of specs 01a and 05 keep their front matter',()=>{
+  assert.ok(doc('guides/agents.md').startsWith('---\ntitle: Project agents for Claude Code\ndescription: Put team agents in .claude/agents with bowerloom apply.\nsection: Guides\norder: 7.8\n---\n'));
+  assert.ok(doc('guides/context-slices.md').startsWith('---\ntitle: Context slices for agents\ndescription: Give each agent only its part of a knowledge base, and measure the difference.\nsection: Guides\norder: 7.9\n---\n'));
+});
+
+test('D17. status.md and cli.md split the Codex sentence',()=>{
+  for(const name of ['status.md','cli.md']){
+    const text=doc(name);
+    assert.ok(text.includes('Codex agents are not projected in this beta. Context slices are projected for Claude Code only.'),name);
+    assert.ok(!text.includes('Codex agents and context slices are not projected'),name);
+  }
+});
+
+test('D18. guides/context-slices.md keeps the guard limits',()=>{
+  const text=doc('guides/context-slices.md');
+  for(const s of ['What the guard does not stop','not a security boundary','cannot prove answer quality','cannot prove what an agent actually reads','cannot prove that Claude\'s tokenizer agrees'])assert.ok(text.includes(s),s);
+  assert.match(text,/^#+ What the guard does not stop$/m);
+});
+
+test('D19. guides/agents.md keeps the revise limit',()=>{
+  assert.ok(doc('guides/agents.md').includes('`bowerloom revise` refuses while `.bowerloom/teams/first-team/agents` exists. Move the folder out, revise, then move it back.'));
+});
+
+test('D20. start.md and releases.md say the tarball carries its dependencies',()=>{
+  for(const name of ['start.md','releases.md'])assert.ok(doc(name).includes('The file carries its dependencies, so it installs with no network and no npm cache.'),name);
+});
+
+const PUBLIC_PAGES=['cli.md','reference/errors.md','start.md','setup.md','revision.md','harnesses.md','troubleshooting.md','status.md','learn/first-team.md','guides/new-workspace.md','guides/existing-project.md','guides/recover-revision.md'];
+test('D21. the public-sources sentence names pinned skills, in the 12 pages and the README',()=>{
+  const readme=read(join(repo,'README.md'));
+  for(const p of allPages())assert.ok(!read(p).includes('reads skills only from public sources'),relative(docs,p));
+  assert.ok(!readme.includes('reads skills only from public sources'));
+  for(const name of PUBLIC_PAGES){
+    const text=doc(name);
+    assert.ok(text.includes('This beta reads pinned skills only from public sources.'),name);
+    assert.ok(text.includes('A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`, as [Where your items come from](/docs/guides/item-sources/#private-store) explains.'),name);
+  }
+  assert.ok(readme.includes('Pinned skills come from public sources only.'));
+});
+
+test('D22. configuration.md commits the new files, and the clone sentences are replaced',()=>{
+  const conf=doc('configuration.md'),skills=doc('guides/add-skills.md'),errors=doc('reference/errors.md');
+  for(const path of ['bowerloom.json','bowerloom.lock.json','.bowerloom/slices/','.claude/agents/'])assert.match(conf,new RegExp(`^\\| \`${path.replaceAll('.','\\.')}\` \\|`,'m'),path);
+  const old='`bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID`';
+  assert.ok(!conf.includes(old));assert.ok(!skills.includes(old));
+  assert.ok(!errors.includes('`bowerloom up --team` and `team create` refuse this way'));
+});
+
+test('D23. troubleshooting.md has the teammate and clone entries, each linking the page',()=>{
+  const text=doc('troubleshooting.md');
+  for(const heading of ['## My teammate cannot install my store items','## A clone refuses PROJECT_UNSAFE or PROJECT_FOLDER_UNSAFE']){
+    const start=text.indexOf(`\n${heading}\n`);
+    assert.ok(start>=0,heading);
+    const end=text.indexOf('\n## ',start+1),section=text.slice(start,end<0?undefined:end);
+    assert.ok(section.includes('/docs/guides/item-sources/'),heading);
+  }
+});
+
+test('D24. errors.md: the request budget and the lock limit rows',()=>{
+  const rows=errorRows();
+  assert.ok(rows.get('GITHUB_REQUEST_BUDGET').join(' ').includes('--max-github-requests'));
+  assert.ok(rows.get('LOCK_LIMIT').join(' ').includes('126 files'));
+});
+
+test('D25. cli.md: the help topics, the Store and lock section, sync, and the token paragraph',()=>{
+  const text=doc('cli.md'),human=lines(read(join(repo,'apps/cli/src/human.ts')));
+  const topics=human.map(l=>/^  ([a-z]+): \[/.exec(l)?.[1]).filter(Boolean);
+  assert.ok(topics.length>=15,topics.join(' '));
+  const help=lines(text).find(l=>l.includes('These commands have it:'));
+  assert.ok(help,'help sentence');
+  for(const key of [...topics,'init'])assert.ok(help.includes(`\`${key}\``),key);
+  const start=text.indexOf('\n## Store and lock\n');
+  assert.ok(start>=0,'## Store and lock');
+  assert.ok(text.slice(start,text.indexOf('\n## ',start+1)).includes('(/docs/guides/item-sources/)'));
+  assert.ok(start<text.indexOf('\n## Cache\n'),'Store and lock comes before Cache');
+  const sync=lines(text).find(l=>l.startsWith('`skills sync` installs the skills that the project selects'));
+  assert.ok(sync?.includes('--frozen')&&sync.includes('--max-github-requests'),'skills sync paragraph');
+  const token=lines(text).find(l=>l.includes('Six commands read it:'));
+  assert.ok(token?.includes('`store migrate`'),'token paragraph');
+});
+
+test('D26. What to commit and Before you run name their files and codes',()=>{
+  const text=page(),commit=sectionOf(text,'commit-list'),modes=sectionOf(text,'check-modes');
+  for(const s of ['bowerloom.json','bowerloom.lock.json','.bowerloom/authoring/receipt.json','.claude/agents'])assert.ok(commit.includes(s),s);
+  for(const s of ['PROJECT_FOLDER_UNSAFE','PROJECT_UNSAFE','CONFIG_UNSAFE','LOCK_UNSAFE','umask 022','chmod -R go-w .'])assert.ok(modes.includes(s),s);
+});
+
+test('D27. teams-and-files links the page, and create-items names the store',()=>{
+  assert.ok(doc('concepts/teams-and-files.md').includes('(/docs/guides/item-sources/)'));
+  assert.ok(doc('guides/create-items.md').includes('or inside your store with `--global`'));
+});
+
+const FIVE_LINES=[
+  'Your store, ~/.bowerloom, stays on your machine. No teammate reads it.',
+  // Round 2 of the reviews of PR 101: a remote counts only when it is named origin and has a URL.
+  'A shared project has bowerloom.lock.json, or sits in a git repository with a remote origin that has a URL.',
+  // Round 1 of the reviews of PR 101: one name, the store repository, for the copy of the store on GitHub.
+  'In a shared project, the lock records each store item. A teammate fetches each item you wrote from the store repository, the copy of your store on GitHub.',
+  'So push the store to GitHub before you lock an item you wrote, and never rewrite or delete that branch afterward.',
+  // Round 13 of the reviews of PR 101: the project items in .bowerloom are committed too.
+  'Commit bowerloom.json, bowerloom.lock.json, and the project items in .bowerloom, as [What to commit](#commit-list) lists. A teammate runs bowerloom apply --frozen.',
+];
+test('D28. the sharing model in five lines, exactly',()=>{
+  const section=sectionOf(page(),'sharing-model');
+  const items=lines(section).filter(l=>/^\d+\. /.test(l)).map(l=>l.replace(/^\d+\. /,'').replaceAll('`',''));
+  assert.deepEqual(items,FIVE_LINES);
+});
+
+test('D29. no docs page and not the README names a private path',()=>{
+  const forms=['Sage\\ Advice','~/Sage Advice','/Sage Advice/'];
+  // Round 1 of the reviews of PR 101, D29: a home folder or a temporary folder of this machine. `/Users/<name>` is a placeholder.
+  const patterns=[/\/Users\/(?!<)/,/\/private\/var\/folders/,/\/var\/folders/];
+  for(const p of [...allPages(),join(repo,'README.md')]){
+    const text=read(p);
+    for(const form of forms)assert.ok(!text.includes(form),`${relative(repo,p)}: ${form}`);
+    for(const pattern of patterns)assert.doesNotMatch(text,pattern,`${relative(repo,p)}: ${pattern}`);
+  }
+});
+
+// Round 1 of the reviews of PR 101, D (Hanna's choice C on #97): an errors.md row uses the words the terminal prints.
+// The meaning cell holds the sentence of human.ts, and the next-step cell holds its next step, backticks aside. A sentence
+// starts with a capital letter in a cell, so the first letter is compared without its case.
+// Each code listed here is not compared, for the reason given.
+const WORDS_EXEMPT=new Map([
+  ['INSPECTION_LIMIT','human.ts has no words for it, so the terminal prints the generic words of an unknown refusal.'],
+]);
+// Round 2: the refusal tables of errors.md that are not project tables, typed here, so a new table is never skipped by accident.
+const EXCLUDED_TABLES=['Setup refusals','Request-file skills refusals'];
+const capital=words=>words[0].toUpperCase()+words.slice(1);
+/** The meaning cell, backticks aside and trimmed, equals the sentence, starts with it, or holds it as whole sentences. */
+const holdsSentence=(cell,words)=>{const plain=cell.replaceAll('`','').trim();return [words,capital(words)].some(w=>plain===w||plain.startsWith(w)||plain.includes(`. ${w}`));};
+/** The next-step cell, backticks aside, holds the next step. A cell may put Run before a bare command. */
+const holdsNext=(cell,words)=>{const plain=cell.replaceAll('`','');return plain.includes(words)||plain.includes(capital(words));};
+test('D30. each row of the project tables of errors.md holds the sentence and the next step that the terminal prints',()=>{
+  const headings=lines(doc('reference/errors.md')).filter(l=>/^## .* refusals$/.test(l)).map(l=>l.slice(3));
+  assert.deepEqual(headings.filter(h=>!PROJECT_TABLES.includes(h)&&!EXCLUDED_TABLES.includes(h)),[],'every refusal table is a project table or excluded by name');
+  const rows=errorRows(),{words,keys}=humanWords(),bad=[];
+  assert.ok(rows.size>=140,`${rows.size} rows`);assert.ok(words.size>=170,`${words.size} codes with words`);
+  for(const [code,row] of rows){
+    if(WORDS_EXEMPT.has(code)){assert.ok(!keys.has(code),`${code} is exempt because human.ts has no words for it`);continue;}
+    if(keys.has(code)&&!words.has(code)){bad.push(`${code}: human.ts holds an entry that this test cannot read`);continue;}
+    const w=words.get(code);
+    if(!w){bad.push(`${code}: no words in human.ts`);continue;}
+    if(!holdsSentence(row[1],w.sentence))bad.push(`${code} meaning: ${w.sentence}`);
+    if(!holdsNext(row[2],w.next))bad.push(`${code} next: ${w.next}`);
+  }
+  assert.deepEqual(bad,[]);
+  for(const code of WORDS_EXEMPT.keys())assert.ok(rows.has(code),`${code} is exempt and has a row`);
+});
+
+// Round 1 of the reviews of PR 101, B4: the page names the Lock: states of status, and they are those of LockState.
+test('D31. the Lock: states on the page equal the LockState union of resolve.ts',()=>{
+  const m=/^export type LockState = ([^;]+);$/m.exec(read(join(repo,'packages/project-sync/src/resolve.ts')));
+  assert.ok(m,'LockState in resolve.ts');
+  const states=[...m[1].matchAll(/'([a-z-]+)'/g)].map(x=>x[1]).sort();
+  const line=lines(page()).find(l=>l.includes('`Lock:` states:'));
+  assert.ok(line,'the page lists the Lock: states');
+  const named=[...line.slice(line.indexOf('states:')).matchAll(/`([a-z-]+)`/g)].map(x=>x[1]).sort();
+  assert.deepEqual(named,states);
+  assert.ok(line.includes(`one of ${['zero','one','two','three','four','five','six','seven','eight'][states.length]} \`Lock:\` states`),line);
+});

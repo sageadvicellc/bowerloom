@@ -30,7 +30,7 @@ import { parseManifest } from '../../skill-manifest/src/schema.js';
 import type { Manifest } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { scratchFiles } from './change.js';
-import { partialRefusal } from './refusal.js';
+import { command, partialRefusal } from './refusal.js';
 
 export const RECEIPT_CLEAN_PLAN_FORMAT = 'bowerloom/receipt-clean-plan/v1beta1' as const;
 export const RECEIPT_CLEAN_RESULT_FORMAT = 'bowerloom/receipt-clean-result/v1beta1' as const;
@@ -199,7 +199,7 @@ export function applyReceiptClean(input: ReceiptCleanInput, revision: string, he
   if (sha(recordText(receiptOf(keep))) !== plan.receipt.after.sha256) throw stale();
   writeReceiptRecord(auth, plan.revision, plan.receipt.before, keep, live, () => readAuthoringState(scope.base).receipt?.read ?? null);
   live();
-  } catch (error) { throw partialRefusal(error, done, `bowerloom receipt clean${scope.kind === 'store' ? ' --global' : ''}`); }
+  } catch (error) { throw partialRefusal(error, done, command(`bowerloom receipt clean${scope.kind === 'store' ? ' --global' : ''}`)); }
   return { format: RECEIPT_CLEAN_RESULT_FORMAT, planRevision: plan.revision, scope: plan.scope, removed: plan.items.map(i => ({ kind: i.kind, id: i.id })), executionAuthorized: false };
 }
 

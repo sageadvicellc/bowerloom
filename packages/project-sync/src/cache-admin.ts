@@ -59,7 +59,8 @@ export type PartialReason = 'unfinished-fetch' | 'unreadable' | 'changed' | 'pru
 /** Review H2 of PR 99: a name in a cache folder that is not an entry, and why. */
 export interface UnlistedName { place: 'cache' | 'store-cache' | 'legacy'; name: string; reason: string; next: string | null }
 /** Review M1 of PR 99: why a source could not be read: its refusal code, and the file or item, when one is known. */
-export interface Unreadable { source: SourceName; code: string; item: string | null }
+/** Round 3 of the reviews of PR 101: `next`, the step of a refusal that carries its own, such as a store fault naming its file. */
+export interface Unreadable { source: SourceName; code: string; item: string | null; next?: string }
 export interface CacheList {
   format: typeof CACHE_LIST_FORMAT; stateRoot: string; entries: CacheEntry[]; totals: { entries: number; bytes: number };
   unlisted: number; truncated: boolean; unreadableSources: SourceName[];
@@ -268,7 +269,8 @@ function addPin(set: ReferenceSet, entry: Entry): void {
 function unknownBecause(error: unknown, source: SourceName, item: string | null): Unreadable {
   const code = (error as { code?: unknown } | null)?.code;
   if (typeof code !== 'string' || !/^[A-Z][A-Z0-9_]{1,100}$/.test(code)) throw error;
-  return { source, code, item };
+  const next = (error as { next?: unknown }).next;
+  return { source, code, item, ...(typeof next === 'string' ? { next } : {}) };
 }
 type SourceRead = { set: ReferenceSet; unreadable: null } | { set: null; unreadable: Unreadable };
 const unread = (unreadable: Unreadable): SourceRead => ({ set: null, unreadable });

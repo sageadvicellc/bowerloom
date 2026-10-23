@@ -45,12 +45,21 @@ export const STORE_FILE_LIMITS = Object.freeze({ files: 126, fileBytes: 65536, t
  * mark, bytes that are not UTF-8, or an execute bit in `mode`; `large` for a file over 65536 bytes.
  */
 export function storeFileFault(path: string, bytes: Buffer, mode: number): 'unsafe' | 'large' | null {
-  try { skillFilePath(path); } catch { return 'unsafe'; }
-  if (bytes.length === 0 || (mode & 0o111) !== 0) return 'unsafe';
-  if (bytes.length > STORE_FILE_LIMITS.fileBytes) return 'large';
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'unsafe';
-  return strictUtf8(bytes) === null ? 'unsafe' : null;
+  const problem = storeFileProblem(path, bytes, mode);
+  return problem === null ? null : problem === 'large' ? 'large' : 'unsafe';
 }
+/** Round 2 of the reviews of PR 101: which rule of `storeFileFault` a file breaks, in the same order, so a refusal names it. */
+export type StoreFileProblem = 'name' | 'empty' | 'mode' | 'large' | 'bom' | 'encoding';
+export function storeFileProblem(path: string, bytes: Buffer, mode: number): StoreFileProblem | null {
+  if (!storeFileName(path)) return 'name';
+  if (bytes.length === 0) return 'empty';
+  if ((mode & 0o111) !== 0) return 'mode';
+  if (bytes.length > STORE_FILE_LIMITS.fileBytes) return 'large';
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return 'bom';
+  return strictUtf8(bytes) === null ? 'encoding' : null;
+}
+/** True when `skillFilePath` accepts the path of a store item file: a name a lock can record. */
+export function storeFileName(path: string): boolean { try { skillFilePath(path); return true; } catch { return false; } }
 /** Bounds on the selected files: count, size of each, and total. */
 export function checkBounds(files: readonly { bytes: number }[]): void {
   let total = 0;

@@ -25,8 +25,10 @@ import type { Entry } from '../../skill-manifest/src/schema.js';
 import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
-import { DefinitionError } from '../../contracts/src/index.js';
-import { applyChildren, createPrivateFolders, interrupted } from './apply.js';
+import { DefinitionError, PLAIN_ID } from '../../contracts/src/index.js';
+const ALLOW_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{64}$/;
+import { applyChildren, createPrivateFolders, fetchedInto, interrupted, printableMax } from './apply.js';
+import { command } from './refusal.js';
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
@@ -51,7 +53,7 @@ import type { AgentItem } from './agents.js';
 import { agentsMayBeTracked, checkSliceChild, listSlices, registeredLookup, scanSlices, sliceRequest } from './slices.js';
 import type { SliceItem, SliceTreeHook } from './slices.js';
 import { readSliceTree } from '../../managed-skills/src/local-source.js';
-import { managedCode, outward, syncError } from './refusal.js';
+import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 
 export const APPLY_PLAN_FORMAT = 'bowerloom/project-apply-plan/v1beta2' as const;
 export const APPLY_RESULT_FORMAT = 'bowerloom/project-apply-result/v1beta2' as const;
@@ -321,12 +323,26 @@ export async function planProjectApply(input: ApplyInput): Promise<ApplyPlan> { 
 
 /** Apply never fetches: phase A only reads the cache. This acquirer is never reached, and refuses if it were. */
 const NO_FETCH: Acquirer = Object.freeze({
-  npm: async () => { throw syncError('SKILLS_OFFLINE', 'bowerloom apply never fetches. Run bowerloom skills sync first.'); },
-  git: async () => { throw syncError('SKILLS_OFFLINE', 'bowerloom apply never fetches. Run bowerloom skills sync first.'); },
+  // Round 3 of the reviews of PR 101: the step travels as the next step of the refusal.
+  npm: async () => { throw offlineBecause('apply', 'bowerloom apply never fetches.'); },
+  git: async () => { throw offlineBecause('apply', 'bowerloom apply never fetches.'); },
 });
 
 /** What applyProjectApply takes beside the plan input: test ports. `acquirer` and `storeTransport` serve a frozen apply only. */
 export interface ApplyDeps { managed?: ManagedPort; acquirer?: Acquirer; storeTransport?: StoreTransportFactory; beforeStoreRead?: SyncDeps['beforeStoreRead'] }
+/**
+ * Round 9 of the reviews of PR 101: the command that makes this plan again, with each flag that changes it. `bowerloom up`
+ * is the command of a team run.
+ */
+export function applyRerun(input: Pick<ApplyInput, 'frozen' | 'harnesses' | 'team' | 'allow' | 'maxGithubRequests'>): string {
+  // Round 10: only validated values print. Anything else prints no command, but words that name it.
+  const allowed = input.allow ?? [], ok = allowed.every(a => ALLOW_VALUE.test(a)) && input.harnesses.every(h => h === 'claude' || h === 'codex') && printableMax(input.maxGithubRequests);
+  if (input.team) return ok && PLAIN_ID.test(input.team) ? command(['bowerloom up --team', input.team, ...allowed.flatMap(a => ['--allow-agent', a])].join(' ')) : 'the same bowerloom up command';
+  if (!ok) return 'the same bowerloom apply command';
+  const allow = allowed.flatMap(a => ['--allow-agent', a]);
+  const harness = input.harnesses.length === 1 ? ['--harness', input.harnesses[0]!] : [];
+  return command(['bowerloom apply', ...harness, ...allow, ...(input.frozen ? ['--frozen'] : []), ...(input.maxGithubRequests !== undefined ? ['--max-github-requests', String(input.maxGithubRequests)] : [])].join(' '));
+}
 /**
  * Applies an approved apply plan. `revision` must equal the revision this run computes again under the lock.
  * `signal` is the person's interrupt: it is read between children, never inside one. A plain apply uses NO_FETCH; a frozen
@@ -336,7 +352,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
   if (typeof revision !== 'string' || !HEX64.test(revision)) throw stale();
   if (input?.agentsOnly === true) throw usage();
   if (!(signal instanceof AbortSignal)) throw new TypeError('applyProjectApply needs a signal.');
-  const managed = deps.managed ?? managedPort, lock = new AbortController();
+  const managed = deps.managed ?? managedPort, lock = new AbortController(), rerun = applyRerun(input);
   const syncDeps: SyncDeps = { acquirer: input.frozen === true ? deps.acquirer ?? productionAcquirer : NO_FETCH, signal, ...(deps.storeTransport ? { storeTransport: deps.storeTransport } : {}), ...(deps.beforeStoreRead ? { beforeStoreRead: deps.beforeStoreRead } : {}) };
   try {
     return await withProjectLock(input.project.dir, lock.signal, async held => {
@@ -345,8 +361,8 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       // Spec 07: the token this run read for the plan reaches the store fetches, and nothing else.
       syncDeps.githubToken = token;
       const dir = plan.project.dir, prompts = plan.prompts.filter(promptActionable), slices = plan.slices.filter(sliceActionable), agents = plan.agents.filter(agentActionable), skillWork = (plan.skills?.items ?? []).filter(isActionable);
-      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
-      createPrivateFolders(plan, held, dir);
+      if (signal.aborted) throw interrupted([], [...skillWork.map(i => i.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
+      const shared = createPrivateFolders(plan, held, dir, 'shared');
       // Review L2: checked again before any fetch.
       // Second review L2: the items the store cache lacks now, counted again, within the bound limit.
       requireRequestBudget(missingRequests(plan.privateState.storeCacheRoot, [
@@ -356,55 +372,60 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       ]), plan.network.maxRequests);
       // Phase A: the private caches only. Skills; locked prompts; locked teams. A lock-fetched item with a notice the plan
       // did not show is held for review and gets no child.
-      const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, 'bowerloom apply') : null;
+      const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, rerun) : null;
       const promptDirs = new Map<string, string>(), review: ApplyResult['held'] = [];
+      let promptsFetched = 0;
       for (const item of prompts) {
         if (item.origin !== 'store') continue;
         if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); promptDirs.set(item.id, plan.store.dir); continue; }
         held.assertHeld(dir);
-        const folder = await authoredFolder({ kind: 'prompt', id: item.id, requestDigest: item.lockPin?.hash ?? null, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, syncDeps, plan.network.credentials);
+        const folder = await authoredFolder({ kind: 'prompt', id: item.id, requestDigest: item.lockPin?.hash ?? null, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, syncDeps, plan.network.credentials, rerun);
+        if (folder.fetched) promptsFetched++;
         // Decision A, widened by review H1: held when its notices are not exactly the ones the approved plan showed.
         const notices = promptNotices(storeText(dir, 'prompt', item.id, folder.dir));
-        if (notices.length && revisionOf(notices) !== revisionOf(item.notices)) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(), ...originOf(item) }); continue; }
+        if (notices.length && revisionOf(notices) !== revisionOf(item.notices)) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(rerun), ...originOf(item) }); continue; }
         promptDirs.set(item.id, folder.dir);
       }
-      await fetchStoreOnly(plan, held, syncDeps);
+      const stored = await fetchStoreOnly(plan, held, syncDeps, rerun);
+      // Round 6 of the reviews of PR 101: this project's own state folders, only after every fetch succeeded. Round 8:
+      // the refusal says which caches phase A fetched into.
+      createPrivateFolders(plan, held, dir, 'own', shared, fetchedInto(entries, got?.fetched ?? [], stored.length, promptsFetched));
       const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + slices.length + agents.length > 0);
       // Phase B for the skills, then the prompts, the slices, and the agents. No project write.
-      const children: Child[] = plan.skills && got ? await planSkillChildren(plan.skills, got, syncDeps, managed, 'bowerloom apply') : [];
+      const children: Child[] = plan.skills && got ? await planSkillChildren(plan.skills, got, syncDeps, managed, rerun) : [];
       for (const item of promptChildren) {
-        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
         const req: ManagedItemRequest = promptRequest(dir, plan.privateState.itemsRoot, item, promptDirs.get(item.id) ?? null);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
           // Review M6 finding 6: an interrupt here is an interrupt, as it is for a skill (apply.ts phase B).
-          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...prompts.map(p => p.itemId), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to prompt ${item.id}; nothing was changed.`);
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkPromptChild(dir, item, req, child) });
       }
       for (const item of slices) {
-        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
         const req: ManagedItemRequest = sliceRequest(dir, plan.privateState.itemsRoot, item);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
-          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...slices.map(s => s.itemId), ...agents.map(a => a.itemId)], rerun);
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to slice ${item.id}; nothing was changed.`);
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkSliceChild(dir, item, req, child) });
       }
       for (const item of agents) {
-        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], 'bowerloom apply');
+        if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], rerun);
         const req: ManagedItemRequest = agentRequest(dir, plan.privateState.itemsRoot, item);
         let child; try { child = await managed.plan(req, { signal }); } catch (e) {
-          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], 'bowerloom apply');
+          if (signal.aborted) throw interrupted([], [...children.map(c => c.item.id), ...agents.map(a => a.itemId)], rerun);
           throw outward(e, 'MANAGED_SKILL_REFUSED', `It belongs to agent ${item.id}; nothing was changed.`);
         }
         children.push({ item: { id: item.itemId, action: item.action }, req, plan: checkAgentChild(dir, item, req, child, plan.allow) });
       }
       verifyProjectPins(context);
       // Phase C: every child, in order, with a revision planned right before it in this run.
-      const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, 'bowerloom apply');
+      const applied = await applyChildren(children, held, dir, plan.managed.ignore === 'exact', managed, signal, rerun);
       const project = { origin: 'project' as const, resolvedFrom: 'project' as const };
       const refOf = (id: string): ApplyItemRef => {
         const p = plan.prompts.find(x => x.itemId === id); if (p) return { kind: 'prompt', id: p.id, ...originOf(p) };
@@ -417,7 +438,7 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       return {
         format: APPLY_RESULT_FORMAT, planRevision: plan.revision, harnesses: plan.harnesses,
         applied: applied.map(a => ({ ...refOf(a.id), action: a.action, receiptRevision: a.receiptRevision })),
-        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.slices.filter(s => s.action === 'hold').map(s => ({ kind: 'slice' as const, id: s.id, code: s.hold!.code, next: s.hold!.next, ...project })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
+        held: [...skills.filter(i => i.action === 'hold').map(i => ({ kind: 'skill' as const, id: i.id, code: i.hold!.code, next: i.hold!.next, ...originOf(i) })), ...(got?.review ?? []).map(id => ({ kind: 'skill' as const, id, ...reviewHold(rerun), ...originOf(skills.find(i => i.id === id)!) })), ...plan.prompts.filter(p => p.action === 'hold').map(p => ({ kind: 'prompt' as const, id: p.id, code: p.hold!.code, next: p.hold!.next, ...originOf(p) })), ...review, ...plan.slices.filter(s => s.action === 'hold').map(s => ({ kind: 'slice' as const, id: s.id, code: s.hold!.code, next: s.hold!.next, ...project })), ...plan.agents.filter(a => a.action === 'hold').map(a => ({ kind: 'agent' as const, id: a.id, code: a.hold!.code, next: a.hold!.next, ...project }))],
         upToDate: [...skills.filter(i => i.state === 'up-to-date' && i.action === 'none').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'up-to-date' && p.action === 'none').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.slices.filter(s => s.state === 'up-to-date' && s.action === 'none').map(s => ({ kind: 'slice' as const, id: s.id, ...project })), ...plan.agents.filter(a => a.state === 'up-to-date' && a.action === 'none').map(a => ({ kind: 'agent' as const, id: a.id, ...project }))],
         orphaned: [...skills.filter(i => i.state === 'orphaned').map(i => ({ kind: 'skill' as const, id: i.id, ...originOf(i) })), ...plan.prompts.filter(p => p.state === 'orphaned').map(p => ({ kind: 'prompt' as const, id: p.id, ...originOf(p) })), ...plan.slices.filter(s => s.state === 'orphaned').map(s => ({ kind: 'slice' as const, id: s.id, origin: null, resolvedFrom: 'project' as const })), ...plan.agents.filter(a => a.state === 'orphaned').map(a => ({ kind: 'agent' as const, id: a.id, origin: null, resolvedFrom: 'project' as const }))],
         pointer: plan.pointer, executionAuthorized: false,

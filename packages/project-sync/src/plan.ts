@@ -16,6 +16,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { oneLine } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.js';
 import { LIMITS, OP_TEMP, directory, exists, names, path as managedPath, raw, stablePins, temporary } from '../../managed-skills/src/observed.js';
@@ -34,7 +35,7 @@ import type { StoreContext } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { entryRequest, lookupCache } from './cache-index.js';
 import type { CacheLookup, PinnedRequest } from './cache-index.js';
-import { managedCode, outward, syncError } from './refusal.js';
+import { managedCode, offlineBecause, outward, syncError } from './refusal.js';
 import { resolveProject } from './resolve.js';
 import type { Resolved, ResolvedItem } from './resolve.js';
 import { credentialsFor, fetchRequests, faultNote, probeStoreCache, readTokenSource, requestLimit } from './store-git.js';
@@ -218,7 +219,8 @@ export interface StateLayout { root: string; cacheRoot: string; itemsRoot: strin
 export function projectFolders(project: string): void {
   let at: string; try { at = fs.realpathSync(project); } catch { throw syncError('SKILLS_PROJECT_UNSAFE'); }
   for (;;) {
-    try { directory(at); } catch { throw syncError('SKILLS_PROJECT_UNSAFE', `The folder is ${at}.`); }
+    // Round 13 of the reviews of PR 101: a folder name of this machine, on one line.
+    try { directory(at); } catch { throw syncError('SKILLS_PROJECT_UNSAFE', `The folder is ${oneLine(at)}.`); }
     if (at === '/') return;
     at = dirname(at);
   }
@@ -303,7 +305,8 @@ function samePin(entry: Entry, c: CatalogView): boolean {
 /** The hold of an item whose private folder holds entries that are not Bowerloom operations. Names are relative. */
 export function strayHold(itemId: string, stray: readonly string[], rerun: string): { code: string; next: string } {
   const shown = stray.slice(0, 4).map(n => `items/${itemId}/${n}`).join(', ') + (stray.length > 4 ? ` and ${stray.length - 4} more` : '');
-  return { code: 'SKILLS_STATE_STRAY_ENTRY', next: `Bowerloom keeps only its own op-<key> folders in the private state folder of ${itemId}. Move ${shown} out of the private state folder with mv in a terminal (Finder adds a .DS_Store), then run ${rerun}.` };
+  // Round 11 of the reviews of PR 101: the names are file names, so the step holds them on one line.
+  return { code: 'SKILLS_STATE_STRAY_ENTRY', next: oneLine(`Bowerloom keeps only its own op-<key> folders in the private state folder of ${itemId}. Move ${shown} out of the private state folder with mv in a terminal (Finder adds a .DS_Store), then run ${rerun}.`) };
 }
 /** The manual history rule. Names are relative to the private state folder; `mv` keeps Finder from adding entries. */
 export function historyNext(itemId: string, keep: string, rerun: string): string {
@@ -371,7 +374,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
           if (skill) {
             allowedTools = declaredAllowedTools(skill.text); notices = promptNotices(skill.text);
             // Second review M1: a store skill's frontmatter must open and close and name the skill, as a pinned one must.
-            try { skillHead(skill.text); } catch { hold = { code: 'SKILLS_ADD_FRONTMATTER', next: `Fix the frontmatter of ${r.resolvedFrom === 'lock' && r.lockPin ? `skills/${id}/SKILL.md in the store at ${r.lockPin.remote.slice('https://'.length)}` : `${where}/SKILL.md`}: it opens and closes with a --- line and names the skill. Then run bowerloom skills sync.` }; }
+            try { skillHead(skill.text); } catch { hold = { code: 'SKILLS_ADD_FRONTMATTER', next: oneLine(`Fix the frontmatter of ${r.resolvedFrom === 'lock' && r.lockPin ? `skills/${id}/SKILL.md in the store at ${r.lockPin.remote.slice('https://'.length)}` : `${where}/SKILL.md`}: it opens and closes with a --- line and names the skill. Then run bowerloom skills sync.`) }; }
           }
         }
       } catch (e) { hold = { code: managedCode(e), next: `Check ${where}: it must be a folder with a SKILL.md, of plain text files you own, with no links or hidden files. Then run bowerloom skills sync.` }; }
@@ -416,7 +419,7 @@ function classify(entry: Entry, ctx: ItemContext, r: ResolvedItem): Classified {
   }
   if (action === 'install' && hold === null) {
     const taken = before.filter(b => b.stablePinsDigest !== NULL_PINS).map(b => b.path);
-    if (taken.length) hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: `Move ${taken.join(', ')} out of the way (Bowerloom did not install it), then run bowerloom skills sync.` };
+    if (taken.length) hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: oneLine(`Move ${taken.join(', ')} out of the way (Bowerloom did not install it), then run bowerloom skills sync.`) };
   }
   if ((action === 'install' || action === 'update') && hold === null && ops.length >= LIMITS.history) {
     const keep = previous ? `op-${previous.operationKey}` : 'the newest op-<key> folder';
@@ -462,7 +465,7 @@ export function holdSharedPlaces(items: SyncItem[]): void {
     const clash = item.expected.surfaces.map(s => ({ path: s.path, other: owner.get(s.path.normalize('NFC').toLowerCase()) })).find(c => c.other !== undefined && c.other !== item.id);
     if (clash && (item.action === 'install' || item.action === 'update' || item.hold?.code === 'MANAGED_SKILL_PATH_OCCUPIED')) {
       item.action = 'hold';
-      item.hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: `${item.id} would go to ${clash.path}, where ${clash.other} goes. Give one of them another skill name or id in .bowerloom/skills.json, then run bowerloom skills sync.` };
+      item.hold = { code: 'MANAGED_SKILL_PATH_OCCUPIED', next: oneLine(`${item.id} would go to ${clash.path}, where ${clash.other} goes. Give one of them another skill name or id in .bowerloom/skills.json, then run bowerloom skills sync.`) };
       continue;
     }
     for (const s of item.expected.surfaces) { const k = s.path.normalize('NFC').toLowerCase(); if (!owner.has(k)) owner.set(k, item.id); }
@@ -577,7 +580,8 @@ export async function observeSync(input: SyncInput, given?: Resolved): Promise<O
     const fetch = items.filter(i => actionable(i) && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing'));
     // Review freeze finding 13: the fixed message already says that a pin is not cached and that nothing changed.
     const missing = `${fetch.length === 1 ? 'The skill is' : 'The skills are'} ${fetch.map(i => i.id).join(', ')}.`;
-    if (input.offline && fetch.length) throw syncError('SKILLS_OFFLINE', input.apply ? `bowerloom apply never fetches. ${missing} Run bowerloom skills sync first, then bowerloom apply.` : `--offline was set. ${missing} Run bowerloom skills sync without --offline.`);
+    // Round 3 of the reviews of PR 101: the step of each case travels as the next step of the refusal.
+    if (input.offline && fetch.length) throw input.apply ? offlineBecause('apply', `bowerloom apply never fetches. ${missing}`) : offlineBecause('offline', `--offline was set. ${missing}`);
     // Authored lock items this run only puts in the store cache: prompts for skills sync, teams for a frozen run.
     const storeFetch: StoreFetch[] = [];
     if (!input.apply && !input.offline && resolved.mode === 'config') {

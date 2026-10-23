@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, shellArg } from '../../contracts/src/index.js';
 import { strictJson } from '../../codex-adapter/src/safe.js';
 import { checkProjectPathWith, fold, homesOf, identityFrom, syncOn } from './discovery.js';
 import type { DiscoveryHooks } from './discovery.js';
@@ -764,13 +764,14 @@ export async function applyFolderDenyWith(home: string, project: GrantProject, n
     return { name };
   }, hooks);
 }
-const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+/** Rounds 9 and 10 of the reviews of PR 101: the ls step, with the folder when a command can carry it (shellArg). */
+const lsStep = (path: string): string => { const word = shellArg(path); return word !== null ? `run ls -led ${word}` : 'run ls -led on that folder'; };
 export function renderFolderAllowReview(plan: FolderAllowPlan): string {
   return [
     `Allow this project to read registered folder ${plan.name}`,
     `  Project: ${plan.project}`,
     `  Folder: ${plan.folderDir} (~/${plan.path})`,
-    `  Bowerloom reads the mode of the folder only. To see access control entries, run ls -led ${shellWord(plan.folderDir)}.`,
+    `  Bowerloom reads the mode of the folder only. To see access control entries, ${lsStep(plan.folderDir)}.`,
     '  A slice of this project that names it can copy text from it into .claude/skills. Bowerloom never writes the folder.',
     ...gitignoreLines(plan.gitignore),
     'This writes the store only. It changes no project, and it installs nothing.',

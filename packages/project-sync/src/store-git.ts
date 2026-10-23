@@ -26,7 +26,7 @@ import { authoredPath, authoredRows, fetchAuthored } from '../../skill-manifest/
 import type { AuthoredKind, AuthoredPin } from '../../skill-manifest/src/resolve-store-git.js';
 import { isManifestRefusal, manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { configRefusal } from '../../project-config/src/refusal.js';
-import { syncError } from './refusal.js';
+import { offlineBecause, offlineNetwork, SYNC_COMMAND, syncError, withStep } from './refusal.js';
 import { DefinitionError } from '../../contracts/src/index.js';
 
 export const STORE_CACHE_FOLDER = 'store-cache';
@@ -37,7 +37,11 @@ export type StoreTransport = PublicTransport & { close(): void };
 /** Makes the transport of an authored store fetch. The default is createPublicTransport (spec 07, section 6). */
 export type StoreTransportFactory = (options: PublicGetOptions) => StoreTransport;
 /** `githubToken` is the token the CLI read for this run, or null (spec 07). */
-export interface StoreGitDeps { signal: AbortSignal; storeTransport?: StoreTransportFactory; githubToken?: GithubToken | null }
+export interface StoreGitDeps {
+  signal: AbortSignal; storeTransport?: StoreTransportFactory; githubToken?: GithubToken | null;
+  /** Round 9 of the reviews of PR 101: the command that ran, which a stopped fetch names. Default `bowerloom skills sync`. */
+  rerun?: string;
+}
 
 /**
  * Spec 07, 4.3: `network.credentials` of a plan. It names the variable, the one host, and the repositories that get the
@@ -261,12 +265,13 @@ const OWN_CODES: ReadonlySet<string> = new Set(['GITHUB_RATE_LIMITED', 'GITHUB_R
  * A transport error of a fetch, in the words of 3.10. Nothing in the project has changed when this runs. With a token
  * (spec 07, 3.7), a 404 on the commit request is STORE_REMOTE_AUTH_FAILED unless the repository check says more.
  */
-function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean, check: RepositoryCheck | null = null): unknown {
-  if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
+function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolean, id: string, withToken: boolean, check: RepositoryCheck | null = null, rerun = SYNC_COMMAND): unknown {
+  // Round 9 of the reviews of PR 101: the step names the command that ran, with its flags.
+  if (signal.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') return withStep(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. Run ${rerun} again.`), `Run ${rerun} again.`, rerun);
   // Review F3: an error that is no refusal of Bowerloom's is rethrown as it is, never reported as offline.
   if (!(error instanceof DefinitionError)) return error;
   const code = error.code;
-  if (code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+  if (code === 'SKILLS_ADD_NETWORK') return offlineNetwork(`Fetching ${id} needs api.github.com, and the network was not reachable.`);
   if (code === 'SKILLS_ADD_NOT_FOUND') {
     if (!commitMissing) return configRefusal('STORE_ITEM_GONE_AT_COMMIT');
     if (check?.state === 'readable') return syncError('LOCK_COMMIT_GONE');
@@ -274,7 +279,7 @@ function fetchRefusal(error: unknown, signal: AbortSignal, commitMissing: boolea
     if (check?.state !== 'unknown') return old;
     const failure = check.error;
     if (!(failure instanceof DefinitionError)) return failure;
-    if (failure.code === 'SKILLS_ADD_NETWORK') return syncError('SKILLS_OFFLINE', `bowerloom apply --frozen needs api.github.com for ${id}. Connect to the network and run it again.`);
+    if (failure.code === 'SKILLS_ADD_NETWORK') return offlineNetwork(`Fetching ${id} needs api.github.com, and the network was not reachable.`);
     if (OWN_CODES.has(failure.code)) return failure;
     return new DefinitionError(old.code, `${old.message} Bowerloom could not check the repository: ${/^[A-Z][A-Z0-9_]{0,63}$/.test(failure.code) ? failure.code : 'UNKNOWN'}.`);
   }
@@ -312,7 +317,7 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
   const pin = item.lockPin;
   if (pin === null || item.requestDigest !== pin.hash || pin.path !== authoredPath(item.kind, item.id)) throw syncError('STALE_APPROVAL');
   // The approval names each host the run may contact. A fetch it did not approve never starts.
-  if (!approvedHosts.includes(GITHUB_HOST)) throw syncError('SKILLS_OFFLINE', `The approved plan allows no fetch of ${item.id}. Run bowerloom apply --frozen without --offline.`);
+  if (!approvedHosts.includes(GITHUB_HOST)) throw offlineBecause('approved', `The approved plan allows no fetch of ${item.id}.`);
   const options = storeTransportOptions(credentials, deps.githubToken, pin.remote), withToken = options.githubAuth !== undefined;
   const make = (): StoreTransport => (deps.storeTransport ?? createPublicTransport)(options);
   let commitMissing = false, check: RepositoryCheck | null = null;
@@ -337,5 +342,5 @@ export async function fetchStoreGit(item: StoreGitItem, roots: StoreCacheRoots, 
       if (hash !== pin.hash || revisionOf(rows) !== revisionOf(pin.files) || fetched.tree !== pin.tree) throw configRefusal('LOCK_HASH_MISMATCH');
       return { dir: (await writeHeld(held, roots, item.kind, item.id, pin.hash, fetched.files)).dir, fetched: true };
     });
-  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken, check) as Error; }
+  } catch (error) { throw fetchRefusal(error, deps.signal, commitMissing, item.id, withToken, check, deps.rerun) as Error; }
 }

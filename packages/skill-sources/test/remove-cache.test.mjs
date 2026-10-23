@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
-import { observeSkillCacheRoot, seedSkillCache, removeCacheEntry, cacheEntryProblem, shellPath, leftoverFix } from '../../../dist/packages/skill-sources/src/cache.js';
+import { observeSkillCacheRoot, seedSkillCache, removeCacheEntry, cacheEntryProblem, shellPath, leftoverFix, leftoverTreeFix } from '../../../dist/packages/skill-sources/src/cache.js';
 
 const sha = b => createHash('sha256').update(b).digest('hex');
 const OP = 'a'.repeat(32), PROJECT = 'c'.repeat(32), HASH = 'd'.repeat(64);
@@ -352,9 +352,26 @@ test('M2 (round 4). printed commands quote each path for a POSIX shell and put -
 // the escaped text.
 test('14. a leftover whose name holds a control character gets guidance, not a command', async t => {
   const w = stateWorld(t), name = 'op-' + OP, odd = path.join(w.cacheRoot, '.prune-x\u0007y');
-  assert.equal(leftoverFix(odd), 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
+  assert.equal(leftoverFix(odd), 'Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
+  // Round 10 of the reviews of PR 101: a backslash and an invisible character get the same guidance; ZWNJ is quoted.
+  for (const name of ['/s/.prune-a\\b', '/s/.tmp-\u200Bx']) assert.equal(leftoverFix(name), 'Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.', name);
+  assert.equal(leftoverTreeFix('/s/.prune-a\\b'), null);
+  assert.equal(leftoverTreeFix('/s/.prune-\u0645\u200C'), "chmod -R -- u+rwx '/s/.prune-\u0645\u200C'");
   const dir = entry(w.cacheRoot, name), sub = path.join(dir, 'locked'); fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
   t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } });
   // A leftover name of the delete step is always plain; the guidance applies to names that someone else made.
   await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, name, held()), e => typeof e.fix === 'string' && !/[\u0000-\u001f]/.test(e.fix));
+});
+
+// Round 13 of the reviews of PR 101, item 2: a path inside a cache entry that cannot be deleted is named on one line, so
+// a bidi character in a file name cannot reorder the refusal.
+test('a cache entry holding a bidi-named folder that cannot be deleted names it on one line', async t => {
+  const w = stateWorld(t), name = 'op-' + OP, dir = entry(w.cacheRoot, name), sub = path.join(dir, 'lo\u202Eck\nx');
+  fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
+  t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) for (const s of fs.existsSync(path.join(w.cacheRoot, n)) ? fs.readdirSync(path.join(w.cacheRoot, n)) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, s), 0o700); } catch { /* gone */ } });
+  await assert.rejects(removeCacheEntry(w.stateRoot, { scope: 'machine', projectId: null }, name, held()), e => {
+    assert.doesNotMatch(e.message, /[\u202E\n]/, e.message);
+    assert.ok(e.message.includes('lo\\u202eck\\u000ax'), e.message);
+    return true;
+  });
 });

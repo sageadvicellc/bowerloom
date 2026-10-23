@@ -84,7 +84,7 @@ bowerloom context guard --agent lead --explain wiki/private/notes.md
 
 The guard needs these things, and without one of them it does not run or it blocks every call:
 
-- Claude Code 2.1.295 or later. Older versions ignore `onFailure`, so a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. The guard turns every error of its own into a deny, so only these three cases are affected. In a test on Claude Code 2.1.292, a missing `bowerloom-guard` did not block the call.
+- Claude Code 2.1.295 or later. Claude Code before 2.1.295 ignores `onFailure`, so a guard that cannot start, crashes, or runs longer than 10 seconds lets the call through. The guard turns every error of its own into a deny, so only these three cases are affected. In a test on Claude Code 2.1.292, a missing `bowerloom-guard` did not block the call.
 - A folder that you trusted. Claude Code runs the hook of a project subagent only after you accept the workspace trust dialog. A `claude -p` run, a Routine, and a CI job that uses `claude -p` do not run it.
 - `bowerloom-guard` on your `PATH`. Claude Code blocks the call when it is missing.
 - The same `XDG_STATE_HOME` as the shell that ran `apply`. Another one finds no receipts, and every call is blocked.
@@ -152,7 +152,7 @@ The measure does not count Claude Code's own system details and tool definitions
 A slice can select from a folder outside the project, such as the knowledge base of a workbench, through a registered folder. Register it once, in your store, then allow each project that may read it:
 
 ```sh
-bowerloom folder add knowledge-base ~/My\ Notes/knowledge-base
+bowerloom folder add knowledge-base ~/notes/knowledge-base
 cd ~/Projects/my-project && bowerloom folder allow knowledge-base
 bowerloom folder list
 bowerloom folder deny knowledge-base

@@ -15,9 +15,9 @@ This guide uses two public skills. The first is `collections` from `@tanstack/db
 
 Install Bowerloom from npm with `npm install -g bowerloom@beta`. [Install Bowerloom](/docs/start/) lists the Node requirement, the global npm prefix steps, and the first `bowerloom up` run.
 
-Run these commands in a project folder that holds `.bowerloom`. Run `bowerloom up --team <name> --goal <goal>` first if it does not. Keep the folder out of iCloud Drive. A project under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder, refuses with `PROJECT_IN_CLOUD_FOLDER`. [Errors](/docs/reference/errors/#project-and-approval-refusals) shows the fix.
+Run these commands in a project folder that holds `.bowerloom` or `bowerloom.json`. Run `bowerloom up --team <name> --goal <goal>` first if it does not. Keep the folder out of iCloud Drive. A project under `~/Documents` or `~/Desktop` with Desktop and Documents sync on, or under a `~/Library` cloud folder, refuses with `PROJECT_IN_CLOUD_FOLDER`. [Errors](/docs/reference/errors/#project-and-approval-refusals) shows the fix.
 
-Use public skills. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, `api.github.com`, without credentials. Private registries and private repositories are not supported in this beta.
+Use public skills. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, `api.github.com`, without credentials. Private registries and private repositories are not supported for pinned skills. A store in a private GitHub repository is a separate case. See [Where your items come from](/docs/guides/item-sources/#private-store).
 
 ## What stays under your control
 
@@ -171,7 +171,7 @@ Bowerloom never edits AGENTS.md or CLAUDE.md. To point your agents at these copi
 
 Show the line to the human. Add it to `AGENTS.md` and `CLAUDE.md` only after the human approves.
 
-`bowerloom up --team <name>` runs `sync` and `apply` for you, one approved step at a time. On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. The [teammate steps](#get-the-same-skills-on-another-machine) are the supported path there.
+`bowerloom up --team <name>` runs `sync` and `apply` for you, one approved step at a time. On a clone, `team create` refuses with `PROJECT_BRIEF_INVALID`, because it reads `.bowerloom/brief.json`, which stays on the first machine. In a project without `bowerloom.json`, `bowerloom up --team <name>` refuses the same way. In a project with `bowerloom.json`, `up` works on a clone for each team that the file lists. The [teammate steps](#get-the-same-skills-on-another-machine) are the supported path there.
 
 ### Check the result
 
@@ -241,10 +241,11 @@ Bowerloom writes a `.gitignore` inside `.bowerloom/managed` only. It does not ad
 .bowerloom-revision-*/
 .claude/skills/
 .claude/commands/
+.claude/agents/
 .agents/skills/
 ```
 
-Git then shows `skills.json` and the team, skill, and prompt definitions as files to commit. A teammate's `skills sync` needs only `.bowerloom/skills.json`. In the trial run for this release, the teammate's clone held only that file, and sync and apply worked.
+Git then shows `bowerloom.json`, `bowerloom.lock.json`, and `skills.json` as files to commit. It also shows the team, skill, prompt, and slice definitions. In a project without `bowerloom.json`, a teammate's `skills sync` needs only `.bowerloom/skills.json`. In the trial run for this release, the teammate's clone held only that file, and sync and apply worked.
 
 If you keep files of your own in `.claude/skills`, `.claude/commands`, or `.agents/skills`, list only the folders that Bowerloom makes instead, such as `.claude/skills/tanstack-db-collections/`. Each machine rebuilds the same files from the same pins.
 
@@ -257,7 +258,7 @@ A teammate who clones the project gets the pins in `.bowerloom/skills.json`. On 
 3. After approval, run `bowerloom skills sync --approve REVISION_FROM_THE_PLAN`.
 4. Run `bowerloom apply`. It places any prompt or skill copy that is still missing. In the trial, it printed `Nothing to change.`
 
-On a clone, `bowerloom up --team <name>` and `team create` refuse with `PROJECT_BRIEF_INVALID` in this beta, because they read `.bowerloom/brief.json`, which stays on the first machine. These steps are the supported path.
+On a clone, `team create` refuses with `PROJECT_BRIEF_INVALID`, because it reads `.bowerloom/brief.json`, which stays on the first machine. In a project without `bowerloom.json`, `bowerloom up --team <name>` refuses the same way. In a project with `bowerloom.json`, `up` works on a clone for each team that the file lists. These steps are the supported path.
 
 When a teammate changes a pin in `skills.json` and you pull it, `skills sync` shows `update to <pin>` for that skill. You approve the update the same way. To change a pin yourself, see [Move a skill to a newer pin](#move-a-skill-to-a-newer-pin).
 
@@ -402,7 +403,7 @@ A report or proposal does not guarantee a fix, a response time, or a release dat
 
 ## Share a project
 
-Commit `bowerloom.json` and `bowerloom.lock.json`. A teammate runs `bowerloom apply --frozen` to get the same store items. The page about where items come from explains what the lock records and what a teammate needs.
+Commit `bowerloom.json` and `bowerloom.lock.json`. A teammate runs `bowerloom apply --frozen` to get the same store items. [Where your items come from](/docs/guides/item-sources/) explains what the lock records and what a teammate needs.
 
 ## Pin a skill in your store
 
@@ -421,7 +422,7 @@ Bowerloom keeps the skill bytes it checked in a cache on this machine, so the ne
 
 ## Current beta limits
 
-- Public skills only. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, without credentials. Private registries and private repositories are not supported.
+- Public skills only. The npm route reads only `registry.npmjs.org`. The Git route reads only the public GitHub API, without credentials. Private registries and private repositories are not supported for pinned skills. A store in a private GitHub repository is a separate case. See [Where your items come from](/docs/guides/item-sources/#private-store).
 - Only the MIT and Apache-2.0 licenses are accepted.
 - No worker starts in this beta. Skills and prompts are files. Bowerloom runs nothing in them.
 - Native discovery of these files by Claude Code and Codex is not observed. A copy in `.claude/skills` or `.agents/skills` does not prove that either harness finds or runs it.
@@ -435,7 +436,7 @@ Bowerloom keeps the skill bytes it checked in a cache on this machine, so the ne
 This section lists work that this beta does not do. Do not treat it as a current instruction.
 
 - Worker launch. Workers wait for a later release.
-- Private npm registries and private Git repositories.
+- Private npm registries and private Git repositories for pinned skills.
 - The 1.0 release.
 
 ## Continue

@@ -19,6 +19,13 @@ import { planProjectApply, observeApply } from './apply-project.js';
 import { registeredLookup, registeredSlices } from './slices.js';
 import type { SliceItem } from './slices.js';
 import { syncError } from './refusal.js';
+import { shellArg } from '../../contracts/src/index.js';
+
+/** Round 10 of the reviews of PR 101: the note for an agent that Claude Code does not find. A folder goes into --add-dir only through shellArg. */
+export function notFoundNote(from: string, dir: string): string {
+  const word = shellArg(dir);
+  return `Claude Code started in ${from} does not find this agent. It finds agents only in the folders above where it starts. Start it inside ${dir}, or pass --add-dir ${word ?? 'with that folder'}.`;
+}
 
 export const MEASURE_FORMAT = 'bowerloom/context-measure/v1beta1' as const;
 export const SHOW_FORMAT = 'bowerloom/context-slice-show/v1beta1' as const;
@@ -245,7 +252,7 @@ export async function measureContext(input: MeasureInput): Promise<MeasureResult
     const discovered = from === dir || from.startsWith(dir + sep);
     // The notes, in the order of the spec.
     const ordered: string[] = [];
-    if (!discovered) ordered.push(`Claude Code started in ${from} does not find this agent. It finds agents only in the folders above where it starts. Start it inside ${dir}, or pass --add-dir ${dir}.`);
+    if (!discovered) ordered.push(notFoundNote(from, dir));
     if (instrBytes > 0 && !omit && sliceIds.size > 0) ordered.push(`starts with ${instrBytes} bytes of CLAUDE.md or AGENTS.md files. Set omitClaudeMd: true to start it with its slices only.`);
     const mentioned: { path: string; bytes: number }[] = [];
     for (const m of body.matchAll(/`([^`\n]+)`/g)) {

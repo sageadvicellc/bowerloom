@@ -4,7 +4,7 @@ import { dirname, isAbsolute, resolve, join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { AdapterError, strictJson } from '../../codex-adapter/src/safe.js';
-import { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError, oneLine, SHELL_UNSAFE } from '../../contracts/src/index.js';
 import { SkillSourceError, closed, captureSkillData, freezeSkillData, revisionOf } from './validation.js';
 import { NPM_LIMITS, NpmAcquisitionError, npmCheck, npmRefuse, sha256, validateNpmPlan, verifyNpmPayload } from './npm.js';
 import type { NpmAcquisitionPlan, ObservedNpmPayload, ExpectedSkillFile } from './npm.js';
@@ -510,12 +510,15 @@ export function leftoverBlocked(path: string, limit = 4096): string | null {
  * `--` before its operands (`chmod -- 700 <path>`, because BSD chmod ends its options at the mode), so no path is an option.
  */
 export function shellPath(path: string): string {
-  const visible = path.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
+  // Round 10 of the reviews of PR 101: ZWNJ and ZWJ stay as they are, as shellArg keeps them; a command can carry them.
+  const visible = path.replace(/[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
   return `'${visible.replaceAll("'", "'\\''")}'`;
 }
 /** Round 5 of the reviews of PR 99, L-3: a path with a control character gets this guidance in place of a command. */
-export const NO_COMMAND = 'Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
-const CONTROL = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+export const NO_COMMAND = 'Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.';
+// Rounds 9 and 10 of the reviews of PR 101: the shared rule (SHELL_UNSAFE) of shellArg. It holds every invisible format
+// character except ZWNJ and ZWJ, and a backslash, because fish reads \' and \\ inside single quotes.
+const CONTROL = SHELL_UNSAFE;
 /** The command that lets a stuck leftover tree be deleted (round 3, M-A), or null for a name that no command can name. */
 export const leftoverTreeFix = (path: string): string | null => CONTROL.test(path) ? null : `chmod -R -- u+rwx ${shellPath(path)}`;
 /** The command that clears a leftover name, or the guidance for a name with a control character. */
@@ -645,10 +648,11 @@ export async function removeCacheEntry(stateRoot: string, place: CachePlace, nam
   try { removePinned(doomed); syncDir(root); }
   catch (error) {
     const code = errnoOf(error), at = (error as { path?: unknown }).path;
-    if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(doomed, 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
+    // Round 13 of the reviews of PR 101: the paths are named on one line (oneLine); the fix still names the real path.
+    if (code === 'ECHANGED') lockFirst(held, new CachePruneRefusal(oneLine(doomed), 'at the delete step (it changed: it is no longer the folder that was renamed)', code));
     // Round 5, L-1: next is the bare command (or, for a name no command can name, plain guidance), never both.
     const fix = leftoverTreeFix(doomed);
-    lockFirst(held, new CachePruneRefusal(doomed, `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${at}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
+    lockFirst(held, new CachePruneRefusal(oneLine(doomed), `at the delete step (${code}${typeof at === 'string' && at !== doomed ? ` at ${oneLine(at)}` : ''})`, code, fix ?? NO_COMMAND, fix ?? undefined));
   }
 }
 function isLink(path: string): boolean { try { return fs.lstatSync(path).isSymbolicLink(); } catch { return false; } }

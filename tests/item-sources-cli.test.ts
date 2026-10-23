@@ -1,0 +1,587 @@
+// Round 1 of the reviews of PR 101, through the real binary: the behaviour that the page "Where your items come from"
+// states. Every run gets its own HOME and XDG_STATE_HOME under a temporary folder, the GitHub token variables are unset,
+// and the only network is the fake one of tests/support/fake-network.ts.
+//
+// - M3: a file that a lock cannot record, such as .DS_Store, refuses STORE_ITEM_NOT_SHAREABLE before any network call,
+//   with a Next: line of its own that names the file.
+// - M2 and D26: a clone made under umask 002 refuses a frozen install with one code at a time, in a fixed order, and
+//   chmod -R go-w . clears every one. Files that disagree refuse in the order of the frozen checks.
+// - M5: the note about BOWERLOOM_GITHUB_TOKEN is in the STALE_APPROVAL refusal, not in the plan.
+import './support/isolate-home.js';
+import test from './support/lock-slot-retry.js';
+import assert from 'node:assert/strict';
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { world, run, mustApprove, errorCode, errorMessage, project, pushStore, network, NETWORK, shared, shell, EMPTY_CONFIG } from './support/config-cli.js';
+import type { World } from './support/config-cli.js';
+import type { TestContext } from 'node:test';
+import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
+import { runWithApproval } from '../apps/cli/src/confirm.js';
+import { notShareable } from '../packages/project-config/src/index.js';
+import { atApproval, honestShared, MIGRATE_REASON } from '../packages/project-config/src/refusal.js';
+import { partialRefusal } from '../packages/project-sync/src/refusal.js';
+import { reasonOf } from '../packages/project-sync/src/migrate-store.js';
+import { GITHUB_REQUEST_MAX, TOKEN_STALE_NOTE } from '../packages/project-sync/src/store-git.js';
+
+const FILE_SENTENCE = 'The item holds a file that a lock cannot record.';
+const SIZE_SENTENCE = 'The item is larger than a lock can record.';
+const nextOf = (stderr: string): string | undefined => (JSON.parse(stderr) as { error: { next?: string } }).error.next;
+const requestsIn = (log: string): string[] => readFileSync(log, 'utf8').split('\n').filter(Boolean);
+const AGAIN = 'Then run the command again.';
+const ITEM = '~/.bowerloom/skills/house-style';
+const NAMES = 'A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot. The first name in the item starts with a letter or a digit.';
+const RECORDS = `${NAMES} A lock records only files whose names end in .md, .txt, .json, .yaml, .yml, or .csv, and LICENSE and NOTICE files.`;
+
+/** A fake network with no route at all: every request fails as a network failure, never as a 404. */
+function offline(w: World): { env: Record<string, string>; log: string } {
+  const log = join(w.base, `offline-${Date.now()}-${Math.random().toString(16).slice(2)}.log`), plan = `${log}.json`;
+  writeFileSync(plan, JSON.stringify({ log })); writeFileSync(log, '');
+  return { env: { ...w.env, TEST_FAKE_NETWORK_PLAN: plan }, log };
+}
+
+/** A shared project that lists the written store skill house-style, synced, with the store pushed to the fake GitHub. */
+function sharedWithSkill(t: TestContext): { w: World; dir: string } {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  const repo = pushStore(w), net = network(w, repo.routes);
+  mustApprove(dir, ['use', 'skill', 'house-style'], net.env, NETWORK);
+  mustApprove(dir, ['skills', 'sync'], net.env, NETWORK);
+  return { w, dir };
+}
+
+test('M3. a .DS_Store in a store item refuses use, lock update, plain apply, and skills sync before any network call, and the Next: line names the file', t => {
+  const { w, dir } = sharedWithSkill(t);
+  writeFileSync(join(w.store, 'skills', 'house-style', '.DS_Store'), 'x');
+  mustApprove(w.home, ['skill', 'create', 'second', '--global'], w.env);
+  writeFileSync(join(w.store, 'skills', 'second', '.DS_Store'), 'x');
+  const deny = network(w);
+  const runs: [string[], string][] = [[['lock', 'update'], 'house-style'], [['apply'], 'house-style'], [['skills', 'sync'], 'house-style'], [['use', 'skill', 'second'], 'second']];
+  for (const [args, id] of runs) {
+    const r = run(dir, [...args, '--json'], deny.env, NETWORK);
+    assert.equal(r.status, 1, `${args.join(' ')}: ${r.stderr}${r.stdout}`);
+    assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', args.join(' '));
+    assert.ok(errorMessage(r.stderr).endsWith(FILE_SENTENCE), args.join(' '));
+    assert.equal(nextOf(r.stderr), `If you do not need ~/.bowerloom/skills/${id}/.DS_Store, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`, args.join(' '));
+  }
+  assert.deepEqual(requestsIn(deny.log), [], 'no network call');
+  // A terminal shows the file's own Next: line, never the line about a remote.
+  const words = reportFailure(notShareable('file', { problem: 'name', path: 'skills/house-style/.DS_Store', item: 'skills/house-style' }), true).text;
+  assert.match(words, /\nNext: If you do not need ~\/\.bowerloom\/skills\/house-style\/\.DS_Store, delete it\./);
+  assert.doesNotMatch(words, /Give the store a remote/);
+});
+
+// Round 2 of the reviews of PR 101, item 2: each fault of a store item has a Next: line of its own, with its path, and
+// "delete" is never the first advice for a file that can be real work.
+test('round 2. each fault of a store item refuses lock update with its own Next: line, naming the file or folder', t => {
+  const { w, dir } = sharedWithSkill(t);
+  const item = join(w.store, 'skills', 'house-style'), deny = network(w);
+  const cases: [string, (() => void), (() => void), 'file' | 'size', string][] = [
+    ['execute bit', () => writeFileSync(join(item, 'run.md'), '# Run\n', { mode: 0o755 }), () => shell(item, 'rm run.md', w), 'file',
+      `Run chmod a-x ${ITEM}/run.md. A lock records no file with an execute bit. ${AGAIN}`],
+    ['byte order mark', () => writeFileSync(join(item, 'notes.md'), Buffer.from([0xef, 0xbb, 0xbf, 0x41, 0x0a])), () => shell(item, 'rm notes.md', w), 'file',
+      `Remove the byte order mark at the start of ${ITEM}/notes.md. ${AGAIN}`],
+    ['not UTF-8', () => writeFileSync(join(item, 'notes.md'), Buffer.from([0x41, 0xff, 0x0a])), () => shell(item, 'rm notes.md', w), 'file',
+      `Save ${ITEM}/notes.md as UTF-8 text. ${AGAIN}`],
+    ['empty file', () => writeFileSync(join(item, 'empty.md'), ''), () => shell(item, 'rm empty.md', w), 'file',
+      `${ITEM}/empty.md is empty. Add content to it, or delete it if you do not need it. ${AGAIN}`],
+    ['empty folder', () => mkdirSync(join(item, 'refs'), { mode: 0o755 }), () => shell(item, 'rmdir refs', w), 'file',
+      `${ITEM}/refs is an empty folder. Add a file to it, or remove the folder. ${AGAIN}`],
+    ['too deep', () => { mkdirSync(join(item, 'a/b/c/d/e/f/g/h'), { recursive: true, mode: 0o755 }); writeFileSync(join(item, 'a/b/c/d/e/f/g/h/x.md'), 'x\n'); }, () => shell(item, 'rm -r a', w), 'file',
+      `${ITEM}/a/b/c/d/e/f/g/h sits too deep in the item. A lock records at most 7 levels of folders inside an item. Move its files up. ${AGAIN}`],
+    ['symlink', () => symlinkSync('SKILL.md', join(item, 'link.md')), () => shell(item, 'rm link.md', w), 'file',
+      `${ITEM}/link.md is a link, and a lock records no link. Put a copy of what it points to in its place. ${AGAIN}`],
+    ['group-writable file', () => { writeFileSync(join(item, 'notes.md'), 'x\n'); chmodSync(join(item, 'notes.md'), 0o664); }, () => shell(item, 'rm notes.md', w), 'file',
+      `Bowerloom could not read ${ITEM}/notes.md safely. It must be a plain file that you own, with one link, closed to other users. Run ls -l ${ITEM}/notes.md. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`],
+    ['a name a lock cannot record, not plain', () => writeFileSync(join(item, 'my notes.png'), 'x'), () => shell(item, "rm 'my notes.png'", w), 'file',
+      `A file in ${ITEM} has a name that a lock cannot record. If you do not need it, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`],
+    // Round 3 of the reviews of PR 101: the Next: lines that round 2 left untested.
+    ['a fifo', () => shell(item, 'mkfifo pipe.md', w), () => shell(item, 'rm pipe.md', w), 'file',
+      `${ITEM}/pipe.md is not a plain file or folder. Move it out of the item. ${AGAIN}`],
+    ['a group-writable folder', () => { mkdirSync(join(item, 'refs'), { mode: 0o755 }); writeFileSync(join(item, 'refs', 'a.md'), 'a\n'); chmodSync(join(item, 'refs'), 0o775); }, () => shell(item, 'rm -r refs', w), 'file',
+      `Bowerloom could not read the folder ${ITEM}/refs safely. It must be a real folder that you own, closed to other users. Run ls -ld ${ITEM}/refs. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`],
+    ['a file this user cannot read', () => { writeFileSync(join(item, 'secret.md'), 's\n'); chmodSync(join(item, 'secret.md'), 0o000); }, () => shell(item, 'chmod 600 secret.md && rm secret.md', w), 'file',
+      `Bowerloom could not read ${ITEM}/secret.md. Run ls -la ${ITEM}/secret.md. Give yourself read access to what it shows. ${AGAIN}`],
+    ['a name with a control character', () => writeFileSync(join(item, 'a\u0001.md'), 'a\n'), () => shell(item, "rm a$(printf '\\001').md", w), 'file',
+      `${ITEM} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`],
+    // Round 4 of the reviews of PR 101: a backslash, a first name that starts with an underscore, and a folder of too many names.
+    ['a name with a backslash', () => writeFileSync(join(item, 'a\\b.md'), 'a\n'), () => shell(item, "rm 'a\\b.md'", w), 'file',
+      `${ITEM} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`],
+    ['a first folder that starts with an underscore', () => { mkdirSync(join(item, '_x'), { mode: 0o755 }); writeFileSync(join(item, '_x', 'a.md'), 'a\n'); }, () => shell(item, 'rm -r _x', w), 'file',
+      `${ITEM}/_x is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`],
+    ['a folder of more than 256 names', () => { mkdirSync(join(item, 'many'), { mode: 0o755 }); for (let i = 0; i < 257; i++) writeFileSync(join(item, 'many', `f${i}.md`), `${i}\n`); }, () => shell(item, 'rm -r many', w), 'file',
+      `${ITEM}/many holds more than 256 names, the most Bowerloom reads in one folder. Remove names from it until it holds 256 or fewer. A lock records at most 126 files in one item. ${AGAIN}`],
+    ['a file name that starts with a dot', () => writeFileSync(join(item, '.notes.md'), 'n\n'), () => shell(item, 'rm .notes.md', w), 'file',
+      `If you do not need ${ITEM}/.notes.md, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`],
+    ['a folder name that starts with a dot', () => { mkdirSync(join(item, '.drafts'), { mode: 0o755 }); writeFileSync(join(item, '.drafts', 'a.md'), 'a\n'); }, () => shell(item, 'rm -r .drafts', w), 'file',
+      `${ITEM}/.drafts is a folder whose name a lock cannot record. ${NAMES} Rename the folder, or move its files out of it. ${AGAIN}`],
+    ['a large file', () => writeFileSync(join(item, 'big.md'), 'a'.repeat(70000)), () => shell(item, 'rm big.md', w), 'size',
+      `${ITEM}/big.md is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. ${AGAIN}`],
+    ['too many files', () => { mkdirSync(join(item, 'many'), { mode: 0o755 }); for (let i = 0; i < 126; i++) writeFileSync(join(item, 'many', `f${i}.md`), `${i}\n`); }, () => shell(item, 'rm -r many', w), 'size',
+      `${ITEM} holds more than 126 files, the most a lock records for one item. Remove files from it. ${AGAIN}`],
+    ['too many bytes', () => { mkdirSync(join(item, 'big'), { mode: 0o755 }); for (let i = 0; i < 33; i++) writeFileSync(join(item, 'big', `f${i}.md`), `${i}`.padEnd(65000, 'a')); }, () => shell(item, 'rm -r big', w), 'size',
+      `${ITEM} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`],
+  ];
+  for (const [label, make, undo, cause, next] of cases) {
+    make();
+    const r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+    assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: ${r.stderr}${r.stdout}`);
+    assert.ok(errorMessage(r.stderr).endsWith(cause === 'file' ? FILE_SENTENCE : SIZE_SENTENCE), `${label}: ${errorMessage(r.stderr)}`);
+    assert.equal(nextOf(r.stderr), next, label);
+    assert.ok(!nextOf(r.stderr)!.startsWith('Delete'), `${label}: delete is not the first advice`);
+    undo();
+  }
+  assert.deepEqual(requestsIn(deny.log), [], 'no fault made a network call');
+  // Seven levels of folders are fine: the next step is the proof, which needs the network.
+  mkdirSync(join(item, 'a/b/c/d/e/f/g'), { recursive: true, mode: 0o755 }); writeFileSync(join(item, 'a/b/c/d/e/f/g/x.md'), 'x\n');
+  const seven = run(dir, ['lock', 'update', '--json'], offline(w).env, NETWORK);
+  assert.equal(errorCode(seven.stderr), 'SKILLS_OFFLINE', seven.stderr);
+});
+
+test('round 2. every cause of STORE_ITEM_NOT_SHAREABLE has a true Next: line, and only a plain path is named', () => {
+  const adopt = 'Or adopt a team into this project with bowerloom team adopt.';
+  const want: Record<string, string> = {
+    none: `Make the store a git repository and push it to a github.com repository. bowerloom store status shows the commands. ${adopt}`,
+    'no-origin': `Add the remote origin of a github.com repository to the store and push it. bowerloom store status shows the commands. ${adopt}`,
+    'unsupported-remote': `Point the remote origin of the store at a github.com repository. bowerloom store status shows the command. ${adopt}`,
+    unpushed: `Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. ${adopt}`,
+    unreadable: `Bowerloom reads the git files of the store itself. If the store was made under umask 002, run chmod -R go-w ~/.bowerloom/.git. A store whose git uses reftable or SHA-256 cannot be read in this beta. ${adopt}`,
+  };
+  for (const [cause, next] of Object.entries(want)) {
+    assert.equal((notShareable(cause as 'none') as { next?: string }).next, next, cause);
+    assert.match(reportFailure(notShareable(cause as 'none'), true).text, new RegExp(`\\nNext: ${next.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n$`), cause);
+  }
+  // A file or size fault with no place known gets a line that names no file and says no delete.
+  for (const cause of ['file', 'size'] as const) assert.ok(!(notShareable(cause) as { next?: string }).next!.startsWith('Delete'), cause);
+  for (const unsafe of ['skills/x/bad\u001b[2Jname.md', 'skills/x/../../etc/a.md', 'skills/x/a b.md', '/etc/passwd', 'other/x.md', `skills/x/${'a'.repeat(300)}.md`]) {
+    const next = (notShareable('file', { problem: 'mode', path: unsafe, item: 'skills/x' }) as { next?: string }).next!;
+    assert.equal(next, `A file in ~/.bowerloom/skills/x has an execute bit. Run chmod a-x on it. ${AGAIN}`, JSON.stringify(unsafe));
+  }
+  const strange = (notShareable('file', { problem: 'mode', path: 'skills/x/a.md', item: 'skills/../x' }) as { next?: string }).next!;
+  assert.ok(!strange.includes('..'), strange);
+  // A refusal that only an unreadable file made shared keeps the file's Next: line.
+  const honest = honestShared(notShareable('file', { problem: 'name', path: 'skills/house-style/.DS_Store', item: 'skills/house-style' }), '.git') as Error & { next?: string };
+  assert.ok(honest.message.startsWith('Bowerloom could not read .git and treats this project as shared'));
+  assert.ok(honest.next!.startsWith('If you do not need ~/.bowerloom/skills/house-style/.DS_Store, delete it.'));
+});
+
+test('round 2. lock update in a project that is not shared does not say the project is shared', t => {
+  const w = world(t), dir = project(w, 'alone', EMPTY_CONFIG);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  mustApprove(dir, ['use', 'skill', 'house-style'], w.env);
+  const r = run(dir, ['lock', 'update', '--json'], network(w).env, NETWORK);
+  assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', r.stderr);
+  assert.equal(errorMessage(r.stderr), 'A lock records this item, and a teammate cannot fetch it. The store is not a git repository.');
+  // In a shared project the words stay.
+  shared(dir);
+  assert.ok(errorMessage(run(dir, ['lock', 'update', '--json'], network(w).env, NETWORK).stderr).startsWith('This project is shared, and a teammate cannot fetch this store item.'));
+});
+
+/** A project with .bowerloom, bowerloom.json, and an empty bowerloom.lock.json, committed to a git repository at `src`. */
+function committed(w: World, withSkill: boolean): string {
+  const src = project(w, 'src', EMPTY_CONFIG);
+  if (withSkill) mustApprove(src, ['skill', 'create', 'local-tool'], w.env);
+  mustApprove(src, ['team', 'create', 'helpers'], w.env);
+  writeFileSync(join(src, 'bowerloom.lock.json'), `${JSON.stringify({ format: 'bowerloom/lock/v1beta1', skills: [], prompts: [], teams: [] }, null, 2)}\n`);
+  shell(src, 'git -c init.defaultBranch=main init -q . && git add -A && git commit -q -m init', w);
+  return src;
+}
+const FIX: Readonly<Record<string, string>> = {
+  PROJECT_UNSAFE: 'chmod go-w .bowerloom', CONFIG_UNSAFE: 'chmod go-w bowerloom.json', PROJECT_FOLDER_UNSAFE: 'chmod go-w .',
+  LOCK_UNSAFE: 'chmod go-w bowerloom.lock.json', MANIFEST_UNSAFE: 'chmod go-w .bowerloom/skills.json', AUTHORING_UNSAFE_PATH: 'chmod -R go-w .bowerloom',
+};
+/** Runs apply --frozen, fixes only the code it names, and runs it again, until it plans or has nothing to do. Returns the codes in order. */
+function refusalsInOrder(dir: string, w: World): string[] {
+  const codes: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const r = run(dir, ['apply', '--frozen', '--json'], w.env);
+    if (r.status === 3 || r.status === 0) return codes;
+    assert.equal(r.status, 1, r.stderr + r.stdout);
+    const code = errorCode(r.stderr); codes.push(code);
+    assert.ok(FIX[code], `no fix for ${code}`);
+    shell(dir, FIX[code]!, w);
+  }
+  assert.fail(`still refused after ${codes.join(', ')}`);
+}
+
+test('M2 and D26. a clone made under umask 002 refuses apply --frozen with one code at a time, in order, and chmod -R go-w . clears all of them', t => {
+  const w = world(t);
+  committed(w, false);
+  shell(w.work, 'umask 002 && git clone -q src clone', w);
+  assert.deepEqual(refusalsInOrder(join(w.work, 'clone'), w), ['PROJECT_UNSAFE', 'CONFIG_UNSAFE', 'PROJECT_FOLDER_UNSAFE', 'LOCK_UNSAFE', 'AUTHORING_UNSAFE_PATH']);
+  shell(w.work, 'umask 002 && git clone -q src again', w);
+  const again = join(w.work, 'again');
+  assert.equal(errorCode(run(again, ['apply', '--frozen', '--json'], w.env).stderr), 'PROJECT_UNSAFE');
+  shell(again, 'chmod -R go-w .', w);
+  assert.ok([0, 3].includes(run(again, ['apply', '--frozen', '--json'], w.env).status!), 'chmod -R go-w . clears every refusal');
+  assert.equal(shell(again, 'git status --porcelain', w).stdout, '', 'git records no write bits, so the change shows no diff');
+});
+
+test('M2. with a project skill, MANIFEST_UNSAFE comes after LOCK_UNSAFE and before AUTHORING_UNSAFE_PATH', t => {
+  const w = world(t);
+  committed(w, true);
+  shell(w.work, 'umask 002 && git clone -q src clone', w);
+  assert.deepEqual(refusalsInOrder(join(w.work, 'clone'), w), ['PROJECT_UNSAFE', 'CONFIG_UNSAFE', 'PROJECT_FOLDER_UNSAFE', 'LOCK_UNSAFE', 'MANIFEST_UNSAFE', 'AUTHORING_UNSAFE_PATH']);
+});
+
+test('D26. files that disagree refuse a frozen run in the order of steps 2 to 5, each fixture also failing every later step', t => {
+  const w = world(t), dir = project(w, 'app');
+  const STORE_SKILL = { ...EMPTY_CONFIG, skills: [{ id: 'house-style', source: 'store' }] };
+  const lock = (skills: unknown[]): string => `${JSON.stringify({ format: 'bowerloom/lock/v1beta1', skills, prompts: [], teams: [] }, null, 2)}\n`;
+  const frozen = (): string => errorCode(run(dir, ['apply', '--frozen', '--json'], w.env).stderr);
+  // Step 2: a .bowerloom project with no bowerloom.json, and a lock that does not parse.
+  mkdirSync(join(dir, '.bowerloom'), { mode: 0o755 });
+  writeFileSync(join(dir, 'bowerloom.lock.json'), '<<<<<<< ours\n');
+  assert.equal(frozen(), 'LOCK_CONFIG_MISSING');
+  // Step 2: a bowerloom.json that does not parse comes before the broken lock.
+  writeFileSync(join(dir, 'bowerloom.json'), '{');
+  assert.equal(frozen(), 'CONFIG_INVALID');
+  // Step 3: a lock that does not parse comes before the missing item and the mismatch.
+  writeFileSync(join(dir, 'bowerloom.json'), `${JSON.stringify(STORE_SKILL, null, 2)}\n`);
+  assert.equal(frozen(), 'LOCK_INVALID');
+  // Step 4: no lock, with a config that lists a store item.
+  shell(dir, 'rm bowerloom.lock.json', w);
+  assert.equal(frozen(), 'LOCK_MISSING');
+  // Step 5: a lock that lists no store item.
+  writeFileSync(join(dir, 'bowerloom.lock.json'), lock([]));
+  assert.equal(frozen(), 'LOCK_CONFIG_MISMATCH');
+});
+
+test('M5. a token set between the plan and --approve refuses STALE_APPROVAL, and the refusal, not the plan, carries the token note', t => {
+  const owner = world(t), dir = project(owner, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(owner.home, ['skill', 'create', 'house-style', '--global'], owner.env);
+  const repo = pushStore(owner);
+  mustApprove(dir, ['use', 'skill', 'house-style'], network(owner, repo.routes).env, NETWORK);
+  const mate = world(t), copy = project(mate, 'app');
+  for (const f of ['bowerloom.json', 'bowerloom.lock.json']) copyFileSync(join(dir, f), join(copy, f));
+  const net = network(mate, repo.routes);
+  const plan = run(copy, ['apply', '--frozen'], net.env, NETWORK);
+  assert.equal(plan.status, 3, plan.stderr);
+  assert.ok(!plan.stdout.includes(TOKEN_STALE_NOTE), 'the plan holds no token note');
+  const revision = (JSON.parse(run(copy, ['apply', '--frozen', '--json'], net.env, NETWORK).stdout) as { revision: string }).revision;
+  const token = `ghp_${'A'.repeat(36)}`;
+  const refused = run(copy, ['apply', '--frozen', '--json', '--approve', revision], { ...net.env, BOWERLOOM_GITHUB_TOKEN: token }, NETWORK);
+  assert.equal(errorCode(refused.stderr), 'STALE_APPROVAL', refused.stderr);
+  assert.ok(errorMessage(refused.stderr).endsWith(TOKEN_STALE_NOTE), errorMessage(refused.stderr));
+  assert.ok(!refused.stderr.includes(token.slice(4, 20)), 'the token never shows');
+});
+
+// Round 2 of the reviews of PR 101, item 1: a fetch that fails on the network says so, with one right step.
+const OFFLINE_SENTENCE = 'A pin or a lock item needs bytes that this run could not get. The message says why.';
+const NETWORK_NEXT = 'Connect to the network and run the command again.';
+test('round 2. SKILLS_OFFLINE on a network failure: apply --frozen and use print the network step; plain apply keeps its hold', t => {
+  const owner = world(t), dir = project(owner, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(owner.home, ['skill', 'create', 'house-style', '--global'], owner.env);
+  const repo = pushStore(owner);
+  mustApprove(dir, ['use', 'skill', 'house-style'], network(owner, repo.routes).env, NETWORK);
+  const mate = world(t), copy = project(mate, 'app');
+  for (const f of ['bowerloom.json', 'bowerloom.lock.json']) copyFileSync(join(dir, f), join(copy, f));
+  // A frozen install planned online, then approved with no route to GitHub.
+  const revision = (JSON.parse(run(copy, ['apply', '--frozen', '--json'], network(mate, repo.routes).env, NETWORK).stdout) as { revision: string }).revision;
+  const frozen = run(copy, ['apply', '--frozen', '--json', '--approve', revision], offline(mate).env, NETWORK);
+  assert.equal(errorCode(frozen.stderr), 'SKILLS_OFFLINE', frozen.stderr);
+  assert.equal(errorMessage(frozen.stderr), "This run could not get bytes that it needs. Nothing in the project changed. Fetching house-style needs api.github.com, and the network was not reachable.");
+  assert.equal(nextOf(frozen.stderr), NETWORK_NEXT);
+  // use of a written item with no network.
+  mustApprove(owner.home, ['skill', 'create', 'second', '--global'], owner.env);
+  const used = run(dir, ['use', 'skill', 'second', '--json'], offline(owner).env, NETWORK);
+  assert.equal(errorCode(used.stderr), 'SKILLS_OFFLINE', used.stderr);
+  assert.equal(nextOf(used.stderr), NETWORK_NEXT);
+  assert.ok(errorMessage(used.stderr).endsWith('Checking skill second needs api.github.com, and the network was not reachable.'), errorMessage(used.stderr));
+  // Plain apply on the clone holds the item with its own step, and fetches nothing.
+  const plain = run(copy, ['apply'], mate.env);
+  assert.match(plain.stdout, /house-style +held \(SKILLS_OFFLINE\) .*\n +Next: Run bowerloom apply --frozen, or bowerloom skills sync\./);
+});
+
+test('round 2. the SKILLS_OFFLINE words: the network step when the error carries it, else the words for --offline and plain apply', async () => {
+  const { syncError } = await import('../packages/project-sync/src/refusal.js');
+  const { offlineNetwork } = await import('../packages/project-sync/src/refusal.js');
+  const network = reportFailure(offlineNetwork('Fetching skill x needs api.github.com, and the network was not reachable.'), true).text;
+  assert.equal(network.split('\n')[1], OFFLINE_SENTENCE); assert.equal(network.split('\n')[2], `Next: ${NETWORK_NEXT}`);
+  // Round 3: an error with no next step of its own prints the table step, which names each case and repeats no failed run.
+  const bare = reportFailure(syncError('SKILLS_OFFLINE', '--offline was set.'), true).text;
+  assert.equal(bare.split('\n')[1], OFFLINE_SENTENCE);
+  assert.equal(bare.split('\n')[2], 'Next: After --offline, run the command again without --offline and without --approve. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.');
+});
+
+// Round 2 of the reviews of PR 101, item 3 (decided): use takes --max-github-requests <n>, as apply and skills sync do.
+test('round 2. use --max-github-requests: the range of apply, the line in the plan, and the budget refusal with its step', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  const repo = pushStore(w), net = network(w, repo.routes);
+  for (const bad of ['0', '5001', 'x']) {
+    const r = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', bad, '--json'], net.env, NETWORK);
+    assert.equal(r.status, 2, bad); assert.equal(errorCode(r.stderr), 'USAGE', bad);
+  }
+  const twice = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9', '--max-github-requests', '9', '--json'], net.env, NETWORK);
+  assert.equal(twice.status, 2);
+  const plan = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9'], net.env, NETWORK);
+  assert.equal(plan.status, 3, plan.stderr);
+  assert.match(plan.stdout, /^Network: reads api\.github\.com, to check the pushed copy of 1 item, about 5 requests to api\.github\.com\.\nGitHub requests: at most 5, of the 9 this run allows\.$/m);
+  const low = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '4', '--json'], net.env, NETWORK);
+  assert.equal(errorCode(low.stderr), 'GITHUB_REQUEST_BUDGET', low.stderr);
+  assert.equal(renderRefusal('GITHUB_REQUEST_BUDGET', 'm').split('\n')[2], `Next: For apply, skills sync, and use, run it again with --max-github-requests <n>, up to ${GITHUB_REQUEST_MAX}. For lock update, lock fewer items in one run with --item <kind>:<id>. For store migrate, move fewer items in one run.`);
+  const help = run(dir, ['help', 'use'], w.env);
+  assert.match(help.stdout, /bowerloom use skill\|prompt\|team <id> \[--project\] \[--commit <sha>\] \[--max-github-requests <n>\] \[--approve <revision>\] \[--json\]/);
+  // Approved with the same flag, it applies.
+  const body = JSON.parse(run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9', '--json'], net.env, NETWORK).stdout) as { revision: string };
+  assert.equal(run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9', '--approve', body.revision], net.env, NETWORK).status, 0);
+});
+
+// Round 3 of the reviews of PR 101, item 2: prompts and teams through the CLI, and each path that used to drop the step.
+test('round 3. a prompt and a team name their file; apply time, store migrate, and cache list keep the step of a store fault', t => {
+  const { w, dir } = sharedWithSkill(t);
+  mustApprove(w.home, ['prompt', 'create', 'weekly-update', '--global'], w.env);
+  mustApprove(w.home, ['team', 'create', 'research', '--global'], w.env);
+  const repo = pushStore(w), net = network(w, repo.routes);
+  mustApprove(dir, ['use', 'prompt', 'weekly-update'], net.env, NETWORK);
+  mustApprove(dir, ['use', 'team', 'research'], net.env, NETWORK);
+  const deny = network(w);
+  chmodSync(join(w.store, 'prompts', 'weekly-update.md'), 0o755);
+  let r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+  assert.equal(nextOf(r.stderr), `Run chmod a-x ~/.bowerloom/prompts/weekly-update.md. A lock records no file with an execute bit. ${AGAIN}`, r.stderr);
+  chmodSync(join(w.store, 'prompts', 'weekly-update.md'), 0o644);
+  writeFileSync(join(w.store, 'teams', 'research', '.DS_Store'), 'x');
+  r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+  assert.equal(nextOf(r.stderr), `If you do not need ~/.bowerloom/teams/research/.DS_Store, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`, r.stderr);
+  // cache list names the fault and its step, not only the store. A pin in the store gives the cache an entry to list.
+  const fixtures = fileURLToPath(new URL('../../packages/skill-manifest/test/fixtures/', import.meta.url));
+  const npm = network(w, { 'https://registry.npmjs.org/@synthetic/db-skills/0.0.1': join(fixtures, 'npm-db-skills', 'metadata.json'), 'https://registry.npmjs.org/@synthetic/db-skills/-/db-skills-0.0.1.tgz': join(fixtures, 'npm-db-skills', 'archive.tgz') });
+  shell(join(w.store, 'teams', 'research'), 'mv .DS_Store ../ds-aside', w);
+  mustApprove(w.work, ['skills', 'add', 'npm:@synthetic/db-skills@0.0.1:skills/synthetic-db/collections', '--global'], npm.env, NETWORK);
+  shell(join(w.store, 'teams', 'research'), 'mv ../ds-aside .DS_Store', w);
+  const listed = run(dir, ['cache', 'list'], w.env);
+  assert.match(listed.stdout, /Some references were not checked: store \(STORE_ITEM_NOT_SHAREABLE, team research\)\. Next: If you do not need ~\/\.bowerloom\/teams\/research\/\.DS_Store, delete it\./, listed.stdout);
+  shell(join(w.store, 'teams', 'research'), 'rm .DS_Store', w);
+  // A fault that appears between the plan and --approve keeps its code and step; it is not STALE_APPROVAL.
+  mustApprove(w.home, ['skill', 'create', 'second', '--global'], w.env);
+  const again = pushStore(w), net2 = network(w, again.routes);
+  const plan = JSON.parse(run(dir, ['use', 'skill', 'second', '--json'], net2.env, NETWORK).stdout) as { revision: string };
+  writeFileSync(join(w.store, 'skills', 'second', '.DS_Store'), 'x');
+  const late = run(dir, ['use', 'skill', 'second', '--json', '--approve', plan.revision], net2.env, NETWORK);
+  assert.equal(errorCode(late.stderr), 'STORE_ITEM_NOT_SHAREABLE', late.stderr);
+  assert.ok(nextOf(late.stderr)!.startsWith('If you do not need ~/.bowerloom/skills/second/.DS_Store, delete it.'), late.stderr);
+});
+
+test('round 3. store migrate names the file of a project item that cannot move, under the .bowerloom of the project', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  writeFileSync(join(dir, '.bowerloom', 'skills', 'local-tool', '.DS_Store'), 'x');
+  const step = `If you do not need .bowerloom/skills/local-tool/.DS_Store, delete it. Otherwise rename it. ${RECORDS} ${AGAIN}`;
+  const all = run(dir, ['store', 'migrate', '--all'], w.env);
+  assert.ok(all.stdout.includes(`stays in this project. It holds a file that a store item cannot hold. ${step}`), all.stdout + all.stderr);
+  const named = run(dir, ['store', 'migrate', '--skill', 'local-tool', '--json'], w.env);
+  assert.equal(errorCode(named.stderr), 'MIGRATE_ITEM_UNSUPPORTED', named.stderr);
+  assert.equal(nextOf(named.stderr), step);
+});
+
+test('round 3. the faults that the live store does not reach, at unit level: not a folder, and a linked area', () => {
+  assert.equal((notShareable('file', { problem: 'not-folder', path: 'skills/x', item: 'skills/x' }) as { next?: string }).next, `~/.bowerloom/skills/x is not a real folder that you own. Run ls -ld ~/.bowerloom/skills/x. ${AGAIN}`);
+  assert.equal((notShareable('file', { problem: 'area', path: 'skills', item: 'skills/x' }) as { next?: string }).next, `~/.bowerloom/skills is a link or not a real folder. Make it a real folder in ~/.bowerloom. ${AGAIN}`);
+  assert.equal((notShareable('file', { problem: 'area', path: 'skills', item: 'skills/x', root: '.bowerloom' }) as { next?: string }).next, `.bowerloom/skills is a link or not a real folder. Make it a real folder in .bowerloom. ${AGAIN}`);
+});
+
+// Round 3 of the reviews of PR 101, item 3 (decided): the flag is accepted when no GitHub request is needed, with a note.
+test('round 3. use --max-github-requests with no GitHub request plans, with a note that it has no effect', t => {
+  const w = world(t), dir = project(w, 'alone', EMPTY_CONFIG);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  const r = run(dir, ['use', 'skill', 'house-style', '--max-github-requests', '9'], w.env);
+  assert.equal(r.status, 3, r.stderr);
+  assert.match(r.stdout, /^This run makes no GitHub request for a store item, so --max-github-requests has no effect\.$/m);
+});
+
+// Round 4 of the reviews of PR 101, item 1: a store made under umask 002 gets the words of an unsafe folder, and the step
+// it gives lifts the refusal when it is followed.
+test('round 4. a group-writable item folder, or ~/.bowerloom/skills, prints the unsafe folder step, and that step lifts it', t => {
+  const { w, dir } = sharedWithSkill(t);
+  const deny = network(w), step = `If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`;
+  const cases: [string, string, string][] = [
+    ['the item folder', join(w.store, 'skills', 'house-style'), `Bowerloom could not read the folder ${ITEM} safely. It must be a real folder that you own, closed to other users. Run ls -ld ${ITEM}. ${step}`],
+    ['the area folder', join(w.store, 'skills'), `Bowerloom could not read the folder ~/.bowerloom/skills safely. It must be a real folder that you own, closed to other users. Run ls -ld ~/.bowerloom/skills. ${step}`],
+  ];
+  for (const [label, folder, next] of cases) {
+    chmodSync(folder, 0o775);
+    const r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+    assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: ${r.stderr}`);
+    assert.equal(nextOf(r.stderr), next, label);
+    shell(w.home, 'chmod -R go-w ~/.bowerloom', w);
+    const after = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
+    assert.equal(after.status, 0, `${label}: the step lifts it: ${after.stderr}`);
+  }
+});
+
+// Round 4, item 5: a step under the .bowerloom of a project says where to run it, and store migrate names an unreadable item.
+test('round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o755);
+  const sub = join(dir, 'docs'); mkdirSync(sub, { mode: 0o755 });
+  const named = run(sub, ['store', 'migrate', '--skill', 'local-tool', '--json'], w.env);
+  assert.equal(errorCode(named.stderr), 'MIGRATE_ITEM_UNSUPPORTED', named.stderr);
+  assert.equal(nextOf(named.stderr), `In the project folder, run chmod a-x .bowerloom/skills/local-tool/SKILL.md. A lock records no file with an execute bit. ${AGAIN}`);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o000);
+  const all = run(sub, ['store', 'migrate', '--all'], w.env);
+  chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o644);
+  assert.ok(all.stdout.includes('stays in this project. Bowerloom could not read all of it safely. Bowerloom could not read .bowerloom/skills/local-tool/SKILL.md. In the project folder, run ls -la .bowerloom/skills/local-tool/SKILL.md.'), all.stdout + all.stderr);
+});
+
+// Round 4, item 6: apply and skills sync accept --max-github-requests when they read no host, and say it has no effect.
+test('round 4. apply and skills sync with --max-github-requests and nothing to fetch print the no-effect note', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  for (const args of [['apply'], ['skills', 'sync']]) {
+    const r = run(dir, [...args, '--max-github-requests', '9'], w.env);
+    assert.ok(r.status === 3 || r.status === 0, `${args.join(' ')}: ${r.stderr}`);
+    assert.match(r.stdout, /^This run makes no GitHub request for a store item, so --max-github-requests has no effect\.$/m, args.join(' '));
+    const plain = run(dir, args, w.env);
+    assert.doesNotMatch(plain.stdout, /has no effect/, `${args.join(' ')} without the flag`);
+  }
+});
+
+// Round 5 of the reviews of PR 101, item 5 (decided): one rule for the no-effect note, beside the request line.
+test('round 5. the no-effect note: an npm-only plan, a warm cache, and an empty config print it; a plan that reads GitHub does not', t => {
+  const NOTE = /^This run makes no GitHub request for a store item, so --max-github-requests has no effect\.$/m;
+  const fixtures = fileURLToPath(new URL('../../packages/skill-manifest/test/fixtures/', import.meta.url));
+  const npm = { 'https://registry.npmjs.org/@synthetic/db-skills/0.0.1': join(fixtures, 'npm-db-skills', 'metadata.json'), 'https://registry.npmjs.org/@synthetic/db-skills/-/db-skills-0.0.1.tgz': join(fixtures, 'npm-db-skills', 'archive.tgz') };
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  const empty = run(dir, ['apply', '--max-github-requests', '9'], w.env);
+  assert.match(empty.stdout, NOTE, 'an empty config');
+  mustApprove(dir, ['skills', 'add', 'npm:@synthetic/db-skills@0.0.1:skills/synthetic-db/collections'], network(w, npm).env, NETWORK);
+  shell(w.base, 'rm -rf state/bowerloom/cache', w);
+  const cold = run(dir, ['skills', 'sync', '--max-github-requests', '9'], network(w, npm).env, NETWORK);
+  assert.match(cold.stdout, /^Network: reads registry\.npmjs\.org/m); assert.match(cold.stdout, NOTE, 'an npm-only plan');
+  const lines = cold.stdout.split('\n'), at = lines.findIndex(l => NOTE.test(l));
+  assert.match(lines[at - 1]!, /^GitHub requests: at most 0, of the 9 this run allows\.$/, 'the note sits beside the request line');
+  mustApprove(dir, ['skills', 'sync'], network(w, npm).env, NETWORK);
+  assert.match(run(dir, ['skills', 'sync', '--max-github-requests', '9'], w.env).stdout, NOTE, 'a warm cache');
+  // A clone whose frozen install reads the store repository on GitHub: no note.
+  const owner = world(t), src = project(owner, 'app', EMPTY_CONFIG); shared(src);
+  mustApprove(owner.home, ['skill', 'create', 'house-style', '--global'], owner.env);
+  const repo = pushStore(owner);
+  mustApprove(src, ['use', 'skill', 'house-style'], network(owner, repo.routes).env, NETWORK);
+  const mate = world(t), copy = project(mate, 'app');
+  for (const f of ['bowerloom.json', 'bowerloom.lock.json']) copyFileSync(join(src, f), join(copy, f));
+  const frozen = run(copy, ['apply', '--frozen', '--max-github-requests', '9'], network(mate, repo.routes).env, NETWORK);
+  assert.match(frozen.stdout, /^GitHub requests: at most 5, of the 9 this run allows\.$/m); assert.doesNotMatch(frozen.stdout, NOTE);
+});
+
+// Round 5, item 6: store migrate gives each fault kind a reason that is true of it.
+test('round 5. store migrate --all names a true reason for each fault kind of a project item', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  const kinds: [string, (item: string) => void, string][] = [
+    ['empty-folder', item => mkdirSync(join(item, 'refs'), { mode: 0o755 }), 'It holds a folder that a store item cannot hold.'],
+    ['folder-name', item => { mkdirSync(join(item, '.drafts'), { mode: 0o755 }); writeFileSync(join(item, '.drafts', 'a.md'), 'a\n'); }, 'It holds a folder that a store item cannot hold.'],
+    ['too-deep', item => { mkdirSync(join(item, 'a/b/c/d/e/f/g/h'), { recursive: true, mode: 0o755 }); writeFileSync(join(item, 'a/b/c/d/e/f/g/h/x.md'), 'x\n'); }, 'It holds a folder that a store item cannot hold.'],
+    ['link', item => symlinkSync('SKILL.md', join(item, 'link.md')), 'It holds a link or a special file that a store item cannot hold.'],
+    ['special', item => shell(item, 'mkfifo pipe.md', w), 'It holds a link or a special file that a store item cannot hold.'],
+    ['empty', item => writeFileSync(join(item, 'empty.md'), ''), 'It holds an empty file, which a store item cannot hold.'],
+    ['count', item => { mkdirSync(join(item, 'many'), { mode: 0o755 }); for (let i = 0; i < 126; i++) writeFileSync(join(item, 'many', `f${i}.md`), `${i}\n`); }, 'It holds more files than a store item can hold.'],
+  ];
+  for (const [kind, make, reason] of kinds) {
+    const id = `t-${kind}`;
+    mustApprove(dir, ['skill', 'create', id], w.env);
+    make(join(dir, '.bowerloom', 'skills', id));
+  }
+  const all = run(dir, ['store', 'migrate', '--all'], w.env);
+  for (const [kind, , reason] of kinds) assert.ok(all.stdout.split('\n').some(l => l.includes(`skill t-${kind}`) && l.includes(`stays in this project. ${reason}`)), `${kind}: ${all.stdout}`);
+});
+
+test('round 5. the store migrate reason of every fault kind, at unit level', () => {
+  const reason = (problem: string, cause: 'file' | 'size' = 'file') => MIGRATE_REASON[reasonOf(notShareable(cause, { problem: problem as never, path: 'skills/x/a', item: 'skills/x' }))];
+  for (const p of ['empty-folder', 'too-deep', 'folder-name']) assert.equal(reason(p), 'It holds a folder that a store item cannot hold.', p);
+  // Round 6: the item itself, and its area folder.
+  assert.equal(reason('not-folder'), 'It is not a real folder that you own.');
+  assert.equal(reason('area'), 'It sits in a folder of .bowerloom that is a link or not a real folder.');
+  for (const p of ['link', 'special']) assert.equal(reason(p), 'It holds a link or a special file that a store item cannot hold.', p);
+  for (const p of ['unreadable', 'unsafe-file', 'unsafe-folder']) assert.equal(reason(p), 'Bowerloom could not read all of it safely.', p);
+  for (const p of ['names', 'too-many']) assert.equal(reason(p), 'It holds names that Bowerloom does not read.', p);
+  assert.equal(reason('empty'), 'It holds an empty file, which a store item cannot hold.');
+  assert.equal(reason('count', 'size'), 'It holds more files than a store item can hold.');
+  for (const p of ['large', 'total']) assert.equal(reason(p, 'size'), 'It is larger than a store item can be.', p);
+  for (const p of ['name', 'mode', 'bom', 'encoding']) assert.equal(reason(p), 'It holds a file that a store item cannot hold.', p);
+});
+
+// Round 5 of the reviews of PR 101, item 4: a store fault met on a run with --approve says what to do if the item also
+// changed, and the same --approve applies once only the fault is fixed.
+test('round 5. store migrate --approve with a fault: the step ends with the approval note, and the same --approve then applies', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(dir, ['skill', 'create', 'house-style'], w.env);
+  mustApprove(dir, ['store', 'migrate', '--all'], w.env);
+  const repo = pushStore(w), net = network(w, repo.routes);
+  const plan = JSON.parse(run(dir, ['store', 'migrate', '--all', '--json'], net.env, NETWORK).stdout) as { revision: string };
+  const file = join(w.store, 'skills', 'house-style', 'SKILL.md');
+  chmodSync(file, 0o755);
+  const refused = run(dir, ['store', 'migrate', '--all', '--json', '--approve', plan.revision], net.env, NETWORK);
+  assert.equal(errorCode(refused.stderr), 'STORE_ITEM_NOT_SHAREABLE', refused.stderr);
+  assert.equal(nextOf(refused.stderr), `Run chmod a-x ~/.bowerloom/skills/house-style/SKILL.md. A lock records no file with an execute bit. ${AGAIN} If you also changed the item, run the command again without --approve.`);
+  // Without --approve, the plan carries no approval note.
+  assert.ok(!nextOf(run(dir, ['store', 'migrate', '--all', '--json'], net.env, NETWORK).stderr)!.includes('--approve'));
+  chmodSync(file, 0o644);
+  assert.equal(run(dir, ['store', 'migrate', '--all', '--approve', plan.revision], net.env, NETWORK).status, 0, 'the same --approve applies');
+});
+
+
+// Round 6 of the reviews of PR 101, item 2: the item note fits a fault of an item only. A store repository cause on a run
+// with --approve says to run again without --approve, because pushing or adding a remote changes the plan.
+test('round 6. an unpushed store with --approve says to run again without --approve, and gets no item note', t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG); shared(dir);
+  mustApprove(w.home, ['skill', 'create', 'house-style', '--global'], w.env);
+  pushStore(w); shell(w.store, "printf 'ffffffffffffffffffffffffffffffffffffffff\\n' > .git/refs/heads/main && rm .git/refs/remotes/origin/main", w);
+  const r = run(dir, ['use', 'skill', 'house-style', '--json', '--approve', 'a'.repeat(64)], w.env);
+  assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', r.stderr);
+  assert.equal(nextOf(r.stderr), 'Push the branch of the store, or pass --commit <sha> of a pushed commit. bowerloom store status shows the command. Or adopt a team into this project with bowerloom team adopt. After you fix the store, run the command again without --approve.');
+  assert.ok(!nextOf(run(dir, ['use', 'skill', 'house-style', '--json'], w.env).stderr)!.includes('--approve'), 'without --approve, no note');
+});
+
+// Round 6, item 3: each command with --approve adds the item note to a store fault; without --approve it does not; and an
+// error that is not a store fault is unchanged.
+test('round 6. use, apply, skills sync, and lock update with --approve add the item note to a store fault', t => {
+  const { w, dir } = sharedWithSkill(t);
+  mustApprove(w.home, ['skill', 'create', 'second', '--global'], w.env);
+  const STEP = `Run chmod a-x ~/.bowerloom/skills/house-style/run.md. A lock records no file with an execute bit. ${AGAIN}`;
+  const NOTE = 'If you also changed the item, run the command again without --approve.';
+  writeFileSync(join(w.store, 'skills', 'house-style', 'run.md'), '# r\n', { mode: 0o755 });
+  writeFileSync(join(w.store, 'skills', 'second', 'run.md'), '# r\n', { mode: 0o755 });
+  const deny = network(w), fake = 'a'.repeat(64);
+  const cases: [string[], string][] = [[['use', 'skill', 'second'], STEP.replace('house-style', 'second')], [['apply'], STEP], [['skills', 'sync'], STEP], [['lock', 'update'], STEP]];
+  for (const [args, step] of cases) {
+    const approved = run(dir, [...args, '--json', '--approve', fake], deny.env, NETWORK);
+    assert.equal(errorCode(approved.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${args.join(' ')}: ${approved.stderr}`);
+    assert.equal(nextOf(approved.stderr), `${step} ${NOTE}`, args.join(' '));
+    assert.equal(nextOf(run(dir, [...args, '--json'], deny.env, NETWORK).stderr), step, `${args.join(' ')} without --approve`);
+  }
+  // A refusal that is not a store fault keeps its words with --approve.
+  writeFileSync(join(dir, 'bowerloom.lock.json'), '{');
+  const invalid = run(dir, ['lock', 'update', '--item', 'skill:house-style', '--json', '--approve', fake], deny.env, NETWORK);
+  assert.equal(errorCode(invalid.stderr), 'LOCK_INVALID'); assert.ok(!invalid.stderr.includes('If you also changed'));
+});
+
+test('round 6. runWithApproval adds the item note to a fault that apply finds, and leaves other errors as they are', async () => {
+  const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
+  const change = (error: unknown) => ({ plan: async () => ({}), revision: () => 'b'.repeat(64), review: () => '', apply: async () => { throw error; } });
+  const io = { interactive: false, ask: async () => 'n' };
+  await assert.rejects(runWithApproval(change(fault), { approve: 'b'.repeat(64), json: true }, io), (e: Error & { next?: string }) => e.next!.endsWith('If you also changed the item, run the command again without --approve.'));
+  const other = new Error('other');
+  await assert.rejects(runWithApproval(change(other), { approve: 'b'.repeat(64), json: true }, io), (e: unknown) => e === other);
+});
+
+test('round 6. a step with no plain path gives no command, and its sentences start with a capital', () => {
+  const next = (problem: string, cause: 'file' | 'size' = 'file') => (notShareable(cause, { problem: problem as never, path: 'other/x', item: 'skills/../x' }) as { next?: string }).next!;
+  assert.equal(next('unreadable'), `Bowerloom could not read the store item. Give yourself read access to the files of the item. ${AGAIN}`);
+  assert.equal(next('unsafe-folder'), `Bowerloom could not read a folder of the store item safely. It must be a real folder that you own, closed to other users. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`);
+  assert.equal(next('not-folder'), `The store item is not a real folder that you own. ${AGAIN}`);
+  assert.equal(next('unsafe-file'), `Bowerloom could not read a file in the store item safely. Each file must be a plain file that you own, with one link, closed to other users. ${AGAIN}`);
+  for (const p of ['names', 'too-many', 'empty-folder']) assert.match(next(p), /^The store item /, p);
+  for (const p of ['count', 'total']) assert.match(next(p, 'size'), /^The store item /, p);
+  for (const p of ['unreadable', 'unsafe-folder', 'not-folder', 'unsafe-file']) assert.doesNotMatch(next(p), /\bRun (?:ls|chmod)\b/, p);
+});
+
+// Round 7 of the reviews of PR 101, item 2: a partial refusal of a store fault keeps its next step through runWithApproval.
+test('round 7. runWithApproval leaves the next step of a partial refusal of a store fault unchanged', async () => {
+  const fault = notShareable('file', { problem: 'mode', path: 'skills/x/run.md', item: 'skills/x' });
+  const partial = partialRefusal(atApproval(fault), ['x'], 'bowerloom store migrate --all') as Error & { next?: string };
+  const before = partial.next;
+  const change = { plan: async () => ({}), revision: () => 'c'.repeat(64), review: () => '', apply: async () => { throw partial; } };
+  await assert.rejects(runWithApproval(change, { approve: 'c'.repeat(64), json: true }, { interactive: false, ask: async () => 'n' }),
+    (e: Error & { next?: string }) => e.next === before && (e.next!.match(/Then run/g) ?? []).length === 1);
+});

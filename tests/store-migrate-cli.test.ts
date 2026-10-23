@@ -198,7 +198,8 @@ test('6. a shared project: the first run copies and prints Not switched; after t
   // The next run: the copies are present, and the store has no git repository yet.
   const repoRun = run(dir, ['store', 'migrate', '--all'], w.env);
   assert.equal(repoRun.status, 0, 'present items with no store .git change nothing');
-  assert.match(repoRun.stdout, /^Not switched: skill house-style cannot be locked yet\. The store is not a git repository\. Push the store, then run this command again\.$/m);
+  // Round 3 of the reviews of PR 101: the cause prints its own step.
+  assert.match(repoRun.stdout, /^Not switched: skill house-style cannot be locked yet\. The store is not a git repository\. Make the store a git repository and push it to a github\.com repository\. bowerloom store status shows the commands\. Then run this command again\.$/m);
   assert.match(repoRun.stdout, /\nNothing to change\.\n$/);
   const repo = pushStore(w), net = network(w, repo.routes);
   const second = approve(dir, ['store', 'migrate', '--all'], net.env, NETWORK);
@@ -276,7 +277,7 @@ test('11. while another command holds the project lock, store migrate --approve 
   assert.match(errorMessage(r.stderr), /Bowerloom made the store at ~\/\.bowerloom before it waited for the project\. Run the command again without --approve to see the next plan\.$/);
   // Second security review M1: the Next step is that command, and the envelope says the run was partial.
   const envelope = (JSON.parse(r.stderr) as { error: { next?: string; partial?: boolean } }).error;
-  assert.equal(envelope.next, 'bowerloom store migrate --prompt brief'); assert.equal(envelope.partial, true);
+  assert.equal(envelope.next, 'Run bowerloom store migrate --prompt brief.'); assert.equal((envelope as { fix?: string }).fix, 'bowerloom store migrate --prompt brief'); assert.equal(envelope.partial, true);
   assert.deepEqual(snapshot(dir), before, 'nothing in the project changed: no bowerloom.json, no lock, and .bowerloom as it was');
   // The store lock came first, so the store was made; with the lock free again, a new plan applies.
   mustApprove(dir, ['store', 'migrate', '--prompt', 'brief'], w.env);

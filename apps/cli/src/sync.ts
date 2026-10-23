@@ -13,13 +13,14 @@ import type { PlannedChange, ProjectContext } from '../../../packages/project-co
 import { isId } from '../../../packages/skill-manifest/src/schema.js';
 import { planSync, applySync, productionAcquirer, managedPort, planItemRecovery, applyItemRecovery, planMigrate, applyMigrate } from '../../../packages/project-sync/src/index.js';
 import type { SyncPlan, SyncItem, SyncResult, MigratePlan, SyncDeps, ManagedPort } from '../../../packages/project-sync/src/index.js';
+import { requestNote } from '../../../packages/project-sync/src/change.js';
 import { GITHUB_REQUEST_LIMIT } from '../../../packages/project-sync/src/store-git.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
-import { parseApprovalFlags, runWithApproval } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { newCommandJson, plainText } from './human.js';
 import { allowedToolsLine, terminalIo } from './manifest.js';
@@ -99,11 +100,13 @@ function extraFilesLine(item: SyncItem): string[] {
   return [`  skill ${item.id} also holds: ${shown}${extra.length > 20 ? `, and ${extra.length - 20} more` : ''}`];
 }
 /** Second review L2: the GitHub requests of the run and its limit, when the run makes any or the limit was set. */
-export function requestLine(network: { requests?: number; maxRequests?: number } | undefined): string[] {
+export function requestLine(network: { requests?: number; maxRequests?: number; hosts?: readonly string[] } | undefined, maxSet = false): string[] {
   const requests = network?.requests ?? 0, max = network?.maxRequests ?? GITHUB_REQUEST_LIMIT;
-  if (requests === 0 && max === GITHUB_REQUEST_LIMIT) return [];
+  // Round 5 of the reviews of PR 101: the note that the flag has no effect sits beside the request line it is about.
+  const note = requestNote(maxSet, network?.hosts ?? [], requests);
+  if (requests === 0 && max === GITHUB_REQUEST_LIMIT) return note;
   const over = requests > max ? ` Run it with --max-github-requests ${requests} or more.` : '';
-  return [`GitHub requests: at most ${requests}, of the ${max} this run allows.${over}`];
+  return [`GitHub requests: at most ${requests}, of the ${max} this run allows.${over}`, ...note];
 }
 const SKILL_NOTICE_WORDS: Record<string, string> = { 'allowed-tools': 'sets allowed-tools in its frontmatter', hooks: 'registers hooks that keep running for the rest of the session', 'shell-lines': 'runs shell commands marked with !' };
 /** Review H1: a store skill that can do more than text is named, as a prompt is; allowed-tools a pin shows is not repeated. */
@@ -117,7 +120,7 @@ function skillNoticeLine(item: SyncItem): string[] {
 function itemLineBase(item: SyncItem, width: number): string[] {
   const id = item.id.padEnd(width), pin = item.pin ?? '';
   const how = item.cache?.status === 'needs-fetch' ? `, fetched from ${item.kind === 'git' ? 'api.github.com' : 'registry.npmjs.org'}` : item.cache?.status === 'cached' ? ", from this machine's cache" : '';
-  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${plainText(item.hold!.next)}`];
   switch (item.state) {
     case 'up-to-date': return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
     case 'orphaned': return [`  ${id} kept: no longer in skills.json, and sync removes nothing`];
@@ -131,7 +134,7 @@ function itemLineBase(item: SyncItem, width: number): string[] {
   }
 }
 /** The sync plan in plain words. confirm.ts escapes control characters again before printing. */
-export function renderSyncReview(plan: SyncPlan): string {
+export function renderSyncReview(plan: SyncPlan, maxSet = false): string {
   const fetch = plan.items.filter(i => (i.action === 'install' || i.action === 'update') && (i.cache?.status === 'needs-fetch' || i.storeCache === 'missing'));
   const stored = (plan.storeFetch ?? []).filter(f => f.storeCache === 'missing'), config = plan.config != null, n = fetch.length + stored.length;
   const width = Math.max(0, ...plan.items.map(x => x.id.length), ...plan.storeFetch.map(f => f.id.length)) + 1;
@@ -145,7 +148,7 @@ export function renderSyncReview(plan: SyncPlan): string {
     n && plan.network.credentials ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}.${plan.network.hosts.includes('registry.npmjs.org') ? ' Pins are fetched without credentials.' : ''} ${TOKEN_TAIL}`
       : n ? `Network: reads ${plan.network.hosts.join(' and ')} for ${n} ${n === 1 ? 'item' : 'items'}, public and without credentials. Bytes must match their pins or bowerloom.lock.json.`
       : plan.network.hosts.length ? `Network: none now. Every pinned skill is in this machine's cache. Only if one is gone when this applies does sync read ${plan.network.hosts.join(' and ')} for it.` : 'Network: none.',
-    ...requestLine(plan.network),
+    ...requestLine(plan.network, maxSet),
     `Skills cache: ${plan.privateState.cacheRoot}, shared by every project on this machine.`,
     `Private state: ${plan.privateState.root}${plan.privateState.create.length ? ' (new folders get mode 0700)' : ''}`,
     'Copies go to .bowerloom/managed, .claude/skills and .agents/skills, and stay on this machine. Commit .bowerloom/skills.json and your own skills.',
@@ -156,7 +159,7 @@ export function renderSyncReview(plan: SyncPlan): string {
 export function resultWords(result: SyncResult): string {
   return plainText([
     ...result.applied.map(a => `  ${a.id}: ${a.action === 'install' ? 'installed' : 'updated'}`),
-    ...result.held.map(h => `  ${h.id}: held (${h.code}). Next: ${h.next}`),
+    ...result.held.map(h => `  ${h.id}: held (${h.code}). Next: ${plainText(h.next)}`),
     ...(result.orphaned.length ? [`  kept, not in skills.json: ${result.orphaned.join(', ')}`] : []),
     '',
   ].join('\n'), true);
@@ -213,12 +216,12 @@ export async function runSyncCommand(args: readonly string[], cwd: string, home:
   // Spec 07: the planner reads the token through this reader only when an authored lock item needs its repository.
   const githubToken = githubTokenReader(env);
   const { project, stateRoot } = contextOf(cwd, home, env), input = () => ({ project, stateRoot, home, team, offline: flags.has('--offline'), frozen: flags.has('--frozen'), githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
-  const first = await planSync(input());
-  if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first), true)}\nNothing to change.\n`); return 0; }
+  let first: SyncPlan; try { first = await planSync(input()); } catch (error) { throw approvalFault(error, approval.approve); }
+  if (!actionable(first) && !first.storeFetch.some(f => f.storeCache === 'missing') && approval.approve === undefined) { write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderSyncReview(first, max !== undefined), true)}\nNothing to change.\n`); return 0; }
   let pending: SyncPlan | null = first, result: SyncResult | null = null;
   const change: PlannedChange<SyncPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planSync(input()); },
-    revision: plan => plan.revision, review: renderSyncReview, staleNote: syncStaleNote,
+    revision: plan => plan.revision, review: plan => renderSyncReview(plan, max !== undefined), staleNote: syncStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applySync(input(), revision, { acquirer, signal, managed })); return result;
     },
@@ -266,7 +269,7 @@ export async function runMigrateCommand(args: readonly string[], cwd: string, ho
   const approval = parseApprovalFlags(rest); if (approval.rest.length || (mode === 'plan' && approval.approve !== undefined)) usage(MIGRATE_USAGE);
   const state = values.get('--state'); if (state === undefined || !isAbsolute(state) || resolve(state) !== state) return usage(MIGRATE_USAGE);
   const { project, stateRoot } = contextOf(cwd, home, env), input = { project, stateRoot, legacyStateDir: state };
-  const change: PlannedChange<MigratePlan> = { plan: () => planMigrate(input), revision: p => p.revision, review: renderMigrateReview, apply: revision => applyMigrate(input, revision, { acquirer, signal: new AbortController().signal }) };
+  const change: PlannedChange<MigratePlan> = { plan: () => planMigrate(input, mode), revision: p => p.revision, review: renderMigrateReview, apply: revision => applyMigrate(input, revision, { acquirer, signal: new AbortController().signal }) };
   const outcome = await runWithApproval(change, { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json: approval.json }, mode === 'plan' ? { interactive: false, ask: async () => '' } : io);
   write(outcome.output); return outcome.exitCode;
 }

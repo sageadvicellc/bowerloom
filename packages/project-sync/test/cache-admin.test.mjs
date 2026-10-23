@@ -458,7 +458,7 @@ test('25. each unknown-source rule of 3.2 puts the source in unreadableSources',
     ['a refusing lock', 'project', async w => { fs.writeFileSync(path.join(w.projectDir, 'bowerloom.lock.json'), '{}\n', { mode: 0o644 }); return {}; }, 'LOCK_INVALID', 'bowerloom.lock.json'],
     ['a throwing inspectStore', 'store', async w => { await storeItem(w, 'team', 'studio'); fs.chmodSync(w.store, 0o777); return {}; }, 'STORE_UNSAFE', null],
     ['a refusing store skills.json', 'store', async w => { await storeItem(w, 'team', 'studio'); fs.writeFileSync(path.join(w.store, 'skills.json'), 'null', { mode: 0o600 }); return {}; }, 'MANIFEST_INVALID', 'skills.json'],
-    ['a localItemRows refusal for a live store item', 'store', async w => { await storeItem(w, 'team', 'studio'); await storeItem(w, 'skill', 'house-style'); fs.writeFileSync(path.join(w.store, 'skills', 'house-style', 'run.sh'), 'echo\n', { mode: 0o755 }); return {}; }, 'STORE_ITEM_NOT_SHAREABLE', 'skill house-style'],
+    ['a localItemRows refusal for a live store item', 'store', async w => { await storeItem(w, 'team', 'studio'); await storeItem(w, 'skill', 'house-style'); fs.writeFileSync(path.join(w.store, 'skills', 'house-style', 'run.sh'), 'echo\n', { mode: 0o755 }); return {}; }, 'STORE_ITEM_NOT_SHAREABLE', 'skill house-style', 'If you do not need ~/.bowerloom/skills/house-style/run.sh, delete it. Otherwise rename it. A name holds only letters, digits, dots, dashes, and underscores, and does not start with a dot. The first name in the item starts with a letter or a digit. A lock records only files whose names end in .md, .txt, .json, .yaml, .yml, or .csv, and LICENSE and NOTICE files. Then run the command again.'],
     ...['skills', 'prompts', 'teams'].map(area => [`a linked store area ~/.bowerloom/${area}`, 'store', async w => {
       await storeItem(w, 'team', 'studio'); const real = path.join(w.base, `real-${area}`);
       if (fs.existsSync(path.join(w.store, area))) fs.renameSync(path.join(w.store, area), real); else fs.mkdirSync(real, { mode: 0o700 });
@@ -466,13 +466,14 @@ test('25. each unknown-source rule of 3.2 puts the source in unreadableSources',
     }, 'AUTHORING_UNSAFE_PATH', area]),
     ['a folder at ~/.bowerloom that is not a store', 'store', async w => { fs.mkdirSync(w.store, { mode: 0o700 }); fs.writeFileSync(path.join(w.store, 'notes.md'), 'x\n'); return {}; }, 'STORE_INVALID', null],
   ];
-  for (const [name, source, make, why, item] of cases) {
+  for (const [name, source, make, why, item, next] of cases) {
     await t.test(name, async t2 => {
       const w = world(t2), extra = await make(w), a = npmPackage('alpha'); await seed(w, a);
       t2.after(() => { try { fs.chmodSync(w.store, 0o700); } catch { /* gone */ } });
       const list = await listCache(w.input(extra));
       assert.deepEqual(list.unreadableSources, [source]); assert.equal(list.entries[0].references[source], null);
-      assert.deepEqual(list.unreadable, [{ source, code: why, item }], 'review M1: the cause of an unknown source');
+      // Round 3 of the reviews of PR 101: a store fault keeps the next step that names its file.
+      assert.deepEqual(list.unreadable, [{ source, code: why, item, ...(next !== undefined ? { next } : {}) }], 'review M1: the cause of an unknown source');
       assert.deepEqual((await planCachePrune({ ...w.input(extra), selectors: sel({ unreferenced: true }) })).picked, []);
     });
   }
@@ -497,7 +498,7 @@ test('12.7. a pin pruned between phase A and phase B of a sync refuses STALE_APP
   const managed = { async plan(req, options) { const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal()); return managedPort.plan(req, options); }, apply: managedPort.apply };
   // Review M2 of PR 99 (tech lead): the cause and the next step, in place of MANAGED_SKILL_REFUSED.
   await assert.rejects(applySync(syncInput(), plan.revision, { acquirer: fakeAcquirer([a]), signal: signal(), managed }), e => code('STALE_APPROVAL')(e)
-    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'bowerloom skills sync');
+    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.' && e.fix === 'bowerloom skills sync');
   assert.equal(exactTree(w.projectDir), before, 'nothing in the project changed');
   assert.equal(fs.existsSync(path.join(w.projectDir, '.bowerloom', 'managed-pending.json')), false, 'no pending record');
   // A rerun fetches again.
@@ -539,7 +540,7 @@ test('12.7b. a cached pin pruned before phase A reads it back gives the same cau
   const input = { ...w.input(), selectors: sel({ all: true }) }; await applyCachePrune(input, (await planCachePrune(input)).revision, signal());
   const context = { rerun: 'bowerloom skills sync', stateRoot: w.stateRoot, cacheIdentity: identity(w.cacheRoot) };
   await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), e => code('STALE_APPROVAL')(e)
-    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'bowerloom skills sync');
+    && e.message.endsWith(' The cached pin of alpha was deleted after the fetch, for example by bowerloom cache prune. Run bowerloom skills sync again.') && e.next === 'Run bowerloom skills sync again.' && e.fix === 'bowerloom skills sync');
   // An operation that is there but unreadable keeps its own refusal.
   await seed(w, a); fs.appendFileSync(path.join(w.cacheRoot, 'op-' + item.cache.operationId, 'files', 'SKILL.md'), 'x');
   await assert.rejects(selectorFor(item, entryRequest(a.entry), item.cache, context), code('SKILLS_CACHE_RECOVERY_REQUIRED'));
@@ -793,5 +794,11 @@ test('L-2 (round 5). a blocked .prune- leftover goes after every leftover that c
 test('L-3 (round 5). an unlisted leftover whose name holds a control character gets guidance, not a command', async t => {
   const w = world(t); stateFolders(w); const odd = path.join(w.cacheRoot, '.prune-x\u0007y'); fs.mkdirSync(odd, { mode: 0o750 }); fs.chmodSync(odd, 0o750);
   const list = await listCache(w.input());
-  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds control characters, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
+  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
+});
+// Round 10 of the reviews of PR 101: a backslash, which fish reads inside single quotes, gets the same guidance.
+test('an unlisted leftover whose name holds a backslash gets guidance, not a command', async t => {
+  const w = world(t); stateFolders(w); const odd = path.join(w.cacheRoot, '.prune-x\\y'); fs.mkdirSync(odd, { mode: 0o750 }); fs.chmodSync(odd, 0o750);
+  const list = await listCache(w.input());
+  assert.deepEqual(list.unlistedNames.map(u => u.next), ['Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.']);
 });

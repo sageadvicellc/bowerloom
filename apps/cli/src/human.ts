@@ -1,4 +1,4 @@
-import { canonicalJson, DefinitionError } from '../../../packages/contracts/src/index.js';
+import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -113,7 +113,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
   ].join('\n'),
   use: [
     'Usage:',
-    '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]', '',
+    '  bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--max-github-requests <n>] [--approve <revision>] [--json]', '',
     'Picks an item for this project. By default the item comes from your store, ~/.bowerloom.',
     '--project picks an item that this project defines in .bowerloom and that bowerloom.json does not list yet.',
     'bowerloom.json lists everything this project installs. If it is missing, use creates it and lists the items',
@@ -121,6 +121,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'use team <id> also picks the store skills and prompts that name that team.',
     'In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.',
     '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
+    '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
     'It changes bowerloom.json and bowerloom.lock.json only. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
@@ -373,8 +374,10 @@ export function exitCodeFor(error: unknown): ExitCode {
 
 // Every control character (C0, DEL, C1), every format character (the bidi controls, zero-width characters, the byte
 // order mark, tag characters), and the line and paragraph separators U+2028 and U+2029 (review M1F 2).
-const CONTROLS = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
-const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+// Round 11 of the reviews of PR 101 (variant A): ZWNJ and ZWJ (U+200C and U+200D) print as they are, as shellArg keeps
+// them. They join glyphs in real folder names, and they cannot break a line or reorder text.
+const CONTROLS = /[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu;
+const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu;
 // Every UTF-16 unit of a match as `\\uXXXX`, so a character outside the basic plane (a tag character) keeps both halves.
 const escapeUnits = (c: string): string => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('');
 // DEL (review M3 finding 6), the C1 controls and the format characters (bidi controls, zero-width characters), plus the
@@ -425,16 +428,19 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   STORE_UNREADABLE: { sentence: 'A folder that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -ld ~ ~/.bowerloom' },
   STORE_IN_CLOUD_FOLDER: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep the store safe.', next: 'Move the home folder setup out of iCloud. The store must stay at ~/.bowerloom.' },
   STORE_STATE_NESTED: { sentence: 'Bowerloom keeps the cache outside the store, so a store inside the state folder, or the reverse, is refused.', next: 'Set XDG_STATE_HOME to a folder outside ~/.bowerloom.' },
-  STORE_WRITE_FAILED: { sentence: 'The disk refused the write. The message names the system error.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
+  // Round 1 of the reviews of PR 101 (Hanna's choice C on #97): the words of the errors.md row, so the terminal and the docs agree.
+  STORE_WRITE_FAILED: { sentence: 'Bowerloom failed to write to the store. The disk refused the write, and the message names the system error, such as ENOSPC.', next: 'df -h ~ && ls -ld ~/.bowerloom' },
   STORE_LOCKED: { sentence: 'Two commands must not change the store at the same time, so nothing was changed.', next: 'When the other command is done, run this one again.' },
-  STORE_NOT_A_PROJECT: { sentence: 'Run this command in a project folder outside ~/.bowerloom.', next: 'cd <project-folder>' },
+  STORE_NOT_A_PROJECT: { sentence: 'The store holds definitions only, so a folder inside it cannot be a project.', next: 'Run the command in a project folder outside ~/.bowerloom.' },
   CONFIG_INVALID: { sentence: 'Bowerloom reads bowerloom.json strictly, so a hand edit can break it.', next: 'git diff bowerloom.json' },
   CONFIG_UNREADABLE: { sentence: 'A file that cannot be read cannot be checked, so Bowerloom does not use it.', next: 'ls -l bowerloom.json' },
   // Spec 06, section 5.
   STORE_ITEM_NOT_FOUND: { sentence: 'Bowerloom picks only items that your store defines.', next: 'bowerloom ls --global' },
   STORE_ITEM_MISSING: { sentence: 'A listed store item is not in your store and not in the lock, so Bowerloom cannot install it.', next: 'Create it with bowerloom <kind> create <id> --global, or run bowerloom unuse <kind> <id>.' },
-  STORE_ITEM_NOT_SHAREABLE: { sentence: 'A shared project needs every store item to be fetchable by your team.', next: 'Give the store a remote and push it. bowerloom store status shows the commands. Or adopt a team into this project with bowerloom team adopt.' },
-  STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It may be private or may not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
+  // Round 2 of the reviews of PR 101: each cause and each fault carries its own next step, which names the file or folder.
+  // Round 3: the sentence holds in a project that is not shared too, and each cause carries its own next step.
+  STORE_ITEM_NOT_SHAREABLE: { sentence: 'Each store item that a lock records must be fetchable by your team.', next: 'Each cause prints its own next step. bowerloom store status shows the git state of the store.' },
+  STORE_REMOTE_PRIVATE: { sentence: 'GitHub does not show this repository without a token. It is private, or it does not exist.', next: 'Set BOWERLOOM_GITHUB_TOKEN to a GitHub token that can read the repository, or make the repository public.' },
   // Spec 07, section 5: the sentence is the fixed message, and the next step the table's.
   // Review R2 of PR 97 (option C): each sentence says why, instead of repeating the message.
   GITHUB_TOKEN_INVALID: { sentence: "Bowerloom checks the token's shape before any network call and never shows the value.", next: 'Set it to a token with letters, digits, _ or -, 20 to 255 characters.' },
@@ -455,8 +461,8 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   CACHE_PRUNE_FAILED: { sentence: 'Bowerloom deletes only private folders of this user, one at a time, and stops at the first one it cannot delete.', next: 'bowerloom cache list, then run the command again without --approve' },
   CONFIG_ITEM_NOT_SELECTED: { sentence: 'Bowerloom changes only items that bowerloom.json lists.', next: 'bowerloom ls' },
   CONFIG_ITEM_MISSING: { sentence: 'bowerloom.json lists a project item that the project does not define.', next: 'bowerloom <kind> create <id>, or bowerloom unuse <kind> <id>.' },
-  CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.json' },
-  TEAM_NOT_SELECTED: { sentence: 'up installs for a team only if bowerloom.json lists it.', next: 'bowerloom use team <id>' },
+  CONFIG_WRITE_UNCONFIRMED: { sentence: 'bowerloom.json was written, but it changed again before Bowerloom read it back.', next: 'git diff bowerloom.json' },
+  TEAM_NOT_SELECTED: { sentence: 'up installs only the teams that bowerloom.json lists.', next: 'bowerloom use team <id>, or add --project for a team this project defines' },
   LOCK_MISSING: { sentence: 'A frozen install needs bowerloom.lock.json, and there is none.', next: 'bowerloom lock update on a machine with the store.' },
   LOCK_INVALID: { sentence: 'Bowerloom reads the lock strictly, so a hand edit or a merge conflict can break it.', next: 'bowerloom lock verify. For a merge conflict, take one side for each item, then run it.' },
   LOCK_UNSAFE: { sentence: 'Bowerloom will not trust a lock file that links or other users can change.', next: 'ls -l bowerloom.lock.json' },
@@ -466,9 +472,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   LOCK_HASH_MISMATCH: { sentence: 'Bowerloom installs only bytes that match the lock, so it stopped before any change to the project.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
   LOCK_STORE_NOT_PUSHED: { sentence: 'A teammate can fetch only what you pushed, and your store differs from the pushed copy.', next: 'Commit and push the store, then run the command again.' },
   LOCK_COMMIT_UNREACHABLE: { sentence: 'The lock needs a commit that GitHub has, and GitHub does not have this one.', next: 'Push the store, or pass --commit <sha> of a pushed commit.' },
-  LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom could read it back.', next: 'git diff bowerloom.lock.json' },
-  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, make sure that the store repository is public. If this is your store repository, set BOWERLOOM_GITHUB_TOKEN.' },
-  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'bowerloom lock verify' },
+  LOCK_WRITE_UNCONFIRMED: { sentence: 'bowerloom.lock.json was written, but it changed again before Bowerloom read it back.', next: 'git diff bowerloom.lock.json' },
+  GITHUB_REQUEST_FAILED: { sentence: 'GitHub answered with an error status, so Bowerloom stopped before any change to the project.', next: 'Run the command again later. If the status is 401 or 403, check that you can read the repository. For a private store repository, set BOWERLOOM_GITHUB_TOKEN.' },
+  GITHUB_REQUEST_BUDGET: { sentence: 'A lock this large needs several runs or a smaller selection.', next: 'For apply, skills sync, and use, run it again with --max-github-requests <n>, up to 5000. For lock update, lock fewer items in one run with --item <kind>:<id>. For store migrate, move fewer items in one run.' },
   // Beta.3 docs review, fix 2.
   LOCK_COMMIT_GONE: { sentence: 'A force-push or a deleted branch removes a commit that a lock still names.', next: 'Ask the author of the store to run bowerloom lock update, then commit and push bowerloom.lock.json. Then pull the project.' },
   STORE_ITEM_GONE_AT_COMMIT: { sentence: 'The lock names a store commit that does not hold this item, so Bowerloom cannot install it.', next: 'bowerloom lock verify, then ask the owner of the store to run bowerloom lock update.' },
@@ -480,14 +486,14 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   MANIFEST_NOT_FOUND: { sentence: 'There is nothing to check yet.', next: 'bowerloom skills add npm:<package>@<version>:<path>' },
   MANIFEST_INVALID: { sentence: 'Bowerloom reads skills.json strictly, so a hand edit can break it.', next: 'git diff .bowerloom/skills.json' },
   MANIFEST_UNSAFE: { sentence: 'Bowerloom will not trust a skills.json that other people or links can change.', next: 'ls -l .bowerloom/skills.json' },
-  MANIFEST_WRITE_UNCONFIRMED: { sentence: 'skills.json was written, but it changed again before Bowerloom could read it back. Check it before you run the command again.', next: 'bowerloom skills check' },
+  MANIFEST_WRITE_UNCONFIRMED: { sentence: 'skills.json was written, but it changed again before Bowerloom read it back.', next: 'Check skills.json, then run bowerloom skills check.' },
   MANIFEST_PIN_NOT_EXACT: { sentence: 'A pin that can move would install different files on different machines.', next: 'bowerloom help skills' },
   MANIFEST_LICENSE_UNSUPPORTED: { sentence: 'This beta installs MIT and Apache-2.0 skills only.', next: 'bowerloom help skills' },
   MANIFEST_DUPLICATE_ID: { sentence: 'Each skill needs its own id.', next: 'git diff .bowerloom/skills.json' },
   MANIFEST_LIMIT: { sentence: 'This beta keeps skills.json small: 128 skills and 1 MiB at most.', next: 'bowerloom skills check' },
   SKILLS_ADD_SPEC_INVALID: { sentence: 'The source names a package or repository, an exact pin, and the skill folder.', next: 'bowerloom help skills' },
-  SKILLS_ADD_EXISTS: { sentence: 'skills.json already pins this. To move that skill to another version or commit, add --replace.', next: 'bowerloom skills add <source> --id <id> --replace' },
-  SKILLS_ADD_SOURCE_CHANGED: { sentence: '--replace keeps the npm package or GitHub repository and moves only its version or commit. To use another source, add it under a new id.', next: 'bowerloom skills check' },
+  SKILLS_ADD_EXISTS: { sentence: 'skills.json already holds a skill with this id or this source.', next: 'To move that id to another version or commit, add --replace: bowerloom skills add <source> --id <id> --replace.' },
+  SKILLS_ADD_SOURCE_CHANGED: { sentence: '--replace keeps the npm package or GitHub repository and moves only its version or commit.', next: 'Add the other source under a new id.' },
   SKILLS_ADD_REPLACE_MISSING: { sentence: 'There is no skill with this id to replace.', next: 'bowerloom skills check' },
   SKILLS_ADD_NOT_FOUND: { sentence: 'Check the package name, version, commit and folder.', next: 'bowerloom help skills' },
   SKILLS_ADD_SKILL_MISSING: { sentence: 'A skill folder holds a SKILL.md file at its top.', next: 'bowerloom help skills' },
@@ -506,7 +512,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SKILL_NAME_INVALID: { sentence: 'The id becomes a folder name, so it is kept plain.', next: 'bowerloom help skill' },
   PROMPT_EXISTS: { sentence: 'Each prompt needs its own id.', next: 'bowerloom ls prompts' },
   PROMPT_NAME_INVALID: { sentence: 'The id becomes a file name, so it is kept plain.', next: 'bowerloom help prompt' },
-  PROJECT_BRIEF_INVALID: { sentence: 'A new team is built from the project brief that setup saved.', next: 'bowerloom status' },
+  PROJECT_BRIEF_INVALID: { sentence: 'A new team is built from the project brief that setup saved, and it cannot be read.', next: 'bowerloom status' },
   AUTHORING_PENDING: { sentence: 'Bowerloom finishes an interrupted create only when what it left matches its record exactly.', next: 'cat .bowerloom/authoring/pending.json' },
   AUTHORING_RECEIPT_INVALID: { sentence: 'Bowerloom reads its record of created items strictly, so a hand edit can break it.', next: 'git diff .bowerloom/authoring/receipt.json' },
   // Review L8 of PR 98.
@@ -536,7 +542,7 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   SLICE_EXISTS: { sentence: 'Each slice needs its own id and its own skill name.', next: 'bowerloom ls slices' },
   SLICE_LIMIT: { sentence: 'This beta applies at most 64 slices.', next: 'bowerloom ls slices' },
   SLICE_PATH_MISSING: { sentence: 'Bowerloom does not drop a named file without telling you.', next: 'bowerloom status' },
-  SLICE_ROOT_MISSING: { sentence: 'A slice root must be a folder inside the project in this build.', next: 'bowerloom help context' },
+  SLICE_ROOT_MISSING: { sentence: 'A slice root must exist, and a registered folder must also be recorded in your store.', next: 'bowerloom help context' },
   SLICE_ROOT_UNSAFE: { sentence: 'Bowerloom reads only folders that you own and that no other user can change.', next: 'ls -ld <folder>' },
   SLICE_SOURCE_UNSAFE: { sentence: 'Bowerloom will not read through links or files that others can change.', next: 'ls -l <path>' },
   SLICE_EMPTY: { sentence: 'An empty index would give an agent nothing.', next: 'bowerloom context show <slice>' },
@@ -549,11 +555,12 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   CONTEXT_BASELINE_INVALID: { sentence: 'The baseline must be a folder you own.', next: 'bowerloom help context' },
   CONTEXT_MEASURE_LIMIT: { sentence: 'This beta measures at most 100000 entries.', next: 'bowerloom context measure --baseline <narrower-folder>' },
   GUARD_OUTSIDE_SLICE: { sentence: 'A slice lists the files an agent reads under its folder.', next: 'bowerloom context show <slice>' },
-  GUARD_SLICE_NOT_INSTALLED: { sentence: 'The guard fails closed when it cannot read a slice.', next: 'bowerloom apply' },
-  GUARD_ROOT_MISSING: { sentence: 'The guard fails closed when a slice\'s folder is gone.', next: 'bowerloom apply' },
+  // Round 3 of the reviews of PR 101: plain words for what the guard does.
+  GUARD_SLICE_NOT_INSTALLED: { sentence: 'The guard blocks every call when it cannot read a slice.', next: 'bowerloom apply' },
+  GUARD_ROOT_MISSING: { sentence: 'The guard blocks every call when the folder of a slice is gone.', next: 'bowerloom apply' },
   GUARD_PROJECT_MISMATCH: { sentence: 'A guarded copy works only in the project folder that apply wrote it for.', next: 'bowerloom apply' },
   GUARD_INPUT_INVALID: { sentence: 'The guard blocks a call it cannot check.', next: 'claude --debug' },
-  GUARD_INTERNAL_ERROR: { sentence: 'The guard blocks a call when it meets an error it cannot explain, such as a folder it may not read.', next: 'claude --debug' },
+  GUARD_INTERNAL_ERROR: { sentence: 'The guard blocks a call when it meets an error it cannot explain, such as a folder it is not allowed to read.', next: 'claude --debug' },
   FOLDER_NAME_INVALID: { sentence: 'The name becomes a file name in your store.', next: 'bowerloom help context' },
   FOLDER_EXISTS: { sentence: 'Each registered folder needs its own name.', next: 'bowerloom folder list' },
   FOLDER_NOT_FOUND: { sentence: 'Only a registered folder can be used or removed.', next: 'bowerloom folder list' },
@@ -561,7 +568,9 @@ const REFUSALS: Readonly<Record<string, Words>> = {
   FOLDER_IN_CLOUD: { sentence: 'Cloud sync changes file times and moves files, which breaks the checks that keep a folder safe.', next: 'mv <folder> ~/Projects/' },
   FOLDER_NOT_ALLOWED: { sentence: 'A registered folder is shared with the projects you allow, one by one.', next: 'bowerloom folder allow <folder-name>' },
   FOLDER_INVALID: { sentence: 'Bowerloom reads folder records strictly, so a hand edit can break one.', next: 'bowerloom folder list' },
-  SKILLS_OFFLINE: { sentence: 'Only bowerloom skills sync fetches, and only the pins that are not cached yet.', next: 'bowerloom skills sync' },
+  // Round 2 of the reviews of PR 101: true for every raise site. A network failure carries its own next step.
+  // Round 3: each raise site carries the next step of its cause, so this one prints only for an error that carries none.
+  SKILLS_OFFLINE: { sentence: 'A pin or a lock item needs bytes that this run could not get. The message says why.', next: 'After --offline, run the command again without --offline and without --approve. After plain apply, run bowerloom skills sync, or bowerloom apply --frozen.' },
   SKILLS_SYNC_CONTENT_MISMATCH: { sentence: 'Bowerloom installs only bytes that match skills.json exactly, so it stopped before any change to the project.', next: 'bowerloom skills check' },
   SKILLS_SYNC_INTERRUPTED: { sentence: 'Every skill it finished is complete, and the rest are untouched.', next: 'bowerloom skills sync' },
   SKILLS_SYNC_LIMIT: { sentence: 'This beta syncs at most 256 skills at once.', next: 'bowerloom skills check' },
@@ -611,7 +620,10 @@ export interface RefusalDetail {
 const LEFTOVER_TEMP_LINK = 'skills-json-temp-link';
 /** The hint of a MANIFEST_LIMIT for the store skills.json (skill-manifest/src/refusal.ts). */
 const STORE_LIMIT = 'store-limit';
-/** The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is the command that finishes the run. */
+/**
+ * The hint of a refusal after a partial write (packages/project-sync/src/refusal.ts, `partialRefusal`). Its `next` is a
+ * sentence that says to run the command that finishes the run. Its `fix` is that bare command, when it is one.
+ */
 const PARTIAL = 'partial';
 const validPort = (port: unknown): port is number => Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
 
@@ -633,7 +645,8 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
 /** One refusal in plain words. The fixed refusal code stays visible. Control characters in the code or message are escaped. */
 export function renderRefusal(code: string, message: string, detail: RefusalDetail = {}): string {
   const { sentence, next } = wordsFor(code, detail);
-  return `Refused (${plainText(code)}): ${plainText(message)}\n${sentence}\nNext: ${next}\n`;
+  // Round 11 of the reviews of PR 101: the Next line is one line, whatever a value in it holds.
+  return `Refused (${plainText(code)}): ${plainText(message)}\n${sentence}\nNext: ${plainText(next)}\n`;
 }
 
 /**
@@ -650,14 +663,23 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
+  // Round 11 of the reviews of PR 101: a next or fix value is one line in every output, JSON included (oneLine).
+  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? oneLine((error as { next: string }).next) : undefined;
   // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
-  const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? (error as { fix: string }).fix : undefined;
+  const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? oneLine((error as { fix: string }).fix) : undefined;
   const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.
   return { text: tty ? renderRefusal(safe.code, safe.message, detail) : `${JSON.stringify({ error: { code: safe.code, message: safe.message, ...(next !== undefined ? { next } : {}), ...(fix !== undefined ? { fix } : {}), ...(hint === PARTIAL ? { partial: true } : {}) } })}\n`, exitCode };
 }
 
-/** A path as one shell word: plain characters stay, anything else is single-quoted. */
-export const shellWord = (path: string): string => /^[A-Za-z0-9_/.:@%+=,-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+/**
+ * A path as one shell word: plain characters stay, anything else is single-quoted. Rounds 9 and 10 of the reviews of
+ * PR 101: null for a path that no command can carry (shellArg), so the caller prints words instead of a command.
+ */
+export const shellWord = (path: string): string | null => shellArg(path);
+/** The step for a slice that reads a folder outside the project: --add-dir with the folder, when a command can carry it. */
+export function addDirStep(path: string): string {
+  const word = shellWord(path);
+  return word !== null ? `Start Claude Code with --add-dir ${word}, or add the folder to permissions.additionalDirectories.` : 'Add the folder to permissions.additionalDirectories, or start Claude Code with --add-dir and that folder.';
+}

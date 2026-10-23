@@ -8,7 +8,7 @@ import { discoverProject, privateStateRoot } from '../../../packages/project-con
 import { measureContext, showSlice } from '../../../packages/project-sync/src/context-measure.js';
 import type { MeasureAgent, MeasureResult, ShowResult } from '../../../packages/project-sync/src/context-measure.js';
 import { ESTIMATE_BAND, formatPercent, formatThousands, parseBytesPerToken } from '../../../packages/context-slices/src/estimate.js';
-import { newCommandJson, plainText, shellWord } from './human.js';
+import { addDirStep, newCommandJson, plainText } from './human.js';
 
 const SHOW_USAGE = 'Use bowerloom context show <slice> [--json].';
 const MEASURE_USAGE = 'Use bowerloom context measure [--agent <role>]... [--team <team>] [--from <folder>] [--baseline <folder>] [--bytes-per-token <number>] [--user] [--json].';
@@ -22,7 +22,7 @@ export function renderShow(r: ShowResult): string {
     `Guard: ${r.guard ?? 'none'}`,
     `Agents: ${r.agents.length ? r.agents.join(', ') : 'none'}`,
   ];
-  if (r.hold !== null) lines.push(`Held: ${r.hold.code}. Next: ${r.hold.next}`);
+  if (r.hold !== null) lines.push(`Held: ${r.hold.code}. Next: ${plainText(r.hold.next)}`);
   const n = r.notes, notes: string[] = [];
   const list = (paths: readonly string[]): string => { const head = paths.slice(0, 3), joined = head.length <= 1 ? (head[0] ?? '') : `${head.slice(0, -1).join(', ')} and ${head[head.length - 1]}`; return `${joined}${paths.length > 3 ? `, and ${paths.length - 3} more` : ''}`; };
   if (n.unparsed.length) notes.push(`left out ${n.unparsed.length} files whose frontmatter does not parse: ${list(n.unparsed)}.`);
@@ -32,7 +32,7 @@ export function renderShow(r: ShowResult): string {
   if (n.oversize.length) notes.push(`lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) notes.push(`skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) notes.push(`follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
-  if (n.outsideProject) notes.push(`reads ${r.root}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${shellWord(r.folder ?? r.root ?? '')}, or add the folder to permissions.additionalDirectories.`);
+  if (n.outsideProject) notes.push(`reads ${r.root}, outside this project. Claude Code may ask before it reads there. ${addDirStep(r.folder ?? r.root ?? '')}`);
   if (r.copies !== null) {
     const c = r.copies;
     notes.push(c.summary === 'none' ? `copies no text from ${c.folder}, only the paths of ${c.count} files.` : c.summary === 'heading' ? `copies the first heading of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.` : `copies frontmatter key ${c.key} of ${c.count} files from ${c.folder} into .claude/skills/slice-${r.id}/SKILL.md.`);
@@ -61,7 +61,7 @@ export function renderMeasure(r: MeasureResult): string {
     line(header), ...rows.map(line),
     `Baseline: each agent with every .md file under ${r.baseline.folder} (${r.baseline.files} files) loaded at start, and its CLAUDE.md or AGENTS.md files.`,
     'Not counted: Claude Code\'s own system details and tool definitions, MCP tools, git status, the task message, managed policy files, agent memory, and files an agent reads beyond its slices.',
-    ...r.held.map(h => `Held: ${h.role} is not measured (${h.code}). Next: ${h.next}`),
+    ...r.held.map(h => `Held: ${h.role} is not measured (${h.code}). Next: ${plainText(h.next)}`),
     ...(skippedImports > 0 || skipped > 0 ? [`Skipped: ${skippedImports} imports that name no readable file, and ${r.baseline.skipped.hidden} hidden entries, ${r.baseline.skipped.links} links and ${r.baseline.skipped.notRegular} special entries in the baseline.`] : []),
     ...(notes.length ? ['Notes:', ...notes] : []),
   ].join('\n');

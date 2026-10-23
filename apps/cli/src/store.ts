@@ -14,7 +14,7 @@ import type { StoreRepo } from '../../../packages/project-config/src/git.js';
 import { NOT_SHAREABLE } from '../../../packages/project-config/src/refusal.js';
 import { GithubToken } from '../../../packages/skill-manifest/src/github-token.js';
 import type { ApprovalIo } from './confirm.js';
-import { parseApprovalFlags, runWithApproval } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
 import { terminalIo } from './manifest.js';
 import { discoverProject } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
@@ -241,7 +241,8 @@ export function renderStoreMigrate(plan: StoreMigratePlan): string {
   for (const item of plan.items) lines.push(itemLine(item));
   for (const s of plan.skipped) lines.push(`${itemLabel(s.kind, s.id)}${s.line}`);
   for (const item of plan.items) if (item.switch && isAgentFile(item)) lines.push(`${itemLabel('team', item.id)}its agents stop being projected. A store team projects no agents in this beta. Copies in .claude/agents stay.`);
-  for (const item of plan.items) if (!item.switch && item.notSwitched) lines.push(`Not switched: ${item.kind} ${item.id} cannot be locked yet. ${item.notSwitched.sentence}. Push the store, then run this command again.`);
+  // Round 3 of the reviews of PR 101: a store repository cause prints its own step; the others still need a push.
+  for (const item of plan.items) if (!item.switch && item.notSwitched) lines.push(`Not switched: ${item.kind} ${item.id} cannot be locked yet. ${item.notSwitched.sentence}. ${item.notSwitched.next !== undefined ? `${item.notSwitched.next} Then run this command again.` : 'Push the store, then run this command again.'}`);
   if (plan.config !== null) {
     if (plan.config.created) { const c = JSON.parse(plan.config.text) as { skills: unknown[]; prompts: unknown[]; teams: unknown[] }; lines.push(`bowerloom.json: creates it, and lists ${plural(c.skills.length + c.prompts.length + c.teams.length, 'item')} of this project`); }
     for (const item of plan.items) if (item.switch && !plan.config.adds.includes(`${item.kind} ${item.id}`)) lines.push(`bowerloom.json: ${item.kind} ${item.id} changes from project to store`);
@@ -294,7 +295,7 @@ async function runMigrate(words: readonly string[], cwd: string, home: string, w
   const githubToken = githubTokenReader(env);
   const plans = new Map<string, StoreMigratePlan>();
   const plan = async (): Promise<StoreMigratePlan> => { const p = await planStoreMigrate({ project, home, ...selection, githubToken, signal: controller.signal }); plans.set(p.revision, p); return p; };
-  const first = await plan();
+  let first: StoreMigratePlan; try { first = await plan(); } catch (error) { throw approvalFault(error, approval.approve); }
   const json = approval.json;
   if (first.items.length === 0) {
     // Review H2: the old copies of items listed from the store are named, with the lines that remove them.

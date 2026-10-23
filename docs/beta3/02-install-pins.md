@@ -34,7 +34,7 @@ Terms used below:
 | `@langchain/langgraph-checkpoint` | 1.1.5 | 1.2.1 |
 | `@langchain/langgraph-sdk` | 1.12.0 | 1.12.6 |
 
-The cause is in npm 11.6.1, read from its source on this machine at `/Users/hannamacintosh/.nvm/versions/node/v24.11.0/lib/node_modules/npm`:
+The cause is in npm 11.6.1, read from its source on this machine at `~/.nvm/versions/node/v24.11.0/lib/node_modules/npm`:
 
 - `node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:787-796`: a node whose `hasShrinkwrap` is true skips dependency resolution.
 - `node_modules/@npmcli/arborist/lib/node.js:174`: `hasShrinkwrap` comes from `package._hasShrinkwrap`.

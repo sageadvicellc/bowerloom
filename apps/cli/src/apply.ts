@@ -7,15 +7,16 @@
  */
 import { relative } from 'node:path';
 import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { isSliceId } from '../../../packages/context-slices/src/slice-file.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
 import type { AgentItem, ApplyInput, ApplyPlan, ApplyResult, PromptItem, SliceItem, SyncItem } from '../../../packages/project-sync/src/index.js';
 import type { Harness } from '../../../packages/managed-skills/src/v2-types.js';
 import { revisionOf } from '../../../packages/skill-sources/src/validation.js';
-import { parseApprovalFlags, runApprovalCommand } from './confirm.js';
+import { approvalFault, parseApprovalFlags, runApprovalCommand } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { newCommandJson, plainText, shellWord } from './human.js';
+import { addDirStep, newCommandJson, plainText } from './human.js';
 import { terminalIo } from './manifest.js';
 import { credentialsLines, githubTokenReader, harnessWords, itemLine, maxRequestsFlag, requestLine, sourceTag, syncStaleNote, TOKEN_TAIL, withInterrupt } from './sync.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
@@ -52,7 +53,7 @@ function promptLine(item: PromptItem, width: number): string[] {
 }
 function promptState(item: PromptItem, width: number): string[] {
   const id = item.id.padEnd(width), where = ['command-claude', 'projection-codex'].flatMap(id => item.expected.surfaces.filter(s => s.id === id).map(s => s.path)).join(' and ');
-  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${plainText(item.hold!.next)}`];
   switch (item.state) {
     case 'new': return [`  ${id} install prompt: ${where}${item.notices === null ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
     case 'edited': return [`  ${id} update prompt: ${where}`];
@@ -95,7 +96,7 @@ export function sliceNoteLines(item: SliceItem, project: string, tracked = false
   if (n.oversize.length) out.push(`  Note: slice ${id} lists ${n.oversize.length} files over 1 MiB without a summary.`);
   if (n.skippedEntries > 0) out.push(`  Note: slice ${id} skipped ${n.skippedEntries} entries that are not files or folders, or are links that no pattern selects.`);
   if (n.truncatedLinks > 0) out.push(`  Note: slice ${id} follows the first 512 links of ${n.truncatedLinks} files and skips the rest.`);
-  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${registeredDisplay(item, project)}, outside this project. Claude Code may ask before it reads there. Start Claude Code with --add-dir ${shellWord(item.root!.dir)}, or add the folder to permissions.additionalDirectories.`);
+  if (n.outsideProject) out.push(`  Note: slice ${id} reads ${registeredDisplay(item, project)}, outside this project. Claude Code may ask before it reads there. ${addDirStep(item.root!.dir)}`);
   if (item.copies !== null) {
     const c = item.copies;
     out.push(c.summary === 'none' ? `  Note: slice ${id} copies no text from ${c.folder}, only the paths of ${c.count} files.` : c.summary === 'heading' ? `  Note: slice ${id} copies the first heading of ${c.count} files from ${c.folder} into .claude/skills/slice-${id}/SKILL.md.` : `  Note: slice ${id} copies frontmatter key ${c.key} of ${c.count} files from ${c.folder} into .claude/skills/slice-${id}/SKILL.md.`);
@@ -106,7 +107,7 @@ export function sliceNoteLines(item: SliceItem, project: string, tracked = false
 }
 function sliceLine(item: SliceItem, width: number, project: string, tracked: boolean): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = `.claude/skills/slice-${item.id}/SKILL.md`;
-  if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${plainText(item.hold!.next)}`];
   const c = item.changes;
   switch (item.state) {
     case 'new': return [`  ${id} install slice: ${where} (${item.members.length} files from ${sliceWhere(item, project)})`, ...sliceNoteLines(item, project, tracked)];
@@ -151,7 +152,7 @@ function agentLine(item: AgentItem, width: number, terminal: boolean, slices: re
     // The plan holds no flag text, so a terminal and a pipe see one revision. At a terminal the text names the exact flag.
     const next = terminal && item.hold!.code === 'AGENT_GRANT_REVIEW_REQUIRED' && item.sourceSha256 !== null && item.expected.source !== null
       ? `Read .bowerloom/${item.expected.source.path}, then run bowerloom apply --allow-agent ${item.id}:${item.sourceSha256}.` : item.hold!.next;
-    return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${next}`];
+    return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${plainText(next)}`];
   }
   const copies = item.action !== 'none', warning = [
     ...(item.builtin && copies ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : []),
@@ -164,6 +165,16 @@ function agentLine(item: AgentItem, width: number, terminal: boolean, slices: re
     case 'orphaned': return [`  ${id} agent kept: no longer an agent of this project, and apply removes nothing`];
     default: return [`  ${id} agent up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`, ...agentContextWarnings(item, pad)];
   }
+}
+/**
+ * Round 10 of the reviews of PR 101: a slice file that no receipt lists. Its name comes from the project, which a cloned
+ * repository controls, so the slice create command prints only for a name whose stem is a valid slice id.
+ */
+export function unregisteredNote(name: string): string {
+  const stem = name.replace(/\.[^.]*$/, '');
+  // Round 11: the id rule of slice create itself, so the printed command never refuses SLICE_NAME_INVALID.
+  return isSliceId(stem) && name === `${stem}.yaml` ? `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${stem} to register it.`
+    : `  Note: .bowerloom/slices/${plainText(name)} is not registered, so apply skips it. Its name is not a slice id, so rename it to <id>.yaml with a lowercase id before you register it with bowerloom slice create.`;
 }
 /** Where copies go, for the chosen harnesses only (review freeze finding 9). */
 function places(harnesses: readonly Harness[]): string {
@@ -178,10 +189,10 @@ export function applyStaleNote(plan: ApplyPlan): string | null {
   return needs ? TOKEN_STALE_NOTE : null;
 }
 /** The apply plan in plain words. confirm.ts escapes control characters again before printing. */
-export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
+export function renderApplyReview(plan: ApplyPlan, terminal = false, maxSet = false): string {
   const skills = plan.skills?.items ?? [], width = Math.max(0, ...skills.map(i => i.id.length), ...plan.prompts.map(p => p.id.length), ...plan.slices.map(s => s.id.length), ...plan.agents.map(a => a.id.length)) + 1;
   const claude = plan.harnesses.includes('claude'), codex = plan.harnesses.includes('codex');
-  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${name.replace(/\.[^.]*$/, '')} to register it.`)];
+  const slicesBlock = [...plan.slices.flatMap(s => sliceLine(s, width, plan.project?.dir ?? '', plan.skillsMayBeTracked === true)), ...plan.unregisteredSlices.map(name => unregisteredNote(name))];
   const guarded = plan.agents.filter(a => (a.action === 'install' || a.action === 'update') && a.context.guard !== null).map(a => a.id);
   const lines = [...skills.flatMap(i => skillLine(i, width)), ...plan.prompts.flatMap(p => promptLine(p, width)), ...slicesBlock, ...plan.agents.flatMap(a => agentLine(a, width, terminal, plan.slices, plan.project?.dir ?? '')),
     ...(plan.storeFetch ?? []).map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),
@@ -202,7 +213,7 @@ export function renderApplyReview(plan: ApplyPlan, terminal = false): string {
     ...(plan.codexAgentsSkipped || plan.codexSlicesSkipped ? ['Codex agents and context slices are not projected in this beta. See the capability model design.'] : []),
     ...credentialsLines(plan.network?.credentials),
     network,
-    ...requestLine(plan.network),
+    ...requestLine(plan.network, maxSet),
     `Copies go to ${places(plan.harnesses)}, and stay on this machine. Apply adds copies and removes none.`,
     plan.agents.some(a => (a.action === 'install' || a.action === 'update') && a.notices.length) ? 'This copies text files only. Bowerloom starts no workers and runs nothing itself.' : 'This copies text files only. It starts no workers and runs nothing.',
     plan.pointer,
@@ -212,7 +223,7 @@ function resultWords(result: ApplyResult): string {
   const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.kind === 'agent' ? `agent ${r.id}` : r.kind === 'slice' ? `slice ${r.id}` : r.id;
   return plainText([
     ...result.applied.map(a => `  ${name(a)}: ${a.action === 'install' ? 'installed' : 'updated'}`),
-    ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${h.next}`),
+    ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${plainText(h.next)}`),
     ...(result.orphaned.length ? [`  kept, no longer listed: ${result.orphaned.map(name).join(', ')}`] : []),
     result.pointer, '',
   ].join('\n'), true);
@@ -286,15 +297,15 @@ export async function runApplyCommand(args: readonly string[], cwd: string, home
   // Spec 07: only a frozen apply reads the token, and only when an authored lock item needs its repository.
   const githubToken = parsedHarness.frozen ? githubTokenReader(env) : null;
   const input = (): ApplyInput => ({ project, stateRoot, home, frozen: parsedHarness.frozen, harnesses, team: null, allow, githubToken, ...(max !== undefined ? { maxGithubRequests: max } : {}) });
-  const first = await planProjectApply(input());
+  let first: ApplyPlan; try { first = await planProjectApply(input()); } catch (error) { throw approvalFault(error, approval.approve); }
   if (allow.length) await confirmAllowances(first, io, write);
   if (!first.actionable && approval.approve === undefined) {
-    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first, io.interactive), true)}\nNothing to change.\n`); return 0;
+    write(approval.json ? newCommandJson({ nothingToDo: true, plan: first, revision: first.revision }) : `${plainText(renderApplyReview(first, io.interactive, max !== undefined), true)}\nNothing to change.\n`); return 0;
   }
   let pending: ApplyPlan | null = first, result: ApplyResult | null = null;
   const change: PlannedChange<ApplyPlan> = {
     async plan() { if (pending) { const p = pending; pending = null; return p; } return planProjectApply(input()); },
-    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json), staleNote: applyStaleNote,
+    revision: plan => plan.revision, review: plan => renderApplyReview(plan, io.interactive && !approval.json, max !== undefined), staleNote: applyStaleNote,
     async apply(revision: string) {
       result = await withInterrupt((signal, managed) => applyProjectApply(input(), revision, signal, { managed })); return result;
     },

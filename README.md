@@ -158,7 +158,7 @@ Running a team needs separate runtime permissions and controls. The setup comman
 Keep your project out of iCloud Drive folders. Project commands such as `bowerloom up`, `ls`, `status`, `apply`, and `skills sync` refuse a project under `~/Documents` or `~/Desktop` when Desktop and Documents sync is on, and under the `~/Library` cloud folders, with `PROJECT_IN_CLOUD_FOLDER`. The older forms that take an explicit path do not run this check. See the [beta limits](https://bowerloom.ai/docs/guides/add-skills/#current-beta-limits).
 
 - No worker starts. `up` ends at `prepared, workers held`.
-- Skills come from public sources only. Only MIT and Apache-2.0 skills install.
+- Pinned skills come from public sources only. A store in a private GitHub repository needs `BOWERLOOM_GITHUB_TOKEN`. Only MIT and Apache-2.0 skills install.
 - `bowerloom revise` refuses once a project holds content added after setup. The fix comes in a later 0.7 release.
 - The portable install supports Claude Code and Codex. Native discovery of the installed files has not been observed.
 

@@ -21,24 +21,24 @@ import { runWithApproval, parseApprovalFlags } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
 import { plainText } from './human.js';
 import { terminalIo } from './manifest.js';
-import { credentialsLines, githubTokenReader, TOKEN_TAIL } from './sync.js';
+import { credentialsLines, githubTokenReader, maxRequestsFlag, TOKEN_TAIL } from './sync.js';
 import type { Credentials } from '../../../packages/project-sync/src/store-git.js';
 import { TOKEN_STALE_NOTE } from '../../../packages/project-sync/src/store-git.js';
 /** Review F5 of PR 97: a plan that proves an authored item on api.github.com names the token in its STALE_APPROVAL. */
 export const proofStaleNote = (plan: { network: { hosts: string[] } }): string | null => plan.network.hosts.includes('api.github.com') ? TOKEN_STALE_NOTE : null;
 
-const USE_USAGE = 'Use bowerloom use skill|prompt|team <id> [--project] [--commit <sha>], with optional --approve <revision> and --json.';
+const USE_USAGE = 'Use bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--max-github-requests <n>], with optional --approve <revision> and --json.';
 const UNUSE_USAGE = 'Use bowerloom unuse skill|prompt|team <id>, with optional --approve <revision> and --json.';
 const KINDS = ['skill', 'prompt', 'team'] as const;
 type Kind = typeof KINDS[number];
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export interface UseArgs { op: 'use' | 'unuse'; kind: Kind; id: string; project: boolean; commit: string | null; approval: string[] }
+export interface UseArgs { op: 'use' | 'unuse'; kind: Kind; id: string; project: boolean; commit: string | null; maxGithubRequests?: number; approval: string[] }
 export function parseUseArgs(args: readonly string[]): UseArgs {
   const op = args[0] as 'use' | 'unuse', usage = (): never => { throw new DefinitionError('USAGE', op === 'use' ? USE_USAGE : UNUSE_USAGE); };
   const kind = args[1] as Kind, id = args[2];
   if (!(KINDS as readonly string[]).includes(kind) || id === undefined || !ID.test(id) || id.length > 64) usage();
-  let project = false, commit: string | null = null; const approval: string[] = [];
+  let project = false, commit: string | null = null, max: number | undefined; const approval: string[] = [];
   const words = args.slice(3);
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
@@ -49,10 +49,12 @@ export function parseUseArgs(args: readonly string[]): UseArgs {
       const value = words[++i];
       if (commit !== null || value === undefined || !/^[a-f0-9]{40}$/.test(value)) throw new DefinitionError('USAGE', 'Use --commit once, with the 40 lower-case hex characters of a pushed commit of the store remote.');
       commit = value;
-    } else usage();
+    // Round 2 of the reviews of PR 101, item 3: the request limit of apply and skills sync, once at most.
+    } else if (op === 'use' && w === '--max-github-requests') { if (max !== undefined) usage(); max = maxRequestsFlag(words[++i], USE_USAGE); if (max === undefined) usage(); }
+    else usage();
   }
   if (project && commit !== null) usage();
-  return { op, kind, id: id!, project, commit, approval };
+  return { op, kind, id: id!, project, commit, ...(max !== undefined ? { maxGithubRequests: max } : {}), approval };
 }
 
 /** The places a copy of the item has in this project, when a catalog marks one (3.7). A team has none. */
@@ -136,7 +138,7 @@ export async function runUseCommand(args: readonly string[], cwd: string, home: 
   let result: ConfigChangeResult | null = null;
   const change: PlannedChange<ConfigChangePlan> = {
     async plan() {
-      const plan = await planConfigChange({ project, home, op: parsed.op, kind: parsed.kind, id: parsed.id, source: parsed.project ? 'project' : 'store', commit: parsed.commit, signal: controller.signal, githubToken });
+      const plan = await planConfigChange({ project, home, op: parsed.op, kind: parsed.kind, id: parsed.id, source: parsed.project ? 'project' : 'store', commit: parsed.commit, signal: controller.signal, githubToken, ...(parsed.maxGithubRequests !== undefined ? { maxGithubRequests: parsed.maxGithubRequests } : {}) });
       plans.set(plan.revision, { plan, cache: await cacheLine(plan, home, env), places: parsed.op === 'unuse' ? copyPlaces(project, parsed.kind, parsed.id) : [] });
       return plan;
     },

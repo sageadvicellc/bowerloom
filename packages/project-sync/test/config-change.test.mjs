@@ -135,7 +135,7 @@ test('the proof refuses a store with no git, no origin, an unpushed edit, a priv
   const warned = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo2) });
   assert.ok(warned.notes.includes(`Your store has commits that are not pushed (HEAD differs from origin/main). The lock records the pushed commit ${repo2.commit.slice(0, 8)}.`));
   fs.writeFileSync(path.join(w.store, '.git', 'config'), '[core]\n');
-  await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The store repository has no remote named origin.'));
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The git repository of the store has no remote named origin.'));
   // A file a lock cannot record refuses before any network read.
   fs.writeFileSync(path.join(w.store, 'skills/house-style/empty.md'), '', { mode: 0o600 });
   await assert.rejects(plan(w, 'use', 'skill', 'house-style'), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.message.endsWith('The item holds a file that a lock cannot record.'));
@@ -275,4 +275,35 @@ test('F4. a transport that cannot be made is reported as the proof failure, insi
   const { w } = await sharedWorld(t);
   const { manifestRefusal } = await import('../../../dist/packages/skill-manifest/src/refusal.js');
   await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); }, githubToken: tokenOf(CANARY) }), code('SKILLS_OFFLINE'));
+});
+
+// Round 4 of the reviews of PR 101 (decided): a store fault found at approval time surfaces as it is, with its own next
+// step, because the same --approve works once the file is fixed. A real change of the bytes stays STALE_APPROVAL.
+test('round 4. at apply, a store fault keeps its code and next step; a content change is STALE_APPROVAL', async t => {
+  const w = configWorld(t, { folder: true });
+  await storeItem(w, 'skill', 'house-style'); originProject(w);
+  const repo = pushStore(w); gitStore(w, repo);
+  const p = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo) });
+  const file = path.join(w.store, 'skills', 'house-style', 'SKILL.md');
+  const apply = () => withProjectLock(w.projectDir, new AbortController().signal, async held => applyConfigChange(p, p.revision, held, ctx(w), w.home));
+  fs.chmodSync(file, 0o755);
+  const STEP = 'Run chmod a-x ~/.bowerloom/skills/house-style/SKILL.md. A lock records no file with an execute bit. Then run the command again. If you also changed the item, run the command again without --approve.';
+  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === STEP);
+  // The fault fixed and nothing else changed: the same approval applies.
+  fs.chmodSync(file, 0o644);
+  const p2 = await plan(w, 'use', 'skill', 'house-style', { storeTransport: storeTransport(repo) });
+  assert.equal(p2.revision, p.revision, 'the plan is the same once the fault is fixed');
+  // Round 5: faulted and changed together. The step said what to do; the same --approve is then stale.
+  fs.appendFileSync(file, 'More words.\n'); fs.chmodSync(file, 0o755);
+  await assert.rejects(apply(), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next.endsWith('If you also changed the item, run the command again without --approve.'));
+  fs.chmodSync(file, 0o644);
+  await assert.rejects(apply(), code('STALE_APPROVAL'));
+});
+
+// Round 9 of the reviews of PR 101, item 2: a stop while checking the pushed copy names the command that ran, not skills sync.
+test('a stop while checking the pushed copy names the use command that ran, with its flags', async t => {
+  const { w } = await sharedWorld(t), controller = new AbortController(), commit = 'e'.repeat(40);
+  const stopping = () => { controller.abort(); throw new Error('stopped'); };
+  await assert.rejects(plan(w, 'use', 'skill', 'house-style', { storeTransport: stopping, signal: controller.signal, commit }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === `Run bowerloom use skill house-style --commit ${commit} again.` && e.fix === `bowerloom use skill house-style --commit ${commit}` && e.message.endsWith(`before any change. Run bowerloom use skill house-style --commit ${commit} again.`));
 });

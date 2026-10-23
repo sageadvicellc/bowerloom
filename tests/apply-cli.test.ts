@@ -107,7 +107,7 @@ test('apply refusals: a collision, an uncached pin, and usage errors; nothing is
   rmSync(join(p.home, 'state', 'bowerloom'), { recursive: true, force: true });
   before = tree(p.home);
   const offline = run(p.dir, ['apply'], p.deny); assert.equal(offline.status, 1);
-  assert.equal(errorOf(offline.stderr).code, 'SKILLS_OFFLINE'); assert.match(errorOf(offline.stderr).message, /bowerloom skills sync/);
+  assert.equal(errorOf(offline.stderr).code, 'SKILLS_OFFLINE'); assert.equal((JSON.parse(offline.stderr) as { error: { next?: string } }).error.next, 'Run bowerloom skills sync, then bowerloom apply.');
   assert.equal(tree(p.home), before); assert.deepEqual(p.denied(), []);
   for (const args of [['--harness'], ['--harness', 'cursor'], ['--harness', 'claude', '--harness', 'codex'], ['--yes'], ['--approve', 'abc'], ['--offline'], ['extra']]) {
     const r = run(p.dir, ['apply', ...args], p.deny); assert.equal(r.status, 2, args.join(' ')); assert.equal(errorOf(r.stderr).code, 'USAGE');

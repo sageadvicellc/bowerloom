@@ -181,15 +181,16 @@ test('7. MIGRATE_RESERVED, MIGRATE_ITEM_NOT_FOUND, MIGRATE_ITEM_UNSUPPORTED, CON
   assert.deepEqual(goneAll.skipped.find(s => s.id === 'gone'), { kind: 'prompt', id: 'gone', line: 'its files are gone, so it stays as it is.' }, 'review M1: --all names an item whose files are gone');
   // A skill with an empty file, and one with a script: explicit refuses with the reason, --all keeps it with a line.
   await projectItem(w, 'skill', 'empty'); fs.writeFileSync(bl(w, 'skills/empty/notes.md'), '');
-  await assert.rejects(plan(w, { skills: ['empty'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It holds a file that a store item cannot hold.'));
+  await assert.rejects(plan(w, { skills: ['empty'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It holds an empty file, which a store item cannot hold.'));
   localSkill({ projectDir: w.projectDir }, 'big', { 'SKILL.md': '# big\n', 'references/a.md': 'x'.repeat(70000) });
   const manifest = parseManifest(fs.readFileSync(bl(w, 'skills.json')), MANIFEST_LIMITS).skills;
   writeManifest({ projectDir: w.projectDir }, [...manifest, { id: 'big', source: { kind: 'local', path: 'skills/big' } }]);
   await assert.rejects(plan(w, { skills: ['big'] }), e => e.code === 'MIGRATE_ITEM_UNSUPPORTED' && e.message.endsWith('It is larger than a store item can be.'));
   const all = await plan(w, { all: true });
   assert.deepEqual(all.skipped.filter(s => s.id === 'empty' || s.id === 'big'), [
-    { kind: 'skill', id: 'big', line: 'stays in this project. It is larger than a store item can be.' },
-    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds a file that a store item cannot hold.' },
+    // Round 3 of the reviews of PR 101: the skip names the file and gives its step.
+    { kind: 'skill', id: 'big', line: 'stays in this project. It is larger than a store item can be. .bowerloom/skills/big/references/a.md is larger than 65536 bytes, the most a lock records for one file. Make it smaller, or split it into smaller files. Then run the command again.' },
+    { kind: 'skill', id: 'empty', line: 'stays in this project. It holds an empty file, which a store item cannot hold. .bowerloom/skills/empty/notes.md is empty. Add content to it, or delete it if you do not need it. Then run the command again.' },
   ]);
   // CONFIG_ITEM_SELECTED: the config lists the item from the store already. --all skips it.
   await migrate(w, { prompts: ['brief'] });
@@ -347,7 +348,7 @@ test('11b. shared: a private remote refuses STORE_REMOTE_PRIVATE, no network ref
   const repo = push(w);
   const before = { store: snapshot(w.store), project: snapshot(w.projectDir) };
   await assert.rejects(plan(w, { all: true, transport: storeTransport({ responses: new Map() }) }), code('STORE_REMOTE_PRIVATE'));
-  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com. Connect to the network and run the command again.'));
+  await assert.rejects(plan(w, { all: true, transport: storeTransport(repo, [], { override: () => { throw manifestRefusal('SKILLS_ADD_NETWORK'); } }) }), e => e.code === 'SKILLS_OFFLINE' && e.message.endsWith(' Checking skill house-style, prompt brief, team research needs api.github.com, and the network was not reachable.') && e.next === 'Connect to the network and run the command again.');
   assert.deepEqual({ store: snapshot(w.store), project: snapshot(w.projectDir) }, before, 'nothing is written');
   const withToken = await plan(w, { all: true, transport: storeTransport(repo), token: TOKEN() });
   assert.deepEqual(withToken.network.credentials, { variable: 'BOWERLOOM_GITHUB_TOKEN', host: 'api.github.com', repositories: ['sageadvicellc/store'] });
@@ -601,7 +602,7 @@ test('round 3 L1 and L2. a stop between the link and the unlink of a prompt: the
   const w = await fourItems(t), p = await plan(w, { prompts: ['brief'] });
   const original = fs.unlinkSync;
   fs.unlinkSync = target => { if (String(target).includes('/.stage-') && String(target).endsWith('/prompts/brief.md')) throw Object.assign(new Error('i/o'), { code: 'EIO' }); return original(target); };
-  try { await assert.rejects(apply(w, p), e => e.code === 'IO_ERROR' && e.cause === 'EIO' && e.hint === 'partial' && e.next === 'bowerloom store migrate --prompt brief'); }
+  try { await assert.rejects(apply(w, p), e => e.code === 'IO_ERROR' && e.cause === 'EIO' && e.hint === 'partial' && e.next === 'Run bowerloom store migrate --prompt brief.' && e.fix === 'bowerloom store migrate --prompt brief'); }
   finally { fs.unlinkSync = original; }
   assert.equal(fs.statSync(path.join(w.store, 'prompts/brief.md')).nlink, 2, 'the store prompt has its stage link');
   const again = await plan(w, { prompts: ['brief'] });
@@ -624,4 +625,30 @@ test('round 3 L3. an item folder that is a link refuses at plan time; an area sw
   const swap = () => { const copy = path.join(v.base, 'teams-copy'); fs.cpSync(bl(v, 'teams'), copy, { recursive: true }); fs.rmSync(bl(v, 'teams'), { recursive: true }); fs.symlinkSync(copy, bl(v, 'teams')); };
   await assert.rejects(apply(v, p, { hooks: { afterItem: kind => { if (kind === 'prompt') swap(); } } }), e => e.code === 'AUTHORING_UNSAFE_PATH' && e.message.includes('.bowerloom/teams') && e.hint === 'partial');
   assert.equal(fs.existsSync(path.join(v.store, 'teams/research')), false, 'nothing was read through the link');
+});
+
+// Round 4 of the reviews of PR 101 (decided): at apply, a store fault surfaces with its code and next step, as in
+// change.ts, and never as STALE_APPROVAL. A real change of the bytes stays STALE_APPROVAL.
+test('round 4. apply keeps a store fault with its next step; a content change is STALE_APPROVAL', async t => {
+  const w = await fourItems(t); originProject(w);
+  await apply(w, await plan(w, { all: true }));
+  const repo = push(w);
+  const proved = await plan(w, { all: true, transport: storeTransport(repo) });
+  assert.ok(proved.items.every(i => i.switch));
+  const file = path.join(w.store, 'prompts', 'brief.md');
+  fs.chmodSync(file, 0o755);
+  await assert.rejects(apply(w, proved), e => e.code === 'STORE_ITEM_NOT_SHAREABLE' && e.next === 'Run chmod a-x ~/.bowerloom/prompts/brief.md. A lock records no file with an execute bit. Then run the command again. If you also changed the item, run the command again without --approve.');
+  fs.chmodSync(file, 0o644);
+  fs.appendFileSync(file, 'edited\n');
+  await assert.rejects(apply(w, proved), code('STALE_APPROVAL'));
+});
+
+// Round 9 of the reviews of PR 101, item 2: a stop while checking the pushed copy names this store migrate command.
+test('a stop while checking the pushed copy names the store migrate command that ran', async t => {
+  const w = await fourItems(t); originProject(w);
+  await apply(w, await plan(w, { all: true }));
+  push(w);
+  const controller = new AbortController(), stopping = () => { controller.abort(); throw new Error('stopped'); };
+  await assert.rejects(planStoreMigrate({ project: ctx(w), home: w.home, selectors: selectors({ skills: ['house-style'] }), all: false, commit: null, githubToken: null, storeTransport: stopping, signal: controller.signal }),
+    e => e.code === 'SKILLS_SYNC_INTERRUPTED' && e.next === 'Run bowerloom store migrate --skill house-style again.' && e.fix === 'bowerloom store migrate --skill house-style');
 });
