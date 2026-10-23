@@ -18,6 +18,7 @@ import { compilePattern } from '../../../packages/context-slices/src/glob.js';
 import { SLICE_LIMITS, isFolderName, validRootPath } from '../../../packages/context-slices/src/slice-file.js';
 import type { StartupProfile } from '../../../packages/startup/src/index.js';
 import { runApprovalCommand } from './confirm.js';
+import { FOLDER_FOR_ITEMS } from './human.js';
 import type { ApprovalIo } from './confirm.js';
 import { terminalIo } from './manifest.js';
 
@@ -78,7 +79,7 @@ export function renderCreateReview(plan: CreatePlan, registeredRel?: string): st
   const where = (kind: string, id: string) => kind === 'prompt' ? `${root}/prompts/${id}.md` : kind === 'slice' ? `${root}/slices/${id}.yaml` : `${root}/${kind === 'team' ? 'teams' : 'skills'}/${id}`;
   const after = (id: string): string[] => [`After this, bowerloom apply puts the index skill slice-${id} in place. An agent loads it when its skills list names slice-${id}.`];
   if (plan.storeCreate) lines.push(STORE_CREATE_LINE);
-  if (plan.bowerloomFolder === 'create') lines.push('Create .bowerloom (records of the copies). Its contents are git-ignored.');
+  if (plan.bowerloomFolder === 'create') lines.push(FOLDER_FOR_ITEMS);
   if (plan.scratch.length) lines.push(`Remove ${plan.scratch.length} scratch ${plan.scratch.length === 1 ? 'entry' : 'entries'} that an interrupted create left in ${root}/authoring`);
   if (plan.settled) lines.push(`Remove the leftover record of ${plan.settled.kind} ${plan.settled.id}. It was created and registered; only its record stayed.`);
   if (plan.discard) lines.push(`Clear the record of an interrupted create of ${plan.discard.kind} ${plan.discard.id}. Nothing of it was put in place.`);

@@ -11,7 +11,7 @@ test('team adopt shows its plan lines, adopts the store team, and the result swi
   mustApprove(w.home, ['team', 'create', 'research', '--global'], w.env);
   const plan = run(dir, ['team', 'adopt', 'research'], w.env);
   assert.equal(plan.status, 3, plan.stderr);
-  assert.match(plan.stdout, /^Create \.bowerloom \(records of the copies\)\. Its contents are git-ignored\.\nAdopt team research from the store\n {2}Copies teams\/research \(\d+ files\) to \.bowerloom\/teams\/research\n {2}Registers it in \.bowerloom\/authoring\/receipt\.json\nbowerloom\.json: team research changes from store to project\nThe project now owns this copy\. Later store changes do not reach it\.$/m);
+  assert.match(plan.stdout, /^Create \.bowerloom, the folder of this project's items\. Commit the files this writes there\.\nAdopt team research from the store\n {2}Copies teams\/research \(\d+ files\) to \.bowerloom\/teams\/research\n {2}Registers it in \.bowerloom\/authoring\/receipt\.json\nbowerloom\.json: team research changes from store to project\nThe project now owns this copy\. Later store changes do not reach it\.$/m);
   const { applied } = mustApprove(dir, ['team', 'adopt', 'research'], w.env);
   assert.match(applied.stdout, /^Applied plan [a-f0-9]{64}\.$/m);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'bowerloom.json'), 'utf8')).teams, [{ id: 'research', source: 'project' }]);
@@ -55,7 +55,7 @@ test('fix 1: in a shared project, use team refuses STORE_ITEM_NOT_SHAREABLE, its
   const step = /bowerloom (team adopt)\b/.exec(next); assert.ok(step, next);
   const plan = run(dir, [...step[1]!.split(' '), 'research'], w.env);
   assert.equal(plan.status, 3, plan.stderr);
-  assert.match(plan.stdout, /^Create \.bowerloom \(records of the copies\)\. Its contents are git-ignored\.$/m);
+  assert.match(plan.stdout, /^Create \.bowerloom, the folder of this project's items\. Commit the files this writes there\.$/m);
   assert.match(plan.stdout, ADOPT_UNLISTED);
   assert.doesNotMatch(plan.stdout, /changes from store to project|Network:/);
   const { applied } = mustApprove(dir, ['team', 'adopt', 'research'], w.env);

@@ -27,7 +27,7 @@ test('1, 2 and 6. apply --frozen on a clone: plan names api.github.com and exits
   const plan = run(dir, ['apply', '--frozen'], net.env, NETWORK);
   assert.equal(plan.status, 3, plan.stderr); assert.match(plan.stdout, /^Network: reads api\.github\.com for 2 items, public and without credentials\./m);
   assert.match(plan.stdout, /^Frozen: installing only what bowerloom\.lock\.json records\.$/m);
-  assert.match(plan.stdout, /^Create \.bowerloom \(records of the copies\)\. Its contents are git-ignored\.$/m);
+  assert.match(plan.stdout, /^Create \.bowerloom for the records of the copies, in \.bowerloom\/managed\. Its own \.gitignore keeps them out of git\.$/m);
   const { applied } = approve(dir, ['apply', '--frozen'], net.env, NETWORK);
   assert.equal(applied.status, 0, applied.stderr);
   assert.ok(existsSync(join(dir, '.claude/skills/house-style/SKILL.md')));

@@ -73,6 +73,33 @@ export const missingNext = (kind: ItemKind, id: string): string => `Define it wi
 export const storeMissingNext = (kind: ItemKind, id: string): string => `Create it with bowerloom ${kind} create ${id} --global, or run bowerloom unuse ${kind} ${id}.`;
 export const STALE_NOTE = (pairs: readonly string[]): string => `The lock is out of date for ${pairs.join(', ')}. Run bowerloom lock update.`;
 export const SHARED_NO_LOCK_NOTE = 'This project is shared but has no bowerloom.lock.json. Run bowerloom lock update.';
+/**
+ * Review L3, and track 11 of beta.3, item 3: in a shared project each plan names each store item the config asks for,
+ * and where this run takes it from. The live store says "your store". On a machine with no store, or in a frozen run,
+ * an item the person wrote comes from the lock and the store repository, and a pin from the lock and npm or GitHub.
+ */
+export function storeItemNote(item: Pick<ResolvedItem, 'kind' | 'id' | 'resolvedFrom' | 'entry' | 'lockPin' | 'hold'>): string {
+  return `  ${item.kind} ${item.id} comes from ${noteSource(item)}; this project asks for it`;
+}
+/**
+ * PR 102 round 1, item 3: each branch tests one fact. Only the hold STORE_ITEM_MISSING says that nothing holds the item.
+ * A lock item the person wrote names the store repository; a pin names npm or GitHub; any other pin kind gets neutral
+ * words, never a guess.
+ */
+function noteSource(item: Pick<ResolvedItem, 'resolvedFrom' | 'entry' | 'lockPin' | 'hold'>): string {
+  if (item.hold?.code === 'STORE_ITEM_MISSING') return 'a store, and neither your store nor the lock holds it';
+  if (item.resolvedFrom === 'store') return 'your store';
+  if (item.resolvedFrom === 'project') return 'this project';
+  if (item.lockPin !== null) return 'the lock and the store repository';
+  const kind = (item.entry?.source as { kind?: unknown } | undefined)?.kind;
+  if (kind === 'npm') return 'the lock and npm';
+  // PR 102 round 2, item 6: a git pin is always on github.com. readLock checks each pin with validateEntry, and the
+  // schema takes only `host: GIT_HOST`, which is 'github.com' (skill-manifest/src/schema.ts); any other host is
+  // LOCK_INVALID. So "GitHub" is exact here, not a guess.
+  if (kind === 'git') return 'the lock and its GitHub repository';
+  // A skill the person wrote resolves from the lock with a local entry and its lockPin, handled above.
+  return 'the lock';
+}
 
 /** The definitions a project holds in `.bowerloom`: skills.json, the authoring receipt, and first-team. */
 interface Definitions { manifest: Manifest | null; read: { sha256: string; bytes: number } | null; prompts: Map<string, AuthoredItem>; teams: Map<string, AuthoredItem | null> }
@@ -246,7 +273,7 @@ export function resolveProject(input: ResolveInput): Resolved {
   if (lockInfo.state === 'mismatch' && lock !== null) { const a = lockAgrees(lock, config); notes.push(`bowerloom.lock.json and bowerloom.json list different store items: ${[...a.added, ...a.removed].join(', ')}. Run bowerloom lock update.`); }
   if (sharedState.unknown !== undefined) notes.push(unknownSharedNote(sharedState.unknown));
   // Review L3: in a shared project, each store item the config asks for is named, so private store content entering a clone shows.
-  if (shared) for (const [name, kind] of KINDS) for (const e of config[name]) if (e.source === 'store') notes.push(`  ${kind} ${e.id} comes from your store; this project asks for it`);
+  if (shared) for (const item of [...skills, ...prompts, ...teams]) if (item.origin === 'store') notes.push(storeItemNote(item));
 
   const listed = (name: 'skills' | 'prompts' | 'teams') => new Set(config[name].filter(e => e.source === 'project').map(e => e.id));
   const unselected = {

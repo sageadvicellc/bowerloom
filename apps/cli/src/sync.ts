@@ -22,7 +22,7 @@ import { itemId } from '../../../packages/managed-skills/src/v2-observed.js';
 import type { RecoveryAction, RecoveryPlanV2 } from '../../../packages/managed-skills/src/v2-types.js';
 import { approvalFault, parseApprovalFlags, runWithApproval } from './confirm.js';
 import type { ApprovalIo } from './confirm.js';
-import { newCommandJson, plainText } from './human.js';
+import { newCommandJson, plainText, FOLDER_FOR_COPIES } from './human.js';
 import { allowedToolsLine, terminalIo } from './manifest.js';
 
 const usage = (message: string): never => { throw new DefinitionError('USAGE', message); };
@@ -139,7 +139,7 @@ export function renderSyncReview(plan: SyncPlan, maxSet = false): string {
   const stored = (plan.storeFetch ?? []).filter(f => f.storeCache === 'missing'), config = plan.config != null, n = fetch.length + stored.length;
   const width = Math.max(0, ...plan.items.map(x => x.id.length), ...plan.storeFetch.map(f => f.id.length)) + 1;
   return [
-    ...(plan.bowerloomFolder === 'create' && plan.items.some(i => i.action === 'install' || i.action === 'update') ? ['Create .bowerloom (records of the copies). Its contents are git-ignored.'] : []),
+    ...(plan.bowerloomFolder === 'create' && plan.items.some(i => i.action === 'install' || i.action === 'update') ? [FOLDER_FOR_COPIES] : []),
     `${config ? 'Sync skills' : 'Sync skills from .bowerloom/skills.json'} for ${harnessWords(plan.harnesses)}${plan.team ? `, team ${plan.team}` : ''}${plan.offline ? ', offline' : ''}`,
     ...(plan.items.length ? plan.items.flatMap(i => itemLine(i, width)) : [config ? '  Nothing is selected to sync yet.' : '  skills.json names no skill for this sync.']),
     ...plan.storeFetch.map(f => `  ${f.id.padEnd(width)} fetch ${f.kind} into the store cache [store, from the lock: ${f.lockPin.remote.slice('https://'.length)}]`),

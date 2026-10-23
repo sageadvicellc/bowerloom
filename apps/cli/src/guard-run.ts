@@ -49,6 +49,10 @@ export async function readLimited(stdin: AsyncIterable<unknown>, maxBytes = 1048
     for await (const chunk of stdin) { const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)); size += b.length; if (size > maxBytes) return null; chunks.push(b); }
     try { return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)); } catch { return null; }
   })();
+  // PR 102 rounds 1 and 2, item 5: a stdin that fails after the timeout must never surface as a rejection nobody
+  // handles, which would crash with exit 1. Promise.race below already handles that rejection, because it subscribes
+  // to `read`. This handler is a safeguard only: it keeps that true if the race is ever replaced.
+  read.catch(() => { /* the race below decides */ });
   const timeout = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), ms); timer.unref?.(); });
   try { return await Promise.race([read, timeout]); } finally { if (timer) clearTimeout(timer); }
 }

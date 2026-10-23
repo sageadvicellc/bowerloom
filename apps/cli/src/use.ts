@@ -1,7 +1,7 @@
 /**
  * `bowerloom use skill|prompt|team <id> [--project] [--commit <sha>] [--approve <revision>] [--json]` and
  * `bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]` (spec 06, 3.5 and 3.7). They change
- * bowerloom.json and bowerloom.lock.json only, through the approval wrapper, under the project lock.
+ * bowerloom.json, and bowerloom.lock.json when the plan writes it, through the approval wrapper, under the project lock.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -100,16 +100,21 @@ export function renderConfigChange(plan: ConfigChangePlan, places: readonly stri
       for (const pair of plan.lock.adds) { const [k, i] = pair.split(' ') as [Kind, string], item = lockItem(lock, k, i); lines.push(`bowerloom.lock.json: adds ${pair}${item ? ` (${lockSourceLabel(item)})` : ''}`); }
       for (const pair of plan.lock.removes) lines.push(`bowerloom.lock.json removes: ${pair}`);
     }
-    lines.push(...tokenNotes(plan.notes, plan.network.credentials), 'This changes bowerloom.json and bowerloom.lock.json only. Then run bowerloom skills sync and bowerloom apply.');
+    lines.push(...tokenNotes(plan.notes, plan.network.credentials), `${changesLine(plan)} Then run bowerloom skills sync and bowerloom apply.`);
     return lines.join('\n');
   }
   lines.push(`Stop using ${c.kind} ${c.id}`);
   for (const r of plan.removes) lines.push(`bowerloom.json removes: ${r.kind} ${r.id} (${r.source})`);
   for (const pair of plan.lock?.removes ?? []) lines.push(`bowerloom.lock.json removes: ${pair}`);
   if (places.length) lines.push(`Copies stay in ${list(places)}. Bowerloom removes no copy. Delete them yourself if you want them gone.`);
-  lines.push('This changes bowerloom.json and bowerloom.lock.json only.');
+  lines.push(changesLine(plan));
   return lines.join('\n');
 }
+/**
+ * Track 11 of beta.3, item 4: the files the plan writes, and no other. A plan writes the lock only in a shared project
+ * whose config has a store entry, or when a lock exists (spec 06, 3.9 and 3.13).
+ */
+export const changesLine = (plan: Pick<ConfigChangePlan, 'lock'>): string => `This changes ${plan.lock ? 'bowerloom.json and bowerloom.lock.json' : 'bowerloom.json'} only.`;
 /** The result in plain words. */
 export function resultWords(result: ConfigChangeResult): string {
   const c = result.change;

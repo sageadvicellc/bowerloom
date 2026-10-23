@@ -68,7 +68,7 @@ import { revisionOf, freezeSkillData } from '../../skill-sources/src/validation.
 import { LIMITS, check, fail, schema, hash, same, lifetime, path, directory, ancestry, exists, names, absent, raw, parsed, stablePins, retainedBytes, opTemp, removeOpTemp, sweepOpTemps, temporary, markerTwin, rawMarker } from './observed.js';
 import type { Lifetime } from './observed.js';
 import { MARKER_V2, PENDING_FORMAT, RECEIPT_FORMAT, boundaryV2, requestV2, readClosure, surfaceV2, matchesV2, bindingsV2, capacityV2, materialPinsV2, validatePlanV2, planItemWithLifetime, receiptAtV2 } from './v2-observed.js';
-import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames } from '../../project-context/src/index.js';
+import { isHeldProjectLock, lockSlot, lockServer, lockHolder, reportSlotCollision, slotRefusal, slotStillNames, LOCK_REBINDS, rebindPause, LOCK_BANNER_TIMEOUT_MS } from '../../project-context/src/index.js';
 import { createServer } from 'node:net';
 import type { Server } from 'node:net';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
@@ -135,9 +135,9 @@ async function locked<T>(project: string, life: Lifetime, work: () => Promise<T>
         // Only EADDRINUSE reads the holder's banner. A holder that let go before the read (ECONNREFUSED) gets one more
         // bind, with a fresh listener; binding alone decides the lock.
         if (acquired || (e as NodeJS.ErrnoException)?.code !== 'EADDRINUSE') throw e;
-        life.check(); verdict = await slotRefusal(slot, attempt === 0);
+        life.check(); verdict = await slotRefusal(slot, attempt < LOCK_REBINDS);
         if (verdict !== 'free') throw e;
-        server = lockServer(slot);
+        await rebindPause(attempt); server = lockServer(slot);
       }
     }
     // A folder replaced between the key and the bind has another slot: this port locks nothing. The finally releases it.
@@ -177,7 +177,8 @@ async function heldLock<T>(held: HeldProjectLock, project: string, life: Lifetim
   check(seen === 'taken', 'MANAGED_SKILL_LOCK_NOT_HELD');
   // The taken slot must answer with this project's banner: another listener on the port proves nothing about the lock.
   // Nobody answering (the holder let go after the probe) means the lock is not held; anything else answering is a collision.
-  const holder = await lockHolder(slot); check(holder !== 'gone', 'MANAGED_SKILL_LOCK_NOT_HELD');
+  // Track 11 of beta.3, item 5: this process holds the slot, so a silent probe is its own busy event loop. Probe once more.
+  const holder = await lockHolder(slot, LOCK_BANNER_TIMEOUT_MS, 1); check(holder !== 'gone', 'MANAGED_SKILL_LOCK_NOT_HELD');
   if (holder !== 'this') fail('MANAGED_SKILL_LOCK_SLOT_COLLISION', reportSlotCollision(slot));
   const guard = () => { check(!held.signal.aborted, 'MANAGED_SKILL_ABORTED'); try { held.assertHeld(project); } catch { fail('MANAGED_SKILL_LOCK_NOT_HELD'); } life.check(); };
   guard(); const result = await work(); guard(); return result;

@@ -8,6 +8,7 @@ import type { PlannedChange } from '../../../packages/project-context/src/types.
 import { applyAdopt, planAdopt } from '../../../packages/project-sync/src/index.js';
 import type { AdoptPlan } from '../../../packages/project-sync/src/index.js';
 import { runApprovalCommand } from './confirm.js';
+import { FOLDER_FOR_ITEMS } from './human.js';
 import type { ApprovalIo } from './confirm.js';
 import { terminalIo } from './manifest.js';
 
@@ -17,7 +18,7 @@ const joinAnd = (items: readonly string[]): string => items.length < 2 ? items.j
 export function renderAdopt(plan: AdoptPlan): string {
   const id = plan.config.change.id, lines: string[] = [];
   if (plan.finishing) lines.push(`Finish adopting team ${id}.`);
-  if (plan.create?.bowerloomFolder === 'create') lines.push('Create .bowerloom (records of the copies). Its contents are git-ignored.');
+  if (plan.create?.bowerloomFolder === 'create') lines.push(FOLDER_FOR_ITEMS);
   if (plan.config.created) lines.push(`Create bowerloom.json and list ${plan.config.listed} items this project defines now, with the source project.`);
   if (plan.create) {
     const files = plan.create.files.filter(f => f.path.startsWith(`teams/${id}/`)).length;

@@ -57,17 +57,19 @@ A config with no store entry never reads the store. A config with a store entry 
 
 A project with `bowerloom.json` and no `.bowerloom/` folder works with every command. The managed engine keeps its install records in `.bowerloom/managed/`. The first `skills sync` or `apply` that installs anything creates `.bowerloom/` with mode 0755. So do `skill create`, `prompt create`, `team create`, and `team adopt`. `use` and `unuse` never create it. Every file the engine writes there is git-ignored by `.bowerloom/managed/.gitignore`, which holds one line, `*`. So the repository holds only `bowerloom.json`, `bowerloom.lock.json`, and the files the person writes.
 
-The plan shows this as the first line of the review:
+The plan shows this as the first line of the review. Amended by track 11: the line says what git ignores, which depends on what the command writes. The create commands, `team adopt`, and `skills add` write project items, which are committed. `skills sync` and `apply` write only the records of the copies, in `.bowerloom/managed`.
 
 ```text
-Create .bowerloom (records of the copies). Its contents are git-ignored.
+Create .bowerloom, the folder of this project's items. Commit the files this writes there.
+Create .bowerloom for the records of the copies, in .bowerloom/managed. Its own .gitignore keeps them out of git.
 ```
 
-The plan field is `bowerloomFolder: "create"`. For an existing folder it is `"present"`. Six commands can create the folder, and `use` and `unuse` never do. They write only `bowerloom.json` and `bowerloom.lock.json`.
+The plan field is `bowerloomFolder: "create"`. For an existing folder it is `"present"`. Seven commands can create the folder: `apply`, `skills sync`, `skill create`, `prompt create`, `team create`, `team adopt`, and `skills add` (amended by track 11: `skills add` is the seventh, rule 9 of 3.8). `use` and `unuse` never do. They write only `bowerloom.json`, and `bowerloom.lock.json` when the plan writes the lock (3.9, 3.13). Amended by track 11: the plan names only the files it writes.
 
 - `apply` and `skills sync` create it after phase A and before phase B, under the project lock.
 - `skill create`, `prompt create`, and `team create` create it through the authoring path, as their first write.
 - `team adopt` creates it through its create part. The field `bowerloomFolder` is `create` only for `op: 'adopt'` (4.5).
+- `skills add` creates it as its first write, with the `skills.json` entry (3.8, rule 9). Amended by track 11.
 
 Creation calls `mkdir` with mode 0755, then `chmod` 0755, and checks the mode. It checks that the user owns the folder and that it has no group or world write permission. It flushes the project folder. If the folder exists by then, the command refuses `STALE_APPROVAL`. After each creation, call `adoptCreatedMarker(project, 'folder')` and use the returned context for the rest of the run.
 
@@ -92,7 +94,7 @@ this project defines now, with the source project.
 use team <id> also picks the store skills and prompts that name that team.
 In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.
 --commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.
-It changes bowerloom.json and bowerloom.lock.json only. Run bowerloom skills sync and bowerloom apply to put the copies in place.
+It changes bowerloom.json, and bowerloom.lock.json when the project has a lock, or is shared and uses a store item. The plan names each file it changes. Run bowerloom skills sync and bowerloom apply to put the copies in place.
 It shows the plan first. Agents pass --approve <revision> or --json.
 ```
 
@@ -127,8 +129,11 @@ bowerloom.json: <kind> <id> is now picked directly                              
 bowerloom.lock.json: adds <kind> <id> (<lock source>)                                             (one line per added lock item)
 bowerloom.lock.json: creates it                                                                   (when new)
 Network: reads api.github.com, to check the pushed copy of <n> items, about <r> requests to api.github.com.     (only when authored items are locked)
-This changes bowerloom.json and bowerloom.lock.json only. Then run bowerloom skills sync and bowerloom apply.
+This changes bowerloom.json only. Then run bowerloom skills sync and bowerloom apply.                (no lock line: the plan writes no lock)
+This changes bowerloom.json and bowerloom.lock.json only. Then run bowerloom skills sync and bowerloom apply.   (the plan writes the lock)
 ```
+
+Amended by track 11: the last line names `bowerloom.lock.json` only when the plan writes it. The help line above was amended to match.
 
 `<source line>` is one of: `store skill (written in ~/.bowerloom/skills/<id>)`, `store prompt (written in ~/.bowerloom/prompts/<id>.md)`, `store team (written in ~/.bowerloom/teams/<id>)`, `npm <package>@<version>:<path>`, or `GitHub <owner>/<repo>@<commit>:<path>`.
 
@@ -163,7 +168,7 @@ Help text, `TOPICS.unuse`:
 Usage:
   bowerloom unuse skill|prompt|team <id> [--approve <revision>] [--json]
 
-Removes an item from bowerloom.json and from bowerloom.lock.json. It removes no copy that sync or apply already made.
+Removes an item from bowerloom.json, and from bowerloom.lock.json when a lock exists. It removes no copy that sync or apply already made.
 unuse team <id> also removes the items that were picked only through that team.
 It shows the plan first. Agents pass --approve <revision> or --json.
 ```
@@ -184,8 +189,11 @@ Stop using <kind> <id>
 bowerloom.json removes: <kind> <id> (<source>)                                  (one line per removed entry)
 bowerloom.lock.json removes: <kind> <id>                                        (one line per removed lock item)
 Copies stay in <place list>. Bowerloom removes no copy. Delete them yourself if you want them gone.
-This changes bowerloom.json and bowerloom.lock.json only.
+This changes bowerloom.json only.                                               (the plan writes no lock)
+This changes bowerloom.json and bowerloom.lock.json only.                       (the plan writes the lock)
 ```
+
+Amended by track 11: the last line names `bowerloom.lock.json` only when the plan writes it, and the help text says the lock changes only when a lock exists.
 
 The `Copies stay` line appears only for an item with a copy on this machine. A catalog file under `.bowerloom/managed/catalog` marks such a copy. A team never has the line, because a team installs nothing.
 
@@ -589,7 +597,7 @@ Plan lines:
 
 ```text
 Finish adopting team <id>.                                                          (only for a recovery plan, as the first line)
-Create .bowerloom (records of the copies). Its contents are git-ignored.            (only when missing)
+Create .bowerloom, the folder of this project's items. Commit the files this writes there.   (only when missing; amended by track 11)
 Adopt team <id> from the store
   Copies teams/<id> (<n> files) to .bowerloom/teams/<id>
   Registers it in .bowerloom/authoring/receipt.json
@@ -1266,7 +1274,7 @@ Every CLI test spawns the CLI with `HOME` and `XDG_STATE_HOME` set to temporary 
 11. Scratch files are listed and removed.
 12. A changed config between plan and apply gives `STALE_APPROVAL`.
 13. A read back that differs gives `CONFIG_WRITE_UNCONFIRMED` or `LOCK_WRITE_UNCONFIRMED`.
-14. `use` and `unuse` never create `.bowerloom`. They write only `bowerloom.json` and `bowerloom.lock.json`. A plan of `apply` or `skills sync` that says `create` makes the command create `.bowerloom` after phase A and before phase B. If the folder exists by then, the command refuses `STALE_APPROVAL`.
+14. `use` and `unuse` never create `.bowerloom`. They write only `bowerloom.json`, and `bowerloom.lock.json` when the plan writes the lock. Amended by track 11: their plans name only those files. A plan of `apply` or `skills sync` that says `create` makes the command create `.bowerloom` after phase A and before phase B. If the folder exists by then, the command refuses `STALE_APPROVAL`.
 15. `adoptCreatedMarker(project, 'config')` runs right after `bowerloom.json` is created. `adoptCreatedMarker(project, 'folder')` runs right after `.bowerloom` is created by any command.
 16. For a new file, the writer runs `lstat` and requires `ENOENT`, then `rename`.
 17. `applyConfigChange` reads no network. A change to the config, the lock, `store.skills`, `store.authoring`, or an added authored item's `localItemRows` hash gives `STALE_APPROVAL`.

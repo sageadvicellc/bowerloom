@@ -76,6 +76,8 @@ An agent that names a slice with `guard: root` gets a `PreToolUse` hook in its c
 
 On Claude Code 2.1.295 or later, a guard that cannot start, crashes, or runs longer than 10 seconds blocks the call. Before 2.1.295, such a guard lets the call through.
 
+If the guard cannot write its answer, for example because the reader of its output closed early, it exits 2, which blocks the call. The guard then writes `Bowerloom guard: the hook output could not be written, so the call is blocked.` to stderr.
+
 To see what the guard decides, run:
 
 ```sh
