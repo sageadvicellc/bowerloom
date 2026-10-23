@@ -105,7 +105,7 @@ for (const theme of ['light', 'dark'] as const) {
       await snap(page, '08-project-healthy', theme);
       await page.getByRole('heading', { name: /Reading lists/ }).scrollIntoViewIfNeeded();
       await page.evaluate(() => document.getElementById('main')!.scrollBy(0, 120));
-      await expect(page.getByText('This project may show the `title` of each file from this folder.')).toBeVisible();
+      await expect(page.getByText('This project may show the title of each file from this folder.')).toBeVisible();
       await snap(page, '08b-project-live-heading-and-frontmatter', theme);
       await nav(page, 'Projects').click();
       await page.getByRole('button', { name: /newsletter/ }).click();
