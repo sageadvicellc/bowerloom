@@ -1,0 +1,19 @@
+{
+  "format": "bowerloom/authoring-receipt/v1beta1",
+  "items": [
+    {
+      "kind": "slice",
+      "id": "team-notes",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/team-notes.yaml",
+          "sha256": "97b9025387a3eca52dd6c89eee3f9630753aac9b91901168571161e4916eaef1",
+          "bytes": 204
+        }
+      ],
+      "planRevision": "37df84921adc4e8b874e944047d455c4c4b4d1a201ecbbac5f563358746c7547"
+    }
+  ],
+  "revision": "b2b171c8b7022fd05f3764abd399d886c8e8f57d4f836bdea3e700dc9772881d"
+}

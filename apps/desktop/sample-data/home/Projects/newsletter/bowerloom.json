@@ -1,0 +1,29 @@
+{
+  "format": "bowerloom/project/v1beta1",
+  "harnesses": [
+    "claude",
+    "codex"
+  ],
+  "skills": [
+    {
+      "id": "old-rules",
+      "source": "store"
+    },
+    {
+      "id": "weekly-digest",
+      "source": "store"
+    }
+  ],
+  "prompts": [
+    {
+      "id": "launch-checklist",
+      "source": "store"
+    }
+  ],
+  "teams": [
+    {
+      "id": "newsroom",
+      "source": "project"
+    }
+  ]
+}

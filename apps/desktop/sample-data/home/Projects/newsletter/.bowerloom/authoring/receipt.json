@@ -1,0 +1,103 @@
+{
+  "format": "bowerloom/authoring-receipt/v1beta1",
+  "items": [
+    {
+      "kind": "slice",
+      "id": "client-history",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/client-history.yaml",
+          "sha256": "47eb7ef342b62af5f043d5e5268d3879464e3e3a164aebc4b256b9f7ba70df27",
+          "bytes": 208
+        }
+      ],
+      "planRevision": "86b1a25b5dbb2ffbc8c0d6e29c14c4eb118e373ace6deb7fd90b16b64cbeb42a"
+    },
+    {
+      "kind": "slice",
+      "id": "team-notes",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/team-notes.yaml",
+          "sha256": "97b9025387a3eca52dd6c89eee3f9630753aac9b91901168571161e4916eaef1",
+          "bytes": 204
+        }
+      ],
+      "planRevision": "9a272ed21a9151e308c19d2ba973104d428fe54e130cf1dc3e974a3d9a9e87fc"
+    },
+    {
+      "kind": "slice",
+      "id": "team-titles",
+      "teams": [],
+      "files": [
+        {
+          "path": "slices/team-titles.yaml",
+          "sha256": "97b9025387a3eca52dd6c89eee3f9630753aac9b91901168571161e4916eaef1",
+          "bytes": 204
+        }
+      ],
+      "planRevision": "7dda838c348aad34b19f01d90d38b9bcaf6455c0823ead38a0ea9f2e00300e43"
+    },
+    {
+      "kind": "team",
+      "id": "newsroom",
+      "teams": [],
+      "files": [
+        {
+          "path": "teams/newsroom/assets/brief.json",
+          "sha256": "1bb312483401f4c0ffa8e7e4db34e569e2576aba02c14e5dfe00fec89324374e",
+          "bytes": 425
+        },
+        {
+          "path": "teams/newsroom/assets/milestones.md",
+          "sha256": "ac0fe09a4e431f51e93f61138cb8192bc5315d40222819b59cf34e6c43cb84d1",
+          "bytes": 668
+        },
+        {
+          "path": "teams/newsroom/assets/working-agreement.md",
+          "sha256": "67ea112b1c25eda27585ea3ad8b6368056f0ed73642aca63423d6d00bca8192d",
+          "bytes": 1275
+        },
+        {
+          "path": "teams/newsroom/maps/relay.json",
+          "sha256": "c6ac4b065f3d5e63d15bd6de274a52acf9f5ccfc8b1f613243e5214d775029b8",
+          "bytes": 925
+        },
+        {
+          "path": "teams/newsroom/maps/vines.json",
+          "sha256": "6b59121a4868cd63157ebe0d4c8c178293d2e2a41c370dab0891b469f623df32",
+          "bytes": 698
+        },
+        {
+          "path": "teams/newsroom/prompts/lead.md",
+          "sha256": "5a2b044de3b0da4c940169e66aee4b6743364be10ebc9bfda921462f565b01ee",
+          "bytes": 624
+        },
+        {
+          "path": "teams/newsroom/prompts/maker.md",
+          "sha256": "69194080c16dcc69bfe695a414e922ff520323e55c928f6385c8ca58d7bf4566",
+          "bytes": 685
+        },
+        {
+          "path": "teams/newsroom/prompts/reviewer.md",
+          "sha256": "30ca914feddb4a559201e94839ce0de87c279b8bb420e002a17c35d327dcb399",
+          "bytes": 654
+        },
+        {
+          "path": "teams/newsroom/skills/bounded-draft.md",
+          "sha256": "ddff4e9525c9a0a66fd93208f7ab62427165704a64ae87a22569a70998ca6b16",
+          "bytes": 894
+        },
+        {
+          "path": "teams/newsroom/team.yaml",
+          "sha256": "e24daf026a3ab6214af7b69a872f3e908e6d170c2b4670f4cbe27375d890299e",
+          "bytes": 6575
+        }
+      ],
+      "planRevision": "7ae33b697004a4495ef485ee2265eee64d95377776f4d87316cbd9abf74cbb82"
+    }
+  ],
+  "revision": "997f85ad3e85883dc76d1940557dd0ca8bb7737cf1f9651acd354803460a75c2"
+}

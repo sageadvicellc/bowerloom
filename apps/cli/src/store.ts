@@ -33,13 +33,13 @@ const LEFTOVER_TEMP = /^\.store\.json\.[a-f0-9]{16}\.tmp$/;
 const NAME_LIMIT = 256;
 const SKILLS_JSON_LIMIT = 4 * 1024 * 1024;
 
-type State = 'absent' | 'store' | 'foreign' | 'refused';
-type Problem = 'unsafe' | 'too-large' | 'invalid' | 'unreadable';
+export type State = 'absent' | 'store' | 'foreign' | 'refused';
+export type Problem = 'unsafe' | 'too-large' | 'invalid' | 'unreadable';
 /** A count of names. `capped` is true when there were more than 256. `ignored` counts what the count skipped. */
-interface Count { n: number; capped: boolean; ignored: number }
-interface Pinned { count: number | null; problem: Problem | null }
-interface Counts { skillFolders: Count; pinnedSkills: Pinned; prompts: Count; teams: Count }
-interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null; folders?: FoldersCheck; gitignore?: StoreGitignoreStatus }
+export interface Count { n: number; capped: boolean; ignored: number }
+export interface Pinned { count: number | null; problem: Problem | null }
+export interface Counts { skillFolders: Count; pinnedSkills: Pinned; prompts: Count; teams: Count }
+export interface Report { state: State; path: string; code: string | null; message: string | null; counts: Counts | null; leftovers: string[]; git: StoreRepo | null; folders?: FoldersCheck; gitignore?: StoreGitignoreStatus }
 
 const errno = (error: unknown): unknown => (error as NodeJS.ErrnoException | null)?.code;
 const storeCode = (error: unknown): string | null => { const code = errno(error); return typeof code === 'string' && code.startsWith('STORE_') ? code : null; };
@@ -89,7 +89,8 @@ function pinnedSkills(store: StoreContext): Pinned {
   return { count: skills.filter(entry => { const kind = (entry as { source?: { kind?: unknown } } | null)?.source?.kind; return kind === 'npm' || kind === 'git'; }).length, problem: null };
 }
 
-function report(home: string): Report {
+/** The store report that `store status` prints. Exported for the desktop viewer, which only reads it. */
+export function report(home: string): Report {
   let path: string;
   try { path = storeRootOf(home); } catch (error) {
     const code = storeCode(error);
