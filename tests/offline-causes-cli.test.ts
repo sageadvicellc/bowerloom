@@ -5,7 +5,8 @@
 import './support/isolate-home.js';
 import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
@@ -13,9 +14,11 @@ import { world, run, mustApprove, errorCode, errorMessage, project, EMPTY_CONFIG
 import type { World } from './support/config-cli.js';
 import { renderRefusal, reportFailure } from '../apps/cli/src/human.js';
 import { runSyncCommand } from '../apps/cli/src/sync.js';
-import { acquisitionRefusal, fetchPin } from '../packages/project-sync/src/apply.js';
+import { acquisitionRefusal, fetchPin, recoveryInFlow } from '../packages/project-sync/src/apply.js';
+import { ALL_IDS_USED_NEXT, cacheOperationId } from '../packages/project-sync/src/cache-index.js';
 import { fetchStoreGit } from '../packages/project-sync/src/store-git.js';
-import { partialRefusal, syncError } from '../packages/project-sync/src/refusal.js';
+import { offlineBecause, partialRefusal, REPLAN_NEXT, syncError, withNext } from '../packages/project-sync/src/refusal.js';
+import type { OfflineCause } from '../packages/project-sync/src/refusal.js';
 import { notShareable } from '../packages/project-config/src/index.js';
 import { atApproval } from '../packages/project-config/src/refusal.js';
 import { GitAcquisitionError } from '../packages/skill-sources/src/git.js';
@@ -171,7 +174,10 @@ test('a refusal after a partial write keeps the step of its cause, then the comm
   assert.equal(partialOf(NEXT.other), 'Run bowerloom store migrate --all. If it fails again, report the code and the output of bowerloom --version.');
   assert.equal(partialOf(NEXT.nocode), 'Run bowerloom store migrate --all. If it fails again, report the error name above and the output of bowerloom --version.');
   assert.equal(partialOf(NEXT.response), 'Later, run bowerloom store migrate --all. If it fails again, check that the version or commit of the pin still exists on its registry.');
-  for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
+  // Round 8: every step that starts by running the command again does so, whatever follows it.
+  assert.equal(partialOf(NEXT.offline), 'Run bowerloom store migrate --all without --offline and without --approve.');
+  assert.equal(partialOf(NEXT.approved), 'Run bowerloom store migrate --all without --offline and without --approve, to see a plan that fetches it.');
+  for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic, NEXT.offline, NEXT.approved]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
   assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
 });
@@ -265,3 +271,97 @@ test('after 8 failed fetches of one pin, the step is cache prune --partial, and 
   assert.equal(run(dir, ['skills', 'sync', '--approve', after.revision], net(w, { routes: NPM_ROUTES }), NETWORK).status, 0);
 });
 
+
+// Round 8 of the reviews of PR 101, item 1: skills migrate binds its cache operation, so every refusal of its fetch names
+// its plan command (the flow's `replan`), and none names skills sync or --offline, which skills migrate does not have.
+const PLAN_CMD = "bowerloom skills migrate plan --state '/tmp/v1 state'";
+const MIGRATE = { rerun: PLAN_CMD, replan: PLAN_CMD };
+test('a flow that plans again: each fetch refusal names its plan command, never skills sync or --offline', () => {
+  const live = new AbortController().signal, stopped = AbortSignal.abort();
+  const step = `Run ${PLAN_CMD} to see a new plan.`;
+  for (const e of [acquisitionRefusal(new NpmAcquisitionError('NPM_ABORTED'), live, 'x', MIGRATE), acquisitionRefusal(new GitAcquisitionError('GIT_ABORTED'), live, 'x', MIGRATE), acquisitionRefusal(new Error('any'), stopped, 'x', MIGRATE)] as (Error & { code: string; next?: string })[]) {
+    assert.equal(e.code, 'SKILLS_SYNC_INTERRUPTED');
+    assert.equal(e.message, `The run stopped, as asked. Each skill it finished is complete; no skill was left half done. It stopped while fetching x, before any change to the project. ${step}`);
+    assert.equal(e.next, step);
+  }
+  const unclear = acquisitionRefusal(new NpmAcquisitionError('NPM_NETWORK', ['NPM_CACHE_RELEASE_UNCERTAIN']), live, 'x', MIGRATE) as Error & { code: string; next?: string };
+  assert.equal(unclear.code, 'SKILLS_CACHE_RECOVERY_REQUIRED');
+  assert.ok(unclear.message.endsWith(`The fetch of x left the cache unclear (NPM_NETWORK, NPM_CACHE_RELEASE_UNCERTAIN). Run ${PLAN_CMD} to see a new plan: it leaves that operation as it is and fetches into a new one.`), unclear.message);
+  assert.equal(unclear.next, step);
+  const down = acquisitionRefusal(new NpmAcquisitionError('NPM_DNS'), live, 'x', MIGRATE) as Error & { next?: string };
+  assert.equal(down.message, `${FIXED} Bowerloom could not fetch x, because the network was not reachable (NPM_DNS).`);
+  assert.equal(down.next, `Connect to the network, then run ${PLAN_CMD} to see a new plan.`);
+  for (const e of [unclear, down, ...[new NpmAcquisitionError('NPM_ABORTED'), new NpmAcquisitionError('NPM_RESPONSE'), new TypeError('t')].map(c => acquisitionRefusal(c, live, 'x', MIGRATE))] as (Error & { next?: string })[]) {
+    assert.doesNotMatch(`${e.message} ${e.next}`, /skills sync|--offline|run the command again/i);
+  }
+  // skills sync keeps its own words: the same command again, and --offline for pins that are cached.
+  const sync = acquisitionRefusal(new NpmAcquisitionError('NPM_ABORTED'), live, 'x') as Error & { next?: string };
+  assert.ok(sync.message.endsWith('It stopped while fetching x, before any change to the project. Run bowerloom skills sync again.')); assert.equal(sync.next, 'Run bowerloom skills sync again.');
+  assert.match(acquisitionRefusal(new NpmAcquisitionError('NPM_DNS'), live, 'x').message, /Pins that are already cached also sync with --offline\.$/);
+});
+
+test('the plan-again steps: one per cause that runs the command again; the requests cause and other codes pass through', () => {
+  const live = new AbortController().signal;
+  const table: [OfflineCause, Error, string][] = [
+    ['network', new NpmAcquisitionError('NPM_TIMEOUT'), `Connect to the network, then run ${PLAN_CMD} to see a new plan.`],
+    ['response', new GitAcquisitionError('GIT_RESPONSE'), `Later, run ${PLAN_CMD} to see a new plan. If the fetch fails again, check that the version or commit of the pin still exists on its registry.`],
+    ['nonpublic', new NpmAcquisitionError('NPM_NONPUBLIC_ADDRESS'), `Check the DNS or proxy configuration of this machine, then run ${PLAN_CMD} to see a new plan.`],
+    ['other', new NpmAcquisitionError('NPM_PLAN_REFUSED'), `Run ${PLAN_CMD} to see a new plan. If the fetch fails again, report the code and the output of bowerloom --version.`],
+    ['nocode', new TypeError('a secret'), `Run ${PLAN_CMD} to see a new plan. If the fetch fails again, report the error name above and the output of bowerloom --version.`],
+  ];
+  for (const [cause, error, next] of table) {
+    const plain = acquisitionRefusal(error, live, 'x') as Error & { code: string; next?: string; cause?: unknown };
+    const replanned = acquisitionRefusal(error, live, 'x', MIGRATE) as Error & { code: string; next?: string; cause?: unknown };
+    assert.equal(replanned.code, plain.code, cause); assert.equal(replanned.code, 'SKILLS_OFFLINE', cause);
+    assert.equal(replanned.message, plain.message.replace(' Pins that are already cached also sync with --offline.', ''), cause);
+    assert.equal(replanned.next, next, cause); assert.equal(REPLAN_NEXT[cause]!(PLAN_CMD), next, cause);
+    assert.equal(replanned.cause, plain.cause, cause);
+    if (cause === 'other' || cause === 'nocode') assert.equal(replanned.cause, error, `${cause} keeps the original`);
+  }
+  // The requests cause sends the person to skills check, which is the same in both flows.
+  for (const e of [new NpmAcquisitionError('NPM_REQUEST_BOUND'), new GitAcquisitionError('GIT_REQUEST_BOUND')]) {
+    const a = acquisitionRefusal(e, live, 'x') as Error & { message: string; next?: string }, b = acquisitionRefusal(e, live, 'x', MIGRATE) as Error & { next?: string };
+    assert.equal(b.message, a.message); assert.equal(b.next, NEXT.requests); assert.equal(a.next, NEXT.requests);
+  }
+  assert.equal((acquisitionRefusal(new NpmAcquisitionError('NPM_PLAN_CHANGED'), live, 'x', MIGRATE) as Error & { code: string }).code, 'STALE_APPROVAL');
+  // offlineBecause without a plan command, or for a cause with no plan-again step, keeps the step of the cause.
+  assert.equal((offlineBecause('requests', 'e', PLAN_CMD) as Error & { next?: string }).next, NEXT.requests);
+  assert.equal((offlineBecause('approved', 'e', PLAN_CMD) as Error & { next?: string }).next, `Run ${PLAN_CMD} to see a plan that fetches it.`);
+  assert.equal((offlineBecause('approved', 'e') as Error & { next?: string }).next, NEXT.approved);
+  // A refusal that is not about all ids used passes through recoveryInFlow as the very same object.
+  const other = syncError('SKILLS_OFFLINE'), thrown = new Error('x');
+  assert.equal(recoveryInFlow(other, MIGRATE), other); assert.equal(recoveryInFlow(thrown, MIGRATE), thrown);
+  const full = Object.defineProperty(syncError('SKILLS_CACHE_RECOVERY_REQUIRED', 'm'), 'next', { value: ALL_IDS_USED_NEXT, enumerable: false });
+  assert.equal(recoveryInFlow(full, { rerun: 'bowerloom skills sync' }), full, 'skills sync keeps the same --approve');
+  const moved = recoveryInFlow(full, MIGRATE) as Error & { code: string; next?: string };
+  assert.equal(moved.code, full.code); assert.equal(moved.message, full.message);
+  assert.equal(moved.next, `Run bowerloom cache prune --partial to delete the unfinished fetches, then run ${PLAN_CMD} to see a new plan.`);
+});
+
+test('the copy of a refusal with a new step keeps the code, the message, the cause and the stack', () => {
+  const cause = new TypeError('root');
+  const original = Object.defineProperty(syncError('SKILLS_OFFLINE', 'e'), 'cause', { value: cause, enumerable: false });
+  const copy = withNext(original, 'Do this.') as Error & { code: string; next?: string; cause?: unknown };
+  assert.equal(copy.code, original.code); assert.equal(copy.message, original.message); assert.equal(copy.cause, cause);
+  assert.equal(copy.stack, original.stack); assert.equal(copy.next, 'Do this.');
+  assert.deepEqual(Object.keys(copy).filter(k => k === 'next' || k === 'cause' || k === 'stack'), []);
+  assert.equal(reportFailure(copy, true).text.endsWith('Next: Do this.\n'), true);
+});
+
+test('a flow that plans again: an approved plan with no host, and a pin with all 8 ids used, name the plan command', async t => {
+  const pin = { digest: 'd', kind: 'npm' } as unknown as Parameters<typeof fetchPin>[1];
+  const item = { id: 'x', requestDigest: 'd', cacheOperationId: 'a'.repeat(32) } as unknown as Parameters<typeof fetchPin>[0];
+  await assert.rejects(fetchPin(item, pin, { cacheRoot: '/nonexistent', legacyCacheRoot: null } as never, [], { signal: new AbortController().signal } as never, MIGRATE),
+    (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_OFFLINE' && e.next === `Run ${PLAN_CMD} to see a plan that fetches it.`);
+  // Another run used the last ids between the plan and the fetch: the step prunes, then plans again.
+  const digest = 'd'.repeat(64), full = { digest, kind: 'npm' } as unknown as Parameters<typeof fetchPin>[1];
+  const fullItem = { id: 'x', requestDigest: digest, cacheOperationId: 'a'.repeat(32) } as unknown as Parameters<typeof fetchPin>[0];
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-replan-'))); t.after(() => rmSync(base, { recursive: true, force: true }));
+  const cacheRoot = join(base, 'cache'); mkdirSync(cacheRoot, { mode: 0o700 }); chmodSync(base, 0o700);
+  for (let i = 0; i < 8; i++) mkdirSync(join(cacheRoot, `op-${cacheOperationId(digest, i)}`), { mode: 0o700 });
+  const roots = { cacheRoot, legacyCacheRoot: null } as never, deps = { signal: new AbortController().signal } as never;
+  await assert.rejects(fetchPin(fullItem, full, roots, ['registry.npmjs.org'], deps, MIGRATE),
+    (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_CACHE_RECOVERY_REQUIRED' && e.next === `Run bowerloom cache prune --partial to delete the unfinished fetches, then run ${PLAN_CMD} to see a new plan.`);
+  await assert.rejects(fetchPin(fullItem, full, roots, ['registry.npmjs.org'], deps),
+    (e: Error & { code?: string; next?: string }) => e.code === 'SKILLS_CACHE_RECOVERY_REQUIRED' && e.next === ALL_IDS_USED_NEXT);
+});

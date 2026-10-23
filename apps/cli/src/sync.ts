@@ -269,7 +269,7 @@ export async function runMigrateCommand(args: readonly string[], cwd: string, ho
   const approval = parseApprovalFlags(rest); if (approval.rest.length || (mode === 'plan' && approval.approve !== undefined)) usage(MIGRATE_USAGE);
   const state = values.get('--state'); if (state === undefined || !isAbsolute(state) || resolve(state) !== state) return usage(MIGRATE_USAGE);
   const { project, stateRoot } = contextOf(cwd, home, env), input = { project, stateRoot, legacyStateDir: state };
-  const change: PlannedChange<MigratePlan> = { plan: () => planMigrate(input), revision: p => p.revision, review: renderMigrateReview, apply: revision => applyMigrate(input, revision, { acquirer, signal: new AbortController().signal }) };
+  const change: PlannedChange<MigratePlan> = { plan: () => planMigrate(input, mode), revision: p => p.revision, review: renderMigrateReview, apply: revision => applyMigrate(input, revision, { acquirer, signal: new AbortController().signal }) };
   const outcome = await runWithApproval(change, { ...(approval.approve !== undefined ? { approve: approval.approve } : {}), json: approval.json }, mode === 'plan' ? { interactive: false, ask: async () => '' } : io);
   write(outcome.output); return outcome.exitCode;
 }

@@ -31,8 +31,9 @@ import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { MIN_FREE_BYTES, beforePins, byPath, checkProjectAncestry, itemSurfaces, pendingRefusal, stateLayout, union } from './plan.js';
 import type { SyncItem } from './plan.js';
-import { cacheRoots, checkChild, createPrivateFolders, fetchPin, selectorFor } from './apply.js';
-import { outward, replanStep, syncError } from './refusal.js';
+import { cacheRoots, checkChild, createPrivateFolders, fetchPin, recoveryInFlow, selectorFor } from './apply.js';
+import { outward, shellPath, syncError, withNext } from './refusal.js';
+import type { FetchFlow } from './refusal.js';
 
 export const MIGRATE_PLAN_FORMAT = 'bowerloom/skills-migrate-plan/v1beta1' as const;
 export interface MigrateInput { project: ProjectContext; stateRoot: string; legacyStateDir: string }
@@ -116,20 +117,35 @@ async function observeMigrate(input: MigrateInput): Promise<MigrateObserved> {
   return { plan: freezeSkillData({ ...body, revision: revisionOf(body) }) as MigratePlan, pinned };
 }
 
-/** `skills migrate plan`. Reads only. */
-export async function planMigrate(input: MigrateInput): Promise<MigratePlan> {
-  try { return (await observeMigrate(input)).plan; } catch (e) { throw outward(e); }
+/**
+ * Round 8 of the reviews of PR 101: the flow of skills migrate. Its plan binds its cache operation and folders (variant A
+ * of round 7), so each step plans again with this command. A path with a space is quoted for a shell.
+ */
+export function migrateFlow(input: MigrateInput): FetchFlow {
+  const replan = `bowerloom skills migrate plan --state ${shellPath(input.legacyStateDir, '<earlier-state-folder>')}`;
+  return { rerun: replan, replan };
+}
+/**
+ * `skills migrate plan`. Reads only. `use` is 'apply' when the plan is made for skills migrate apply: a refusal then
+ * names the plan command, because the same --approve no longer matches once the step was followed.
+ */
+export async function planMigrate(input: MigrateInput, use: 'plan' | 'apply' = 'plan'): Promise<MigratePlan> {
+  try { return (await observeMigrate(input)).plan; } catch (e) { throw outward(use === 'apply' ? recoveryInFlow(e, migrateFlow(input)) : e); }
 }
 
 /** `skills migrate apply`: the same locked phases as sync, for the one migrate child. */
 export async function applyMigrate(input: MigrateInput, revision: string, deps: SyncDeps): Promise<ManagedItemReceipt> {
   if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision)) throw syncError('STALE_APPROVAL');
   const managed: ManagedPort = deps.managed ?? managedPort;
+  // Round 8 of the reviews of PR 101: every refusal of the run names the plan command of migrateFlow.
+  const flow = migrateFlow(input), replan = flow.replan!;
   try {
     return await withProjectLock(input.project.dir, new AbortController().signal, async held => {
-      const { plan, pinned } = await observeMigrate(input);
+      let observed: MigrateObserved;
+      try { observed = await observeMigrate(input); } catch (error) { throw recoveryInFlow(error, flow); }
+      const { plan, pinned } = observed;
       if (plan.revision !== revision) throw syncError('STALE_APPROVAL');
-      if (deps.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', 'Nothing was changed.');
+      if (deps.signal.aborted) throw withNext(syncError('SKILLS_SYNC_INTERRUPTED', `Nothing was changed. Run ${replan} to see a new plan.`), `Run ${replan} to see a new plan.`);
       createPrivateFolders(plan, held, plan.project.dir);
       const item = plan.item;
       let source: ItemSource;
@@ -137,10 +153,7 @@ export async function applyMigrate(input: MigrateInput, revision: string, deps: 
       else {
         let found = item.cache!;
         if (plan.bytesFrom === 'fetch') {
-          // Round 7 of the reviews of PR 101 (variant A): this plan binds its cache operation, so the step plans again.
-          const state = /^[A-Za-z0-9_/.:@%+=,-]+$/.test(input.legacyStateDir) ? input.legacyStateDir : '<earlier-state-folder>';
-          try { found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps)).lookup; }
-          catch (error) { throw replanStep(error, `bowerloom skills migrate plan --state ${state}`); }
+          found = (await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps, flow)).lookup;
         }
         source = { kind: 'cache', selector: await selectorFor(item, pinned, found) };
       }

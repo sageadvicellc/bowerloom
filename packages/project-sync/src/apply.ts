@@ -18,7 +18,7 @@
  */
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { DefinitionError } from '../../contracts/src/index.js';
+import { DefinitionError } from '../../contracts/src/index.js';
 import { revisionOf } from '../../skill-sources/src/validation.js';
 import { inspectSkillCache, observeSkillCacheRoot, refusalSummary } from '../../skill-sources/src/cache.js';
 import type { AcquiredSkillCacheReceipt, AcquiredSkillCacheSelector } from '../../skill-sources/src/cache.js';
@@ -35,13 +35,14 @@ import { withCacheLock, withProjectLock } from '../../project-context/src/index.
 import { cacheRootProblem } from '../../skill-sources/src/cache.js';
 import type { HeldProjectLock } from '../../project-context/src/types.js';
 import type { Entry, PinnedEntry } from '../../skill-manifest/src/schema.js';
-import { entryRequest, lookupCache, receiptMatches } from './cache-index.js';
+import { ALL_IDS_USED_NEXT, entryRequest, lookupCache, receiptMatches } from './cache-index.js';
 import type { CacheLookup, CacheRoots, PinnedRequest } from './cache-index.js';
 import { managedPort } from './deps.js';
 import type { ManagedPort, SyncDeps } from './deps.js';
 import { HOSTS, MIN_FREE_BYTES, isActionable, observeSync } from './plan.js';
 import type { SyncInput, SyncItem, SyncPlan } from './plan.js';
-import { managedCode, offlineBecause, offlineNetwork, outward, staleAfterApplied, syncError } from './refusal.js';
+import { managedCode, offlineBecause, offlineNetwork, outward, staleAfterApplied, SYNC_FLOW, syncError, withNext } from './refusal.js';
+import type { FetchFlow } from './refusal.js';
 import { fetchStoreGit, missingRequests, readStoreCache, requireRequestBudget } from './store-git.js';
 import type { Credentials } from './store-git.js';
 import { promptNotices } from './notices.js';
@@ -69,6 +70,27 @@ const mismatch = (id: string) => syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The 
 
 /** Round 7: the identity of each shared folder the 'shared' part made or took, which the 'own' part checks again. */
 export type SharedFolders = ReadonlyMap<string, Identity>;
+/** Round 8: the caches that phase A of this run fetched into before the 'own' part ran. */
+export interface FetchedInto { readonly skills: boolean; readonly store: boolean }
+export const FETCHED_NOTHING: FetchedInto = Object.freeze({ skills: false, store: false });
+/** Round 8: the caches that phase A fetched into. A pinned skill goes to the skills cache, an authored item to the store cache. */
+export function fetchedInto(entries: ReadonlyMap<string, Entry>, skills: readonly string[], store: number): FetchedInto {
+  return { skills: skills.some(id => entries.get(id)?.source.kind !== 'local'), store: store > 0 || skills.some(id => entries.get(id)?.source.kind === 'local') };
+}
+/**
+ * Round 8: the step of SKILLS_STATE_UNSAFE after a run changed what its plan binds: it made some of this project's own
+ * folders, or phase A fetched a pin, which is cached now. The same --approve no longer matches, so the step plans again.
+ */
+export const STATE_REPLAN_NEXT = 'Check the private state folder: $XDG_STATE_HOME/bowerloom when XDG_STATE_HOME is set, else ~/.local/state/bowerloom. Then run the command again without --approve, to see a new plan.';
+const SYSTEM_CODE = /^[A-Z][A-Z0-9_]{0,31}$/;
+/** Round 8: the words of SKILLS_STATE_UNSAFE: the system error, if any, what phase A fetched, and that the project is unchanged. */
+function unsafeWords(cause: unknown, fetched: FetchedInto): string {
+  const system = cause instanceof Error && !(cause instanceof DefinitionError) && !(cause instanceof ManagedSkillError) ? (cause as { code?: unknown }).code : undefined;
+  const words = typeof system === 'string' && SYSTEM_CODE.test(system) ? [`A folder step failed with a system error (${system}).`] : [];
+  const into = [fetched.skills ? "this machine's skills cache" : '', fetched.store ? 'the store cache' : ''].filter(Boolean);
+  if (into.length) words.push(`Before this check, this run fetched into ${into.join(' and ')}.`);
+  return [...words, 'Nothing in the project changed.'].join(' ');
+}
 /**
  * Creates the planned private folders in order: each one new, mode 0700, owned by this user, its parent fsynced.
  * A shared folder (the state root, a folder above it, or the machine cache) that another project's run created
@@ -82,8 +104,9 @@ export type SharedFolders = ReadonlyMap<string, Identity>;
  * plan binds its folders. Each part checks every pin of the plan before and after its writes. A refusal keeps the system
  * error as its cause, which no output prints.
  */
-export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all', shared: SharedFolders = new Map()): SharedFolders {
+export function createPrivateFolders(plan: { privateState: { root: string; cacheRoot: string; itemsRoot: string; storeCacheRoot?: string; create: string[]; pins: { path: string; identity: Identity }[] } }, held: HeldProjectLock, dir: string, part: 'shared' | 'own' | 'all' = 'all', shared: SharedFolders = new Map(), fetched: FetchedInto = FETCHED_NOTHING): SharedFolders {
   const made = new Map<string, Identity>();
+  let ownMade = false;
   try {
     const ownFolder = (p: string) => p === plan.privateState.root || p.startsWith(plan.privateState.root + '/');
     const own = new Set([plan.privateState.root, plan.privateState.cacheRoot, plan.privateState.itemsRoot, ...(plan.privateState.storeCacheRoot ? [plan.privateState.storeCacheRoot] : [])]);
@@ -96,6 +119,7 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
       if (!ownFolder(p) && exists(p)) { made.set(p, directory(p, true)); continue; }
       absent(p);
       try { fs.mkdirSync(p, { mode: 0o700 }); } catch (e) { if (!ownFolder(p) && (e as NodeJS.ErrnoException).code === 'EEXIST') { made.set(p, directory(p, true)); continue; } throw e; }
+      if (ownFolder(p)) ownMade = true;
       const identity = directory(p, true);
       if (!ownFolder(p)) made.set(p, identity);
       const fd = fs.openSync(dirname(p), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
@@ -104,8 +128,10 @@ export function createPrivateFolders(plan: { privateState: { root: string; cache
     return made;
   } catch (e) {
     if (e instanceof Error && 'code' in e && e.code === 'PROJECT_LOCKED') throw e;
-    const unsafe = syncError('SKILLS_STATE_UNSAFE', part === 'own' ? 'Bowerloom fetched the pins into the shared cache before this check, and nothing in the project changed.' : undefined);
+    const unsafe = syncError('SKILLS_STATE_UNSAFE', unsafeWords(e, fetched));
     Object.defineProperty(unsafe, 'cause', { value: e, enumerable: false });
+    // Round 8: an own folder this run made, or a pin it fetched, is in the next plan, so the same --approve no longer matches.
+    if (ownMade || fetched.skills || fetched.store) Object.defineProperty(unsafe, 'next', { value: STATE_REPLAN_NEXT, enumerable: false });
     throw unsafe;
   }
 }
@@ -121,26 +147,45 @@ const NONPUBLIC = new Set(['NPM_NONPUBLIC_ADDRESS', 'GIT_NONPUBLIC_ADDRESS']);
 const FIXED_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const CONTENT = /^(?:NPM_(?:METADATA|ARCHIVE_BOUND|INTEGRITY|ENCODING|CONTENT|SELECTED_INVENTORY|COMPRESSION|TAR_[A-Z]+)|GIT_(?:METADATA|BASE64|BLOB|BLOB_DIGEST|BOUND|CONTENT|ENCODING|OUTSIDE_PATH|PATH_[A-Z]+|SELECTED_INVENTORY|SUBMODULE|SYMLINK|TREE|TREE_BOUND|TREE_DIGEST))$/;
 /** An acquisition refusal in sync's words. Nothing in the project has changed when this runs. Exported for its tests. */
-export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string): Error {
-  if (signal.aborted) return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. Run bowerloom skills sync again.`);
+export function acquisitionRefusal(error: unknown, signal: AbortSignal, id: string, flow: FetchFlow = SYNC_FLOW): Error {
+  if (signal.aborted) return stoppedFetch(id, flow);
   const summary = refusalSummary(error), code = summary.codes[0] ?? '';
-  if (summary.uncertain) return syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The fetch of ${id} left the cache unclear (${summary.codes.join(', ')}). Run bowerloom skills sync again: it leaves that operation as it is and fetches into a new one.`);
-  if (code.endsWith('_ABORTED')) return syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project.`);
+  if (summary.uncertain) {
+    // Round 8: a flow that binds its cache operation plans again; the new plan fetches into a new operation.
+    const again = flow.replan !== undefined ? `Run ${flow.replan} to see a new plan` : `Run ${flow.rerun} again`;
+    return withNext(syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The fetch of ${id} left the cache unclear (${summary.codes.join(', ')}). ${again}: it leaves that operation as it is and fetches into a new one.`), `${again}.`);
+  }
+  if (code.endsWith('_ABORTED')) return stoppedFetch(id, flow);
   if (CONTENT.test(code)) return syncError('SKILLS_SYNC_CONTENT_MISMATCH', `The fetched bytes of ${id} do not match its pin (${code}).`);
   if (code.startsWith('NPM_CACHE') || code.startsWith('GIT_CACHE')) return syncError('SKILLS_CACHE_RECOVERY_REQUIRED', `The private cache refused the fetch of ${id} (${code}).`);
-  if (TRANSPORT.has(code)) return offlineNetwork(`Bowerloom could not fetch ${id}, because the network was not reachable (${code}). Pins that are already cached also sync with --offline.`);
-  if (RESPONSE.has(code)) return offlineBecause('response', `The registry answered, but not with the bytes of the pin (${code}). The skill is ${id}.`);
-  if (NONPUBLIC.has(code)) return offlineBecause('nonpublic', `The name of the registry resolved to an address that is not public, so Bowerloom did not connect (${code}). The skill is ${id}.`);
+  // Round 8: skills migrate has no --offline, so its message names none.
+  if (TRANSPORT.has(code)) return offlineNetwork(`Bowerloom could not fetch ${id}, because the network was not reachable (${code}).${flow.replan === undefined ? ' Pins that are already cached also sync with --offline.' : ''}`, flow.replan);
+  if (RESPONSE.has(code)) return offlineBecause('response', `The registry answered, but not with the bytes of the pin (${code}). The skill is ${id}.`, flow.replan);
+  if (NONPUBLIC.has(code)) return offlineBecause('nonpublic', `The name of the registry resolved to an address that is not public, so Bowerloom did not connect (${code}). The skill is ${id}.`, flow.replan);
   if (REQUESTS.has(code)) return offlineBecause('requests', `Fetching the pin needs more requests than Bowerloom makes for one pin: 2 for npm and 130 for GitHub (${code}). The skill is ${id}.`);
   // Round 4: a plan that changed under the fetch is a stale approval.
   if (PLAN_CHANGED.has(code)) return stale(`The fetch plan of ${id} changed (${code}).`);
   // Rounds 4 and 5 of the reviews of PR 101: the original error stays as a cause that no output prints, and its message
   // is never shown. An error with no fixed code names only its class, read so that a throwing getter cannot escape.
   const keep = (wrapped: DefinitionError): DefinitionError => { Object.defineProperty(wrapped, 'cause', { value: error, enumerable: false }); return wrapped; };
-  if (FIXED_CODE.test(code)) return keep(offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`));
+  if (FIXED_CODE.test(code)) return keep(offlineBecause('other', `Bowerloom could not fetch ${id} (${code}).`, flow.replan));
   let name = 'Error';
   try { const n = error instanceof Error ? error.name : undefined; if (typeof n === 'string' && ERROR_NAME.test(n)) name = n; } catch { name = 'Error'; }
-  return keep(offlineBecause('nocode', `The fetch of ${id} failed with an error that has no Bowerloom code (${name}).`));
+  return keep(offlineBecause('nocode', `The fetch of ${id} failed with an error that has no Bowerloom code (${name}).`, flow.replan));
+}
+/**
+ * Round 8 of the reviews of PR 101: a pin whose operation ids are all used, in a flow that plans again. Its plan bound
+ * an operation id, so after the prune the step plans again instead of running the same --approve. Anything else is
+ * returned as it is.
+ */
+export function recoveryInFlow(error: unknown, flow: FetchFlow): unknown {
+  if (flow.replan === undefined || !(error instanceof DefinitionError) || (error as { next?: unknown }).next !== ALL_IDS_USED_NEXT) return error;
+  return withNext(error, `Run bowerloom cache prune --partial to delete the unfinished fetches, then run ${flow.replan} to see a new plan.`);
+}
+/** Round 8: a fetch that stopped, with the step of its flow. */
+function stoppedFetch(id: string, flow: FetchFlow): DefinitionError {
+  const step = flow.replan !== undefined ? `Run ${flow.replan} to see a new plan.` : `Run ${flow.rerun} again.`;
+  return withNext(syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${id}, before any change to the project. ${step}`), step);
 }
 
 /** The machine cache and, read only, the per-project cache of an earlier beta, for a plan's private state. */
@@ -150,13 +195,14 @@ export function cacheRoots(privateState: { root: string; cacheRoot: string }): C
  * completed it meanwhile; else plan its acquisition in this run, check the bound content key and the approved host,
  * and acquire into the first unused operation id. Returns where the pin now is, and whether this run fetched it.
  */
-export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: CacheRoots, approvedHosts: readonly string[], deps: SyncDeps): Promise<{ lookup: CacheLookup; fetched: boolean }> {
+export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: CacheRoots, approvedHosts: readonly string[], deps: SyncDeps, flow: FetchFlow = SYNC_FLOW): Promise<{ lookup: CacheLookup; fetched: boolean }> {
   if (pinned.digest !== item.requestDigest || item.cacheOperationId === null) throw stale();
   // The approval names each host the run may contact. A fetch it did not approve never starts.
-  if (!approvedHosts.includes(HOSTS[pinned.kind])) throw offlineBecause('approved', `The approved plan allows no fetch of ${item.id}.`);
+  if (!approvedHosts.includes(HOSTS[pinned.kind])) throw offlineBecause('approved', `The approved plan allows no fetch of ${item.id}.`, flow.replan);
   try {
     return await withCacheLock(roots.cacheRoot, deps.signal, async held => {
-      const again = await lookupCache(roots, pinned);
+      let again: CacheLookup;
+      try { again = await lookupCache(roots, pinned); } catch (error) { throw recoveryInFlow(error, flow); }
       if (again.status === 'cached') return { lookup: again, fetched: false };
       held.assertHeld();
       let plan: Readonly<NpmAcquisitionPlan> | Readonly<GitAcquisitionPlan>;
@@ -167,12 +213,12 @@ export async function fetchPin(item: SyncItem, pinned: PinnedRequest, roots: Cac
       if (plan.cache.operationId !== again.operationId || !same(plan.request, pinned.cacheRequest)) throw stale();
       let receipt: Readonly<AcquiredSkillCacheReceipt>;
       try { receipt = pinned.kind === 'npm' ? await deps.acquirer.npm(plan as NpmAcquisitionPlan, plan.revision, deps.signal) : await deps.acquirer.git(plan as GitAcquisitionPlan, plan.revision, deps.signal); }
-      catch (e) { throw acquisitionRefusal(e, deps.signal, item.id); }
+      catch (e) { throw acquisitionRefusal(e, deps.signal, item.id, flow); }
       if (!receiptMatches(pinned, receipt) || receipt.operationId !== again.operationId) throw mismatch(item.id);
       return { lookup: { ...again, status: 'cached', receiptRevision: receipt.revision }, fetched: true };
     });
   } catch (e) {
-    if (deps.signal.aborted) throw syncError('SKILLS_SYNC_INTERRUPTED', `It stopped while fetching ${item.id}, before any change to the project. Run bowerloom skills sync again.`);
+    if (deps.signal.aborted) throw stoppedFetch(item.id, flow);
     throw e;
   }
 }
@@ -354,7 +400,7 @@ export async function fetchSkillSources(plan: SyncPlan, entries: ReadonlyMap<str
     let found = item.cache;
     if (found.status === 'needs-fetch') {
       held.assertHeld(dir);
-      const done = await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps); found = done.lookup;
+      const done = await fetchPin(item, pinned, cacheRoots(plan.privateState), plan.network.hosts, deps, { rerun }); found = done.lookup;
       if (done.fetched) fetched.push(item.id);
     }
     sources.set(item.id, { kind: 'cache', selector: await selectorFor(item, pinned, found, prune) });
@@ -459,7 +505,7 @@ export async function applySync(input: SyncInput, revision: string, deps: SyncDe
       const got = await fetchSkillSources(plan, entries, held, deps);
       const stored = await fetchStoreOnly(plan, held, deps);
       // Round 6: this project's own state folders, only after every fetch succeeded.
-      createPrivateFolders(plan, held, dir, 'own', shared);
+      createPrivateFolders(plan, held, dir, 'own', shared, fetchedInto(entries, got.fetched, stored.length));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const project = bowerloomBeforePhaseB(input.project, plan, held, got.sources.size > 0);
       const children = await planSkillChildren(plan, got, deps, managed);

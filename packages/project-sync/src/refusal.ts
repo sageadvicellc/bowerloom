@@ -13,7 +13,7 @@ const MESSAGES = {
   // Round 3 of the reviews of PR 101: true for a written store item too.
   SKILLS_OFFLINE: 'This run could not get bytes that it needs. Nothing in the project changed.',
   SKILLS_SYNC_CONTENT_MISMATCH: 'The bytes Bowerloom holds for a skill do not match the pins and file hashes in .bowerloom/skills.json. Nothing in the project changed.',
-  SKILLS_SYNC_INTERRUPTED: 'skills sync stopped between two skills, as asked. Each skill it finished is complete; no skill was left half done.',
+  SKILLS_SYNC_INTERRUPTED: 'The run stopped, as asked. Each skill it finished is complete; no skill was left half done.',
   SKILLS_SYNC_LIMIT: 'This sync is larger than this beta allows: 256 skills at most, counting the skills that are no longer in skills.json.',
   SKILLS_CACHE_RECOVERY_REQUIRED: 'The private skills cache holds an unfinished or unclear operation for a pin, and every operation id of that pin is used.',
   SKILLS_PROJECT_UNSAFE: 'Bowerloom does not write copies into this project, because the project folder or a folder above it can be changed by other users, or has special mode bits. Move the project to a folder only you can change, such as one in your home folder.',
@@ -101,37 +101,50 @@ export const OFFLINE_NEXT = Object.freeze({
 });
 export type OfflineCause = keyof typeof OFFLINE_NEXT;
 export const NETWORK_NEXT = OFFLINE_NEXT.network;
-/** SKILLS_OFFLINE with the next step of its cause. */
-export function offlineBecause(cause: OfflineCause, extra: string): DefinitionError {
-  const error = syncError('SKILLS_OFFLINE', extra);
-  Object.defineProperty(error, 'next', { value: OFFLINE_NEXT[cause], enumerable: false });
+/**
+ * Round 8 of the reviews of PR 101: the command flow of a fetch. `rerun` runs the command again. `replan` is set when the
+ * plan binds its cache operation and folders (skills migrate, a format released in beta.2), so a failed fetch changes the
+ * plan and each step plans again with that command instead.
+ */
+export interface FetchFlow { readonly rerun: string; readonly replan?: string }
+export const SYNC_FLOW: FetchFlow = Object.freeze({ rerun: 'bowerloom skills sync' });
+/** The steps of a flow that plans again, one per cause that runs the command again. Rounds 7 and 8. */
+export const REPLAN_NEXT: Readonly<Partial<Record<OfflineCause, (command: string) => string>>> = Object.freeze({
+  network: (c: string) => `Connect to the network, then run ${c} to see a new plan.`,
+  response: (c: string) => `Later, run ${c} to see a new plan. If the fetch fails again, check that the version or commit of the pin still exists on its registry.`,
+  nonpublic: (c: string) => `Check the DNS or proxy configuration of this machine, then run ${c} to see a new plan.`,
+  other: (c: string) => `Run ${c} to see a new plan. If the fetch fails again, report the code and the output of bowerloom --version.`,
+  nocode: (c: string) => `Run ${c} to see a new plan. If the fetch fails again, report the error name above and the output of bowerloom --version.`,
+  approved: (c: string) => `Run ${c} to see a plan that fetches it.`,
+});
+/** SKILLS_OFFLINE with the next step of its cause, or its plan-again step when `replan` names the plan command. */
+export function offlineBecause(cause: OfflineCause, extra: string, replan?: string): DefinitionError {
+  const error = syncError('SKILLS_OFFLINE', extra), again = replan !== undefined ? REPLAN_NEXT[cause] : undefined;
+  Object.defineProperty(error, 'next', { value: again ? again(replan!) : OFFLINE_NEXT[cause], enumerable: false });
   return error;
 }
 /**
- * Round 7 of the reviews of PR 101 (variant A): skills migrate plans, a format released in beta.2, bind their cache
- * operation and folders, so a failed fetch there changes the plan. Each step that runs the command again names the plan
- * command instead. `command` is the plan command with its arguments. Any other error is returned as it is.
+ * Round 8: a copy of a refusal with another next step. The next step of an error is fixed once set, so the copy keeps
+ * the code, the message, the cause, and the stack, and is one of this module's refusals.
  */
-export function replanStep(error: unknown, command: string): unknown {
-  if (!(error instanceof DefinitionError) || error.code !== 'SKILLS_OFFLINE') return error;
-  const next = (error as { next?: unknown }).next;
-  const steps: Record<string, string> = {
-    [OFFLINE_NEXT.network]: `Connect to the network, then run ${command} to see a new plan.`,
-    [OFFLINE_NEXT.response]: `Later, run ${command} to see a new plan. If the fetch fails again, check that the version or commit of the pin still exists on its registry.`,
-    [OFFLINE_NEXT.nonpublic]: `Check the DNS or proxy configuration of this machine, then run ${command} to see a new plan.`,
-    [OFFLINE_NEXT.other]: `Run ${command} to see a new plan. If the fetch fails again, report the code and the output of bowerloom --version.`,
-    [OFFLINE_NEXT.nocode]: `Run ${command} to see a new plan. If the fetch fails again, report the error name above and the output of bowerloom --version.`,
-  };
-  if (typeof next !== 'string' || !Object.hasOwn(steps, next)) return error;
-  // The next step of an error is fixed once set, so the step goes on a copy that keeps the code, message, and cause.
+export function withNext(error: DefinitionError, next: string): DefinitionError {
   const copy = new DefinitionError(error.code, error.message); own.add(copy);
-  Object.defineProperty(copy, 'next', { value: steps[next], enumerable: false });
+  Object.defineProperty(copy, 'next', { value: next, enumerable: false });
   const cause = (error as { cause?: unknown }).cause;
   if (cause !== undefined) Object.defineProperty(copy, 'cause', { value: cause, enumerable: false });
+  if (typeof error.stack === 'string') Object.defineProperty(copy, 'stack', { value: error.stack, enumerable: false, writable: true, configurable: true });
   return copy;
 }
+/**
+ * Round 8: a path as one shell word, as `shellWord` in apps/cli/src/human.ts writes it: plain characters stay, anything
+ * else is single-quoted. A path that is not absolute, or that holds a control or format character, is `placeholder`.
+ */
+export function shellPath(path: string, placeholder: string): string {
+  if (!path.startsWith('/') || /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(path)) return placeholder;
+  return /^\/[A-Za-z0-9_/.:@%+=,-]*$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+}
 /** SKILLS_OFFLINE for a fetch that failed on the network: only a transport failure. */
-export const offlineNetwork = (extra: string): DefinitionError => offlineBecause('network', extra);
+export const offlineNetwork = (extra: string, replan?: string): DefinitionError => offlineBecause('network', extra, replan);
 /**
  * Review M5 finding 2: STALE_APPROVAL after earlier children of the run applied. Its fixed message never says that
  * nothing was applied; it names the finished items, which are complete, and the item that changed.
@@ -167,7 +180,8 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   const step = typeof existing === 'string' ? existing.replace(/\s*If you also changed the item, run the command again without --approve\.$/, '').replace(/\s*After you fix the store, run the command again without --approve\.$/, '').replace(/\s*Then run [^.]*\.$/, '').replace(/(?:,| and) (?:then )?run the command again\.$/, '.').trim() : '';
   let next: string;
   if (step.startsWith('Run the command again later.')) next = `Later, run ${rerun}.${step.slice('Run the command again later.'.length)}`;
-  else if (step.startsWith('Run the command again.')) next = `Run ${rerun}.${step.slice('Run the command again.'.length)}`;
+  // Round 8: any other step that starts by running the command again, such as the --offline steps, keeps what follows.
+  else if (/^Run the command again\b/.test(step)) next = step.replace(/^Run the command again\b/, `Run ${rerun}`);
   else next = step ? `${step} Then run ${rerun}.` : rerun;
   Object.defineProperty(partial, 'next', { value: next, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });

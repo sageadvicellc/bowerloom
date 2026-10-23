@@ -26,7 +26,7 @@ import { manifestRefusal } from '../../skill-manifest/src/refusal.js';
 import { withProjectLock } from '../../project-context/src/index.js';
 import type { DirectoryIdentity, PinnedDirectory, ProjectContext } from '../../project-context/src/types.js';
 import { DefinitionError } from '../../contracts/src/index.js';
-import { applyChildren, createPrivateFolders, interrupted } from './apply.js';
+import { applyChildren, createPrivateFolders, fetchedInto, interrupted } from './apply.js';
 import type { Child } from './apply.js';
 import { managedPort } from './deps.js';
 import type { Acquirer, ManagedPort } from './deps.js';
@@ -359,19 +359,22 @@ export async function applyProjectApply(input: ApplyInput, revision: string, sig
       // did not show is held for review and gets no child.
       const got = plan.skills ? await fetchSkillSources(plan.skills, entries, held, syncDeps, 'bowerloom apply') : null;
       const promptDirs = new Map<string, string>(), review: ApplyResult['held'] = [];
+      let promptsFetched = 0;
       for (const item of prompts) {
         if (item.origin !== 'store') continue;
         if (item.resolvedFrom === 'store') { if (plan.store === null) throw stale(); promptDirs.set(item.id, plan.store.dir); continue; }
         held.assertHeld(dir);
         const folder = await authoredFolder({ kind: 'prompt', id: item.id, requestDigest: item.lockPin?.hash ?? null, lockPin: item.lockPin }, plan.privateState, plan.network.hosts, syncDeps, plan.network.credentials);
+        if (folder.fetched) promptsFetched++;
         // Decision A, widened by review H1: held when its notices are not exactly the ones the approved plan showed.
         const notices = promptNotices(storeText(dir, 'prompt', item.id, folder.dir));
         if (notices.length && revisionOf(notices) !== revisionOf(item.notices)) { review.push({ kind: 'prompt', id: item.id, ...reviewHold(), ...originOf(item) }); continue; }
         promptDirs.set(item.id, folder.dir);
       }
-      await fetchStoreOnly(plan, held, syncDeps);
-      // Round 6 of the reviews of PR 101: this project's own state folders, only after every fetch succeeded.
-      createPrivateFolders(plan, held, dir, 'own', shared);
+      const stored = await fetchStoreOnly(plan, held, syncDeps);
+      // Round 6 of the reviews of PR 101: this project's own state folders, only after every fetch succeeded. Round 8:
+      // the refusal says which caches phase A fetched into.
+      createPrivateFolders(plan, held, dir, 'own', shared, fetchedInto(entries, got?.fetched ?? [], stored.length + promptsFetched));
       const promptChildren = prompts.filter(p => p.origin !== 'store' || promptDirs.has(p.id));
       // Review C2: the context that names the folder this run made, checked again before phase C writes.
       const context = bowerloomBeforePhaseB(input.project, plan, held, (got?.sources.size ?? 0) + promptChildren.length + slices.length + agents.length > 0);
