@@ -131,7 +131,7 @@ export const TOPICS: Readonly<Record<string, string>> = {
     'In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.',
     '--commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.',
     '--max-github-requests <n> lets one run make up to n GitHub requests, at most 5000. The default is 1000.',
-    'It changes bowerloom.json only, and bowerloom.lock.json too in a shared project. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
+    'It changes bowerloom.json, and bowerloom.lock.json when the project has a lock, or is shared and uses a store item. The plan names each file it changes. Run bowerloom skills sync and bowerloom apply to put the copies in place.',
     'It shows the plan first. Agents pass --approve <revision> or --json.', '',
   ].join('\n'),
   unuse: [

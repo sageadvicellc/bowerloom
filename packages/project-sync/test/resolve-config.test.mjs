@@ -124,6 +124,21 @@ test('track 11, item 3: with no store, each store item note names the lock and w
   assert.equal(storeItemNote({ kind: 'prompt', id: 'brief', resolvedFrom: 'store', entry: null, lockPin: null, hold: null }), '  prompt brief comes from your store; this project asks for it');
 });
 
+test('PR 102 round 1, item 3: storeItemNote picks the missing words by the hold code, and names each pin source explicitly', () => {
+  const note = over => storeItemNote({ kind: 'skill', id: 'x', resolvedFrom: 'lock', entry: null, lockPin: null, hold: null, ...over });
+  const MISSING = '  skill x comes from a store, and neither your store nor the lock holds it; this project asks for it';
+  assert.equal(note({ resolvedFrom: 'lock', hold: { code: 'STORE_ITEM_MISSING', next: '' } }), MISSING);
+  assert.equal(note({ resolvedFrom: 'store', hold: { code: 'STORE_ITEM_MISSING', next: '' } }), MISSING);
+  // A hold for another reason keeps the words of where the item comes from.
+  assert.equal(note({ hold: { code: 'ITEM_REVIEW_REQUIRED', next: '' }, lockPin: { hash: 'a' } }), '  skill x comes from the lock and the store repository; this project asks for it');
+  assert.equal(note({ resolvedFrom: 'store', hold: { code: 'ITEM_REVIEW_REQUIRED', next: '' } }), '  skill x comes from your store; this project asks for it');
+  assert.equal(note({ entry: { source: { kind: 'npm' } } }), '  skill x comes from the lock and npm; this project asks for it');
+  assert.equal(note({ entry: { source: { kind: 'git' } } }), '  skill x comes from the lock and its GitHub repository; this project asks for it');
+  // A pin kind this version does not know gets neutral words, never a guess.
+  assert.equal(note({ entry: { source: { kind: 'tarball' } } }), '  skill x comes from the lock; this project asks for it');
+  assert.equal(note({ entry: null }), '  skill x comes from the lock; this project asks for it');
+});
+
 test('6. a frozen run never reads the store: a store that refuses has no effect, and a live store that differs does not win', async t => {
   const w = configWorld(t);
   await storeItem(w, 'skill', 'house-style');

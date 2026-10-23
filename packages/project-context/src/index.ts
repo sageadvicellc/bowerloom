@@ -123,7 +123,7 @@ export function lockServer(slot: LockSlot): Server {
 export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT_MS, silentRetries = 0): Promise<'this' | 'other' | 'gone'> {
   let holder = await probeLockHolder(slot, timeoutMs);
   for (let retry = 0; holder === 'silent' && retry < silentRetries; retry++) holder = await probeLockHolder(slot, timeoutMs);
-  return holder === 'silent' || holder === 'reset' ? 'other' : holder;
+  return holder === 'silent' || holder === 'reset' || holder === 'closed' ? 'other' : holder;
 }
 /**
  * Track 11 of beta.3, item 5: a probe timer that fires more than PROBE_LATE_MS after it was due gets PROBE_GRACE_MS more,
@@ -132,20 +132,22 @@ export async function lockHolder(slot: LockSlot, timeoutMs = LOCK_BANNER_TIMEOUT
  */
 const PROBE_LATE_MS = 100, PROBE_GRACE_MS = 100, PROBE_GRACES = 10;
 /**
- * `lockHolder` with two more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
- * 'reset' when the connection is reset, or closed, before any byte. A Bowerloom holder whose event loop is busy, such
- * as one unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
+ * `lockHolder` with three more verdicts. 'silent' when the connection stays open and sends no byte before the timeout.
+ * 'reset' when the connection is reset before any byte. A Bowerloom holder whose event loop is busy, such as one
+ * unpacking a large archive, answers 'silent', and 'reset' when it exits before it reads the connection. A program
  * that squats the port can answer either way. Only `withCacheLock` waits on them, and only up to a limit.
- * Track 11 of beta.3, item 5: a clean close with no byte is 'reset' too, not 'other'. No Bowerloom lock holder closes
- * without its banner while it holds the slot, so a close with no byte is a holder that let go, or a listener that is
- * not the lock. `slotRefusal` binds again, and that bind decides: a squatter keeps the port and stays a collision.
+ * 'closed' (track 11 of beta.3, item 5, and PR 102 round 1) when the connection ends cleanly before any byte. No
+ * Bowerloom lock holder closes without its banner while it holds the slot, so it is a holder that let go, or a program
+ * that accepts and ends every connection. Both locks bind again on it, at most LOCK_REBINDS times in a row, and then
+ * refuse it as a collision: `slotRefusal` through `mayBindAgain`, `withCacheLock` through its own count.
  */
-function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<'this' | 'other' | 'gone' | 'silent' | 'reset'> {
+type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
+function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdict> {
   return new Promise(resolveHolder => {
     const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false, graces = 0, due = performance.now() + timeoutMs;
     const socket = net.connect({ host: '127.0.0.1', port: slot.port });
-    const finish = (verdict: 'this' | 'other' | 'gone' | 'silent' | 'reset') => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
-    const settle = () => finish(size === 0 ? 'reset' : Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
+    const finish = (verdict: ProbeVerdict) => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolveHolder(verdict); };
+    const settle = () => finish(size === 0 ? 'closed' : Buffer.concat(chunks, size).equals(want) ? 'this' : 'other');
     // Track 11 of beta.3, item 5: after a busy spell, Node runs a due timer before it reads the sockets. A timer that
     // fires late means this process's own event loop was busy, so the banner, or the close after it, may be waiting
     // unread: read it first.
@@ -182,7 +184,7 @@ export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise
   const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
   if (holder === 'this') return 'locked';
   // A reset or close before any byte is a holder that let go before it answered, like 'gone'.
-  if ((holder === 'gone' || holder === 'reset') && mayBindAgain) return 'free';
+  if ((holder === 'gone' || holder === 'reset' || holder === 'closed') && mayBindAgain) return 'free';
   reportSlotCollision(slot); return 'collision';
 }
 /** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
@@ -277,6 +279,10 @@ function cacheSlotCollision(port: number): DefinitionError & { readonly port: nu
  * A holder that stays silent, or resets the connection before any byte, is waited for too, because a Bowerloom holder
  * in another process cannot answer while its event loop is busy, and resets when it exits first. Past `silentMs`
  * (CACHE_LOCK_SILENT_LIMIT_MS) of nothing else, it counts as another program.
+ * A connection that ends cleanly before any byte ('closed') is a holder that let go, so the writer binds again. After
+ * LOCK_REBINDS such closes in a row it counts as another program (PR 102 round 1): one that accepts and ends every
+ * connection refuses in well under a second. Each wait pauses CACHE_LOCK_POLL_MS before the next bind, whatever the
+ * holder answered; only a holder that is gone, with nobody listening, gets the next bind at once.
  * A slot held by anything else refuses PROJECT_LOCK_SLOT_COLLISION, naming the port. Readers take no lock.
  */
 /** Round 3 of the reviews of PR 99, L-e: the cache lock refuses in its own words, not the project lock's. */
@@ -285,7 +291,7 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
   let first: LockSlot; try { first = cacheLockSlot(cacheRoot); } catch (error) { if ((error as { code?: unknown }).code === 'PROJECT_LOCK_UNAVAILABLE') throw cacheLockRefusal(); throw error; }
   const slot = first, deadline = options.waitMs === undefined ? Infinity : Date.now() + options.waitMs;
   const silentLimit = options.silentMs ?? CACHE_LOCK_SILENT_LIMIT_MS;
-  let silentSince: number | undefined;
+  let silentSince: number | undefined, closes = 0;
   const bind = (listener: Server) => new Promise<{ ok: true } | { ok: false; code: string | undefined }>(settle => {
     listener.once('error', error => settle({ ok: false, code: (error as NodeJS.ErrnoException).code }));
     listener.listen({ host: '127.0.0.1', port: slot.port, exclusive: true }, () => settle({ ok: true }));
@@ -300,9 +306,12 @@ export async function withCacheLock<T>(cacheRoot: string, signal: AbortSignal, w
     if (outcome.code !== 'EADDRINUSE') throw cacheLockRefusal();
     const holder = await probeLockHolder(slot, LOCK_BANNER_TIMEOUT_MS);
     if (holder === 'silent' || holder === 'reset') silentSince ??= Date.now(); else silentSince = undefined;
-    if (holder === 'other' || (silentSince !== undefined && Date.now() - silentSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
+    closes = holder === 'closed' ? closes + 1 : 0;
+    if (holder === 'other' || closes > LOCK_REBINDS || (silentSince !== undefined && Date.now() - silentSince >= silentLimit)) { reportSlotCollision(slot); throw cacheSlotCollision(slot.port); }
     if (Date.now() >= deadline) throw new DefinitionError('PROJECT_LOCK_UNAVAILABLE', 'Another Bowerloom command held the skills cache lock for too long. Try again.');
-    if (holder === 'this') await pause();
+    // PR 102 round 1: every wait pauses, so a holder that answers at once never makes a tight loop. Only a holder that
+    // is gone (nobody listens) gets the next bind at once.
+    if (holder !== 'gone') await pause();
   }
   const stillNames = (): boolean => { try { return cacheLockSlot(cacheRoot).key === slot.key; } catch { return false; } };
   if (!stillNames() || signal.aborted) { await closeServer(server); throw signal.aborted ? abortError() : cacheLockRefusal(); }

@@ -6,29 +6,37 @@ import test from './support/lock-slot-retry.js';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { fileURLToPath } from 'node:url';
+import { quietBrokenPipe, readerGone } from '../apps/cli/src/broken-pipe.js';
 import { join } from 'node:path';
 import { world, run, mustApprove, baseEnv, cli, project, EMPTY_CONFIG } from './support/config-cli.js';
 import type { World } from './support/config-cli.js';
 
-interface Closed { status: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string }
+interface Closed { status: number | null; signal: NodeJS.Signals | null; stderr: string; stdout: string; errors: string[] }
+/** PR 102 round 1, item 4: a preload records each stdout and stderr error, so a test proves that the pipe broke. */
+const RECORDER = fileURLToPath(new URL('./support/record-stdio-errors.js', import.meta.url));
+let records = 0;
 /**
  * Runs the CLI with the read end of stdout (or stderr) closed before the child writes a byte. Node starts in tens of
  * milliseconds, and the pipe closes at once after the spawn, so every write of the child meets a reader that is gone.
  */
 function closedReader(cwd: string, args: string[], env: Record<string, string>, close: 'stdout' | 'stderr' = 'stdout'): Promise<Closed> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], { cwd, env: { ...baseEnv(), ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const log = join(env.HOME!, '..', `stdio-errors-${process.pid}-${++records}.log`);
+    const child = spawn(process.execPath, ['--import', RECORDER, cli, ...args], { cwd, env: { ...baseEnv(), ...env, TEST_STDIO_LOG: log }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '', stdout = '';
     child[close].destroy();
     const other = close === 'stdout' ? child.stderr : child.stdout;
     other.setEncoding('utf8'); other.on('data', (d: string) => { if (close === 'stdout') stderr += d; else stdout += d; });
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`${args.join(' ')} did not exit`)); }, 60000);
     child.on('error', reject);
-    child.on('close', (status, signal) => { clearTimeout(timer); resolve({ status, signal, stderr, stdout }); });
+    child.on('close', (status, signal) => { clearTimeout(timer); let errors: string[] = []; try { errors = readFileSync(log, 'utf8').split('\n').filter(Boolean); } catch { /* no error was recorded */ } resolve({ status, signal, stderr, stdout, errors }); });
   });
 }
-const noCrash = (r: Closed, what: string): void => {
+const noCrash = (r: Closed, what: string, stream: 'stdout' | 'stderr' = 'stdout'): void => {
   assert.equal(r.signal, null, what);
+  assert.ok(r.errors.includes(`${stream} EPIPE`), `${what}: the pipe did not break (${r.errors.join(', ')})`);
   assert.doesNotMatch(r.stderr, /EPIPE|Unhandled 'error' event|node:events|\n\s+at /, `${what}: ${r.stderr}`);
   assert.doesNotMatch(r.stdout, /EPIPE|Unhandled 'error' event|node:events|\n\s+at /, `${what}: ${r.stdout}`);
 };
@@ -81,6 +89,22 @@ test('a refusal whose stderr reader closes early exits with the refusal status a
     const open = run(dir, [...args], w.env);
     assert.equal(open.status, status); assert.match(open.stderr, new RegExp(code));
     const closed = await closedReader(dir, [...args], w.env, 'stderr');
-    noCrash(closed, args.join(' ')); assert.equal(closed.stdout, ''); assert.equal(closed.status, status, args.join(' '));
+    noCrash(closed, args.join(' '), 'stderr'); assert.equal(closed.stdout, ''); assert.equal(closed.status, status, args.join(' '));
   }
+});
+
+// PR 102 round 1, item 4: quietBrokenPipe drops only the errors of a reader that has gone, and throws any other.
+test('quietBrokenPipe: EPIPE and ERR_STREAM_DESTROYED end the output quietly; EIO and an error with no code throw', () => {
+  const stream = new EventEmitter(); quietBrokenPipe(stream as unknown as NodeJS.WritableStream);
+  const fail = (code?: string): Error => Object.assign(new Error(code ?? 'no code'), code ? { code } : {});
+  assert.doesNotThrow(() => stream.emit('error', fail('EPIPE')));
+  assert.doesNotThrow(() => stream.emit('error', fail('ERR_STREAM_DESTROYED')));
+  assert.throws(() => stream.emit('error', fail('EIO')), (e: { code?: string }) => e.code === 'EIO');
+  assert.throws(() => stream.emit('error', fail()), /no code/);
+  assert.equal(readerGone(fail('EPIPE')), true); assert.equal(readerGone(fail('EIO')), false); assert.equal(readerGone(null), false);
+});
+
+test('the release notes say that with stderr closed a refusal keeps its status but loses its text (PR 102 round 1, item 7)', () => {
+  const notes = readFileSync(new URL('../../apps/docs/src/content/docs/releases.md', import.meta.url), 'utf8');
+  assert.ok(notes.includes('With stderr closed, a refusal keeps its exit status, but its text is lost.'));
 });

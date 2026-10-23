@@ -134,8 +134,10 @@ test('follow-up item 4: the help of unuse and use say the lock changes only when
   const w = world(t);
   const unuse = run(w.work, ['help', 'unuse'], w.env), use = run(w.work, ['help', 'use'], w.env);
   assert.equal(unuse.status, 0); assert.match(unuse.stdout, /^Removes an item from bowerloom\.json, and from bowerloom\.lock\.json when a lock exists\./m);
-  assert.match(use.stdout, /^It changes bowerloom\.json only, and bowerloom\.lock\.json too in a shared project\./m);
+  assert.match(use.stdout, /^It changes bowerloom\.json, and bowerloom\.lock\.json when the project has a lock, or is shared and uses a store item\. The plan names each file it changes\. Run bowerloom skills sync/m);
   const doc = readFileSync(new URL('../../apps/docs/src/content/docs/cli.md', import.meta.url), 'utf8');
   assert.ok(doc.includes('`unuse` removes an item from `bowerloom.json`, and from `bowerloom.lock.json` when a lock exists.'));
-  assert.ok(doc.includes('`use` changes `bowerloom.json` only, and `bowerloom.lock.json` too in a shared project.'));
+  assert.ok(doc.includes('`use` changes `bowerloom.json`, and `bowerloom.lock.json` when the project has a lock, or is shared and uses a store item. The plan names each file it changes.'));
+  // PR 102 round 1, item 2: the old words said a shared project always changes the lock, which a project with no store entry does not.
+  assert.doesNotMatch(use.stdout + doc, /too in a shared project/);
 });

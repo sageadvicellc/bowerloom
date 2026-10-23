@@ -64,11 +64,12 @@ Create .bowerloom, the folder of this project's items. Commit the files this wri
 Create .bowerloom for the records of the copies, in .bowerloom/managed. Its own .gitignore keeps them out of git.
 ```
 
-The plan field is `bowerloomFolder: "create"`. For an existing folder it is `"present"`. Six commands can create the folder, and `use` and `unuse` never do. They write only `bowerloom.json`, and `bowerloom.lock.json` when the plan writes the lock (3.9, 3.13). Amended by track 11: the plan names only the files it writes.
+The plan field is `bowerloomFolder: "create"`. For an existing folder it is `"present"`. Seven commands can create the folder: `apply`, `skills sync`, `skill create`, `prompt create`, `team create`, `team adopt`, and `skills add` (amended by track 11: `skills add` is the seventh, rule 9 of 3.8). `use` and `unuse` never do. They write only `bowerloom.json`, and `bowerloom.lock.json` when the plan writes the lock (3.9, 3.13). Amended by track 11: the plan names only the files it writes.
 
 - `apply` and `skills sync` create it after phase A and before phase B, under the project lock.
 - `skill create`, `prompt create`, and `team create` create it through the authoring path, as their first write.
 - `team adopt` creates it through its create part. The field `bowerloomFolder` is `create` only for `op: 'adopt'` (4.5).
+- `skills add` creates it as its first write, with the `skills.json` entry (3.8, rule 9). Amended by track 11.
 
 Creation calls `mkdir` with mode 0755, then `chmod` 0755, and checks the mode. It checks that the user owns the folder and that it has no group or world write permission. It flushes the project folder. If the folder exists by then, the command refuses `STALE_APPROVAL`. After each creation, call `adoptCreatedMarker(project, 'folder')` and use the returned context for the rest of the run.
 
@@ -93,7 +94,7 @@ this project defines now, with the source project.
 use team <id> also picks the store skills and prompts that name that team.
 In a shared project the item must be fetchable by your team. bowerloom.lock.json records where. See bowerloom help lock.
 --commit <sha> records that commit of the store remote instead of the pushed commit of the current branch.
-It changes bowerloom.json only, and bowerloom.lock.json too in a shared project. Run bowerloom skills sync and bowerloom apply to put the copies in place.
+It changes bowerloom.json, and bowerloom.lock.json when the project has a lock, or is shared and uses a store item. The plan names each file it changes. Run bowerloom skills sync and bowerloom apply to put the copies in place.
 It shows the plan first. Agents pass --approve <revision> or --json.
 ```
 

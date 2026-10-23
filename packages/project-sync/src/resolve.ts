@@ -79,11 +79,23 @@ export const SHARED_NO_LOCK_NOTE = 'This project is shared but has no bowerloom.
  * an item the person wrote comes from the lock and the store repository, and a pin from the lock and npm or GitHub.
  */
 export function storeItemNote(item: Pick<ResolvedItem, 'kind' | 'id' | 'resolvedFrom' | 'entry' | 'lockPin' | 'hold'>): string {
-  const pin = item.entry?.source.kind, from = item.resolvedFrom === 'store' && item.hold === null ? 'your store'
-    : item.resolvedFrom !== 'lock' ? 'a store, and neither your store nor the lock holds it'
-    : item.lockPin !== null || pin === 'local' || pin === undefined ? 'the lock and the store repository'
-    : pin === 'npm' ? 'the lock and npm' : 'the lock and its GitHub repository';
-  return `  ${item.kind} ${item.id} comes from ${from}; this project asks for it`;
+  return `  ${item.kind} ${item.id} comes from ${noteSource(item)}; this project asks for it`;
+}
+/**
+ * PR 102 round 1, item 3: each branch tests one fact. Only the hold STORE_ITEM_MISSING says that nothing holds the item.
+ * A lock item the person wrote names the store repository; a pin names npm or GitHub; any other pin kind gets neutral
+ * words, never a guess.
+ */
+function noteSource(item: Pick<ResolvedItem, 'resolvedFrom' | 'entry' | 'lockPin' | 'hold'>): string {
+  if (item.hold?.code === 'STORE_ITEM_MISSING') return 'a store, and neither your store nor the lock holds it';
+  if (item.resolvedFrom === 'store') return 'your store';
+  if (item.resolvedFrom === 'project') return 'this project';
+  if (item.lockPin !== null) return 'the lock and the store repository';
+  const kind = (item.entry?.source as { kind?: unknown } | undefined)?.kind;
+  if (kind === 'npm') return 'the lock and npm';
+  if (kind === 'git') return 'the lock and its GitHub repository';
+  // A skill the person wrote resolves from the lock with a local entry and its lockPin, handled above.
+  return 'the lock';
 }
 
 /** The definitions a project holds in `.bowerloom`: skills.json, the authoring receipt, and first-team. */

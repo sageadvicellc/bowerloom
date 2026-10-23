@@ -7,7 +7,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { withCacheLock, cacheLockSlot, lockSlot } from '../../../dist/packages/project-context/src/index.js';
+import { withCacheLock, cacheLockSlot, lockSlot, LOCK_REBINDS } from '../../../dist/packages/project-context/src/index.js';
 
 const listen = (server, port) => new Promise((resolve, reject) => { server.once('error', reject); server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve); });
 const close = server => new Promise(resolve => server.close(resolve));
@@ -95,10 +95,32 @@ test('a port held by a program that never answers refuses LOCK_SLOT_COLLISION on
 });
 
 test('a port held by a program that resets every connection refuses LOCK_SLOT_COLLISION once the silent limit runs out', async t => {
-  const dir = await freshCache(t), port = cacheLockSlot(dir).port;
-  const squatter = net.createServer(s => { s.on('error', () => {}); s.resetAndDestroy(); });
+  const dir = await freshCache(t), port = cacheLockSlot(dir).port; let connections = 0;
+  const squatter = net.createServer(s => { connections++; s.on('error', () => {}); s.resetAndDestroy(); });
   await listen(squatter, port); t.after(() => close(squatter));
   let ran = false; const started = Date.now();
   await assert.rejects(withCacheLock(dir, new AbortController().signal, async () => { ran = true; }, { silentMs: 500 }), e => e?.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
   assert.equal(ran, false); assert.ok(Date.now() - started >= 500, 'it waited out the silent limit first');
+  // PR 102 round 1: the wait pauses between tries, so it is not a tight loop of binds and connections.
+  assert.ok(connections <= 30, `${connections} connections in about 500 ms`);
+});
+
+// PR 102 round 1, item 1: a program that accepts each connection and ends it with no byte. Track 11 made such a close
+// a let-go, and the cache lock spun on it for the whole silent limit. Now it is 'closed': a few rebinds, with a pause
+// each, then a collision.
+test('a port held by a program that accepts and ends every connection refuses LOCK_SLOT_COLLISION within about a second', async t => {
+  const dir = await freshCache(t), port = cacheLockSlot(dir).port; let connections = 0;
+  const squatter = net.createServer(s => { connections++; s.on('error', () => {}); s.end(); });
+  await listen(squatter, port); t.after(() => close(squatter));
+  let ran = false; const started = Date.now();
+  await assert.rejects(withCacheLock(dir, new AbortController().signal, async () => { ran = true; }), e => e?.code === 'PROJECT_LOCK_SLOT_COLLISION' && e.port === port);
+  const took = Date.now() - started;
+  assert.equal(ran, false); assert.ok(took < 1500, `${took} ms`); assert.equal(connections, LOCK_REBINDS + 1);
+});
+
+test('a holder that ends one connection with no byte and lets go is not a collision: the cache lock is taken', async t => {
+  const dir = await freshCache(t), port = cacheLockSlot(dir).port;
+  const holder = net.createServer(s => { s.on('error', () => {}); s.end(); holder.close(); });
+  await listen(holder, port);
+  assert.equal(await withCacheLock(dir, new AbortController().signal, async () => 'ran'), 'ran');
 });
