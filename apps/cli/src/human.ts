@@ -1,4 +1,4 @@
-import { canonicalJson, DefinitionError, shellArg } from '../../../packages/contracts/src/index.js';
+import { canonicalJson, DefinitionError, oneLine, shellArg } from '../../../packages/contracts/src/index.js';
 
 /**
  * The first screen a person sees, and the plain-words refusals. Output only: nothing here reads or writes a file.
@@ -374,8 +374,10 @@ export function exitCodeFor(error: unknown): ExitCode {
 
 // Every control character (C0, DEL, C1), every format character (the bidi controls, zero-width characters, the byte
 // order mark, tag characters), and the line and paragraph separators U+2028 and U+2029 (review M1F 2).
-const CONTROLS = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
-const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+// Round 11 of the reviews of PR 101 (variant A): ZWNJ and ZWJ (U+200C and U+200D) print as they are, as shellArg keeps
+// them. They join glyphs in real folder names, and they cannot break a line or reorder text.
+const CONTROLS = /[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu;
+const CONTROLS_BUT_NEWLINE = /(?!\n)[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu;
 // Every UTF-16 unit of a match as `\\uXXXX`, so a character outside the basic plane (a tag character) keeps both halves.
 const escapeUnits = (c: string): string => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('');
 // DEL (review M3 finding 6), the C1 controls and the format characters (bidi controls, zero-width characters), plus the
@@ -640,7 +642,8 @@ function wordsFor(code: string, detail: RefusalDetail): Words {
 /** One refusal in plain words. The fixed refusal code stays visible. Control characters in the code or message are escaped. */
 export function renderRefusal(code: string, message: string, detail: RefusalDetail = {}): string {
   const { sentence, next } = wordsFor(code, detail);
-  return `Refused (${plainText(code)}): ${plainText(message)}\n${sentence}\nNext: ${next}\n`;
+  // Round 11 of the reviews of PR 101: the Next line is one line, whatever a value in it holds.
+  return `Refused (${plainText(code)}): ${plainText(message)}\n${sentence}\nNext: ${plainText(next)}\n`;
 }
 
 /**
@@ -657,9 +660,10 @@ export function reportFailure(error: unknown, tty: boolean): { text: string; exi
   const safe = error instanceof DefinitionError ? error : new DefinitionError(code, 'The command failed. Review the relevant local files and operation records before another action. This error supplies no registered-work stop result.');
   const port = error instanceof DefinitionError && 'port' in error ? (error as { port?: unknown }).port : undefined;
   const hint = error instanceof DefinitionError && 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
-  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? (error as { next: string }).next : undefined;
+  // Round 11 of the reviews of PR 101: a next or fix value is one line in every output, JSON included (oneLine).
+  const next = error instanceof DefinitionError && 'next' in error && typeof (error as { next?: unknown }).next === 'string' ? oneLine((error as { next: string }).next) : undefined;
   // Round 5 of the reviews of PR 99, L-1: a fix is the bare command of a refusal, in its own JSON field.
-  const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? (error as { fix: string }).fix : undefined;
+  const fix = error instanceof DefinitionError && 'fix' in error && typeof (error as { fix?: unknown }).fix === 'string' ? oneLine((error as { fix: string }).fix) : undefined;
   const detail: RefusalDetail = { raisedByNewCommand: marked(error), ...(validPort(port) ? { port } : {}), ...(hint === LEFTOVER_TEMP_LINK || hint === STORE_LIMIT || hint === PARTIAL ? { hint } : {}), ...(next !== undefined ? { next } : {}) };
   const exitCode = exitCodeFor(marked(error) ? error : safe) as Exclude<ExitCode, 0>;
   // An error that carries its own next step gives it to agents too, as `next`; every other envelope is unchanged.

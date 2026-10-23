@@ -49,7 +49,7 @@ function notChecked(unreadable: readonly Unreadable[], unreferenced: boolean): s
   const why = unreadable.map(u => `${u.source} (${u.code}${u.item ? `, ${u.item}` : ''})`).join(' and ');
   // Round 3 of the reviews of PR 101: a refusal with its own next step, such as a store fault naming its file, prints that step.
   const next = [...new Set(unreadable.map(u => u.next ?? NEXT[u.source]!))].join(' and ');
-  return `Some references were not checked: ${why}.${unreferenced ? ' --unreferenced picks nothing.' : ''} Next: ${next}`;
+  return `Some references were not checked: ${why}.${unreferenced ? ' --unreferenced picks nothing.' : ''} Next: ${plainText(next)}`;
 }
 const unknownCount = (items: readonly { bytes: number | null }[]): number => items.filter(i => i.bytes === null).length;
 
@@ -59,7 +59,7 @@ function listLine(e: CacheEntry): string {
   return `  ${head}  ${e.status.padEnd(9)}  ${what(e)}${e.status === 'completed' ? sized(e.files, e.bytes) : sized(null, null)}${e.scope === 'project-legacy' ? '' : tags(e.references)}${note}`;
 }
 /** An entry line, and a Next line for a leftover that cannot be deleted as it is (round 3, M-A). */
-const listLines = (e: CacheEntry): string[] => [listLine(e), ...(e.next ? [`    Next: ${e.next}`] : [])];
+const listLines = (e: CacheEntry): string[] => [listLine(e), ...(e.next ? [`    Next: ${plainText(e.next)}`] : [])];
 /** `cache list` in words (3.3, with review M3 and L1 of PR 99). */
 export function renderCacheList(list: CacheList): string {
   if (list.entries.length === 0 && list.unlisted === 0) return 'The cache is empty.\n';
@@ -76,7 +76,7 @@ export function renderCacheList(list: CacheList): string {
   }
   if (list.unlisted > 0) {
     lines.push(`Not listed: ${list.unlisted} names that cache prune never deletes.`);
-    for (const u of list.unlistedNames.slice(0, UNLISTED_SHOWN)) lines.push(`  ${u.place === 'legacy' ? `legacy ${u.name}` : `${u.place}/${u.name}`}: ${u.reason}${u.next ? `. Next: ${u.next}` : ''}`);
+    for (const u of list.unlistedNames.slice(0, UNLISTED_SHOWN)) lines.push(`  ${u.place === 'legacy' ? `legacy ${plainText(u.name)}` : `${u.place}/${plainText(u.name)}`}: ${u.reason}${u.next ? `. Next: ${plainText(u.next)}` : ''}`);
     if (list.unlisted > UNLISTED_SHOWN) lines.push(`  and ${list.unlisted - UNLISTED_SHOWN} more. bowerloom cache list --json lists up to 256 of them.`);
   }
   if (list.truncated) lines.push(`More entries exist. Only the first ${CACHE_LIST_LIMIT} are shown.`);

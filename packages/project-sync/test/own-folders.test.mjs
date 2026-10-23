@@ -146,6 +146,9 @@ const FLOWS = {
 };
 function syncInput(w, frozen) { return { project: w.project(), stateRoot: w.stateRoot, home: w.home, team: null, offline: false, frozen }; }
 // [flow, kind, the fetch words, whether the plan changed]. skills sync of a team fetches nothing, so it has no row.
+// No plain apply row: plain apply never fetches, because its plan names no host. No up --team row: up's apply step is a
+// plain apply, and its sync step is skills sync with a team filter, the same applySync path as the skills sync rows.
+// No up end-to-end test: the up fixture has no hook that fails a folder between phase A and the own folders.
 const KINDS = [
   ['apply --frozen', 'pin', "this machine's skills cache", false], ['apply --frozen', 'written', 'the store cache', true],
   ['apply --frozen', 'prompt', 'the store cache', true], ['apply --frozen', 'team', 'the store cache', false],

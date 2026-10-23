@@ -97,7 +97,8 @@ test('plainText escapes C0, C1, DEL and bidi controls and keeps everything else'
 
 test('plainText also escapes every other format character and the line and paragraph separators (review M1F 2)', () => {
   // Zero-width space, joiners, word joiner and invisible operators, the byte order mark, soft hyphen, U+2028, U+2029.
-  assert.equal(plainText('a\u200bb\u200cc\u200dd\u2060e\u2061f\u2064g\ufeffh\u00adi\u2028j\u2029k'), 'a\\u200bb\\u200cc\\u200dd\\u2060e\\u2061f\\u2064g\\ufeffh\\u00adi\\u2028j\\u2029k');
+  // Round 11 of the reviews of PR 101 (variant A): ZWNJ and ZWJ print as they are; every other format character is escaped.
+  assert.equal(plainText('a\u200bb\u200cc\u200dd\u2060e\u2061f\u2064g\ufeffh\u00adi\u2028j\u2029k'), 'a\\u200bb\u200cc\u200dd\\u2060e\\u2061f\\u2064g\\ufeffh\\u00adi\\u2028j\\u2029k');
   // A tag character sits outside the basic plane: both halves are written, so nothing is lost or left half-printed.
   assert.equal(plainText('x\u{e0041}y'), 'x\\udb40\\udc41y');
   assert.equal(plainText('one\ntwo\u2028three', true), 'one\ntwo\\u2028three', 'multiline keeps only the newline');
@@ -297,9 +298,9 @@ test('a partial refusal: its own sentence, the rerun command as Next, and partia
     assert.equal(partial.code, code);
     const text = reportFailure(partial, true).text;
     assert.doesNotMatch(text, /nothing was (?:applied|changed)/i, code);
-    assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: bowerloom store migrate --prompt brief\\n$`), code);
+    assert.match(text, new RegExp(`^Refused \\(${code}\\): [^\\n]*Already written: prompt brief, copied to the store\\.[^\\n]*\\nThe run stopped part way; the message lists what was written\\.\\nNext: Run bowerloom store migrate --prompt brief\\.\\n$`), code);
     const json = JSON.parse(reportFailure(partial, false).text) as { error: { code: string; next?: string; partial?: boolean } };
-    assert.equal(json.error.code, code); assert.equal(json.error.next, rerun); assert.equal(json.error.partial, true);
+    assert.equal(json.error.code, code); assert.equal(json.error.next, `Run ${rerun}.`); assert.equal(json.error.partial, true);
     assert.equal(reportFailure(partial, false).exitCode, 1);
   }
   // L2: the system code of an error that is not a refusal is kept as the cause.

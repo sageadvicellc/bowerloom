@@ -635,7 +635,7 @@ export async function applyStoreMigrate(plan: StoreMigratePlan, revision: string
         const refused = projectRefusal('PROJECT_LOCKED', 'Bowerloom made the store at ~/.bowerloom before it waited for the project. Run the command again without --approve to see the next plan.');
         // Second security review M1: the store was written, so this refusal is partial, and its Next line is that command.
         Object.defineProperty(refused, 'hint', { value: PARTIAL_HINT, enumerable: false });
-        Object.defineProperty(refused, 'next', { value: rerunOf(plan.selectors), enumerable: false });
+        Object.defineProperty(refused, 'next', { value: `Run ${rerunOf(plan.selectors)}.`, enumerable: false });
         return { projectLocked: refused };
       }
       return { projectLocked: error };

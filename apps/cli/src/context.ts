@@ -22,7 +22,7 @@ export function renderShow(r: ShowResult): string {
     `Guard: ${r.guard ?? 'none'}`,
     `Agents: ${r.agents.length ? r.agents.join(', ') : 'none'}`,
   ];
-  if (r.hold !== null) lines.push(`Held: ${r.hold.code}. Next: ${r.hold.next}`);
+  if (r.hold !== null) lines.push(`Held: ${r.hold.code}. Next: ${plainText(r.hold.next)}`);
   const n = r.notes, notes: string[] = [];
   const list = (paths: readonly string[]): string => { const head = paths.slice(0, 3), joined = head.length <= 1 ? (head[0] ?? '') : `${head.slice(0, -1).join(', ')} and ${head[head.length - 1]}`; return `${joined}${paths.length > 3 ? `, and ${paths.length - 3} more` : ''}`; };
   if (n.unparsed.length) notes.push(`left out ${n.unparsed.length} files whose frontmatter does not parse: ${list(n.unparsed)}.`);
@@ -61,7 +61,7 @@ export function renderMeasure(r: MeasureResult): string {
     line(header), ...rows.map(line),
     `Baseline: each agent with every .md file under ${r.baseline.folder} (${r.baseline.files} files) loaded at start, and its CLAUDE.md or AGENTS.md files.`,
     'Not counted: Claude Code\'s own system details and tool definitions, MCP tools, git status, the task message, managed policy files, agent memory, and files an agent reads beyond its slices.',
-    ...r.held.map(h => `Held: ${h.role} is not measured (${h.code}). Next: ${h.next}`),
+    ...r.held.map(h => `Held: ${h.role} is not measured (${h.code}). Next: ${plainText(h.next)}`),
     ...(skippedImports > 0 || skipped > 0 ? [`Skipped: ${skippedImports} imports that name no readable file, and ${r.baseline.skipped.hidden} hidden entries, ${r.baseline.skipped.links} links and ${r.baseline.skipped.notRegular} special entries in the baseline.`] : []),
     ...(notes.length ? ['Notes:', ...notes] : []),
   ].join('\n');

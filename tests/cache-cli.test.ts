@@ -371,3 +371,18 @@ test('L-1 (round 5). a delete-step refusal gives a bare command as next and fix;
   const words = reportFailure(Object.assign(new DefinitionError('CACHE_PRUNE_FAILED', error.message), { next: error.next, fix: error.fix }), true).text;
   assert.ok(words.endsWith(`\nNext: ${error.fix}\n`), words);
 });
+
+// Round 11 of the reviews of PR 101, item 2 (variant A): ZWNJ and ZWJ print as they are on every terminal surface, as
+// shellArg keeps them, so the chmod step of a leftover whose name holds one runs as printed.
+test('a leftover named with ZWNJ at mode 0750: the printed chmod step, pasted into /bin/sh, makes it 0700', t => {
+  const w = world(t), cache = join(stateOf(w), 'cache');
+  for (const p of [w.state, stateOf(w), cache]) { mkdirSync(p, { mode: 0o700 }); chmodSync(p, 0o700); }
+  const odd = join(cache, '.prune-\u0645\u200C\u0627'); mkdirSync(odd, { mode: 0o750 }); chmodSync(odd, 0o750);
+  const r = run(w.home, ['cache', 'list'], w.env);
+  assert.equal(r.status, 0, r.stderr);
+  const step = /Next: (chmod -- 700 '[^']*')/.exec(r.stdout)?.[1];
+  assert.ok(step !== undefined && step.includes('\u200C'), r.stdout);
+  const pasted = spawnSync('/bin/sh', ['-c', step!], { encoding: 'utf8' });
+  assert.equal(pasted.status, 0, pasted.stderr);
+  assert.equal(lstatSync(odd).mode & 0o777, 0o700);
+});

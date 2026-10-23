@@ -602,7 +602,7 @@ test('round 3 L1 and L2. a stop between the link and the unlink of a prompt: the
   const w = await fourItems(t), p = await plan(w, { prompts: ['brief'] });
   const original = fs.unlinkSync;
   fs.unlinkSync = target => { if (String(target).includes('/.stage-') && String(target).endsWith('/prompts/brief.md')) throw Object.assign(new Error('i/o'), { code: 'EIO' }); return original(target); };
-  try { await assert.rejects(apply(w, p), e => e.code === 'IO_ERROR' && e.cause === 'EIO' && e.hint === 'partial' && e.next === 'bowerloom store migrate --prompt brief'); }
+  try { await assert.rejects(apply(w, p), e => e.code === 'IO_ERROR' && e.cause === 'EIO' && e.hint === 'partial' && e.next === 'Run bowerloom store migrate --prompt brief.'); }
   finally { fs.unlinkSync = original; }
   assert.equal(fs.statSync(path.join(w.store, 'prompts/brief.md')).nlink, 2, 'the store prompt has its stage link');
   const again = await plan(w, { prompts: ['brief'] });

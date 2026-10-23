@@ -198,7 +198,7 @@ function held(ctx: UpContext, next: UpNext, json: boolean, write: (text: string)
     : plainText((items.length ? [
       `prepared, ${count} held`,
       `  Team: ${teamWords(team)}, for ${harnessWords(ctx.harnesses)}. Workers stay held.`,
-      ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${i.next}`]),
+      ...items.flatMap(i => [`  Held: ${i.kind} ${i.id} (${i.code})`, `    Next: ${plainText(i.next)}`]),
       `  Then read ${START_HERE}. This beta starts no worker; worker launch comes after the startup gate.`, '',
     ] : [
       'prepared, workers held',

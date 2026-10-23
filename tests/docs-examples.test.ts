@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { world, run, mustApprove, git } from './support/config-cli.js';
-import { chmodSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configExample, lockExample, lockValue, writtenRows } from './support/docs-examples.js';
 import { CONFIG_REFUSAL_CODES, NOT_SHAREABLE, lockAgrees, notShareable, parseConfig, parseLock, unknownSharedNote } from '../packages/project-config/src/index.js';
@@ -247,4 +247,19 @@ test('E14. the folders/ warnings of store status, read from store.ts, are on the
   assert.ok(missing, 'the .gitignore warning in store.ts');
   const lines = new Set(textFenceLines(page()));
   for (const w of [...warnings, missing[1]!.trim()]) assert.ok(lines.has(w), `a text fence holds: ${w}`);
+});
+
+// Round 11 of the reviews of PR 101, item 3: a branch that starts with - is not a branch Bowerloom names, so no fix line
+// can pass it to git as an option.
+test('store status never prints a push line for a HEAD of refs/heads/--force', t => {
+  const w = world(t, 'bowerloom-docs-examples-');
+  mustApprove(w.home, ['skill', 'create', 'probe', '--global'], w.env);
+  git(w.store, ['init', '-q', '.'], w); git(w.store, ['add', '-A'], w); git(w.store, ['commit', '-q', '-m', 'Store'], w);
+  git(w.store, ['remote', 'add', 'origin', 'https://github.com/o/store.git'], w);
+  const heads = join(w.store, '.git', 'refs', 'heads');
+  writeFileSync(join(heads, '--force'), readFileSync(join(heads, 'main')));
+  writeFileSync(join(w.store, '.git', 'HEAD'), 'ref: refs/heads/--force\n');
+  const r = run(w.home, ['store', 'status'], w.env);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /git push[^\n]*--force/, r.stdout);
 });

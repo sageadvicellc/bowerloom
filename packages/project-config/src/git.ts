@@ -87,8 +87,11 @@ function configValues(text: string): { objectFormat: string | null; originUrl: s
   }
   return { objectFormat, originUrl };
 }
-/** A branch name: letters, digits, `.`, `_`, `/`, `-`, at most 200, with no `..` and no slash at either end. */
-const isBranch = (name: string): boolean => /^[A-Za-z0-9._/-]{1,200}$/.test(name) && !name.includes('..') && !name.startsWith('/') && !name.endsWith('/') && !name.includes('//');
+/**
+ * A branch name: letters, digits, `.`, `_`, `/`, `-`, at most 200, with no `..` and no slash at either end. Round 11 of
+ * the reviews of PR 101: no leading `-` either (git refuses one), so `git push -u origin <branch>` never gets an option.
+ */
+const isBranch = (name: string): boolean => /^[A-Za-z0-9._/-]{1,200}$/.test(name) && !name.startsWith('-') && !name.includes('..') && !name.startsWith('/') && !name.endsWith('/') && !name.includes('//');
 /** A loose ref: exactly 40 lower-case hex characters and a newline, or null when the file is not there. */
 function looseRef(git: string, ref: string, uid: number): string | null {
   const bytes = plainFile(join(git, ref), 41, uid);

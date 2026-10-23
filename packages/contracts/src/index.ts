@@ -151,6 +151,15 @@ export function canonicalJson(value: unknown): string {
  * backslash ends a single-quoted word early in fish, which reads \' and \\ inside single quotes.
  */
 export const SHELL_UNSAFE = /[\p{Cc}\p{Cs}\u2028\u2029\\]|(?![\u200C\u200D])\p{Cf}/u;
+/**
+ * Round 11 of the reviews of PR 101: a value from a repository, a store, a lock, a configuration file, a registry, or a
+ * file name, put into a message or a step, on one line. Every control character (a newline among them), the line and
+ * paragraph separators, and every invisible format character except ZWNJ and ZWJ become visible \uXXXX text, so no value
+ * can start a line of its own (a fake Next: line) or reorder what a terminal shows.
+ */
+export function oneLine(value: string): string {
+  return value.replace(/[\p{Cc}\u2028\u2029]|(?![\u200C\u200D])\p{Cf}/gu, c => Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join(''));
+}
 /** Round 10: the ids, team names and role names that Bowerloom validates. They print as they are. */
 export const PLAIN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /**

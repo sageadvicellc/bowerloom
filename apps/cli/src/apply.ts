@@ -6,7 +6,8 @@
  * instead), and starts no process. The write runs through the approval wrapper; the core takes the project lock.
  */
 import { relative } from 'node:path';
-import { DefinitionError, PLAIN_ID } from '../../../packages/contracts/src/index.js';
+import { DefinitionError } from '../../../packages/contracts/src/index.js';
+import { isSliceId } from '../../../packages/context-slices/src/slice-file.js';
 import { discoverProject, privateStateRoot } from '../../../packages/project-context/src/index.js';
 import type { PlannedChange } from '../../../packages/project-context/src/types.js';
 import { applyProjectApply, planProjectApply, syncError } from '../../../packages/project-sync/src/index.js';
@@ -52,7 +53,7 @@ function promptLine(item: PromptItem, width: number): string[] {
 }
 function promptState(item: PromptItem, width: number): string[] {
   const id = item.id.padEnd(width), where = ['command-claude', 'projection-codex'].flatMap(id => item.expected.surfaces.filter(s => s.id === id).map(s => s.path)).join(' and ');
-  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${plainText(item.hold!.next)}`];
   switch (item.state) {
     case 'new': return [`  ${id} install prompt: ${where}${item.notices === null ? ' (not on this machine yet; Bowerloom shows what it can do after the fetch)' : ''}`];
     case 'edited': return [`  ${id} update prompt: ${where}`];
@@ -106,7 +107,7 @@ export function sliceNoteLines(item: SliceItem, project: string, tracked = false
 }
 function sliceLine(item: SliceItem, width: number, project: string, tracked: boolean): string[] {
   const id = item.id.padEnd(width), pad = ''.padEnd(width), where = `.claude/skills/slice-${item.id}/SKILL.md`;
-  if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} slice held (${item.hold!.code})`, `  ${pad} Next: ${plainText(item.hold!.next)}`];
   const c = item.changes;
   switch (item.state) {
     case 'new': return [`  ${id} install slice: ${where} (${item.members.length} files from ${sliceWhere(item, project)})`, ...sliceNoteLines(item, project, tracked)];
@@ -151,7 +152,7 @@ function agentLine(item: AgentItem, width: number, terminal: boolean, slices: re
     // The plan holds no flag text, so a terminal and a pipe see one revision. At a terminal the text names the exact flag.
     const next = terminal && item.hold!.code === 'AGENT_GRANT_REVIEW_REQUIRED' && item.sourceSha256 !== null && item.expected.source !== null
       ? `Read .bowerloom/${item.expected.source.path}, then run bowerloom apply --allow-agent ${item.id}:${item.sourceSha256}.` : item.hold!.next;
-    return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${next}`];
+    return [`  ${id} agent held (${item.hold!.code})`, `  ${pad} Next: ${plainText(next)}`];
   }
   const copies = item.action !== 'none', warning = [
     ...(item.builtin && copies ? [`  ${pad} Warning: ${item.id} is also the name of a built-in Claude Code agent. Check which one Claude Code uses.`] : []),
@@ -171,7 +172,8 @@ function agentLine(item: AgentItem, width: number, terminal: boolean, slices: re
  */
 export function unregisteredNote(name: string): string {
   const stem = name.replace(/\.[^.]*$/, '');
-  return PLAIN_ID.test(stem) && stem.length <= 64 && name === `${stem}.yaml` ? `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${stem} to register it.`
+  // Round 11: the id rule of slice create itself, so the printed command never refuses SLICE_NAME_INVALID.
+  return isSliceId(stem) && name === `${stem}.yaml` ? `  Note: .bowerloom/slices/${name} is not registered, so apply skips it. Run bowerloom slice create ${stem} to register it.`
     : `  Note: .bowerloom/slices/${plainText(name)} is not registered, so apply skips it. Its name is not a slice id, so rename it to <id>.yaml with a lowercase id before you register it with bowerloom slice create.`;
 }
 /** Where copies go, for the chosen harnesses only (review freeze finding 9). */
@@ -221,7 +223,7 @@ function resultWords(result: ApplyResult): string {
   const name = (r: { kind: string; id: string }) => r.kind === 'prompt' ? `prompt ${r.id}` : r.kind === 'agent' ? `agent ${r.id}` : r.kind === 'slice' ? `slice ${r.id}` : r.id;
   return plainText([
     ...result.applied.map(a => `  ${name(a)}: ${a.action === 'install' ? 'installed' : 'updated'}`),
-    ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${h.next}`),
+    ...result.held.map(h => `  ${name(h)}: held (${h.code}). Next: ${plainText(h.next)}`),
     ...(result.orphaned.length ? [`  kept, no longer listed: ${result.orphaned.map(name).join(', ')}`] : []),
     result.pointer, '',
   ].join('\n'), true);

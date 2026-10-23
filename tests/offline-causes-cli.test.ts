@@ -183,7 +183,7 @@ test('a refusal after a partial write keeps the step of its cause, then the comm
   assert.equal(partialOf(NEXT.approved), 'Run bowerloom store migrate --all without --offline and without --approve, to see a plan that fetches it.');
   for (const next of [NEXT.other, NEXT.nocode, NEXT.response, NEXT.network, NEXT.nonpublic, NEXT.offline, NEXT.approved]) assert.equal((partialOf(next).match(/\brun\b/gi) ?? []).length, 1, next);
   assert.doesNotMatch(partial.message, /Nothing in the project changed|Nothing was applied/);
-  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'bowerloom receipt clean');
+  assert.equal((partialRefusal(syncError('STALE_APPROVAL'), ['one item'], 'bowerloom receipt clean') as Error & { next?: string }).next, 'Run bowerloom receipt clean.');
 });
 
 test('a GitHub pin whose repository answers 500 is not called offline', t => {

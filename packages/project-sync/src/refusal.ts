@@ -181,7 +181,8 @@ export function partialRefusal(error: unknown, done: readonly string[], rerun: s
   if (step.startsWith('Run the command again later.')) next = `Later, run ${rerun}.${step.slice('Run the command again later.'.length)}`;
   // Round 8: any other step that starts by running the command again, such as the --offline steps, keeps what follows.
   else if (/^Run the command again\b/.test(step)) next = step.replace(/^Run the command again\b/, () => `Run ${rerun}`);
-  else next = step ? `${step} Then run ${rerun}.` : rerun;
+  // Round 11 of the reviews of PR 101: a step is a sentence, also when `rerun` holds the words of a command.
+  else next = step ? `${step} Then run ${rerun}.` : `Run ${rerun}.`;
   Object.defineProperty(partial, 'next', { value: next, enumerable: false });
   if (cause !== undefined) Object.defineProperty(partial, 'cause', { value: cause, enumerable: false });
   own.add(partial); return partial;

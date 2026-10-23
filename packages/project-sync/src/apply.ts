@@ -300,7 +300,7 @@ export function prunedPin(id: string, root: string, operationId: string, context
     if (context.cacheIdentity === null) return syncError('SKILLS_STATE_UNSAFE', 'The plan did not pin the skills cache folder, so Bowerloom cannot tell a pruned pin from a replaced folder. Run the command again.');
     let s: fs.BigIntStats; try { s = fs.lstatSync(root, { bigint: true }); } catch { return syncError('SKILLS_STATE_UNSAFE', 'The skills cache folder changed during the run.'); }
     if (String(s.dev) !== context.cacheIdentity.device || String(s.ino) !== context.cacheIdentity.inode) return syncError('SKILLS_STATE_UNSAFE', 'The skills cache folder was replaced during the run.');
-    return Object.assign(syncError('STALE_APPROVAL', `The cached pin of ${id} was deleted after the fetch, for example by bowerloom cache prune. Run ${context.rerun} again.`), { next: context.rerun });
+    return Object.assign(syncError('STALE_APPROVAL', `The cached pin of ${id} was deleted after the fetch, for example by bowerloom cache prune. Run ${context.rerun} again.`), { next: `Run ${context.rerun} again.` });
   }
 }
 /** The store folder an authored lock item is read from after phase A: its store cache folder. Fetches it when it is not there. */

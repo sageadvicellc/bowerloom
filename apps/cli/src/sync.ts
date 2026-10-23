@@ -120,7 +120,7 @@ function skillNoticeLine(item: SyncItem): string[] {
 function itemLineBase(item: SyncItem, width: number): string[] {
   const id = item.id.padEnd(width), pin = item.pin ?? '';
   const how = item.cache?.status === 'needs-fetch' ? `, fetched from ${item.kind === 'git' ? 'api.github.com' : 'registry.npmjs.org'}` : item.cache?.status === 'cached' ? ", from this machine's cache" : '';
-  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${item.hold!.next}`];
+  if (item.action === 'hold') return [`  ${id} held (${item.hold!.code})`, `  ${''.padEnd(width)} Next: ${plainText(item.hold!.next)}`];
   switch (item.state) {
     case 'up-to-date': return [`  ${id} up to date${item.action === 'update' ? ' (puts back .bowerloom/managed/.gitignore)' : ''}`];
     case 'orphaned': return [`  ${id} kept: no longer in skills.json, and sync removes nothing`];
@@ -159,7 +159,7 @@ export function renderSyncReview(plan: SyncPlan, maxSet = false): string {
 export function resultWords(result: SyncResult): string {
   return plainText([
     ...result.applied.map(a => `  ${a.id}: ${a.action === 'install' ? 'installed' : 'updated'}`),
-    ...result.held.map(h => `  ${h.id}: held (${h.code}). Next: ${h.next}`),
+    ...result.held.map(h => `  ${h.id}: held (${h.code}). Next: ${plainText(h.next)}`),
     ...(result.orphaned.length ? [`  kept, not in skills.json: ${result.orphaned.join(', ')}`] : []),
     '',
   ].join('\n'), true);
