@@ -19,7 +19,8 @@
     "screenshots": "npm run bundle && playwright test --config playwright.config.ts",
     "build": "npm run bundle && electron-builder --mac --publish never",
     "sample:make": "node tools/make-sample.mjs",
-    "verify:fuses": "node tools/check-fuses.mjs"
+    "verify:fuses": "node tools/check-fuses.mjs",
+    "sandbox:reset": "node tools/make-sandbox.mjs --reset"
   },
   "dependencies": {
     "electron-updater": "6.8.10"

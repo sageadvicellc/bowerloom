@@ -1,14 +1,17 @@
 /** The app's own settings, kept in its own folder (Electron userData). Nothing here is Bowerloom's data. */
 import { chmodSync, closeSync, constants, copyFileSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import type { AppSettings } from '../shared/types.js';
+import { FOLDER_ROLES } from '../shared/types.js';
+import type { AppSettings, FolderRole } from '../shared/types.js';
+import { assertAppWritable } from './boundary.js';
 
 export const CONFIG_FILE = 'viewer-settings.json';
 export const MAX_ROOTS = 20;
+export const MAX_ROLES = 200;
 const MAX_BYTES = 65536;
 
-export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, discovered: false }) as AppSettings;
-const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, discovered: false });
+export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false }) as AppSettings;
+const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
 
 /** The settings in `text`, or null when it is not a settings file at all (not JSON, or not an object). Unknown keys are ignored. */
 export function parseSettings(text: string): AppSettings | null {
@@ -18,8 +21,10 @@ export function parseSettings(text: string): AppSettings | null {
   const v = value as Record<string, unknown>;
   const theme = v.theme === 'light' || v.theme === 'dark' ? v.theme : 'system';
   const roots = Array.isArray(v.roots) ? [...new Set(v.roots.filter((r): r is string => typeof r === 'string' && isAbsolute(r) && !r.includes('\0') && r.length < 4096))].slice(0, MAX_ROOTS) : [];
-  const mode = v.mode === 'sample' || v.mode === 'real' ? v.mode : null;
-  return { theme, roots, mode, includeExamples: v.includeExamples === true, discovered: v.discovered === true };
+  const mode = v.mode === 'sample' || v.mode === 'real' || v.mode === 'sandbox' ? v.mode : null;
+  const roles: Record<string, FolderRole> = {};
+  if (v.roles !== null && typeof v.roles === 'object' && !Array.isArray(v.roles)) for (const [k, r] of Object.entries(v.roles as Record<string, unknown>).slice(0, MAX_ROLES)) if (isAbsolute(k) && !k.includes('\0') && k.length < 4096 && (FOLDER_ROLES as readonly unknown[]).includes(r)) roles[k] = r as FolderRole;
+  return { theme, roots, mode, includeExamples: v.includeExamples === true, roles, discovered: v.discovered === true };
 }
 
 export interface Loaded { settings: AppSettings; notice: string | null }
@@ -59,6 +64,8 @@ const refuseLink = (path: string): void => {
 export function saveSettings(dir: string, settings: AppSettings): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = join(dir, CONFIG_FILE), temp = `${file}.tmp`, backup = `${file}.bak`;
+  // Every path written is checked by the boundary first: inside the viewer's own folder, no "..", no link on the way.
+  assertAppWritable(dir, file); assertAppWritable(dir, temp); assertAppWritable(dir, backup);
   refuseLink(backup); refuseLink(temp); refuseLink(file);
   try {
     // A leftover plain temporary file from a stopped save is replaced, not trusted.

@@ -5,12 +5,15 @@
 import { realpathSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { AppInfo, AppSettings, ItemContent, ItemKind, Mode, SettingsResult, Snapshot } from '../shared/types.js';
+import { FOLDER_ROLES } from '../shared/types.js';
+import type { AppInfo, AppSettings, FolderRole, ItemContent, ItemKind, Mode, SettingsResult, Snapshot } from '../shared/types.js';
 import { safeText } from '../shared/text.js';
 import { readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { MAX_ROOTS, loadSettings, saveSettings } from './config.js';
+import { SANDBOX_DIR } from './boundary.js';
+import { sandboxExists, sandboxPaths } from './sandbox.js';
 import { discoverNearby } from './discover.js';
 import { readItemContent } from './content.js';
 import { readSnapshot } from './reader.js';
@@ -36,6 +39,8 @@ export interface Host {
   copyText?(text: string): void;
   /** A launch flag that fixes the mode for this run. */
   forcedMode: Mode | null;
+  /** Where the sandbox is. Default: the one constant. Tests only. */
+  sandboxDir?: string;
   /** The real home folder and the environment names the viewer is allowed to pass on. */
   home?: string;
   env?: NodeJS.ProcessEnv;
@@ -52,6 +57,7 @@ export interface Controller {
   removeRoot(path: string): Promise<SettingsResult>;
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
   setIncludeExamples(on: boolean): Promise<SettingsResult>;
+  setRole(projectKey: string, role: FolderRole | null): Promise<SettingsResult>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
   copyText(text: string): Promise<boolean>;
@@ -73,13 +79,18 @@ export function createController(host: Host): Controller {
   const readContext = (): ReadContext | null => {
     if (mode === 'sample') {
       sample ??= seedSample(host.appDir, host.sampleDir);
-      return { mode, home: sample.home, env: sample.env, roots: [sample.projects] };
+      return { mode, home: sample.home, env: sample.env, roots: [sample.projects], roles: settings.roles };
+    }
+    if (mode === 'sandbox') {
+      const sb = sandboxPaths(host.sandboxDir ?? SANDBOX_DIR);
+      if (!sandboxExists(sb.root)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
+      return { mode, home: sb.home, env: { HOME: sb.home, XDG_STATE_HOME: sb.state }, roots: [sb.workspace], roles: settings.roles };
     }
     if (mode === 'real') {
       const home = realHome(), state = host.env?.XDG_STATE_HOME ?? process.env.XDG_STATE_HOME;
       const env: NodeJS.ProcessEnv = { HOME: home };
       if (typeof state === 'string' && state.startsWith('/')) env.XDG_STATE_HOME = state;
-      return { mode, home, env, roots: settings.roots, includeExamples: settings.includeExamples, tokenSource: host.env ?? process.env };
+      return { mode, home, env, roots: settings.roots, includeExamples: settings.includeExamples, roles: settings.roles, tokenSource: host.env ?? process.env };
     }
     return null;
   };
@@ -102,7 +113,7 @@ export function createController(host: Host): Controller {
   const info = (): AppInfo => {
     let storePath = '';
     try { const c = readContext(); storePath = c === null ? '' : storeRootOf(c.home); } catch { storePath = ''; }
-    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice };
+    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice, sandbox: { path: host.sandboxDir ?? SANDBOX_DIR, exists: sandboxExists(host.sandboxDir ?? SANDBOX_DIR) } };
   };
 
   return {
@@ -145,7 +156,8 @@ export function createController(host: Host): Controller {
       }
     },
     async chooseMode(next) {
-      if (next !== 'sample' && next !== 'real') throw new Error('Unknown choice.');
+      if (next !== 'sample' && next !== 'real' && next !== 'sandbox') throw new Error('Unknown choice.');
+      if (next === 'sandbox' && !sandboxExists(host.sandboxDir ?? SANDBOX_DIR)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
       mode = next; forget();
       if (host.forcedMode === null && next === 'real') { const r = persist({ ...settings, mode: 'real' }); if (r.message !== null) notice = r.message; }
       if (next === 'sample') sample = null;
@@ -173,6 +185,12 @@ export function createController(host: Host): Controller {
     async setIncludeExamples(on) {
       forget();
       return persist({ ...settings, includeExamples: on === true });
+    },
+    async setRole(projectKey, role) {
+      if (!liveKey(projectKey) || (role !== null && !FOLDER_ROLES.includes(role))) return { settings, message: 'That folder is not in the list any more. Choose "Look again".' };
+      const roles = { ...settings.roles };
+      if (role === null) delete roles[projectKey]; else roles[projectKey] = role;
+      return persist({ ...settings, roles });
     },
     async checkForUpdates() { updates = await checkForUpdates(updates); return { status: updates.status }; },
     async openLink(url) {

@@ -5,7 +5,8 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,9 +15,9 @@ const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shots = join(desktop, 'screenshots');
 mkdirSync(shots, { recursive: true });
 
-async function launch(args: string[]): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(args: string[], extraEnv: Record<string, string> = {}): Promise<{ app: ElectronApplication; page: Page }> {
   const userData = mkdtempSync(join(tmpdir(), 'bowerloom-viewer-e2e-'));
-  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
+  const app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, ...args, `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ...extraEnv } });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   return { app, page };
@@ -47,7 +48,7 @@ test('security: the window is locked down', async () => {
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => [typeof (globalThis as { require?: unknown }).require, typeof (globalThis as { process?: unknown }).process, typeof (globalThis as { Buffer?: unknown }).Buffer])).toEqual(['undefined', 'undefined', 'undefined']);
     const names = await page.evaluate(() => Object.keys((window as unknown as { bowerloom: object }).bowerloom).sort());
-    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setTheme']);
+    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setRole', 'setTheme']);
     // An inline script is refused by the policy.
     const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
       document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true });
@@ -197,3 +198,32 @@ test('after a screen change the keyboard moves to the heading and a screen reade
     await expect(details.locator('pre')).toContainText('Folder: ');
   } finally { await app.close(); }
 });
+
+// The sandbox, made by the real tool in a temporary place (never the real sandbox folder), and read in the real window.
+for (const theme of ['light', 'dark'] as const) {
+  test(`sandbox mode in ${theme}: the badge on every screen, the workspace, the projects, and the context store`, async () => {
+    test.setTimeout(300_000);
+    const box = join(realpathSync(mkdtempSync(join(tmpdir(), 'bowerloom-e2e-sandbox-'))), 'E2E Sandbox');
+    const made = spawnSync(process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', BOWERLOOM_VIEWER_SANDBOX: box } });
+    expect(made.status, made.stderr + made.stdout).toBe(0);
+    const { app, page } = await launch(['--sandbox'], { BOWERLOOM_VIEWER_SANDBOX: box });
+    try {
+      await nav(page, 'Settings').click();
+      await page.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click();
+      await nav(page, 'Home').click();
+      for (const label of ['Home', 'Projects', 'Library', 'Knowledge folders', 'Storage', 'Settings']) { await nav(page, label).click(); await expect(page.locator('.sandbox-badge')).toHaveText('Sandbox: safe to break'); }
+      await nav(page, 'Home').click();
+      await expect(page.getByText(/^As of /)).toBeVisible();
+      await snap(page, 'S1-sandbox-home', theme);
+      await nav(page, 'Projects').click();
+      await expect(page.getByRole('heading', { name: 'Context stores' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
+      await snap(page, 'S2-sandbox-projects', theme);
+      await page.getByRole('heading', { name: 'Context stores' }).scrollIntoViewIfNeeded();
+      await snap(page, 'S3-sandbox-context-stores', theme);
+      await page.getByRole('button', { name: 'Open this folder' }).click();
+      await expect(page.getByText('What kind of folder is this?')).toBeVisible();
+      await snap(page, 'S4-sandbox-folder-kind', theme);
+    } finally { await app.close(); }
+  });
+}

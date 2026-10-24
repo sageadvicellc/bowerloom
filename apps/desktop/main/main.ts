@@ -17,7 +17,7 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);
-const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : null;
+const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : argv.includes('--sandbox') ? 'sandbox' : null;
 
 let controller: Controller;
 let window: BrowserWindow | null = null;
@@ -71,6 +71,7 @@ function registerIpc(): void {
   guarded('removeRoot', (path: string) => controller.removeRoot(path));
   guarded('setTheme', async (theme: Parameters<Controller['setTheme']>[0]) => { const s = await controller.setTheme(theme); nativeTheme.themeSource = s.settings.theme; return s; });
   guarded('setIncludeExamples', (on: boolean) => controller.setIncludeExamples(on));
+  guarded('setRole', (key: string, role: Parameters<Controller['setRole']>[1]) => controller.setRole(key, role));
   guarded('checkForUpdates', () => controller.checkForUpdates());
   guarded('openLink', (url: string) => controller.openLink(url));
   guarded('copyText', (text: string) => controller.copyText(text));

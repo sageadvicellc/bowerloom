@@ -17,6 +17,7 @@ const api: ViewerApi = {
   removeRoot: path => ipcRenderer.invoke(CHANNELS.removeRoot, path),
   setTheme: theme => ipcRenderer.invoke(CHANNELS.setTheme, theme),
   setIncludeExamples: on => ipcRenderer.invoke(CHANNELS.setIncludeExamples, on),
+  setRole: (key, role) => ipcRenderer.invoke(CHANNELS.setRole, key, role),
   checkForUpdates: () => ipcRenderer.invoke(CHANNELS.checkForUpdates),
   openLink: url => ipcRenderer.invoke(CHANNELS.openLink, url),
   copyText: text => ipcRenderer.invoke(CHANNELS.copyText, text),

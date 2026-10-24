@@ -25,6 +25,8 @@ export const EXPLAINERS: Record<string, { title: string; body: string }> = {
   grant: { title: 'Permission to read a folder (grant)', body: 'Each project must be allowed, one by one, to read a knowledge folder. The permission is saved in your library.' },
   cache: { title: 'Saved copies (cache)', body: 'The cache holds copies of things downloaded from GitHub or npm, so they do not need to be downloaded again.' },
   token: { title: 'GitHub access key (token)', body: 'A token is a secret key that lets this computer fetch private files from GitHub. The viewer only tells you whether one is set. It never shows it.' },
+  role: { title: 'Kinds of folder', body: 'A project is a folder of work. A workspace is a folder that holds other Bowerloom folders. A context store is the central store of knowledge that projects read from. Bowerloom guesses; you can change it, and the viewer remembers your choice only for itself.' },
+  contextStore: { title: 'Context store', body: 'A context store is a folder of knowledge, often a wiki of markdown pages, that projects read from. It is the shared memory. It is not a project, so it is listed apart.' },
   config: { title: 'The project list (bowerloom.json)', body: 'The file bowerloom.json lists which skills, prompts, and teams a project uses.' },
 };
 

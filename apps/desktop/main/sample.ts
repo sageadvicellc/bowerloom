@@ -8,6 +8,7 @@ import { chmodSync, cpSync, mkdirSync, readFileSync, readdirSync, realpathSync, 
 import { join, resolve } from 'node:path';
 import { GRANT_FORMAT, discoverProject, readFolderRecord, openStore } from '../../../packages/project-context/src/index.js';
 import { isInside } from './safe.js';
+import { assertAppWritable } from './boundary.js';
 
 export interface SampleWorld { home: string; projects: string; env: NodeJS.ProcessEnv; state: string }
 interface SampleMeta { storeCommit: string; storeRemote: string; projectRemote: string; projects: string[]; grants: { folder: string; project: string; summary: string | null }[]; generated: { folder: string; files: number }[] }
@@ -21,41 +22,43 @@ function setModes(dir: string, inside: boolean): void {
     if (entry.isDirectory()) setModes(path, here); else chmodSync(path, here ? 0o600 : 0o644);
   }
 }
-const put = (path: string, text: string): void => { mkdirSync(join(path, '..'), { recursive: true, mode: 0o755 }); writeFileSync(path, text, { mode: 0o644 }); };
+/** Writes one file of the sample, after the boundary has agreed that it is inside the viewer's own folder. */
+const put = (guard: (path: string) => string, path: string, text: string): void => { guard(path); mkdirSync(join(path, '..'), { recursive: true, mode: 0o755 }); writeFileSync(path, text, { mode: 0o644 }); };
 
 /** Copies the sample into `<appDir>/sample` and returns where it is. Replaces an older copy. */
 export function seedSample(appDir: string, sampleDir: string): SampleWorld {
   mkdirSync(appDir, { recursive: true, mode: 0o700 });
-  const target = join(realpathSync(appDir), 'sample');
+  const guard = (path: string): string => assertAppWritable(realpathSync(appDir), path);
+  const target = guard(join(realpathSync(appDir), 'sample'));
   if (!isInside(realpathSync(appDir), target)) throw new Error('The sample folder is outside the app folder.');
-  rmSync(target, { recursive: true, force: true });
-  mkdirSync(target, { mode: 0o755 });
-  cpSync(join(sampleDir, 'home'), join(target, 'home'), { recursive: true, verbatimSymlinks: true });
+  rmSync(guard(target), { recursive: true, force: true });
+  mkdirSync(guard(target), { mode: 0o755 });
+  cpSync(join(sampleDir, 'home'), guard(join(target, 'home')), { recursive: true, verbatimSymlinks: true });
   const meta = JSON.parse(readFileSync(join(sampleDir, 'sample.json'), 'utf8')) as SampleMeta;
   const home = join(target, 'home');
-  setModes(home, false);
+  setModes(guard(home), false);
   // A folder with more files than a reading list can hold in one place, so one reading list is too large. Made here so the sample stays small.
-  for (const g of meta.generated) for (let i = 0; i < g.files; i++) put(join(home, g.folder, `note-${String(i).padStart(4, '0')}.md`), `# Note ${i}\n`);
+  for (const g of meta.generated) for (let i = 0; i < g.files; i++) put(guard, join(home, g.folder, `note-${String(i).padStart(4, '0')}.md`), `# Note ${i}\n`);
   // The git files of the store and of each project: the lock records this commit.
   const git = join(home, '.bowerloom', '.git');
-  put(join(git, 'config'), `[remote "origin"]\n\turl = ${meta.storeRemote}\n`);
-  put(join(git, 'HEAD'), 'ref: refs/heads/main\n');
-  put(join(git, 'refs', 'remotes', 'origin', 'main'), `${meta.storeCommit}\n`);
-  put(join(git, 'refs', 'heads', 'main'), `${meta.storeCommit}\n`);
+  put(guard, join(git, 'config'), `[remote "origin"]\n\turl = ${meta.storeRemote}\n`);
+  put(guard, join(git, 'HEAD'), 'ref: refs/heads/main\n');
+  put(guard, join(git, 'refs', 'remotes', 'origin', 'main'), `${meta.storeCommit}\n`);
+  put(guard, join(git, 'refs', 'heads', 'main'), `${meta.storeCommit}\n`);
   const projects = join(home, 'Projects');
-  for (const name of meta.projects) put(join(projects, name, '.git', 'config'), `[remote "origin"]\n\turl = ${meta.projectRemote}\n`);
+  for (const name of meta.projects) put(guard, join(projects, name, '.git', 'config'), `[remote "origin"]\n\turl = ${meta.projectRemote}\n`);
   // Grants: the sample file records which projects may read which registered folder.
   const store = openStore(home);
   for (const grant of meta.grants) {
     const dir = join(projects, grant.project), project = discoverProject(dir, home), record = readFolderRecord(store, grant.folder);
     const grants = join(store.dir, 'folders', `${grant.folder}.grants`);
-    mkdirSync(grants, { recursive: true, mode: 0o700 });
+    mkdirSync(guard(grants), { recursive: true, mode: 0o700 });
     // The same bytes `folder allow` writes. `summary: null` is an older grant, made before the kind was recorded: three keys.
     const kind = grant.summary === null ? '' : `,"summary":"${grant.summary}"`;
-    writeFileSync(join(grants, project.projectId), `{"format":"${GRANT_FORMAT}","record":"${record.sha256}","birth":"${project.identity.birthtimeNs}"${kind}}\n`, { mode: 0o644 });
+    writeFileSync(guard(join(grants, project.projectId)), `{"format":"${GRANT_FORMAT}","record":"${record.sha256}","birth":"${project.identity.birthtimeNs}"${kind}}\n`, { mode: 0o644 });
   }
   const state = join(target, 'state');
-  mkdirSync(state, { recursive: true, mode: 0o700 });
+  mkdirSync(guard(state), { recursive: true, mode: 0o700 });
   return { home: realpathSync(home), projects: realpathSync(projects), state, env: { HOME: realpathSync(home), XDG_STATE_HOME: state } };
 }
 export const sampleRoot = (appDir: string): string => resolve(appDir, 'sample');

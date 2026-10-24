@@ -26,10 +26,23 @@ The first time you open your own Bowerloom, the app looks once at the folders ri
 
 - **Home.** One sentence on what is set up, the counts of teams, skills, prompts, and projects, and a "Needs attention" list. Each item says what it means and what a person would do about it.
 - **Library.** Your skills, prompts, and teams. Each row says where it came from (Yours, From GitHub, From npm), whether it is fixed to a version, and how many projects use it. Click one to read what is inside it. A helper with powerful settings gets a yellow warning.
-- **Projects.** Each project with a status: Ready, Drifted, Lock problem, or Not set up. Open one to see what it uses, whether each item matches what was locked, what drifted and why, its helpers, its knowledge slices, and its project list and lock file in plain sentences. "Show the raw files" shows the files as they are.
+- **Projects.** Lists projects only. The workspace (the folder that holds the rest) and the context stores (the central knowledge) have their own places on the same screen. Each folder's page has "What kind of folder is this?", where you can change what the viewer guessed. Your choice is kept by the viewer only.  Each project with a status: Ready, Drifted, Lock problem, or Not set up. Open one to see what it uses, whether each item matches what was locked, what drifted and why, its helpers, its knowledge slices, and its project list and lock file in plain sentences. "Show the raw files" shows the files as they are.
 - **Knowledge folders.** Folders of notes outside your projects, which projects may read them, and a bar for each slice that compares what a helper reads at the start with reading everything.
 - **Storage.** Where your library is, whether it is shared on GitHub, whether a GitHub access key is set (never the key itself), and the saved copies and their sizes.
 - **Settings.** The folders the viewer searches for projects (adding or removing one only changes the viewer's own list), sample or your own data, light or dark, the version, and "Check for updates".
+
+## Where the viewer may write
+
+The viewer writes in only two places. One is its own folder (its settings, and later your sketches). The other is the **sandbox**, a folder made only for trying things. It never writes in your real folders. A short piece of code, the write boundary, checks every place before anything is written there. It refuses a path with "..", a path through a shortcut (a link), a path outside the allowed folders, your home folder, any folder that holds your home folder, any of your real folders, and any folder that does not carry the mark the viewer puts in the sandbox. The list of allowed folders is fixed in the program. The settings file cannot change it, and neither can anything in the window.
+
+Widening the places the viewer may write is not available. A later version will do it only with an explicit, confirmed step. Until then the viewer has no way to change a Bowerloom file of yours.
+
+## The sandbox
+
+A copy of the shape of your own setup, made of invented content, in the folder `Sage Advice Sandbox` next to `Sage Advice`. It has its own pretend home with its own shared library, so you can try everything without touching the real ones. A banner on every screen says "Sandbox: safe to break".
+
+- `npm --prefix "<repo>" run desktop:sandbox` makes it if it is missing and opens the viewer on it.
+- `npm --prefix "<repo>" run sandbox:reset` deletes it and builds it again. It refuses to delete anything unless the folder is exactly the sandbox folder and carries the viewer's mark, and has no shortcut that leads outside.
 
 ## What is not built yet
 

@@ -31,7 +31,7 @@ test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppI
 });
 
 test('the commands: one to open the app, one for sample data, both from the repository root', () => {
-  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs --real-data'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data');
+  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs --real-data'); assert.equal(root.scripts['desktop:sandbox'], 'node apps/desktop/tools/run.mjs --sandbox'); assert.equal(root.scripts['sandbox:reset'], 'npm --prefix apps/desktop run sandbox:reset'); assert.equal(pkg.scripts['sandbox:reset'], 'node tools/make-sandbox.mjs --reset'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data');
   for (const name of ['desktop:dev', 'desktop:build', 'desktop:test']) assert.ok(root.scripts[name], name);
 });
 
@@ -75,7 +75,7 @@ test('the launcher gives install scripts a minimal environment: no token reaches
 });
 
 test('the launcher refuses an unknown flag with a plain message, and both modes at once, without installing or building anything', () => {
-  for (const [args, re] of [[['--sample'], /do not know "--sample"/], [['--sample-data', '--real-data'], /not both/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
+  for (const [args, re] of [[['--sample'], /do not know "--sample"/], [['--sample-data', '--real-data'], /not more/], [['--build-only', '--nope', '-x'], /"--nope", "-x"/]] as const) {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), ...args], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, args.join(' ')); assert.match(r.stderr, re); assert.doesNotMatch(r.stdout, /Installing|Building/);
   }

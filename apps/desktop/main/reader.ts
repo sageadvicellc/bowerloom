@@ -11,7 +11,7 @@ import { listCache } from '../../../packages/project-sync/src/index.js';
 import { measureContext } from '../../../packages/project-sync/src/context-measure.js';
 import { resolveProject } from '../../../packages/project-sync/src/index.js';
 import type { Resolved, ResolvedItem } from '../../../packages/project-sync/src/index.js';
-import { listStore } from '../../cli/src/ls.js';
+import { listProject, listStore } from '../../cli/src/ls.js';
 import type { Listing } from '../../cli/src/ls.js';
 import { report } from '../../cli/src/store.js';
 import { runProjectStatus } from '../../cli/src/project-status.js';
@@ -19,13 +19,14 @@ import { readProjectPlan } from '../../cli/src/viewer-read.js';
 import { parseSlice } from '../../../packages/context-slices/src/index.js';
 import { LIMITS, readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type {
-  AgentRow, CacheData, FolderData, ItemKind, Library, LibraryItem, LockMatch, MeasureRow, Mode, Origin, ProjectData, ProjectItem, ProjectStatus, Snapshot, SliceRow, StoreData,
+  FolderRole, AgentRow, CacheData, FolderData, ItemKind, Library, LibraryItem, LockMatch, MeasureRow, Mode, Origin, ProjectData, ProjectItem, ProjectStatus, Snapshot, SliceRow, StoreData,
 } from '../shared/types.js';
 import { scanRoots } from './scan.js';
+import { guessRole, pageCount } from './roles.js';
 import { OutsideRoot, resolveInside } from './safe.js';
 import { tokenState } from './token.js';
 
-export interface ReadContext { mode: Mode; home: string; env: NodeJS.ProcessEnv; roots: string[]; includeExamples?: boolean; tokenSource?: NodeJS.ProcessEnv }
+export interface ReadContext { mode: Mode; home: string; env: NodeJS.ProcessEnv; roots: string[]; includeExamples?: boolean; roles?: Record<string, FolderRole>; tokenSource?: NodeJS.ProcessEnv }
 
 export const codeOf = (error: unknown): string => {
   if (error instanceof OutsideRoot) return error.code;
@@ -101,8 +102,25 @@ function itemsOf(resolved: Resolved): ProjectItem[] {
   for (const [kind, rows] of [['skill', resolved.skills], ['prompt', resolved.prompts], ['team', resolved.teams]] as const) {
     for (const row of rows) {
       const origin: Origin = row.entry !== null ? originOfKind(row.entry.source.kind) : row.lockPin !== null ? 'github' : 'yours';
-      out.push({ kind, id: row.id, from: row.origin === 'project' ? 'project' : 'store', via: row.via, resolvedFrom: row.resolvedFrom, origin, pin: pinOfRow(row), hold: row.hold, lock: matchOf(resolved, kind, row) });
+      out.push({ kind, id: row.id, from: row.origin === 'project' ? 'project' : 'store', via: row.via, resolvedFrom: row.resolvedFrom, origin, pin: pinOfRow(row), hold: row.hold, lock: matchOf(resolved, kind, row), note: null });
     }
+  }
+  return out;
+}
+
+/**
+ * Items that sit in the project's own folders but that Bowerloom does not list as items: the personal assistant skill that setup
+ * writes and keeps for itself (it is never in skills.json), and anything else a person left there. They are shown, so that the counts
+ * match what is on disk, and are marked as what they are. Names only come from Bowerloom's own listing (`ls`).
+ */
+function onDiskOnly(project: ProjectContext, resolved: Resolved | null): ProjectItem[] {
+  let listing: Listing;
+  try { listing = listProject(project); } catch { return []; }
+  const have = (kind: ItemKind): Set<string> => new Set((resolved === null ? [] : kind === 'skill' ? resolved.skills : kind === 'prompt' ? resolved.prompts : resolved.teams).map(r => r.id));
+  const out: ProjectItem[] = [];
+  for (const [kind, ids] of [['skill', listing.skills], ['prompt', listing.prompts], ['team', listing.teams]] as const) {
+    const known = have(kind);
+    for (const id of ids) if (!known.has(id)) out.push({ kind, id, from: 'project', via: [], resolvedFrom: 'project', origin: 'yours', pin: null, hold: null, lock: 'not-used', note: id === 'personal-assistant' && kind === 'skill' ? 'reserved' : 'unlisted' });
   }
   return out;
 }
@@ -131,7 +149,7 @@ export function gitCommonDir(dir: string): string | null {
 }
 
 const empty = (dir: string): ProjectData => ({
-  key: dir, name: basename(dir), dir, layout: 'none', ownedEdited: [], gitCommon: null, label: basename(dir), status: 'unreadable', openCode: null, setup: null, configState: 'absent', configCode: null, lockState: 'not-used', lockCode: null,
+  key: dir, name: basename(dir), dir, layout: 'none', role: 'project', roleGuess: 'project', roleChosen: false, pages: null, readBy: [], ownedEdited: [], gitCommon: null, label: basename(dir), status: 'unreadable', openCode: null, setup: null, configState: 'absent', configCode: null, lockState: 'not-used', lockCode: null,
   drift: [], notes: [], storeCode: null, unavailable: null, items: [], agents: [], slices: [], held: [], measure: [], measureCode: null, baselineBytes: null, baselineFiles: null, lockRows: [], shared: false,
 });
 
@@ -171,6 +189,25 @@ const grantFields = (g: Grant | null): Pick<SliceRow, 'grantStyle' | 'grantKey' 
   g === null ? { grantStyle: null, grantKey: null, grantCode: null }
     : g.state === 'absent' ? { grantStyle: 'absent', grantKey: null, grantCode: null } : g.state === 'legacy' ? { grantStyle: 'unset', grantKey: null, grantCode: null }
     : g.state === 'unknown' ? { grantStyle: 'unknown', grantKey: null, grantCode: g.code } : { grantStyle: g.style, grantKey: g.key, grantCode: null };
+
+/** Gives each folder its kind: the guess, then the person's own choice if they made one. Context stores also get their pages and who reads them. */
+function assignRoles(ctx: ReadContext, projects: ProjectData[], folders: readonly FolderData[]): void {
+  const allDirs = projects.map(p => p.dir), registeredDirs = folders.flatMap(f => f.dir === null ? [] : [f.dir]);
+  for (const p of projects) {
+    p.roleGuess = guessRole({ dir: p.dir, allDirs, registeredDirs });
+    const chosen = ctx.roles?.[p.dir];
+    p.role = chosen ?? p.roleGuess; p.roleChosen = chosen !== undefined;
+    if (p.role === 'context-store') {
+      p.pages = pageCount(p.dir);
+      // Who reads it: a project allowed to read a registered folder that is this store, or that has a reading list on it.
+      for (const f of folders) {
+        if (f.dir === null || f.dir !== p.dir) continue;
+        for (const key of f.allowed) { const q = projects.find(x => x.key === key); if (q !== undefined) p.readBy.push({ key, name: q.name, via: 'permission', list: null }); }
+        for (const q of projects) for (const sl of q.slices) if (sl.folder === f.name) p.readBy.push({ key: q.key, name: q.name, via: 'reading-list', list: sl.id });
+      }
+    }
+  }
+}
 
 /** Reads one project. One project that cannot be read never fails the others: any unexpected error makes it `Cannot open`. */
 export async function readProject(ctx: ReadContext, dir: string): Promise<ProjectData> {
@@ -232,7 +269,7 @@ async function readProjectInner(ctx: ReadContext, dir: string): Promise<ProjectD
   const drift = (status.drift ?? []).map(d => ({ kind: d.kind, path: d.path, code: d.code ?? null }));
   const lockState = resolved?.lock.state ?? (lockError !== null ? 'invalid' : lockOrphan ? 'orphan' : 'not-used');
   const lockCode = resolved?.lock.code ?? lockError ?? null;
-  const items = resolved === null ? [] : itemsOf(resolved);
+  const items = [...(resolved === null ? [] : itemsOf(resolved)), ...onDiskOnly(project, resolved)];
   const staleItems = items.filter(i => i.lock === 'changed' || i.lock === 'missing').length;
   const lockProblem = ['invalid', 'orphan'].includes(lockState) || drift.some(d => d.kind === 'lock-invalid' || d.kind === 'lock-orphan');
   const notSetUp = config.state === 'absent' && project.bowerloomIdentity === null && !lockOrphan;
@@ -279,7 +316,7 @@ export function readFolders(ctx: ReadContext, projects: readonly ProjectData[], 
         else outdated.push(p.key);
       }
     }
-    return { name: f.name, path: f.path, state: f.state, code: f.code, allowed, outdated, styles, unstyled, unknown };
+    return { name: f.name, path: f.path, dir: f.path === null ? null : join(ctx.home, f.path.replace(/^~\//, '')), state: f.state, code: f.code, allowed, outdated, styles, unstyled, unknown };
   });
   return { folders, failed: null };
 }
@@ -333,6 +370,7 @@ export async function readSnapshot(ctx: ReadContext): Promise<{ snapshot: Snapsh
   }
   const folderRead = readFolders(ctx, projects, contexts), folders = folderRead.folders;
   if (folderRead.failed !== null) problems.push({ area: 'folders', code: folderRead.failed });
+  assignRoles(ctx, projects, folders);
   const cache = await readCache(ctx);
   if (inspectStoreSafe(ctx.home) === 'foreign') problems.push({ area: 'store', code: 'STORE_INVALID' });
   return { snapshot: { mode: ctx.mode, at: new Date().toISOString(), store, library, folders, projects, cache, scan: found.info, problems }, contexts };

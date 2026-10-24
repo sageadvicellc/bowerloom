@@ -86,7 +86,7 @@ test('links: only the allowlist reaches the browser', async t => {
 
 test('settings parsing is strict about shape and size, and never silently resets', t => {
   assert.equal(parseSettings('not json'), null); assert.equal(parseSettings('[]'), null); assert.equal(parseSettings('null'), null);
-  assert.deepEqual(parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true })), { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, discovered: false }, 'a file can no longer turn updates on');
+  assert.deepEqual(parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true })), { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, roles: {}, discovered: false }, 'a file can no longer turn updates on');
   assert.equal(parseSettings(JSON.stringify({ roots: Array.from({ length: 50 }, (_, i) => `/r${i}`) }))!.roots.length, MAX_ROOTS);
   const dir = tempDir(t);
   assert.deepEqual(loadSettings(dir), { settings: { ...DEFAULT_SETTINGS, roots: [] }, notice: null }, 'no file is a first run, with no notice');
@@ -96,7 +96,7 @@ test('settings parsing is strict about shape and size, and never silently resets
   rmSync(join(dir, CONFIG_FILE)); symlinkSync('/etc/hosts', join(dir, CONFIG_FILE)); assert.match(loadSettings(dir).notice!, /shortcut/);
   rmSync(join(dir, CONFIG_FILE)); mkdirSync(join(dir, CONFIG_FILE)); assert.match(loadSettings(dir).notice!, /not a plain file/);
   rmSync(join(dir, CONFIG_FILE), { recursive: true });
-  saveSettings(dir, { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, discovered: false }); assert.deepEqual(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')), { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, discovered: false });
+  saveSettings(dir, { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, discovered: false }); assert.deepEqual(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')), { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, discovered: false });
 });
 
 test('a damaged settings file is shown as a notice, kept as .bak before it is overwritten, and a failed save changes nothing and leaves no temp file', async t => {
@@ -149,23 +149,23 @@ test('updates when turned on: ask the GitHub feed once, never download by themse
 
 test('saving settings refuses a link where the backup or the temporary file goes, keeps the backup private, and never writes through a link', async t => {
   const dir = tempDir(t), target = join(tempDir(t), 'victim'); writeFileSync(target, 'precious');
-  saveSettings(dir, { theme: 'dark', roots: [], mode: null, includeExamples: false, discovered: false });
+  saveSettings(dir, { theme: 'dark', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
   // 1. The .bak is a link: the save is refused, and the target of the link is untouched.
   symlinkSync(target, join(dir, `${CONFIG_FILE}.bak`));
-  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
   assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'dark', 'the settings file was not changed');
   rmSync(join(dir, `${CONFIG_FILE}.bak`));
   // 2. The .tmp is a link: refused, target untouched.
   symlinkSync(target, join(dir, `${CONFIG_FILE}.tmp`));
-  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
   rmSync(join(dir, `${CONFIG_FILE}.tmp`));
   // 3. With no links: it works, and the backup is private to the owner.
-  saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, discovered: false });
+  saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
   assert.equal(lstatSync(join(dir, `${CONFIG_FILE}.bak`)).mode & 0o777, 0o600); assert.equal(lstatSync(join(dir, CONFIG_FILE)).mode & 0o777, 0o600);
   assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
   // 4. A leftover plain .tmp from a stopped save is replaced, not trusted.
   writeFileSync(join(dir, `${CONFIG_FILE}.tmp`), 'stale', { mode: 0o666 });
-  saveSettings(dir, { theme: 'system', roots: [], mode: null, includeExamples: false, discovered: false }); assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'system'); assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
+  saveSettings(dir, { theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false }); assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'system'); assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
 });
 
 test('the controller reports a refused save in plain words and keeps the old value', async t => {

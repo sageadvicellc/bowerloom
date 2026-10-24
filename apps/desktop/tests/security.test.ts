@@ -80,7 +80,7 @@ test('the bridge: one named call per channel, nothing generic, and main answers 
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'every handler goes through one guard that checks the sender');
   assert.match(main, /senderFrame/);
   // Every call the page can make is a read, or changes the app's own settings.
-  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setTheme']);
+  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setRole', 'setTheme']);
 });
 
 test('the main process calls no command that writes Bowerloom data and starts no process or server', () => {
@@ -94,9 +94,9 @@ test('the main process calls no command that writes Bowerloom data and starts no
   assert.match(read('main/reader.ts'), /runProjectStatus\(\['status', '--json'\]/);
 });
 
-test('only two main files write a file, and only into the app\'s own folder', () => {
+test('only three main files write a file: the settings, the sample copy, and the sandbox, each behind the write boundary', () => {
   const writers = sources('main').filter(({ text }) => /\b(writeFileSync|writeFile|mkdirSync|rmSync|cpSync|chmodSync|renameSync|unlinkSync|appendFileSync|copyFileSync|symlinkSync)\b/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(writers, ['main/config.ts', 'main/sample.ts']);
+  assert.deepEqual(writers, ['main/config.ts', 'main/sample.ts', 'main/sandbox.ts']);
   assert.match(read('main/sample.ts'), /isInside\(realpathSync\(appDir\), target\)/);
 });
 
@@ -104,9 +104,9 @@ test('the page never builds markup from text: no innerHTML, no eval, no document
   for (const { file, text } of [...sources('renderer'), ...sources('shared')]) assert.doesNotMatch(strip(text), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(|setAttribute\(\s*['"]on|srcdoc|dangerouslySetInnerHTML/, file);
 });
 
-test('process.env is read in exactly two places, and the token value never leaves its module', () => {
+test('process.env is read in exactly three places (the token state, the settings of the run, and the sandbox folder constant), and the token value never leaves its module', () => {
   const users = sources('main').filter(({ text }) => /process\.env/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(users, ['main/controller.ts', 'main/token.ts']);
+  assert.deepEqual(users, ['main/boundary.ts', 'main/controller.ts', 'main/token.ts']);
   const token = read('main/token.ts');
   assert.match(token, /return GithubToken\.status\(only\)/);
   assert.doesNotMatch(token, /fromEnv|reveal|\.value|console\./);

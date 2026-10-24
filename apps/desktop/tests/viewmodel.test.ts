@@ -1,7 +1,7 @@
 // What each screen says. A drifted project says why, in plain words, and no screen shows a command line.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OLDER_NOTE, lockSourceWords, representatives, STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
+import { OLDER_NOTE, contextStoreRows, rowsOfRole, lockSourceWords, representatives, STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
 import { GENERIC_CODE_WORDS, codeWords, humanBytes, isPowerful, powerWords, titleOf } from '../shared/words.js';
 import { safeLine, safeText } from '../shared/text.js';
 import type { Snapshot } from '../shared/types.js';
@@ -298,7 +298,7 @@ test('a project set up the older way says so, never talks about a library, and l
   assert.equal(d.chip.label, 'Drifted'); assert.deepEqual(d.reasons, ['This folder moved, or was copied, since it was set up.']);
   assert.match(d.sentence, /Something differs from what Bowerloom set up here\. What differs is listed below\./);
   for (const text of [d.sentence, ...d.reasons, ...d.config, ...d.items.map(i => `${i.match.text} ${i.from}`)]) assert.doesNotMatch(text, /library|lock/i, text);
-  assert.deepEqual(d.items.map(i => `${i.kind}:${i.id}:${i.match.text}`), ['team:first-team:Part of this project']); assert.equal(d.config[0], 'It uses 1 team: first-team (in this project).');
+  assert.deepEqual(d.items.map(i => `${i.kind}:${i.id}:${i.match.text}`), ['team:first-team:Part of this project', 'skill:personal-assistant:Kept by Bowerloom itself']); assert.equal(d.config[0], 'It uses 1 team: first-team (in this project).');
   assert.ok(d.details.includes('Set up: the older way (a .bowerloom folder, no bowerloom.json)'));
   const card = homeModel(s).attention.find(a => a.title === 'studio-office differs from what was set up')!; assert.match(card.body, /moved, or was copied/);
   // A drifted older project with nothing reported still says what it knows, and that nothing was named.
@@ -311,8 +311,8 @@ test('a project set up the older way says so, never talks about a library, and l
 test('with no shared library the numbers are what the projects hold, and the library is called not set up yet, which is normal', async () => {
   const s = clone(await sampleSnapshot()); s.store.state = 'absent'; s.library = { skills: [], prompts: [], teams: [], unlisted: 0, pinsError: null, failed: null };
   const h = homeModel(s); assert.equal(h.countsFrom, 'projects');
-  assert.deepEqual(h.counts.map(c => [c.label, c.value]), [['Teams', 3], ['Skills', 6], ['Prompts', 2], ['Projects', 4]]);
-  assert.match(h.sentence, /Across your 4 projects, you have 3 teams, 6 skills and 2 prompts\. The shared library .* is not set up yet, and that is normal\./);
+  assert.deepEqual(h.counts.map(c => [c.label, c.value]), [['Teams', 3], ['Skills', 7], ['Prompts', 2], ['Projects', 4]]);
+  assert.match(h.sentence, /Across your 4 projects, you have 3 teams, 7 skills and 2 prompts\. The shared library .* is not set up yet, and that is normal\./);
   assert.ok(h.attention.some(a => a.title === 'The shared library is not set up yet' && /This is normal/.test(a.body)));
 });
 
@@ -338,4 +338,17 @@ test('example folders that hid a project are named in a notice, and only then', 
   const s = clone(await sampleSnapshot()); assert.ok(!homeModel(s).attention.some(a => a.id === 'scan:examples'));
   s.scan.exampleFolders = ['examples', 'code/tests']; s.scan.exampleFoldersTotal = 3;
   const a = homeModel(s).attention.find(x => x.id === 'scan:examples')!; assert.equal(a.title, '3 example folders were skipped'); assert.match(a.todo, /Also look inside example and test folders/);
+});
+
+test('a context store is not a project: it is listed apart, with its pages, its keepers and its readers, and never "drifts"', async () => {
+  const s = clone(await sampleSnapshot()), p = s.projects.find(x => x.name === 'studio-office')!;
+  p.role = 'context-store'; p.roleGuess = 'context-store'; p.pages = 48; p.readBy = [{ key: 'k1', name: 'studio-site', via: 'permission', list: null }, { key: 'k2', name: 'newsletter', via: 'reading-list', list: 'team-notes' }];
+  const stores = contextStoreRows(s); assert.equal(stores.length, 1); assert.equal(stores[0]!.pages, '48 pages'); assert.equal(stores[0]!.chip.label, 'Setup differs');
+  assert.deepEqual(stores[0]!.readBy.map(r => r.how), ['is allowed to read it', 'reads it with the reading list "team-notes"']); assert.equal(stores[0]!.note, '2 projects read it.');
+  assert.equal(rowsOfRole(s, 'project').some(r => r.name === 'studio-office'), false); assert.equal(rowsOfRole(s, 'project').length, 3);
+  const d = projectDetail(p); assert.equal(d.role, 'context-store'); assert.equal(d.roleLabel, 'Context store'); assert.match(d.sentence, /^This is a store of knowledge that projects read from\. It is not a project\. Its own setup differs from how it was made\. What differs is listed below\.$/);
+  assert.notEqual(d.chip.label, 'Drifted'); assert.deepEqual(d.reasons, ['This folder moved, or was copied, since it was set up.']);
+  const title = homeModel(s).attention.find(a => a.title.includes('studio-office'))!.title; assert.equal(title, 'studio-office (context store) differs from what was set up'); assert.doesNotMatch(title, /drift/i);
+  assert.equal(homeModel(s).counts.find(c => c.label === 'Projects')!.value, 3, 'a store is not counted as a project');
+  p.role = 'workspace'; assert.match(projectDetail(p).sentence, /^This is a workspace: a folder that holds other Bowerloom folders\. It is not a project\./);
 });

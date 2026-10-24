@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { readProject, readSnapshot } from '../main/reader.js';
 import { readItemContent } from '../main/content.js';
 import { DESKTOP, sampleSnapshot, sampleWorld } from './support.js';
+import { projectRows } from '../shared/viewmodel.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { listFolderGrants } from '../../../packages/project-context/src/index.js';
 
@@ -275,7 +276,7 @@ test('the library read failing leaves the counts unknown', async t => {
 test('a project set up the older way is read with the same plan and status code: its team, its status, and what differs', async () => {
   const o = (await byName()).p('studio-office');
   assert.equal(o.layout, 'older'); assert.equal(o.configState, 'absent'); assert.equal(o.lockState, 'not-used');
-  assert.deepEqual(o.items.map(i => `${i.kind}:${i.id}:${i.from}`), ['team:first-team:project']);
+  assert.deepEqual(o.items.map(i => `${i.kind}:${i.id}:${i.from}`), ['team:first-team:project', 'skill:personal-assistant:project']);
   assert.equal(o.setup, 'drifted'); assert.equal(o.status, 'drifted'); assert.deepEqual(o.drift.map(d => d.kind), ['installation-binding-changed']);
   assert.equal((await byName()).p('studio-site').layout, 'library');
 });
@@ -289,10 +290,24 @@ test('a project that is only a .bowerloom folder, as the owner\'s real layers ar
   assert.equal(spawnSync(process.execPath, [cli, ...args, '--approve', JSON.parse(planned.stdout).revision], { cwd: dir, env, encoding: 'utf8' }).status, 4);
   const ctx = { mode: 'real' as const, home, env: { HOME: home, XDG_STATE_HOME: join(home, 'state') }, roots: [home] };
   const { snapshot } = await readSnapshot(ctx), p = snapshot.projects[0]!;
-  assert.equal(snapshot.projects.length, 1); assert.equal(p.layout, 'older'); assert.equal(p.status, 'ready'); assert.deepEqual(p.drift, []); assert.deepEqual(p.items.map(i => i.id), ['first-team']);
+  assert.equal(snapshot.projects.length, 1); assert.equal(p.layout, 'older'); assert.equal(p.status, 'ready'); assert.deepEqual(p.drift, []); assert.deepEqual(p.items.map(i => i.id).sort(), ['first-team', 'personal-assistant']);
   // The item opens to readable detail.
   const content = readItemContent(dir, 'project', 'team', 'first-team'); assert.ok(content.files.some(f => f.path === 'team.yaml' && (f.text ?? '').length > 10));
   // Two projects with one name are told apart by their path inside the chosen folder.
   fs.mkdirSync(join(home, 'Other', 'Studio', '.bowerloom'), { recursive: true });
   const two = await readSnapshot(ctx); assert.deepEqual(two.snapshot.projects.map(x => x.name).sort(), ['Other/Studio', 'Studio']);
+});
+
+test('counts match what is on disk: the personal assistant skill that setup keeps for itself is counted and named, never dropped', async t => {
+  const fs = await import('node:fs'), { world, ctx } = sampleWorld(t), dir = join(world.projects, 'studio-office');
+  const onDisk = fs.readdirSync(join(dir, '.bowerloom', 'skills')).sort();
+  assert.deepEqual(onDisk, ['personal-assistant']);
+  const { snapshot } = await readSnapshot(ctx), o = snapshot.projects.find(x => x.name === 'studio-office')!;
+  assert.deepEqual(o.items.filter(i => i.kind === 'skill').map(i => i.id).sort(), onDisk, 'the skills shown are the skills on disk');
+  assert.equal(o.items.find(i => i.id === 'personal-assistant')!.note, 'reserved'); assert.equal(o.items.find(i => i.kind === 'team')!.note, null);
+  // A skill folder that skills.json does not list is shown too, as "in the folder, but not listed", so a count is never short.
+  fs.mkdirSync(join(dir, '.bowerloom', 'skills', 'stray-skill'), { mode: 0o700 }); writeFileSync(join(dir, '.bowerloom', 'skills', 'stray-skill', 'SKILL.md'), '---\nname: stray-skill\ndescription: x\n---\n', { mode: 0o600 });
+  const again = (await readSnapshot(ctx)).snapshot.projects.find(x => x.name === 'studio-office')!;
+  assert.deepEqual(again.items.filter(i => i.kind === 'skill').map(i => `${i.id}:${i.note}`).sort(), ['personal-assistant:reserved', 'stray-skill:unlisted']);
+  assert.equal(projectRows({ ...snapshot, projects: [again] } as typeof snapshot)[0]!.summary.startsWith('2 skills'), true);
 });
