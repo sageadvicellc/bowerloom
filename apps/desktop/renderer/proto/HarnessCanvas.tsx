@@ -23,6 +23,7 @@ import { HARNESS_LAYOUT, layoutHarness, maxRowsFor, nodeAt, pinnedPlace, snapPoi
 import type { Point, Positions } from '../../shared/proto/harnesslayout.js';
 import { MOTION, ms } from '../motion-tokens.js';
 import { HarnessIcon, iconNameOf } from './icons.js';
+import { timerSlot } from './timer-slot.js';
 
 /** The public face of the canvas. Three later screens depend on it: change it only by adding. */
 export interface HarnessCanvasProps {
@@ -215,9 +216,10 @@ function Flow({ props, box }: { props: HarnessCanvasProps; box: { width: number;
   const edges = useMemo(() => wires.edges(model.edges, layout, hoverId ?? selectedId), [wires, model, layout, hoverId, selectedId]);
 
   // Drag, drop and move.
-  const before = useRef<Point | null>(null), [settling, setSettling] = useState(false);
+  const before = useRef<Point | null>(null), [settling, setSettling] = useState(false), [settlingTimer] = useState(timerSlot);
+  useEffect(() => () => settlingTimer.clear(), [settlingTimer]);
   const centre = (p: Point): Point => ({ x: p.x + NODE_W / 2, y: p.y + NODE_H / 2 });
-  const onDragStart = useCallback((_e: unknown, node: HcNode) => { before.current = { ...node.position }; setSettling(false); }, []);
+  const onDragStart = useCallback((_e: unknown, node: HcNode) => { before.current = { ...node.position }; settlingTimer.clear(); setSettling(false); }, [settlingTimer]);
   const onDragStop = useCallback((_e: unknown, node: HcNode) => {
     const current: Positions = {}; for (const n of flow.getNodes()) current[n.id] = n.position;
     const target = nodeAt(current, centre(node.position), node.id);
@@ -226,14 +228,14 @@ function Flow({ props, box }: { props: HarnessCanvasProps; box: { width: number;
       const home = layoutRef.current[node.id] ?? before.current ?? node.position;
       setSettling(true); setNodes(prev => prev.map(p => (p.id === node.id ? { ...p, position: home } : p)));
       settleNodes([target, node.id], 'drop');
-      window.setTimeout(() => setSettling(false), ms(MOTION.map.drop.ms) + MOTION.map.settleGrace);
+      settlingTimer.set(() => setSettling(false), ms(MOTION.map.drop.ms) + MOTION.map.settleGrace);
       latest.current.onDropOnNode(node.id, target);
       return;
     }
     const at = snapPoint(node.position);
     setNodes(prev => prev.map(p => (p.id === node.id ? { ...p, position: at } : p)));
     commit({ ...pinnedRef.current, [node.id]: at });
-  }, [flow, commit, settleNodes]);
+  }, [flow, commit, settleNodes, settlingTimer]);
 
   const onConnect = useCallback((c: Connection) => {
     if (c.source === c.target) return;

@@ -147,16 +147,6 @@ const FLAG_TONE = (text: string): string => (/^(Secret missing)/.test(text) ? 'b
 /** What a replacement list offers: the item and a note on where it lives. */
 export interface ReplaceChoice { readonly id: string; readonly label: string }
 
-/** The words that told a person to drop an inherited agent on the harness. The drop has no keyboard path, so with the button the note points at the button. */
-const DROP_WORDS = /drop it on this harness to make a copy you can change here/;
-const BUTTON_WORDS = 'press Copy to this harness to make a copy you can change here';
-
-/** The note under the inspector, in words that match what the screen can do. */
-export function noteFor(view: SelectionView, hasCopyButton: boolean): string | null {
-  if (view.readOnlyNote === null) return null;
-  return hasCopyButton ? view.readOnlyNote.replace(DROP_WORDS, BUTTON_WORDS) : view.readOnlyNote;
-}
-
 /** The panel beside the canvas: what the selected node is, where it came from, its states in words, and the buttons that apply. `copyHere` is the keyboard way to do what a drop on the harness does. */
 export function Inspector({ view, onAction, onClose, headingRef, replace, copyHere }: {
   view: SelectionView | null; onAction(action: SelectionAction): void; onClose(): void; headingRef: RefObject<HTMLHeadingElement | null>;
@@ -233,7 +223,7 @@ export function Inspector({ view, onAction, onClose, headingRef, replace, copyHe
           </div>
         </section>
       ) : null}
-      {view.readOnlyNote === null ? null : <p className="small muted harness-note">{noteFor(view, copyHere != null)}</p>}
+      {view.readOnlyNote === null ? null : <p className="small muted harness-note">{view.readOnlyNote}</p>}
     </aside>
   );
 }

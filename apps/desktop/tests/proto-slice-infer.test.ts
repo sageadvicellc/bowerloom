@@ -116,3 +116,24 @@ test('explainInference says in plain words what was picked and why each handle w
   assert.equal(explainInference(inferRule([], PAGES)).join(' '), 'No pages are picked yet.');
   assert.doesNotMatch(words, /glob|regex|pattern|\bhelper|\bteam/i);
 });
+
+test('no two different folders of the sample world give the same sentence', () => {
+  const pages = generateWorld(1).wikiPages;
+  const folders = [...new Set(pages.flatMap(p => p.folder.split('/').map((_, n, parts) => parts.slice(0, n + 1).join('/'))))];
+  const leaves = folders.map(f => f.split('/').pop()!);
+  assert.ok(new Set(leaves).size < folders.length, 'the sample world has leaf names that repeat, which is what this test guards against');
+  const sentences = new Map<string, string>();
+  for (const folder of folders) {
+    const line = explainInference({ rule: { folders: [folder], pageTypesAndTags: { types: [], tags: [] }, linksFromSeeds: null }, seeds: [], leftover: [], folders: [{ folder, picked: 2, total: 3 }], used: [], offers: [], picked: 2 })[1]!;
+    assert.equal(sentences.has(line), false, `"${folder}" and "${sentences.get(line)}" give the same sentence: ${line}`);
+    sentences.set(line, folder);
+  }
+  assert.ok(sentences.size > 20);
+});
+
+test('a nested folder is named with where it sits, and a top folder is named alone', () => {
+  const nested = explainInference({ rule: { folders: ['north/a'], pageTypesAndTags: { types: [], tags: [] }, linksFromSeeds: null }, seeds: [], leftover: [], folders: [{ folder: 'north/a', picked: 4, total: 5 }], used: [], offers: [], picked: 4 });
+  assert.equal(nested[1], 'You picked 4 of the 5 pages in the a folder inside north, so the rule uses the whole folder.');
+  const deep = explainInference({ rule: { folders: ['x/y/z'], pageTypesAndTags: { types: [], tags: [] }, linksFromSeeds: null }, seeds: [], leftover: [], folders: [{ folder: 'x/y/z', picked: 2, total: 2 }], used: [], offers: [], picked: 2 });
+  assert.match(deep[1]!, /in the z folder inside x \/ y,/);
+});

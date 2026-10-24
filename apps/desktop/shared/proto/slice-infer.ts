@@ -12,6 +12,7 @@
  * The result always matches every picked page. The order of the picks does not change the rule.
  */
 import type { SliceRule, WikiPage } from './types.js';
+import { folderPlace } from './slicerule.js';
 
 /** A folder, tag or type counts as picked when at least this share of its pages is picked. */
 export const COVER_SHARE = 0.6;
@@ -115,13 +116,12 @@ export function inferRule(pickedIds: readonly string[], pages: readonly WikiPage
 }
 
 const count = (n: number, one: string, many: string): string => (n === 1 ? `1 ${one}` : `${n} ${many}`);
-const lastPart = (folder: string): string => folder.split('/').pop()!;
 
 /** The reasons for the rule, in plain short sentences, for a person who does not read code. */
 export function explainInference(result: Inference): string[] {
   if (result.picked === 0) return ['No pages are picked yet.'];
   const out = [`You picked ${count(result.picked, 'page', 'pages')}.`];
-  for (const f of result.folders) out.push(`You picked ${f.picked} of the ${count(f.total, 'page', 'pages')} in the ${lastPart(f.folder)} folder, so the rule uses the whole folder.`);
+  for (const f of result.folders) out.push(`You picked ${f.picked} of the ${count(f.total, 'page', 'pages')} in ${folderPlace(f.folder)}, so the rule uses the whole folder.`);
   for (const u of result.used) out.push(`You picked ${u.picked} of the ${count(u.total, 'page', 'pages')} with the ${u.kind === 'tag' ? 'tag' : 'type'} ${u.value}, so the rule uses all of them.`);
   if (result.leftover.length > 0) out.push(`${count(result.leftover.length, 'page stays as a single page', 'pages stay as single pages')}.`);
   if (result.rule.linksFromSeeds !== null) out.push(`The rule also adds the pages that your picked pages have links to (${count(result.rule.linksFromSeeds.hops, 'hop', 'hops')}).`);

@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   await build({ entryPoints: [join(desktop, 'e2e/proto-setup-conflicts-page.ts')], outfile: join(dir, 'page.js'), bundle: true, format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none', logLevel: 'warning' });
   const css = (file: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', file)).href}">`;
   writeFileSync(join(dir, 'page.html'), `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><title>Setup page</title>${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="page.css"></head><body><div class="shell"><aside class="sidebar"><div class="brand">Bowerloom</div></aside><main id="main"></main><footer class="footer"><span>Bowerloom prototype</span></footer></div><script src="page.js"></script></body></html>`);
-  const userData = tempDir('bowerloom-proto-setup-conflicts-ud-');
+  const userData = tempDir('bowerloom-prototype-e2e-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
   await app.evaluate(({ BrowserWindow }, url) => { const win = new BrowserWindow({ width: 1440, height: 900, useContentSize: true, show: true, webPreferences: { contextIsolation: true, sandbox: true, partition: `proto-setup-conflicts-${Date.now()}` } }); void win.loadURL(url); }, pathToFileURL(join(dir, 'page.html')).href);

@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   const css = (file: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', file)).href}">`;
   writeFileSync(join(dir, 'page.html'), `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><title>Versions page</title>${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="page.css"></head><body><div class="shell"><aside class="sidebar"><div class="brand">Bowerloom</div><div class="sandbox-badge" role="note">Prototype: nothing is saved</div></aside><main id="main"></main><footer class="footer"><span>Bowerloom prototype</span><span class="spacer"></span><span>Sample data. Nothing is saved.</span></footer></div><script src="page.js"></script></body></html>`);
   url = pathToFileURL(join(dir, 'page.html')).href;
-  const userData = tempDir('bowerloom-proto-versions-ud-');
+  const userData = tempDir('bowerloom-prototype-e2e-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });
@@ -219,7 +219,7 @@ test('reduce motion makes the versions token zero, and the list rows stop animat
 
 test('the real prototype: Setup makes version 1, Versions lists it, and there is nothing yet to compare or restore', async () => {
   test.setTimeout(120_000);
-  const userData = tempDir('bowerloom-proto-versions-real-');
+  const userData = tempDir('bowerloom-prototype-e2e-');
   const real = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   try {
     const w = await real.firstWindow();

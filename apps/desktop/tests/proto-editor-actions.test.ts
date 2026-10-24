@@ -110,6 +110,8 @@ test('an inherited agent is not changed from a project; a hidden skill is not wi
   const copper = ctxOf('scope-copperfen');
   const why = refused(connectOutcome(copper, freeSkill.id, a1.id));
   assert.match(why, /inherited from Studio/); assert.match(why, /make a copy/);
+  assert.match(why, /select it and press Copy to this harness, or drop it on this harness\.$/, 'the refusal names the keyboard path as well as the drop');
+  assert.doesNotMatch(why, /\u2014|\u2013/);
   const reed = ctxOf(CASE_IDS.hidingScope), projectAgent = world.items.find((i): i is AgentItem => i.kind === 'agent' && i.scopeId === CASE_IDS.hidingScope)!;
   assert.match(refused(connectOutcome(reed, CASE_IDS.hiddenSkill, projectAgent.id)), /is hidden here/);
   // A project agent can use a global skill: the project reaches its parent.

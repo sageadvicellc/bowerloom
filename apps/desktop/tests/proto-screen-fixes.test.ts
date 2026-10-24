@@ -8,7 +8,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { KnowledgeFlow } from '../renderer/proto/KnowledgeScreen.js';
 import { keyedLines } from '../renderer/proto/knowledge-panels.js';
-import { Inspector, ResultPanel, noteFor } from '../renderer/proto/harness-parts.js';
+import { Inspector, ResultPanel } from '../renderer/proto/harness-parts.js';
 import { keepPositions, positionsFor } from '../renderer/proto/harness-positions.js';
 import { ProtoProvider, useProtoStore } from '../renderer/proto/session.js';
 import { BROUGHT_IN_LABEL, START_AGAIN_DONE_WORDS, START_AGAIN_WORDS, SetupFlow, broughtInVersion } from '../renderer/proto/SetupScreen.js';
@@ -143,16 +143,18 @@ const inspect = (id: string, copyHere: (() => void) | null): string => {
   return renderToStaticMarkup(createElement(Inspector, { view: v, onAction: noop, onClose: noop, headingRef: ref, replace: null, copyHere }));
 };
 
-test('an inherited agent gets a visible Copy to this harness button, and the note points at the button, not at a drag', () => {
+test('an inherited agent gets a visible Copy to this harness button, and the note names the button and the drop', () => {
   const id = inheritedAgent();
   const withButton = inspect(id, noop), without = inspect(id, null);
   assert.match(withButton, /<button[^>]*>Copy to this harness<\/button>/);
   assert.doesNotMatch(without, /Copy to this harness<\/button>/);
-  assert.match(textOf(withButton), /press Copy to this harness to make a copy you can change here/);
-  assert.doesNotMatch(textOf(withButton), /\bdrop it\b/i, 'no sentence tells a keyboard user to drag');
   const v = describeSelection(world, model('scope-copperfen'), id)!;
-  assert.equal(noteFor(v, true)?.includes('drop it on this harness'), false);
-  assert.equal(noteFor(v, false), v.readOnlyNote);
+  for (const markup of [withButton, without]) {
+    assert.match(textOf(markup), /Or make a copy you can change here: press Copy to this harness, or drop it on this harness\./, 'the note gives the keyboard path and the drop');
+  }
+  assert.match(v.readOnlyNote!, /press Copy to this harness/);
+  assert.match(v.readOnlyNote!, /drop it on this harness/);
+  assert.doesNotMatch(v.readOnlyNote!, /\u2014|\u2013/, 'no dashes');
 });
 
 test('the empty inspector names the button as well as the drop', () => {
@@ -214,7 +216,7 @@ test('Done names only a version made during this run', () => {
 
 // ------------------------------------------------------------------------------------------------------- the reasons list
 
-test('two reasons that read the same do not share a key: folders with the same last name in different domains', () => {
+test('folders with the same last name in different domains read differently, and lines that do read the same still get their own keys', () => {
   const pages = world.wikiPages, byFolder = new Map<string, string[]>();
   for (const p of pages) byFolder.set(p.folder, [...(byFolder.get(p.folder) ?? []), p.id]);
   const leaf = (folder: string): string => folder.split('/').pop()!;
@@ -225,9 +227,11 @@ test('two reasons that read the same do not share a key: folders with the same l
   const s = reduceKnowledge(initialKnowledge([]), { type: 'lassoResult', ids, mode: 'replace' }, { pages });
   const markup = renderToStaticMarkup(createElement(ProtoProvider, { store: createStore(generateWorld(1)) }, createElement(KnowledgeProbe, { initial: s })));
   const lines = [...markup.matchAll(/<li>(You picked \d+ of the [^<]*)<\/li>/g)].map(m => m[1]!);
-  assert.ok(lines.length >= 2 && new Set(lines).size < lines.length, 'two lines are word for word the same');
-  const keys = keyedLines(lines).map(l => l.key);
-  assert.equal(new Set(keys).size, keys.length, 'every line has its own key');
+  assert.ok(lines.length >= 2, 'both folders have a line');
+  assert.equal(new Set(lines).size, lines.length, 'the lines name the full folder, so no two are word for word the same');
+  const same = ['You picked 2 pages.', 'You picked 2 pages.'];
+  const keys = keyedLines(same).map(l => l.key);
+  assert.equal(new Set(keys).size, keys.length, 'lines that are word for word the same still have their own keys');
   assert.match(readFileSync(join(DESKTOP, 'renderer', 'proto', 'knowledge-panels.tsx'), 'utf8'), /keyedLines\(explainInference\(inferred\)\)/, 'the list uses them');
 });
 

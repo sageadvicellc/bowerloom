@@ -10,6 +10,9 @@ import { interfaceName, joinWords as joinAnd } from './words.js';
 import { describeRule } from './slicerule.js';
 import type { StoreAction } from './store.js';
 
+/** The two ways to copy an inherited item into the open harness, in one place: the button for the keyboard, and the drop for the pointer. */
+export const COPY_HERE_WORDS = 'press Copy to this harness, or drop it on this harness';
+
 /** One button of the inspector. `store` is the action to send for a plain button. Buttons with no `store` open something on the screen. */
 export interface SelectionAction {
   readonly id: 'keep-from-global' | 'hide-here' | 'replace-here' | 'copy' | 'resolve' | 'remove-skill' | 'remove-tool' | 'clear-slice' | 'toggle-group';
@@ -163,7 +166,7 @@ export function describeSelection(world: World, model: HarnessMapModel, nodeId: 
       for (const t of item.definition.toolAttachments) actions.push({ id: 'remove-tool', label: `Remove the tool ${byId.get(t.toolId) ?? t.toolId}`, done: `${item.name} no longer has the tool ${byId.get(t.toolId) ?? t.toolId}.`, targetId: t.toolId, store: { type: 'detachTool', agentId: item.id, toolId: t.toolId } });
       if (item.definition.sliceId !== undefined) actions.push({ id: 'clear-slice', label: 'Stop reading the slice', done: `${item.name} reads no slice now.`, store: { type: 'assignSlice', agentId: item.id, sliceId: null } });
     } else if (item.kind === 'agent' && item.library === null && node.inherited) {
-      readOnlyNote = `This agent is inherited from ${node.fromScope ?? 'the global harness'}. Change it there, or drop it on this harness to make a copy you can change here.`;
+      readOnlyNote = `This agent is inherited from ${node.fromScope ?? 'the global harness'}. Change it there. Or make a copy you can change here: ${COPY_HERE_WORDS}.`;
     }
   }
   if (node.kind === 'group') actions.push({ id: 'toggle-group', label: node.expanded ? 'Show as one group' : `Show all ${node.memberCount ?? 0} items`, targetId: node.id });

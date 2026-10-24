@@ -264,6 +264,33 @@ test('a drop on a harness installs an editable copy there, and the interface fil
   await expect(bar().getByRole('button', { name: 'Apply' })).toBeEnabled();
 });
 
+test('leaving the Harness screen right after a drop on a node leaves no timer behind and raises no error', async () => {
+  test.setTimeout(120_000);
+  const problems: string[] = [];
+  const onError = (e: Error): void => { problems.push(`pageerror: ${e.message}`); };
+  const onConsole = (m: { type(): string; text(): string }): void => { if (m.type() === 'error' || m.type() === 'warning') problems.push(`${m.type()}: ${m.text()}`); };
+  await fresh();
+  page.on('pageerror', onError); page.on('console', onConsole);
+  try {
+    const from = (await node(freeSkill.id).boundingBox())!, to = (await node(agent.id).boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2 - 30, to.y + to.height / 2, { steps: 20 }); await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect(bar().getByRole('button', { name: 'Apply' }), 'the drop reached the screen').toBeEnabled();
+    // The canvas leaves the page while the node is still settling back: its "settling" timer is waiting.
+    await page.locator('nav.nav').getByRole('button', { name: 'Skills' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Skills' })).toBeVisible();
+    await expect(page.locator('.hc-root')).toHaveCount(0);
+    // Wait on the page's own clock for longer than the drop and its grace, so a timer that was left behind would have run by now.
+    await page.evaluate(() => new Promise<void>(resolve => { const end = performance.now() + 1000; const tick = (): void => (performance.now() >= end ? resolve() : void requestAnimationFrame(tick)); tick(); }));
+    expect(problems).toEqual([]);
+    // And the Harness screen still works when it comes back.
+    await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
+    await page.waitForSelector('.react-flow__node');
+    expect(problems).toEqual([]);
+  } finally { page.off('pageerror', onError); page.off('console', onConsole); }
+});
+
 const otherSkill = world.items.find(i => i.kind === 'skill' && i.scopeId === 'global' && i.id !== CASE_IDS.hiddenSkill && i.id !== CASE_IDS.tripleSkill && i.id !== freeSkill.id && i.id !== inheritedSkill.id && !agent.definition.skillIds.includes(i.id))!;
 const undo = () => bar().getByRole('button', { name: 'Undo' });
 const focusedId = (): Promise<string | null> => page.evaluate(() => document.activeElement?.getAttribute('data-id') ?? null);
@@ -344,7 +371,7 @@ test('closing the details sends the keyboard to the node, and a button that remo
   await expect(inspector.getByRole('heading', { level: 2, name: agent.name })).toBeFocused();
 });
 
-test('an inherited agent can be copied into a project with the keyboard, and the note does not ask for a drag', async () => {
+test('an inherited agent can be copied into a project with the keyboard, and the note names the button as well as the drop', async () => {
   test.setTimeout(120_000);
   await fresh();
   await scope('scope-copperfen');
@@ -352,7 +379,7 @@ test('an inherited agent can be copied into a project with the keyboard, and the
   const inspector = page.getByRole('complementary', { name: 'Details of the selected item' });
   await expect(inspector).toContainText('Inherited from');
   await expect(inspector.locator('.harness-note')).toContainText('press Copy to this harness');
-  await expect(inspector.locator('.harness-note')).not.toContainText(/drop it/i);
+  await expect(inspector.locator('.harness-note')).toContainText('drop it on this harness');
   const copy = inspector.getByRole('button', { name: 'Copy to this harness' });
   await expect(copy).toBeVisible();
   await copy.focus();

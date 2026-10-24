@@ -43,7 +43,7 @@ function expectedIds(r: Rule): Set<string> {
 let app: ElectronApplication, page: Page;
 
 async function launch(reduced = false): Promise<void> {
-  const userData = tempDir('bowerloom-proto-knowledge-');
+  const userData = tempDir('bowerloom-prototype-e2e-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');

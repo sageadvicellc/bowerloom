@@ -92,10 +92,16 @@ export function joinedSince(matched: ReadonlySet<string>, pages: readonly WikiPa
 
 const count = (n: number, one: string, many: string): string => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
-function describeFolder(folder: string, pages: readonly WikiPage[]): string {
+/** A folder by its full path, as a person says it: "the north folder", or "the a folder inside north / b". Two different folders never give the same words. */
+export function folderPlace(folder: string): string {
   const clean = folder.replace(/\/+$/, ''), parts = clean.split('/');
+  return parts.length === 1 ? `the ${clean} folder` : `the ${parts[parts.length - 1]} folder inside ${parts.slice(0, -1).join(' / ')}`;
+}
+
+function describeFolder(folder: string, pages: readonly WikiPage[]): string {
+  const clean = folder.replace(/\/+$/, '');
   const inside = pages.filter(p => p.folder === clean || p.folder.startsWith(`${clean}/`)).length;
-  const place = parts.length === 1 ? `the ${clean} folder` : `the ${parts[parts.length - 1]} folder inside ${parts.slice(0, -1).join(' / ')}`;
+  const place = folderPlace(clean);
   return `${place} (${inside === 0 ? 'no pages yet' : count(inside, 'page', 'pages')})`;
 }
 

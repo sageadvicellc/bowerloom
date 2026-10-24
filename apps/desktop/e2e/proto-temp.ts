@@ -3,6 +3,8 @@
  * `removeTempDirs` when it is done. Only a folder that this process made is ever removed, and only after `isRemovable` agrees:
  * a real folder (not a link) that sits directly inside the OS temp folder and whose name starts with the prefix it was made with.
  * A folder that was already there, from an earlier run, is never in the list, so it is never touched.
+ * A data folder for the app is made with the prefix `bowerloom-prototype-e2e-`: the prototype keeps a `--user-data-dir` only when its name starts with
+ * `bowerloom-prototype-`, and otherwise it makes (and, on a hard close, leaves) a folder of its own that this helper does not know about.
  */
 import { lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

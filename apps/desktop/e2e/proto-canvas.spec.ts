@@ -32,7 +32,7 @@ test.beforeAll(async () => {
   const css = (name: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', name)).href}">`;
   writeFileSync(join(dir, 'harness.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8">${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="harness.css"><link rel="stylesheet" href="bar.css"></head><body><div id="root"></div><script src="harness.js"></script></body></html>`);
   base = pathToFileURL(join(dir, 'harness.html')).href;
-  const userData = tempDir('bowerloom-proto-canvas-ud-');
+  const userData = tempDir('bowerloom-prototype-e2e-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample-data', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });

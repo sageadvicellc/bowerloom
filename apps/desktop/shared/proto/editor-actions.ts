@@ -14,6 +14,7 @@ import type { HarnessMapModel, HarnessNode } from './harnessmodel.js';
 import { joinWords as joinAnd } from './words.js';
 import { reachesScope } from './common.js';
 import { conflictCopies, keepBothProblem } from './conflicts.js';
+import { COPY_HERE_WORDS } from './editor-describe.js';
 import type { StoreAction } from './store.js';
 
 /** What the screen does with an event from the canvas. */
@@ -75,7 +76,7 @@ export function editRefusal(ctx: EditorContext, id: string): string | null {
   if (item.library !== null) return `${item.name} comes from the library ${libraryName(ctx.world, item.library.library)} and is read only. Make an editable copy first, then change the copy.`;
   if (node.hidden) return `${item.name} is hidden here. Show it again first.`;
   if (node.replaced) return `${item.name} is replaced here. Change the replacement instead.`;
-  if (node.inherited) return `${item.name} is inherited from ${node.fromScope ?? 'the global harness'}. Change it there, or drop it on this harness to make a copy that you can change here.`;
+  if (node.inherited) return `${item.name} is inherited from ${node.fromScope ?? 'the global harness'}. Change it there. Or make a copy that you can change here: select it and ${COPY_HERE_WORDS}.`;
   return null;
 }
 
