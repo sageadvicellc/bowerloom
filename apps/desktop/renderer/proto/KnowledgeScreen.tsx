@@ -7,12 +7,11 @@
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { initialKnowledge, reduceKnowledge } from '../../shared/proto/knowledge-state.js';
+import { initialKnowledge, isDirty, reduceKnowledge, sameSeeds } from '../../shared/proto/knowledge-state.js';
 import type { KnowledgeAction, KnowledgeState } from '../../shared/proto/knowledge-state.js';
 import { buildPreview, memoMatch } from '../../shared/proto/slice-preview.js';
 import { domainsOf } from './knowledge-graph-view.js';
 import type { GraphView } from './knowledge-graph-view.js';
-import { sameSeeds, sliceDirty } from './knowledge-dirty.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
 import { ActionsPanel, GraphWay, PageList, PreviewPanel, RuleBuilder } from './knowledge-panels.js';
 import { useOptionalProtoStore } from './harness-session.js';
@@ -52,7 +51,7 @@ export function KnowledgeFlow({ session, initial }: { session: ProtoSession; ini
 
   const saved: Slice | null = ks.chosenId === null ? null : slices.find(s => s.id === ks.chosenId) ?? null;
   const frozen = saved !== null && saved.pinned && saved.pinnedPageIds !== undefined;
-  const dirty = sliceDirty(ks, saved);
+  const dirty = isDirty(ks, saved);
   const seedsChanged = saved !== null && !sameSeeds(ks.seeds, saved.seeds);
 
   // A slice that is gone (an undo on another screen) leaves the screen on a new, empty slice. A saved slice that changed elsewhere, while
@@ -62,7 +61,7 @@ export function KnowledgeFlow({ session, initial }: { session: ProtoSession; ini
     const before = lastSaved.current;
     lastSaved.current = saved;
     if (ks.chosenId !== null && saved === null) send({ type: 'reset', slice: null });
-    else if (saved !== null && before !== null && before !== saved && before.id === saved.id && !sliceDirty(ks, before)) send({ type: 'reset', slice: saved });
+    else if (saved !== null && before !== null && before !== saved && before.id === saved.id && !isDirty(ks, before)) send({ type: 'reset', slice: saved });
   }, [saved]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // After a save that made a new slice, the screen moves to it.

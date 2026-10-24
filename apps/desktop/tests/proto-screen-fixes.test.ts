@@ -2,7 +2,7 @@
 // where the nodes are kept, what Start again says, and how items are counted once. Screens that need a real window are checked in e2e/proto-*.spec.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -10,18 +10,17 @@ import { KnowledgeFlow } from '../renderer/proto/KnowledgeScreen.js';
 import { keyedLines } from '../renderer/proto/knowledge-panels.js';
 import { Inspector, ResultPanel, noteFor } from '../renderer/proto/harness-parts.js';
 import { keepPositions, positionsFor } from '../renderer/proto/harness-positions.js';
-import { sameRule, sameSeeds, sliceDirty } from '../renderer/proto/knowledge-dirty.js';
 import { ProtoProvider, useProtoStore } from '../renderer/proto/session.js';
 import { BROUGHT_IN_LABEL, START_AGAIN_DONE_WORDS, START_AGAIN_WORDS, SetupFlow, broughtInVersion } from '../renderer/proto/SetupScreen.js';
-import { canRedoDraft, canUndoDraft } from '../renderer/proto/undo-guard.js';
 import { describeSelection } from '../shared/proto/editor-describe.js';
 import { buildHarnessMap } from '../shared/proto/harnessmodel.js';
-import { initialKnowledge, reduceKnowledge } from '../shared/proto/knowledge-state.js';
+import { initialKnowledge, isDirty as sliceDirty, reduceKnowledge, sameRule, sameSeeds } from '../shared/proto/knowledge-state.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { buildScan } from '../shared/proto/scan-places.js';
 import { initialSetup } from '../shared/proto/setup-flow.js';
 import type { SetupState } from '../shared/proto/setup-flow.js';
 import { createStore } from '../shared/proto/store.js';
+import type { StoreState } from '../shared/proto/store.js';
 import { DESKTOP } from './support.js';
 
 const world = generateWorld(1);
@@ -31,6 +30,9 @@ const noop = (): void => undefined;
 
 // ------------------------------------------------------------------------------------------------------- undo and redo stop at a version
 
+// What the Harness screen reads: the plain stacks of the store. The store clears them on apply and restore.
+const canUndoDraft = (s: StoreState): boolean => s.undoStack.length > 0;
+const canRedoDraft = (s: StoreState): boolean => s.redoStack.length > 0;
 const edit = (store: ReturnType<typeof createStore>, n = 0): void => { store.dispatch({ type: 'attachSkill', agentId: 'agent-01', skillId: n === 0 ? 'skill-030' : 'skill-031' }); };
 
 test('Undo is off with nothing to undo, on after an edit, and off right after Apply (the real store)', () => {
@@ -65,13 +67,20 @@ test('Undo is off right after a restore, and Redo does not cross a version', () 
   assert.equal(canRedoDraft(other.getState()), true);
   edit(other, 1); other.dispatch({ type: 'undo' }); other.dispatch({ type: 'redo' }); other.dispatch({ type: 'apply', label: 'x' });
   assert.equal(canRedoDraft(other.getState()), false, 'after an apply');
+  edit(other); other.dispatch({ type: 'undo' });
+  assert.equal(canRedoDraft(other.getState()), true);
+  other.dispatch({ type: 'restore', versionId: other.getState().committed.versions[0]!.id });
+  assert.equal(canRedoDraft(other.getState()), false, 'after a restore');
+  assert.equal(canUndoDraft(other.getState()), false);
 });
 
+// Decision: Discard does NOT clear the stacks (Apply and Restore do). The Discard message says "Undo brings them back", so the discarded draft must be a step on the undo list.
 test('after Discard, Undo is on even though nothing waits, because Discard says Undo brings the changes back', () => {
   const store = createStore(world);
   edit(store);
   store.dispatch({ type: 'discard' });
   assert.equal(canUndoDraft(store.getState()), true);
+  assert.equal(canRedoDraft(store.getState()), false, 'a discard leaves nothing to redo');
   store.dispatch({ type: 'undo' });
   assert.equal(store.getState().draft.items.some(i => i.kind === 'agent' && i.id === 'agent-01' && i.definition.skillIds.includes('skill-030')), true, 'the changes are back');
 });
@@ -104,10 +113,11 @@ test('rules compare as sets as well, and a new slice is unsaved only when it hol
   assert.equal(sliceDirty({ ...fresh, name: 'Notes' }, null), true);
 });
 
-test('the Knowledge screen decides "unsaved" in one place: its own rule, never the shared one', () => {
+test('the Knowledge screen decides "unsaved" in one place: the shared isDirty, and no second comparison file', () => {
   const code = readFileSync(join(DESKTOP, 'renderer', 'proto', 'KnowledgeScreen.tsx'), 'utf8');
-  assert.doesNotMatch(code, /\bisDirty\b/, 'no call to the in-order comparison');
-  assert.equal([...code.matchAll(/sliceDirty\(/g)].length, 2, 'the screen and the reload check use the same function');
+  assert.match(code, /import \{[^}]*\bisDirty\b[^}]*\} from '\.\.\/\.\.\/shared\/proto\/knowledge-state\.js'/, 'the screen imports the shared rule');
+  assert.equal([...code.matchAll(/\bisDirty\(/g)].length, 2, 'the screen and the reload check use the same function');
+  assert.equal(existsSync(join(DESKTOP, 'renderer', 'proto', 'knowledge-dirty.ts')), false, 'the duplicate is gone');
 });
 
 // ------------------------------------------------------------------------------------------------------- where the nodes are kept

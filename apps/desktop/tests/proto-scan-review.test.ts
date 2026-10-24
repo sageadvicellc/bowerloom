@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildScan } from '../shared/proto/scan-places.js';
-import { buildReview, keepBothProblem } from '../shared/proto/scan-review.js';
+import { buildReview } from '../shared/proto/scan-review.js';
+import { keepBothProblem } from '../shared/proto/conflicts.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import { reduceStore } from '../shared/proto/store.js';
 import type { StoreState } from '../shared/proto/store.js';
@@ -89,8 +90,8 @@ test('resolving through the store removes the conflict from the review', () => {
 test('keepBothProblem names the problem in plain words, and agrees with the store', () => {
   const c = buildReview(world, all).conflicts[0]!;
   assert.equal(keepBothProblem(world, c.itemId, c.defaultNames), null);
-  assert.match(keepBothProblem(world, c.itemId, ['', 'b', 'c'])!, /name/i);
-  assert.match(keepBothProblem(world, c.itemId, ['same', 'same', 'c'])!, /different/i);
+  assert.match(keepBothProblem(world, c.itemId, ['', 'b', 'c'])!, /needs a name/i);
+  assert.match(keepBothProblem(world, c.itemId, ['same', 'same', 'c'])!, /own name/i);
   assert.match(keepBothProblem(world, c.itemId, ['a', 'b'])!, /3/);
   const taken = world.items.find(i => i.kind === 'skill' && i.id !== c.itemId && i.scopeId === 'global')!.name;
   assert.match(keepBothProblem(world, c.itemId, [c.name, 'b', taken])!, /already/i);

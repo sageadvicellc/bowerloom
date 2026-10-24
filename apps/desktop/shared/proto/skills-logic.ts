@@ -104,9 +104,6 @@ export function buildIndex(world: World): UseIndex {
   return out;
 }
 
-/** The old name of `buildIndex`. It is a plain function, not a hook; the name stays only so a screen written earlier still builds. */
-export const useIndex = buildIndex;
-
 /** The words on a card about where the skill is. */
 export interface Placement {
   /** Where it is installed, such as "Studio (global) and all 3 projects". */

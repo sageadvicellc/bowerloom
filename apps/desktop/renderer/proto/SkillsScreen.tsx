@@ -14,7 +14,7 @@ import {
   contextFor, folderNote, installOutcome, installTargets, libraryOffers, scopeLabel, waitingSentence, waitingView, countWord,
 } from '../../shared/proto/library-install.js';
 import { planProjection } from '../../shared/proto/plan.js';
-import { describePlacement, EVERY_HARNESS, groupSkills, INTERFACE_CHIPS, skillRows, skillsSummary, useIndex } from '../../shared/proto/skills-logic.js';
+import { buildIndex, describePlacement, EVERY_HARNESS, groupSkills, INTERFACE_CHIPS, skillRows, skillsSummary } from '../../shared/proto/skills-logic.js';
 import type { SkillRow } from '../../shared/proto/skills-logic.js';
 import { isDirty } from '../../shared/proto/store.js';
 import type { InterfaceId, Plan } from '../../shared/proto/types.js';
@@ -63,7 +63,7 @@ function SkillsManager({ session }: { session: ProtoSession }): ReactElement {
 
   const rows = useMemo(() => skillRows(world, scopeId), [world, scopeId]);
   const groups = useMemo(() => groupSkills(world, rows, { query, interfaceId: face }), [world, rows, query, face]);
-  const index = useMemo(() => useIndex(world), [world]);
+  const index = useMemo(() => buildIndex(world), [world]);
   const offers = useMemo(() => libraryOffers(world), [world]);
   const plan = useMemo<Plan>(() => (dirty ? planProjection(state.committed, state.draft) : { changes: [] }), [dirty, state.committed, state.draft]);
   const scope = world.scopes.find(s => s.id === scopeId);

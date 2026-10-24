@@ -4,10 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  GROUP_REFUSAL, HOOK_REFUSAL, attachToolOutcome, canEditInPlace, conflictCopies, connectOutcome, copyOutcome, defaultCopyNames, dropOutcome, editRefusal,
-  keepBothOutcome, keepBothProblem, keepOneOutcome, menuOutcome, overrideOutcome, reachesScope, replacementChoices,
+  GROUP_REFUSAL, HOOK_REFUSAL, attachToolOutcome, canEditInPlace, connectOutcome, copyOutcome, dropOutcome, editRefusal,
+  keepBothOutcome, keepOneOutcome, menuOutcome, overrideOutcome, reachesScope, replacementChoices,
 } from '../shared/proto/editor-actions.js';
 import type { EditorContext, EditorOutcome } from '../shared/proto/editor-actions.js';
+import { conflictCopies, defaultCopyNames, keepBothProblem } from '../shared/proto/conflicts.js';
 import { ACCESS_WORDS, buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import { createStore, isDirty } from '../shared/proto/store.js';
@@ -200,15 +201,15 @@ test('conflicts: the three copies of the sample skill, their names, and the rule
   assert.deepEqual(copies.map(c => c.interfaceNames), ['Claude Code', 'Codex', 'OpenCode']);
   assert.deepEqual(copies.map(c => c.index), [0, 1, 2]);
   assert.ok(copies.every(c => c.text.length > 20 && c.paths.length === 1));
-  assert.deepEqual(defaultCopyNames(item), copies.map(c => `${item.name} (${c.interfaceNames})`));
+  assert.deepEqual(defaultCopyNames(item), [item.name, ...copies.slice(1).map(c => `${item.name} (${c.interfaceNames})`)]);
   assert.deepEqual(conflictCopies(world.items.find(i => i.id === 'skill-010')!), [], 'no conflict, no copies');
-  assert.equal(keepBothProblem(world, item, defaultCopyNames(item)), null);
-  assert.match(keepBothProblem(world, item, ['a', 'b'])!, /Give every copy a name/);
-  assert.match(keepBothProblem(world, item, ['a', ' ', 'c'])!, /Give every copy a name/);
-  assert.match(keepBothProblem(world, item, ['a', 'a', 'c'])!, /own name/);
+  assert.equal(keepBothProblem(world, item.id, defaultCopyNames(item)), null);
+  assert.match(keepBothProblem(world, item.id, ['a', 'b'])!, /Give each of the 3 copies a name/);
+  assert.match(keepBothProblem(world, item.id, ['a', ' ', 'c'])!, /Every copy needs a name/);
+  assert.match(keepBothProblem(world, item.id, ['a', 'a', 'c'])!, /own name/);
   const taken = world.items.find(i => i.id === 'skill-010')!.name;
-  assert.match(keepBothProblem(world, item, ['a', taken, 'c'])!, /already used/);
-  assert.match(keepBothProblem(world, world.items.find(i => i.id === 'skill-010')!, ['a', 'b'])!, /no conflict/);
+  assert.match(keepBothProblem(world, item.id, ['a', taken, 'c'])!, /already used/);
+  assert.match(keepBothProblem(world, 'skill-010', ['a', 'b'])!, /no conflict/);
   assert.match(refused(keepBothOutcome(world, item, ['a', 'a', 'c'])), /own name/);
 });
 

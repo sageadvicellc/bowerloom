@@ -194,10 +194,10 @@ test('keep both: names must differ and be free, then three items replace the one
   const first = page.getByLabel(/^Name for the Claude Code version$/), second = page.getByLabel(/^Name for the Codex version$/);
   await second.fill(await first.inputValue());
   await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
-  await expect(page.getByText('Give each version a different name.')).toBeVisible();
+  await expect(page.getByText('Each copy needs its own name.')).toBeVisible();
   await second.fill('');
   await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
-  await expect(page.getByText('Every version needs a name.')).toBeVisible();
+  await expect(page.getByText('Every copy needs a name.')).toBeVisible();
   await second.fill((await first.inputValue()) + ' (Codex)');
   await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
   await expect(page.getByText(/kept all 3 versions under separate names/)).toBeVisible();

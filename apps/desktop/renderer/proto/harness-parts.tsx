@@ -8,7 +8,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode, RefO
 import { ACCESS_WORDS } from '../../shared/proto/harnessmodel.js';
 import { ACTION_WORDS, applyReason, changeBarText, groupPlan, savedLine, writtenLine } from '../../shared/proto/editor-describe.js';
 import type { SelectionAction, SelectionView } from '../../shared/proto/editor-describe.js';
-import { conflictCopies, defaultCopyNames, keepBothProblem } from '../../shared/proto/editor-actions.js';
+import { conflictCopies, defaultCopyNames, keepBothProblem } from '../../shared/proto/conflicts.js';
 import type { AccessClass, HarnessItem, Plan, World } from '../../shared/proto/types.js';
 import { makeOthersInert, watchFocusLoss } from './focus.js';
 import { HarnessIcon } from './icons.js';
@@ -93,7 +93,7 @@ export function ConflictDialog({ world, item, onKeepOne, onKeepBoth, onClose, fa
   const copies = conflictCopies(item);
   const [names, setNames] = useState<string[]>(() => defaultCopyNames(item));
   const [showNames, setShowNames] = useState(false);
-  const problem = showNames ? keepBothProblem(world, item, names) : null;
+  const problem = showNames ? keepBothProblem(world, item.id, names) : null;
   // The button that was pressed is replaced by the other half of the dialog, so the keyboard is sent to the first control of that half.
   const firstName = useRef<HTMLInputElement>(null), keepBothButton = useRef<HTMLButtonElement>(null), switched = useRef(false);
   useEffect(() => {

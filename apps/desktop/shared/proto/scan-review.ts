@@ -3,14 +3,16 @@
  * Only found files inside ticked places are counted, and only their text is used (for a conflict). Pure: no clock, no random number, no file.
  * A conflict is one item whose ticked files hold more than one text. It is told by the content hash of each file.
  */
-import type { FoundAt, HarnessItem, InterfaceId, SecretRef, World } from './types.js';
+import type { HarnessItem, SecretRef, World } from './types.js';
+import { conflictCopies, defaultCopyNames, distinctTexts } from './conflicts.js';
+import type { ConflictCopy } from './conflicts.js';
 import { placeIdOf } from './scan-places.js';
 import { INTERFACE_WORDS } from './words.js';
 
 export { INTERFACE_WORDS };
 
 /** One text of a conflicted item: the interfaces and paths that hold it. `index` is the first place in `item.foundAt` that holds it. */
-export interface ReviewVariant { readonly index: number; readonly hash: string; readonly interfaces: readonly InterfaceId[]; readonly paths: readonly string[]; readonly text: string }
+export type ReviewVariant = ConflictCopy;
 
 /** One item found with different text in several tools. `defaultNames` has one name per text, the first being the item's own. */
 export interface ReviewConflict { readonly itemId: string; readonly name: string; readonly kind: HarnessItem['kind']; readonly variants: readonly ReviewVariant[]; readonly canKeepBoth: boolean; readonly defaultNames: readonly string[] }
@@ -35,19 +37,9 @@ export interface Review {
 }
 
 function conflictOf(world: World, item: HarnessItem, ticked: ReadonlySet<string>): ReviewConflict | null {
-  const inTicked = item.foundAt.map((found, index) => ({ found, index })).filter(({ found }) => ticked.has(placeIdOf(world, item, found)));
-  const hashes: string[] = [];
-  for (const { found } of inTicked) if (!hashes.includes(found.contentHash)) hashes.push(found.contentHash);
-  if (hashes.length < 2) return null;
-  const variants = hashes.map((hash): ReviewVariant => {
-    const group = inTicked.filter(({ found }) => found.contentHash === hash);
-    const first = group[0]!;
-    const interfaces = group.map(g => g.found.interface).filter((face, i, all) => all.indexOf(face) === i);
-    return { index: first.index, hash, interfaces, paths: group.map(g => g.found.path), text: first.found.text };
-  });
-  const everyHash = new Set(item.foundAt.map((f: FoundAt) => f.contentHash));
-  const defaultNames = variants.map((v, n) => (n === 0 ? item.name : `${item.name} (${v.interfaces.map(f => INTERFACE_WORDS[f]).join(' and ')})`));
-  return { itemId: item.id, name: item.name, kind: item.kind, variants, canKeepBoth: variants.length === everyHash.size, defaultNames };
+  const variants = conflictCopies(item, found => ticked.has(placeIdOf(world, item, found)));
+  if (variants.length < 2) return null;
+  return { itemId: item.id, name: item.name, kind: item.kind, variants, canKeepBoth: variants.length === distinctTexts(item), defaultNames: defaultCopyNames(item, variants) };
 }
 
 /** Counts what is found in the ticked places. `tickedIds` are `ScanPlace.id` values. */
@@ -76,23 +68,4 @@ export function buildReview(world: World, tickedIds: readonly string[]): Review 
     libraryTotal: library.length,
     conflicts,
   };
-}
-
-/**
- * Why "keep both" with these names would not work, in plain words, or null when it would. It follows the same rules as the store,
- * so a person is told before the store would quietly refuse.
- */
-export function keepBothProblem(world: World, itemId: string, names: readonly string[]): string | null {
-  const item = world.items.find(i => i.id === itemId);
-  if (item === undefined) return 'This item is not here any more.';
-  const texts = new Set(item.foundAt.map(f => f.contentHash)).size;
-  if (texts < 2) return 'This item has only one text, so there is nothing to keep apart.';
-  const trimmed = names.map(n => n.trim());
-  if (trimmed.length !== texts) return `Give each of the ${texts} versions a name.`;
-  if (trimmed.some(n => n === '')) return 'Every version needs a name.';
-  if (new Set(trimmed).size !== trimmed.length) return 'Give each version a different name.';
-  const others = new Set(world.items.filter(i => i !== item && i.scopeId === item.scopeId && i.kind === item.kind).map(i => i.name));
-  const taken = trimmed.find(n => others.has(n));
-  if (taken !== undefined) return `The name "${taken}" is already used by another ${item.kind}. Pick another name.`;
-  return null;
 }

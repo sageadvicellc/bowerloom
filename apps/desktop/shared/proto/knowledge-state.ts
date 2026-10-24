@@ -88,10 +88,29 @@ export const workingSlice = (s: KnowledgeState): Pick<Slice, 'id' | 'name' | 'se
 const empty = (rule: SliceRule, seeds: readonly string[]): boolean =>
   rule.folders.length === 0 && rule.pageTypesAndTags.types.length === 0 && rule.pageTypesAndTags.tags.length === 0 && rule.linksFromSeeds === null && seeds.length === 0;
 
-/** True when the working copy differs from the saved slice (or, for a new slice, when it holds anything worth saving). */
+const sortedIds = (list: readonly string[]): string[] => [...list].sort();
+const sameSet = (a: readonly string[], b: readonly string[]): boolean => {
+  if (a.length !== b.length) return false;
+  const x = sortedIds(a), y = sortedIds(b);
+  return x.every((id, i) => id === y[i]);
+};
+
+/** True when two lists hold the same ids, whatever the order. Picked pages are a set: pick a page, remove it, pick it again, and nothing has changed. */
+export const sameSeeds = sameSet;
+
+/** True when two rules pick the same way: the same folders, types and tags (as sets), and the same link reach. */
+export function sameRule(a: SliceRule, b: SliceRule): boolean {
+  return sameSet(a.folders, b.folders) && sameSet(a.pageTypesAndTags.types, b.pageTypesAndTags.types) && sameSet(a.pageTypesAndTags.tags, b.pageTypesAndTags.tags)
+    && (a.linksFromSeeds?.hops ?? 0) === (b.linksFromSeeds?.hops ?? 0);
+}
+
+/**
+ * True when the working copy differs from the saved slice (or, for a new slice, when it holds anything worth saving).
+ * This is the one rule for "unsaved" on the Knowledge screen: seeds and the lists of a rule are compared as sets, not in order.
+ */
 export function isDirty(s: KnowledgeState, saved: Slice | null): boolean {
   if (saved === null) return s.name.trim() !== '' || !empty(s.rule, s.seeds);
-  return JSON.stringify(s.rule) !== JSON.stringify(saved.rule) || JSON.stringify(s.seeds) !== JSON.stringify(saved.seeds);
+  return !sameRule(s.rule, saved.rule) || !sameSeeds(s.seeds, saved.seeds);
 }
 
 function infer(s: KnowledgeState, picks: readonly string[], ctx: KnowledgeContext, hops: 0 | 1 | 2, accepted: readonly Handle[]): KnowledgeState {

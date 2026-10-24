@@ -12,7 +12,8 @@ import { effectiveResolver } from '../shared/proto/common.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { INTERFACE_WORDS, interfaceName, joinWords } from '../shared/proto/words.js';
 import { INTERFACE_WORDS as REVIEW_WORDS } from '../shared/proto/scan-review.js';
-import { buildIndex, useIndex } from '../shared/proto/skills-logic.js';
+import { buildIndex } from '../shared/proto/skills-logic.js';
+import * as skillsLogic from '../shared/proto/skills-logic.js';
 import { attachableSlices } from '../shared/proto/agents-logic.js';
 import type { AgentItem, ContextSliceItem, HarnessItem, World } from '../shared/proto/types.js';
 import { DESKTOP } from './support.js';
@@ -126,10 +127,10 @@ test('the interface names and the word joiner exist once and give the same words
   for (const file of ['editor-describe.ts', 'editor-actions.ts', 'library-install.ts', 'slicerule.ts']) assert.doesNotMatch(readFileSync(join(dir, file), 'utf8'), /^const join(And|Words) = /m, file);
 });
 
-test('the use index is built by a plain function with a plain name, and the old name still works', () => {
+test('the use index is built by a plain function with a plain name, and the old alias is gone', () => {
   const w = makeWorld();
   assert.deepEqual([...buildIndex(w).get('s1') ?? []].sort(), ['global', 'proj']);
-  assert.equal(useIndex, buildIndex);
+  assert.equal('useIndex' in skillsLogic, false);
 });
 
 test('slices with equal names keep the order of the world', () => {

@@ -24,7 +24,6 @@ import { AccessDialog, ChangeBar, ConflictDialog, Inspector, ResultPanel } from 
 import { keepPositions, positionsFor } from './harness-positions.js';
 import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
-import { canRedoDraft, canUndoDraft } from './undo-guard.js';
 import { ROUTE_LABELS, countLine } from './words.js';
 import type { ScreenProps } from './words.js';
 
@@ -93,9 +92,9 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   const selection = useMemo(() => (selectedId === null ? null : describeSelection(world, model, selectedId)), [world, model, selectedId]);
   const plan = useMemo<Plan>(() => (dirty ? planProjection(state.committed, state.draft) : { changes: [] }), [dirty, state.committed, state.draft]);
 
-  // Undo and redo stop at the last version (see undo-guard.ts). Discard can be undone, so Undo can be on with nothing waiting.
-  const canUndo = canUndoDraft(state);
-  const canRedo = canRedoDraft(state);
+  // The store clears both stacks on Apply and Restore, so Undo and Redo never walk back past a version. Discard keeps them: it says Undo brings the changes back.
+  const canUndo = state.undoStack.length > 0;
+  const canRedo = state.redoStack.length > 0;
   // Where the person put the nodes, kept for the session and for each scope (the canvas keeps them only while it is on the screen).
   const [, placesChanged] = useReducer((n: number) => n + 1, 0);
 

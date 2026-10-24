@@ -9,10 +9,11 @@
  *  - An inherited, hidden or replaced agent is not changed from a project, because that would change the global one.
  *  - A wire between kinds that do not connect does nothing.
  */
-import type { AccessClass, AgentItem, HarnessItem, InterfaceId, OverrideMode, World } from './types.js';
+import type { AccessClass, AgentItem, HarnessItem, OverrideMode, World } from './types.js';
 import type { HarnessMapModel, HarnessNode } from './harnessmodel.js';
-import { interfaceName, joinWords as joinAnd } from './words.js';
+import { joinWords as joinAnd } from './words.js';
 import { reachesScope } from './common.js';
+import { conflictCopies, keepBothProblem } from './conflicts.js';
 import type { StoreAction } from './store.js';
 
 /** What the screen does with an event from the canvas. */
@@ -212,37 +213,6 @@ export function copyOutcome(ctx: EditorContext, itemId: string): EditorOutcome {
 
 // ------------------------------------------------------------------------------------------------------------- conflicts
 
-/** One distinct text of a conflicted item. `index` is the first place in `foundAt` that holds it, which is what `resolveConflict` keeps. */
-export interface ConflictCopy { readonly index: number; readonly interfaces: readonly InterfaceId[]; readonly interfaceNames: string; readonly paths: readonly string[]; readonly text: string }
-
-
-/** The distinct copies of an item, in the order they were found. Empty when all places hold the same text. */
-export function conflictCopies(item: HarnessItem): ConflictCopy[] {
-  const hashes = [...new Set(item.foundAt.map(f => f.contentHash))];
-  if (hashes.length < 2) return [];
-  return hashes.map(hash => {
-    const group = item.foundAt.filter(f => f.contentHash === hash);
-    return { index: item.foundAt.findIndex(f => f.contentHash === hash), interfaces: group.map(f => f.interface), interfaceNames: joinAnd(group.map(f => interfaceName(f.interface))), paths: group.map(f => f.path), text: group[0]!.text };
-  });
-}
-
-/** A first name for each copy when the person keeps both: the item's name and the interfaces that hold that copy. */
-export function defaultCopyNames(item: HarnessItem): string[] {
-  return conflictCopies(item).map(c => `${item.name} (${c.interfaceNames})`);
-}
-
-/** Why these names cannot be used to keep both copies, or null. The same rules as the store, said first so the person can fix them. */
-export function keepBothProblem(world: World, item: HarnessItem, names: readonly string[]): string | null {
-  const copies = conflictCopies(item);
-  if (copies.length < 2) return 'There is no conflict to resolve.';
-  const trimmed = names.map(n => n.trim());
-  if (trimmed.length !== copies.length || trimmed.some(n => n === '')) return 'Give every copy a name.';
-  if (new Set(trimmed).size !== trimmed.length) return 'Each copy needs its own name.';
-  const taken = new Set(world.items.filter(i => i.id !== item.id && i.scopeId === item.scopeId && i.kind === item.kind).map(i => i.name));
-  const clash = trimmed.find(n => taken.has(n));
-  return clash === undefined ? null : `The name "${clash}" is already used in this harness. Pick another.`;
-}
-
 /** Keep the copy at `index` of `foundAt`; the other copies are dropped from the item. */
 export function keepOneOutcome(item: HarnessItem, index: number): EditorOutcome {
   const copy = conflictCopies(item).find(c => c.index === index);
@@ -252,7 +222,7 @@ export function keepOneOutcome(item: HarnessItem, index: number): EditorOutcome 
 
 /** Keep every copy as its own item, under the given names. Refused with the reason when a name cannot be used. */
 export function keepBothOutcome(world: World, item: HarnessItem, names: readonly string[]): EditorOutcome {
-  const problem = keepBothProblem(world, item, names);
+  const problem = keepBothProblem(world, item.id, names);
   if (problem !== null) return refuse(problem);
   const trimmed = names.map(n => n.trim());
   return { kind: 'action', action: { type: 'resolveConflict', itemId: item.id, keep: 'keep-both', names: trimmed }, message: `Kept both copies of ${item.name}, as ${joinAnd(trimmed.map(n => `"${n}"`))}.` };
