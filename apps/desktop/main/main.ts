@@ -8,7 +8,7 @@ import type { ChannelName } from '../shared/channels.js';
 import type { Mode } from '../shared/types.js';
 import { createController } from './controller.js';
 import type { Controller } from './controller.js';
-import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, decideNavigation, resolveAppFile, webPreferences } from './security.js';
+import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, decideNavigation, isAllowedSender, resolveAppFile, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(root, 'renderer');
@@ -17,6 +17,8 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);
+// The clickable prototype (Bowerloom 0.8): the same page with #prototype added, and no IPC at all.
+const prototypeMode = argv.includes('--prototype');
 const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : argv.includes('--sandbox') ? 'sandbox' : null;
 
 let controller: Controller;
@@ -27,7 +29,7 @@ function hardenContents(contents: Electron.WebContents): void {
     const verdict = decideNavigation(url, indexUrl);
     if (verdict === 'allow-app') return;
     event.preventDefault();
-    if (verdict === 'open-external') void controller.openLink(url);
+    if (verdict === 'open-external' && !prototypeMode) void controller.openLink(url);
   });
   contents.on('will-frame-navigate', (event) => {
     const verdict = decideNavigation(event.url, indexUrl);
@@ -35,7 +37,7 @@ function hardenContents(contents: Electron.WebContents): void {
   });
   contents.on('will-redirect', event => event.preventDefault());
   contents.setWindowOpenHandler(({ url }) => {
-    if (decideNavigation(url, indexUrl) === 'open-external') void controller.openLink(url);
+    if (decideNavigation(url, indexUrl) === 'open-external' && !prototypeMode) void controller.openLink(url);
     return { action: 'deny' };
   });
   contents.on('will-attach-webview', event => event.preventDefault());
@@ -49,15 +51,16 @@ function createWindow(): void {
   });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = null; });
-  void window.loadURL(indexUrl);
+  if (prototypeMode) void window.loadURL(`${indexUrl}#prototype`);
+  else void window.loadURL(indexUrl);
 }
 
 function registerIpc(): void {
   const guarded = <T extends unknown[], R>(name: ChannelName, handler: (...args: T) => Promise<R>): void => {
     ipcMain.handle(CHANNELS[name], (event, ...args) => {
-      // Only our own page may ask.
+      // Only our own page may ask, and the prototype page may not ask at all.
       const frame = event.senderFrame;
-      if (frame === null || decideNavigation(frame.url, indexUrl) !== 'allow-app') throw new Error('Not allowed.');
+      if (!isAllowedSender(prototypeMode, frame === null ? null : frame.url, indexUrl)) throw new Error('Not allowed.');
       return handler(...(args as T));
     });
   };

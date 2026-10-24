@@ -2,15 +2,19 @@
 // One command to open the viewer, from any folder:
 //   npm --prefix <repo> run desktop           (your own Bowerloom)
 //   npm --prefix <repo> run desktop:sample    (made-up sample data)
+//   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--build-only']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--build-only']);
+const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype']);
+const PROTOTYPE_PREFIX = 'bowerloom-prototype-';
 
 /**
  * The only environment an install script gets: where to find programs and the person's home, the network settings npm
@@ -56,6 +60,27 @@ export function electronBinary(desktop = join(dirname(fileURLToPath(import.meta.
   } catch { return null; }
 }
 
+/** A new, empty data folder for the prototype, made under the temporary folder of the system, so the prototype writes nothing to the real app data. */
+export function makePrototypeDataDir(tmp = tmpdir()) { return mkdtempSync(join(tmp, PROTOTYPE_PREFIX)); }
+
+/**
+ * Removes a prototype data folder, and only that: a real folder (not a link) that sits directly in `tmp` and has the prototype's name.
+ * Answers true when it removed one. Anything else is left exactly as it is.
+ */
+export function removePrototypeDataDir(dir, tmp = tmpdir()) {
+  try {
+    if (!basename(dir).startsWith(PROTOTYPE_PREFIX)) return false;
+    const info = lstatSync(dir);
+    if (info.isSymbolicLink() || !info.isDirectory()) return false;
+    if (dirname(realpathSync(dir)) !== realpathSync(tmp)) return false;
+    rmSync(dir, { recursive: true, force: true });
+    return true;
+  } catch { return false; }
+}
+
+/** What the app window is started with: the app folder, the data folder when there is one, then the mode flags. */
+export function electronArgs(desktop, flags, userDataDir = null) { return [desktop, ...(userDataDir === null ? [] : [`--user-data-dir=${userDataDir}`]), ...flags]; }
+
 /** The marker a finished install leaves. A folder that exists after a stopped install does not count. */
 export const marker = dir => join(dir, 'node_modules', '.bowerloom-install-ok');
 
@@ -72,8 +97,8 @@ function step(text, command, argv, cwd, env) {
 function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
-  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, or --build-only to only build.`, 2);
-  if (args.filter(a => a === '--sample-data' || a === '--real-data' || a === '--sandbox').length > 1) fail('Choose one of --sample-data, --real-data and --sandbox, not more.', 2);
+  if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, --prototype to open the clickable prototype, or --build-only to only build.`, 2);
+  if (args.filter(a => MODES.has(a)).length > 1) fail('Choose one of --sample-data, --real-data, --sandbox and --prototype, not more.', 2);
 
   const npm = npmCommand();
   const clean = installEnv();
@@ -89,8 +114,11 @@ function main() {
   console.log('\nOpening the viewer...');
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
-  const flags = args.filter(a => a === '--sample-data' || a === '--real-data' || a === '--sandbox');
-  const child = spawn(electron, [desktop, ...flags], { stdio: 'inherit', env: process.env });
+  const flags = args.filter(a => MODES.has(a));
+  // The prototype starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data.
+  const dataDir = args.includes('--prototype') ? makePrototypeDataDir() : null;
+  if (dataDir !== null) { process.once('exit', () => { removePrototypeDataDir(dataDir); }); process.once('SIGINT', () => process.exit(130)); process.once('SIGTERM', () => process.exit(143)); }
+  const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
   child.on('error', error => fail(`The app window could not start.\n${error.message}`, 1));
   child.on('exit', (code, signal) => {
     if (signal) fail(`The app window stopped suddenly (${signal}).`, 1);

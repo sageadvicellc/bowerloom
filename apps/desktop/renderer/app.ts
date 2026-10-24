@@ -9,6 +9,7 @@ import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
 import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
+import { mountPrototype } from './proto/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 const api = window.bowerloom;
@@ -415,4 +416,5 @@ async function reload(): Promise<void> {
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyMotionTokens();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
-void reload();
+// The clickable prototype of Bowerloom 0.8 opens on the address #prototype. It keeps everything in memory and skips the normal start.
+if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else void reload();

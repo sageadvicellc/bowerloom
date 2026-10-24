@@ -76,6 +76,14 @@ export function decideNavigation(url: string, appIndexUrl: string): 'allow-app' 
 }
 
 /**
+ * Whether the page that sent an IPC call may be answered. In prototype mode the answer is always no, for every channel: the prototype page
+ * keeps everything in memory and gets no IPC. Otherwise only the app's own page (any hash) is answered. `frameUrl` is null when there is no sender frame.
+ */
+export function isAllowedSender(prototypeMode: boolean, frameUrl: string | null, appIndexUrl: string): boolean {
+  return !prototypeMode && frameUrl !== null && decideNavigation(frameUrl, appIndexUrl) === 'allow-app';
+}
+
+/**
  * A request the session may let through: a file under the app's own `dist` folder (compared as a resolved path plus a separator,
  * so a folder next to it with a longer name is not let through), and nothing on the network.
  */
