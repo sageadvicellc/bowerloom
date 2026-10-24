@@ -40,7 +40,7 @@
 .bw-canvas .react-flow__nodesselection-rect { border: 1px dashed var(--accent); }
 .bw-map.is-tidying .react-flow__node { transition: transform var(--motion-layout-move-ms, 0ms) var(--motion-layout-move-ease, ease); }
 
-.bw-node { position: relative; display: flex; align-items: center; gap: var(--space-2); width: 220px; min-height: 64px; padding: var(--space-2) var(--space-3); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 6px solid var(--kind-machine); border-radius: var(--radius-small); box-shadow: var(--shadow); transition: box-shadow var(--motion-hover-ms, 0ms) var(--motion-hover-ease, ease), border-color var(--motion-select-ms, 0ms) var(--motion-select-ease, ease), opacity var(--motion-select-ms, 0ms) var(--motion-select-ease, ease); animation: bw-node-enter var(--motion-node-enter-ms, 0ms) var(--motion-node-enter-ease, ease) both; }
+.bw-node { position: relative; display: flex; align-items: center; gap: var(--space-2); width: 272px; min-height: 80px; padding: var(--space-2) var(--space-3); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 6px solid var(--kind-machine); border-radius: var(--radius-small); box-shadow: var(--shadow); transition: box-shadow var(--motion-hover-ms, 0ms) var(--motion-hover-ease, ease), border-color var(--motion-select-ms, 0ms) var(--motion-select-ease, ease), opacity var(--motion-select-ms, 0ms) var(--motion-select-ease, ease); animation: bw-node-enter var(--motion-node-enter-ms, 0ms) var(--motion-node-enter-ease, ease) both; }
 .bw-node:hover { box-shadow: 0 0 0 1px var(--border), var(--shadow); border-color: var(--text-muted); }
 .bw-node.is-selected { border-color: var(--focus); box-shadow: 0 0 0 2px var(--focus), var(--shadow); }
 .bw-node.is-dim { opacity: 0.35; }
@@ -48,8 +48,8 @@
 .bw-node.is-dropped { animation: bw-node-drop var(--motion-drop-ms, 0ms) var(--motion-drop-ease, ease) both; }
 .bw-node-icon { flex: none; display: inline-flex; color: var(--kind-machine); }
 .bw-node-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
-.bw-node-kind { font-size: 0.75rem; color: var(--text-muted); text-transform: none; }
-.bw-node-label { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bw-node-kind { font-size: 0.85rem; color: var(--text-muted); text-transform: none; }
+.bw-node-label { font-size: 1.05rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bw-chip { flex: none; font-size: 0.72rem; font-weight: 650; padding: 0.05rem 0.5rem; border-radius: var(--radius-pill); white-space: nowrap; }
 .bw-chip.good { background: var(--good-bg); color: var(--good-fg); } .bw-chip.warn { background: var(--warn-bg); color: var(--warn-fg); } .bw-chip.bad { background: var(--bad-bg); color: var(--bad-fg); }
 .bw-handle { width: 8px; height: 8px; background: var(--border); border: 0; opacity: 0.6; }
@@ -76,7 +76,7 @@
 .react-flow__edge.bw-edge .react-flow__edge-path { opacity: 0.55; transition: opacity var(--motion-hover-ms, 0ms) var(--motion-hover-ease, ease); }
 .react-flow__edge.bw-edge.is-active .react-flow__edge-path { opacity: 1; stroke-width: 2.6; }
 .react-flow__edge.bw-edge.is-faded .react-flow__edge-path { opacity: 0.15; }
-.bw-overlay { position: absolute; left: 52px; bottom: 8px; right: 220px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; background: color-mix(in srgb, var(--surface) 82%, transparent); border: 1px solid var(--border); border-radius: var(--radius-small); padding: 4px 8px; width: fit-content; max-width: calc(100% - 280px); z-index: 5; }
+.bw-overlay { position: absolute; left: 52px; bottom: 8px; right: 260px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; background: color-mix(in srgb, var(--surface) 82%, transparent); border: 1px solid var(--border); border-radius: var(--radius-small); padding: 4px 8px; width: fit-content; max-width: calc(100% - 280px); z-index: 5; }
 .bw-overlay .bw-status { min-height: 0; }
 .bw-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: var(--text-small); color: var(--text-muted); }
 .bw-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -123,3 +123,22 @@
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .bw-outline ul { list-style: none; margin: 0; padding-inline-start: 1.25rem; } .bw-outline > ul { padding-inline-start: 0; }
 .react-flow__edge.bw-edge.is-dim .react-flow__edge-path { opacity: 0.16; }
+
+.bw-menus { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; }
+.bw-key .bw-legend { margin-top: var(--space-2); }
+/* A stack of things: the node sits on two plates behind it, so it reads as several. */
+.bw-node.is-stack { box-shadow: 6px 6px 0 -1px var(--surface), 6px 6px 0 0 var(--border), 12px 12px 0 -1px var(--surface), 12px 12px 0 0 var(--border); cursor: pointer; }
+.bw-node.is-stack .bw-node-label::after { content: " (open)"; font-weight: 400; color: var(--text-muted); }
+.bw-canvas .react-flow__minimap { background: var(--surface); box-shadow: var(--shadow); }
+
+.react-flow__edge.rel-allowed .react-flow__edge-path, path.bw-edge.rel-allowed { stroke: var(--wire-reads); stroke-dasharray: 3 3; stroke-width: 2; }
+.react-flow__edge.rel-registered .react-flow__edge-path, path.bw-edge.rel-registered { stroke: var(--wire-owns); stroke-dasharray: 10 3 2 3; }
+/* A compact toolbar, so the picture is what fills the window. */
+.bw-map .bw-toolbar, .bw-sketch .bw-toolbar { gap: 6px; }
+.bw-toolbar .bw-btn, .bw-toolbar .bw-seg button, .bw-toolbar .bw-search, .bw-toolbar select, .bw-namefield input { font-size: 0.85rem; padding: 3px 10px; min-width: 0; }
+.bw-toolbar .bw-search { width: 9rem; }
+.bw-menus { gap: var(--space-3); }
+.bw-kinds-menu summary { font-size: 0.85rem; }
+.bw-tabs button { padding: 2px var(--space-3); }
+.bw-canvas { height: clamp(24rem, calc(100vh - 14rem), 60rem); }
+.bw-panel { max-height: clamp(24rem, calc(100vh - 14rem), 60rem); }

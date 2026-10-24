@@ -1,9 +1,10 @@
 // The map: nodes and edges from what Bowerloom manages, the filters, the auto-layout, and speed on a large map.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EDGE_RELS, MAP_KINDS, REL_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../shared/mapmodel.js';
+import { EDGE_RELS, MAP_KINDS, OVERVIEW_KINDS, REL_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../shared/mapmodel.js';
 import type { MapKind, MapModel } from '../shared/mapmodel.js';
 import { LAYOUT, autoLayout, prunePlaces, snap, syntheticMap } from '../shared/maplayout.js';
+import { CLUSTER_MIN, clusterMap } from '../shared/mapcluster.js';
 import { createWireCache, sameNode, wireState } from '../renderer/map/wires.js';
 import { clone, sampleSnapshot } from './support.js';
 
@@ -140,4 +141,46 @@ test('saved places: past the soft limit the places of removed things go first, t
   assert.equal(Object.keys(prunePlaces(layout, new Set(), 20, 20)).length, 10, 'under the limit nothing goes');
   assert.deepEqual(Object.keys(prunePlaces(layout, new Set(['n3', 'n7', 'n9']), 5, 20)), ['n3', 'n7', 'n9'], 'removed things go first');
   assert.deepEqual(Object.keys(prunePlaces(layout, new Set(Object.keys(layout)), 5, 4)), ['n6', 'n7', 'n8', 'n9'], 'then the oldest, and the newest stay');
+});
+
+
+test('the overview shows this computer and the folders, not what is inside them, until a folder is opened', async () => {
+  const m = buildMap(await sampleSnapshot()), o = filterMap(m, { scope: 'overview', kinds: null, query: '' });
+  assert.ok(o.nodes.every(n => OVERVIEW_KINDS.has(n.kind))); assert.ok(o.nodes.some(n => n.kind === 'project') && o.nodes.some(n => n.kind === 'machine')); assert.ok(o.nodes.length < m.nodes.length / 2);
+  const proj = m.nodes.find(n => n.kind === 'project')!, open = filterMap(m, { scope: 'overview', kinds: null, query: '', open: new Set([proj.owner!]) });
+  assert.ok(open.nodes.length > o.nodes.length); assert.ok(open.nodes.some(n => n.owner === proj.owner && n.kind === 'skill') || open.nodes.some(n => n.owner === proj.owner && n.kind === 'agent'));
+  assert.ok(!open.nodes.some(n => n.owner !== null && n.owner !== proj.owner && !OVERVIEW_KINDS.has(n.kind)), 'only the opened folder is opened');
+  assert.equal(filterMap(m, { scope: 'everything', kinds: null, query: '' }).nodes.length, m.nodes.length);
+});
+
+const bigList = (n: number, owner = '/p', group = 'team-a'): MapModel => ({
+  nodes: [{ id: 'project:/p', kind: 'project', label: 'p', scope: 'project', description: 'd', status: null, reasons: [], link: null, owner }, { id: 'store:skill:s', kind: 'skill', label: 'S', scope: 'global', description: 'd', status: null, reasons: [], link: null, owner: null },
+    ...Array.from({ length: n }, (_, i): MapModel['nodes'][number] => ({ id: `item:/p:skill:s${i}`, kind: 'skill', label: `S${i}`, scope: 'project', description: 'd', status: i === 2 ? 'held' : null, reasons: [], link: null, owner, group }))],
+  edges: [...Array.from({ length: n }, (_, i) => ({ id: `project:/p>uses>item:/p:skill:s${i}`, from: 'project:/p', to: `item:/p:skill:s${i}`, rel: 'uses' as const })), { id: 'x', from: 'item:/p:skill:s0', to: 'store:skill:s', rel: 'comes-from' as const }, { id: 'y', from: 'item:/p:skill:s1', to: 'store:skill:s', rel: 'comes-from' as const }],
+});
+
+test('a long list is stacked per project and per team, the stack keeps its id and carries the worst status, and wires are joined', () => {
+  const m = bigList(CLUSTER_MIN + 40), c = clusterMap(m);
+  const stack = c.nodes.find(n => n.cluster !== undefined)!;
+  assert.equal(stack.id, 'cluster:/p:skill:team-a'); assert.equal(stack.cluster!.count, CLUSTER_MIN + 40); assert.match(stack.label, /^47 skills from Team a$/); assert.equal(stack.status, 'held'); assert.match(stack.description, /Click to open the stack/);
+  assert.equal(c.nodes.filter(n => n.kind === 'skill' && n.cluster === undefined && n.id.startsWith('item:')).length, 0, 'no loose item is left'); assert.equal(c.nodes.length, 3);
+  assert.deepEqual(c.edges.map(e => `${e.from}>${e.rel}>${e.to}`).sort(), ['cluster:/p:skill:team-a>comes-from>store:skill:s', 'project:/p>uses>cluster:/p:skill:team-a']);
+  assert.equal(clusterMap(m).nodes.find(n => n.cluster)!.id, stack.id, 'the same id each time, so its place is kept');
+});
+
+test('a short list is not stacked, an opened stack shows its members, and different teams stack apart', () => {
+  assert.equal(clusterMap(bigList(CLUSTER_MIN - 1)).nodes.length, CLUSTER_MIN - 1 + 2);
+  const big = bigList(CLUSTER_MIN + 3), open = clusterMap(big, new Set(['cluster:/p:skill:team-a']));
+  assert.equal(open.nodes.length, big.nodes.length); assert.equal(open.edges.length, big.edges.length);
+  const two = bigList(CLUSTER_MIN + 2); for (const [i, n] of two.nodes.entries()) if (i % 2 === 0 && n.id.startsWith('item:')) n.group = 'team-b';
+  assert.ok(clusterMap(two, new Set(), 3).nodes.filter(n => n.cluster).length === 2);
+  assert.equal(clusterMap({ nodes: [], edges: [] }).nodes.length, 0);
+});
+
+test('on a real-shaped map the long lists become a few stacks, so the count of nodes drawn falls', async () => {
+  const s = clone(await sampleSnapshot()), p = s.projects[0]!;
+  for (let i = 0; i < 30; i++) p.items.push({ kind: 'skill', id: `extra-${i}`, from: 'project', via: ['studio'], resolvedFrom: 'project', origin: 'yours', pin: null, hold: null, lock: 'same', note: null });
+  const m = buildMap(s), c = clusterMap(m);
+  assert.ok(c.nodes.length < m.nodes.length - 20); assert.ok(c.nodes.some(n => n.cluster && n.owner === p.key && /from Studio/.test(n.label)));
+  const syn = syntheticMap(500); assert.ok(clusterMap({ nodes: syn.nodes, edges: syn.edges }).nodes.length <= 500);
 });

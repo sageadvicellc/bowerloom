@@ -13,7 +13,8 @@ export type EdgeRel = 'contains' | 'uses' | 'reads' | 'owns' | 'comes-from' | 'a
 export const EDGE_RELS: readonly EdgeRel[] = ['contains', 'uses', 'reads', 'owns', 'comes-from', 'allowed', 'registered'];
 export type MapStatus = 'ready' | 'not-locked' | 'drifted' | 'held' | 'cannot-open';
 export type MapScope = 'global' | 'project';
-export type ScopeFilter = 'everything' | 'global' | 'project';
+/** `overview`: this computer and the folders (no items inside them) until a project is opened. */
+export type ScopeFilter = 'overview' | 'everything' | 'global' | 'project';
 
 export interface MapNode {
   id: string; kind: MapKind; label: string;
@@ -30,6 +31,8 @@ export interface MapNode {
   unlisted?: boolean;
   /** For a folder: the sentence that says its kind was guessed and can be changed, or absent when the person chose it. */
   guess?: string;
+  /** For an item a team brought: the team's id, so a long list can be stacked per team. */
+  group?: string;
   /** A stack that stands for several items of one kind at once. Click it to open the stack. */
   cluster?: { count: number; ids: string[] };
 }
@@ -89,7 +92,7 @@ export function buildMap(s: Snapshot): MapModel {
       const id = `item:${p.key}:${i.kind}:${i.id}`;
       const status: MapStatus | null = i.hold !== null ? 'held' : i.lock === 'changed' || i.lock === 'missing' ? 'drifted' : null;
       const unlisted = i.note === 'unlisted';
-      node({ id, kind: i.kind, label: titleOf(i.id), scope: 'project', owner: p.key, status, ...(unlisted ? { unlisted: true } : {}), reasons: [...(unlisted ? ['It is in the folder, but the project list does not name it, so Bowerloom does not use it.'] : []), ...(i.hold === null ? [] : [codeWords(i.hold.code)]), ...(i.lock === 'changed' ? ['It changed in your library after the lock was written.'] : i.lock === 'missing' ? ['It is not in the lock.'] : [])], description: unlisted ? `${firstSentence(KIND_WORDS[i.kind].what)} In ${p.name}'s folder, but not listed.` : `${firstSentence(KIND_WORDS[i.kind].what)} Used by ${p.name}.`, link: { screen: 'item', kind: i.kind, id: i.id, fromProject: p.key } as Link });
+      node({ id, kind: i.kind, label: titleOf(i.id), scope: 'project', owner: p.key, status, ...(unlisted ? { unlisted: true } : {}), ...(i.via[0] === undefined ? {} : { group: i.via[0] }), reasons: [...(unlisted ? ['It is in the folder, but the project list does not name it, so Bowerloom does not use it.'] : []), ...(i.hold === null ? [] : [codeWords(i.hold.code)]), ...(i.lock === 'changed' ? ['It changed in your library after the lock was written.'] : i.lock === 'missing' ? ['It is not in the lock.'] : [])], description: unlisted ? `${firstSentence(KIND_WORDS[i.kind].what)} In ${p.name}'s folder, but not listed.` : `${firstSentence(KIND_WORDS[i.kind].what)} Used by ${p.name}.`, link: { screen: 'item', kind: i.kind, id: i.id, fromProject: p.key } as Link });
       // A listed item is used by the project. An item that is only on disk is held by the folder, not used.
       edge(me, id, unlisted ? 'contains' : 'uses');
       if (i.from === 'store' && !unlisted) edge(id, storeId(i.kind, i.id), 'comes-from');
@@ -124,12 +127,16 @@ export function buildMap(s: Snapshot): MapModel {
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
-export interface MapFilter { scope: ScopeFilter; kinds: ReadonlySet<MapKind> | null; query: string }
+export interface MapFilter { scope: ScopeFilter; kinds: ReadonlySet<MapKind> | null; query: string;
+  /** In the overview: the keys of the folders whose insides are shown too. */
+  open?: ReadonlySet<string> }
+/** What the overview shows: the computer, the folders, and the knowledge folders. Not what is inside the folders. */
+export const OVERVIEW_KINDS: ReadonlySet<MapKind> = new Set<MapKind>(['machine', 'workspace', 'project', 'context-store', 'knowledge-folder']);
 
 /** The part of the map that passes the filters. A search keeps what matches and the things next to it. */
 export function filterMap(model: MapModel, filter: MapFilter): MapModel & { matches: ReadonlySet<string> } {
   const query = filter.query.trim().toLowerCase();
-  let nodes = model.nodes.filter(n => (filter.scope === 'everything' || n.scope === filter.scope || n.kind === 'machine') && (filter.kinds === null || filter.kinds.has(n.kind) || n.kind === 'machine' && filter.scope === 'global'));
+  let nodes = model.nodes.filter(n => (filter.scope === 'everything' || (filter.scope === 'overview' ? OVERVIEW_KINDS.has(n.kind) || (n.owner !== null && filter.open?.has(n.owner) === true) : n.scope === filter.scope) || n.kind === 'machine') && (filter.kinds === null || filter.kinds.has(n.kind) || n.kind === 'machine' && filter.scope === 'global'));
   const matches = new Set<string>();
   if (query !== '') {
     for (const n of nodes) if (n.label.toLowerCase().includes(query) || n.description.toLowerCase().includes(query)) matches.add(n.id);

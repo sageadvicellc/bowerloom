@@ -13,7 +13,7 @@ export function syntheticSnapshot(n: number): Snapshot {
     for (let p = 0; p < 5 && count < n; p++) {
       const proj = base(`/synthetic/ws${w}/p${p}`, `p${w}-${p}`, 'project'); count++;
       for (let t = 0; t < 2; t++) { proj.items.push({ kind: 'team', id: `team-${t}`, from: 'project', via: [], resolvedFrom: 'project', origin: 'yours', pin: null, hold: null, lock: 'not-used', note: null }); proj.agents.push({ role: `agent-${t}`, team: `team-${t}`, state: 'new', action: 'install', hold: null, notices: [], slices: [] }); count += 2; }
-      for (let s = 0; s < 6; s++) { proj.items.push({ kind: 'skill', id: `skill-${s}`, from: 'project', via: [], resolvedFrom: 'project', origin: 'yours', pin: null, hold: null, lock: 'not-used', note: null }); count++; }
+      for (let s = 0; s < 10; s++) { proj.items.push({ kind: 'skill', id: `skill-${s}`, from: 'project', via: ['team-0'], resolvedFrom: 'project', origin: 'yours', pin: null, hold: null, lock: 'not-used', note: null }); count++; }
       projects.push(proj);
     }
   }

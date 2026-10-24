@@ -6,7 +6,7 @@
 import type { MapEdge, MapKind, MapNode } from './mapmodel.js';
 
 export interface Place { x: number; y: number }
-export const LAYOUT = Object.freeze({ columnWidth: 300, rowHeight: 96, nodeWidth: 220, nodeHeight: 64, gridSnap: 16 });
+export const LAYOUT = Object.freeze({ columnWidth: 344, rowHeight: 112, nodeWidth: 272, nodeHeight: 80, gridSnap: 16 });
 
 const RANK: Record<MapKind, number> = { machine: 0, workspace: 1, project: 2, 'context-store': 2, team: 3, agent: 4, skill: 5, prompt: 5, 'reading-list': 5, 'knowledge-folder': 5 };
 /** A node of the shared library (it has no owner) sits right of every project item that comes from it. */
@@ -30,7 +30,9 @@ export function autoLayout(nodes: readonly MapNode[], edges: readonly MapEdge[])
     for (const n of layer) { const want = keyOf(n) === Number.MAX_SAFE_INTEGER ? floor : Math.max(floor, keyOf(n)); y.set(n.id, want); floor = want + LAYOUT.rowHeight; }
   }
   const out = new Map<string, Place>();
-  for (const n of nodes) out.set(n.id, { x: rank.get(n.id)! * LAYOUT.columnWidth, y: y.get(n.id)! });
+  // Columns are packed: a kind that is not on the map leaves no empty column behind it.
+  const column = new Map(ranks.map((r, i) => [r, i] as const));
+  for (const n of nodes) out.set(n.id, { x: column.get(rank.get(n.id)!)! * LAYOUT.columnWidth, y: y.get(n.id)! });
   return out;
 }
 

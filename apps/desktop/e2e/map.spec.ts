@@ -35,7 +35,7 @@ const sandboxRoot = (): string => {
   return box;
 };
 const snap = async (page: Page, name: string, theme: string): Promise<void> => { await page.waitForTimeout(450); await page.screenshot({ path: join(shots, `${name}-${theme}.png`), scale: 'css' }); };
-const nodeCount = (page: Page) => page.locator('.react-flow__node').count();
+const nodeCount = (page: Page) => page.locator('#bw-page-map .react-flow__node').count();
 
 for (const theme of ['light', 'dark'] as const) {
   test(`the map in ${theme}: nodes, wires, filters, search, the panel, dragging, tidy up, and the saved places`, async () => {
@@ -50,29 +50,46 @@ for (const theme of ['light', 'dark'] as const) {
       await nav(page, 'Map').click();
       await expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible();
       await expect(page.locator('main h1')).toBeFocused();
-      await expect(page.locator('.react-flow__node').first()).toBeVisible();
+      await expect(page.locator('#bw-page-map .react-flow__node').first()).toBeVisible();
+      // The map opens on the overview: this computer and the folders, not what is inside them. Everything is one click away.
+      await expect(page.getByRole('button', { name: 'This computer and projects' })).toHaveAttribute('aria-pressed', 'true');
+      const overviewCount = await nodeCount(page); expect(overviewCount).toBeGreaterThan(4); expect(overviewCount).toBeLessThan(14);
+      await expect(page.locator('#bw-page-map .react-flow__minimap')).toHaveCount(0);
+      await snap(page, 'M1-map-overview', theme);
+      await page.getByRole('button', { name: 'Everything', exact: true }).click(); await page.waitForTimeout(700);
       expect(await nodeCount(page)).toBeGreaterThan(15);
-      await expect(page.locator('.react-flow__minimap')).toBeVisible(); await expect(page.locator('.bw-legend')).toBeVisible();
-      await snap(page, 'M1-map-everything', theme);
+      // Wires are faint until a thing is pointed at, or all are asked for. The small map and the key are on request, and do not cover anything.
+      await expect(page.locator('#bw-page-map .react-flow__edge.is-dim').first()).toBeAttached();
+      await page.getByRole('button', { name: 'Small map' }).click(); await expect(page.locator('#bw-page-map .react-flow__minimap')).toBeVisible();
+      await page.locator('#bw-page-map summary', { hasText: 'What the wires mean' }).click(); await expect(page.locator('#bw-page-map .bw-legend')).toBeVisible();
+      const mini = (await page.locator('#bw-page-map .react-flow__minimap').boundingBox())!, status = (await page.locator('#bw-page-map .bw-overlay').boundingBox())!;
+      expect(mini.x).toBeGreaterThanOrEqual(status.x + status.width - 1);
+      await snap(page, 'M1b-map-everything', theme);
+      await page.getByRole('button', { name: 'Small map' }).click(); await page.getByRole('button', { name: 'Show all wires' }).click(); await expect(page.locator('#bw-page-map .react-flow__edge.is-dim')).toHaveCount(0);
+      await snap(page, 'M1c-map-all-wires', theme);
+      await page.getByRole('button', { name: 'Show all wires' }).click();
 
       // Scope: this computer shows only the shared library and the knowledge folders.
-      await page.getByRole('button', { name: 'This computer' }).click(); await page.waitForTimeout(400);
-      const labelsGlobal = await page.locator('.bw-node .bw-node-kind').allInnerTexts(); expect(labelsGlobal.every(l => ['This computer', 'Team', 'Skill', 'Prompt', 'Knowledge folder'].includes(l))).toBe(true);
+      await page.getByRole('button', { name: 'This computer', exact: true }).click(); await page.waitForTimeout(400);
+      const labelsGlobal = await page.locator('#bw-page-map .bw-node .bw-node-kind').allInnerTexts(); expect(labelsGlobal.every(l => ['This computer', 'Team', 'Skill', 'Prompt', 'Knowledge folder'].includes(l))).toBe(true);
       await snap(page, 'M2-map-this-computer', theme);
       await page.getByRole('button', { name: 'Everything' }).click();
 
       // Search keeps what matches and what is next to it, and dims the rest.
       const total = await nodeCount(page);
       await page.getByRole('searchbox', { name: 'Find something on the map' }).fill('site-app');
-      await page.waitForTimeout(500); expect(await nodeCount(page)).toBeLessThan(total); await expect(page.locator('.bw-node', { hasText: 'site-app' }).first()).toBeVisible();
+      await page.waitForTimeout(500); expect(await nodeCount(page)).toBeLessThan(total); await expect(page.locator('#bw-page-map .bw-node', { hasText: 'site-app' }).first()).toBeVisible();
       await page.getByRole('searchbox', { name: 'Find something on the map' }).fill('');
 
       // Hovering says one plain line; clicking opens the panel with the reasons.
-      const site = page.locator('.react-flow__node', { hasText: 'site-app' }).first();
-      await site.hover(); await expect(page.locator('.bw-status')).toContainText('Project (Drifted)');
-      await site.click(); await expect(page.locator('.bw-panel.open')).toBeVisible(); await expect(page.locator('.bw-panel h2')).toHaveText('site-app'); await expect(page.locator('.bw-panel')).toContainText('Why');
+      const site = page.locator('#bw-page-map .react-flow__node', { hasText: 'site-app' }).first();
+      await site.hover(); await expect(page.locator('#bw-page-map .bw-status')).toContainText('Project (Drifted)');
+      await site.click(); await expect(page.locator('#bw-page-map .bw-panel.open')).toBeVisible(); await expect(page.locator('#bw-page-map .bw-panel h2')).toHaveText('site-app'); await expect(page.locator('#bw-page-map .bw-panel')).toContainText('Why');
       await snap(page, 'M3-map-panel', theme);
-      await page.getByRole('button', { name: 'Close', exact: true }).click(); await expect(page.locator('.bw-panel.open')).toHaveCount(0);
+      // The panel takes the keyboard when it opens, says so for a screen reader, and Close gives the keyboard back to the thing.
+      await expect(page.locator('#bw-page-map .bw-panel h2')).toBeFocused(); await expect(page.locator('p.sr-only[role="status"]')).toContainText('Opened Project site-app');
+      await page.getByRole('button', { name: 'Close the details' }).click(); await expect(page.locator('#bw-page-map .bw-panel.open')).toHaveCount(0);
+      await expect(site).toBeFocused();
 
       // Dragging a node moves it, and the place is kept by the viewer (and only there).
       const box0 = (await site.boundingBox())!;
@@ -85,10 +102,24 @@ for (const theme of ['light', 'dark'] as const) {
       // Every move can be taken back.
       await page.getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(600);
       const box2 = (await site.boundingBox())!; expect(Math.abs(box2.x - box0.x) + Math.abs(box2.y - box0.y)).toBeLessThan(8);
+      // Two drags in quick succession are both kept, and so is a move made with the arrow keys.
+      const other = page.locator('#bw-page-map .react-flow__node', { hasText: 'archive-app' }).first(), ob0 = (await other.boundingBox())!;
+      await page.mouse.move(ob0.x + 40, ob0.y + 20); await page.mouse.down(); await page.mouse.move(ob0.x + 100, ob0.y + 80, { steps: 4 }); await page.mouse.up();
+      const sb = (await site.boundingBox())!; await page.mouse.move(sb.x + 40, sb.y + 20); await page.mouse.down(); await page.mouse.move(sb.x + 90, sb.y + 70, { steps: 4 }); await page.mouse.up();
+      await page.waitForTimeout(900);
+      const both = await page.evaluate(async () => Object.keys((await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, unknown> }> } }).bowerloom.getSettings()).mapLayout));
+      expect(both.some(k => k.includes('site-app')) && both.some(k => k.includes('archive-app')), both.join(',')).toBe(true);
+      const xBefore = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, { x: number }> }> } }).bowerloom.getSettings()).mapLayout);
+      const key0 = Object.keys(xBefore).find(k => k.includes('site-app'))!;
       // The arrow keys move a chosen thing.
       await site.focus(); await page.keyboard.press('Enter'); await page.keyboard.press('Escape'); await site.focus();
+      const boxK = (await site.boundingBox())!;
       await page.keyboard.press('Space'); for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight'); await page.waitForTimeout(300);
-      const box3 = (await site.boundingBox())!; expect(box3.x).toBeGreaterThan(box2.x + 4);
+      const box3 = (await site.boundingBox())!; expect(box3.x).toBeGreaterThan(boxK.x + 4);
+      await page.waitForTimeout(700);
+      const afterKeys = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: Record<string, { x: number }> }> } }).bowerloom.getSettings()).mapLayout);
+      const siteKey = Object.keys(afterKeys).find(k => k.includes('site-app'))!; expect(afterKeys[siteKey]!.x, 'a key move is saved like a drag').toBeGreaterThan(xBefore[key0]!.x);
+      await page.getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(500);
       // Tidy up, fit all, reset layout.
       await page.getByRole('button', { name: 'Tidy up' }).click(); await page.waitForTimeout(700);
       await page.getByRole('button', { name: 'Fit all' }).click(); await page.waitForTimeout(500);
@@ -102,7 +133,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: 'Text outline' }).click();
 
       // Keyboard: a node can be reached with Tab, and Enter opens it.
-      await page.locator('.react-flow__node').first().focus(); await page.keyboard.press('Enter'); await expect(page.locator('.bw-panel.open')).toBeVisible();
+      await page.locator('#bw-page-map .react-flow__node').first().focus(); await page.keyboard.press('Enter'); await expect(page.locator('#bw-page-map .bw-panel.open')).toBeVisible();
 
       // No library broke the page's policy.
       const csp = await page.evaluate(() => (window as unknown as { __csp?: string[] }).__csp ?? []);
@@ -133,13 +164,36 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await page.locator('.bw-board .react-flow__edge').count()).toBe(2);
       // A thread that is not allowed (skill to team) is refused.
       const sk = await handle(2, 'source'), tm = await handle(0, 'target'); await page.mouse.move(sk.x + 6, sk.y + 6); await page.mouse.down(); await page.mouse.move(tm.x + 6, tm.y + 6, { steps: 8 }); await page.mouse.up(); await page.waitForTimeout(200); expect(await page.locator('.bw-board .react-flow__edge').count()).toBe(2);
+      // Switching to the map and back keeps the board. Clearing a board with unsaved changes asks first.
+      await page.getByRole('tab', { name: 'Map' }).click(); await page.getByRole('tab', { name: 'Sketch' }).click(); expect(await page.locator('.bw-board .react-flow__node').count()).toBe(3);
+      await page.getByRole('button', { name: 'Clear the board' }).click(); await expect(page.getByRole('alertdialog')).toContainText('not saved'); await page.getByRole('button', { name: 'No, keep it' }).click();
+      expect(await page.locator('.bw-board .react-flow__node').count()).toBe(3);
       await page.getByRole('textbox', { name: 'Name of the sketch' }).fill(`Harness ${theme}`);
-      await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.locator('.bw-status')).toContainText(`Saved "Harness ${theme}".`);
+      await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.locator('.bw-board .bw-status')).toContainText(`Saved "Harness ${theme}".`);
       await snap(page, 'K1-sketch', theme);
       await page.getByRole('button', { name: 'Clear the board' }).click(); await expect(page.getByText('An empty board')).toBeVisible();
       await page.getByLabel('Open a saved sketch').selectOption(`Harness ${theme}`); await expect(page.locator('.bw-board .react-flow__node')).toHaveCount(3);
-      await page.getByRole('button', { name: 'Delete this sketch' }).click(); await expect(page.locator('.bw-status')).toContainText('Deleted');
+      await page.getByRole('button', { name: 'Delete this sketch' }).click(); await expect(page.getByRole('alertdialog')).toContainText('cannot be undone'); await page.getByRole('button', { name: 'Yes, delete it' }).click(); await expect(page.locator('.bw-board .bw-status')).toContainText('Deleted');
       void cbox;
     } finally { await app.close(); }
   });
 }
+
+test('the sketch board: a thread can be made with the keyboard alone, and a refused thread says why', async () => {
+  test.setTimeout(120_000);
+  const { app, page } = await launch(['--sample-data']);
+  try {
+    await nav(page, 'Map').click(); await page.getByRole('tab', { name: 'Sketch' }).click();
+    for (const label of [/Research desk/, /^editor$/, /House style/]) { const item = page.locator('.bw-shelf-item', { hasText: label }).first(); await item.focus(); await page.keyboard.press('Enter'); }
+    await page.waitForTimeout(800);
+    const nodes = page.locator('.bw-board .react-flow__node'); expect(await nodes.count()).toBe(3);
+    await nodes.nth(0).focus(); await page.keyboard.press('c'); await expect(page.locator('.bw-board .bw-status')).toContainText('Making a thread from');
+    await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+    await expect(page.locator('.bw-board .react-flow__edge')).toHaveCount(1); await expect(page.locator('.bw-board .bw-status')).toContainText('owns');
+    // A skill has nothing to thread to.
+    await nodes.nth(2).focus(); await page.keyboard.press('c'); await expect(page.locator('.bw-board .bw-status')).toContainText('nothing it can be threaded to');
+    // Escape cancels a thread that was started.
+    await nodes.nth(1).focus(); await page.keyboard.press('c'); await page.keyboard.press('Escape'); await expect(page.locator('.bw-board .bw-status')).toContainText('cancelled');
+    await expect(page.locator('.bw-board .react-flow__edge')).toHaveCount(1);
+  } finally { await app.close(); }
+});

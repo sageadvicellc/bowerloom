@@ -4,12 +4,13 @@
  */
 import { _electron as electron, expect, test } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
+mkdirSync(join(desktop, 'screenshots'), { recursive: true });
 
 for (const n of [200, 500]) {
   test(`the map with ${n} things pans and zooms smoothly`, async () => {
@@ -26,9 +27,16 @@ for (const n of [200, 500]) {
       const page = app.windows()[1]!;
       await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true, null, { timeout: 30_000 });
       await page.waitForSelector('.react-flow__node');
+      // The map opens on the overview with its long lists stacked. For the speed test, show everything and open every stack.
+      const shots = join(desktop, 'screenshots');
+      await page.screenshot({ path: join(shots, `M5-map-large-${n}-overview.png`) });
+      await page.getByRole('button', { name: 'Everything', exact: true }).click(); await page.waitForTimeout(600);
+      await page.screenshot({ path: join(shots, `M6-map-large-${n}-everything-stacked.png`) });
+      await page.getByRole('button', { name: 'Open all stacks' }).click(); await page.waitForTimeout(1500);
+      await page.screenshot({ path: join(shots, `M7-map-large-${n}-all-open.png`) });
       const rendered = await page.locator('.react-flow__node').count();
       await page.evaluate(() => { const w = window as unknown as { __frames: number[]; __stop: boolean }; w.__frames = []; w.__stop = false; let last = performance.now(); const tick = (t: number): void => { w.__frames.push(t - last); last = t; if (!w.__stop) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
-      const canvas = page.locator('.bw-canvas'), box = (await canvas.boundingBox())!;
+      const canvas = page.locator('#bw-page-map .bw-canvas'), box = (await canvas.boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       for (let i = 0; i < 60; i++) { await page.mouse.wheel(i % 2 === 0 ? 40 : -20, 25); await page.waitForTimeout(8); }
       for (let i = 0; i < 20; i++) { await page.keyboard.down('Control'); await page.mouse.wheel(0, -30); await page.keyboard.up('Control'); await page.waitForTimeout(8); }

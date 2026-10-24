@@ -16,6 +16,7 @@ import type { Snapshot, ViewerApi } from '../../shared/types.js';
 import type { Link } from '../../shared/viewmodel.js';
 import { MOTION, ms } from '../motion-tokens.js';
 import { KindIcon } from './icons.js';
+import { clusterMap } from '../../shared/mapcluster.js';
 import { Legend } from './Legend.js';
 import { createWireCache, sameNode } from './wires.js';
 import { SketchBoard } from './SketchBoard.js';
@@ -34,12 +35,14 @@ export interface MapProps {
 interface NodeData extends Record<string, unknown> { n: MapNode; dim: boolean; exiting: boolean; dropped: boolean }
 type BwNodeType = Node<NodeData, 'bw'>;
 
+/** Fitting never zooms out past the size at which the words can be read; the rest of a large map is a pan away. */
+const FIT = { padding: 0.1, minZoom: 0.55, maxZoom: 1.1 } as const;
 const STATUS_TONE: Record<MapStatus, string> = { ready: 'good', 'not-locked': 'quiet', drifted: 'warn', held: 'warn', 'cannot-open': 'bad' };
 
 const BwNode = memo(function BwNode({ data, selected }: NodeProps<BwNodeType>): ReactElement {
   const { n, dim, exiting, dropped } = data;
   return (
-    <div className={`bw-node kind-${n.kind}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${exiting ? ' is-exiting' : ''}${dropped ? ' is-dropped' : ''}${n.unlisted === true ? ' is-unlisted' : ''}`} title={hoverLine(n)}>
+    <div className={`bw-node kind-${n.kind}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${exiting ? ' is-exiting' : ''}${dropped ? ' is-dropped' : ''}${n.unlisted === true ? ' is-unlisted' : ''}${n.cluster !== undefined ? ' is-stack' : ''}`} title={hoverLine(n)}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="bw-handle" />
       <span className="bw-node-icon"><KindIcon kind={n.kind} /></span>
       <span className="bw-node-text">
@@ -55,6 +58,7 @@ const BwNode = memo(function BwNode({ data, selected }: NodeProps<BwNodeType>): 
 const nodeTypes = { bw: BwNode };
 
 const SCOPES: { id: ScopeFilter; label: string; hint: string }[] = [
+  { id: 'overview', label: 'This computer and projects', hint: 'The computer and its folders. Open a folder to see what is inside it.' },
   { id: 'everything', label: 'Everything', hint: 'The whole picture' },
   { id: 'global', label: 'This computer', hint: 'The shared library and the knowledge folders' },
   { id: 'project', label: 'Projects', hint: 'The folders of work and what is in them' },
@@ -64,18 +68,27 @@ function Canvas(props: MapProps): ReactElement {
   const { snapshot, saved, onOpen, onLayout } = props;
   const flow = useReactFlow();
   const model = useMemo(() => buildMap(snapshot), [snapshot]);
-  const [scope, setScope] = useState<ScopeFilter>('everything');
+  const [scope, setScope] = useState<ScopeFilter>('overview');
   const [kinds, setKinds] = useState<ReadonlySet<MapKind> | null>(null);
   const [query, setQuery] = useState('');
   const [tool, setTool] = useState<'select' | 'move'>('select');
   const [panel, setPanel] = useState<string | null>(null);
-  const [outline, setOutline] = useState(false);
+  const [outline, setOutline] = useState(false), [showMini, setShowMini] = useState(false);
+  // Folders opened in the overview, and stacks opened. Each change lays the map out again, once.
+  const [openFolders, setOpenFolders] = useState<ReadonlySet<string>>(new Set()), [openStacks, setOpenStacks] = useState<ReadonlySet<string>>(new Set()), relayout = useRef<'tidy' | 'fit' | null>('fit');
   const [tidying, setTidying] = useState(false);
   const [places, setPlaces] = useState<Record<string, Place>>({});
   // Every move can be taken back: the places before each change are kept (the last 30), and Undo puts them back.
   const [undo, setUndo] = useState<Record<string, Place>[]>([]);
-  const base = useMemo(() => autoLayout(model.nodes, model.edges), [model]);
-  const view = useMemo(() => filterMap(model, { scope, kinds, query }), [model, scope, kinds, query]);
+  // Long lists are drawn as stacks. A search shows what matches, so it opens every stack.
+  const stacked = useMemo(() => clusterMap(model, openStacks), [model, openStacks]);
+  const base = useMemo(() => autoLayout(stacked.nodes, stacked.edges), [stacked]);
+  const view = useMemo(() => {
+    const filtered = filterMap(model, { scope, kinds, query, open: openFolders });
+    if (query.trim() !== '') return filtered;
+    const grouped = clusterMap(filtered, openStacks);
+    return { ...grouped, matches: filtered.matches };
+  }, [model, scope, kinds, query, openFolders, openStacks]);
   const placeOf = useCallback((id: string): Place => ownPlace(places, id) ?? ownPlace(saved, id) ?? base.get(id) ?? { x: 0, y: 0 }, [places, saved, base]);
 
   // The nodes React Flow holds. They leave gently: a node that is filtered out stays for a moment, marked as leaving.
@@ -108,7 +121,7 @@ function Canvas(props: MapProps): ReactElement {
   const [hoverId, setHoverId] = useState<string | null>(null), [showAll, setShowAll] = useState(false);
   const activeId = panel ?? hoverId, wires = useMemo(createWireCache, []);
   const edges: Edge[] = useMemo(() => wires.edges(view.edges, activeId, showAll), [wires, view, activeId, showAll]);
-  const byId = useMemo(() => new Map(model.nodes.map(n => [n.id, n] as const)), [model]);
+  const byId = useMemo(() => new Map([...model.nodes, ...view.nodes.filter(n => n.cluster !== undefined)].map(n => [n.id, n] as const)), [model, view]);
   const hover = hoverId === null || byId.get(hoverId) === undefined ? '' : hoverLine(byId.get(hoverId)!);
 
   // Places are gathered, merged with what was saved, and written once. Two drags close together are both kept, and the write is
@@ -142,18 +155,30 @@ function Canvas(props: MapProps): ReactElement {
     setPlaces(p => ({ ...p, ...next })); keep(next);
   }, [keep]);
 
+  // Fit all: the whole map if it can be read at that size. If it cannot, the words matter more than the whole picture, so the map is
+  // shown at the smallest readable size, from its top left corner, and the rest is a pan away.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const fit = useCallback((attempt = 0): void => {
+    const el = canvasRef.current, list = flow.getNodes().filter(n => !n.data.exiting);
+    // The map is built before it is in the page, and its nodes are measured a moment later, so try again shortly.
+    if (el === null || list.length === 0 || el.clientWidth === 0 || list.some(n => n.measured?.width === undefined)) { if (attempt < 20) window.setTimeout(() => fit(attempt + 1), 100); return; }
+    const b = flow.getNodesBounds(list), pad = 24, duration = ms(MOTION.map.fit.ms);
+    const wanted = Math.min(el.clientWidth / (b.width + 2 * pad), el.clientHeight / (b.height + 2 * pad));
+    if (wanted >= FIT.minZoom) void flow.fitView({ duration, ...FIT, nodes: list });
+    else void flow.setViewport({ x: pad - b.x * FIT.minZoom, y: pad - b.y * FIT.minZoom, zoom: FIT.minZoom }, { duration });
+  }, [flow]);
   const tidy = useCallback(() => {
     remember();
     const placed = autoLayout(view.nodes, view.edges); const next: Record<string, Place> = {};
     for (const n of view.nodes) next[n.id] = snap(placed.get(n.id) ?? { x: 0, y: 0 });
     setTidying(true); setPlaces(p => ({ ...p, ...next })); setNodes(prev => prev.map(p => ({ ...p, position: next[p.id] ?? p.position }))); keep(next);
-    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
+    window.setTimeout(() => { setTidying(false); fit(); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
   }, [view, flow, keep, remember]);
   const reset = useCallback(() => {
     remember();
     setPlaces({}); keeper.forget(); setTidying(true);
     setNodes(prev => prev.map(p => ({ ...p, position: base.get(p.id) ?? p.position })));
-    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
+    window.setTimeout(() => { setTidying(false); fit(); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
   }, [base, flow, keeper, remember]);
   const undoMove = useCallback(() => {
     const last = undo[undo.length - 1]; if (last === undefined) return;
@@ -161,8 +186,15 @@ function Canvas(props: MapProps): ReactElement {
     setNodes(prev => prev.map(p => ({ ...p, position: last[p.id] ?? p.position }))); setPlaces(p => ({ ...p, ...last })); keep(last);
     window.setTimeout(() => setTidying(false), ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
   }, [undo, keep]);
-  const fit = useCallback(() => { void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, [flow]);
 
+  // After a folder or a stack is opened, the map is laid out again once, so what appeared does not sit on top of what was there.
+  // The latest actions are read through a ref, and the wait is not cancelled when they change, so the layout is never lost.
+  const actions = useRef({ tidy, fit }); actions.current = { tidy, fit };
+  useEffect(() => {
+    const what = relayout.current; if (what === null || view.nodes.length === 0) return;
+    relayout.current = null;
+    window.setTimeout(() => { if (what === 'tidy') actions.current.tidy(); else actions.current.fit(); }, ms(MOTION.map.nodeExit.ms) + MOTION.map.settleGrace);
+  }, [view]);
   const selected = panel === null ? null : model.nodes.find(n => n.id === panel) ?? null;
   // The panel takes the keyboard when it opens, and Close gives it back to the thing it was about. A screen reader is told in words.
   const heading = useRef<HTMLHeadingElement>(null), lastOpened = useRef<string | null>(null), [announce, setAnnounce] = useState('');
@@ -177,7 +209,10 @@ function Canvas(props: MapProps): ReactElement {
   const toggleKind = (k: MapKind): void => setKinds(prev => { const all = new Set<MapKind>(MAP_KINDS.filter(x => x !== 'machine')); const cur = prev ?? all; const next = new Set(cur); if (next.has(k)) next.delete(k); else next.add(k); return next.size === all.size ? null : next; });
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
     const el = (e.target as HTMLElement).closest('.react-flow__node') as HTMLElement | null;
-    if (e.key === 'Enter' && el !== null) { e.preventDefault(); setPanel(el.getAttribute('data-id')); }
+    if (e.key === 'Enter' && el !== null) {
+      e.preventDefault(); const id = el.getAttribute('data-id');
+      if (id !== null && id.startsWith('cluster:')) { relayout.current = 'tidy'; setOpenStacks(prev => new Set(prev).add(id)); } else setPanel(id);
+    }
     if (e.key === 'Escape' && panel !== null) closePanel();
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); undoMove(); }
   };
@@ -187,7 +222,7 @@ function Canvas(props: MapProps): ReactElement {
   return (
     <div className={`bw-map${tidying ? ' is-tidying' : ''}${panel !== null ? ' has-panel' : ''}`} onKeyDown={onKey}>
       <div className="bw-toolbar" role="toolbar" aria-label="Map controls">
-        <div className="bw-seg" role="group" aria-label="What to show">{SCOPES.map(s => <button key={s.id} type="button" className={scope === s.id ? 'on' : ''} aria-pressed={scope === s.id} title={s.hint} onClick={() => setScope(s.id)}>{s.label}</button>)}</div>
+        <div className="bw-seg" role="group" aria-label="What to show">{SCOPES.map(s => <button key={s.id} type="button" className={scope === s.id ? 'on' : ''} aria-pressed={scope === s.id} title={s.hint} onClick={() => { relayout.current = 'fit'; setScope(s.id); }}>{s.label}</button>)}</div>
         <input className="bw-search" type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Find something" aria-label="Find something on the map" />
         <div className="bw-seg" role="group" aria-label="Tool">
           <button type="button" className={tool === 'select' ? 'on' : ''} aria-pressed={tool === 'select'} title="Drag a box to select several things" onClick={() => setTool('select')}>Select</button>
@@ -195,34 +230,40 @@ function Canvas(props: MapProps): ReactElement {
         </div>
         <button type="button" className="bw-btn" onClick={undoMove} disabled={undo.length === 0} title="Take back the last move">Undo</button>
         <button type="button" className="bw-btn" onClick={tidy} title="Lay things out from left to right">Tidy up</button>
-        <button type="button" className="bw-btn" onClick={fit}>Fit all</button>
+        <button type="button" className="bw-btn" onClick={() => fit()}>Fit all</button>
         <button type="button" className="bw-btn" onClick={reset} title="Forget the places you chose">Reset layout</button>
+        <button type="button" className={`bw-btn${showMini ? ' on' : ''}`} aria-pressed={showMini} onClick={() => setShowMini(m => !m)} title="A small map of everything, in the corner">Small map</button>
+        {view.nodes.some(n => n.cluster !== undefined) ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set(view.nodes.filter(n => n.cluster !== undefined).map(n => n.id))); }} title="Draw every item in the stacks">Open all stacks</button> : null}
+        {openStacks.size > 0 ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set()); }} title="Stack the long lists again">Stack lists</button> : null}
         <button type="button" className={`bw-btn${showAll ? ' on' : ''}`} aria-pressed={showAll} onClick={() => setShowAll(a => !a)} title="Draw every wire at full strength">Show all wires</button>
         <button type="button" className={`bw-btn${outline ? ' on' : ''}`} aria-pressed={outline} onClick={() => setOutline(o => !o)}>Text outline</button>
       </div>
+      <div className="bw-menus">
       <details className="bw-kinds-menu">
         <summary>Kinds shown: {kinds === null ? 'all' : `${kinds.size} of ${MAP_KINDS.length - 1}`}</summary>
         <div className="bw-kinds" role="group" aria-label="Kinds of thing to show">
           {MAP_KINDS.filter(k => k !== 'machine').map(k => <button key={k} type="button" className={`bw-kindchip kind-${k}${kinds === null || kinds.has(k) ? ' on' : ''}`} aria-pressed={kinds === null || kinds.has(k)} onClick={() => toggleKind(k)}><KindIcon kind={k} size={14} />{KIND_WORDS_MAP[k]}</button>)}
         </div>
       </details>
+      <details className="bw-kinds-menu bw-key"><summary>What the wires mean</summary><Legend /></details>
+      </div>
       <div className="bw-stage">
-        <div className="bw-canvas" role="group" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it.">
+        <div className="bw-canvas" ref={canvasRef} role="group" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it.">
           <ReactFlow<BwNodeType, Edge>
             nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={() => { dragging.current = true; remember(); }} onNodeDragStop={onDragStop}
-            onNodeClick={(_e, n) => setPanel(n.id)}
+            onNodeClick={(_e, n) => { if (n.data.n.cluster !== undefined) { relayout.current = 'tidy'; setOpenStacks(prev => new Set(prev).add(n.id)); } else setPanel(n.id); }}
             onNodeMouseEnter={(_e, n) => setHoverId(n.id)} onNodeMouseLeave={() => setHoverId(null)}
-            fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1} maxZoom={2}
+            minZoom={0.2} maxZoom={2}
             snapToGrid snapGrid={[LAYOUT.gridSnap, LAYOUT.gridSnap]} nodesConnectable={false} elementsSelectable nodesFocusable edgesFocusable={false}
             selectionOnDrag={tool === 'select'} panOnDrag={tool === 'move' ? true : [1, 2]} panOnScroll multiSelectionKeyCode={['Meta', 'Shift']} deleteKeyCode={null}
             onlyRenderVisibleElements={view.nodes.length > 80} nodeDragThreshold={3} aria-label="Map of what Bowerloom manages"
           >
             <Background variant={BackgroundVariant.Dots} gap={LAYOUT.gridSnap * 1.5} size={1} />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable ariaLabel="Overview of the map" nodeColor={n => `var(--kind-${(n.data as NodeData).n.kind})`} maskColor="var(--minimap-mask)" />
+            {showMini ? <MiniMap pannable zoomable position="bottom-right" ariaLabel="Small map of everything" nodeColor={n => `var(--kind-${(n.data as NodeData).n.kind})`} maskColor="var(--minimap-mask)" /> : null}
           </ReactFlow>
           {view.nodes.length === 0 ? <p className="bw-empty" role="status">Nothing matches. Change what is shown above.</p> : null}
-          <div className="bw-overlay"><p className="bw-status" role="status" aria-live="polite">{hover === '' ? counts : hover}</p><Legend /></div>
+          <div className="bw-overlay"><p className="bw-status" role="status" aria-live="polite">{hover === '' ? counts : hover}</p></div>
         </div>
         <aside className={`bw-panel${selected !== null ? ' open' : ''}`} aria-label="About the chosen thing" hidden={selected === null}>
           {selected !== null ? (
@@ -233,6 +274,7 @@ function Canvas(props: MapProps): ReactElement {
               {selected.guess !== undefined ? <p className="small muted">{selected.guess} Open the full page to change it.</p> : null}
               {selected.reasons.length > 0 ? <><h3>Why</h3><ul>{selected.reasons.map(r => <li key={r}>{r}</li>)}</ul></> : null}
               {connections.length > 0 ? <><h3>Connected to</h3><ul className="bw-conn">{connections.map(c => <li key={c.id}><button type="button" className="bw-link" onClick={() => setPanel(c.other)}>{c.text}</button></li>)}</ul></> : null}
+              {scope === 'overview' && selected.owner !== null && (selected.kind === 'project' || selected.kind === 'workspace' || selected.kind === 'context-store') ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenFolders(prev => { const next = new Set(prev); if (next.has(selected.owner!)) next.delete(selected.owner!); else next.add(selected.owner!); return next; }); }}>{openFolders.has(selected.owner) ? 'Hide what is inside' : 'Show what is inside'}</button> : null}
               {selected.link !== null ? <button type="button" className="bw-btn primary" onClick={() => onOpen(selected.link!)}>Open the full page</button> : null}
             </div>
           ) : null}
