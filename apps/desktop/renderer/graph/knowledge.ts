@@ -128,12 +128,24 @@ function refresh(): void {
   if (!paused && !listView) fg!.resumeAnimation();
 }
 
+/** Runs a redraw of part of the screen and, if the keyboard was on a control inside it, puts the keyboard back on the same control. */
+function keepFocus(inside: HTMLElement, redraw: () => void): void {
+  const active = document.activeElement, key = active instanceof HTMLElement && inside.contains(active) ? active.dataset.key ?? null : null;
+  redraw();
+  if (key !== null) inside.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
+}
+const announcer = el('p', 'sr-only'); announcer.setAttribute('role', 'status'); announcer.setAttribute('aria-live', 'polite');
+
 function select(id: string | null, fromList: boolean): void {
+  const before = selected;
   selected = id; neighbourSet = focusSet(); fadeTarget = id !== null || hovered !== null ? 1 : 0; fadeAt = performance.now();
   if (filter.local !== null) filter = { ...filter, local: id === null ? null : { id, depth: filter.local.depth } };
   if (id !== null && fg !== null && !fromList) { /* the picture stays where it is when you click in it */ }
   if (id !== null && fg !== null && fromList) { const n = (fg.graphData().nodes as FGNode[]).find(x => x.id === id); if (n?.x !== undefined && n.y !== undefined) fg.centerAt(n.x, n.y, ms(MOTION.graph.focus.ms)); }
   if (filter.local !== null) refresh(); else { renderPanel(); renderList(); }
+  // The panel takes the keyboard when it opens. Closing it gives the keyboard back to the page it was about.
+  if (id !== null) { panel.querySelector<HTMLElement>('h2')?.focus(); const n = graph?.nodes.find(x => x.id === id); if (n !== undefined) announcer.textContent = `Opened ${n.title}. ${graph!.edges.filter(e => e.from === id).length} links out, ${graph!.edges.filter(e => e.to === id).length} in.`; }
+  else if (before !== null) { announcer.textContent = 'Closed the page details.'; (listView ? listBox.querySelector<HTMLElement>(`[data-key="row:${CSS.escape(before)}"]`) : canvasBox)?.focus(); }
 }
 
 function togglePause(): void { paused = !paused; if (fg !== null) { if (paused) fg.pauseAnimation(); else fg.resumeAnimation(); } pauseBtn.textContent = paused ? 'Resume' : 'Pause'; pauseBtn.setAttribute('aria-pressed', String(paused)); }
@@ -157,10 +169,11 @@ function syncControls(): void {
   orphanBox.checked = filter.showOrphans; depthSel.value = filter.local === null ? '0' : String(filter.local.depth);
 }
 
-function pageButton(n: GraphNode): HTMLButtonElement { const b = btn(n.title, () => select(n.id, true), 'kg-link'); b.title = n.id; return b; }
+function pageButton(n: GraphNode, where: 'row' | 'panel'): HTMLButtonElement { const b = btn(n.title, () => select(n.id, true), 'kg-link'); b.title = n.id; b.dataset.key = `${where}:${n.id}`; return b; }
 
 let pageText: { id: string; text: string | null; note: string | null } | null = null;
-function renderPanel(): void {
+function renderPanel(): void { keepFocus(panel, drawPanel); }
+function drawPanel(): void {
   panel.replaceChildren();
   const g = graph;
   if (g === null || store === null) return;
@@ -171,10 +184,10 @@ function renderPanel(): void {
   } else {
     const nb = neighbours(g, by.id);
     const close = btn('Close', () => select(null, false), 'bw-btn'); close.setAttribute('aria-label', 'Close the page panel');
-    panel.append(el('h2', '', by.title), el('p', 'muted small kg-path', by.id));
+    const title = el('h2', '', by.title); title.tabIndex = -1; panel.append(title, el('p', 'muted small kg-path', by.id));
     const meta = el('p', 'small'); meta.textContent = `${by.folder === '' ? 'Top level' : `Folder: ${by.folder}`}. ${by.bytes < 1024 ? `${by.bytes} bytes` : `${Math.round(by.bytes / 1024)} KB`}. ${by.orphan ? 'No links in or out.' : `${nb.out.length} out, ${nb.back.length} in.`}`; panel.append(meta);
-    if (by.tags.length) { const t = el('p', 'kg-tags'); for (const x of by.tags) { const c = btn(`#${x}`, () => { filter = { ...filter, tag: x }; refresh(); }, 'kg-tag'); t.append(c); } panel.append(t); }
-    const list = (title: string, nodes: GraphNode[]): void => { panel.append(el('h3', '', `${title} (${nodes.length})`)); if (!nodes.length) panel.append(el('p', 'muted small', 'None.')); else { const ul = el('ul', 'kg-ul'); for (const n of nodes) { const li = el('li'); li.append(pageButton(n)); ul.append(li); } panel.append(ul); } };
+    if (by.tags.length) { const t = el('p', 'kg-tags'); for (const x of by.tags) { const c = btn(`#${x}`, () => { filter = { ...filter, tag: x }; refresh(); }, 'kg-tag'); c.dataset.key = `tag:${x}`; t.append(c); } panel.append(t); }
+    const list = (title: string, nodes: GraphNode[]): void => { panel.append(el('h3', '', `${title} (${nodes.length})`)); if (!nodes.length) panel.append(el('p', 'muted small', 'None.')); else { const ul = el('ul', 'kg-ul'); for (const n of nodes) { const li = el('li'); li.append(pageButton(n, 'panel')); ul.append(li); } panel.append(ul); } };
     list('Links to', nb.out); list('Linked from', nb.back);
     const read = btn('Read this page', async () => { const r = await api.getPageText({ storeKey: store!.key, page: by.id }); pageText = { id: by.id, ...r }; renderPanel(); });
     panel.append(el('div', 'kg-actions'), read, btn('Show only nearby pages', () => { filter = { ...filter, local: { id: by.id, depth: 1 } }; refresh(); }), close);
@@ -187,11 +200,12 @@ function renderPanel(): void {
   d.append(pointing.childElementCount ? pointing : el('p', 'muted small', 'Nothing in Bowerloom points at this store yet.')); panel.append(d);
 }
 
-function renderList(): void {
+function renderList(): void { keepFocus(listBox, drawList); }
+function drawList(): void {
   listBox.replaceChildren();
   const rows = [...shown.nodes].sort((a, b) => b.degree - a.degree || a.title.localeCompare(b.title)).slice(0, 500);
   const ul = el('ul', 'kg-ul kg-rows');
-  for (const n of rows) { const li = el('li'); const b = pageButton(n); b.setAttribute('aria-current', String(n.id === selected)); li.append(b, el('span', 'small muted', ` ${n.folder === '' ? 'top level' : n.folder}, ${n.degree} ${n.degree === 1 ? 'link' : 'links'}${n.orphan ? ', orphan' : ''}`)); ul.append(li); }
+  for (const n of rows) { const li = el('li'); const b = pageButton(n, 'row'); b.setAttribute('aria-current', String(n.id === selected)); li.append(b, el('span', 'small muted', ` ${n.folder === '' ? 'top level' : n.folder}, ${n.degree} ${n.degree === 1 ? 'link' : 'links'}${n.orphan ? ', orphan' : ''}`)); ul.append(li); }
   listBox.append(ul);
   if (shown.nodes.length > rows.length) listBox.append(el('p', 'muted small', `Showing the ${rows.length} pages with the most links. Use the search or the filters to narrow it.`));
 }
@@ -231,7 +245,9 @@ function build(): void {
   listBox.hidden = true; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const left = el('div', 'kg-main'); left.append(canvasBox, listBox);
   stage.append(left, panel);
-  host.append(bar, status, notices, stage);
+  notices.setAttribute('role', 'region'); notices.setAttribute('aria-label', 'Notes about this store'); panel.setAttribute('aria-label', 'About the chosen page');
+  canvasBox.tabIndex = 0;
+  host.append(bar, status, announcer, notices, stage);
 }
 
 /** Puts the screen into the page and returns its element. The same element each time, so the picture and its place are kept. */

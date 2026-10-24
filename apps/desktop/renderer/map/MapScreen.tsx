@@ -105,7 +105,6 @@ function Canvas(props: MapProps): ReactElement {
   const activeId = panel ?? hoverId;
   const edges: Edge[] = useMemo(() => view.edges.map(e => ({ id: e.id, source: e.from, target: e.to, className: `bw-edge rel-${e.rel}${activeId === null ? '' : e.from === activeId || e.to === activeId ? ' is-active' : ' is-faded'}`, selectable: false, focusable: false, data: { rel: e.rel } })), [view, activeId]);
 
-  const onNodesChange = useCallback((changes: NodeChange<BwNodeType>[]) => setNodes(prev => applyNodeChanges(changes, prev)), []);
   // Places are gathered, merged with what was saved, and written once. Two drags close together are both kept, and the write is
   // forced when the screen goes away, the window loses focus, or the window closes.
   const savedRef = useRef(saved), onLayoutRef = useRef(onLayout);
@@ -117,7 +116,22 @@ function Canvas(props: MapProps): ReactElement {
     return () => { window.removeEventListener('blur', flush); window.removeEventListener('beforeunload', flush); window.removeEventListener('pagehide', flush); keeper.flush(); };
   }, [keeper]);
   const keep = useCallback((next: Record<string, Place>) => keeper.keep(next), [keeper]);
+  // A move made with the arrow keys takes the same road as a drag: it is saved, and one burst of key presses is one step to undo.
+  const dragging = useRef(false), burst = useRef<number | undefined>(undefined);
+  const onNodesChange = useCallback((changes: NodeChange<BwNodeType>[]) => {
+    if (!dragging.current) {
+      const moved = changes.filter((c): c is Extract<NodeChange<BwNodeType>, { type: 'position' }> => c.type === 'position' && c.position !== undefined);
+      if (moved.length > 0) {
+        if (burst.current === undefined) remember();
+        window.clearTimeout(burst.current); burst.current = window.setTimeout(() => { burst.current = undefined; }, MOTION.map.keyMoveBurst);
+        const next: Record<string, Place> = {}; for (const c of moved) next[c.id] = snap(c.position!);
+        setPlaces(p => ({ ...p, ...next })); keep(next);
+      }
+    }
+    setNodes(prev => applyNodeChanges(changes, prev));
+  }, [remember, keep]);
   const onDragStop = useCallback((_e: unknown, _n: BwNodeType, moved: BwNodeType[]) => {
+    dragging.current = false;
     const next: Record<string, Place> = {}; for (const m of moved) next[m.id] = snap(m.position);
     setPlaces(p => ({ ...p, ...next })); keep(next);
   }, [keep]);
@@ -144,11 +158,21 @@ function Canvas(props: MapProps): ReactElement {
   const fit = useCallback(() => { void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, [flow]);
 
   const selected = panel === null ? null : model.nodes.find(n => n.id === panel) ?? null;
+  // The panel takes the keyboard when it opens, and Close gives it back to the thing it was about. A screen reader is told in words.
+  const heading = useRef<HTMLHeadingElement>(null), lastOpened = useRef<string | null>(null), [announce, setAnnounce] = useState('');
+  const selectedId = selected?.id ?? null;
+  const opened = useMemo(() => selected === null ? '' : `Opened ${KIND_WORDS_MAP[selected.kind]} ${selected.label}${selected.status === null ? '' : `, ${STATUS_WORDS[selected.status]}`}. ${model.edges.filter(e => e.from === selected.id || e.to === selected.id).length} connections.`, [selected, model]);
+  useEffect(() => { if (selectedId !== null) { lastOpened.current = selectedId; heading.current?.focus(); } }, [selectedId]);
+  useEffect(() => { if (opened !== '') setAnnounce(opened); }, [opened]);
+  const closePanel = useCallback(() => {
+    const id = lastOpened.current; setPanel(null); setAnnounce('Closed.');
+    window.requestAnimationFrame(() => { const node = id === null ? null : document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`); (node ?? document.querySelector<HTMLElement>('.bw-map .react-flow__renderer'))?.focus(); });
+  }, []);
   const toggleKind = (k: MapKind): void => setKinds(prev => { const all = new Set<MapKind>(MAP_KINDS.filter(x => x !== 'machine')); const cur = prev ?? all; const next = new Set(cur); if (next.has(k)) next.delete(k); else next.add(k); return next.size === all.size ? null : next; });
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
     const el = (e.target as HTMLElement).closest('.react-flow__node') as HTMLElement | null;
     if (e.key === 'Enter' && el !== null) { e.preventDefault(); setPanel(el.getAttribute('data-id')); }
-    if (e.key === 'Escape') setPanel(null);
+    if (e.key === 'Escape' && panel !== null) closePanel();
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); undoMove(); }
   };
   const connections = selected === null ? [] : model.edges.filter(e => e.from === selected.id || e.to === selected.id).map(e => { const other = model.nodes.find(n => n.id === (e.from === selected.id ? e.to : e.from)); return other === undefined ? null : { id: e.id, text: e.from === selected.id ? `${REL_WORDS[e.rel]} ${other.label}` : `${other.label} ${REL_WORDS[e.rel]} it`, other: other.id }; }).filter((x): x is { id: string; text: string; other: string } => x !== null);
@@ -176,9 +200,9 @@ function Canvas(props: MapProps): ReactElement {
         </div>
       </details>
       <div className="bw-stage">
-        <div className="bw-canvas" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it." >
+        <div className="bw-canvas" role="group" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it.">
           <ReactFlow<BwNodeType, Edge>
-            nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={remember} onNodeDragStop={onDragStop}
+            nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={() => { dragging.current = true; remember(); }} onNodeDragStop={onDragStop}
             onNodeClick={(_e, n) => setPanel(n.id)} onPaneClick={() => undefined}
             onNodeMouseEnter={(_e, n) => { setHover(hoverLine(n.data.n)); setHoverId(n.id); }} onNodeMouseLeave={() => { setHover(''); setHoverId(null); }}
             fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1} maxZoom={2}
@@ -196,7 +220,7 @@ function Canvas(props: MapProps): ReactElement {
         <aside className={`bw-panel${selected !== null ? ' open' : ''}`} aria-label="About the chosen thing" hidden={selected === null}>
           {selected !== null ? (
             <div className="bw-panel-body">
-              <div className="bw-panel-head"><span className={`bw-node-icon kind-${selected.kind}`}><KindIcon kind={selected.kind} size={22} /></span><div><p className="bw-node-kind">{KIND_WORDS_MAP[selected.kind]}</p><h2>{selected.label}</h2></div><button type="button" className="bw-btn" onClick={() => setPanel(null)} aria-label="Close">Close</button></div>
+              <div className="bw-panel-head"><span className={`bw-node-icon kind-${selected.kind}`}><KindIcon kind={selected.kind} size={22} /></span><div><p className="bw-node-kind">{KIND_WORDS_MAP[selected.kind]}</p><h2 ref={heading} tabIndex={-1}>{selected.label}</h2></div><button type="button" className="bw-btn" onClick={closePanel} aria-label="Close the details">Close</button></div>
               {selected.status !== null ? <p><span className={`bw-chip ${STATUS_TONE[selected.status]}`}>{STATUS_WORDS[selected.status]}</span></p> : null}
               <p>{selected.description}</p>
               {selected.reasons.length > 0 ? <><h3>Why</h3><ul>{selected.reasons.map(r => <li key={r}>{r}</li>)}</ul></> : null}
@@ -206,18 +230,33 @@ function Canvas(props: MapProps): ReactElement {
           ) : null}
         </aside>
       </div>
+      <p className="sr-only" role="status" aria-live="polite">{announce}</p>
       {outline ? <OutlineView model={view} onOpen={setPanel} /> : null}
     </div>
   );
 }
 
+interface OutlineNode { id: string; text: string; kids: OutlineNode[] }
+/** Nests the flat outline by depth, so a screen reader hears lists inside lists. */
+function nest(rows: { id: string; text: string; depth: number }[]): OutlineNode[] {
+  const top: OutlineNode[] = [], stack: { depth: number; node: OutlineNode }[] = [];
+  for (const r of rows) {
+    const node: OutlineNode = { id: r.id, text: r.text, kids: [] };
+    while (stack.length > 0 && stack[stack.length - 1]!.depth >= r.depth) stack.pop();
+    (stack.length === 0 ? top : stack[stack.length - 1]!.node.kids).push(node); stack.push({ depth: r.depth, node });
+  }
+  return top;
+}
+function OutlineList({ nodes, onOpen }: { nodes: OutlineNode[]; onOpen(id: string): void }): ReactElement {
+  return <ul>{nodes.map(n => <li key={n.id}><button type="button" className="bw-link" onClick={() => onOpen(n.id)}>{n.text}</button>{n.kids.length > 0 ? <OutlineList nodes={n.kids} onOpen={onOpen} /> : null}</li>)}</ul>;
+}
 function OutlineView({ model, onOpen }: { model: { nodes: MapNode[]; edges: { id: string; from: string; to: string; rel: EdgeRel }[] }; onOpen(id: string): void }): ReactElement {
-  const rows = useMemo(() => outlineOf(model), [model]);
+  const tree = useMemo(() => nest(outlineOf(model)), [model]);
   return (
     <section className="bw-outline" aria-label="The map as text">
       <h2>The map as text</h2>
       <p className="muted">The same map as a list: what holds what, and what reads what.</p>
-      <ul>{rows.map(r => <li key={r.id} style={{ paddingInlineStart: `${r.depth * 1.25}rem` }}><button type="button" className="bw-link" onClick={() => onOpen(r.id)}>{r.text}</button></li>)}</ul>
+      <OutlineList nodes={tree} onOpen={onOpen} />
     </section>
   );
 }

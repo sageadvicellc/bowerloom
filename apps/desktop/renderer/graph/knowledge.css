@@ -25,3 +25,4 @@
 .kg-status { margin: 0; }
 @media (max-width: 900px) { .kg-stage { flex-direction: column; } .kg-panel { width: auto; max-width: none; max-height: 18rem; } }
 @media (prefers-reduced-motion: reduce) { .kg-panel.kg-in { animation: none; } }
+.kg-host .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
