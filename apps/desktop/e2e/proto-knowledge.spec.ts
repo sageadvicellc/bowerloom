@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateWorld } from '../shared/proto/sample.js';
+import { animationsDone, framesPainted } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_KNOWLEDGE_SHOTS ?? null;
@@ -55,14 +56,14 @@ test.afterEach(async () => { await app.close(); });
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { BrowserWindow.getAllWindows()[0]!.setContentSize(size.w, size.h); }, { w, h });
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(w);
-  await page.waitForTimeout(250);
+  await framesPainted(page); // the resized page has been laid out and drawn once
 }
 async function shoot(name: string, prepare?: () => Promise<void>, after?: () => Promise<void>): Promise<void> {
   if (shotsDir === null) return;
   for (const [w, h] of [...SIZES].reverse()) {
     await resize(w, h);
     if (prepare !== undefined) await prepare();
-    await page.waitForTimeout(150);
+    await animationsDone(page);
     await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' });
     if (after !== undefined) await after();
   }
@@ -124,7 +125,7 @@ test('journey 5: pick a slice, read the preview, build rules, lasso on the graph
     await chooseSlice(slice.name);
     const want = expectedIds({ folders: [...slice.rule.folders], types: [...slice.rule.pageTypesAndTags.types], tags: [...slice.rule.pageTypesAndTags.tags], hops: slice.rule.linksFromSeeds?.hops ?? 0, seeds: [...slice.seeds] });
     await expect(page.getByTestId('slice-count')).toHaveText(String(want.size));
-    await expect(page.getByRole('status').filter({ hasText: /pages are in this slice|page is in this slice/ }).or(page.locator('.kn-count'))).toContainText('in this slice');
+    await expect(page.locator('.kn-count')).toHaveText(`${want.size} ${want.size === 1 ? 'page is' : 'pages are'} in this slice`);
   }
   await chooseSlice(world.slices[0]!.name);
   const first = world.slices[0]!;
@@ -332,9 +333,10 @@ test('the graph settles and then stops, and with reduce motion it is already set
   test.setTimeout(90_000);
   await launch();
   await openKnowledge();
-  await page.waitForTimeout(1200);
+  // The camera has come to rest, and then the picture stays the same for another 120 painted frames (about two seconds).
+  await viewIsStill(pages[0]!.id, 30);
   const a = await page.locator('.kn-canvas').screenshot({ scale: 'css' });
-  await page.waitForTimeout(1500);
+  await viewIsStill(pages[0]!.id, 120);
   const b = await page.locator('.kn-canvas').screenshot({ scale: 'css' });
   expect(a.equals(b), 'the picture does not change after it settles').toBe(true);
   await page.locator('nav.nav').getByRole('button', { name: 'Versions' }).click();

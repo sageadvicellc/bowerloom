@@ -15,7 +15,7 @@ import type { GraphView } from './knowledge-graph-view.js';
 import { sameSeeds, sliceDirty } from './knowledge-dirty.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
 import { ActionsPanel, GraphWay, PageList, PreviewPanel, RuleBuilder } from './knowledge-panels.js';
-import { useOptionalSession } from './setup-session.js';
+import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
 import { ROUTE_LABELS, countLine } from './words.js';
 import type { ScreenProps } from './words.js';
@@ -27,7 +27,7 @@ import './knowledge-screen.css';
 const kept = new WeakMap<object, KnowledgeState>();
 
 export function KnowledgeScreen({ world }: ScreenProps): ReactElement {
-  const session = useOptionalSession();
+  const session = useOptionalProtoStore();
   if (session === null) {
     return (
       <div className="page">

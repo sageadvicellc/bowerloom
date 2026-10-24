@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { animationsDone, framesPainted } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_SETUP_SHOTS ?? null;
@@ -30,12 +31,13 @@ test.afterEach(async () => { await app.close(); });
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { const win = BrowserWindow.getAllWindows()[0]!; win.setContentSize(size.w, size.h); }, { w, h });
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(w);
-  await page.waitForTimeout(200);
+  await framesPainted(page); // the resized page has been laid out and drawn once
+
 }
 /** Saves the current screen at both sizes, then leaves the window at the first size. */
 async function shoot(name: string, prepare?: () => Promise<void>): Promise<void> {
   if (shotsDir === null) return;
-  for (const [w, h] of [...SIZES].reverse()) { await resize(w, h); if (prepare !== undefined) await prepare(); await page.waitForTimeout(100); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
+  for (const [w, h] of [...SIZES].reverse()) { await resize(w, h); if (prepare !== undefined) await prepare(); await animationsDone(page); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
 }
 const step = (name: string) => page.getByRole('heading', { level: 2, name, exact: true });
 
@@ -71,7 +73,7 @@ test('journey 1: welcome, roots, scan, tick, settle a conflict, bring in, and la
   await expect(page.locator('.sx-place').first()).toContainText('Studio: .claude');
   await expect(page.locator('.sx-place').first()).toContainText(/\d+ skills, \d+ agents, \d+ tools/);
   await expect(page.locator('.sx-place').last()).toHaveCSS('opacity', '1');
-  await page.waitForTimeout(500);
+  await animationsDone(page); // the places have finished their reveal
   await shoot('02-places');
 
   // Step two: tick. Only the three Studio settings folders.

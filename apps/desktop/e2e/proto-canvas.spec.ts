@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { canvasSettled } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_CANVAS_SHOTS ?? null;
@@ -45,7 +46,7 @@ async function open(query: string, w = 1440, h = 900): Promise<Page> {
   const p = app.windows()[app.windows().length - 1]!;
   await p.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true, null, { timeout: 30_000 });
   await p.waitForSelector('.react-flow__node');
-  await p.waitForTimeout(900);
+  await canvasSettled(p, { fitted: true });
   return p;
 }
 const close = async (p: Page): Promise<void> => { await app.evaluate(({ BrowserWindow }, title) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getTitle() === title) w.close(); }, await p.title()); };
@@ -94,33 +95,35 @@ test('select, open, arrow keys, the wire from one node to another, a drop on a n
   await p.keyboard.press('Enter');
   expect(await calls(p)).toContain('menu skill-012 open');
   const before = await transform(p, 'skill-012');
-  await p.keyboard.press('ArrowRight'); await p.waitForTimeout(150);
-  expect(await transform(p, 'skill-012')).not.toBe(before);
-  expect(await p.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe('skill-012');
+  await p.keyboard.press('ArrowRight');
+  await expect.poll(() => transform(p, 'skill-012')).not.toBe(before);
+  await expect.poll(() => p.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe('skill-012');
 
   // A wire from the left side of an agent to a skill.
   const a = (await node(p, 'agent-01').boundingBox())!, s = (await node(p, 'skill-020').boundingBox())!;
   await p.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await p.mouse.move(a.x + 1, a.y + a.height / 2); await p.mouse.down();
-  await p.mouse.move(a.x - 60, a.y + 10, { steps: 6 }); await p.mouse.move(s.x + s.width - 2, s.y + s.height / 2, { steps: 15 }); await p.mouse.up(); await p.waitForTimeout(300);
-  expect(await calls(p)).toContain('connect agent-01 skill-020');
+  await p.mouse.move(a.x - 60, a.y + 10, { steps: 6 }); await p.mouse.move(s.x + s.width - 2, s.y + s.height / 2, { steps: 15 }); await p.mouse.up();
+  await expect.poll(() => calls(p)).toContain('connect agent-01 skill-020');
   // The same with the keyboard.
   await node(p, 'agent-02').focus(); await p.keyboard.press('c');
   await expect(p.locator('.hc-banner')).toHaveCount(1);
-  await node(p, 'tool-prompt-01').focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
-  expect(await calls(p)).toContain('connect agent-02 tool-prompt-01');
+  await node(p, 'tool-prompt-01').focus(); await p.keyboard.press('Enter');
+  await expect.poll(() => calls(p)).toContain('connect agent-02 tool-prompt-01');
   // A drop on a node: reported, and the dropped node goes back.
   const home = await transform(p, 'skill-021');
   const p1 = (await node(p, 'skill-021').boundingBox())!, p2 = (await node(p, 'agent-03').boundingBox())!;
   await p.mouse.move(p1.x + p1.width / 2, p1.y + p1.height / 2); await p.mouse.down();
-  await p.mouse.move(p2.x + p2.width / 2 - 30, p2.y + p2.height / 2, { steps: 20 }); await p.mouse.move(p2.x + p2.width / 2, p2.y + p2.height / 2, { steps: 5 }); await p.mouse.up(); await p.waitForTimeout(500);
-  expect(await calls(p)).toContain('drop skill-021 agent-03');
-  expect(await transform(p, 'skill-021')).toBe(home);
+  await p.mouse.move(p2.x + p2.width / 2 - 30, p2.y + p2.height / 2, { steps: 20 }); await p.mouse.move(p2.x + p2.width / 2, p2.y + p2.height / 2, { steps: 5 }); await p.mouse.up();
+  await expect.poll(() => calls(p)).toContain('drop skill-021 agent-03');
+  await expect.poll(() => transform(p, 'skill-021')).toBe(home);
+  await expect(p.locator('.hc-root')).not.toHaveClass(/is-settling/);
   // The library button asks to open the group; the page draws its items.
-  await node(p, 'group:evergreen-kit').locator('.hc-toggle').click(); await p.waitForTimeout(500);
-  expect(await calls(p)).toContain('menu group:evergreen-kit expand');
+  await node(p, 'group:evergreen-kit').locator('.hc-toggle').click();
+  await expect.poll(() => calls(p)).toContain('menu group:evergreen-kit expand');
   await expect(p.locator('.react-flow__node[data-id^="agent-lib"]').first()).toBeAttached();
   // Fit brings everything back into view.
-  await p.getByRole('button', { name: 'Fit to view' }).click(); await p.waitForTimeout(700);
+  await p.getByRole('button', { name: 'Fit to view' }).click();
+  await canvasSettled(p, { fitted: true });
   await assertFits(p, 'after fit');
   await close(p);
 });
@@ -131,15 +134,19 @@ test('the menu of a node: right click, the keyboard, hide, and a ghost that can 
   await node(p, 'skill-010').click({ button: 'right' });
   await expect(p.locator('.hc-menu-item')).toHaveText(['Open details', 'Hide in this project', 'Replace in this project']);
   await expect(p.locator('.hc-menu')).toHaveAttribute('role', 'menu');
+  await expect(p.locator('.hc-menu-item').first(), 'the menu has the keyboard before a key is pressed').toBeFocused();
   await shot(p, 'menu', 1440, 900);
-  await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
-  expect(await calls(p)).toContain('menu skill-010 hide');
+  await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
+  await expect.poll(() => calls(p)).toContain('menu skill-010 hide');
   await expect(node(p, 'skill-010').locator('.hc-node')).toHaveClass(/is-hidden/);
-  await node(p, 'skill-010').focus(); await p.keyboard.press('m');
+  // The first menu gives the keyboard back to the node on the next frame; a second menu opened before that would lose it again.
+  await expect(node(p, 'skill-010')).toBeFocused();
+  await p.keyboard.press('m');
   await expect(p.locator('.hc-menu-item')).toHaveText(['Open details', 'Show again in this project']);
+  await expect(p.locator('.hc-menu-item').first(), 'the menu has the keyboard before Escape is pressed').toBeFocused();
   await p.keyboard.press('Escape');
   await expect(p.locator('.hc-menu')).toHaveCount(0);
-  expect(await p.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe('skill-010');
+  await expect.poll(() => p.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe('skill-010'); // the menu gives the keyboard back on the next frame
   await close(p);
 });
 
@@ -158,10 +165,11 @@ test('a screen that keeps the places: a moved node stays where it was put; chang
   test.setTimeout(120_000);
   const p = await open('scope=global&positions=1');
   const b1 = (await node(p, 'skill-030').boundingBox())!;
-  await p.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2); await p.mouse.down(); await p.mouse.move(b1.x + 40, b1.y + 200, { steps: 10 }); await p.mouse.up(); await p.waitForTimeout(400);
-  const b2 = (await node(p, 'skill-030').boundingBox())!;
-  expect(Math.abs(b2.y - b1.y)).toBeGreaterThan(100);
-  await p.selectOption('select', 'scope-copperfen'); await p.waitForTimeout(900);
+  await p.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2); await p.mouse.down(); await p.mouse.move(b1.x + 40, b1.y + 200, { steps: 10 }); await p.mouse.up();
+  await expect.poll(async () => Math.abs((await node(p, 'skill-030').boundingBox())!.y - b1.y)).toBeGreaterThan(100);
+  await p.selectOption('select', 'scope-copperfen');
+  await expect(node(p, 'scope:scope-copperfen')).toBeAttached();
+  await canvasSettled(p, { fitted: true });
   await assertFits(p, 'after the scope changed');
   await close(p);
 });

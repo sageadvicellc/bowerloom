@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { animationsDone, framesPainted } from './proto-wait.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem, SkillItem } from '../shared/proto/types.js';
 
@@ -64,7 +65,7 @@ const chip = (label: string) => page.getByRole('group', { name: 'Harness' }).get
 const waiting = () => page.locator('section.lib-waiting');
 const waitingCount = async (): Promise<number> => Number(/(\d+) change/.exec(await waiting().locator('.lib-waiting-count').innerText())?.[1] ?? '0');
 async function shot(name: string, w: number, h: number): Promise<void> {
-  if (shotsDir !== null) { await page.waitForTimeout(350); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
+  if (shotsDir !== null) { await animationsDone(page); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
 }
 /** A drag with the real pointer: press on `from`, move in steps, release over `to`. */
 async function pointerDrag(from: ReturnType<Page['locator']>, to: ReturnType<Page['locator']>, at = { x: 24, y: 18 }): Promise<void> {
@@ -74,7 +75,7 @@ async function pointerDrag(from: ReturnType<Page['locator']>, to: ReturnType<Pag
   await page.mouse.down();
   await page.mouse.move(a.x + at.x + 12, a.y + at.y + 12, { steps: 4 });
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
-  await page.waitForTimeout(60);
+  await framesPainted(page); // the move has been handled and the target drawn before the button is released
   await page.mouse.up();
 }
 /** The ids of the skills in the open agent's list, in order. */

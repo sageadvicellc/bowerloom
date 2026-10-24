@@ -17,7 +17,7 @@ import { diffCount, diffVersions } from '../../shared/proto/versions-diff.js';
 import type { DiffEntry, VersionDiff } from '../../shared/proto/versions-diff.js';
 import { plural } from '../../shared/words.js';
 import { newColleagueStore } from './export-colleague.js';
-import { useOptionalSession } from './setup-session.js';
+import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
 import { ROUTE_LABELS, countLine } from './words.js';
 import type { ScreenProps } from './words.js';
@@ -27,7 +27,7 @@ export type TabId = 'history' | 'share';
 const TABS: readonly { id: TabId; label: string }[] = [{ id: 'history', label: 'History' }, { id: 'share', label: 'Share' }];
 
 export function VersionsScreen({ world }: ScreenProps): ReactElement {
-  const session = useOptionalSession();
+  const session = useOptionalProtoStore();
   if (session === null) {
     return (
       <div className="page">

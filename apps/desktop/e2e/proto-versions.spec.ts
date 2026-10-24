@@ -13,6 +13,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { animationsDone, framesPainted } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_SETUP_SHOTS ?? null;
@@ -46,12 +47,12 @@ async function openPage(w = 1440, h = 900): Promise<Page> {
 async function resize(p: Page, w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, o) => { const win = BrowserWindow.getAllWindows().find(x => x.webContents.getTitle() === 'Versions page'); win?.setContentSize(o.w, o.h); }, { w, h });
   await expect.poll(() => p.evaluate(() => window.innerWidth)).toBe(w);
-  await p.waitForTimeout(250);
+  await framesPainted(p); // the resized page has been laid out and drawn once
 }
 /** Saves the screen at both sizes. `prepare` runs after each resize, so the part to look at is in view at both sizes. */
 async function shoot(p: Page, name: string, prepare?: () => Promise<void>): Promise<void> {
   if (shotsDir === null) return;
-  for (const [w, h] of [...SIZES].reverse()) { await resize(p, w, h); if (prepare !== undefined) await prepare(); await p.waitForTimeout(100); await p.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
+  for (const [w, h] of [...SIZES].reverse()) { await resize(p, w, h); if (prepare !== undefined) await prepare(); await animationsDone(p); await p.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
 }
 /** Scrolls so that the element is at the top of the scrolling area, for a screenshot. */
 const atTop = (l: ReturnType<Page['locator']>): Promise<void> => l.evaluate(el => { el.scrollIntoView({ block: 'start' }); });

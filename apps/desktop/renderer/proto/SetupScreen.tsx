@@ -17,7 +17,7 @@ import type { Version, World } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
 import { HarnessIcon } from './icons.js';
 import { useNavigate } from './nav.js';
-import { useOptionalSession } from './setup-session.js';
+import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
 import { ROUTE_LABELS, countLine } from './words.js';
 import type { ScreenProps } from './words.js';
@@ -40,7 +40,7 @@ export const START_AGAIN_WORDS = 'Start again resets these steps only; it does n
 export const START_AGAIN_DONE_WORDS = 'Start again resets these steps only; it does not undo the version or any change already made to the harness, so use Versions to go back and Discard on the Harness screen for changes that wait.';
 
 export function SetupScreen({ world }: ScreenProps): ReactElement {
-  const session = useOptionalSession();
+  const session = useOptionalProtoStore();
   if (session === null) {
     return (
       <div className="page">

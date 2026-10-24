@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem } from '../shared/proto/types.js';
-import { canvasSettled } from './proto-wait.js';
+import { animationsDone, canvasSettled } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_HARNESS_SHOTS ?? null;
@@ -57,21 +57,25 @@ async function fresh(w = 1440, h = 900): Promise<void> {
   await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Harness' })).toBeVisible();
   await page.waitForSelector('.react-flow__node');
-  await page.waitForTimeout(700);
+  await canvasSettled(page, { fitted: true });
 }
 const node = (id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
 const message = () => page.locator('.harness-message');
 const bar = () => page.locator('section.harness-bar');
-const scope = (id: string) => page.getByLabel('Scope').selectOption(id).then(() => page.waitForTimeout(900));
+async function scope(id: string): Promise<void> {
+  await page.getByLabel('Scope').selectOption(id);
+  await expect(node(`scope:${id}`)).toBeAttached();
+  await canvasSettled(page, { fitted: true });
+}
 async function shot(name: string, w: number, h: number): Promise<void> {
-  if (shotsDir !== null) { await page.waitForTimeout(350); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
+  if (shotsDir !== null) { await animationsDone(page); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
 }
 /** Connects two nodes with the keyboard: C on the first, then Enter on the second. */
 async function wire(from: string, to: string): Promise<void> {
   await node(from).focus(); await page.keyboard.press('c');
   await expect(page.locator('.hc-banner')).toHaveCount(1);
   await node(to).focus(); await page.keyboard.press('Enter');
-  await page.waitForTimeout(150);
+  await expect(page.locator('.hc-banner')).toHaveCount(0);
 }
 
 test('journey 2: wire a skill to an agent, hide an inherited skill in a project, read the files, apply, read the result, undo is off, reload resets', async () => {
@@ -164,7 +168,7 @@ test('a tool wired to an agent opens the access chooser with the placeholder wor
   for (let i = 0; i < 6; i += 1) { await page.keyboard.press('Tab'); expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)).toBe(true); }
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe(agent.id);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe(agent.id);
   await expect(bar()).toContainText('No changes waiting');
   // Again, and pick read and write.
   await wire(freeTool.id, agent.id);
@@ -209,7 +213,7 @@ test('a conflict opens a dialog with the copies side by side; keyboard works, fo
   for (let i = 0; i < 10; i += 1) { await page.keyboard.press('Tab'); expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)).toBe(true); }
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe(CASE_IDS.tripleSkill);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe(CASE_IDS.tripleSkill);
   // Keep one.
   await node(CASE_IDS.tripleSkill).focus(); await page.keyboard.press('Enter');
   await dialog.getByRole('button', { name: 'Keep the copy from Codex' }).click();
@@ -238,13 +242,17 @@ test('a drop on a harness installs an editable copy there, and the interface fil
   await fresh();
   await scope('scope-copperfen');
   const drawn = await page.locator('.react-flow__node').count();
-  await page.getByLabel('Show inherited').uncheck(); await page.waitForTimeout(700);
-  expect(await page.locator('.react-flow__node').count()).toBeLessThan(drawn / 2);
-  await page.getByLabel('Show inherited').check(); await page.waitForTimeout(700);
+  const drawnNow = (): Promise<number> => page.locator('.react-flow__node').count();
+  await page.getByLabel('Show inherited').uncheck();
+  await expect.poll(drawnNow).toBeLessThan(drawn / 2);
+  await page.getByLabel('Show inherited').check();
+  await expect.poll(drawnNow).toBe(drawn);
   const chip = page.getByRole('group', { name: 'Show only items found in' }).getByRole('button', { name: 'Codex' });
-  await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'true'); await page.waitForTimeout(700);
-  expect(await page.locator('.react-flow__node').count()).toBeLessThan(drawn);
-  await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'false'); await page.waitForTimeout(700);
+  await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(drawnNow).toBeLessThan(drawn);
+  await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(drawnNow).toBe(drawn);
+  await canvasSettled(page);
   // Drag a skill onto the project's harness node.
   const from = (await node(inheritedSkill.id).boundingBox())!, to = (await node('scope:scope-copperfen').boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
@@ -325,7 +333,7 @@ test('closing the details sends the keyboard to the node, and a button that remo
   await inspector.getByRole('button', { name: 'Close the details' }).focus();
   await page.keyboard.press('Enter');
   await expect(inspector.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
-  expect(await focusedId(), 'the node that was open').toBe(agent.id);
+  await expect.poll(focusedId, { message: 'the node that was open' }).toBe(agent.id);
   // A button that goes away: remove a skill from the open agent with the keyboard.
   await node(agent.id).click();
   const remove = inspector.getByRole('button', { name: /^Remove the skill / });
@@ -351,7 +359,7 @@ test('an inherited agent can be copied into a project with the keyboard, and the
   await page.keyboard.press('Enter');
   await expect(message()).toContainText(`Installed a copy of ${agent.name} into Copperfen.`);
   await expect(bar().getByRole('button', { name: 'Apply' })).toBeEnabled();
-  expect(await page.evaluate(() => document.activeElement === document.body), 'the keyboard is not lost').toBe(false);
+  await expect.poll(() => page.evaluate(() => document.activeElement === document.body), { message: 'the keyboard is not lost' }).toBe(false);
   // A skill that is not inherited does not offer it.
   await scope('global');
   await node(freeSkill.id).click();
@@ -382,15 +390,15 @@ test('in the conflict dialog the keyboard never leaves when a button swaps for a
   await expect(dialog.getByRole('button', { name: 'Keep both under their own names' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  expect(await inertCount(), 'nothing stays inert').toBe(0);
-  expect(await focusedId(), 'the keyboard is back on the node that opened the dialog').toBe(CASE_IDS.tripleSkill);
+  await expect.poll(inertCount, { message: 'nothing stays inert' }).toBe(0);
+  await expect.poll(focusedId, { message: 'the keyboard is back on the node that opened the dialog' }).toBe(CASE_IDS.tripleSkill);
   // The dialog can also be closed by keeping one copy, which removes the opener's state: the keyboard still lands on the screen.
   await node(CASE_IDS.tripleSkill).focus(); await page.keyboard.press('Enter');
   await dialog.getByRole('button', { name: 'Keep the copy from Codex' }).focus();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
-  expect(await inertCount()).toBe(0);
-  expect(await page.evaluate(() => document.activeElement === document.body), 'the keyboard is not lost').toBe(false);
+  await expect.poll(inertCount).toBe(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement === document.body), { message: 'the keyboard is not lost' }).toBe(false);
 });
 
 test('reduce motion makes every duration 0, including the slide of the change bar; with motion on they come from the tokens', async () => {
