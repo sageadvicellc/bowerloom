@@ -12,6 +12,7 @@ import { SetupScreen } from './SetupScreen.js';
 import { SkillsScreen } from './SkillsScreen.js';
 import { VersionsScreen } from './VersionsScreen.js';
 import { createStore } from '../../shared/proto/store.js';
+import { NavContext } from './nav.js';
 import { ProtoProvider, useProtoStore } from './session.js';
 import { loadWorld } from './world.js';
 import { ROUTE_LABELS } from './words.js';
@@ -70,7 +71,7 @@ function Shell() {
           ))}
         </nav>
       </aside>
-      <main id="main"><Screen world={world} /></main>
+      <main id="main"><NavContext.Provider value={setRouteId}><Screen world={world} /></NavContext.Provider></main>
       <footer className="footer"><span>Bowerloom prototype</span><span className="spacer" /><span>Sample data. Nothing is saved.</span></footer>
     </div>
   );

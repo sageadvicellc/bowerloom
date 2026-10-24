@@ -16,6 +16,7 @@ import type { SetupState } from '../../shared/proto/setup-flow.js';
 import type { World } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
 import { HarnessIcon } from './icons.js';
+import { useNavigate } from './nav.js';
 import { useOptionalSession } from './setup-session.js';
 import type { ProtoSession } from './session.js';
 import { ROUTE_LABELS, countLine } from './words.js';
@@ -392,6 +393,7 @@ function goTo(label: string): void {
 }
 
 function Done({ send, review, session }: { send: Send; review: Review; session: ProtoSession }): ReactElement {
+  const navigate = useNavigate();
   const versions = session.state.committed.versions;
   const made = [...versions].reverse().find(v => v.label === BROUGHT_IN_LABEL);
   return (
@@ -399,7 +401,7 @@ function Done({ send, review, session }: { send: Send; review: Review; session: 
       <p className="sx-done" role="status">Done. {counts(review)} are now in Bowerloom as copies. Your original files were not touched.</p>
       <p>{made !== undefined ? `Version ${made.counter} was made: ${made.label}. It is in Versions.` : 'Your choices needed no change to the harness, so no version was made. The first change you apply makes version 1.'}</p>
       <div className="sx-actions">
-        <button type="button" className="btn big" onClick={() => goTo(ROUTE_LABELS.harness)}>Go to the Harness screen</button>
+        <button type="button" className="btn big" onClick={() => (navigate !== null ? navigate('harness') : goTo(ROUTE_LABELS.harness))}>Go to the Harness screen</button>
         <button type="button" className="btn secondary" onClick={() => send({ type: 'reset' })}>Start again</button>
       </div>
     </>
