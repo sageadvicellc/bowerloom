@@ -252,7 +252,7 @@ test('shared/proto/harnessmodel.ts and harnesslayout.ts are pure: types and the 
   for (const file of ['harnessmodel.ts', 'harnesslayout.ts']) {
     const code = readFileSync(join(DESKTOP, 'shared', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(code, /from ['"]node:|node:fs|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom|\beval\(|process\.env|fetch\(|localStorage/, file);
-    for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|slicerule|harnessmodel)\.js';$/, `${file}: ${m[0]}`);
+    for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|slicerule|harnessmodel|common|words)\.js';$/, `${file}: ${m[0]}`);
   }
 });
 

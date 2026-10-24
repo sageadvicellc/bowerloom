@@ -9,7 +9,7 @@ import {
 } from '../shared/proto/library-install.js';
 import { planProjection } from '../shared/proto/plan.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
-import { describePlacement, EVERY_HARNESS, filterRows, groupSkills, matchesQuery, skillRows, skillsSummary, stateWords, useIndex } from '../shared/proto/skills-logic.js';
+import { describePlacement, EVERY_HARNESS, filterRows, groupSkills, matchesQuery, skillRows, skillsSummary, stateWords, buildIndex } from '../shared/proto/skills-logic.js';
 import { createStore, isDirty } from '../shared/proto/store.js';
 import type { SkillItem, World } from '../shared/proto/types.js';
 import { DESKTOP } from './support.js';
@@ -102,7 +102,7 @@ test('groupSkills: a library skill that carries a newer version shows it on its 
 });
 
 test('describePlacement: where a skill is installed, found and written, in words', () => {
-  const index = useIndex(world);
+  const index = buildIndex(world);
   const plain = describePlacement(world, skillOf('skill-020'), index);
   assert.equal(plain.installed, 'Studio (global) and all 3 projects'); assert.deepEqual(plain.notes, []);
   assert.match(plain.written, /^(Claude Code|Codex|OpenCode)/); assert.match(plain.found, /Claude Code|Codex|OpenCode/);

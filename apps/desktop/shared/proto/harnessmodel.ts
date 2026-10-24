@@ -15,6 +15,8 @@
  */
 import type { AccessClass, AgentItem, HarnessItem, InterfaceId, InterfaceInfo, LibrarySource, Override, Scope, ToolKind, World } from './types.js';
 import { describeRule } from './slicerule.js';
+import { hashesDiffer } from './common.js';
+import { INTERFACE_WORDS, interfaceName } from './words.js';
 
 /** The kinds of node on the canvas. A library is one `group`. */
 export type HarnessNodeKind = 'scope' | 'interface' | 'skill' | 'agent' | 'tool' | 'context-slice' | 'group';
@@ -84,9 +86,7 @@ export const HARNESS_REL_WORDS: Readonly<Record<HarnessEdgeRel, string>> = Objec
  */
 export const ACCESS_WORDS: Readonly<Record<AccessClass, string>> = Object.freeze({ 'read-only': 'read only', 'read-write': 'read and write' });
 
-const INTERFACE_WORDS: Readonly<Record<InterfaceId, string>> = Object.freeze({ 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' });
-/** The interface's name as a person says it. */
-export const interfaceName = (id: InterfaceId): string => INTERFACE_WORDS[id];
+export { interfaceName };
 
 const KIND_ORDER: Readonly<Record<HarnessNodeKind, number>> = Object.freeze({ scope: 0, interface: 1, group: 2, agent: 3, skill: 4, tool: 5, 'context-slice': 6 });
 const MANY: Readonly<Record<string, readonly [string, string]>> = { skill: ['skill', 'skills'], agent: ['agent', 'agents'], tool: ['tool', 'tools'], 'context-slice': ['slice', 'slices'] };
@@ -158,8 +158,6 @@ function chainOf(scopes: readonly Scope[], scopeId: string): Scope[] {
   for (let at = byId.get(scopeId); at !== undefined && !out.includes(at); at = at.parentId === null ? undefined : byId.get(at.parentId)) out.push(at);
   return out;
 }
-
-const hashesDiffer = (item: HarnessItem): boolean => new Set(item.foundAt.map(f => f.contentHash)).size > 1;
 
 function detailOf(item: HarnessItem, world: World): string {
   switch (item.kind) {

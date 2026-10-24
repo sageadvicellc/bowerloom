@@ -8,7 +8,7 @@
  * An action that would change nothing (or that names something that is not there) returns the very same state, so it leaves no step to undo.
  */
 import type { AccessClass, AgentItem, HarnessItem, OverrideMode, SkillItem, Slice, SliceRule, Version, World } from './types.js';
-import { globalScope, uniqueId } from './common.js';
+import { globalScope, reachesScope, uniqueId } from './common.js';
 import { LIBRARY_CATALOG, catalogAgentPath, catalogAgentText, catalogHash, catalogItemId, catalogSkillPath } from './library-catalog.js';
 import { liveMatch } from './slicematch.js';
 
@@ -106,7 +106,12 @@ const hasKind = (world: World, id: string, kind: HarnessItem['kind']): boolean =
 function setOverride(world: World, a: Extract<StoreAction, { type: 'setOverride' }>): World {
   const scope = world.scopes.find(s => s.id === a.scopeId), item = world.items.find(i => i.id === a.itemId);
   if (scope === undefined || scope.kind !== 'project' || item === undefined || item.scopeId === a.scopeId) return world;
-  if (a.mode === 'replace' && (a.replacementItemId === undefined || a.replacementItemId === a.itemId || !world.items.some(i => i.id === a.replacementItemId))) return world;
+  // Only an item the project inherits can be hidden or replaced, and only by an item of the same kind.
+  if (!reachesScope(world, a.scopeId, item.scopeId)) return world;
+  if (a.mode === 'replace') {
+    const replacement = a.replacementItemId === undefined || a.replacementItemId === a.itemId ? undefined : world.items.find(i => i.id === a.replacementItemId);
+    if (replacement === undefined || replacement.kind !== item.kind) return world;
+  }
   const same = (o: { scopeId: string; itemId: string }): boolean => o.scopeId === a.scopeId && o.itemId === a.itemId;
   const previous = world.overrides.find(same);
   if (previous === undefined && a.mode === 'inherit') return world;
@@ -293,7 +298,7 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
       const version = nextVersion(state.committed, state.headVersionId, label === '' ? 'Applied changes' : label, snapshotOf(state.draft));
       const committed: World = { ...state.draft, versions: [...state.committed.versions, version] };
       snapshots.set(committed, snapshotOf(state.draft));
-      return { ...state, committed, draft: committed, headVersionId: version.id };
+      return { ...state, committed, draft: committed, undoStack: [], redoStack: [], headVersionId: version.id };
     }
     case 'restore': {
       const restored = restoreWorld(state.committed, action.versionId);
@@ -302,8 +307,7 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
       const version = nextVersion(state.committed, state.headVersionId, `Restored: ${old.label}`, old.snapshotJson);
       const committed: World = { ...restored, versions: [...state.committed.versions, version] };
       snapshots.set(committed, old.snapshotJson);
-      const keep = snapshotOf(state.draft) === old.snapshotJson ? state.undoStack : pushCapped(state.undoStack, state.draft);
-      return { committed, draft: committed, undoStack: keep, redoStack: [], headVersionId: version.id };
+      return { committed, draft: committed, undoStack: [], redoStack: [], headVersionId: version.id };
     }
     default: {
       const draft = editDraft(state.draft, action);

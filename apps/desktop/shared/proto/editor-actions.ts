@@ -11,7 +11,8 @@
  */
 import type { AccessClass, AgentItem, HarnessItem, InterfaceId, OverrideMode, World } from './types.js';
 import type { HarnessMapModel, HarnessNode } from './harnessmodel.js';
-import { interfaceName } from './harnessmodel.js';
+import { interfaceName, joinWords as joinAnd } from './words.js';
+import { reachesScope } from './common.js';
 import type { StoreAction } from './store.js';
 
 /** What the screen does with an event from the canvas. */
@@ -61,15 +62,7 @@ const isHook = (t: Thing): boolean => t.kind === 'item' && t.item.kind === 'tool
 const scopeName = (world: World, id: string): string => world.scopes.find(s => s.id === id)?.name ?? id;
 const libraryName = (world: World, id: string): string => world.libraries.find(l => l.id === id)?.name ?? id;
 
-/** True when `itemScopeId` is `scopeId` or one of its parents: the agent of that scope can reach the item. */
-export function reachesScope(world: World, scopeId: string, itemScopeId: string): boolean {
-  const seen = new Set<string>();
-  for (let at = world.scopes.find(s => s.id === scopeId); at !== undefined && !seen.has(at.id); at = at.parentId === null ? undefined : world.scopes.find(s => s.id === at!.parentId)) {
-    if (at.id === itemScopeId) return true;
-    seen.add(at.id);
-  }
-  return false;
-}
+export { reachesScope };
 
 /** Why an item cannot be changed in place, or null when it can. A library item is read only; a hook is never edited; a ghost, a replaced and an inherited item belong elsewhere. */
 export function editRefusal(ctx: EditorContext, id: string): string | null {
@@ -222,7 +215,6 @@ export function copyOutcome(ctx: EditorContext, itemId: string): EditorOutcome {
 /** One distinct text of a conflicted item. `index` is the first place in `foundAt` that holds it, which is what `resolveConflict` keeps. */
 export interface ConflictCopy { readonly index: number; readonly interfaces: readonly InterfaceId[]; readonly interfaceNames: string; readonly paths: readonly string[]; readonly text: string }
 
-const joinAnd = (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 
 /** The distinct copies of an item, in the order they were found. Empty when all places hold the same text. */
 export function conflictCopies(item: HarnessItem): ConflictCopy[] {

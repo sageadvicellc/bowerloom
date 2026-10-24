@@ -281,6 +281,6 @@ test('shared/proto/rng.ts and sample.ts use no file, no clock, no random number,
   for (const file of ['rng.ts', 'sample.ts']) {
     const code = readFileSync(join(DESKTOP, 'shared', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(code, /node:|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom|\beval\(/, file);
-    for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|rng|slicerule)\.js';$/, `${file}: ${m[0]}`);
+    for (const m of code.matchAll(/^import[\s\S]*?;$/gm)) assert.match(m[0], /from '\.\/(types|rng|slicerule|words)\.js';$/, `${file}: ${m[0]}`);
   }
 });

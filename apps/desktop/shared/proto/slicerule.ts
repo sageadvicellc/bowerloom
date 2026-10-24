@@ -10,6 +10,7 @@
  * The seed pages themselves always match, whatever the handles say. A seed id that is not a page is ignored.
  */
 import type { SliceRule, WikiPage } from './types.js';
+import { joinWords } from './words.js';
 
 /** Live evaluation of a rule over a page list. Returns the ids of the matching pages. Nothing in the inputs changes. */
 export function matchPages(rule: SliceRule, seeds: readonly string[], pages: readonly WikiPage[]): ReadonlySet<string> {
@@ -90,7 +91,6 @@ export function joinedSince(matched: ReadonlySet<string>, pages: readonly WikiPa
 }
 
 const count = (n: number, one: string, many: string): string => (n === 1 ? `1 ${one}` : `${n} ${many}`);
-const joinWords = (items: readonly string[], last: string): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} ${last} ${items[items.length - 1]}`);
 
 function describeFolder(folder: string, pages: readonly WikiPage[]): string {
   const clean = folder.replace(/\/+$/, ''), parts = clean.split('/');

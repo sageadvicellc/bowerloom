@@ -124,7 +124,7 @@ export function attachableTools(world: World, agent: AgentItem): ToolItem[] {
 /** The slices an agent can read: the slice items its harness can reach. */
 export function attachableSlices(world: World, agent: AgentItem): { id: string; name: string; sliceId: string }[] {
   const reach = new Set(effectiveItems(world, agent.scopeId).map(i => i.id));
-  return world.items.flatMap(i => (i.kind === 'context-slice' && reach.has(i.id) ? [{ id: i.id, name: i.name, sliceId: i.sliceId }] : [])).sort((a, b) => (a.name < b.name ? -1 : 1));
+  return world.items.flatMap(i => (i.kind === 'context-slice' && reach.has(i.id) ? [{ id: i.id, name: i.name, sliceId: i.sliceId }] : [])).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 // ------------------------------------------------------------------------------------------------------------- actions

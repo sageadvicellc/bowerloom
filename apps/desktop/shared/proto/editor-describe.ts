@@ -5,7 +5,8 @@
  */
 import type { HarnessItem, InterfaceId, Plan, PlanChange, World } from './types.js';
 import type { HarnessMapModel, HarnessNode, HarnessNodeKind } from './harnessmodel.js';
-import { ACCESS_WORDS, interfaceName } from './harnessmodel.js';
+import { ACCESS_WORDS } from './harnessmodel.js';
+import { interfaceName, joinWords as joinAnd } from './words.js';
 import { describeRule } from './slicerule.js';
 import type { StoreAction } from './store.js';
 
@@ -46,7 +47,6 @@ export interface SelectionView {
 const KIND_WORD = (node: HarnessNode): string => (node.kind === 'tool' ? (node.toolKind === 'hook' ? 'Hook' : 'Tool') : node.kind === 'context-slice' ? 'Slice'
   : node.kind === 'scope' ? 'Harness' : node.kind === 'interface' ? 'Interface' : node.kind === 'group' ? 'Library' : node.kind === 'skill' ? 'Skill' : 'Agent');
 
-const joinAnd = (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 const count = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 const names = (list: readonly string[], max = 4): string => (list.length <= max ? joinAnd(list) : `${list.slice(0, max).join(', ')} and ${list.length - max} more`);
 

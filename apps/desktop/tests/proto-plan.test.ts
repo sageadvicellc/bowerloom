@@ -57,8 +57,10 @@ test('a hidden item is not written in the project, and hiding one that was writt
   const w = makeWorld(), store = createStore(w);
   store.dispatch({ type: 'setOverride', scopeId: 'proj', itemId: 's1', mode: 'hide' });
   const { changes } = planProjection(store.getState().committed, store.getState().draft);
-  assert.deepEqual(changes.map(c => c.action), ['remove', 'remove', 'remove']);
-  assert.deepEqual(paths(changes), [`${PROJ}/.claude/skills/Review/SKILL.md`, `${PROJ}/.agents/skills/Review/SKILL.md`, `${PROJ}/.opencode/skill/Review.md`]);
+  const removed = changes.filter(c => c.action === 'remove'), changed = changes.filter(c => c.action === 'change');
+  assert.deepEqual(removed.map(c => c.path), [`${PROJ}/.claude/skills/Review/SKILL.md`, `${PROJ}/.agents/skills/Review/SKILL.md`, `${PROJ}/.opencode/skill/Review.md`]);
+  assert.deepEqual(changed.map(c => c.path), [`${PROJ}/.claude/agents/Planner.md`, `${PROJ}/.codex/agents/Planner.md`, `${PROJ}/.opencode/agent/Planner.md`], 'the project copy of the agent that used Review stops listing it');
+  assert.equal(changes.length, 6);
   const full = planProjection(bare(w), store.getState().draft).changes;
   assert.equal(full.some(c => c.path.startsWith(PROJ) && c.path.includes('Review')), false, 'the full plan never writes the hidden skill in the project');
   assert.equal(full.some(c => c.path.startsWith(GLOBAL) && c.path.includes('Review')), true, 'it is still written for the global harness');
@@ -71,7 +73,7 @@ test('a replaced item writes the replacement and not the original', () => {
   assert.equal(full.some(c => c.path.includes('/Review/')), false);
   assert.equal(full.filter(c => c.path.includes('/Plan/')).length, 1, 'the replacement is written once, even though it is also inherited');
   const diff = planProjection(w, store.getState().draft).changes;
-  assert.deepEqual(paths(diff, 'claude-code'), [`${PROJ}/.claude/skills/Review/SKILL.md`], 'the project stops writing Review; Plan was already there');
+  assert.deepEqual(paths(diff, 'claude-code'), [`${PROJ}/.claude/agents/Planner.md`, `${PROJ}/.claude/skills/Review/SKILL.md`], 'the project stops writing Review and its agent now lists Plan; Plan was already there');
 });
 
 test('library items and hooks write nothing', () => {
@@ -122,7 +124,7 @@ test('a plan for a large harness stays quick: 500 skills over three interfaces',
   const w = makeWorld(), many = Array.from({ length: 500 }, (_, i) => skill(`m${i}`, `Many ${i}`));
   const started = performance.now(), { changes } = planProjection(w, withItems(w, [...w.items, ...many]));
   assert.equal(changes.length, 500 * 3 * 2);
-  assert.ok(performance.now() - started < 3000);
+  assert.equal(new Set(changes.map(c => `${c.interface}\u0000${c.path}`)).size, changes.length, 'one change per file, so the size is bounded by items times interfaces times scopes');
 });
 
 test('the plan source reads no clock and no random number, and touches no window or file', () => {

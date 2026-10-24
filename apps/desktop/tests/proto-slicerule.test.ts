@@ -237,8 +237,8 @@ test('generateWorld plus matchPages over 700 pages finishes under 500 ms', () =>
   assert.ok(elapsed < 500, `took ${elapsed.toFixed(0)} ms`);
 });
 
-test('shared/proto/slicerule.ts is pure: no import except the types, no file, no clock, no random number', () => {
+test('shared/proto/slicerule.ts is pure: no import except the types and the word joiner, no file, no clock, no random number', () => {
   const code = readFileSync(join(DESKTOP, 'shared', 'proto', 'slicerule.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(code, /node:|Math\.random|Date\.|\bnew Date\b|innerHTML|window\.bowerloom/);
-  for (const m of code.matchAll(/^import .*$/gm)) assert.match(m[0], /^import type /, 'only type imports');
+  for (const m of code.matchAll(/^import .*$/gm)) assert.match(m[0], /^import type |^import \{ joinWords \} from '\.\/words\.js';$/, 'only type imports and the word joiner');
 });

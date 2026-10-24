@@ -9,6 +9,7 @@
 import { createRng } from './rng.js';
 import type { Rng } from './rng.js';
 import { matchPages } from './slicerule.js';
+import { INTERFACE_WORDS } from './words.js';
 import type {
   AccessClass, AgentItem, FoundAt, HarnessItem, InterfaceExtra, InterfaceId, InterfaceInfo, LibrarySource, McpTool, Override, PromptTool, Scope, SkillItem,
   Slice, ToolAttachment, ToolItem, WikiPage, World,
@@ -51,7 +52,6 @@ const PAGE_COUNT = 700, LINKED_PAGES = PAGE_COUNT - Math.round(PAGE_COUNT * 2 / 
 const ROOT = '/Users/sample/Studio', CACHE = '/Users/sample/.cache/evergreen-kit/2.3.0';
 const INTERFACES: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
 const FOLDER: Record<InterfaceId, string> = { 'claude-code': '.claude', codex: '.codex', opencode: '.opencode' };
-const LABEL: Record<InterfaceId, string> = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const cap = (word: string): string => word.slice(0, 1).toUpperCase() + word.slice(1);
@@ -142,7 +142,7 @@ function makeSkills(rng: Rng, names: string[], scopes: readonly Scope[]): SkillI
     const relative = (face: InterfaceId): string => `${FOLDER[face]}/skills/${name}/SKILL.md`;
     // The first skill is the planted case: three interfaces, three different texts.
     const text = i === 0
-      ? (face: InterfaceId): string => textOfSkill(name, description, `${paragraph(rng, 2)}\nWritten for ${LABEL[face]}.`)
+      ? (face: InterfaceId): string => textOfSkill(name, description, `${paragraph(rng, 2)}\nWritten for ${INTERFACE_WORDS[face]}.`)
       : (): string => textOfSkill(name, description, body);
     const foundAt = i === 0 ? foundIn(scope.path, relative, text, INTERFACES) : foundIn(scope.path, relative, text, someInterfaces(rng));
     skills.push({ id, kind: 'skill', name, scopeId: scope.id, foundAt, library: null, description });
@@ -209,7 +209,7 @@ function makeAgents(rng: Rng, names: string[], skills: readonly SkillItem[], too
     const toolIds = [...(first === null ? [] : [first]), ...pool.slice(0, i % 3).map(t => t.id)];
     const toolAttachments: ToolAttachment[] = toolIds.map(toolId => ({ toolId, access: access() }));
     const definition = { name, role, instructions: paragraph(rng, 3), skillIds, toolAttachments, ...(i < 4 ? { sliceId: sliceIds[i % sliceIds.length]! } : {}) };
-    const extras: InterfaceExtra[] = i % 3 === 0 ? [{ interface: INTERFACES[i % INTERFACES.length]!, badge: `${LABEL[INTERFACES[i % INTERFACES.length]!]} only`, key: 'accent', value: rng.pick(SAMPLE_WORDS.adjectives) }] : [];
+    const extras: InterfaceExtra[] = i % 3 === 0 ? [{ interface: INTERFACES[i % INTERFACES.length]!, badge: `${INTERFACE_WORDS[INTERFACES[i % INTERFACES.length]!]} only`, key: 'accent', value: rng.pick(SAMPLE_WORDS.adjectives) }] : [];
     const text = `# ${name}\nrole: ${role}\n\n${definition.instructions}\n`;
     const foundAt = foundIn(scope.path, face => `${FOLDER[face]}/agents/${name}.${face === 'codex' ? 'toml' : 'md'}`, () => text, someInterfaces(rng));
     agents.push({ id: `agent-${pad(i + 1, 2)}`, kind: 'agent', name, scopeId: scope.id, foundAt, library: null, definition, extras });
@@ -263,7 +263,6 @@ export function generateWorld(seed = 1): World {
   const overrides: Override[] = [
     { scopeId: CASE_IDS.hidingScope, itemId: CASE_IDS.hiddenSkill, mode: 'hide' },
     { scopeId: 'scope-copperfen', itemId: 'skill-005', mode: 'replace', replacementItemId: projectSkill.id },
-    { scopeId: 'scope-tallowbrook', itemId: 'skill-006', mode: 'inherit' },
   ];
   const libraries: LibrarySource[] = [{ id: CASE_IDS.newerLibrary, name: SAMPLE_WORDS.libraryWords.join(' '), installedVersion: '2.3.0', newerVersion: '2.4.0' }];
 

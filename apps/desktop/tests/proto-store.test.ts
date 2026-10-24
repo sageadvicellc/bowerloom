@@ -247,14 +247,14 @@ test('restore adds a NEW version equal to the old one and deletes no history', (
   assert.deepEqual(agentOf(store.getState().committed, 'a2').definition.skillIds, ['s1', 's2']); assert.equal(store.getState().committed.versions.length, 4);
 });
 
-test('restore keeps unsaved work reachable with undo, and a damaged snapshot is refused', () => {
+test('restore starts a clean undo history, and a damaged snapshot is refused', () => {
   const store = createStore(makeWorld());
   store.dispatch({ type: 'attachSkill', agentId: 'a2', skillId: 's1' }); store.dispatch({ type: 'apply', label: 'one' });
   store.dispatch({ type: 'attachSkill', agentId: 'a2', skillId: 's2' });
   store.dispatch({ type: 'restore', versionId: store.getState().committed.versions[0]!.id });
   assert.deepEqual(agentOf(store.getState().draft, 'a2').definition.skillIds, ['s1']);
   store.dispatch({ type: 'undo' });
-  assert.deepEqual(agentOf(store.getState().draft, 'a2').definition.skillIds, ['s1', 's2']);
+  assert.deepEqual(agentOf(store.getState().draft, 'a2').definition.skillIds, ['s1'], 'a restore starts a new version, so undo does not go back past it');
   assert.equal(store.getState().draft.versions, store.getState().committed.versions);
   const broken: World = { ...makeWorld(), versions: [{ id: 'vx', parentId: null, counter: 1, label: 'x', snapshotJson: '{not json' }] };
   const s2 = createStore(broken); s2.dispatch({ type: 'restore', versionId: 'vx' });
@@ -286,7 +286,7 @@ test('the reducer is pure and deterministic: the same actions on two stores give
   const state = a.getState(), frozen = JSON.stringify(state);
   const next = reduceStore(state, { type: 'attachSkill', agentId: 'a2', skillId: 's2' });
   assert.notEqual(next, state); assert.equal(JSON.stringify(state), frozen);
-  assert.equal(reduceStore(state, { type: 'undo' }) === state, false); assert.equal(JSON.stringify(state), frozen);
+  assert.equal(reduceStore(next, { type: 'undo' }) === next, false); assert.equal(JSON.stringify(state), frozen);
 });
 
 test('a large world stays quick: 10,000 pages, 2,000 edits', () => {

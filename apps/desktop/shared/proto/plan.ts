@@ -13,7 +13,7 @@
  * Each path starts with the path of the scope that owns the file. Pure: no clock, no random number, no file.
  */
 import type { AgentItem, HarnessItem, InterfaceId, Plan, PlanChange, World } from './types.js';
-import { effectiveItems, fileSlug } from './common.js';
+import { effectiveItems, effectiveResolver, fileSlug } from './common.js';
 
 const ORDER: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
 const PREVIEW_LIMIT = 400;
@@ -40,21 +40,24 @@ function shorten(text: string): string {
 
 const textFor = (item: HarnessItem, iface: InterfaceId): string => (item.foundAt.find(f => f.interface === iface) ?? item.foundAt[0])?.text ?? '';
 
-function agentText(agent: AgentItem, iface: InterfaceId, world: World): string {
-  const d = agent.definition, byId = new Map(world.items.map(i => [i.id, i.name]));
-  const lines = [`Agent: ${agent.name}`, `Role: ${d.role}`, `Instructions: ${d.instructions}`, `Skills: ${d.skillIds.map(s => byId.get(s) ?? s).join(', ') || 'none'}`,
-    `Tools: ${d.toolAttachments.map(t => `${byId.get(t.toolId) ?? t.toolId} (${t.access})`).join(', ') || 'none'}`];
+/** What a scope calls an id: the item itself, its replacement there, or nothing when the scope hides it or cannot reach it. */
+type Resolve = (itemId: string) => HarnessItem | undefined;
+
+function agentText(agent: AgentItem, iface: InterfaceId, world: World, resolve: Resolve): string {
+  const d = agent.definition;
+  const skills = d.skillIds.flatMap(s => resolve(s)?.name ?? []), tools = d.toolAttachments.flatMap(t => { const item = resolve(t.toolId); return item === undefined ? [] : [`${item.name} (${t.access})`]; });
+  const lines = [`Agent: ${agent.name}`, `Role: ${d.role}`, `Instructions: ${d.instructions}`, `Skills: ${skills.join(', ') || 'none'}`, `Tools: ${tools.join(', ') || 'none'}`];
   if (d.sliceId !== undefined) lines.push(`Knowledge slice: ${world.slices.find(s => s.id === d.sliceId)?.name ?? d.sliceId}`);
   for (const e of agent.extras) if (e.interface === iface) lines.push(`${e.badge}: ${e.key} = ${e.value}`);
   return lines.join('\n');
 }
 
-function render(item: HarnessItem, iface: InterfaceId, scopePath: string, world: World): Rendered | null {
+function render(item: HarnessItem, iface: InterfaceId, scopePath: string, world: World, resolve: Resolve): Rendered | null {
   if (item.library !== null) return null;
   const layout = LAYOUT[iface], slug = fileSlug(item.name);
   switch (item.kind) {
     case 'skill': return { interface: iface, path: joinPath(scopePath, layout.skill(slug)), content: `Skill: ${item.name}\n${item.description}\n\n${textFor(item, iface)}` };
-    case 'agent': return { interface: iface, path: joinPath(scopePath, layout.agent(slug)), content: agentText(item, iface, world) };
+    case 'agent': return { interface: iface, path: joinPath(scopePath, layout.agent(slug)), content: agentText(item, iface, world, resolve) };
     case 'tool':
       if (item.toolKind === 'hook') return null;
       if (item.toolKind === 'prompt') return { interface: iface, path: joinPath(scopePath, layout.prompt(slug)), content: `Saved prompt: ${item.name}\n\n${textFor(item, iface)}` };
@@ -68,9 +71,9 @@ function filesOf(world: World): Map<string, Rendered> {
   const files = new Map<string, Rendered>();
   const installed = world.interfaces.filter(i => i.installed === 'installed').map(i => i.id);
   for (const scope of world.scopes) {
-    const items = effectiveItems(world, scope.id);
+    const items = effectiveItems(world, scope.id), resolve = effectiveResolver(world, scope.id);
     for (const iface of installed) for (const item of items) {
-      const file = render(item, iface, scope.path, world);
+      const file = render(item, iface, scope.path, world, resolve);
       if (file !== null) files.set(`${iface}\u0000${file.path}`, file);
     }
   }

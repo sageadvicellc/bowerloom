@@ -47,10 +47,10 @@ function whereIs(item: HarnessItem, found: FoundAt, scopes: ReadonlyMap<string, 
     const source = world.libraries.find(l => l.id === parts[cache + 1]);
     return { path, group: found.interface, label: `Library cache: ${source === undefined ? parts[cache + 1]! : source.name} ${parts[cache + 2]!}`, library: true };
   }
-  const at = parts.findIndex(p => p in GROUP_OF_FOLDER);
+  const at = parts.findIndex(p => Object.hasOwn(GROUP_OF_FOLDER, p));
   const folder = at >= 0 ? parts[at]! : FOLDER[found.interface];
   const path = at >= 0 ? parts.slice(0, at + 1).join('/') : `${parts.slice(0, -1).join('/')}/${folder}`;
-  const inherent = GROUP_OF_FOLDER[folder] ?? found.interface;
+  const inherent = Object.hasOwn(GROUP_OF_FOLDER, folder) ? GROUP_OF_FOLDER[folder]! : found.interface;
   const group: PlaceGroupId = inherent === 'older' ? 'older' : owner !== undefined && owner.kind === 'project' ? 'projects' : inherent;
   return { path, group, label: `${ownerName}: ${folder}`, library: false };
 }

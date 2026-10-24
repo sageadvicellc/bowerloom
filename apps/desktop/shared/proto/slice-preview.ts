@@ -4,6 +4,7 @@
  */
 import type { Enforcement, InterfaceInfo, SliceRule, WikiPage } from './types.js';
 import { cutLinks, estimateTokens, joinedSince, matchPages } from './slicerule.js';
+import { interfaceName } from './words.js';
 
 /** An outside page and how many links from the slice point at it. */
 export interface OutsidePage { readonly id: string; readonly title: string; readonly links: number }
@@ -67,7 +68,6 @@ export function formatCount(n: number): string {
 /** "about 12,400 tokens. This is a rough estimate." */
 export const tokenSentence = (tokens: number): string => `about ${formatCount(tokens)} ${tokens === 1 ? 'token' : 'tokens'}. This is a rough estimate.`;
 
-const INTERFACE_NAMES: Readonly<Record<InterfaceInfo['id'], string>> = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 const MEANING: Readonly<Record<Enforcement, string>> = {
   'blocks reads': 'The agent cannot read pages outside this slice. The interface refuses the read.',
   'advisory only': 'The agent is told to stay inside this slice, but nothing stops it from reading other pages.',
@@ -75,7 +75,7 @@ const MEANING: Readonly<Record<Enforcement, string>> = {
 
 /** The badge for one interface: its label ("Claude Code: blocks reads") and one sentence on what that means. */
 export function badgeFor(info: InterfaceInfo): { readonly label: string; readonly meaning: string; readonly enforcement: Enforcement; readonly installed: boolean } {
-  return { label: `${INTERFACE_NAMES[info.id]}: ${info.enforcement}`, meaning: MEANING[info.enforcement], enforcement: info.enforcement, installed: info.installed === 'installed' };
+  return { label: `${interfaceName(info.id)}: ${info.enforcement}`, meaning: MEANING[info.enforcement], enforcement: info.enforcement, installed: info.installed === 'installed' };
 }
 
 /** What a frozen slice says about itself: how many pages it holds, and how many the rule would pick today. */

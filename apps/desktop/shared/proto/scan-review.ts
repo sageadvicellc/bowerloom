@@ -5,8 +5,9 @@
  */
 import type { FoundAt, HarnessItem, InterfaceId, SecretRef, World } from './types.js';
 import { placeIdOf } from './scan-places.js';
+import { INTERFACE_WORDS } from './words.js';
 
-export const INTERFACE_WORDS: Readonly<Record<InterfaceId, string>> = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
+export { INTERFACE_WORDS };
 
 /** One text of a conflicted item: the interfaces and paths that hold it. `index` is the first place in `item.foundAt` that holds it. */
 export interface ReviewVariant { readonly index: number; readonly hash: string; readonly interfaces: readonly InterfaceId[]; readonly paths: readonly string[]; readonly text: string }

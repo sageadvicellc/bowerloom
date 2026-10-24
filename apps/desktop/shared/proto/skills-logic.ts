@@ -4,7 +4,7 @@
  * Inheritance is the harness editor's: a row is built from the editor's graph model, so "inherited", "hidden" and "replaced" mean the same here.
  */
 import { buildHarnessMap, interfaceName } from './harnessmodel.js';
-import { effectiveItems } from './common.js';
+import { effectiveItems, hashesDiffer } from './common.js';
 import { everyGroup, interfaceWords, joinWords, scopeLabel } from './library-install.js';
 import type { InterfaceId, LibrarySource, SkillItem, World } from './types.js';
 
@@ -21,7 +21,6 @@ export interface SkillRow { readonly item: SkillItem; readonly state: RowState; 
 export interface SkillFilter { readonly query: string; readonly interfaceId: InterfaceId | null }
 
 const isSkill = (item: { kind: string }): item is SkillItem => item.kind === 'skill';
-const hashesDiffer = (item: SkillItem): boolean => new Set(item.foundAt.map(f => f.contentHash)).size > 1;
 
 /**
  * The skills of one harness, or of every harness. For one harness: its own skills, the ones it inherits, the ones it hides (kept so they can be
@@ -96,7 +95,7 @@ export function skillsSummary(groups: SkillGroups): string {
 /** Which harnesses use each item: the items a harness really has, after hide and replace choices. Built once for a world. */
 export type UseIndex = ReadonlyMap<string, ReadonlySet<string>>;
 
-export function useIndex(world: World): UseIndex {
+export function buildIndex(world: World): UseIndex {
   const out = new Map<string, Set<string>>();
   for (const scope of world.scopes) for (const item of effectiveItems(world, scope.id)) {
     const set = out.get(item.id) ?? new Set<string>();
@@ -104,6 +103,9 @@ export function useIndex(world: World): UseIndex {
   }
   return out;
 }
+
+/** The old name of `buildIndex`. It is a plain function, not a hook; the name stays only so a screen written earlier still builds. */
+export const useIndex = buildIndex;
 
 /** The words on a card about where the skill is. */
 export interface Placement {
@@ -121,7 +123,7 @@ export interface Placement {
  * Where a skill is, in words. A library skill is a reference: it is written nowhere until a person installs an editable copy.
  * Any other skill is written to every interface that is installed on this computer, in each harness that keeps it.
  */
-export function describePlacement(world: World, item: SkillItem, index: UseIndex = useIndex(world)): Placement {
+export function describePlacement(world: World, item: SkillItem, index: UseIndex = buildIndex(world)): Placement {
   const global = world.scopes.find(s => s.kind === 'global'), projects = world.scopes.filter(s => s.kind === 'project');
   const used = world.scopes.filter(s => index.get(item.id)?.has(s.id) === true);
   const notes: string[] = [];

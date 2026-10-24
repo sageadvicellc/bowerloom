@@ -5,7 +5,8 @@
  * The rules are the harness editor's. An install is the editor's own drop on a harness (`dropOutcome`), a keep, hide or replace is `overrideOutcome`,
  * and the words for what is waiting are the change bar's (`changeBarText`). This file only builds the small context those functions need.
  */
-import { buildHarnessMap, groupIdOf, interfaceName, scopeNodeId } from './harnessmodel.js';
+import { buildHarnessMap, groupIdOf, scopeNodeId } from './harnessmodel.js';
+import { interfaceName, joinWords } from './words.js';
 import type { HarnessMapModel } from './harnessmodel.js';
 import { dropOutcome } from './editor-actions.js';
 import type { EditorContext, EditorOutcome } from './editor-actions.js';
@@ -13,10 +14,7 @@ import { changeBarText, groupPlan } from './editor-describe.js';
 import { LIBRARY_CATALOG } from './library-catalog.js';
 import type { InterfaceId, Plan, Scope, World } from './types.js';
 
-/** A list in words: "a", "a and b", "a, b and c". */
-export function joinWords(items: readonly string[]): string {
-  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-}
+export { joinWords };
 
 /** "3 skills", "1 skill". */
 export const countWord = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
