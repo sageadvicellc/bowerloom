@@ -36,7 +36,7 @@ The first time you open your own Bowerloom, the app looks once at the folders ri
 
 ## Motion
 
-Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. The weighting in it is a recommendation, marked there as **unconfirmed, owner to choose**: the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
+Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. Hanna confirmed the weighting on 2026-10-24 (see the header of `renderer/motion-tokens.ts`): the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
 
 ## Prototype
 
