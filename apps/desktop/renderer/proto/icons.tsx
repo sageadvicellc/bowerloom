@@ -48,3 +48,6 @@ export function HarnessIcon({ name, size = 18 }: { name: HarnessIconName; size?:
 
 /** Every icon name, for a test or a legend. */
 export const HARNESS_ICON_NAMES: readonly HarnessIconName[] = Object.keys(PATHS) as HarnessIconName[];
+
+/** The paths of one icon, for a place that draws its own `svg`, such as the navigation. */
+export const iconPaths = (name: HarnessIconName): readonly string[] => PATHS[name];

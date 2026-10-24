@@ -1,0 +1,32 @@
+/*
+ * Prototype-only token overrides. The 0.7 screens share tokens.css and styles.css, which have their own specs and a contrast test, so nothing
+ * there changes. Every rule here starts at the prototype's shell root, `.shell[data-proto]`, which only the prototype carries. Imported by App.tsx
+ * after every screen's style sheet, so these rules win a tie.
+ *
+ * Card and bar borders. tokens.css has --border at 1.36 to 1 against the page in light and 1.65 to 1 in dark: a card cannot be seen by its edge.
+ * --border-strong is at least 3 to 1 against the page, a card and a quiet panel (WCAG 1.4.11, the edge of a control), and --border now means it for
+ * every card, bar, field and button of the prototype. --border-hairline keeps the soft line for dividers inside a list.
+ * Disabled buttons. A disabled button was the enabled one at 55 percent: white on a faded green, 2.41 to 1. It is now an outline with dashes and
+ * text at --disabled-fg (at least 3 to 1 on every surface). The reason it cannot be pressed is written beside it, in words, by each screen.
+ */
+.shell[data-proto] {
+  --border-strong: #868880;
+  --border-hairline: #d6d4c9;
+  --disabled-fg: #6b756e;
+  --border: var(--border-strong);
+}
+[data-theme="dark"] .shell[data-proto] {
+  --border-strong: #68796e;
+  --border-hairline: #34413a;
+  --disabled-fg: #8a978f;
+}
+
+.shell[data-proto] .btn:disabled, .shell[data-proto] .btn[aria-disabled="true"] {
+  background: transparent; color: var(--disabled-fg); opacity: 1; cursor: not-allowed;
+  outline: 1px dashed var(--border-strong); outline-offset: -1px;
+}
+.shell[data-proto] .btn.secondary:disabled, .shell[data-proto] .btn.secondary[aria-disabled="true"] { border-color: transparent; }
+.shell[data-proto] .btn:disabled:hover, .shell[data-proto] .btn[aria-disabled="true"]:hover { background: transparent; }
+
+/* Dividers inside a card stay soft: the edge of the card is the line that has to be seen. */
+.shell[data-proto] .tabs, .shell[data-proto] .kn-row { border-color: var(--border-hairline); }

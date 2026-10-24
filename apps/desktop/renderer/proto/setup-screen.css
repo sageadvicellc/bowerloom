@@ -48,9 +48,9 @@ main:has(.sx-page) { padding-bottom: 0; }
 .sx-place-name { font-weight: 650; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .sx-place-path { grid-column: 1 / -1; font-size: 0.85rem; }
 
-/* The reveal: each place fades in and rises a few pixels, one after another. */
+/* The reveal: each place fades in and rises a few pixels (--motion-setup-reveal-travel), one after another. */
 .sx-reveal { animation: sx-reveal var(--motion-setup-reveal-ms, 0ms) var(--motion-setup-reveal-ease, ease) both; animation-delay: calc(var(--i, 0) * var(--motion-setup-reveal-stagger, 0ms)); }
-@keyframes sx-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes sx-reveal { from { opacity: 0; transform: translateY(var(--motion-setup-reveal-travel, 0px)); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .sx-reveal { animation: none; } }
 
 .sx-summary { margin: 0; }

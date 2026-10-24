@@ -311,3 +311,61 @@ test('the reveal of the found places plays the first time only, and the list is 
   await expect(page.locator('.sx-place.sx-reveal'), 'no place is revealed a second time').toHaveCount(0);
   expect(await page.evaluate(() => document.getAnimations().filter(a => a instanceof CSSAnimation && a.playState === 'running').map(a => (a as CSSAnimation).animationName)), 'no reveal is playing').toEqual([]);
 });
+
+// ------------------------------------------------------------------------------------------------------- shared tokens, measured in the real window
+
+/** In the page: the contrast ratio of a colour over the background that is really behind an element, and the ratio of one colour to another. */
+async function ratios(): Promise<{ cardEdge: number; barEdge: number; disabledText: number; disabledOutline: number; outlineStyle: string; opacity: string; focus: number }> {
+  return page.evaluate(() => {
+    const parse = (c: string): { r: number; g: number; b: number; a: number } => { const p = (/rgba?\(([^)]+)\)/.exec(c)?.[1] ?? '0 0 0').split(/[ ,/]+/).filter(Boolean).map(Number); return { r: p[0]!, g: p[1]!, b: p[2]!, a: p[3] ?? 1 }; };
+    type C = ReturnType<typeof parse>;
+    const f = (v: number): number => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    const lum = (c: C): number => 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+    const ratio = (a: C, b: C): number => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x! + 0.05) / (y! + 0.05); };
+    const bgOf = (el: Element | null): C => { for (let e = el; e !== null; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c.a === 1) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
+    const page = bgOf(document.body), card = document.querySelector('.sx-card')!, bar = document.querySelector('.sx-footer')!, off = document.querySelector('.btn:disabled')!;
+    const hex = getComputedStyle(document.documentElement).getPropertyValue('--focus').trim(), focus = { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16), a: 1 };
+    const offStyle = getComputedStyle(off);
+    return {
+      cardEdge: ratio(parse(getComputedStyle(card).borderTopColor), page), barEdge: ratio(parse(getComputedStyle(bar).borderTopColor), page),
+      disabledText: ratio(parse(offStyle.color), bgOf(off.parentElement)), disabledOutline: ratio(parse(offStyle.outlineColor), bgOf(off.parentElement)),
+      outlineStyle: `${offStyle.outlineStyle} ${offStyle.outlineWidth}`, opacity: offStyle.opacity, focus: ratio(focus, page),
+    };
+  });
+}
+
+test('in the real window, a card and a bar have an edge of 3 to 1 against the page, and a disabled button keeps 3 to 1 text and a dashed outline, in light and in dark', async () => {
+  test.setTimeout(120_000);
+  await page.getByRole('button', { name: 'Choose where your harness lives' }).click();
+  await expect(page.locator('.sx-footer').getByRole('button', { name: 'Continue to the scan' })).toBeDisabled();
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, theme);
+    const r = await ratios();
+    console.log(`${theme}: card edge ${r.cardEdge.toFixed(2)}, bar edge ${r.barEdge.toFixed(2)}, disabled text ${r.disabledText.toFixed(2)}, disabled outline ${r.disabledOutline.toFixed(2)} (${r.outlineStyle}), focus ring ${r.focus.toFixed(2)}`);
+    expect(r.cardEdge, `${theme}: card edge`).toBeGreaterThanOrEqual(3);
+    expect(r.barEdge, `${theme}: bar edge`).toBeGreaterThanOrEqual(3);
+    expect(r.disabledText, `${theme}: disabled text`).toBeGreaterThanOrEqual(3);
+    expect(r.disabledOutline, `${theme}: disabled outline`).toBeGreaterThanOrEqual(3);
+    expect(r.outlineStyle).toBe('dashed 1px');
+    expect(r.opacity, 'a disabled button is not faded').toBe('1');
+    expect(r.focus, `${theme}: focus ring`).toBeGreaterThanOrEqual(3);
+  }
+});
+
+test('the shared hover timing comes from the tokens: 90 ms and the strong ease-out on the navigation and buttons, and 0 with reduce motion; the reveal travel is a token too', async () => {
+  const timing = (selector: string) => page.locator(selector).first().evaluate(el => { const s = getComputedStyle(el); return { duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; });
+  const nav = await timing('nav.nav button'), btn = await timing('.btn');
+  for (const t of [nav, btn]) { expect(t.duration).toBe('0.09s'); expect(t.ease).toBe('cubic-bezier(0.23, 1, 0.32, 1)'); }
+  expect(nav.property).toBe('background'); expect(btn.property).toBe('background');
+  const read = (name: string) => page.evaluate(n => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
+  expect(await read('--motion-hover-ms')).toBe('90ms'); expect(await read('--motion-ease-out')).toBe('cubic-bezier(0.23, 1, 0.32, 1)');
+  expect(await read('--motion-setup-reveal-travel')).toBe('6px'); expect(await read('--motion-versions-travel')).toBe('4px');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => read('--motion-hover-ms')).toBe('0ms');
+  expect(await read('--motion-setup-reveal-travel')).toBe('0px'); expect(await read('--motion-versions-travel')).toBe('0px');
+  expect((await timing('nav.nav button')).duration, 'no transition with reduce motion').toBe('0s');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  // The navigation has an icon of its own for each screen: Agents is a person, not a folder.
+  const shapes = await page.locator('nav.nav button svg').evaluateAll(list => list.map(svg => [...svg.querySelectorAll('path')].map(p => p.getAttribute('d')).join('|')));
+  expect(new Set(shapes).size).toBe(6);
+});

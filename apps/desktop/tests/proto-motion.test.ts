@@ -66,3 +66,32 @@ test('the same call twice publishes the same values, and a call changes nothing 
   assert.deepEqual(withReduce(false, published), withReduce(false, published));
   assert.equal(JSON.stringify(MOTION), before);
 });
+
+test('the shared parts of the app (navigation, buttons, rows, cards, tabs) take their timing from the hover token and the strong ease-out, not from a time of their own', () => {
+  const css = readFileSync(join(DESKTOP, 'renderer', 'styles.css'), 'utf8'), tokens = readFileSync(join(DESKTOP, 'renderer', 'tokens.css'), 'utf8');
+  assert.doesNotMatch(css, /var\(--motion\)/, 'no 140 ms with the default ease');
+  assert.doesNotMatch(tokens, /--motion:/, 'the old single duration is gone');
+  for (const rule of [/\.nav button \{[^}]*transition: background var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.btn \{[^}]*transition: background var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.row \{[^}]*transition: border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.stat \{[^}]*transition: border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/, /\.tabs button \{[^}]*transition: color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\), border-color var\(--motion-hover-ms, 0ms\) var\(--motion-ease-out, ease\)/]) assert.match(css, rule);
+});
+
+test('the hover duration is 90 ms, the ease-out is the strong one, and the travel of a reveal is a token', () => {
+  const props = withReduce(false, published);
+  assert.equal(props['--motion-hover-ms'], '90ms'); assert.equal(props['--motion-ease-out'], 'cubic-bezier(0.23, 1, 0.32, 1)');
+  assert.equal(props['--motion-ease-out'], MOTION.ease.out);
+  assert.equal(props['--motion-setup-reveal-travel'], '6px'); assert.equal(props['--motion-versions-travel'], '4px');
+  assert.equal(MOTION.proto.setupReveal.distance, 6); assert.equal(MOTION.proto.versions.distance, 4);
+});
+
+test('with reduce motion on, the hover duration and every travel are 0, and the ease stays published', () => {
+  const props = withReduce(true, published);
+  assert.equal(props['--motion-hover-ms'], '0ms');
+  assert.equal(props['--motion-setup-reveal-travel'], '0px'); assert.equal(props['--motion-versions-travel'], '0px');
+  assert.equal(props['--motion-ease-out'], MOTION.ease.out);
+});
+
+test('the reveal and the new-result animation use the travel tokens, not a distance of their own', () => {
+  const read = (file: string): string => readFileSync(join(DESKTOP, 'renderer', 'proto', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(read('setup-screen.css'), /@keyframes sx-reveal \{ from \{[^}]*translateY\(var\(--motion-setup-reveal-travel, 0px\)\)/);
+  assert.match(read('versions-screen.css'), /@keyframes vx-in \{ from \{[^}]*translateY\(var\(--motion-versions-travel, 0px\)\)/);
+  assert.doesNotMatch(read('setup-screen.css') + read('versions-screen.css'), /translateY\(\d/);
+});

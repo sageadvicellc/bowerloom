@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { ICONS } from '../dom.js';
+import { iconPaths } from './icons.js';
 import { AgentsScreen } from './AgentsScreen.js';
 import { HarnessScreen } from './HarnessScreen.js';
 import { KnowledgeScreen } from './KnowledgeScreen.js';
@@ -17,6 +18,8 @@ import { ProtoProvider, useProtoStore } from './session.js';
 import { loadWorld } from './world.js';
 import { ROUTE_LABELS } from './words.js';
 import type { RouteId, ScreenProps } from './words.js';
+// Last, so the prototype's own token overrides win a tie with the screens' style sheets.
+import './proto-tokens.css';
 
 /** One route: its id, its title, its icon, and the screen it shows. */
 export interface RouteEntry { readonly id: RouteId; readonly label: string; readonly icon: readonly string[]; readonly Screen: ComponentType<ScreenProps> }
@@ -26,7 +29,7 @@ export const ROUTES: readonly RouteEntry[] = [
   { id: 'setup', label: ROUTE_LABELS.setup, icon: ICONS.settings, Screen: SetupScreen },
   { id: 'harness', label: ROUTE_LABELS.harness, icon: ICONS.map, Screen: HarnessScreen },
   { id: 'skills', label: ROUTE_LABELS.skills, icon: ICONS.library, Screen: SkillsScreen },
-  { id: 'agents', label: ROUTE_LABELS.agents, icon: ICONS.projects, Screen: AgentsScreen },
+  { id: 'agents', label: ROUTE_LABELS.agents, icon: iconPaths('agent'), Screen: AgentsScreen },
   { id: 'knowledge', label: ROUTE_LABELS.knowledge, icon: ICONS.graph, Screen: KnowledgeScreen },
   { id: 'versions', label: ROUTE_LABELS.versions, icon: ICONS.storage, Screen: VersionsScreen },
 ];
@@ -59,7 +62,7 @@ function Shell() {
     opened.current = true;
   }, [route.label]);
   return (
-    <div className="shell">
+    <div className="shell" data-proto="">
       <aside className="sidebar">
         <div className="brand"><Icon paths={ICONS.leaf} size={28} />Bowerloom</div>
         <div className="sandbox-badge" role="note">Prototype: nothing is saved</div>

@@ -30,3 +30,42 @@ for (const [name, vars] of [['light', light], ['dark', dark]] as const) {
     for (let i = 1; i <= 8; i++) assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `graph-${i} is ${ratio(vars[`graph-${i}`]!, vars.surface!).toFixed(2)}`);
   });
 }
+
+// ---- The prototype's own tokens (renderer/proto/proto-tokens.css). They change nothing for the 0.7 screens: every rule starts at `.shell[data-proto]`.
+const protoCss = readFileSync(join(DESKTOP, 'renderer', 'proto', 'proto-tokens.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+function protoTheme(selector: RegExp): Record<string, string> {
+  const block = selector.exec(protoCss)![1]!, vars: Record<string, string> = {};
+  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})/g)) vars[m[1]!] = m[2]!;
+  return vars;
+}
+const protoLight = { ...light, ...protoTheme(/^\.shell\[data-proto\] \{([\s\S]*?)\n\}/m) }, protoDark = { ...dark, ...protoTheme(/^\[data-theme="dark"\] \.shell\[data-proto\] \{([\s\S]*?)\n\}/m) };
+
+test('the prototype overrides only reach the prototype: every selector starts at the shell root that only the prototype has', () => {
+  const selectors = [...protoCss.matchAll(/(^|\})\s*([^{}]+)\{/g)].map(m => m[2]!.trim());
+  assert.ok(selectors.length >= 5);
+  for (const selector of selectors) for (const part of selector.split(',')) assert.match(part.trim(), /^(\[data-theme="dark"\] )?\.shell\[data-proto\]/, part);
+  assert.doesNotMatch(protoCss, /:root/);
+});
+
+for (const [name, vars] of [['light', protoLight], ['dark', protoDark]] as const) {
+  test(`${name} theme, prototype: the edge of a card, bar, field or button is 3 to 1 against the page, a card and a quiet panel`, () => {
+    for (const against of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['border-strong']!, vars[against]!) >= 3, `border-strong on ${against} is ${ratio(vars['border-strong']!, vars[against]!).toFixed(2)}`);
+  });
+  test(`${name} theme, prototype: the text of a disabled button is 3 to 1 on every surface it can sit on`, () => {
+    for (const on of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['disabled-fg']!, vars[on]!) >= 3, `disabled-fg on ${on} is ${ratio(vars['disabled-fg']!, vars[on]!).toFixed(2)}`);
+  });
+  test(`${name} theme, prototype: every text pair still meets 4.5 to 1, the focus ring 3 to 1, and the graph colours 3 to 1`, () => {
+    for (const [fg, bg] of PAIRS) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg} is ${ratio(vars[fg]!, vars[bg]!).toFixed(2)}`);
+    for (const bg of ['bg', 'surface']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);
+    for (let i = 1; i <= 8; i++) assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `graph-${i}`);
+  });
+  test(`${name} theme, prototype: the strong border is far stronger than the old one`, () => {
+    assert.ok(ratio(vars['border-strong']!, vars.bg!) > ratio(vars.border!, vars.bg!) * 2, 'the old border was 1.4 to 1');
+  });
+}
+
+test('a disabled button in the prototype is an outline with dashes, at full opacity, with its own text colour', () => {
+  assert.match(protoCss, /\.shell\[data-proto\] \.btn:disabled[^{]*\{[^}]*opacity: 1;/);
+  assert.match(protoCss, /\.shell\[data-proto\] \.btn:disabled[^{]*\{[^}]*color: var\(--disabled-fg\)/);
+  assert.match(protoCss, /\.shell\[data-proto\] \.btn:disabled[^{]*\{[^}]*outline: 1px dashed var\(--border-strong\)/);
+});

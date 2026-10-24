@@ -9,6 +9,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CHANNELS } from '../shared/channels.js';
 import { APP_INDEX, decideNavigation, isAllowedSender } from '../main/security.js';
+import { ICONS } from '../renderer/dom.js';
+import { iconPaths } from '../renderer/proto/icons.js';
 import { App, ROUTES } from '../renderer/proto/App.js';
 import { loadWorld } from '../renderer/proto/world.js';
 import { countLine } from '../renderer/proto/words.js';
@@ -182,4 +184,14 @@ test('the README has a short Prototype section that says nothing is written', ()
   assert.ok(at > -1); const section = readme.slice(at, readme.indexOf('\n## ', at + 5) === -1 ? undefined : readme.indexOf('\n## ', at + 5));
   assert.match(section, /desktop:prototype/); assert.match(section, /simulated in memory/); assert.match(section, /nothing is written/i);
   assert.ok(section.split(/\s+/).length < 140, 'short');
+});
+
+test('the shell root carries the prototype mark that its token overrides start from, and each route has its own icon: Agents is a person, not a folder', () => {
+  const markup = renderToStaticMarkup(createElement(App));
+  assert.match(markup, /<div class="shell" data-proto="">/);
+  const icons = ROUTES.map(r => r.icon.join('|'));
+  assert.equal(new Set(icons).size, ROUTES.length, 'no two routes share an icon');
+  const agents = ROUTES.find(r => r.id === 'agents')!, projects = ICONS.projects.join('|');
+  assert.notEqual(agents.icon.join('|'), projects, 'the folder is not the icon of Agents');
+  assert.equal(agents.icon.join('|'), iconPaths('agent').join('|'), 'Agents has the head and shoulders that the agent node has on the Harness screen');
 });

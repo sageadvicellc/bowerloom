@@ -52,10 +52,10 @@ export const MOTION = Object.freeze({
   }),
   // The prototype's own tokens (weighting above). A reveal is slow and staggered, a lasso is quick, a drop settles with the existing settle ease.
   proto: Object.freeze({
-    /** Jhey: found items appear one after another, `stagger` apart. */
-    setupReveal: { ms: 280, stagger: 40, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition & { stagger: number },
-    /** Jakub: the version list and the export view. */
-    versions: { ms: 240, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+    /** Jhey: found items appear one after another, `stagger` apart, and rise `distance` pixels as they come. */
+    setupReveal: { ms: 280, stagger: 40, distance: 6, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition & { stagger: number; distance: number },
+    /** Jakub: the version list and the export view. A new result rises `distance` pixels as it fades in. */
+    versions: { ms: 240, distance: 4, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition & { distance: number },
     /** Emil: the lasso on the knowledge graph is a busy action, so it is quick. */
     lasso: { ms: 90, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** Jhey: the short settle after a drop. It uses the same ease as `ease.settle`. */
@@ -90,6 +90,8 @@ export const ms = (value: number): number => (prefersReducedMotion() ? 0 : value
  */
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const set = (name: string, value: string): void => { root.style.setProperty(`--motion-${name}`, value); };
+  // A distance is 0 when the person asked for less motion, as a duration is: nothing travels.
+  const travel = (name: string, px: number): void => { set(name, `${prefersReducedMotion() ? 0 : px}px`); };
   const t = (name: string, tr: Transition): void => { set(`${name}-ms`, `${ms(tr.ms)}ms`); set(`${name}-ease`, tr.ease); };
   const m = MOTION.map;
   t('node-enter', m.nodeEnter); set('node-enter-distance', `${m.nodeEnter.distance}px`); set('node-enter-scale', String(m.nodeEnter.scaleFrom));
@@ -99,5 +101,8 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   t('graph-highlight', MOTION.graph.highlight);
   const p = MOTION.proto;
   t('setup-reveal', p.setupReveal); set('setup-reveal-stagger', `${ms(p.setupReveal.stagger)}ms`); t('versions', p.versions); t('lasso', p.lasso); t('drop-settle', p.dropSettle);
+  // One ease for the shared parts of the app (the navigation, buttons, rows, cards and tabs), which time themselves with --motion-hover-ms.
+  set('ease-out', MOTION.ease.out);
+  travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);
   set('reduced', prefersReducedMotion() ? '1' : '0');
 }

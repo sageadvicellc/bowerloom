@@ -41,7 +41,7 @@
 
 /* A new result fades in and rises a few pixels. */
 .vx-in { animation: vx-in var(--motion-versions-ms, 0ms) var(--motion-versions-ease, ease) both; }
-@keyframes vx-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes vx-in { from { opacity: 0; transform: translateY(var(--motion-versions-travel, 0px)); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .vx-in { animation: none; } }
 
 .vx-fieldset { margin: 0; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); background: var(--surface); }
