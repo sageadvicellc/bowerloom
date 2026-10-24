@@ -168,20 +168,20 @@ test('an install changes the draft, not the committed world, and a library copy 
   assert.equal(isDirty(st), true); assert.equal(st.committed.items.some(i => i.name === 'oil-topping copy'), false);
   const plan = planProjection(st.committed, st.draft);
   assert.ok(plan.changes.length >= 1 && plan.changes.every(c => c.action === 'add'));
-  assert.match(waitingSentence(true, plan.changes.length), /changes? waiting\. Apply on the Harness screen\.$/);
+  assert.match(waitingSentence(true, plan.changes.length, plan.edits ?? 0), /edits? waiting\. \d+ files? would change\. Apply on the Harness screen\.$/);
 });
 
 test('waitingSentence and waitingView reuse the change bar\'s words', () => {
-  assert.equal(waitingSentence(true, 3), '3 changes waiting. Apply on the Harness screen.');
-  assert.equal(waitingSentence(true, 1), '1 change waiting. Apply on the Harness screen.');
-  assert.equal(waitingSentence(true, 0), 'Changes waiting. No file would change. Apply on the Harness screen.');
-  assert.equal(waitingSentence(false, 0), 'No changes waiting. Apply on the Harness screen.');
+  assert.equal(waitingSentence(true, 3, 1), '1 edit waiting. 3 files would change. Apply on the Harness screen.');
+  assert.equal(waitingSentence(true, 1, 1), '1 edit waiting. 1 file would change. Apply on the Harness screen.');
+  assert.equal(waitingSentence(true, 0, 2), '2 edits waiting. No file would change. Apply on the Harness screen.');
+  assert.equal(waitingSentence(false, 0, 0), 'No changes waiting. Apply on the Harness screen.');
   const clean = waitingView(false, { changes: [] });
   assert.deepEqual(clean, { headline: 'No changes waiting', dirty: false, lines: [] });
   const s = createStore(world);
   s.dispatch({ type: 'attachSkill', agentId: 'agent-01', skillId: 'skill-030' });
   const plan = planProjection(s.getState().committed, s.getState().draft), v = waitingView(true, plan);
-  assert.equal(v.headline, `${plan.changes.length} changes waiting`);
+  assert.equal(v.headline, `1 edit waiting. ${plan.changes.length} files would change.`);
   assert.deepEqual(v.lines.map(l => l.split(':')[0]), ['Claude Code', 'Codex', 'OpenCode']);
 });
 

@@ -134,7 +134,7 @@ test('with changes waiting, the waiting list shows the change bar\'s own words a
   const s = createStore(world);
   s.dispatch({ type: 'attachSkill', agentId: 'agent-01', skillId: 'skill-030' });
   const markup = render(s), text = textOf(markup);
-  assert.match(text, /Waiting to apply \d+ changes waiting/); assert.match(text, /Claude Code: \d+ changed/); assert.match(text, /Apply on the Harness screen\./);
+  assert.match(text, /Waiting to apply \d+ edits? waiting\. \d+ files? would change\./); assert.match(text, /Claude Code: \d+ changed/); assert.match(text, /Apply on the Harness screen\./);
   assert.match(textOf(render()), /Waiting to apply No changes waiting Apply on the Harness screen\./);
 });
 

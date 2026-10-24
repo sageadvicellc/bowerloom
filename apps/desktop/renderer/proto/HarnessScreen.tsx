@@ -10,10 +10,10 @@ import type { ReactElement } from 'react';
 import { ACCESS_WORDS, buildHarnessMap, interfaceName, scopeNodeId } from '../../shared/proto/harnessmodel.js';
 import type { HarnessMapModel, HarnessView } from '../../shared/proto/harnessmodel.js';
 import {
-  attachToolOutcome, connectOutcome, copyOutcome, dropOutcome, keepBothOutcome, keepOneOutcome, menuOutcome, overrideOutcome, replacementChoices,
+  attachToolOutcome, connectOutcome, connectResult, copyOutcome, dropOutcome, keepBothOutcome, keepOneOutcome, menuOutcome, overrideOutcome, replacementChoices,
 } from '../../shared/proto/editor-actions.js';
 import type { EditorContext, EditorOutcome } from '../../shared/proto/editor-actions.js';
-import { describeSelection } from '../../shared/proto/editor-describe.js';
+import { REDO_WORDS, UNDO_WORDS, describeSelection } from '../../shared/proto/editor-describe.js';
 import type { SelectionAction } from '../../shared/proto/editor-describe.js';
 import { planProjection } from '../../shared/proto/plan.js';
 import { isDirty } from '../../shared/proto/store.js';
@@ -195,7 +195,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
     pending.current = { plan, label: label.trim() === '' ? 'Applied changes' : label.trim() };
     dispatch({ type: 'apply', label });
     setLabel('');
-    say('Applied. The changes are written and saved as a version.');
+    say('Applied. The changes are written (simulated) and saved as a version.');
   };
 
   return (
@@ -226,7 +226,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
           <HarnessCanvas
             model={model} selectedId={selection === null ? null : selection.nodeId} reduceMotion={reduceMotion}
             onSelect={select}
-            onConnect={(from, to) => run(connectOutcome(ctx, from, to))}
+            onConnect={(from, to) => { const o = connectOutcome(ctx, from, to); run(o); return connectResult(o); }}
             onDropOnNode={(dragged, target) => run(dropOutcome(ctx, dragged, target))}
             onNodeMenu={onNodeMenu}
             positions={positionsFor(session.dispatch, model.scopeId)}
@@ -240,7 +240,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
       {done === null ? null : <ResultPanel plan={done.plan} counter={done.counter} label={done.label} onClose={() => setDone(null)} headingRef={resultHeading} />}
       <ChangeBar
         dirty={dirty} plan={plan} open={planOpen} onToggle={() => setPlanOpen(o => !o)} toggleRef={planToggle}
-        canUndo={canUndo} canRedo={canRedo} onUndo={() => dispatch({ type: 'undo' })} onRedo={() => dispatch({ type: 'redo' })}
+        canUndo={canUndo} canRedo={canRedo} onUndo={() => { dispatch({ type: 'undo' }); say(UNDO_WORDS); }} onRedo={() => { dispatch({ type: 'redo' }); say(REDO_WORDS); }}
         onDiscard={() => { dispatch({ type: 'discard' }); say('The waiting changes are discarded. Undo brings them back.'); }}
         label={label} onLabel={setLabel} onApply={apply}
       />
@@ -249,7 +249,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
       {accessFor === null ? null : (
         <AccessDialog
           agentName={accessFor.agentName} toolName={accessFor.toolName} current={accessFor.current} onClose={() => setAccessFor(null)}
-          onPick={access => { const f = accessFor; setAccessFor(null); run(attachToolOutcome(f.agentId, f.toolId, access, ACCESS_WORDS, f.agentName, f.toolName)); }}
+          onPick={access => { const f = accessFor; setAccessFor(null); run(attachToolOutcome(f.agentId, f.toolId, access, ACCESS_WORDS, f.agentName, f.toolName, f.current)); }}
         />
       )}
       {conflictItem === undefined ? null : (

@@ -181,11 +181,18 @@ export function describeSelection(world: World, model: HarnessMapModel, nodeId: 
 
 // ------------------------------------------------------------------------------------------------------------- the change bar
 
-/** The line at the left of the change bar. `fileCount` is the number of changes in the projection plan. */
-export function changeBarText(dirty: boolean, fileCount: number): string {
+/** The edits a plan stands for. A plan that did not count them is counted by its files. */
+export const editsOf = (plan: Plan): number => plan.edits ?? plan.changes.length;
+
+/** What the status line says after Undo and after Redo. */
+export const UNDO_WORDS = 'Undid the last change.';
+export const REDO_WORDS = 'Redid it.';
+
+/** The line at the left of the change bar. `editCount` is how many items differ; `fileCount` is how many files the projection would write. They are not the same number. */
+export function changeBarText(dirty: boolean, fileCount: number, editCount: number): string {
   if (!dirty) return 'No changes waiting';
-  if (fileCount === 0) return 'Changes waiting. No file would change.';
-  return `${count(fileCount, 'change')} waiting`;
+  const edits = `${count(editCount, 'edit')} waiting`;
+  return fileCount === 0 ? `${edits}. No file would change.` : `${edits}. ${count(fileCount, 'file')} would change.`;
 }
 
 /** The reason the Apply button is off, or null when it is on. */

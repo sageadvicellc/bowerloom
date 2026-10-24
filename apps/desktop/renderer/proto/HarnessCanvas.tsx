@@ -31,7 +31,8 @@ export interface HarnessCanvasProps {
   selectedId: string | null;
   onSelect(id: string | null): void;
   /** A wire was dragged from `sourceId` to `targetId` (or made with the keyboard). The canvas draws nothing new: the screen decides what it means. */
-  onConnect(sourceId: string, targetId: string): void;
+  /** A wire was drawn. Answer `done` when the wire was made and `refused` when it was not; the canvas announces and animates a wire only on `done`. Answering nothing means the screen still has a question to ask. */
+  onConnect(sourceId: string, targetId: string): void | 'done' | 'refused';
   /** A node was dropped on top of another one. The dropped node settles back to its place. */
   onDropOnNode(draggedId: string, targetId: string): void;
   /** `open` for double click and Enter. The rest come from the node's menu. `unhide` also means "stop replacing". */
@@ -239,8 +240,7 @@ function Flow({ props, box }: { props: HarnessCanvasProps; box: { width: number;
 
   const onConnect = useCallback((c: Connection) => {
     if (c.source === c.target) return;
-    settleNodes([c.source, c.target], 'connect');
-    latest.current.onConnect(c.source, c.target);
+    if (latest.current.onConnect(c.source, c.target) === 'done') settleNodes([c.source, c.target], 'connect');
   }, [settleNodes]);
 
   // Keyboard and menu.
@@ -263,7 +263,13 @@ function Flow({ props, box }: { props: HarnessCanvasProps; box: { width: number;
     const n = byId.get(id);
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (linkFrom !== null && linkFrom !== id) { const from = linkFrom; setLinkFrom(null); setAnnounce(`Connected ${byId.get(from)?.label ?? ''} to ${n?.label ?? ''}.`); settleNodes([from, id], 'connect'); props.onConnect(from, id); } else props.onNodeMenu(id, 'open');
+      if (linkFrom !== null && linkFrom !== id) {
+        const from = linkFrom, a = byId.get(from)?.label ?? '', b = n?.label ?? '';
+        setLinkFrom(null);
+        // The screen decides first. Only a wire that was made is announced and animated.
+        const result = props.onConnect(from, id);
+        if (result === 'done') { setAnnounce(`Connected ${a} to ${b}.`); settleNodes([from, id], 'connect'); } else setAnnounce(result === 'refused' ? `Could not connect ${a} to ${b}.` : '');
+      } else props.onNodeMenu(id, 'open');
     } else if (e.key === ' ') { e.preventDefault(); props.onSelect(id); }
     else if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setLinkFrom(id); setAnnounce(`Connecting from ${n?.label ?? 'this node'}. Move to another node and press Enter, or press Escape to cancel.`); }
     else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10') || (e.key.toLowerCase() === 'm' && !e.metaKey && !e.ctrlKey && !e.altKey)) { e.preventDefault(); const r = el.getBoundingClientRect(); openMenuAt(id, r.left + 24, r.bottom - 8); }

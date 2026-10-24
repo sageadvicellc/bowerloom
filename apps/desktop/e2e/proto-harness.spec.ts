@@ -95,7 +95,7 @@ test('journey 2: wire a skill to an agent, hide an inherited skill in a project,
   // Wire a skill to the agent with the keyboard.
   await wire(freeSkill.id, agent.id);
   await expect(message()).toContainText(`${agent.name} now uses the skill ${freeSkill.name}.`);
-  await expect(bar()).toContainText(/\d+ changes? waiting/);
+  await expect(bar()).toContainText(/1 edit waiting\. \d+ files would change\./);
   await node(agent.id).click();
   expect(await inspector.locator('.harness-facts').innerText()).not.toBe(before);
 
@@ -122,13 +122,14 @@ test('journey 2: wire a skill to an agent, hide an inherited skill in a project,
   for (const name of ['Claude Code', 'Codex', 'OpenCode']) await expect(bar().getByRole('region', { name })).toBeVisible();
   await expect(bar().locator('.harness-plan .chip').first()).toBeVisible();
   const files = await bar().locator('.harness-plan li').count();
-  await expect(bar().locator('.harness-count')).toContainText(`${files} changes waiting`);
+  await expect(bar().locator('.harness-count')).toContainText(`${files} files would change`);
   await bar().locator('.harness-plan summary').first().click();
   await expect(bar().locator('.harness-plan pre.file').first()).toBeVisible();
 
   // Apply with a short label.
   await bar().getByLabel('Short label for this version').fill('Wire a skill and hide one');
   await bar().getByRole('button', { name: 'Apply' }).click();
+  await expect(message()).toContainText('The changes are written (simulated)');
   const result = page.locator('section.harness-result');
   await expect(result.getByRole('heading', { level: 2, name: 'Written to Claude Code, Codex and OpenCode (simulated)' })).toBeVisible();
   await expect(result).toContainText('Saved as version 1: Wire a skill and hide one');
@@ -144,9 +145,14 @@ test('journey 2: wire a skill to an agent, hide an inherited skill in a project,
   await expect(result).toHaveCount(0);
   await expect(bar().getByRole('button', { name: 'Undo' })).toBeEnabled();
   await bar().getByRole('button', { name: 'Undo' }).click();
+  await expect(message()).toContainText('Undid the last change.');
+  await expect(message()).not.toContainText('is kept from');
   await expect(bar()).toContainText('No changes waiting');
   await expect(bar().getByRole('button', { name: 'Undo' })).toBeDisabled();
   await expect(bar().getByRole('button', { name: 'Redo' })).toBeEnabled();
+  await bar().getByRole('button', { name: 'Redo' }).click();
+  await expect(message()).toContainText('Redid it.');
+  await bar().getByRole('button', { name: 'Undo' }).click();
 
   // A reload starts from a fresh world: the wire is gone and nothing waits.
   await fresh();
@@ -175,7 +181,7 @@ test('a tool wired to an agent opens the access chooser with the placeholder wor
   await dialog.getByLabel('read and write').check();
   await dialog.getByRole('button', { name: 'Attach tool' }).click();
   await expect(message()).toContainText(`${agent.name} now has the tool ${freeTool.name}, with access: read and write.`);
-  await expect(bar()).toContainText(/\d+ changes? waiting/);
+  await expect(bar()).toContainText(/\d+ edits? waiting\. \d+ files? would change\./);
 });
 
 test('a wire that cannot be made does nothing and says why in the live region: a hook, a library item, two skills', async () => {
@@ -187,6 +193,9 @@ test('a wire that cannot be made does nothing and says why in the live region: a
   await expect(live).toContainText('never creates, copies, wires or changes one');
   await wire(freeSkill.id, CASE_IDS.tripleSkill);
   await expect(live).toContainText('A skill and a skill do not connect');
+  // A refused wire is not announced to a screen reader as connected, and the canvas says it could not.
+  await expect(page.locator('.hc-sr')).not.toContainText('Connected');
+  await expect(page.locator('.hc-sr')).toContainText('Could not connect');
   await node(`group:${CASE_IDS.newerLibrary}`).locator('.hc-toggle').click();
   await page.waitForSelector(`.react-flow__node[data-id="${CASE_IDS.newerLibraryItem}"]`);
   await wire(freeSkill.id, CASE_IDS.newerLibraryItem);
@@ -196,7 +205,7 @@ test('a wire that cannot be made does nothing and says why in the live region: a
   await node(CASE_IDS.newerLibraryItem).click();
   await page.getByRole('button', { name: 'Make an editable copy' }).click();
   await expect(message()).toContainText('Installed an editable copy');
-  await expect(bar()).toContainText(/\d+ changes? waiting/);
+  await expect(bar()).toContainText(/\d+ edits? waiting\. \d+ files? would change\./);
 });
 
 test('a conflict opens a dialog with the copies side by side; keyboard works, focus stays inside and returns; keep one or keep both', async () => {
@@ -260,7 +269,7 @@ test('a drop on a harness installs an editable copy there, and the interface fil
   await page.mouse.up();
   await expect(message()).toContainText(`Installed a copy of ${inheritedSkill.name} into Copperfen.`);
   // The copy has the same name and text as the inherited skill, so the files it writes are the same ones: the draft changed, no file does.
-  await expect(bar()).toContainText('Changes waiting. No file would change.');
+  await expect(bar()).toContainText('1 edit waiting. No file would change.');
   await expect(bar().getByRole('button', { name: 'Apply' })).toBeEnabled();
 });
 
@@ -306,7 +315,7 @@ test('Undo stops at a version: off after Apply and after a restore, on after a n
   await expect(bar()).toContainText('No changes waiting');
   await expect(undo()).toBeEnabled();
   await undo().click();
-  await expect(bar()).toContainText(/\d+ changes? waiting/);
+  await expect(bar()).toContainText(/\d+ edits? waiting\. \d+ files? would change\./);
   await bar().getByLabel('Short label for this version').fill('One');
   await bar().getByRole('button', { name: 'Apply' }).click();
   const result = page.locator('section.harness-result');

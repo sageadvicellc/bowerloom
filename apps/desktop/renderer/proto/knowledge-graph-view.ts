@@ -50,6 +50,14 @@ const cssVar = (name: string, fallback: string): string => getComputedStyle(docu
 const easeOut = (t: number): number => 1 - (1 - t) ** 3;
 export const cutKey = (from: string, to: string): string => `${from}>${to}`;
 
+/** What the status line says when the graph could not be built. The page list and the rule builder do not depend on the graph. */
+export const GRAPH_FAILED_WORDS = 'The graph could not be drawn. The list of pages still works.';
+
+/** Starts a view and tells `onFailed` if it cannot start (the library did not load, or the drawing code threw). Never throws and never leaves a promise unhandled. */
+export async function startGraph(view: { start(pages: readonly WikiPage[]): Promise<void> }, pages: readonly WikiPage[], onFailed: (error: unknown) => void): Promise<void> {
+  try { await view.start(pages); } catch (error) { onFailed(error); }
+}
+
 export class GraphView {
   private fg: import('force-graph').default | null = null;
   private nodes: GraphNode[] = [];

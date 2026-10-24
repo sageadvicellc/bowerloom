@@ -22,15 +22,18 @@ export interface DragView { readonly id: string; readonly label: string; readonl
  * pointer into a target name (or null); `onDrop` is told the dragged id and the target. Escape cancels. A small label follows the pointer.
  * Every drag has a keyboard way on the screen that uses this, so a person without a pointer loses nothing.
  */
-export function usePointerDrag({ targetOf, onDrop }: { targetOf(el: Element): string | null; onDrop(id: string, target: string): void }): {
+/** What a drop that lands on nothing says. */
+export const DROP_MISS_WORDS = 'Drop it on a harness chip, or use the Install to menu.';
+
+export function usePointerDrag({ targetOf, onDrop, onMiss }: { targetOf(el: Element): string | null; onDrop(id: string, target: string): void; onMiss?(): void }): {
   drag: DragView | null; start(e: ReactPointerEvent, id: string, label: string): void; ghost: ReactElement | null;
 } {
   const [drag, setDrag] = useState<DragView | null>(null);
   const live = useRef<{ id: string; label: string; x: number; y: number; active: boolean } | null>(null);
   const spot = useRef({ x: 0, y: 0 });
   const stopListening = useRef<(() => void) | null>(null);
-  const latest = useRef({ targetOf, onDrop });
-  latest.current = { targetOf, onDrop };
+  const latest = useRef({ targetOf, onDrop, onMiss });
+  latest.current = { targetOf, onDrop, onMiss };
 
   const finish = useCallback((): void => { stopListening.current?.(); stopListening.current = null; live.current = null; setDrag(null); }, []);
   useEffect(() => () => { stopListening.current?.(); }, []);
@@ -58,6 +61,7 @@ export function usePointerDrag({ targetOf, onDrop }: { targetOf(el: Element): st
       const d = live.current, target = d !== null && d.active ? under(ev) : null;
       finish();
       if (d !== null && target !== null) latest.current.onDrop(d.id, target);
+      else if (d !== null && d.active) latest.current.onMiss?.();
     };
     const key = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') finish(); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', finish); window.addEventListener('keydown', key);

@@ -5,7 +5,7 @@ import type { Preview } from '../../shared/proto/slice-preview.js';
 import type { LassoMode } from '../../shared/proto/slice-lasso.js';
 import type { WikiPage } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
-import { GraphView, cutKey, domainsOf } from './knowledge-graph-view.js';
+import { GRAPH_FAILED_WORDS, GraphView, cutKey, domainsOf, startGraph } from './knowledge-graph-view.js';
 
 export interface KnowledgeGraphProps {
   readonly pages: readonly WikiPage[];
@@ -27,7 +27,7 @@ export { domainsOf };
 
 export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, onPageClick, viewRef }: KnowledgeGraphProps): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null), overlayRef = useRef<HTMLCanvasElement>(null), view = useRef<GraphView | null>(null);
-  const [settled, setSettled] = useState(false), [inside, setInside] = useState<number | null>(null);
+  const [settled, setSettled] = useState(false), [inside, setInside] = useState<number | null>(null), [failed, setFailed] = useState(false);
   // The latest callbacks, so the view is built once and never rebuilt for a new function.
   const latest = useRef({ onLasso, onPageClick });
   latest.current = { onLasso, onPageClick };
@@ -39,7 +39,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
   useEffect(() => {
     const host = hostRef.current, overlay = overlayRef.current;
     if (host === null || overlay === null) return undefined;
-    setSettled(false);
+    setSettled(false); setFailed(false);
     const v = new GraphView(host, overlay, {
       onLasso: (ids, mode) => { setInside(null); latest.current.onLasso(ids, mode); },
       onLassoMove: n => setInside(n),
@@ -48,7 +48,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
     });
     view.current = v;
     if (viewRef !== undefined) viewRef.current = v;
-    void v.start(pages);
+    void startGraph(v, pages, error => { if (view.current === v) setFailed(true); console.error('The wiki graph could not be drawn.', error); });
     return () => { v.dispose(); view.current = null; if (viewRef !== undefined) viewRef.current = null; };
   }, [pages, viewRef]);
 
@@ -66,7 +66,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
   const summary = `${plural(pages.length, 'page')}, ${plural(links, 'link')}, ${plural(domains.length, 'domain folder')}. ${plural(preview.count, 'page')} lit as part of the slice and ${plural(pages.length - preview.count, 'page')} dimmed. ${plural(preview.cutCount, 'link')} leave the slice and are drawn dashed.`;
   return (
     <div className="kn-graph">
-      <div className="kn-canvas" ref={hostRef} role="img" aria-label={`Graph of the wiki. ${summary}`} aria-describedby="kn-graph-summary" data-settled={settled ? '1' : '0'} />
+      <div className="kn-canvas" ref={hostRef} role="img" aria-label={`Graph of the wiki. ${summary}`} aria-describedby="kn-graph-summary" data-settled={settled ? '1' : '0'} data-failed={failed ? '1' : '0'} />
       <canvas
         className="kn-overlay" ref={overlayRef} aria-hidden="true"
         onPointerDown={e => view.current?.down(e.nativeEvent)} onPointerMove={e => view.current?.move(e.nativeEvent)}
@@ -74,7 +74,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
       />
       <p id="kn-graph-summary" className="kn-summary small muted">{summary}</p>
       <p className="kn-status small" role="status" aria-live="polite" data-testid="graph-status">
-        {inside !== null ? `${plural(inside, 'page')} inside the loop.` : settled ? 'The graph has settled.' : 'The graph is settling.'}
+        {failed ? GRAPH_FAILED_WORDS : inside !== null ? `${plural(inside, 'page')} inside the loop.` : settled ? 'The graph has settled.' : 'The graph is settling.'}
       </p>
     </div>
   );

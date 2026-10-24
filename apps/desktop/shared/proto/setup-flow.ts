@@ -117,3 +117,29 @@ export function nestingOf(harnessRoot: string, knowledgeRoot: string): Nesting {
   if (h.startsWith(`${k}/`)) return 'harness-inside';
   return 'apart';
 }
+
+// ---------------------------------------------------------------------------------------------------- the bring in step, told honestly
+
+/** What stops Bring in when the draft holds edits that this flow did not make. */
+export const BRING_BLOCKED_WORDS = 'You have unsaved changes on the Harness screen. Apply or discard them first.';
+
+/** The counts on the Bring in step. The prototype keeps every item it found, ticked or not, so the count says how many of them the ticks cover. */
+export function bringInWords(review: { readonly itemCount: number }, world: World): { readonly count: string; readonly keeps: string } {
+  const found = world.items.filter(i => i.foundAt.length > 0).length;
+  return { count: `${review.itemCount} of ${found} items are in the places you ticked.`, keeps: 'The prototype keeps every item it found.' };
+}
+
+/** What the flow knew about the draft when it began, and after its own last edit: the draft as text, and whether it was already dirty at the start. */
+export interface DraftBaseline { readonly snapshot: string; readonly foreign: boolean }
+
+/** True when the draft holds edits the setup flow did not make, so Bring in would apply them under its own label. */
+export function unrelatedEdits(baseline: DraftBaseline | undefined, currentSnapshot: string, dirty: boolean): boolean {
+  if (baseline === undefined || !dirty) return false;
+  return baseline.foreign || baseline.snapshot !== currentSnapshot;
+}
+
+/** The conflicts that are settled now: those the person settled and that the world no longer shows as a conflict. Undo or Discard brings a conflict back, and it leaves this list. */
+export function settledList(resolved: Readonly<Record<string, string>>, conflicts: readonly { readonly itemId: string }[]): [string, string][] {
+  const open = new Set(conflicts.map(c => c.itemId));
+  return Object.entries(resolved).filter(([id]) => !open.has(id));
+}

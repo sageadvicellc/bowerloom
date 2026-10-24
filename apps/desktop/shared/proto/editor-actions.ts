@@ -128,8 +128,18 @@ export function connectOutcome(ctx: EditorContext, sourceId: string, targetId: s
 }
 
 /** The action that attaches a tool once the person has picked an access class. The message is for the live region. */
-export function attachToolOutcome(agentId: string, toolId: string, access: AccessClass, words: Readonly<Record<AccessClass, string>>, agentName: string, toolName: string): EditorOutcome {
+export function attachToolOutcome(agentId: string, toolId: string, access: AccessClass, words: Readonly<Record<AccessClass, string>>, agentName: string, toolName: string, current?: AccessClass | null): EditorOutcome {
+  // The store returns the same state for this, so say so instead of "Done".
+  if (current === access) return refuse('It already has this tool with that access.');
   return { kind: 'action', action: { type: 'attachTool', agentId, toolId, access }, message: `${agentName} now has the tool ${toolName}, with access: ${words[access]}.` };
+}
+
+/**
+ * What the canvas is told about a wire it reported: `done` when the wire was made, `refused` when it was not, and nothing yet when the screen
+ * still has a question to ask (the access class of a tool). The canvas announces and animates a wire only on `done`.
+ */
+export function connectResult(o: EditorOutcome): 'done' | 'refused' | undefined {
+  return o.kind === 'action' ? 'done' : o.kind === 'refused' ? 'refused' : undefined;
 }
 
 /**

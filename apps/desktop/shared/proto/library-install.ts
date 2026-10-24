@@ -10,7 +10,8 @@ import { interfaceName, joinWords } from './words.js';
 import type { HarnessMapModel } from './harnessmodel.js';
 import { dropOutcome } from './editor-actions.js';
 import type { EditorContext, EditorOutcome } from './editor-actions.js';
-import { changeBarText, groupPlan } from './editor-describe.js';
+import { changeBarText, editsOf, groupPlan } from './editor-describe.js';
+import { reduceStore } from './store.js';
 import { LIBRARY_CATALOG } from './library-catalog.js';
 import type { InterfaceId, Plan, Scope, World } from './types.js';
 
@@ -69,18 +70,26 @@ export function defaultTarget(targets: readonly InstallTarget[]): InstallTarget 
 }
 
 /** The sentence that follows a confirmation: how many changes wait, and where they are applied. It reuses the change bar's own words. */
-export function waitingSentence(dirty: boolean, fileCount: number): string {
-  return `${changeBarText(dirty, fileCount).replace(/\.$/, '')}. Apply on the Harness screen.`;
+export function waitingSentence(dirty: boolean, fileCount: number, editCount: number): string {
+  const waiting = changeBarText(dirty, fileCount, editCount);
+  return `${waiting.endsWith('.') ? waiting : `${waiting}.`} Apply on the Harness screen.`;
 }
 
 /** What the "Waiting to apply" list shows: the change bar's line, and one short line for each interface the changes would reach. */
 export interface WaitingView { readonly headline: string; readonly lines: readonly string[]; readonly dirty: boolean }
 
 export function waitingView(dirty: boolean, plan: Plan): WaitingView {
-  return { headline: changeBarText(dirty, plan.changes.length), dirty, lines: dirty ? groupPlan(plan).map(g => `${g.name}: ${g.summary}`) : [] };
+  return { headline: changeBarText(dirty, plan.changes.length, editsOf(plan)), dirty, lines: dirty ? groupPlan(plan).map(g => `${g.name}: ${g.summary}`) : [] };
 }
 
 // ------------------------------------------------------------------------------------------------------------- libraries
+
+/** Adding a library, decided with the store's own rule: when the store would return the same state, the library is not added, and the screen says so. */
+export function addLibraryOutcome(world: World, libraryId: string): EditorOutcome {
+  const action = { type: 'addLibrary', libraryId } as const;
+  const before = { committed: world, draft: world, undoStack: [], redoStack: [], headVersionId: null };
+  return reduceStore(before, action) === before ? { kind: 'refused', message: 'Already added.' } : { kind: 'action', action, message: 'Added.' };
+}
 
 /** One library the "Add skills" panel lists. An installed one comes from the world; an available one comes from the catalog. */
 export interface LibraryOffer {

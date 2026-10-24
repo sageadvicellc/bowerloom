@@ -14,6 +14,8 @@
  */
 import type { AgentItem, HarnessItem, InterfaceId, Plan, PlanChange, World } from './types.js';
 import { effectiveItems, effectiveResolver, fileSlug } from './common.js';
+import { snapshotOf } from './store.js';
+import { diffCount, diffVersions } from './versions-diff.js';
 
 const ORDER: readonly InterfaceId[] = ['claude-code', 'codex', 'opencode'];
 const PREVIEW_LIMIT = 400;
@@ -90,5 +92,12 @@ export function planProjection(committed: World, draft: World): Plan {
   }
   for (const [key, file] of before) if (!after.has(key)) changes.push({ interface: file.interface, path: file.path, action: 'remove', preview: shorten(file.content) });
   changes.sort((a, b) => (ORDER.indexOf(a.interface) - ORDER.indexOf(b.interface)) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { changes };
+  return { changes, edits: editCount(committed, draft) };
+}
+
+/** How many items, project choices and slices differ between two worlds: one edit is one thing, however many files it writes. A changed world counts at least one. */
+export function editCount(committed: World, draft: World): number {
+  if (committed === draft) return 0;
+  const n = diffCount(diffVersions(snapshotOf(committed), snapshotOf(draft)));
+  return n === 0 && snapshotOf(committed) !== snapshotOf(draft) ? 1 : n;
 }

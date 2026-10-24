@@ -16,10 +16,16 @@ export function ProtoProvider({ store, children }: { store: Store; children?: Re
 /** What a screen sees of the session: the current state and the way to change it. */
 export interface ProtoSession { readonly state: StoreState; dispatch(action: StoreAction): void }
 
+/** The words of the error `useProtoStore` throws when there is no provider. */
+export const MISSING_SESSION_MESSAGE = 'This screen needs the prototype session. Wrap it in ProtoProvider.';
+
+/** True for that error and no other. A caller that wants to carry on without a session catches this one only. */
+export const isMissingSession = (error: unknown): boolean => error instanceof Error && error.message === MISSING_SESSION_MESSAGE;
+
 /** The state of the store, kept up to date as it changes, plus `dispatch`. Throws in plain words when there is no provider. */
 export function useProtoStore(): ProtoSession {
   const store = useContext(StoreContext);
-  if (store === null) throw new Error('This screen needs the prototype session. Wrap it in ProtoProvider.');
+  if (store === null) throw new Error(MISSING_SESSION_MESSAGE);
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   return { state, dispatch: store.dispatch };
 }

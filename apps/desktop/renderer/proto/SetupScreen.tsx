@@ -6,14 +6,15 @@
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { isDirty } from '../../shared/proto/store.js';
+import { isDirty, reduceStore, snapshotOf } from '../../shared/proto/store.js';
+import type { StoreAction } from '../../shared/proto/store.js';
 import { PLACE_GROUPS, buildScan } from '../../shared/proto/scan-places.js';
 import type { ScanPlace } from '../../shared/proto/scan-places.js';
 import { keepBothProblem } from '../../shared/proto/conflicts.js';
 import { INTERFACE_WORDS, buildReview } from '../../shared/proto/scan-review.js';
 import type { Review, ReviewConflict } from '../../shared/proto/scan-review.js';
-import { FLOW_STEPS, STEP_COUNT, STEP_TITLES, folderChoices, initialSetup, nestingOf, reduceSetup, stepNumber } from '../../shared/proto/setup-flow.js';
-import type { SetupState } from '../../shared/proto/setup-flow.js';
+import { BRING_BLOCKED_WORDS, FLOW_STEPS, STEP_COUNT, STEP_TITLES, bringInWords, folderChoices, initialSetup, nestingOf, reduceSetup, settledList, stepNumber, unrelatedEdits } from '../../shared/proto/setup-flow.js';
+import type { DraftBaseline, SetupState } from '../../shared/proto/setup-flow.js';
 import type { Version, World } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
 import { HarnessIcon } from './icons.js';
@@ -35,6 +36,8 @@ const kept = new WeakMap<object, SetupState>();
 // How many versions there were when the current run began (on the welcome step). Done names only a version made after that, so a second
 // run never claims the version of the first.
 const startedWith = new WeakMap<object, number>();
+// What the draft was when the run began, and after the run's own last edit (a settled conflict). Edits made elsewhere show up as a difference.
+const baselines = new WeakMap<object, DraftBaseline>();
 
 /** What Start again does and does not do, in one sentence. It resets this screen only. */
 export const START_AGAIN_WORDS = 'Start again resets these steps only; it does not undo changes already made to the harness, which you can drop with Discard on the Harness screen.';
@@ -63,6 +66,9 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
   useEffect(() => { kept.set(dispatch, flow); }, [dispatch, flow]);
   const versionCount = state.committed.versions.length;
   useEffect(() => { if (flow.step === 'welcome') startedWith.set(dispatch, versionCount); }, [dispatch, flow.step, versionCount]);
+  const dirtyNow = isDirty(state);
+  useEffect(() => { if (flow.step === 'welcome') baselines.set(dispatch, { snapshot: snapshotOf(state.draft), foreign: dirtyNow }); }, [dispatch, flow.step]); // eslint-disable-line react-hooks/exhaustive-deps
+  const blocked = unrelatedEdits(baselines.get(dispatch), snapshotOf(state.draft), dirtyNow);
 
   const places = useMemo(() => buildScan(world), [world]);
   const ids = useMemo(() => new Set(places.map(p => p.id)), [places]);
@@ -107,7 +113,7 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
         {flow.step === 'places' && <Places flow={flow} send={send} places={places} world={world} />}
         {flow.step === 'contents' && <Contents send={send} places={places} ticked={ticked} />}
         {flow.step === 'review' && <ReviewStep flow={flow} send={send} review={review} session={session} />}
-        {flow.step === 'bring-in' && <BringIn flow={flow} send={send} review={review} places={ticked.length} session={session} />}
+        {flow.step === 'bring-in' && <BringIn flow={flow} send={send} review={review} places={ticked.length} world={world} session={session} blocked={blocked} />}
         {flow.step === 'done' && <Done send={send} review={review} session={session} since={startedWith.get(dispatch) ?? 0} />}
       </section>
     </div>
@@ -265,7 +271,8 @@ function Contents({ send, places, ticked }: { send: Send; places: ScanPlace[]; t
 
 function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: Send; review: Review; session: ProtoSession }): ReactElement {
   const left = review.conflicts.length;
-  const settled = Object.entries(flow.resolved);
+  // Derived from the world each time: a conflict that came back (Discard, Undo) is not settled.
+  const settled = settledList(flow.resolved, review.conflicts);
   // Settling a conflict removes its card, and the keyboard was on that card. It goes to the next unsettled conflict, or to Continue when none is left.
   const next = useRef<string | null>(null);
   const continueButton = useRef<HTMLButtonElement>(null);
@@ -339,6 +346,13 @@ function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: S
   );
 }
 
+/** Sends the store an edit that belongs to this run, and moves the baseline with it, so Bring in can tell its own edits from the ones made elsewhere. */
+function dispatchOwn(session: ProtoSession, action: StoreAction): void {
+  const before = baselines.get(session.dispatch);
+  baselines.set(session.dispatch, { snapshot: snapshotOf(reduceStore(session.state, action).draft), foreign: before?.foreign === true && isDirty(session.state) });
+  session.dispatch(action);
+}
+
 const conflictHeadingId = (itemId: string): string => `sx-conflict-h-${itemId}`;
 
 const andList = (words: readonly string[]): string => (words.length < 3 ? words.join(' and ') : `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}`);
@@ -349,14 +363,14 @@ function Conflict({ conflict, session, onSettled }: { conflict: ReviewConflict; 
   const [problem, setProblem] = useState<string | null>(null);
   const finds = conflict.variants.map(v => v.interfaces.map(f => INTERFACE_WORDS[f]).join(' and '));
   const settle = (index: number, label: string): void => {
-    session.dispatch({ type: 'resolveConflict', itemId: conflict.itemId, keep: index });
+    dispatchOwn(session, { type: 'resolveConflict', itemId: conflict.itemId, keep: index });
     onSettled(`${conflict.name}: kept the ${label} version.`);
   };
   const keepBoth = (): void => {
     const why = keepBothProblem(session.state.draft, conflict.itemId, names);
     setProblem(why);
     if (why !== null) return;
-    session.dispatch({ type: 'resolveConflict', itemId: conflict.itemId, keep: 'keep-both', names: names.map(n => n.trim()) });
+    dispatchOwn(session, { type: 'resolveConflict', itemId: conflict.itemId, keep: 'keep-both', names: names.map(n => n.trim()) });
     onSettled(`${conflict.name}: kept all ${conflict.variants.length} versions under separate names (${names.map(n => n.trim()).join(', ')}).`);
   };
   const panel = `sx-conflict-${conflict.itemId}`;
@@ -397,24 +411,27 @@ function Conflict({ conflict, session, onSettled }: { conflict: ReviewConflict; 
 
 // ---------------------------------------------------------------------------------------------------- 5. bring in, and done
 
-function BringIn({ flow, send, review, places, session }: { flow: SetupState; send: Send; review: Review; places: number; session: ProtoSession }): ReactElement {
+export function BringIn({ flow, send, review, places, world, session, blocked }: { flow: SetupState; send: Send; review: Review; places: number; world: World; session: ProtoSession; blocked: boolean }): ReactElement {
+  const words = bringInWords(review, world);
   const bring = (): void => {
+    if (blocked) return;
     if (isDirty(session.state)) session.dispatch({ type: 'apply', label: BROUGHT_IN_LABEL });
     send({ type: 'bringIn' });
   };
   return (
     <>
-      <p>Bowerloom copies. Your original files stay as they are.</p>
+      <p>Bowerloom copies. Your original files stay as they are. {words.keeps}</p>
       <dl className="kv sx-summary">
         <dt>From</dt><dd>{plural(places, 'ticked place')}</dd>
-        <dt>Brings in</dt><dd>{counts(review)}, and {plural(review.libraryTotal, 'library item')} as references</dd>
+        <dt>In the ticked places</dt><dd>{counts(review)}, and {plural(review.libraryTotal, 'library item')} as references. {words.count}</dd>
         <dt>Harness root</dt><dd className="tech">{flow.harnessRoot}</dd>
         <dt>Knowledge root</dt><dd className="tech">{flow.knowledgeRoot}</dd>
       </dl>
       <div className="sx-actions">
         <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
-        <button type="button" className="btn big" onClick={bring}>Bring these in</button>
+        <button type="button" className="btn big" disabled={blocked} aria-describedby={blocked ? 'sx-bring-blocked' : undefined} onClick={bring}>Bring these in</button>
       </div>
+      {blocked && <p id="sx-bring-blocked" className="warning" role="alert">{BRING_BLOCKED_WORDS}</p>}
     </>
   );
 }

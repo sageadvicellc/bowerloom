@@ -171,6 +171,12 @@ function detailOf(item: HarnessItem, world: World): string {
   }
 }
 
+/** What the root node says when it counts nothing. A filter that hides every item is told as a filter, not as an empty harness. */
+function emptyRootWords(view: HarnessView, scopeKind: Scope['kind'], entryCount: number): string {
+  if (view.interfaceFilter !== undefined || (scopeKind === 'project' && !view.showInherited)) return 'Nothing to show with this filter.';
+  return entryCount > 0 ? 'Everything here is hidden or replaced.' : 'Nothing here yet';
+}
+
 /** Builds the graph for one scope. See the notes at the top of this file for what is drawn. */
 export function buildHarnessMap(world: World, view: HarnessView): HarnessMapModel {
   const scope = world.scopes.find(s => s.id === view.scopeId) ?? world.scopes.find(s => s.kind === 'global');
@@ -259,7 +265,7 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
   const counts = new Map<string, number>();
   for (const e of visible) if (!isHidden(e) && !isReplaced(e) && e.item.kind !== 'context-slice') counts.set(e.item.kind, (counts.get(e.item.kind) ?? 0) + 1);
   const summary = (['agent', 'skill', 'tool'] as const).filter(k => (counts.get(k) ?? 0) > 0).map(k => plural(counts.get(k)!, k)).join(', ');
-  push({ ...base(scopeNodeId(scope.id), 'scope', scope.kind === 'global' ? 'Global harness' : 'Project harness', scope.name, summary === '' ? 'Nothing here yet' : summary) });
+  push({ ...base(scopeNodeId(scope.id), 'scope', scope.kind === 'global' ? 'Global harness' : 'Project harness', scope.name, summary === '' ? emptyRootWords(view, scope.kind, visible.length) : summary) });
   for (const f of faces) {
     const installed = f.installed === 'installed';
     push({

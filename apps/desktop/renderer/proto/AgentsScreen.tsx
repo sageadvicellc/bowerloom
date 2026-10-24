@@ -11,6 +11,7 @@ import type { KeyboardEvent, ReactElement } from 'react';
 import { agentLists, moreLabel, rowsLeft, visibleRows } from '../../shared/proto/agents-logic.js';
 import type { EditorOutcome } from '../../shared/proto/editor-actions.js';
 import { countWord, installOutcome, waitingSentence, waitingView } from '../../shared/proto/library-install.js';
+import { editsOf } from '../../shared/proto/editor-describe.js';
 import { planProjection } from '../../shared/proto/plan.js';
 import { isDirty } from '../../shared/proto/store.js';
 import type { AgentItem, Plan } from '../../shared/proto/types.js';
@@ -115,7 +116,7 @@ function AgentsManager({ session }: { session: ProtoSession }): ReactElement {
         </div>
       </div>
 
-      <WaitingPanel view={waitingView(dirty, plan)} note={shown === null ? null : { ...shown.note, text: shown.waits ? `${shown.note.text} ${waitingSentence(dirty, plan.changes.length)}` : shown.note.text }} />
+      <WaitingPanel view={waitingView(dirty, plan)} note={shown === null ? null : { ...shown.note, text: shown.waits ? `${shown.note.text} ${waitingSentence(dirty, plan.changes.length, editsOf(plan))}` : shown.note.text }} />
     </div>
   );
 }

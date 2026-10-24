@@ -51,7 +51,7 @@ test('the change bar with no changes: says so, Apply is off with its reason, and
   assert.match(text, /No changes waiting/);
   for (const name of ['Apply', 'Undo', 'Redo', 'Discard', 'See what will be written']) assert.match(markup, new RegExp(`<button[^>]*disabled=""[^>]*>${name}</button>|<button[^>]*disabled=""[^>]*aria-describedby="[^"]*"[^>]*>${name}</button>|<button[^>]*aria-describedby="[^"]*"[^>]*disabled=""[^>]*>${name}</button>`), name);
   assert.match(text, /There is nothing to apply\. Make a change first\./);
-  assert.equal(changeBarText(false, 0), 'No changes waiting'); assert.equal(changeBarText(false, 7), 'No changes waiting');
+  assert.equal(changeBarText(false, 0, 0), 'No changes waiting'); assert.equal(changeBarText(false, 7, 2), 'No changes waiting');
   assert.equal(applyReason(false), 'There is nothing to apply. Make a change first.'); assert.equal(applyReason(true), null);
 });
 
@@ -61,13 +61,14 @@ test('the change bar with changes: the count, a label field, and Apply on', () =
   const plan = planProjection(store.getState().committed, store.getState().draft);
   assert.ok(plan.changes.length >= 3, 'a change in an agent is written to every installed interface');
   const markup = withStore(store), text = textOf(markup);
-  assert.match(text, new RegExp(`${plan.changes.length} changes waiting`));
+  assert.equal(plan.edits, 1, 'one attached skill is one edit');
+  assert.match(text, new RegExp(`1 edit waiting\\. ${plan.changes.length} files would change\\.`));
   assert.doesNotMatch(markup, /<button[^>]*disabled=""[^>]*>Apply<\/button>/);
   assert.match(markup, /<button[^>]*>Apply<\/button>/);
   assert.match(markup, /<button[^>]*>See what will be written<\/button>/);
   assert.match(markup, /placeholder="Short label for this version"/);
-  assert.equal(changeBarText(true, 1), '1 change waiting'); assert.equal(changeBarText(true, 12), '12 changes waiting');
-  assert.equal(changeBarText(true, 0), 'Changes waiting. No file would change.');
+  assert.equal(changeBarText(true, 1, 1), '1 edit waiting. 1 file would change.'); assert.equal(changeBarText(true, 12, 5), '5 edits waiting. 12 files would change.');
+  assert.equal(changeBarText(true, 0, 1), '1 edit waiting. No file would change.');
 });
 
 function planOf(): Plan {

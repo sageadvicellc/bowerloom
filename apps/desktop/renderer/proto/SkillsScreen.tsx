@@ -11,8 +11,9 @@ import { keepBothOutcome, keepOneOutcome, overrideOutcome } from '../../shared/p
 import type { EditorOutcome } from '../../shared/proto/editor-actions.js';
 import type { FolderCandidate } from '../../shared/proto/library-catalog.js';
 import {
-  contextFor, folderNote, installOutcome, installTargets, libraryOffers, scopeLabel, waitingSentence, waitingView, countWord,
+  addLibraryOutcome, contextFor, folderNote, installOutcome, installTargets, libraryOffers, scopeLabel, waitingSentence, waitingView, countWord,
 } from '../../shared/proto/library-install.js';
+import { editsOf } from '../../shared/proto/editor-describe.js';
 import { planProjection } from '../../shared/proto/plan.js';
 import { buildIndex, describePlacement, EVERY_HARNESS, groupSkills, INTERFACE_CHIPS, skillRows, skillsSummary } from '../../shared/proto/skills-logic.js';
 import type { SkillRow } from '../../shared/proto/skills-logic.js';
@@ -20,7 +21,7 @@ import { isDirty } from '../../shared/proto/store.js';
 import type { InterfaceId, Plan } from '../../shared/proto/types.js';
 import { ConflictDialog } from './harness-parts.js';
 import { useOptionalProtoStore } from './harness-session.js';
-import { doneNote, notedNote, refusedNote, usePointerDrag, WaitingPanel } from './library-parts.js';
+import { DROP_MISS_WORDS, doneNote, notedNote, refusedNote, usePointerDrag, WaitingPanel } from './library-parts.js';
 import type { Note } from './library-parts.js';
 import type { ProtoSession } from './session.js';
 import { AddSkillsPanel, LibrarySection, SkillCard } from './skills-parts.js';
@@ -92,6 +93,7 @@ function SkillsManager({ session }: { session: ProtoSession }): ReactElement {
   const pointer = usePointerDrag({
     targetOf: el => { const id = el.closest<HTMLElement>('[data-scope]')?.dataset.scope; return id === undefined || id === EVERY_HARNESS ? null : id; },
     onDrop: (itemId, target) => install(itemId, target),
+    onMiss: () => say(refusedNote(DROP_MISS_WORDS)),
   });
   const dragging = pointer.drag?.id ?? null, over = pointer.drag?.over ?? null;
   const handlers: CardHandlers = {
@@ -105,7 +107,10 @@ function SkillsManager({ session }: { session: ProtoSession }): ReactElement {
   const addLibrary = (libraryId: string): void => {
     const offer = offers.find(o => o.id === libraryId);
     if (offer === undefined || offer.state === 'installed') { say(refusedNote(`${offer?.name ?? 'That library'} is already added.`)); return; }
-    dispatch({ type: 'addLibrary', libraryId });
+    // The store may refuse (an item id is taken). Ask the same rule first, so the screen never says "added" for nothing.
+    const outcome = addLibraryOutcome(world, libraryId);
+    if (outcome.kind !== 'action') { say(refusedNote(outcome.kind === 'refused' ? outcome.message : 'Already added.')); return; }
+    dispatch(outcome.action);
     setOpenLibs(prev => (prev.includes(libraryId) ? prev : [...prev, libraryId]));
     say(doneNote(`${offer.name} is added: ${countWord(offer.skillCount, 'skill')} and ${countWord(offer.agentCount, 'agent')}. They are read only references.`), true);
   };
@@ -197,7 +202,7 @@ function SkillsManager({ session }: { session: ProtoSession }): ReactElement {
         {groups.conflicts.length === 0 ? <p className="muted">{searching ? 'No such skill matches the search.' : 'Nothing is found in several tools with different text.'}</p> : cards(groups.conflicts, 3)}
       </section>
 
-      <WaitingPanel view={waitingView(dirty, plan)} note={shown === null ? null : { ...shown.note, text: shown.waits ? `${shown.note.text} ${waitingSentence(dirty, plan.changes.length)}` : shown.note.text }} />
+      <WaitingPanel view={waitingView(dirty, plan)} note={shown === null ? null : { ...shown.note, text: shown.waits ? `${shown.note.text} ${waitingSentence(dirty, plan.changes.length, editsOf(plan))}` : shown.note.text }} />
       {pointer.ghost}
 
       {conflictItem === undefined ? null : (

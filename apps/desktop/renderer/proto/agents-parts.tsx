@@ -81,6 +81,7 @@ export function AgentDetail({ committed, world, agent, go, copyTo, onCopyTo, onM
   const pointer = usePointerDrag({
     targetOf: el => el.closest<HTMLElement>('li.agents-skill')?.dataset.position ?? null,
     onDrop: (skillId, position) => go(moveSkillOutcome(world, agent, skillId, Number(position))),
+    onMiss: () => go({ kind: 'refused', message: 'Drop the skill on another skill in the list, or use Move up and Move down.' }),
   });
   const dragId = pointer.drag?.id ?? null, overPosition = pointer.drag?.over ?? null;
 

@@ -63,7 +63,7 @@ const note = () => page.locator('.lib-note');
 const card = (id: string) => page.locator(`article.lib-card[data-item="${id}"]`);
 const chip = (label: string) => page.getByRole('group', { name: 'Harness' }).getByRole('button', { name: label, exact: true });
 const waiting = () => page.locator('section.lib-waiting');
-const waitingCount = async (): Promise<number> => Number(/(\d+) change/.exec(await waiting().locator('.lib-waiting-count').innerText())?.[1] ?? '0');
+const waitingCount = async (): Promise<number> => Number(/(\d+) files? would change/.exec(await waiting().locator('.lib-waiting-count').innerText())?.[1] ?? '0');
 async function shot(name: string, w: number, h: number): Promise<void> {
   if (shotsDir !== null) { await animationsDone(page); await page.screenshot({ path: join(shotsDir, `${name}-${w}x${h}.png`), scale: 'css' }); }
 }
@@ -98,6 +98,14 @@ test('the skills screen opens on the global harness with the three groups, 43 sk
   // The headings never skip a level.
   const levels = await page.locator('main h1, main h2, main h3, main h4').evaluateAll(els => els.map(e => Number(e.tagName.slice(1))));
   for (let i = 1; i < levels.length; i += 1) expect(levels[i]!, `heading ${i}`).toBeLessThanOrEqual(levels[i - 1]! + 1);
+});
+
+test('a card dropped on nothing says where it can go', async () => {
+  await fresh();
+  await pointerDrag(card(menuSkill.id), page.getByRole('heading', { level: 1 }));
+  await expect(note()).toContainText('Nothing changed.');
+  await expect(note()).toContainText('Drop it on a harness chip, or use the Install to menu.');
+  await expect(waiting()).toContainText('No changes waiting');
 });
 
 test('search narrows by name and by description, and the interface chip keeps skills found in that interface', async () => {
@@ -146,7 +154,7 @@ test('install to a project by the menu, with the keyboard alone: a menu, a plain
   await page.keyboard.press('Enter');
   await expect(note()).toContainText(`Installed a copy of ${menuSkill.name} into Copperfen.`);
   await expect(note()).toContainText('Apply on the Harness screen.');
-  await expect(waiting()).toContainText('Changes waiting');
+  await expect(waiting()).toContainText('1 edit waiting. No file would change.');
   await expect(waiting().getByRole('heading', { level: 2, name: 'Waiting to apply' })).toBeVisible();
   await expect(trigger).toBeFocused();
 });
@@ -225,7 +233,7 @@ test('Add skills: a folder lists what it found and reads nothing; Lantern Works 
   // A library: Lantern Works.
   await panel.getByRole('button', { name: /Add this library/ }).click();
   await expect(note()).toContainText('Lantern Works is added: 6 skills and 3 agents.');
-  await expect(note()).toContainText('Changes waiting. No file would change. Apply on the Harness screen.');
+  await expect(note()).toContainText('9 edits waiting. No file would change. Apply on the Harness screen.');
   await expect(panel.getByRole('button', { name: /Add this library/ })).toHaveCount(0);
   const lantern = page.getByRole('button', { name: /^Lantern Works/ });
   await expect(lantern).toHaveAttribute('aria-expanded', 'true');
@@ -302,7 +310,7 @@ test('a library agent is read only: its controls explain, the copy goes to the c
   await expect(page.locator('.agents-row[aria-current="true"]')).toContainText(libraryAgent.name);
   // The copy is written to every installed interface when the changes are applied.
   await expect(detail).toContainText('would be written');
-  await expect(waiting()).toContainText(/\d+ changes? waiting/);
+  await expect(waiting()).toContainText(/\d+ edits? waiting\. \d+ files? would change\./);
 });
 
 test('attach a skill with the combobox, reorder with the buttons and by drag, detach, and change a tool\'s access; then the Harness screen shows the count', async () => {
@@ -364,8 +372,8 @@ test('attach a skill with the combobox, reorder with the buttons and by drag, de
   const here = await waitingCount();
   expect(here).toBeGreaterThan(afterAttach - 1);
   await open('Harness');
-  await expect(page.locator('section.harness-bar .harness-count')).toContainText(/\d+ changes? waiting/);
-  const onHarness = Number(/(\d+) change/.exec(await page.locator('section.harness-bar .harness-count').innerText())?.[1]);
+  await expect(page.locator('section.harness-bar .harness-count')).toContainText(/\d+ edits? waiting\. \d+ files? would change\./);
+  const onHarness = Number(/(\d+) files? would change/.exec(await page.locator('section.harness-bar .harness-count').innerText())?.[1]);
   expect(onHarness).toBe(here);
   await expect(page.locator('section.harness-bar').getByRole('button', { name: 'Apply' })).toBeEnabled();
   // Back on the Agents screen the same count waits.
@@ -380,7 +388,7 @@ test('the skills and agents screens share one store: an install on Skills shows 
   await expect(note()).toContainText('Installed a copy of');
   const n = await waitingCount();
   await open('Harness');
-  await expect(page.locator('section.harness-bar .harness-count')).toContainText(n === 0 ? 'Changes waiting. No file would change.' : `${n} change`);
+  await expect(page.locator('section.harness-bar .harness-count')).toContainText(n === 0 ? 'No file would change.' : `${n} file`);
   await expect(page.locator('section.harness-bar').getByRole('button', { name: 'Apply' })).toBeEnabled();
 });
 

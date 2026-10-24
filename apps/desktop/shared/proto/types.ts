@@ -119,7 +119,7 @@ export interface World {
 export interface PlanChange { readonly interface: InterfaceId; readonly path: string; readonly action: 'add' | 'change' | 'remove'; readonly preview: string }
 
 /** What projecting a harness would change, per interface, shown before any write (spec 6.5). */
-export interface Plan { readonly changes: readonly PlanChange[] }
+export interface Plan { readonly changes: readonly PlanChange[]; /** How many items differ (an edit is one item, not one file). Set by `planProjection`. */ readonly edits?: number }
 
 /** A tool as an export bundle names it: no secret value, and no state either. */
 export interface ToolReference { readonly toolId: string; readonly name: string; readonly toolKind: ToolKind; readonly secret: SecretSlot | null }

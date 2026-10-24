@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode, RefObject } from 'react';
 import { ACCESS_WORDS } from '../../shared/proto/harnessmodel.js';
-import { ACTION_WORDS, applyReason, changeBarText, groupPlan, savedLine, writtenLine } from '../../shared/proto/editor-describe.js';
+import { ACTION_WORDS, applyReason, changeBarText, editsOf, groupPlan, savedLine, writtenLine } from '../../shared/proto/editor-describe.js';
 import type { SelectionAction, SelectionView } from '../../shared/proto/editor-describe.js';
 import { conflictCopies, defaultCopyNames, keepBothProblem } from '../../shared/proto/conflicts.js';
 import type { AccessClass, HarnessItem, Plan, World } from '../../shared/proto/types.js';
@@ -266,7 +266,7 @@ export function ChangeBar({ dirty, plan, open, onToggle, canUndo, canRedo, onUnd
       <h2 className="sr">Changes</h2>
       <div className="harness-bar-row">
         <div className="harness-status">
-          <p className="harness-count" aria-live="polite"><strong>{changeBarText(dirty, plan.changes.length)}</strong></p>
+          <p className="harness-count" aria-live="polite"><strong>{changeBarText(dirty, plan.changes.length, editsOf(plan))}</strong></p>
           <p id={reasonId} className="small muted harness-reason">{reason ?? 'Apply saves a version of these changes.'}</p>
         </div>
         <button ref={toggleRef} type="button" className="btn secondary" aria-expanded={open} aria-controls={planId} disabled={!dirty} onClick={onToggle}>See what will be written</button>
