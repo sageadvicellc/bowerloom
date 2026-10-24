@@ -11,6 +11,9 @@
  *    Agents that used the old item are drawn using the new one.
  *  - Items of an installed library are not drawn one by one. Each library is one `group` node ("Evergreen Kit, 120 agents"). A group opens when
  *    its id (`group:<library id>`, or the bare library id) is in `expandedGroups`.
+ *  - A scope that owns more than `SKILL_GROUP_OVER` skills draws them as one group node ("44 skills", id `group:skills:<scope id>`). It opens the same
+ *    way. An item that an override hides or replaces is always drawn on its own so its state can be seen. A small window folds more (`groupLimits`):
+ *    tools, slices and agents too. A group carries the flags of what it holds (a conflict, a hook that runs code, a missing secret) in words.
  *  - Interfaces are nodes. An item lands in an interface only when that interface is installed.
  */
 import type { AccessClass, AgentItem, HarnessItem, InterfaceId, InterfaceInfo, LibrarySource, Override, Scope, ToolKind, World } from './types.js';
@@ -21,8 +24,22 @@ import { INTERFACE_WORDS, interfaceName } from './words.js';
 /** The kinds of node on the canvas. A library is one `group`. */
 export type HarnessNodeKind = 'scope' | 'interface' | 'skill' | 'agent' | 'tool' | 'context-slice' | 'group';
 
-/** What a person chose to look at: one scope, whether inherited items show, an optional single interface, and the library groups that are open. */
-export interface HarnessView { readonly scopeId: string; readonly showInherited: boolean; readonly interfaceFilter?: InterfaceId; readonly expandedGroups: readonly string[] }
+/** A scope with more owned skills than this draws them as one group by default. */
+export const SKILL_GROUP_OVER = 12;
+
+/** The kinds of item a scope's own items fold into a group. */
+export type OwnGroupKind = 'skill' | 'tool' | 'context-slice' | 'agent';
+/** How many owned items of a kind a scope may have before they fold into one group. `Infinity` never folds. */
+export type GroupLimits = Readonly<Record<OwnGroupKind, number>>;
+/** The default: only a long list of skills folds. */
+export const DEFAULT_GROUP_LIMITS: GroupLimits = Object.freeze({ skill: SKILL_GROUP_OVER, tool: Infinity, 'context-slice': Infinity, agent: Infinity });
+/** In a small window the first view folds more, so every name can still be read: skills, tools, slices and a long list of agents. */
+export const COMPACT_GROUP_LIMITS: GroupLimits = Object.freeze({ skill: SKILL_GROUP_OVER, tool: 3, 'context-slice': 2, agent: 6 });
+/** Every item drawn on its own, as the Skills and Agents screens need it. */
+export const NO_OWN_GROUPS: GroupLimits = Object.freeze({ skill: Infinity, tool: Infinity, 'context-slice': Infinity, agent: Infinity });
+
+/** What a person chose to look at: one scope, whether inherited items show, an optional single interface, and the groups that are open. `groupLimits` defaults to `DEFAULT_GROUP_LIMITS`. */
+export interface HarnessView { readonly scopeId: string; readonly showInherited: boolean; readonly interfaceFilter?: InterfaceId; readonly expandedGroups: readonly string[]; readonly groupLimits?: Partial<GroupLimits> }
 
 /** One node. Every state flag is always present (true or false). `badges` holds the same states as plain words, so a state is never carried by colour alone. */
 export interface HarnessNode {
@@ -66,6 +83,8 @@ export interface HarnessNode {
   readonly memberCount: number | null;
   /** For a group: true when its items are drawn one by one. */
   readonly expanded: boolean;
+  /** For a group: the kind of item it holds, or null for a library of mixed kinds. Null for other nodes. */
+  readonly memberKind: HarnessNodeKind | null;
   readonly badges: readonly string[];
 }
 
@@ -90,6 +109,8 @@ export { interfaceName };
 
 const KIND_ORDER: Readonly<Record<HarnessNodeKind, number>> = Object.freeze({ scope: 0, interface: 1, group: 2, agent: 3, skill: 4, tool: 5, 'context-slice': 6 });
 const MANY: Readonly<Record<string, readonly [string, string]>> = { skill: ['skill', 'skills'], agent: ['agent', 'agents'], tool: ['tool', 'tools'], 'context-slice': ['slice', 'slices'] };
+const OWN_ONE: Readonly<Record<OwnGroupKind, string>> = { skill: 'skill', tool: 'tool', 'context-slice': 'slice', agent: 'agent' };
+const upperFirst = (text: string): string => text.slice(0, 1).toUpperCase() + text.slice(1);
 const plural = (n: number, kind: string): string => { const pair = MANY[kind] ?? ['item', 'items']; return `${n} ${n === 1 ? pair[0] : pair[1]}`; };
 const short = (text: string, max = 90): string => { const flat = text.replace(/\s+/g, ' ').trim(); return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`; };
 
@@ -102,6 +123,17 @@ export const groupIdOf = (libraryId: string): string => `group:${libraryId}`;
 export const scopeNodeId = (scopeId: string): string => `scope:${scopeId}`;
 /** The id of an interface's node. */
 export const interfaceNodeId = (id: InterfaceId): string => `interface:${id}`;
+
+const OWN_WORD: Readonly<Record<OwnGroupKind, string>> = { skill: 'skills', tool: 'tools', 'context-slice': 'slices', agent: 'agents' };
+/** The id of the group that holds the owned skills (tools, slices or agents) of one scope. */
+export const ownGroupId = (kind: OwnGroupKind, scopeId: string): string => `group:${OWN_WORD[kind]}:${scopeId}`;
+/** What an own group's id says: its kind and the scope that owns its items. Null for any other id. */
+export function ownGroupParts(id: string): { kind: OwnGroupKind; scopeId: string } | null {
+  const m = /^group:(skills|tools|slices|agents):(.+)$/.exec(id);
+  if (m === null) return null;
+  const kind = (Object.keys(OWN_WORD) as OwnGroupKind[]).find(k => OWN_WORD[k] === m[1]);
+  return kind === undefined ? null : { kind, scopeId: m[2]! };
+}
 
 const badgesOf = (n: Omit<HarnessNode, 'badges'>, extras: readonly string[]): string[] => {
   const out: string[] = [];
@@ -134,6 +166,9 @@ export function describeNode(n: HarnessNode): string {
   return `${n.kindLabel}, ${n.label}.${states.length === 0 ? '' : ` ${states.join('. ')}.`}${tail.endsWith('.') || tail === '' ? tail : `${tail}.`}`;
 }
 
+/** What a group holds, in one word: "skills", "tools", "slices" or "agents" for an own group, "items" for a library. */
+export const membersWord = (n: HarnessNode): string => (n.libraryPinned || n.memberKind === null || n.memberKind === 'group' ? 'items' : OWN_WORD[n.memberKind as OwnGroupKind] ?? 'items');
+
 /** What a person can do to a node from its menu. `unhide` also stands for taking a replacement away: it removes the override. */
 export type NodeAction = 'hide' | 'unhide' | 'replace' | 'expand' | 'collapse' | 'open';
 /** One entry of a node's menu: the action and the words on it. */
@@ -142,7 +177,7 @@ export interface NodeActionChoice { readonly action: NodeAction; readonly label:
 /** The menu of a node, in plain words. Only an inherited item can be hidden or replaced, a ghost or a replaced item can be brought back, and a group opens or closes. */
 export function actionsFor(n: HarnessNode): NodeActionChoice[] {
   const out: NodeActionChoice[] = [{ action: 'open', label: 'Open details' }];
-  if (n.kind === 'group') out.push(n.expanded ? { action: 'collapse', label: 'Show as one group' } : { action: 'expand', label: `Show all ${n.memberCount ?? 0} items` });
+  if (n.kind === 'group') out.push(n.expanded ? { action: 'collapse', label: 'Show as one group' } : { action: 'expand', label: `Show all ${n.memberCount ?? 0} ${membersWord(n)}` });
   else if (n.hidden) out.push({ action: 'unhide', label: 'Show again in this project' });
   else if (n.replaced) out.push({ action: 'unhide', label: 'Stop replacing in this project' });
   else if (n.inherited) out.push({ action: 'hide', label: 'Hide in this project' }, { action: 'replace', label: 'Replace in this project' });
@@ -214,7 +249,31 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
   const members = new Map<string, Entry[]>();
   for (const e of entries.values()) if (e.item.library !== null) members.set(e.item.library.library, [...(members.get(e.item.library.library) ?? []), e]);
   const isOpen = (libraryId: string): boolean => expandedSet.has(groupIdOf(libraryId)) || expandedSet.has(libraryId);
-  const grouped = (e: Entry): string | null => (e.item.library !== null && !isOpen(e.item.library.library) ? groupIdOf(e.item.library.library) : null);
+
+  // Own groups: the skills (and, in a small window, the tools, slices and agents) a scope owns, folded into one node when there are many.
+  // An item that an override hides or replaces stays on its own, so its state can be seen.
+  const limits: GroupLimits = { ...DEFAULT_GROUP_LIMITS, ...view.groupLimits };
+  const replacementIds = new Set<string>();
+  for (const e of entries.values()) { const r = replacementOf(e); if (r !== undefined) replacementIds.add(r.id); }
+  const ownable = (e: Entry): OwnGroupKind | null => {
+    const { item } = e;
+    if (item.library !== null || isHidden(e) || isReplaced(e) || replacementIds.has(item.id)) return null;
+    return item.kind;
+  };
+  const ownMembers = new Map<string, { kind: OwnGroupKind; owner: string; list: Entry[] }>();
+  for (const e of entries.values()) {
+    const kind = ownable(e);
+    if (kind === null) continue;
+    const id = ownGroupId(kind, e.item.scopeId), have = ownMembers.get(id);
+    if (have === undefined) ownMembers.set(id, { kind, owner: e.item.scopeId, list: [e] }); else have.list.push(e);
+  }
+  const ownGroupOf = new Map<string, string>();
+  for (const [id, g] of ownMembers) if (g.list.length > limits[g.kind]) for (const e of g.list) ownGroupOf.set(e.item.id, id);
+  const grouped = (e: Entry): string | null => {
+    if (e.item.library !== null) return !isOpen(e.item.library.library) ? groupIdOf(e.item.library.library) : null;
+    const own = ownGroupOf.get(e.item.id);
+    return own !== undefined && !expandedSet.has(own) ? own : null;
+  };
 
   // The interface nodes, and the ones items may land in.
   const faces: InterfaceInfo[] = world.interfaces.filter(f => view.interfaceFilter === undefined || f.id === view.interfaceFilter);
@@ -224,7 +283,7 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
   const edges = new Map<string, HarnessEdge>();
   const base = (id: string, kind: HarnessNodeKind, kindLabel: string, label: string, detail: string): Omit<HarnessNode, 'badges'> => ({
     id, kind, toolKind: null, interfaceId: null, kindLabel, label, detail, scopeId: scope.id, fromScope: null, inherited: false, hidden: false, replaced: false, replacedBy: null,
-    libraryPinned: false, newerVersion: false, runsCode: false, secretMissing: false, conflict: false, notInstalled: false, groupId: null, memberCount: null, expanded: false,
+    libraryPinned: false, newerVersion: false, runsCode: false, secretMissing: false, conflict: false, notInstalled: false, groupId: null, memberCount: null, expanded: false, memberKind: null,
   });
   const push = (n: Omit<HarnessNode, 'badges'>, extras: readonly string[] = []): void => { nodes.push({ ...n, badges: badgesOf(n, extras) }); };
 
@@ -256,8 +315,19 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
     const installed = source?.installedVersion ?? list[0]!.item.library!.pinnedVersion;
     groupNodes.push({
       ...base(groupIdOf(libraryId), 'group', 'Library', `${source?.name ?? libraryId}, ${plural(count, kind)}`, `Pinned to ${installed}, read only.${newer === undefined ? '' : ` New version ${newer} waiting.`}`),
-      inherited: list.every(e => e.inherited), libraryPinned: true, newerVersion: newer !== undefined, memberCount: count, expanded: open,
+      inherited: list.every(e => e.inherited), libraryPinned: true, newerVersion: newer !== undefined, memberCount: count, expanded: open, memberKind: kinds.size === 1 ? [...kinds][0]! : null,
       fromScope: list.every(e => e.inherited) ? (scopeName.get(list[0]!.item.scopeId) ?? null) : null,
+    });
+  }
+  for (const [id, g] of ownMembers) {
+    if (!ownGroupOf.has(g.list[0]!.item.id)) continue;
+    const count = g.list.length, open = expandedSet.has(id), owner = scopeName.get(g.owner) ?? g.owner, own = g.owner === scope.id, word = plural(count, g.kind), one = OWN_ONE[g.kind];
+    groupNodes.push({
+      ...base(id, 'group', 'Group', word, open ? `Showing every ${one} one by one.` : own ? `Open it to see each ${one}.` : `Inherited from ${owner}. Open it to see each ${one}.`),
+      scopeId: g.owner, inherited: !own, fromScope: own ? null : owner, memberCount: count, expanded: open, memberKind: g.kind,
+      runsCode: g.list.some(e => e.item.kind === 'tool' && e.item.toolKind === 'hook'),
+      secretMissing: g.list.some(e => e.item.kind === 'tool' && e.item.toolKind === 'mcp' && e.item.secret?.state === 'missing'),
+      conflict: g.list.some(e => hashesDiffer(e.item)),
     });
   }
 
@@ -297,17 +367,24 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
     if (!edges.has(id)) edges.set(id, { id, from, to, rel, label });
   };
 
+  const groupUses = new Map<string, Set<string>>();
   const sliceItems = new Map<string, string>();
   for (const e of entries.values()) if (e.item.kind === 'context-slice') sliceItems.set(e.item.sliceId, e.item.id);
   for (const e of visible) {
     const { item } = e;
     const live = !isHidden(e) && !isReplaced(e);
-    if (live && grouped(e) === null && item.kind === 'agent') {
+    // An agent draws its connections from its own node, or from its own group when the group is closed (a library draws none).
+    const from = grouped(e) !== null && e.item.library === null ? grouped(e) : item.id;
+    if (live && from !== null && (grouped(e) === null || ownGroupParts(from) !== null) && item.kind === 'agent') {
       const agent: AgentItem = item;
-      for (const skillId of agent.definition.skillIds) link(agent.id, effective(skillId), 'uses', HARNESS_REL_WORDS.uses);
-      for (const t of agent.definition.toolAttachments) link(agent.id, effective(t.toolId), 'has-tool', ACCESS_WORDS[t.access]);
+      for (const skillId of agent.definition.skillIds) {
+        const to = effective(skillId), key = `${from}>uses>${to}`;
+        link(from, to, 'uses', HARNESS_REL_WORDS.uses);
+        if (to !== null && ownGroupParts(to) !== null) { const set = groupUses.get(key) ?? new Set<string>(); set.add(skillId); groupUses.set(key, set); }
+      }
+      for (const t of agent.definition.toolAttachments) link(from, effective(t.toolId), 'has-tool', ACCESS_WORDS[t.access]);
       const sliceItem = agent.definition.sliceId === undefined ? undefined : sliceItems.get(agent.definition.sliceId);
-      if (sliceItem !== undefined) link(agent.id, effective(sliceItem), 'reads', HARNESS_REL_WORDS.reads);
+      if (sliceItem !== undefined) link(from, effective(sliceItem), 'reads', HARNESS_REL_WORDS.reads);
     }
     if (live) {
       // A collapsed library lands in an interface through its group.
@@ -318,5 +395,7 @@ export function buildHarnessMap(world: World, view: HarnessView): HarnessMapMode
     if (replacement !== undefined) link(effective(replacement.id) ?? replacement.id, e.item.id, 'replaces', HARNESS_REL_WORDS.replaces);
   }
 
+  // A wire to a folded group says how many of its skills the agent uses.
+  for (const [id, set] of groupUses) { const e = edges.get(id); if (e !== undefined) edges.set(id, { ...e, label: `uses ${plural(set.size, 'skill')}` }); }
   return { scopeId: scope.id, nodes, edges: [...edges.values()] };
 }

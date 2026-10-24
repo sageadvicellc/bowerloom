@@ -5,9 +5,9 @@
  * `HarnessScreen` draws a plain line when there is no session above it (the shell test renders every screen with only a world).
  * The editor itself is `HarnessEditor`, which reads and changes the store.
  */
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
-import { ACCESS_WORDS, buildHarnessMap, interfaceName, scopeNodeId } from '../../shared/proto/harnessmodel.js';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { ReactElement, RefObject } from 'react';
+import { ACCESS_WORDS, COMPACT_GROUP_LIMITS, buildHarnessMap, interfaceName, ownGroupParts, scopeNodeId } from '../../shared/proto/harnessmodel.js';
 import type { HarnessMapModel, HarnessView } from '../../shared/proto/harnessmodel.js';
 import {
   attachToolOutcome, connectOutcome, connectResult, copyOutcome, dropOutcome, keepBothOutcome, keepOneOutcome, menuOutcome, overrideOutcome, replacementChoices,
@@ -58,6 +58,25 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
+/** A canvas with less room than this many square pixels is "small": the first view then folds more into groups, so every name can still be read. */
+const SMALL_CANVAS = 430_000;
+/** A guess at the canvas area from the window, for the first frame, before the canvas has been measured. */
+const guessCanvasArea = (): number => typeof window === 'undefined' ? Infinity : Math.max(0, (window.innerWidth - 248 - 64 - (window.innerWidth >= 1100 ? 316 : 0)) * (window.innerHeight - 280));
+
+/** True while the canvas is small. `box` is the element that holds the canvas. */
+function useSmallCanvas(box: RefObject<HTMLElement | null>): boolean {
+  const [small, setSmall] = useState(() => guessCanvasArea() < SMALL_CANVAS);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el === null) return undefined;
+    const read = (): void => { if (el.clientWidth > 0 && el.clientHeight > 0) setSmall(el.clientWidth * el.clientHeight < SMALL_CANVAS); };
+    read();
+    const ro = new ResizeObserver(read); ro.observe(el);
+    return () => ro.disconnect();
+  }, [box]);
+  return small;
+}
+
 interface Note { readonly text: string; readonly refused: boolean }
 interface Done { readonly plan: Plan; readonly label: string; readonly counter: number | null }
 type Pending = { readonly plan: Plan; readonly label: string } | null;
@@ -69,6 +88,8 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   const world = state.draft;
   const dirty = isDirty(state);
   const reduceMotion = useReducedMotion();
+  const canvasBox = useRef<HTMLDivElement>(null);
+  const compact = useSmallCanvas(canvasBox);
 
   const [scopeId, setScopeId] = useState(() => world.scopes.find(s => s.kind === 'global')?.id ?? world.scopes[0]?.id ?? '');
   const [showInherited, setShowInherited] = useState(true);
@@ -85,7 +106,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   const pending = useRef<Pending>(null);
   const inspectorHeading = useRef<HTMLHeadingElement>(null), resultHeading = useRef<HTMLHeadingElement>(null), planToggle = useRef<HTMLButtonElement>(null);
 
-  const view = useMemo<HarnessView>(() => ({ scopeId, showInherited, expandedGroups: expanded, ...(only === null ? {} : { interfaceFilter: only }) }), [scopeId, showInherited, expanded, only]);
+  const view = useMemo<HarnessView>(() => ({ scopeId, showInherited, expandedGroups: expanded, ...(compact ? { groupLimits: COMPACT_GROUP_LIMITS } : {}), ...(only === null ? {} : { interfaceFilter: only }) }), [scopeId, showInherited, expanded, only, compact]);
   const model = useMemo<HarnessMapModel>(() => buildHarnessMap(world, view), [world, view]);
   const ctx = useMemo<EditorContext>(() => ({ world, model }), [world, model]);
   const scope = world.scopes.find(s => s.id === model.scopeId);
@@ -137,12 +158,23 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   };
   const closeInspector = (): void => { focusCanvasOrScope()?.focus(); select(null); };
 
+  // In a narrow window the details float over the canvas: they open on the side away from the chosen node, so the node stays in view.
+  const [side, setSide] = useState<'left' | 'right'>('right');
+  useLayoutEffect(() => {
+    if (selectedId === null) return;
+    const body = canvasBox.current, el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(selectedId)}"]`);
+    if (body === null || el === null) return;
+    const a = body.getBoundingClientRect(), b = el.getBoundingClientRect();
+    setSide(b.left + b.width / 2 > a.left + a.width / 2 ? 'left' : 'right');
+  }, [selectedId]);
+
   const changeScope = (id: string): void => { setScopeId(id); setSelectedId(null); setReplaceFor(null); setNote(null); };
   const select = (id: string | null): void => { setSelectedId(id); setReplaceFor(null); };
 
   const onNodeMenu = (id: string, action: 'hide' | 'unhide' | 'replace' | 'expand' | 'collapse' | 'open'): void => {
-    if (action === 'expand') { setExpanded(prev => (prev.includes(id) ? prev : [...prev, id])); say('The library is open. Its items are read only.'); return; }
-    if (action === 'collapse') { setExpanded(prev => prev.filter(x => x !== id)); say('The library is shown as one group.'); return; }
+    const own = ownGroupParts(id);
+    if (action === 'expand') { setExpanded(prev => (prev.includes(id) ? prev : [...prev, id])); say(own === null ? 'The library is open. Its items are read only.' : `The group is open. Each ${own.kind === 'context-slice' ? 'slice' : own.kind} is a node of its own.`); return; }
+    if (action === 'collapse') { setExpanded(prev => prev.filter(x => x !== id)); say(own === null ? 'The library is shown as one group.' : 'The group is shown as one node.'); return; }
     if (action === 'open') {
       select(id);
       const node = model.nodes.find(n => n.id === id);
@@ -222,7 +254,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
       </div>
 
       <div className="harness-body">
-        <div className="harness-canvas">
+        <div className="harness-canvas" ref={canvasBox}>
           <HarnessCanvas
             model={model} selectedId={selection === null ? null : selection.nodeId} reduceMotion={reduceMotion}
             onSelect={select}
@@ -233,7 +265,7 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
             onPositionsChange={places => { keepPositions(session.dispatch, model.scopeId, places); placesChanged(); }}
           />
         </div>
-        <Inspector view={selection} onAction={onInspectorAction} onClose={closeInspector} headingRef={inspectorHeading} replace={replace} copyHere={copyHere} />
+        <Inspector view={selection} onAction={onInspectorAction} onClose={closeInspector} headingRef={inspectorHeading} replace={replace} copyHere={copyHere} side={side} />
       </div>
 
       <div className="harness-foot">

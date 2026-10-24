@@ -13,7 +13,7 @@ import { keepPositions, positionsFor } from '../renderer/proto/harness-positions
 import { ProtoProvider, useProtoStore } from '../renderer/proto/session.js';
 import { BROUGHT_IN_LABEL, START_AGAIN_DONE_WORDS, START_AGAIN_WORDS, SetupFlow, broughtInVersion } from '../renderer/proto/SetupScreen.js';
 import { describeSelection } from '../shared/proto/editor-describe.js';
-import { buildHarnessMap } from '../shared/proto/harnessmodel.js';
+import { NO_OWN_GROUPS, buildHarnessMap } from '../shared/proto/harnessmodel.js';
 import { initialKnowledge, isDirty as sliceDirty, reduceKnowledge, sameRule, sameSeeds } from '../shared/proto/knowledge-state.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { buildScan } from '../shared/proto/scan-places.js';
@@ -136,7 +136,7 @@ test('positions are kept for each scope for the life of the session, and a diffe
 
 // ------------------------------------------------------------------------------------------------------- the inspector
 
-const model = (scopeId: string) => buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: [] });
+const model = (scopeId: string) => buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: [], groupLimits: NO_OWN_GROUPS });
 const inheritedAgent = (): string => { const m = model('scope-copperfen'); return m.nodes.find(n => n.kind === 'agent' && n.inherited)!.id; };
 const inspect = (id: string, copyHere: (() => void) | null): string => {
   const v = describeSelection(world, model('scope-copperfen'), id)!;

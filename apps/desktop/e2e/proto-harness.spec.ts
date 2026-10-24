@@ -50,7 +50,8 @@ async function resize(w: number, h: number): Promise<void> {
   await emulation.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
   await page.waitForFunction(({ w: ww, h: hh }) => window.innerWidth === ww && window.innerHeight === hh, { w, h });
 }
-async function fresh(w = 1440, h = 900): Promise<void> {
+/** The first view as a person gets it: a long list of skills is one group. */
+async function freshFolded(w = 1440, h = 900): Promise<void> {
   await page.reload();
   await page.waitForSelector('nav.nav');
   await resize(w, h);
@@ -58,6 +59,19 @@ async function fresh(w = 1440, h = 900): Promise<void> {
   await expect(page.getByRole('heading', { level: 1, name: 'Harness' })).toBeVisible();
   await page.waitForSelector('.react-flow__node');
   await canvasSettled(page, { fitted: true });
+}
+/** Opens the group of the global skills (and, in a small window, the groups of the agents and tools), so the nodes the rules work on are there. */
+async function openGroups(): Promise<void> {
+  for (const id of ['group:agents:global', 'group:tools:global', 'group:slices:global', 'group:skills:global']) {
+    const toggle = node(id).locator('.hc-toggle');
+    if (await toggle.count() > 0 && (await toggle.innerText()) === 'Open') { await toggle.click(); await expect(toggle).toHaveText('Close'); }
+  }
+  await canvasSettled(page, { fitted: true });
+}
+/** The first view with every group open: the skills, and in a small window the agents, tools and slices, are nodes of their own. */
+async function fresh(w = 1440, h = 900): Promise<void> {
+  await freshFolded(w, h);
+  await openGroups();
 }
 const node = (id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
 const message = () => page.locator('.harness-message');
@@ -190,7 +204,7 @@ test('a wire that cannot be made does nothing and says why in the live region: a
   const live = page.locator('.harness-message[role="status"][aria-live="polite"]');
   await wire(CASE_IDS.hook, agent.id);
   await expect(live).toContainText('Nothing changed.');
-  await expect(live).toContainText('never creates, copies, wires or changes one');
+  await expect(live).toContainText('never creates, copies, connects or changes one');
   await wire(freeSkill.id, CASE_IDS.tripleSkill);
   await expect(live).toContainText('A skill and a skill do not connect');
   // A refused wire is not announced to a screen reader as connected, and the canvas says it could not.
@@ -333,6 +347,7 @@ test('Undo stops at a version: off after Apply and after a restore, on after a n
   await expect(page.getByText(/Version 1 was restored as a new version, version 3\./)).toBeVisible();
   await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
   await page.waitForSelector('.react-flow__node');
+  await openGroups();
   await expect(undo()).toBeDisabled();
   await wire(otherSkill.id, agent.id);
   await expect(undo()).toBeEnabled();
@@ -355,6 +370,7 @@ test('the places a person gives the nodes are kept when the scope changes and wh
   await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
   await page.waitForSelector('.react-flow__node');
   await canvasSettled(page, { fitted: true });
+  await openGroups();
   expect(await node(freeSkill.id).evaluate(e => (e as HTMLElement).style.transform), 'after a visit to another screen').toBe(moved);
   // A reload is a new session: the places are gone.
   await fresh();
@@ -437,6 +453,90 @@ test('in the conflict dialog the keyboard never leaves when a button swaps for a
   await expect.poll(() => page.evaluate(() => document.activeElement === document.body), { message: 'the keyboard is not lost' }).toBe(false);
 });
 
+/** The smallest text on screen in the canvas, in pixels: the font size times the zoom of the picture. */
+const textSizes = (): Promise<Record<string, number>> => page.evaluate(() => {
+  const z = new DOMMatrix(getComputedStyle(document.querySelector('.react-flow__viewport')!).transform).a, out: Record<string, number> = {};
+  for (const [k, sel] of Object.entries({ name: '.hc-label', kind: '.hc-kind', chip: '.hc-chip', toggle: '.hc-toggle' })) {
+    const list = [...document.querySelectorAll(sel)].filter(e => (e as HTMLElement).offsetParent !== null && getComputedStyle(e).display !== 'none').map(e => parseFloat(getComputedStyle(e).fontSize) * z);
+    if (list.length > 0) out[k] = Math.round(Math.min(...list) * 100) / 100;
+  }
+  return out;
+});
+
+for (const [w, h, floor] of [[1440, 900, 12], [900, 600, 11]] as const) {
+  test(`the first view of the global harness is readable at ${w} by ${h}: every name is ${floor} pixels or more, the kind words and chips 12, and nothing is cropped`, async () => {
+    test.setTimeout(120_000);
+    await freshFolded(w, h);
+    const sizes = await textSizes();
+    expect(Object.keys(sizes).sort(), 'names, kind words, chips and group buttons are all there').toEqual(['chip', 'kind', 'name', 'toggle']);
+    expect(sizes.name, `names at ${w}x${h}`).toBeGreaterThanOrEqual(floor);
+    for (const k of ['kind', 'chip', 'toggle'] as const) expect(sizes[k], `${k} at ${w}x${h}`).toBeGreaterThanOrEqual(12);
+    const r = await page.evaluate(() => {
+      const c = document.querySelector('.hc-root')!.getBoundingClientRect();
+      return {
+        outside: [...document.querySelectorAll('.react-flow__node')].filter(n => { const b = n.getBoundingClientRect(); return b.left < c.left - 1 || b.right > c.right + 1 || b.top < c.top - 1 || b.bottom > c.bottom + 1; }).length,
+        cut: [...document.querySelectorAll('.hc-node')].filter(n => { const t = n.querySelector('.hc-text')!; return t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1; }).length,
+        nodes: document.querySelectorAll('.react-flow__node').length, canvas: [Math.round(c.width), Math.round(c.height)],
+      };
+    });
+    expect(r.outside, 'every node is inside the picture').toBe(0);
+    expect(r.cut, 'no node has text cut off at its edge').toBe(0);
+    expect(r.nodes, 'the first view shows few enough nodes to read').toBeLessThanOrEqual(30);
+    await expect(node('group:skills:global')).toContainText('44 skills');
+    if (w < 1100) expect(r.canvas[0], 'in a narrow window the canvas has the full width').toBeGreaterThan(w - 260);
+  });
+}
+
+test('the folded skills open with the group button, and the group says what it holds in its details', async () => {
+  test.setTimeout(120_000);
+  await freshFolded();
+  await expect(page.locator('.react-flow__node[data-id^="skill-"]')).toHaveCount(0);
+  await node('group:skills:global').click();
+  const inspector = page.getByRole('complementary', { name: 'Details of the selected item' });
+  await expect(inspector.getByRole('heading', { level: 2, name: '44 skills' })).toBeVisible();
+  await expect(inspector).toContainText('Holds ');
+  await inspector.getByRole('button', { name: 'Show all 44 skills' }).click();
+  await expect(message()).toContainText('The group is open');
+  await expect(page.locator('.react-flow__node[data-id^="skill-"]').first()).toBeAttached();
+  await expect(inspector.getByRole('button', { name: 'Show as one group' })).toBeVisible();
+});
+
+test('the entrance plays once: a second visit and a scope switch only crossfade', async () => {
+  test.setTimeout(120_000);
+  await freshFolded();
+  const watch = (): Promise<void> => page.evaluate(() => { const w = window as unknown as { __names: string[] }; w.__names = []; const t = (): void => { for (const a of document.getAnimations()) if (a.playState === 'running' && (a as CSSAnimation).animationName) w.__names.push((a as CSSAnimation).animationName); requestAnimationFrame(t); }; t(); });
+  const names = (): Promise<string[]> => page.evaluate(() => [...new Set((window as unknown as { __names: string[] }).__names)]);
+  await watch();
+  await page.locator('nav.nav').getByRole('button', { name: 'Skills' }).click();
+  await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
+  await page.waitForSelector('.react-flow__node'); await canvasSettled(page, { fitted: true });
+  await page.getByLabel('Scope').selectOption('scope-copperfen');
+  await expect(node('scope:scope-copperfen')).toBeAttached(); await canvasSettled(page, { fitted: true });
+  const seen = await names();
+  expect(seen).toContain('hc-fade');
+  expect(seen).not.toContain('hc-enter'); expect(seen).not.toContain('hc-edge-draw');
+});
+
+test('in a narrow window the details float over the canvas on the side away from the chosen node, and they close', async () => {
+  test.setTimeout(120_000);
+  await freshFolded(900, 600);
+  const inspector = page.getByRole('complementary', { name: 'Details of the selected item' });
+  await expect(inspector, 'nothing is chosen, so no panel takes room').toBeHidden();
+  const wide = await page.evaluate(() => document.querySelector('.hc-root')!.getBoundingClientRect().width);
+  await node('interface:codex').click();
+  await expect(inspector).toBeVisible();
+  const box = await page.evaluate(() => { const c = document.querySelector('.hc-root')!.getBoundingClientRect(), i = document.querySelector('.harness-inspector')!.getBoundingClientRect(), n = document.querySelector('.react-flow__node[data-id="interface:codex"]')!.getBoundingClientRect(); return { canvas: c.width, inside: i.left >= c.left && i.right <= c.right + 1, over: i.left < n.right && n.left < i.right }; });
+  expect(box.canvas, 'the canvas keeps its width').toBe(wide);
+  expect(box.inside).toBe(true);
+  expect(box.over, 'the chosen node is not under the panel').toBe(false);
+  await inspector.getByRole('button', { name: 'Close the details' }).click();
+  await expect(inspector).toBeHidden();
+  await expect.poll(focusedId).toBe('interface:codex');
+  await node('interface:codex').click(); await expect(inspector).toBeVisible();
+  await inspector.getByRole('button', { name: 'Close the details' }).focus(); await page.keyboard.press('Escape');
+  await expect(inspector).toBeHidden();
+});
+
 test('reduce motion makes every duration 0, including the slide of the change bar; with motion on they come from the tokens', async () => {
   test.setTimeout(120_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -460,8 +560,9 @@ for (const [w, h] of SIZES) {
     // A selected agent with the inspector. Nothing under the inspector may sit on the canvas.
     await node(agent.id).click();
     await expect(page.locator('.harness-inspector')).toBeVisible();
-    const gap = await page.evaluate(() => { const c = document.querySelector('.hc-root')!.getBoundingClientRect(), i = document.querySelector('.harness-inspector')!.getBoundingClientRect(); return i.left - c.right; });
-    expect(gap, 'the inspector sits beside the canvas, not over it').toBeGreaterThanOrEqual(0);
+    const gap = await page.evaluate(() => { const c = document.querySelector('.hc-root')!.getBoundingClientRect(), i = document.querySelector('.harness-inspector')!.getBoundingClientRect(); return { beside: i.left - c.right, inside: i.left >= c.left && i.right <= c.right + 1 && i.top >= c.top - 1 && i.bottom <= c.bottom + 1 }; });
+    if (w >= 1100) expect(gap.beside, 'the inspector sits beside the canvas, not over it').toBeGreaterThanOrEqual(0);
+    else expect(gap.inside, 'in a narrow window the inspector floats inside the canvas').toBe(true);
     await shot('2-selected-with-inspector', w, h);
     // The conflict dialog.
     await node(CASE_IDS.tripleSkill).focus(); await page.keyboard.press('Enter');

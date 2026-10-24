@@ -35,7 +35,7 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 .harness-message.is-refused { background: var(--warn-bg); color: var(--warn-fg); }
 
 .harness-foot { position: relative; }
-.harness-body { flex: 1; min-height: 0; display: flex; gap: var(--space-3); }
+.harness-body { flex: 1; min-height: 0; display: flex; gap: var(--space-3); position: relative; }
 .harness-canvas { flex: 1; min-width: 0; min-height: 0; position: relative; }
 .harness-page .hc-frame { min-height: 0; }
 
@@ -77,6 +77,29 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 .harness-form legend { font-weight: 650; padding: 0 var(--space-2); }
 .harness-radio { display: flex; align-items: center; gap: var(--space-3); cursor: pointer; min-height: 2.25rem; }
 .harness-radio input { width: 1.25rem; height: 1.25rem; accent-color: var(--accent); }
+
+/* A narrow window: the details float over the canvas instead of taking a column from it, and are not there until something is chosen. */
+@media (max-width: 1099px) {
+  .harness-inspector { position: absolute; top: var(--space-2); bottom: var(--space-2); right: var(--space-2); width: min(19rem, 64%); flex: none; z-index: 10; }
+  .harness-inspector.is-left { right: auto; left: var(--space-2); }
+  .harness-inspector.is-empty { display: none; }
+}
+
+/* A narrow window needs every line of height for the canvas: a tighter head and toolbar, and a change bar that is one line while nothing waits. */
+@media (max-width: 1099px) {
+  main:has(.harness-page) { padding-top: var(--space-2); }
+  .harness-page { gap: var(--space-1); }
+  .harness-message { min-height: 1.5rem; padding-block: 0.1rem; }
+  .harness-chip { min-height: 1.9rem; padding: 0 var(--space-2); }
+  .harness-field.inline select { width: 9rem; min-height: 2rem; }
+  .harness-bar { padding: var(--space-2) var(--space-3); }
+  .harness-bar-row { gap: var(--space-2); }
+  .harness-count { font-size: var(--text-small); }
+  .harness-bar-row .btn { padding: 0.3rem 0.65rem; font-size: 0.8125rem; }
+  .harness-bar:not(.is-dirty) .harness-label { display: none; }
+  .harness-bar:not(.is-dirty) .harness-reason { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .harness-bar:not(.is-dirty) .harness-status { flex: 1 1 8rem; }
+}
 
 /* The change bar: always at the bottom, and it slides in when changes begin to wait. */
 .harness-bar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); box-shadow: var(--shadow); position: relative; }

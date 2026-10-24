@@ -7,7 +7,7 @@
  *  - A hook cannot be created, copied, wired or edited (spec 6.13).
  *  - A library item cannot be edited in place. A person makes an editable copy first (spec 6.2).
  *  - An inherited, hidden or replaced agent is not changed from a project, because that would change the global one.
- *  - A wire between kinds that do not connect does nothing.
+ *  - A connection between kinds that do not connect does nothing.
  */
 import type { AccessClass, AgentItem, HarnessItem, OverrideMode, World } from './types.js';
 import type { HarnessMapModel, HarnessNode } from './harnessmodel.js';
@@ -32,10 +32,10 @@ export type EditorOutcome =
 export interface EditorContext { readonly world: World; readonly model: HarnessMapModel }
 
 /** The plain reason a hook is never created, copied, wired or edited. */
-export const HOOK_REFUSAL = 'A hook runs code on its own, with no prompt. Bowerloom shows a hook and keeps it, but never creates, copies, wires or changes one.';
+export const HOOK_REFUSAL = 'A hook runs code on its own, with no prompt. Bowerloom shows a hook and keeps it, but never creates, copies, connects or changes one.';
 
-/** The plain reason a group is not wired. */
-export const GROUP_REFUSAL = 'A library is shown as one group. Open the group first, then use the item you want.';
+/** The plain reason a group is not connected. */
+export const GROUP_REFUSAL = 'A group is shown as one node. Open the group first, then use the item you want.';
 
 const refuse = (message: string): EditorOutcome => ({ kind: 'refused', message });
 
@@ -87,7 +87,7 @@ export const canEditInPlace = (ctx: EditorContext, id: string): boolean => editR
 function partnerRefusal(ctx: EditorContext, partner: Extract<Thing, { kind: 'item' }>, agent: AgentItem): string | null {
   const { item, node } = partner;
   if (node.hidden) return `${item.name} is hidden here. Show it again first.`;
-  if (node.replaced) return `${item.name} is replaced here. Wire the replacement instead.`;
+  if (node.replaced) return `${item.name} is replaced here. Connect the replacement instead.`;
   if (!reachesScope(ctx.world, agent.scopeId, item.scopeId)) return `${item.name} belongs to ${scopeName(ctx.world, item.scopeId)}, so ${agent.name} in ${scopeName(ctx.world, agent.scopeId)} cannot use it.`;
   return null;
 }
@@ -99,14 +99,14 @@ function partnerRefusal(ctx: EditorContext, partner: Extract<Thing, { kind: 'ite
 export function connectOutcome(ctx: EditorContext, sourceId: string, targetId: string): EditorOutcome {
   const a = thingOf(ctx, sourceId), b = thingOf(ctx, targetId);
   if (a === undefined || b === undefined) return refuse('That item is not on the page any more.');
-  if (a.node.id === b.node.id) return refuse('A wire needs two different items.');
+  if (a.node.id === b.node.id) return refuse('A connection needs two different items.');
   if (isHook(a) || isHook(b)) return refuse(HOOK_REFUSAL);
   if (a.kind === 'group' || b.kind === 'group') return refuse(GROUP_REFUSAL);
   const agentThing = [a, b].find((t): t is Extract<Thing, { kind: 'item' }> => t.kind === 'item' && t.item.kind === 'agent');
   const other = agentThing === undefined ? undefined : (agentThing === a ? b : a);
   const connects = other !== undefined && other.kind === 'item' && (other.item.kind === 'skill' || other.item.kind === 'tool' || other.item.kind === 'context-slice');
   if (agentThing === undefined || other === undefined || other.kind !== 'item' || !connects) {
-    return refuse(`${upperFirst(kindPhrase(a))} and ${kindPhrase(b)} do not connect. A wire joins a skill to an agent, a tool to an agent, or an agent to a slice.`);
+    return refuse(`${upperFirst(kindPhrase(a))} and ${kindPhrase(b)} do not connect. A connection joins a skill to an agent, a tool to an agent, or an agent to a slice.`);
   }
   const agent = agentThing.item as AgentItem, partner = other.item;
   const why = editRefusal(ctx, agent.id) ?? partnerRefusal(ctx, other, agent);
@@ -157,7 +157,7 @@ export function dropOutcome(ctx: EditorContext, draggedId: string, targetId: str
     if (dragged.kind !== 'item') return refuse(`You cannot drop ${kindPhrase(dragged)} on a harness.`);
     const { item } = dragged, scope = ctx.world.scopes.find(s => s.id === target.node.scopeId);
     if (scope === undefined) return refuse('That harness is not on the page any more.');
-    if (item.kind !== 'skill' && item.kind !== 'agent') return refuse(`Only skills and agents can be dropped on a harness. ${upperFirst(kindPhrase(dragged))} is attached to an agent with a wire.`);
+    if (item.kind !== 'skill' && item.kind !== 'agent') return refuse(`Only skills and agents can be dropped on a harness. ${upperFirst(kindPhrase(dragged))} is attached to an agent with a connection.`);
     if (item.scopeId === scope.id && item.library === null) return refuse(`${item.name} is already in ${scope.name}.`);
     const library = item.library === null ? '' : ' that you can edit';
     return { kind: 'action', action: { type: 'installItem', itemId: item.id, targetScopeId: scope.id }, message: `Installed a copy${library} of ${item.name} into ${scope.name}.` };

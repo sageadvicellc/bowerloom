@@ -3,7 +3,7 @@
  * grouped, searched and filtered, where each one is installed and which interfaces it lands in, in words. The screen only draws the result.
  * Inheritance is the harness editor's: a row is built from the editor's graph model, so "inherited", "hidden" and "replaced" mean the same here.
  */
-import { buildHarnessMap, interfaceName } from './harnessmodel.js';
+import { buildHarnessMap, interfaceName, NO_OWN_GROUPS } from './harnessmodel.js';
 import { effectiveItems, hashesDiffer } from './common.js';
 import { everyGroup, interfaceWords, joinWords, scopeLabel } from './library-install.js';
 import type { InterfaceId, LibrarySource, SkillItem, World } from './types.js';
@@ -30,7 +30,7 @@ export function skillRows(world: World, scopeId: string): SkillRow[] {
   if (scopeId === EVERY_HARNESS || !world.scopes.some(s => s.id === scopeId)) {
     return world.items.filter(isSkill).map(item => ({ item, state: 'own', fromScope: null, conflict: hashesDiffer(item) }));
   }
-  const model = buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: everyGroup(world) });
+  const model = buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: everyGroup(world), groupLimits: NO_OWN_GROUPS });
   const byId = new Map(world.items.map(i => [i.id, i]));
   const rows: SkillRow[] = [];
   for (const node of model.nodes) {

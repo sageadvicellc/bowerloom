@@ -11,7 +11,7 @@ import { AccessDialog, ChangeBar, ConflictDialog, Inspector, ResultPanel } from 
 import { ProtoProvider } from '../renderer/proto/session.js';
 import { countLine } from '../renderer/proto/words.js';
 import { ACTION_WORDS, applyReason, changeBarText, describeSelection, groupPlan, savedLine, writtenLine } from '../shared/proto/editor-describe.js';
-import { buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
+import { NO_OWN_GROUPS, buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
 import type { HarnessMapModel } from '../shared/proto/harnessmodel.js';
 import { planProjection } from '../shared/proto/plan.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
@@ -23,7 +23,7 @@ const COMMAND = /\bbowerloom (ls|status|use|unuse|lock|apply|skills|skill|prompt
 const BANNED_WORD = /\bhelpers?\b|\bteams?\b/i;
 const world = generateWorld(1);
 const textOf = (markup: string): string => markup.replace(/<[^>]*>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
-const model = (scopeId: string, expanded: string[] = []): HarnessMapModel => buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: expanded });
+const model = (scopeId: string, expanded: string[] = []): HarnessMapModel => buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: expanded, groupLimits: NO_OWN_GROUPS });
 const withStore = (store = createStore(world)): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HarnessScreen, { world })));
 const noop = (): void => undefined;
 const ref = { current: null };

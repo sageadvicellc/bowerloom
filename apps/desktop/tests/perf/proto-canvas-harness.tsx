@@ -1,11 +1,12 @@
 // A page that shows the harness canvas on its own, for looking at and for speed: the real HarnessCanvas with the sample world (or a made-up model of any size).
 // Addresses: ?scope=scope-copperfen  ?inherited=0  ?expand=group:evergreen-kit  ?n=500 (made-up nodes)  ?theme=dark  ?reduce=1  ?positions=1 (the page keeps the places)
+//            ?limits=none (every item on its own) or ?limits=compact (a small canvas: more is folded). Without it, the defaults of the harness screen: a long list of skills is one group.
 // The page keeps what the canvas reports in window.__calls, so a test can check it.
 import { createRoot } from 'react-dom/client';
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { HarnessCanvas } from '../../renderer/proto/HarnessCanvas.js';
-import { buildHarnessMap } from '../../shared/proto/harnessmodel.js';
+import { COMPACT_GROUP_LIMITS, NO_OWN_GROUPS, buildHarnessMap } from '../../shared/proto/harnessmodel.js';
 import { syntheticHarness } from '../../shared/proto/harnesslayout.js';
 import type { Positions } from '../../shared/proto/harnesslayout.js';
 import { generateWorld } from '../../shared/proto/sample.js';
@@ -32,7 +33,8 @@ function Page(): ReactElement {
   const model = useMemo(() => {
     if (synthetic > 0) return syntheticHarness(synthetic);
     const overrides = [...world.overrides.filter(o => !removed.includes(o.itemId)), ...extra];
-    return buildHarnessMap({ ...world, overrides }, { scopeId, showInherited, expandedGroups: expanded });
+    const limits = q.get('limits') === 'none' ? NO_OWN_GROUPS : q.get('limits') === 'compact' ? COMPACT_GROUP_LIMITS : undefined;
+    return buildHarnessMap({ ...world, overrides }, { scopeId, showInherited, expandedGroups: expanded, ...(limits === undefined ? {} : { groupLimits: limits }) });
   }, [scopeId, showInherited, expanded, extra, removed]);
   const controlled = q.get('positions') === '1';
   (window as unknown as { __counts: { nodes: number; edges: number } }).__counts = { nodes: model.nodes.length, edges: model.edges.length };

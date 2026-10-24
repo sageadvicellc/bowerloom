@@ -3,14 +3,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACCESS_WORDS, actionsFor, buildHarnessMap, describeNode, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
+import { ACCESS_WORDS, COMPACT_GROUP_LIMITS, NO_OWN_GROUPS, actionsFor, buildHarnessMap, describeNode, groupIdOf, interfaceNodeId, ownGroupId, ownGroupParts, scopeNodeId } from '../shared/proto/harnessmodel.js';
 import type { HarnessMapModel, HarnessNode, HarnessView } from '../shared/proto/harnessmodel.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem, World } from '../shared/proto/types.js';
 import { DESKTOP } from './support.js';
 
 const world = generateWorld(1);
-const view = (scopeId: string, extra: Partial<HarnessView> = {}): HarnessView => ({ scopeId, showInherited: true, expandedGroups: [], ...extra });
+/** These tests are about the nodes of single items, so no skill is folded into a group here. The folding has its own tests below. */
+const view = (scopeId: string, extra: Partial<HarnessView> = {}): HarnessView => ({ scopeId, showInherited: true, expandedGroups: [], groupLimits: NO_OWN_GROUPS, ...extra });
 const node = (m: HarnessMapModel, id: string): HarnessNode => { const n = m.nodes.find(x => x.id === id); assert.ok(n, `node ${id} is missing`); return n; };
 const has = (m: HarnessMapModel, id: string): boolean => m.nodes.some(n => n.id === id);
 type Editable = { -readonly [K in keyof World]: World[K] };
@@ -272,4 +273,88 @@ test('the menu of a node: open for all; hide and replace for an inherited item; 
   assert.deepEqual(actionsFor(node(copper, 'skill-005')).map(a => a.action), ['open', 'unhide']);
   assert.match(actionsFor(node(copper, 'skill-005'))[1]!.label, /Stop replacing/);
   for (const m2 of [m, global, copper]) for (const n of m2.nodes) for (const a of actionsFor(n)) assert.doesNotMatch(a.label, /\b(helper|team|command line)\b/i);
+});
+
+// ------------------------------------------------------------------------------------------------------- own groups
+
+/** The default view: a long list of skills is one node. */
+const folded = (scopeId: string, extra: Partial<HarnessView> = {}): HarnessView => ({ scopeId, showInherited: true, expandedGroups: [], ...extra });
+const SKILLS = ownGroupId('skill', 'global');
+
+test('a scope with more than 12 owned skills draws them as one group: "44 skills", with the flags of what it holds', () => {
+  const m = buildHarnessMap(world, folded('global'));
+  const g = node(m, SKILLS);
+  assert.equal(g.kind, 'group'); assert.equal(g.label, '44 skills'); assert.equal(g.memberCount, 44); assert.equal(g.memberKind, 'skill'); assert.equal(g.expanded, false);
+  assert.equal(g.kindLabel, 'Group'); assert.equal(g.libraryPinned, false); assert.equal(g.inherited, false);
+  assert.equal(m.nodes.filter(n => n.kind === 'skill').length, 0, 'no skill is drawn on its own');
+  assert.equal(g.conflict, true, 'one skill in it has different text in different interfaces'); assert.ok(g.badges.includes('conflict'));
+  assert.ok(m.nodes.length <= 30, `${m.nodes.length} nodes at the first view of the global harness`);
+  assert.match(describeNode(g), /^Group, 44 skills\./);
+  // The root still counts every skill, and the group is where the skills land.
+  assert.match(node(m, scopeNodeId('global')).detail, /44 skills/);
+  assert.equal(m.edges.filter(e => e.from === SKILLS && e.rel === 'lands-in').length, 3);
+  // An agent's skills are one connection to the group, and it says how many.
+  const uses = m.edges.filter(e => e.rel === 'uses');
+  assert.ok(uses.length > 0 && uses.every(e => e.to === SKILLS), 'every uses connection goes to the group');
+  const agent = world.items.find((i): i is AgentItem => i.kind === 'agent' && i.id === 'agent-03')!;
+  assert.equal(m.edges.find(e => e.from === 'agent-03' && e.to === SKILLS)!.label, `uses ${agent.definition.skillIds.length} skills`);
+  assert.equal(new Set(uses.map(e => e.id)).size, uses.length, 'one connection for each agent');
+});
+
+test('the group opens when its id is in expandedGroups: every skill is drawn on its own, the group stays and says it is open', () => {
+  const m = buildHarnessMap(world, folded('global', { expandedGroups: [SKILLS] }));
+  assert.equal(m.nodes.filter(n => n.kind === 'skill').length, 44);
+  const g = node(m, SKILLS);
+  assert.equal(g.expanded, true); assert.match(g.detail, /one by one/);
+  assert.equal(m.edges.filter(e => e.rel === 'uses').every(e => e.to !== SKILLS), true, 'the agents are wired to the skills again');
+  assert.deepEqual(actionsFor(g).map(a => a.label), ['Open details', 'Show as one group']);
+  assert.equal(actionsFor(node(buildHarnessMap(world, folded('global')), SKILLS))[1]!.label, 'Show all 44 skills');
+  assert.equal(actionsFor(node(buildHarnessMap(world, folded('global')), LIBRARY))[1]!.label, 'Show all 120 items', 'a library still says items');
+});
+
+test('a scope with 12 skills or fewer, or a filter that leaves few, draws each skill; a skill that an override hides or replaces is never folded', () => {
+  const own = (id: string) => buildHarnessMap(world, folded(id, { showInherited: false })).nodes;
+  assert.equal(own('scope-reedmarsh').filter(n => n.kind === 'skill').length, 3);
+  assert.equal(own('scope-reedmarsh').some(n => n.kind === 'group' && n.memberKind === 'skill'), false);
+  // In a project, the global skills are one inherited group, and the hidden skill is drawn beside it in its ghost state.
+  const m = buildHarnessMap(world, folded(CASE_IDS.hidingScope));
+  const g = node(m, SKILLS);
+  assert.equal(g.inherited, true); assert.equal(g.fromScope, 'Studio'); assert.match(g.detail, /Inherited from Studio/);
+  const ghost = node(m, CASE_IDS.hiddenSkill);
+  assert.equal(ghost.hidden, true); assert.ok(g.memberCount! < 44, 'the hidden skill is not in the group');
+  assert.equal(g.memberCount! + m.nodes.filter(n => n.kind === 'skill' && n.inherited).length, 44);
+  // A filter that keeps few skills folds nothing.
+  const few = buildHarnessMap(world, folded('global', { interfaceFilter: 'opencode' }));
+  assert.equal(few.nodes.some(n => n.id === SKILLS), few.nodes.filter(n => n.kind === 'skill').length === 0);
+});
+
+test('a small canvas folds more: tools, slices and a long list of agents; the group carries the flags of what it holds', () => {
+  const m = buildHarnessMap(world, folded('global', { groupLimits: COMPACT_GROUP_LIMITS }));
+  const tools = node(m, ownGroupId('tool', 'global')), slices = node(m, ownGroupId('context-slice', 'global')), agents = node(m, ownGroupId('agent', 'global'));
+  assert.equal(tools.label, '8 tools'); assert.equal(slices.label, '3 slices'); assert.equal(agents.label, '8 agents');
+  assert.equal(tools.runsCode, true); assert.ok(tools.badges.includes('runs code')); assert.equal(tools.secretMissing, true); assert.ok(tools.badges.includes('secret missing'));
+  assert.equal(m.nodes.filter(n => n.kind === 'agent' || n.kind === 'tool' || n.kind === 'context-slice' || n.kind === 'skill').length, 0);
+  assert.ok(m.nodes.length <= 10, `${m.nodes.length} nodes in a small canvas`);
+  assert.ok(m.edges.some(e => e.from === agents.id && e.to === SKILLS && e.rel === 'uses'), 'the agents group is wired to the skills group');
+  assert.ok(m.edges.some(e => e.from === agents.id && e.to === tools.id && e.rel === 'has-tool'));
+  assert.ok(m.edges.some(e => e.from === agents.id && e.to === slices.id && e.rel === 'reads'));
+  assert.ok(m.edges.some(e => e.from === agents.id && e.rel === 'lands-in'));
+  // Open the agents group and the agents come back with their own connections.
+  const open = buildHarnessMap(world, folded('global', { groupLimits: COMPACT_GROUP_LIMITS, expandedGroups: [agents.id] }));
+  assert.equal(open.nodes.filter(n => n.kind === 'agent').length, 8);
+  assert.equal(open.edges.filter(e => e.from === agents.id).length, 0);
+});
+
+test('NO_OWN_GROUPS draws every item on its own, as the Skills and Agents screens need', () => {
+  const m = buildHarnessMap(world, folded('global', { groupLimits: NO_OWN_GROUPS }));
+  assert.equal(m.nodes.filter(n => n.kind === 'skill').length, 44);
+  assert.equal(m.nodes.some(n => ownGroupParts(n.id) !== null), false);
+});
+
+test('an own group has a plain id that says its kind and its scope', () => {
+  assert.equal(ownGroupId('skill', 'global'), 'group:skills:global');
+  assert.deepEqual(ownGroupParts('group:skills:global'), { kind: 'skill', scopeId: 'global' });
+  assert.deepEqual(ownGroupParts('group:agents:scope-copperfen'), { kind: 'agent', scopeId: 'scope-copperfen' });
+  assert.deepEqual(ownGroupParts('group:context-slice:x'), null);
+  assert.equal(ownGroupParts(LIBRARY), null); assert.equal(ownGroupParts('skill-010'), null);
 });

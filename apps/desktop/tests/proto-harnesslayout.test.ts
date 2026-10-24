@@ -1,9 +1,9 @@
 // The harness graph layout: columns by kind, wrapped so a big model is a wide even block and never one tall column.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HARNESS_LAYOUT, layoutHarness, maxRowsFor, rowsFitting, nodeAt, pinnedPlace, snapPoint, syntheticHarness, wireSides } from '../shared/proto/harnesslayout.js';
-import type { Positions } from '../shared/proto/harnesslayout.js';
-import { buildHarnessMap, groupIdOf } from '../shared/proto/harnessmodel.js';
+import { HARNESS_LAYOUT, layoutHarness, maxRowsFor, rowsFitting, nodeAt, pinnedPlace, sizeOf, snapPoint, syntheticHarness, wireSides } from '../shared/proto/harnesslayout.js';
+import type { NodeSize, Positions } from '../shared/proto/harnesslayout.js';
+import { COMPACT_GROUP_LIMITS, NO_OWN_GROUPS, buildHarnessMap, groupIdOf } from '../shared/proto/harnessmodel.js';
 import type { HarnessMapModel, HarnessNodeKind } from '../shared/proto/harnessmodel.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 
@@ -11,14 +11,17 @@ const world = generateWorld(1);
 const LIBRARY = groupIdOf(CASE_IDS.newerLibrary);
 const SIZES = [{ width: 1100, height: 700 }, { width: 700, height: 440 }, { width: 1440, height: 900 }] as const;
 const { nodeWidth: W, nodeHeight: H } = HARNESS_LAYOUT;
+/** The size of each node of a model, by id. */
+const sizesOf = (m: HarnessMapModel): Record<string, NodeSize> => Object.fromEntries(m.nodes.map(n => [n.id, sizeOf(n)]));
 
-/** Pairs of nodes whose boxes overlap, by id. */
-function overlaps(p: Positions): string[] {
-  const ids = Object.keys(p).sort((a, b) => p[a]!.x - p[b]!.x), found: string[] = [];
+/** Pairs of nodes whose boxes overlap, by id. Each node has the size its role gives it. */
+function overlaps(p: Positions, m: HarnessMapModel): string[] {
+  const size = sizesOf(m), ids = Object.keys(p).sort((a, b) => p[a]!.x - p[b]!.x), found: string[] = [];
+  const widest = Math.max(...Object.values(size).map(s => s.w));
   for (let i = 0; i < ids.length; i += 1) {
-    for (let j = i + 1; j < ids.length && p[ids[j]!]!.x < p[ids[i]!]!.x + W; j += 1) {
-      const a = p[ids[i]!]!, b = p[ids[j]!]!;
-      if (a.x < b.x + W && b.x < a.x + W && a.y < b.y + H && b.y < a.y + H) found.push(`${ids[i]} / ${ids[j]}`);
+    for (let j = i + 1; j < ids.length && p[ids[j]!]!.x < p[ids[i]!]!.x + widest; j += 1) {
+      const a = p[ids[i]!]!, b = p[ids[j]!]!, sa = size[ids[i]!]!, sb = size[ids[j]!]!;
+      if (a.x < b.x + sb.w && b.x < a.x + sa.w && a.y < b.y + sb.h && b.y < a.y + sa.h) found.push(`${ids[i]} / ${ids[j]}`);
     }
   }
   return found;
@@ -27,6 +30,8 @@ function overlaps(p: Positions): string[] {
 const columnsOf = (p: Positions): Map<number, string[]> => { const m = new Map<number, string[]>(); for (const [id, pt] of Object.entries(p)) if (!id.startsWith('scope:')) m.set(pt.x, [...(m.get(pt.x) ?? []), id]); return m; };
 const kindsOf = (m: HarnessMapModel): Map<string, HarnessNodeKind> => new Map(m.nodes.map(n => [n.id, n.kind]));
 const view = (scopeId: string, expandedGroups: string[] = []) => ({ scopeId, showInherited: true, expandedGroups });
+/** The same, with every skill drawn on its own: the biggest model the sample world makes without any folding. */
+const unfolded = (scopeId: string, expandedGroups: string[] = []) => ({ ...view(scopeId, expandedGroups), groupLimits: NO_OWN_GROUPS });
 
 test('rowsFitting comes from the height: more height, more rows, within a floor and a ceiling', () => {
   assert.ok(rowsFitting(900) > rowsFitting(600)); assert.ok(rowsFitting(600) > rowsFitting(400));
@@ -50,26 +55,58 @@ test('the sample world lays out with no overlap, for every scope, size, and an o
   for (const scope of world.scopes) for (const expanded of [[], [LIBRARY]]) for (const size of SIZES) {
     const m = buildHarnessMap(world, view(scope.id, expanded)), p = layoutHarness(m, size);
     assert.equal(Object.keys(p).length, m.nodes.length);
-    assert.deepEqual(overlaps(p), [], `${scope.id} ${expanded.length} ${size.height}`);
+    assert.deepEqual(overlaps(p, m), [], `${scope.id} ${expanded.length} ${size.height}`);
     for (const pt of Object.values(p)) { assert.ok(Number.isFinite(pt.x) && Number.isFinite(pt.y)); assert.ok(pt.x >= 0 && pt.y >= 0); }
   }
 });
 
-test('columns by kind: the root on top, then tools and slices, skills, agents, and interfaces on the right', () => {
-  const m = buildHarnessMap(world, view('global')), p = layoutHarness(m, SIZES[0]), kinds = kindsOf(m);
+test('three bands: the root on top, then what an agent uses (skills, tools, slices), the agents with their libraries, and the interfaces on the right', () => {
+  const m = buildHarnessMap(world, unfolded('global')), p = layoutHarness(m, SIZES[0]), kinds = kindsOf(m);
   const xs = (k: HarnessNodeKind): number[] => m.nodes.filter(n => n.kind === k).map(n => p[n.id]!.x);
   const root = m.nodes.find(n => n.kind === 'scope')!;
   assert.equal(p[root.id]!.y, 0);
-  for (const n of m.nodes) if (n.kind !== 'scope') assert.ok(p[n.id]!.y >= H, `${n.id} is below the root`);
-  assert.ok(Math.max(...xs('skill')) < Math.min(...xs('agent')), 'skills are left of agents');
-  assert.ok(Math.max(...xs('tool')) < Math.min(...xs('agent')), 'tools are left of agents');
-  assert.ok(Math.max(...xs('context-slice')) < Math.min(...xs('agent')), 'slices are left of agents');
+  for (const n of m.nodes) if (n.kind !== 'scope') assert.ok(p[n.id]!.y >= sizeOf(root).h, `${n.id} is below the root`);
+  assert.ok(Math.max(...xs('skill'), ...xs('tool'), ...xs('context-slice')) < Math.min(...xs('agent')), 'skills, tools and slices are left of agents');
   assert.ok(Math.max(...xs('agent'), ...xs('group')) < Math.min(...xs('interface')), 'interfaces are right of agents');
-  assert.equal(Math.min(...xs('group')), Math.min(...xs('agent')), 'the library group is in the agent band');
+  const centre = (k: HarnessNodeKind): number[] => m.nodes.filter(n => n.kind === k).map(n => p[n.id]!.x + sizeOf(n).w / 2);
+  assert.ok(Math.abs(Math.min(...centre('group')) - Math.min(...centre('agent'))) <= 1, 'the library group is in the agent band: same column centre');
   assert.equal(p[LIBRARY]!.y, Math.min(...m.nodes.filter(n => kinds.get(n.id) === 'agent' || n.kind === 'group').map(n => p[n.id]!.y)), 'the group leads the agent band');
+  // Inside the first band, in reading order (column by column, top to bottom): skills, then tools, then slices.
+  const rank = (k: HarnessNodeKind): number => (k === 'skill' ? 0 : k === 'tool' ? 1 : 2);
+  const usesBand = m.nodes.filter(n => n.kind === 'skill' || n.kind === 'tool' || n.kind === 'context-slice').sort((x, y) => (p[x.id]!.x + sizeOf(x).w / 2) - (p[y.id]!.x + sizeOf(y).w / 2) || p[x.id]!.y - p[y.id]!.y);
+  assert.deepEqual(usesBand.map(n => rank(n.kind)), usesBand.map(n => rank(n.kind)).sort((x, y) => x - y), 'skills, then tools, then slices');
   // The root is centred over the whole graph.
-  const right = Math.max(...Object.values(p).map(pt => pt.x)) + W;
-  assert.ok(Math.abs(p[root.id]!.x + W / 2 - right / 2) <= 1);
+  const left = Math.min(...Object.values(p).map(pt => pt.x)), right = Math.max(...m.nodes.map(n => p[n.id]!.x + sizeOf(n).w));
+  assert.ok(Math.abs(p[root.id]!.x + sizeOf(root).w / 2 - (left + right) / 2) <= 1);
+});
+
+test('sizes by role: interfaces and the root are large, skills are small, agents, tools and slices are medium, a group a little taller', () => {
+  const m = buildHarnessMap(world, unfolded('global', [LIBRARY]));
+  const of = (k: HarnessNodeKind) => sizeOf(m.nodes.find(n => n.kind === k)!);
+  assert.deepEqual(of('interface'), HARNESS_LAYOUT.large); assert.deepEqual(of('scope'), HARNESS_LAYOUT.large);
+  assert.deepEqual(of('skill'), HARNESS_LAYOUT.small);
+  for (const k of ['agent', 'tool', 'context-slice'] as const) assert.deepEqual(of(k), HARNESS_LAYOUT.medium, k);
+  assert.deepEqual(of('group'), HARNESS_LAYOUT.group); assert.ok(HARNESS_LAYOUT.group.h > HARNESS_LAYOUT.medium.h);
+  assert.ok(HARNESS_LAYOUT.large.w * HARNESS_LAYOUT.large.h > HARNESS_LAYOUT.medium.w * HARNESS_LAYOUT.medium.h);
+  assert.ok(HARNESS_LAYOUT.medium.w * HARNESS_LAYOUT.medium.h > HARNESS_LAYOUT.small.w * HARNESS_LAYOUT.small.h);
+});
+
+test('the first view of the global scope is a few columns of at most 12 rows, in a window of any common size', () => {
+  const m = buildHarnessMap(world, view('global'));
+  assert.ok(m.nodes.length <= 40, `${m.nodes.length} nodes at the first view`);
+  for (const size of [{ width: 800, height: 560 }, SIZES[0], SIZES[2]]) {
+    const p = layoutHarness(m, size), cols = columnsOf(p);
+    assert.ok(cols.size <= 6, `${cols.size} columns for ${size.width} by ${size.height}`);
+    for (const [x, ids] of cols) assert.ok(ids.length <= 12, `column at ${x} holds ${ids.length}`);
+    assert.deepEqual(overlaps(p, m), []);
+  }
+  // A small canvas folds more (tools, slices and a long list of agents), and the block then has few columns of few rows.
+  const compact = buildHarnessMap(world, { ...view('global'), groupLimits: COMPACT_GROUP_LIMITS });
+  assert.ok(compact.nodes.length <= 16, `${compact.nodes.length} nodes in a small canvas`);
+  const small = { width: 596, height: 249 }, p = layoutHarness(compact, small), cols = columnsOf(p);
+  assert.ok(cols.size <= 6, `${cols.size} columns in a small canvas`);
+  for (const [x, ids] of cols) assert.ok(ids.length <= 6, `column at ${x} holds ${ids.length}`);
+  assert.deepEqual(overlaps(p, compact), []);
 });
 
 test('wrapping: 500 nodes never make a column longer than maxRows, and the block is wide, not one tall column', () => {
@@ -79,11 +116,11 @@ test('wrapping: 500 nodes never make a column longer than maxRows, and the block
     const p = layoutHarness(m, size), rows = maxRowsFor(size, m), cols = columnsOf(p);
     assert.equal(Object.keys(p).length, 500);
     for (const [x, ids] of cols) assert.ok(ids.length <= rows, `column at ${x} holds ${ids.length}, more than ${rows}`);
-    assert.deepEqual(overlaps(p), []);
-    const ys = Object.values(p).map(pt => pt.y), top = Math.min(...ys), bottom = Math.max(...ys) + H;
-    assert.ok(bottom - top <= H + HARNESS_LAYOUT.rootGap + rows * (H + HARNESS_LAYOUT.rowGap), `the block is ${bottom - top} tall`);
+    assert.deepEqual(overlaps(p, m), []);
+    const ys = Object.values(p).map(pt => pt.y), top = Math.min(...ys), bottom = Math.max(...m.nodes.map(n => p[n.id]!.y + sizeOf(n).h));
+    assert.ok(bottom - top <= HARNESS_LAYOUT.large.h + HARNESS_LAYOUT.rootGap + rows * (HARNESS_LAYOUT.medium.h + HARNESS_LAYOUT.rowGap), `the block is ${bottom - top} tall`);
     assert.ok(cols.size >= 500 / rows / 2, `${cols.size} columns for ${rows} rows`);
-    const left = Math.min(...Object.values(p).map(pt => pt.x)), right = Math.max(...Object.values(p).map(pt => pt.x)) + W;
+    const left = Math.min(...Object.values(p).map(pt => pt.x)), right = Math.max(...m.nodes.map(n => p[n.id]!.x + sizeOf(n).w));
     // The block has the shape of the window, within a factor of three: neither one tall column nor one flat strip.
     const shape = (right - left) / (bottom - top), want = size.width / size.height;
     assert.ok(shape > want / 3 && shape < want * 3, `the block is ${shape.toFixed(2)} wide for every 1 tall, the window ${want.toFixed(2)}`);
@@ -98,7 +135,7 @@ test('wrapping holds for lopsided models: one kind with 200 nodes still wraps', 
   const p = layoutHarness(only, SIZES[0]), rows = maxRowsFor(SIZES[0], only);
   for (const ids of columnsOf(p).values()) assert.ok(ids.length <= rows);
   assert.equal(new Set(only.nodes.filter(n => n.kind === 'skill').map(n => p[n.id]!.x)).size, Math.ceil(200 / rows));
-  assert.deepEqual(overlaps(p), []);
+  assert.deepEqual(overlaps(p, only), []);
 });
 
 test('the layout is deterministic: the same model, size and pinned places give the same places, whichever copy of the model it is', () => {
@@ -111,7 +148,7 @@ test('the layout is deterministic: the same model, size and pinned places give t
 });
 
 test('a pinned place is kept exactly, nothing else moves, and unusable pins are ignored', () => {
-  const m = buildHarnessMap(world, view('global')), size = SIZES[0], free = layoutHarness(m, size);
+  const m = buildHarnessMap(world, unfolded('global')), size = SIZES[0], free = layoutHarness(m, size);
   const pinned: Positions = { 'skill-010': { x: -123.5, y: 4567 }, 'agent-01': { x: 0, y: 0 }, 'not-in-the-model': { x: 1, y: 1 } };
   const p = layoutHarness(m, size, pinned);
   assert.deepEqual(p['skill-010'], { x: -123.5, y: 4567 }); assert.deepEqual(p['agent-01'], { x: 0, y: 0 });
@@ -133,12 +170,12 @@ test('a model with no root, no nodes, or one node still lays out', () => {
   assert.deepEqual(layoutHarness(one, SIZES[0]), { 'scope:synthetic': { x: 0, y: 0 } });
   const noRoot = { ...syntheticHarness(30), nodes: syntheticHarness(30).nodes.filter(n => n.kind !== 'scope') };
   const p = layoutHarness(noRoot, SIZES[0]);
-  assert.equal(Object.keys(p).length, 29); assert.deepEqual(overlaps(p), []);
+  assert.equal(Object.keys(p).length, 29); assert.deepEqual(overlaps(p, noRoot), []);
   assert.equal(Math.min(...Object.values(p).map(pt => pt.y)), 0);
 });
 
 test('speed: the model of the 700-page world, open and with 200 nodes, lays out in under 300 ms; so do 500 and 2000 made-up nodes', () => {
-  const m = buildHarnessMap(world, view('global', [LIBRARY]));
+  const m = buildHarnessMap(world, unfolded('global', [LIBRARY]));
   assert.ok(m.nodes.length > 150);
   layoutHarness(m, SIZES[0]); // warm up the code once
   for (const model of [m, syntheticHarness(500), syntheticHarness(2000)]) {
@@ -146,7 +183,7 @@ test('speed: the model of the 700-page world, open and with 200 nodes, lays out 
     assert.equal(Object.keys(p).length, model.nodes.length);
     assert.ok(took < 300, `${model.nodes.length} nodes took ${took.toFixed(1)} ms`);
   }
-  const start = performance.now(); buildHarnessMap(world, view('global', [LIBRARY])); const built = performance.now() - start;
+  const start = performance.now(); buildHarnessMap(world, unfolded('global', [LIBRARY])); const built = performance.now() - start;
   assert.ok(built < 300, `building the model took ${built.toFixed(1)} ms`);
 });
 
@@ -166,7 +203,8 @@ test('nodeAt finds the node a point is over, skips the dragged node, and says nu
   assert.equal(nodeAt(p, { x: W / 2, y: H / 2 }, 'a'), null, 'the dragged node is not its own target');
   assert.equal(nodeAt(p, { x: 300 + 5, y: H - 1 }, 'a'), 'b');
   assert.equal(nodeAt(p, { x: W + 20, y: 10 }, 'a'), null);
+  assert.equal(nodeAt(p, { x: W + 20, y: 10 }, 'x', { a: { w: W + 40, h: H } }), 'a', 'a node of another size has its own box');
   assert.equal(nodeAt(p, { x: 10, y: 200 + H + 1 }, 'a'), null);
-  const m = buildHarnessMap(world, view('global')), pos = layoutHarness(m, SIZES[0]);
-  for (const n of m.nodes.slice(0, 40)) assert.equal(nodeAt(pos, { x: pos[n.id]!.x + W / 2, y: pos[n.id]!.y + H / 2 }, 'none'), n.id, 'every centre finds its own node, since none overlap');
+  const m = buildHarnessMap(world, unfolded('global')), pos = layoutHarness(m, SIZES[0]);
+  for (const n of m.nodes.slice(0, 40)) assert.equal(nodeAt(pos, { x: pos[n.id]!.x + sizeOf(n).w / 2, y: pos[n.id]!.y + sizeOf(n).h / 2 }, 'none', sizesOf(m)), n.id, 'every centre finds its own node, since none overlap');
 });

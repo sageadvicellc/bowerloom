@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { planProjection } from '../shared/proto/plan.js';
 import { createStore, isDirty } from '../shared/proto/store.js';
 import { buildScan } from '../shared/proto/scan-places.js';
-import { buildHarnessMap } from '../shared/proto/harnessmodel.js';
+import { NO_OWN_GROUPS, buildHarnessMap } from '../shared/proto/harnessmodel.js';
 import { effectiveResolver } from '../shared/proto/common.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { INTERFACE_WORDS, interfaceName, joinWords } from '../shared/proto/words.js';
@@ -61,7 +61,7 @@ test('the plan and the graph agree on which skills an inherited agent uses (samp
   const mine = planProjection(world, draft).changes.filter(c => c.path.startsWith(`${path}/`) && c.path.includes('/agents/') && c.preview.startsWith(`Agent: ${owner.name}\n`));
   assert.ok(mine.length > 0, 'the project copy of the agent is changed');
   for (const c of mine) assert.ok(!c.preview.includes(`Skills: ${name}`) && !new RegExp(`Skills: .*\\b${name}\\b`).test(c.preview), c.path);
-  const map = buildHarnessMap(draft, { scopeId: scope, showInherited: true, expandedGroups: [] });
+  const map = buildHarnessMap(draft, { scopeId: scope, showInherited: true, expandedGroups: [], groupLimits: NO_OWN_GROUPS });
   assert.equal(map.edges.some(e => e.rel === 'uses' && e.from === owner.id && e.to === skillId), false, 'the graph has no uses edge to the hidden skill');
   assert.equal(effectiveResolver(draft, scope)(skillId), undefined);
 });

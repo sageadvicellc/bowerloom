@@ -5,7 +5,7 @@
  * The rules are the harness editor's. An install is the editor's own drop on a harness (`dropOutcome`), a keep, hide or replace is `overrideOutcome`,
  * and the words for what is waiting are the change bar's (`changeBarText`). This file only builds the small context those functions need.
  */
-import { buildHarnessMap, groupIdOf, scopeNodeId } from './harnessmodel.js';
+import { buildHarnessMap, groupIdOf, NO_OWN_GROUPS, scopeNodeId } from './harnessmodel.js';
 import { interfaceName, joinWords } from './words.js';
 import type { HarnessMapModel } from './harnessmodel.js';
 import { dropOutcome } from './editor-actions.js';
@@ -28,7 +28,7 @@ export const everyGroup = (world: World): string[] => world.libraries.map(l => g
 
 /** The editor's context for one harness, with every library open: what the editor's rules need to know about the nodes. */
 export function contextFor(world: World, scopeId: string): EditorContext {
-  return { world, model: buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: everyGroup(world) }) };
+  return { world, model: buildHarnessMap(world, { scopeId, showInherited: true, expandedGroups: everyGroup(world), groupLimits: NO_OWN_GROUPS }) };
 }
 
 /**

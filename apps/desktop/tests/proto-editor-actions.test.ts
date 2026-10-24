@@ -9,7 +9,7 @@ import {
 } from '../shared/proto/editor-actions.js';
 import type { EditorContext, EditorOutcome } from '../shared/proto/editor-actions.js';
 import { conflictCopies, defaultCopyNames, keepBothProblem } from '../shared/proto/conflicts.js';
-import { ACCESS_WORDS, buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
+import { ACCESS_WORDS, NO_OWN_GROUPS, buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import { createStore, isDirty } from '../shared/proto/store.js';
 import type { AgentItem, World } from '../shared/proto/types.js';
@@ -18,7 +18,7 @@ import { makeWorld, skill } from './proto-testworld.js';
 
 const world = generateWorld(1);
 const LIB = groupIdOf(CASE_IDS.newerLibrary);
-const ctxOf = (scopeId: string, expanded: string[] = [], w: World = world, showInherited = true): EditorContext => ({ world: w, model: buildHarnessMap(w, { scopeId, showInherited, expandedGroups: expanded }) });
+const ctxOf = (scopeId: string, expanded: string[] = [], w: World = world, showInherited = true): EditorContext => ({ world: w, model: buildHarnessMap(w, { scopeId, showInherited, expandedGroups: expanded, groupLimits: NO_OWN_GROUPS }) });
 const agentOf = (id: string): AgentItem => world.items.find((i): i is AgentItem => i.kind === 'agent' && i.id === id)!;
 function refused(o: EditorOutcome): string { assert.equal(o.kind, 'refused', JSON.stringify(o)); return o.kind === 'refused' ? o.message : ''; }
 

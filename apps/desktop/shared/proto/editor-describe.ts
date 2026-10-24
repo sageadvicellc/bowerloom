@@ -5,7 +5,7 @@
  */
 import type { HarnessItem, InterfaceId, Plan, PlanChange, World } from './types.js';
 import type { HarnessMapModel, HarnessNode, HarnessNodeKind } from './harnessmodel.js';
-import { ACCESS_WORDS } from './harnessmodel.js';
+import { ACCESS_WORDS, membersWord, ownGroupParts } from './harnessmodel.js';
 import { interfaceName, joinWords as joinAnd } from './words.js';
 import { describeRule } from './slicerule.js';
 import type { StoreAction } from './store.js';
@@ -48,7 +48,7 @@ export interface SelectionView {
 }
 
 const KIND_WORD = (node: HarnessNode): string => (node.kind === 'tool' ? (node.toolKind === 'hook' ? 'Hook' : 'Tool') : node.kind === 'context-slice' ? 'Slice'
-  : node.kind === 'scope' ? 'Harness' : node.kind === 'interface' ? 'Interface' : node.kind === 'group' ? 'Library' : node.kind === 'skill' ? 'Skill' : 'Agent');
+  : node.kind === 'scope' ? 'Harness' : node.kind === 'interface' ? 'Interface' : node.kind === 'group' ? (node.libraryPinned ? 'Library' : 'Group') : node.kind === 'skill' ? 'Skill' : 'Agent');
 
 const count = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 const names = (list: readonly string[], max = 4): string => (list.length <= max ? joinAnd(list) : `${list.slice(0, max).join(', ')} and ${list.length - max} more`);
@@ -80,6 +80,11 @@ function sentenceOf(world: World, node: HarnessNode, item: HarnessItem | undefin
       return `${node.label} is a program you talk to.${state}${wall}`;
     }
     case 'group': {
+      const own = ownGroupParts(node.id);
+      if (own !== null) {
+        const owner = world.scopes.find(s => s.id === own.scopeId)?.name ?? 'this harness';
+        return `This group holds ${node.memberCount ?? 0} ${membersWord(node)} that ${node.inherited ? `${owner} owns and this harness inherits` : `${owner} owns`}. They are folded into one node so the picture stays readable. Open the group to see each one.`;
+      }
       const lib = world.libraries.find(l => l.id === node.id.replace(/^group:/, ''));
       return `${lib?.name ?? 'This library'} is an installed library. Its items are read only and pinned to version ${lib?.installedVersion ?? 'one version'}.${lib?.newerVersion === undefined ? '' : ` Version ${lib.newerVersion} is waiting.`}`;
     }
@@ -115,8 +120,8 @@ function factsOf(world: World, item: HarnessItem | undefined): string[] {
     const d = item.definition;
     const slice = d.sliceId === undefined ? null : (world.slices.find(s => s.id === d.sliceId)?.name ?? d.sliceId);
     return [
-      d.skillIds.length === 0 ? 'Uses no skills yet. Draw a wire from a skill to this agent.' : `Uses ${count(d.skillIds.length, 'skill')}: ${names(d.skillIds.map(id => byId.get(id) ?? id))}.`,
-      d.toolAttachments.length === 0 ? 'Has no tools yet. Draw a wire from a tool to this agent.' : `Has ${count(d.toolAttachments.length, 'tool')}: ${names(d.toolAttachments.map(t => `${byId.get(t.toolId) ?? t.toolId} (${ACCESS_WORDS[t.access]})`))}.`,
+      d.skillIds.length === 0 ? 'Uses no skills yet. Draw a connection from a skill to this agent.' : `Uses ${count(d.skillIds.length, 'skill')}: ${names(d.skillIds.map(id => byId.get(id) ?? id))}.`,
+      d.toolAttachments.length === 0 ? 'Has no tools yet. Draw a connection from a tool to this agent.' : `Has ${count(d.toolAttachments.length, 'tool')}: ${names(d.toolAttachments.map(t => `${byId.get(t.toolId) ?? t.toolId} (${ACCESS_WORDS[t.access]})`))}.`,
       slice === null ? 'Reads no slice.' : `Reads the slice ${slice}.`,
     ];
   }
@@ -129,6 +134,16 @@ function factsOf(world: World, item: HarnessItem | undefined): string[] {
     return [users.length === 0 ? 'No agent reads it yet.' : `Read by ${count(users.length, 'agent')}: ${names(users.map(u => u.name))}.`];
   }
   return [];
+}
+
+/** What an own group holds, by name: "Holds a, b, c, d and 40 more." Empty for any other node. */
+function groupFactsOf(world: World, model: HarnessMapModel, node: HarnessNode): string[] {
+  const own = node.kind === 'group' ? ownGroupParts(node.id) : null;
+  if (own === null) return [];
+  // A skill with a state of its own (hidden, replaced, in conflict) is drawn beside the group, so it is not listed here.
+  const drawn = new Set(model.nodes.map(n => n.id));
+  const list = world.items.filter(i => i.kind === own.kind && i.scopeId === own.scopeId && i.library === null && (node.expanded || !drawn.has(i.id))).map(i => i.name);
+  return [`Holds ${names(list, 6)}.`];
 }
 
 /**
@@ -169,11 +184,11 @@ export function describeSelection(world: World, model: HarnessMapModel, nodeId: 
       readOnlyNote = `This agent is inherited from ${node.fromScope ?? 'the global harness'}. Change it there. Or make a copy you can change here: ${COPY_HERE_WORDS}.`;
     }
   }
-  if (node.kind === 'group') actions.push({ id: 'toggle-group', label: node.expanded ? 'Show as one group' : `Show all ${node.memberCount ?? 0} items`, targetId: node.id });
+  if (node.kind === 'group') actions.push({ id: 'toggle-group', label: node.expanded ? 'Show as one group' : `Show all ${node.memberCount ?? 0} ${membersWord(node)}`, targetId: node.id });
 
   const foundAt = item === undefined ? [] : item.foundAt.map(f => ({ interfaceName: interfaceName(f.interface), path: f.path }));
   return {
-    nodeId: node.id, kind: node.kind, kindWord: KIND_WORD(node), name: node.label, sentence: sentenceOf(world, node, item), facts: factsOf(world, item),
+    nodeId: node.id, kind: node.kind, kindWord: KIND_WORD(node), name: node.label, sentence: sentenceOf(world, node, item), facts: item === undefined ? groupFactsOf(world, model, node) : factsOf(world, item),
     foundAt, foundNote: item === undefined ? '' : foundAt.length === 0 ? 'Not a file in any interface. It lives in Bowerloom.' : '',
     flags: flagsOf(world, node, item), readOnlyNote, actions,
   };

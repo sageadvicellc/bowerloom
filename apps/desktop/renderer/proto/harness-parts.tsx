@@ -148,10 +148,12 @@ const FLAG_TONE = (text: string): string => (/^(Secret missing)/.test(text) ? 'b
 export interface ReplaceChoice { readonly id: string; readonly label: string }
 
 /** The panel beside the canvas: what the selected node is, where it came from, its states in words, and the buttons that apply. `copyHere` is the keyboard way to do what a drop on the harness does. */
-export function Inspector({ view, onAction, onClose, headingRef, replace, copyHere }: {
+export function Inspector({ view, onAction, onClose, headingRef, replace, copyHere, side = 'right' }: {
   view: SelectionView | null; onAction(action: SelectionAction): void; onClose(): void; headingRef: RefObject<HTMLHeadingElement | null>;
   replace: { choices: readonly ReplaceChoice[]; value: string; onChange(id: string): void; onConfirm(): void; onCancel(): void } | null;
   copyHere?: (() => void) | null;
+  /** In a narrow window the panel floats over the canvas, on the side away from the chosen node. */
+  side?: 'left' | 'right';
 }): ReactElement {
   // A button here can remove itself (Remove the skill, Use this one). The keyboard then goes to the heading, not to the body.
   const panel = useRef<HTMLElement>(null);
@@ -171,7 +173,7 @@ export function Inspector({ view, onAction, onClose, headingRef, replace, copyHe
   const choose = view.actions.filter(a => a.id === 'keep-from-global' || a.id === 'hide-here' || a.id === 'replace-here');
   const others = view.actions.filter(a => !choose.includes(a));
   return (
-    <aside ref={panel} className="harness-inspector" aria-label="Details of the selected item">
+    <aside ref={panel} className={`harness-inspector${side === 'left' ? ' is-left' : ''}`} aria-label="Details of the selected item" onKeyDown={e => { if (e.key === 'Escape' && typeof matchMedia === 'function' && matchMedia('(max-width: 1099px)').matches) { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <div className="harness-inspector-head">
         <span className="chip quiet">{view.kindWord}</span>
         <button type="button" className="harness-close" onClick={onClose} aria-label="Close the details">Close</button>

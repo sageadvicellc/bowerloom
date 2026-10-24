@@ -1,7 +1,7 @@
 /**
  * The harness graph canvas (prototype slice S3), in a real window: the real HarnessCanvas with the sample world on a page of its own
  * (tests/perf/proto-canvas-harness.tsx, bundled here by esbuild so no other build file has to change).
- * Checks what a person does (select, open, move with the keys, drag a wire, drop on a node, the menu, the library group, fit, reduce motion)
+ * Checks what a person does (select, open, move with the keys, drag a connection, drop on a node, the menu, the library group, fit, reduce motion)
  * and that after the first fit every node is inside the picture. Set PROTO_CANVAS_SHOTS to a folder to also save screenshots there.
  */
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -80,9 +80,9 @@ for (const [w, h] of SIZES) {
   }
 }
 
-test('select, open, arrow keys, the wire from one node to another, a drop on a node, the library button, fit, and the pane click', async () => {
+test('select, open, arrow keys, the connection from one node to another, a drop on a node, the library button, fit, and the pane click', async () => {
   test.setTimeout(120_000);
-  const p = await open('scope=global');
+  const p = await open('scope=global&limits=none');
   await node(p, 'skill-010').click();
   expect(await calls(p)).toContain('select skill-010');
   await expect(node(p, 'skill-010').locator('.hc-node')).toHaveClass(/is-selected/);
@@ -91,7 +91,7 @@ test('select, open, arrow keys, the wire from one node to another, a drop on a n
   await node(p, 'skill-011').dblclick();
   expect(await calls(p)).toContain('menu skill-011 open');
   await node(p, 'skill-012').focus();
-  expect(await node(p, 'skill-012').getAttribute('aria-label')).toMatch(/^Skill, .+\. .* \d+ wires?\.$/);
+  expect(await node(p, 'skill-012').getAttribute('aria-label')).toMatch(/^Skill, .+\. .* \d+ connections?\.$/);
   await p.keyboard.press('Enter');
   expect(await calls(p)).toContain('menu skill-012 open');
   const before = await transform(p, 'skill-012');
@@ -99,7 +99,7 @@ test('select, open, arrow keys, the wire from one node to another, a drop on a n
   await expect.poll(() => transform(p, 'skill-012')).not.toBe(before);
   await expect.poll(() => p.evaluate(() => document.activeElement?.getAttribute('data-id'))).toBe('skill-012');
 
-  // A wire from the left side of an agent to a skill.
+  // A connection from the left side of an agent to a skill.
   const a = (await node(p, 'agent-01').boundingBox())!, s = (await node(p, 'skill-020').boundingBox())!;
   await p.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await p.mouse.move(a.x + 1, a.y + a.height / 2); await p.mouse.down();
   await p.mouse.move(a.x - 60, a.y + 10, { steps: 6 }); await p.mouse.move(s.x + s.width - 2, s.y + s.height / 2, { steps: 15 }); await p.mouse.up();
@@ -130,7 +130,7 @@ test('select, open, arrow keys, the wire from one node to another, a drop on a n
 
 test('the menu of a node: right click, the keyboard, hide, and a ghost that can be shown again', async () => {
   test.setTimeout(120_000);
-  const p = await open('scope=scope-copperfen');
+  const p = await open('scope=scope-copperfen&limits=none');
   await node(p, 'skill-010').click({ button: 'right' });
   await expect(p.locator('.hc-menu-item')).toHaveText(['Open details', 'Hide in this project', 'Replace in this project']);
   await expect(p.locator('.hc-menu')).toHaveAttribute('role', 'menu');
@@ -163,7 +163,7 @@ test('reduce motion sets every duration to 0 and stops the animations; with moti
 
 test('a screen that keeps the places: a moved node stays where it was put; changing scope draws the new scope and fits it', async () => {
   test.setTimeout(120_000);
-  const p = await open('scope=global&positions=1');
+  const p = await open('scope=global&positions=1&limits=none');
   const b1 = (await node(p, 'skill-030').boundingBox())!;
   await p.mouse.move(b1.x + b1.width / 2, b1.y + b1.height / 2); await p.mouse.down(); await p.mouse.move(b1.x + 40, b1.y + 200, { steps: 10 }); await p.mouse.up();
   await expect.poll(async () => Math.abs((await node(p, 'skill-030').boundingBox())!.y - b1.y)).toBeGreaterThan(100);
@@ -171,5 +171,75 @@ test('a screen that keeps the places: a moved node stays where it was put; chang
   await expect(node(p, 'scope:scope-copperfen')).toBeAttached();
   await canvasSettled(p, { fitted: true });
   await assertFits(p, 'after the scope changed');
+  await close(p);
+});
+
+test('a long list of skills is one group by default; it opens with its button, and every skill is then a small node of its own', async () => {
+  test.setTimeout(120_000);
+  const p = await open('scope=global');
+  const group = node(p, 'group:skills:global');
+  await expect(group).toContainText('44 skills');
+  await expect(group.locator('.hc-kind')).toHaveText('Group');
+  await expect(p.locator('.react-flow__node[data-id^="skill-"]')).toHaveCount(0);
+  await group.locator('.hc-toggle').click();
+  await expect.poll(() => calls(p)).toContain('menu group:skills:global expand');
+  await expect(p.locator('.react-flow__node[data-id^="skill-"]')).toHaveCount(44);
+  await expect(group.locator('.hc-toggle')).toHaveText('Close');
+  // Sized by role: an interface is large, an agent is medium, a skill is small.
+  const w = async (id: string): Promise<number> => (await node(p, id).boundingBox())!.width;
+  const [face, agent, skill] = [await w('interface:codex'), await w('agent-01'), await w('skill-010')];
+  expect(skill, 'a skill is smaller than an agent').toBeLessThan(agent);
+  expect(await node(p, 'interface:codex').evaluate(e => e.getBoundingClientRect().height), 'an interface is taller than a skill').toBeGreaterThan((await node(p, 'skill-010').boundingBox())!.height);
+  expect(face).toBeGreaterThan(0);
+  await close(p);
+});
+
+test('only the connections of the chosen node are drawn, and one faint line stays for each agent', async () => {
+  test.setTimeout(120_000);
+  const p = await open('scope=global');
+  const edges = () => p.locator('.react-flow__edge.hc-edge');
+  const agents = await p.locator('.react-flow__node[data-id^="agent-"], .react-flow__node[data-id="group:evergreen-kit"]').count();
+  await expect(edges()).toHaveCount(agents);
+  await expect(p.locator('.react-flow__edge.hc-edge.is-focus')).toHaveCount(0);
+  await node(p, 'agent-01').click();
+  await expect(p.locator('.react-flow__edge.hc-edge.is-focus').first()).toBeAttached();
+  const focus = await p.locator('.react-flow__edge.hc-edge.is-focus').count();
+  expect(focus).toBeGreaterThanOrEqual(4);
+  expect(await edges().count(), 'the chosen agent adds its own connections and its summary line becomes one of them').toBeLessThan(agents + focus);
+  await p.mouse.click(1300, 130);
+  await expect(p.locator('.react-flow__edge.hc-edge.is-focus')).toHaveCount(0);
+  await expect(p.getByText('What the connections mean')).toBeVisible();
+  await close(p);
+});
+
+test('text on a node is 12 pixels or more on screen at the first view, in a large and in a small window', async () => {
+  test.setTimeout(120_000);
+  for (const [w, h, query] of [[1440, 900, 'scope=global'], [900, 600, 'scope=global&limits=compact']] as const) {
+    const p = await open(query, w, h);
+    const sizes = await p.evaluate(() => {
+      const z = new DOMMatrix(getComputedStyle(document.querySelector('.react-flow__viewport')!).transform).a, out: Record<string, number> = {};
+      for (const [k, sel] of Object.entries({ name: '.hc-label', kind: '.hc-kind', chip: '.hc-chip', toggle: '.hc-toggle' })) {
+        const list = [...document.querySelectorAll(sel)].filter(e => (e as HTMLElement).offsetParent !== null && getComputedStyle(e).display !== 'none').map(e => parseFloat(getComputedStyle(e).fontSize) * z);
+        if (list.length > 0) out[k] = Math.min(...list);
+      }
+      return out;
+    });
+    expect(Object.keys(sizes).sort(), `${w}x${h}: every kind of text is there`).toEqual(['chip', 'kind', 'name', 'toggle']);
+    for (const [k, v] of Object.entries(sizes)) expect(v, `${k} at ${w}x${h}`).toBeGreaterThanOrEqual(12);
+    await assertFits(p, `first view ${w}x${h}`);
+    await close(p);
+  }
+});
+
+test('a scope switch is a short crossfade: no node rises in and no connection draws itself again', async () => {
+  test.setTimeout(120_000);
+  const p = await open('scope=global&positions=1');
+  await p.evaluate(() => { (window as unknown as { __seen: string[] }).__seen = []; const t = (): void => { for (const a of document.getAnimations()) { const n = (a as CSSAnimation).animationName ?? ''; if (n !== '' && a.playState === 'running') (window as unknown as { __seen: string[] }).__seen.push(n); } requestAnimationFrame(t); }; t(); });
+  await p.selectOption('select', 'scope-copperfen');
+  await expect(node(p, 'scope:scope-copperfen')).toBeAttached();
+  await canvasSettled(p, { fitted: true });
+  const seen = await p.evaluate(() => [...new Set((window as unknown as { __seen: string[] }).__seen)]);
+  expect(seen).toContain('hc-fade');
+  expect(seen).not.toContain('hc-enter'); expect(seen).not.toContain('hc-edge-draw');
   await close(p);
 });
