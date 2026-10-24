@@ -133,11 +133,22 @@ test('journey 2: wire a skill to an agent, hide an inherited skill in a project,
   const toggle = bar().getByRole('button', { name: 'See what will be written' });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // The sheet leads with one plain sentence; the paths are in a list that is closed until it is asked for, and the sheet stays under 40 percent of the window.
+  const lead = bar().locator('.harness-plan-lead');
+  await expect(lead).toContainText(/^\d+ agents? changes?|change/);
+  await expect(lead).toContainText('1 skill is removed');
+  await expect(bar().locator('.harness-plan-where')).toContainText('It would write to Claude Code, Codex and OpenCode.');
+  await expect(bar().locator('.harness-plan-files')).not.toHaveAttribute('open', '');
+  await expect(bar().getByRole('region', { name: 'Claude Code' })).toBeHidden();
+  expect(await bar().locator('.harness-plan').evaluate(e => e.getBoundingClientRect().height / window.innerHeight)).toBeLessThanOrEqual(0.4 + 0.005);
+  await bar().locator('.harness-plan-files > summary').click();
   for (const name of ['Claude Code', 'Codex', 'OpenCode']) await expect(bar().getByRole('region', { name })).toBeVisible();
+  expect(await bar().locator('.harness-plan').evaluate(e => e.getBoundingClientRect().height / window.innerHeight), 'open, the sheet is still under 40 percent').toBeLessThanOrEqual(0.4 + 0.005);
+  expect(await bar().locator('.harness-plan').evaluate(e => e.scrollHeight > e.clientHeight), 'and it scrolls on its own').toBe(true);
   await expect(bar().locator('.harness-plan .chip').first()).toBeVisible();
   const files = await bar().locator('.harness-plan li').count();
   await expect(bar().locator('.harness-count')).toContainText(`${files} files would change`);
-  await bar().locator('.harness-plan summary').first().click();
+  await bar().locator('.harness-plan li summary').first().click();
   await expect(bar().locator('.harness-plan pre.file').first()).toBeVisible();
 
   // Apply with a short label.
@@ -270,7 +281,7 @@ test('a drop on a harness installs an editable copy there, and the interface fil
   await expect.poll(drawnNow).toBeLessThan(drawn / 2);
   await page.getByLabel('Show inherited').check();
   await expect.poll(drawnNow).toBe(drawn);
-  const chip = page.getByRole('group', { name: 'Show only items found in' }).getByRole('button', { name: 'Codex' });
+  const chip = page.getByRole('group', { name: 'Show what lands in:' }).getByRole('button', { name: 'Codex' });
   await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(drawnNow).toBeLessThan(drawn);
   await chip.click(); await expect(chip).toHaveAttribute('aria-pressed', 'false');
@@ -483,7 +494,15 @@ for (const [w, h, floor] of [[1440, 900, 12], [900, 600, 11]] as const) {
     expect(r.cut, 'no node has text cut off at its edge').toBe(0);
     expect(r.nodes, 'the first view shows few enough nodes to read').toBeLessThanOrEqual(30);
     await expect(node('group:skills:global')).toContainText('44 skills');
-    if (w < 1100) expect(r.canvas[0], 'in a narrow window the canvas has the full width').toBeGreaterThan(w - 260);
+    // A small canvas folds the agents, the tools and the slices too; a large one draws the agents one by one.
+    if (w < 1100) { await expect(node('group:agents:global')).toContainText('8 agents'); await expect(node('group:tools:global')).toContainText('8 tools'); expect(r.canvas[0], 'in a narrow window the canvas has the full width').toBeGreaterThan(w - 260); }
+    else { await expect(node('agent-01')).toBeAttached(); await expect(node('group:agents:global')).toHaveCount(0); }
+    // The buttons on the canvas sit in their own strip: no node is under the legend, the zoom buttons or Fit to view.
+    const covered = await page.evaluate(() => {
+      const boxes = [...document.querySelectorAll('.hc-legend summary, .hc-toolbar button')].map(e => e.getBoundingClientRect());
+      return [...document.querySelectorAll('.react-flow__node')].filter(n => { const b = n.getBoundingClientRect(); return boxes.some(t => b.left < t.right && t.left < b.right && b.top < t.bottom && t.top < b.bottom); }).length;
+    });
+    expect(covered, 'no node is covered by a button of the canvas').toBe(0);
   });
 }
 

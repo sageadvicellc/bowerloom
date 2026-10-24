@@ -143,16 +143,21 @@ function SkillsManager({ session }: { session: ProtoSession }): ReactElement {
         <label className="lib-field lib-search"><span>Search skills</span>
           <input type="search" value={query} placeholder="Name or description" onChange={e => setQuery(e.target.value)} />
         </label>
-        <div className="lib-field"><span id="lib-face-label">Found in</span>
-          <div className="lib-chips" role="group" aria-labelledby="lib-face-label">
-            {INTERFACE_CHIPS.map(c => <button key={c.id} type="button" className="lib-chip" aria-pressed={face === c.id} onClick={() => setFace(prev => (prev === c.id ? null : c.id))}>{c.name}</button>)}
+        <details className="lib-filters">
+          <summary>Filters{face !== null || view === 'list' ? <span className="lib-filters-on"> ({(face === null ? 0 : 1) + (view === 'list' ? 1 : 0)} on)</span> : null}</summary>
+          <div className="lib-filters-body">
+            <div className="lib-field"><span id="lib-face-label">Found in</span>
+              <div className="lib-chips" role="group" aria-labelledby="lib-face-label">
+                {INTERFACE_CHIPS.map(c => <button key={c.id} type="button" className="lib-chip" aria-pressed={face === c.id} onClick={() => setFace(prev => (prev === c.id ? null : c.id))}>{c.name}</button>)}
+              </div>
+            </div>
+            <div className="lib-field"><span id="lib-view-label">View</span>
+              <div className="lib-chips" role="group" aria-labelledby="lib-view-label">
+                {(['grid', 'list'] as const).map(v => <button key={v} type="button" className="lib-chip" aria-pressed={view === v} onClick={() => setView(v)}>{v === 'grid' ? 'Cards' : 'List'}</button>)}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="lib-field"><span id="lib-view-label">View</span>
-          <div className="lib-chips" role="group" aria-labelledby="lib-view-label">
-            {(['grid', 'list'] as const).map(v => <button key={v} type="button" className="lib-chip" aria-pressed={view === v} onClick={() => setView(v)}>{v === 'grid' ? 'Cards' : 'List'}</button>)}
-          </div>
-        </div>
+        </details>
         <button type="button" className="btn" aria-expanded={panel} aria-controls="lib-add-panel" onClick={() => setPanel(p => !p)}>Add skills</button>
       </div>
 

@@ -57,6 +57,8 @@ const FIT = { padding: { top: `${FIT_TOP}px`, right: `${FIT_SIDE}px`, bottom: `$
 const FIT_ROOM = { width: 2 * FIT_SIDE, height: FIT_TOP + FIT_SIDE } as const;
 /** Below this zoom a node shows less (no detail line, only the chips that flag something), so the larger text still fits. */
 const FAR_ZOOM = 0.85;
+/** Below this zoom (a group opened and the picture is crowded) a node has room for one line, so the name keeps it and the kind word goes: the icon and the tooltip still say the kind. A node with a flag keeps its top line. */
+const DENSE_ZOOM = 0.55;
 /** Text is drawn at about this many pixels on screen at the least: names, then the small text (the kind word, chips, the group button). The values in the node's own units are these divided by the zoom, up to a limit. */
 const NAME_SCREEN = 12.5, SMALL_SCREEN = 12.2, FAR_FONT_MAX = 44;
 /** Past this many nodes the canvas draws only what is in view and plays no entry animation. */
@@ -336,7 +338,7 @@ function Flow({ props, box, entrance }: { props: HarnessCanvasProps; box: { widt
   const menuNode = menu === null ? undefined : byId.get(menu.id);
 
   return (
-    <div ref={rootRef} className={`hc-root${reduceMotion ? ' is-reduced' : ''}${entering ? ' is-entering' : ''}${plays ? '' : ' is-fade'}${drawIn ? ' is-drawing' : ''}${many ? ' is-many' : ''}${busy ? ' is-busy' : ''}${far ? ' is-far' : ''}${settling ? ' is-settling' : ''}${linkFrom !== null ? ' is-linking' : ''}`} style={vars} onKeyDown={onKeyDown}>
+    <div ref={rootRef} className={`hc-root${reduceMotion ? ' is-reduced' : ''}${entering ? ' is-entering' : ''}${plays ? '' : ' is-fade'}${drawIn ? ' is-drawing' : ''}${many ? ' is-many' : ''}${busy ? ' is-busy' : ''}${far ? ' is-far' : ''}${zoom < DENSE_ZOOM ? ' is-dense' : ''}${settling ? ' is-settling' : ''}${linkFrom !== null ? ' is-linking' : ''}`} style={vars} onKeyDown={onKeyDown}>
       <ActionsContext.Provider value={actions}>
         <ReactFlow<HcNode, Edge>
           nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onConnect={onConnect} isValidConnection={c => c.source !== c.target}

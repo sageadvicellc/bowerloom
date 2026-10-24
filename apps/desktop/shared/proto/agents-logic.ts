@@ -75,7 +75,8 @@ export interface AgentView {
 }
 
 /** The kind of tool in words. */
-export const toolKindWord = (tool: ToolItem): string => (tool.toolKind === 'hook' ? 'Hook' : tool.toolKind === 'prompt' ? 'Saved prompt' : 'MCP server');
+/** The kind of a tool in plain words. An MCP tool is a "tool connection"; the first one on a list says what MCP is, and the others say only "tool connection". */
+export const toolKindWord = (tool: ToolItem, first = true): string => (tool.toolKind === 'hook' ? 'Hook' : tool.toolKind === 'prompt' ? 'Saved prompt' : first ? 'Tool connection (MCP)' : 'Tool connection');
 
 /** The context the editor's rules need for this agent: its own harness, with every library open. */
 export const agentContext = (world: World, agent: AgentItem): EditorContext => contextFor(world, agent.scopeId);
@@ -85,9 +86,12 @@ export function describeAgent(world: World, agent: AgentItem): AgentView {
   const byId = new Map(world.items.map(i => [i.id, i]));
   const d = agent.definition;
   const skills = d.skillIds.map((id, position): AgentSkill => ({ id, name: byId.get(id)?.name ?? id, position, count: d.skillIds.length, missing: byId.get(id)?.kind !== 'skill' }));
+  let seenMcp = false;
   const tools = d.toolAttachments.map((t): AgentTool => {
     const tool = byId.get(t.toolId);
-    return { id: t.toolId, name: tool?.name ?? t.toolId, kind: tool !== undefined && tool.kind === 'tool' ? toolKindWord(tool) : 'Tool', access: t.access, accessWords: ACCESS_WORDS[t.access], missing: tool?.kind !== 'tool' };
+    const kind = tool !== undefined && tool.kind === 'tool' ? toolKindWord(tool, !seenMcp) : 'Tool';
+    if (tool !== undefined && tool.kind === 'tool' && tool.toolKind === 'mcp') seenMcp = true;
+    return { id: t.toolId, name: tool?.name ?? t.toolId, kind, access: t.access, accessWords: ACCESS_WORDS[t.access], missing: tool?.kind !== 'tool' };
   });
   const slice = d.sliceId === undefined ? undefined : world.slices.find(s => s.id === d.sliceId);
   const sliceItem = d.sliceId === undefined ? undefined : world.items.find(i => i.kind === 'context-slice' && i.sliceId === d.sliceId);

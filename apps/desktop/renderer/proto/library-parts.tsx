@@ -107,10 +107,9 @@ export function WaitingPanel({ view, note }: { view: WaitingView; note: Note | n
     <section className={`lib-waiting${view.dirty ? ' is-dirty' : ''}`} aria-labelledby={headingId}>
       <LiveNote note={note} />
       <div className="lib-waiting-row">
-        <h2 id={headingId}>Waiting to apply</h2>
-        <p className="lib-waiting-count"><strong>{view.headline}</strong></p>
+        <h2 id={headingId} className="sr">Waiting to apply</h2>
+        <p className="lib-waiting-count"><strong>{view.headline}</strong>{note !== null && note.lead === 'Done.' ? null : <> <span className="lib-waiting-where small muted">Apply on the Harness screen.</span></>}</p>
         {view.lines.length === 0 ? null : <ul className="lib-waiting-lines">{view.lines.map(l => <li key={l}>{l}</li>)}</ul>}
-        {note !== null && note.lead === 'Done.' ? null : <p className="lib-waiting-where small muted">Apply on the Harness screen.</p>}
       </div>
     </section>
   );

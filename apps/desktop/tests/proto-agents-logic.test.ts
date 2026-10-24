@@ -51,7 +51,7 @@ test('describeAgent: an owned agent has its skills in order, its tools with acce
   assert.deepEqual(v.skills.map(s => s.id), [...owned.definition.skillIds]); assert.ok(v.skills.every(s => !s.missing && s.name !== s.id));
   assert.deepEqual(v.skills.map(s => [s.position, s.count]), owned.definition.skillIds.map((_, i) => [i, owned.definition.skillIds.length]));
   assert.ok(v.tools.length >= 1); assert.ok(v.tools.every(t => t.accessWords === 'read only' || t.accessWords === 'read and write'));
-  assert.equal(v.tools[0]!.id, CASE_IDS.mcpMissing); assert.equal(v.tools[0]!.kind, 'MCP server');
+  assert.equal(v.tools[0]!.id, CASE_IDS.mcpMissing); assert.equal(v.tools[0]!.kind, 'Tool connection (MCP)');
   assert.notEqual(v.slice, null); assert.notEqual(v.sliceItemId, null);
   assert.equal(v.extras.length, 1); assert.match(v.extras[0]!.badge, /only$/); assert.equal(v.extras[0]!.key, 'accent');
   assert.match(v.extras[0]!.interfaceName, /Claude Code|Codex|OpenCode/);
@@ -75,6 +75,13 @@ test('describeAgent: a skill or tool the world does not have is marked missing a
   assert.deepEqual(v.skills.map(s => [s.name, s.missing]), [['skill-gone', true]]); assert.deepEqual(v.tools.map(t => [t.name, t.missing]), [['tool-gone', true]]);
 });
 
+test('describeAgent: the first tool connection on an agent says (MCP), the next ones say only tool connection', () => {
+  const w = structuredClone(world) as unknown as { items: { id: string; definition: { toolAttachments: { toolId: string; access: 'read-only' | 'read-write' }[] } }[] };
+  w.items.find(i => i.id === 'agent-01')!.definition.toolAttachments = [{ toolId: CASE_IDS.mcpMissing, access: 'read-only' }, { toolId: 'tool-prompt-01', access: 'read-only' }, { toolId: CASE_IDS.mcpPresent, access: 'read-write' }];
+  const edited = w as unknown as typeof world, v = describeAgent(edited, edited.items.find(i => i.id === 'agent-01') as AgentItem);
+  assert.deepEqual(v.tools.map(t => t.kind), ['Tool connection (MCP)', 'Saved prompt', 'Tool connection']);
+});
+
 test('attachableSkills and attachableTools: no skill the agent has, no hook, no tool it has, none for a library agent', () => {
   const skills = attachableSkills(world, owned);
   assert.ok(skills.length > 20); assert.ok(skills.every(s => !owned.definition.skillIds.includes(s.id)));
@@ -84,6 +91,9 @@ test('attachableSkills and attachableTools: no skill the agent has, no hook, no 
   assert.ok(tools.length >= 1); assert.ok(tools.every((t: ToolItem) => t.toolKind !== 'hook' && !owned.definition.toolAttachments.some(a => a.toolId === t.id)));
   assert.deepEqual(attachableSkills(world, library), []); assert.deepEqual(attachableTools(world, library), []);
   assert.equal(toolKindWord(world.items.find(i => i.id === CASE_IDS.hook) as ToolItem), 'Hook');
+  // An MCP tool is a "tool connection"; the first one on a list says what MCP is, and the next ones do not repeat it.
+  const mcp = world.items.find(i => i.id === CASE_IDS.mcpMissing) as ToolItem;
+  assert.equal(toolKindWord(mcp), 'Tool connection (MCP)'); assert.equal(toolKindWord(mcp, false), 'Tool connection');
   assert.equal(toolKindWord(world.items.find(i => i.id === 'tool-prompt-01') as ToolItem), 'Saved prompt');
 });
 

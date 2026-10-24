@@ -184,7 +184,7 @@ export function overrideOutcome(ctx: EditorContext, itemId: string, mode: Overri
   }
   if (mode === 'hide') {
     if (node.hidden) return refuse(`${item.name} is already hidden here.`);
-    return { kind: 'action', action: { type: 'setOverride', scopeId: scope.id, itemId: item.id, mode: 'hide' }, message: `${item.name} is hidden in ${scope.name}. It shows as a ghost, and you can bring it back.` };
+    return { kind: 'action', action: { type: 'setOverride', scopeId: scope.id, itemId: item.id, mode: 'hide' }, message: `${item.name} is hidden in ${scope.name}. It shows faded as hidden, and you can bring it back.` };
   }
   if (replacementItemId === undefined) return { kind: 'choose-replacement', itemId: item.id, itemName: item.name };
   const replacement = ctx.world.items.find(i => i.id === replacementItemId);

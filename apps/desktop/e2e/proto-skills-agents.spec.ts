@@ -100,6 +100,24 @@ test('the skills screen opens on the global harness with the three groups, 43 sk
   for (let i = 1; i < levels.length; i += 1) expect(levels[i]!, `heading ${i}`).toBeLessThanOrEqual(levels[i - 1]! + 1);
 });
 
+test('the filters are one row with the search, so the first cards show in a small window; the waiting list is one plain line', async () => {
+  for (const [w, h] of [[900, 600], [1440, 900]] as const) {
+    await fresh('Skills', w, h);
+    const rows = await page.evaluate(() => {
+      const top = (sel: string): number => Math.round(document.querySelector(sel)!.getBoundingClientRect().top);
+      const bar = document.querySelector('.lib-toolbar')!, kids = [...bar.children].map(c => Math.round(c.getBoundingClientRect().bottom));
+      return { tops: new Set(kids).size, firstCard: top('article.lib-card'), height: window.innerHeight, footer: top('section.lib-waiting') };
+    });
+    expect(rows.tops, `${w}x${h}: search, Filters and Add skills share one row`).toBe(1);
+    expect(rows.firstCard, `${w}x${h}: the first card starts inside the screen, above the waiting list`).toBeLessThan(Math.min(rows.height - 120, rows.footer));
+    const lineHeight = await waiting().evaluate(e => e.getBoundingClientRect().height);
+    expect(lineHeight, 'the waiting list is one line').toBeLessThan(w < 1100 ? 56 : 64);
+    await expect(waiting()).toContainText('No changes waiting');
+    await expect(waiting()).toContainText('Apply on the Harness screen.');
+    await expect(waiting().locator('h2')).toHaveText('Waiting to apply');
+  }
+});
+
 test('a card dropped on nothing says where it can go', async () => {
   await fresh();
   await pointerDrag(card(menuSkill.id), page.getByRole('heading', { level: 1 }));
@@ -119,8 +137,12 @@ test('search narrows by name and by description, and the interface chip keeps sk
   await expect(page.getByText('No skill of yours matches the search.')).toBeVisible();
   await search.fill('');
   const all = await page.locator('article.lib-card').count();
+  // The interface chips are behind the Filters button, which says how many are on.
+  await expect(page.getByRole('group', { name: 'Found in' })).toBeHidden();
+  await page.locator('.lib-filters > summary').click();
   const codex = page.getByRole('group', { name: 'Found in' }).getByRole('button', { name: 'Codex' });
   await codex.click();
+  await expect(page.locator('.lib-filters > summary')).toContainText('Filters (1 on)');
   await expect(codex).toHaveAttribute('aria-pressed', 'true');
   expect(await page.locator('article.lib-card').count()).toBeLessThan(all);
   await codex.click();

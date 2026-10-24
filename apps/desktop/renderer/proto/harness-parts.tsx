@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement, ReactNode, RefObject } from 'react';
 import { ACCESS_WORDS } from '../../shared/proto/harnessmodel.js';
-import { ACTION_WORDS, applyReason, changeBarText, editsOf, groupPlan, savedLine, writtenLine } from '../../shared/proto/editor-describe.js';
+import { ACTION_WORDS, applyReason, changeBarText, editsOf, groupPlan, planSentence, savedLine, willWriteLine, writtenLine } from '../../shared/proto/editor-describe.js';
 import type { SelectionAction, SelectionView } from '../../shared/proto/editor-describe.js';
 import { conflictCopies, defaultCopyNames, keepBothProblem } from '../../shared/proto/conflicts.js';
 import type { AccessClass, HarnessItem, Plan, World } from '../../shared/proto/types.js';
@@ -232,27 +232,36 @@ export function Inspector({ view, onAction, onClose, headingRef, replace, copyHe
 
 // ------------------------------------------------------------------------------------------------------------- change bar
 
-/** The list of files that would be written, by interface, with what happens to each and the text it will hold. */
+/**
+ * What would be written, led by one plain sentence ("3 agents change and 1 skill is removed."). The files, by interface, with what happens to each and
+ * the text it will hold, are in a closed list under it, so the sheet is short until a person asks for the paths. The sheet has its own scroll.
+ */
 export function PlanList({ plan, id, headingId }: { plan: Plan; id: string; headingId: string }): ReactElement {
   const groups = groupPlan(plan);
   return (
     <div id={id} className="harness-plan">
-      <h3 id={headingId} className="sr">Files that will be written</h3>
-      {groups.length === 0 ? <p className="muted">No file would change.</p> : groups.map(g => (
-        <section key={g.interface} aria-label={g.name} className="harness-plan-group">
-          <h4>{g.name} <span className="muted small">{g.summary}</span></h4>
-          <ul>
-            {g.changes.map(c => (
-              <li key={`${c.interface}${c.path}`}>
-                <details>
-                  <summary><span className={`chip ${c.action === 'remove' ? 'bad' : c.action === 'add' ? 'good' : 'warn'}`}>{ACTION_WORDS[c.action]}</span> <span className="tech">{c.path}</span></summary>
-                  <pre className="file">{c.preview}</pre>
-                </details>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <h3 id={headingId} className="harness-plan-lead">{planSentence(plan)}</h3>
+      <p className="small muted harness-plan-where">{willWriteLine(plan)}</p>
+      {groups.length === 0 ? null : (
+        <details className="harness-plan-files">
+          <summary>Files that would be written</summary>
+          {groups.map(g => (
+            <section key={g.interface} aria-label={g.name} className="harness-plan-group">
+              <h4>{g.name} <span className="muted small">{g.summary}</span></h4>
+              <ul>
+                {g.changes.map(c => (
+                  <li key={`${c.interface}${c.path}`}>
+                    <details>
+                      <summary><span className={`chip ${c.action === 'remove' ? 'bad' : c.action === 'add' ? 'good' : 'warn'}`}>{ACTION_WORDS[c.action]}</span> <span className="tech">{c.path}</span></summary>
+                      <pre className="file">{c.preview}</pre>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </details>
+      )}
     </div>
   );
 }
@@ -269,7 +278,7 @@ export function ChangeBar({ dirty, plan, open, onToggle, canUndo, canRedo, onUnd
       <div className="harness-bar-row">
         <div className="harness-status">
           <p className="harness-count" aria-live="polite"><strong>{changeBarText(dirty, plan.changes.length, editsOf(plan))}</strong></p>
-          <p id={reasonId} className="small muted harness-reason">{reason ?? 'Apply saves a version of these changes.'}</p>
+          <p id={reasonId} className="small muted harness-reason">{reason ?? planSentence(plan)}</p>
         </div>
         <button ref={toggleRef} type="button" className="btn secondary" aria-expanded={open} aria-controls={planId} disabled={!dirty} onClick={onToggle}>See what will be written</button>
         <div className="harness-bar-group" role="group" aria-label="Step through the changes">

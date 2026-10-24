@@ -10,7 +10,7 @@ import { HarnessScreen } from '../renderer/proto/HarnessScreen.js';
 import { AccessDialog, ChangeBar, ConflictDialog, Inspector, ResultPanel } from '../renderer/proto/harness-parts.js';
 import { ProtoProvider } from '../renderer/proto/session.js';
 import { countLine } from '../renderer/proto/words.js';
-import { ACTION_WORDS, applyReason, changeBarText, describeSelection, groupPlan, savedLine, writtenLine } from '../shared/proto/editor-describe.js';
+import { ACTION_WORDS, applyReason, changeBarText, describeSelection, groupPlan, planSentence, savedLine, willWriteLine, writtenLine } from '../shared/proto/editor-describe.js';
 import { NO_OWN_GROUPS, buildHarnessMap, groupIdOf, interfaceNodeId, scopeNodeId } from '../shared/proto/harnessmodel.js';
 import type { HarnessMapModel } from '../shared/proto/harnessmodel.js';
 import { planProjection } from '../shared/proto/plan.js';
@@ -42,7 +42,7 @@ test('with a session the editor shows the title, a scope switch with every scope
   assert.equal([...markup.matchAll(/<option /g)].length, world.scopes.length);
   assert.match(text, /Show inherited/);
   for (const name of ['Claude Code', 'Codex', 'OpenCode']) assert.match(markup, new RegExp(`<button[^>]*aria-pressed="false"[^>]*>${name}</button>`), name);
-  assert.match(markup, /role="group" aria-label="Show only items found in"/);
+  assert.match(markup, /id="harness-chips-label"[^>]*>Show what lands in:</); assert.match(markup, /role="group" aria-labelledby="harness-chips-label"/);
   assert.match(markup, /role="status" aria-live="polite"/, 'a live region for results and refusals');
 });
 
@@ -91,6 +91,44 @@ test('the open list groups the files by interface, with the path, what happens t
   assert.ok(text.includes(plan.changes[0]!.preview.split('\n')[0]!), 'the preview text is there');
   const closed = renderToStaticMarkup(createElement(ChangeBar, { dirty: true, plan, open: false, onToggle: noop, canUndo: true, canRedo: false, onUndo: noop, onRedo: noop, onDiscard: noop, label: '', onLabel: noop, onApply: noop, toggleRef: ref }));
   assert.match(closed, /aria-expanded="false"/); assert.doesNotMatch(closed, /harness-plan/);
+});
+
+test('the plan is one plain sentence made from its items, not its files; the paths wait in a closed list under it', () => {
+  const store = createStore(world);
+  store.dispatch({ type: 'attachSkill', agentId: 'agent-01', skillId: 'skill-030' });
+  const one = planProjection(store.getState().committed, store.getState().draft);
+  assert.ok(one.changes.length >= 9, 'one agent is written to every interface and every project that inherits it');
+  assert.equal(planSentence(one), '1 agent changes.', 'one item is one item, however many files it writes');
+  store.dispatch({ type: 'setOverride', scopeId: 'scope-copperfen', itemId: 'skill-010', mode: 'hide' });
+  const plan = planProjection(store.getState().committed, store.getState().draft);
+  assert.match(planSentence(plan), /^\d+ agents change and 1 skill is removed\.$/);
+  assert.equal(willWriteLine(plan), 'It would write to Claude Code, Codex and OpenCode. Nothing is written until you apply.');
+  assert.equal(planSentence({ changes: [] }), 'Nothing would change.');
+  assert.equal(planSentence({ changes: [], edits: 1 }), '1 edit writes no file.');
+  assert.equal(planSentence({ changes: [], edits: 3 }), '3 edits write no file.');
+  const file = (path: string, action: 'add' | 'change' | 'remove') => ({ interface: 'claude-code' as const, path, action, preview: '' });
+  const made = planSentence({ changes: [file('/h/.claude/skills/a-skill/SKILL.md', 'add'), file('/h/.claude/skills/b-skill/SKILL.md', 'add'), file('/h/.claude/mcp/a-tool.json', 'remove'), file('/h/.claude/commands/a-prompt.md', 'change'), file('/h/.codex/agents/an-agent.md', 'change'), file('/h/.claude/agents/an-agent.md', 'add')], edits: 7 });
+  assert.equal(made, '1 agent changes, 1 tool changes, 2 skills are added and 1 tool is removed. Also 2 other edits that write no file.');
+  const markup = renderToStaticMarkup(createElement(ChangeBar, { dirty: true, plan, open: true, onToggle: noop, canUndo: true, canRedo: false, onUndo: noop, onRedo: noop, onDiscard: noop, label: '', onLabel: noop, onApply: noop, toggleRef: ref }));
+  const sheet = markup.slice(markup.indexOf('class="harness-plan"'));
+  assert.match(sheet, /<h3[^>]*class="harness-plan-lead"[^>]*>\d+ agents change and 1 skill is removed\.<\/h3>/, 'the sentence leads');
+  assert.match(sheet, /<details class="harness-plan-files"><summary>Files that would be written<\/summary>/, 'the paths are in a list that is closed until asked for');
+  assert.doesNotMatch(sheet, /<details class="harness-plan-files" open/);
+  assert.ok(sheet.indexOf('harness-plan-lead') < sheet.indexOf('harness-plan-files') && sheet.indexOf('harness-plan-files') < sheet.indexOf(plan.changes[0]!.path), 'the sentence comes before every path');
+  // The closed bar says it too, and keeps the count of edits and files.
+  const text = textOf(renderToStaticMarkup(createElement(ChangeBar, { dirty: true, plan, open: false, onToggle: noop, canUndo: true, canRedo: false, onUndo: noop, onRedo: noop, onDiscard: noop, label: '', onLabel: noop, onApply: noop, toggleRef: ref })));
+  assert.match(text, new RegExp(`2 edits waiting\\. ${plan.changes.length} files would change\\.`)); assert.match(text, /agents change and 1 skill is removed\./);
+});
+
+test('the screen says what it is for in one line, labels the interface chips, and says connections, hidden and tool connections', () => {
+  const text = textOf(withStore());
+  assert.match(text, /Everything around your agents: skills, agents, tools and knowledge\. Drag a skill onto an agent to connect it\./);
+  assert.match(text, /Show what lands in:/);
+  assert.doesNotMatch(text, /\bwires?\b|\bghost/i);
+  const m = model('scope-reedmarsh'), hidden = describeSelection(world, m, CASE_IDS.hiddenSkill)!;
+  assert.match(hidden.flags[0]!, /Hidden here\. It shows faded/); assert.doesNotMatch(hidden.flags.join(' '), /ghost/i);
+  const agentView = describeSelection(world, model('global'), 'agent-01')!;
+  assert.doesNotMatch(agentView.facts.join(' '), /\bwire\b/);
 });
 
 test('the result names the interfaces the plan touched, the files per interface, and the number of the version', () => {
@@ -151,7 +189,7 @@ test('describeSelection: an agent lists its skills, its tools with the access wo
 
 test('describeSelection: an MCP tool whose secret is missing says so in words; a saved prompt and a hook say what they are', () => {
   const mcp = view('global', CASE_IDS.mcpMissing);
-  assert.equal(mcp.kindWord, 'Tool'); assert.match(mcp.sentence, /MCP server/); assert.match(mcp.sentence, /never the value/);
+  assert.equal(mcp.kindWord, 'Tool'); assert.match(mcp.sentence, /tool connection \(MCP\)/); assert.match(mcp.sentence, /never the value/);
   assert.ok(mcp.flags.some(f => /^Secret missing/.test(f)));
   assert.match(view('global', CASE_IDS.mcpPresent).sentence, /keychain named/);
   const prompt = view('global', 'tool-prompt-01');
@@ -256,4 +294,7 @@ test('the new files keep to the rules: no long dash, no hex colour or fixed dura
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/, 'colours come from tokens');
   assert.doesNotMatch(css, /\b\d+(\.\d+)?m?s\b(?!\w)/, 'durations come from the motion tokens');
   assert.match(css, /var\(--motion-panel-slide-ms\)/); assert.match(css, /var\(--motion-hover-ms\)/);
+  // The open list is capped at 40 percent of the window and scrolls on its own; the foot sits over the floating details (z-index 10).
+  assert.match(css, /\.harness-plan \{[^}]*max-height: 40vh[^}]*overflow-y: auto/); assert.match(css, /\.harness-foot \{[^}]*z-index: 12/); assert.match(css, /\.harness-inspector \{[^}]*z-index: 10/);
+  assert.match(css, /@media \(max-width: 1099px\) \{[^@]*\.harness-inspector \{[^}]*position: absolute/);
 });

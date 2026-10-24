@@ -30,6 +30,16 @@ main:has(.lib-page) { padding: 0 var(--space-5); }
 .lib-field select { max-width: 100%; }
 .lib-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
 .lib-search input { min-width: 15rem; }
+/* One row: search, a Filters button that opens the rest, and Add skills. */
+.lib-filters { position: relative; align-self: flex-end; }
+.lib-filters > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; min-height: 2.25rem; padding: 0 var(--space-3); font-size: var(--text-small); font-weight: 650; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); }
+.lib-filters > summary::-webkit-details-marker { display: none; }
+.lib-filters > summary::after { content: "\25BE" / ""; margin-left: var(--space-2); }
+.lib-filters[open] > summary::after { content: "\25B4" / ""; }
+.lib-filters > summary:hover { border-color: var(--accent); }
+.lib-filters > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.lib-filters-on { margin-left: var(--space-1); font-weight: 400; color: var(--text-muted); }
+.lib-filters-body { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin-top: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); }
 .lib-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .lib-chip {
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-3); min-height: 2.25rem; cursor: pointer; font-size: var(--text-small);
@@ -129,7 +139,7 @@ button.lib-group-toggle:hover { background: var(--surface-2); }
 .lib-waiting h2 { font-size: var(--text-base); }
 .lib-waiting p { margin: 0; }
 .lib-waiting-lines { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-small); }
-.lib-waiting-where { margin-left: auto; }
+.lib-waiting-where { margin-left: var(--space-1); }
 
 /* The menu that a button opens. It opens below the button, or above it when there is no room. */
 .lib-menuwrap { position: relative; display: inline-block; }
@@ -238,6 +248,9 @@ button.lib-group-toggle:hover { background: var(--surface-2); }
   .lib-page { gap: var(--space-2); }
   .lib-page .lib-field input, .lib-field select { min-height: 2rem; }
   .lib-scopes { padding: var(--space-1) 0; }
+  .lib-scopes-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lib-banner { padding: var(--space-1) var(--space-3); }
+  .lib-banner .btn { padding: 0.15rem 0.6rem; }
   .lib-kind-suffix { display: none; }
   .lib-toolbar .lib-field { flex-direction: row; align-items: center; gap: var(--space-2); }
   .lib-waiting { padding: var(--space-1) var(--space-3); gap: var(--space-1); }

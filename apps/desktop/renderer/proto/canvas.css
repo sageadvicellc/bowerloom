@@ -45,7 +45,7 @@
 .hc-node.kind-tool.tool-mcp { --hc-accent: var(--kind-reading-list); }
 .hc-node.kind-tool.tool-hook { --hc-accent: var(--kind-team); }
 .hc-node.kind-context-slice { --hc-accent: var(--hc-kind-context-slice); }
-.hc-node.kind-group { --hc-accent: var(--hc-kind-group); box-shadow: 5px 5px 0 -1px var(--surface), 5px 5px 0 0 var(--border), 10px 10px 0 -1px var(--surface), 10px 10px 0 0 var(--border); }
+.hc-node.kind-group { --hc-accent: var(--hc-kind-group); box-shadow: 4px 4px 0 -1px var(--surface), 4px 4px 0 0 var(--border), 8px 8px 0 -1px var(--surface), 8px 8px 0 0 var(--border); }
 .hc-node.kind-scope { border-width: 2px; }
 /* Faded: inherited from the global harness. Dashed and struck through: hidden or replaced here. Dotted and warm: a conflict. The words in the chips say the same. */
 .hc-node.is-inherited { opacity: 0.72; background: var(--surface-2); box-shadow: none; }
@@ -101,6 +101,13 @@
 /* Far away: the picture is smaller than the node's own size, so the text is larger in step. The detail line and the chips that only describe are left out; the kind word, the name and the chips that flag something stay. */
 .hc-root.is-far .hc-detail, .hc-root.is-far .hc-chip:not(.flag) { display: none; }
 .hc-root.is-far .hc-node.kind-group .hc-label { line-height: 1.1; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Crowded: one line for the name. The kind word stays on a node that has a flag, so the flag keeps its place. */
+.hc-root.is-dense .hc-node:not(.has-flags) .hc-top { display: none; }
+.hc-root.is-dense .hc-label { text-overflow: ellipsis; }
+.hc-root.is-dense .hc-node.has-flags:not(.kind-group) .hc-text { flex-direction: row; align-items: center; gap: 6px; }
+.hc-root.is-dense .hc-node.has-flags:not(.kind-group) .hc-kind { display: none; }
+.hc-root.is-dense .hc-node.has-flags:not(.kind-group) .hc-label { flex: 1; min-width: 0; }
 
 /* Motion. The entrance plays once, for the first canvas of a session. A scope switch is a short crossfade. A busy or crowded graph plays neither. */
 .hc-root.is-entering .hc-node { animation: hc-enter var(--hc-enter-ms, 0ms) var(--hc-enter-ease, ease) backwards; }

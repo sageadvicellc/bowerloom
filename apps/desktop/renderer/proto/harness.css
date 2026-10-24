@@ -4,10 +4,16 @@
  * the list of files and the result slide in with the panel token (Jakub).
  */
 .harness-page { display: flex; flex-direction: column; gap: var(--space-2); position: relative; min-height: 0; }
+/* styles.css gives every page a larger gap, with a rule that is more specific than the one above. */
+main > .page.harness-page { gap: var(--space-2); }
 /* This screen needs the room: a little less padding around it than other screens. */
 main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2); }
 .harness-head { flex-wrap: nowrap; align-items: flex-start; gap: var(--space-4); }
 .harness-head h1 { flex: none; }
+/* The title and the one line that says what the screen is for, like the Skills and Agents screens have. */
+.harness-title { flex: 1 1 26rem; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
+.harness-purpose { margin: 0; font-size: var(--text-small); line-height: 1.4; color: var(--text-muted); max-width: var(--measure); }
+.harness-chips-label { font-weight: 600; font-size: var(--text-small); }
 
 .harness-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .harness-field { display: flex; flex-direction: column; gap: var(--space-1); }
@@ -21,6 +27,7 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 .harness-page .toggle input { width: 1.1rem; height: 1.1rem; }
 .harness-page .toggle input:disabled + span { color: var(--text-muted); }
 .harness-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.harness-toolbar .harness-chips-label { margin-left: var(--space-2); }
 .harness-chip {
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-2); min-height: 2.1rem; cursor: pointer; font-size: var(--text-small);
   transition: background var(--motion-hover-ms) var(--motion-hover-ease), border-color var(--motion-hover-ms) var(--motion-hover-ease);
@@ -34,7 +41,8 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 .harness-message { flex: 1 1 auto; min-width: 0; min-height: 2.8rem; font-size: var(--text-small); line-height: 1.4; margin: 0; padding: var(--space-1) var(--space-3); border-radius: var(--radius-small); }
 .harness-message.is-refused { background: var(--warn-bg); color: var(--warn-fg); }
 
-.harness-foot { position: relative; }
+/* The foot holds the bar, the list that opens above it and the result: all of it sits over the floating details. */
+.harness-foot { position: relative; z-index: 12; }
 .harness-body { flex: 1; min-height: 0; display: flex; gap: var(--space-3); position: relative; }
 .harness-canvas { flex: 1; min-width: 0; min-height: 0; position: relative; }
 .harness-page .hc-frame { min-height: 0; }
@@ -88,15 +96,18 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 /* A narrow window needs every line of height for the canvas: a tighter head and toolbar, and a change bar that is one line while nothing waits. */
 @media (max-width: 1099px) {
   main:has(.harness-page) { padding-top: var(--space-2); }
-  .harness-page { gap: var(--space-1); }
-  .harness-message { min-height: 1.5rem; padding-block: 0.1rem; }
+  main > .page.harness-page { gap: var(--space-1); }
+  /* The head keeps one height, with or without a message, so the canvas never changes size when one comes. A long message scrolls inside its box. */
+  .harness-head { min-height: 4.4rem; }
+  .harness-title { flex: 1 1 22rem; }
+  .harness-message { flex: 0 1 15rem; min-height: 1.5rem; max-height: 4.4rem; overflow-y: auto; padding-block: 0.1rem; font-size: 0.8125rem; }
   .harness-chip { min-height: 1.9rem; padding: 0 var(--space-2); }
-  .harness-field.inline select { width: 9rem; min-height: 2rem; }
+  .harness-field.inline select { width: 11rem; min-height: 2rem; }
   .harness-bar { padding: var(--space-2) var(--space-3); }
   .harness-bar-row { gap: var(--space-2); }
   .harness-count { font-size: var(--text-small); }
   .harness-bar-row .btn { padding: 0.3rem 0.65rem; font-size: 0.8125rem; }
-  .harness-bar:not(.is-dirty) .harness-label { display: none; }
+  .harness-bar:not(.is-dirty) .harness-label, .harness-bar:not(.is-dirty) .harness-bar-row > .btn.secondary[aria-expanded] { display: none; }
   .harness-bar:not(.is-dirty) .harness-reason { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .harness-bar:not(.is-dirty) .harness-status { flex: 1 1 8rem; }
 }
@@ -115,10 +126,15 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 
 /* The files that would be written open as a sheet above the bar, so the canvas keeps its size. */
 .harness-plan {
-  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); max-height: min(24rem, calc(100vh - 20rem)); overflow-y: auto; z-index: 5;
+  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); max-height: 40vh; overflow-y: auto; z-index: 12;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--space-3) var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-3); animation: harness-slide var(--motion-panel-slide-ms) var(--motion-panel-slide-ease) both;
 }
+.harness-plan-lead { margin: 0; font-size: var(--text-base); font-weight: 650; line-height: 1.35; }
+.harness-plan-where { margin: 0; }
+.harness-plan .harness-plan-files > summary { display: list-item; font-weight: 600; font-size: var(--text-base); }
+.harness-plan .harness-plan-files[open] > summary { margin-bottom: var(--space-2); }
+.harness-plan-files .harness-plan-group + .harness-plan-group { margin-top: var(--space-3); }
 .harness-plan h4 { font-size: var(--text-small); font-weight: 650; margin: 0 0 var(--space-1); }
 .harness-plan ul { display: flex; flex-direction: column; gap: var(--space-1); }
 .harness-plan summary { cursor: pointer; font-size: var(--text-small); }
@@ -126,7 +142,7 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 .harness-plan pre.file { margin-top: var(--space-1); max-height: 10rem; font-size: 0.8rem; }
 
 .harness-result {
-  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 5; max-height: min(24rem, calc(100vh - 20rem)); overflow-y: auto;
+  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 12; max-height: 40vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--good-fg); border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--space-3) var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-2); animation: harness-slide var(--motion-panel-slide-ms) var(--motion-panel-slide-ease) both;
 }

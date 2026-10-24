@@ -38,6 +38,19 @@ test('with a session: one h1, then the groups Yours, From libraries and Found in
   assert.deepEqual(h2.map(t => t.replace(/ \d+ (skills?|librar(y|ies))$/, '')), ['Yours', 'From libraries', 'Found in several tools', 'Waiting to apply']);
 });
 
+test('the filters are one row with the search: a Filters button opens the interface chips and the view buttons, and says how many are on', () => {
+  const markup = render();
+  const toolbar = markup.slice(markup.indexOf('class="lib-toolbar"'), markup.indexOf('class="lib-scopes"'));
+  assert.match(toolbar, /<details class="lib-filters"><summary>Filters<\/summary>/, 'closed until it is asked for');
+  assert.doesNotMatch(toolbar, /<details class="lib-filters" open/);
+  const body = toolbar.slice(toolbar.indexOf('lib-filters-body'));
+  for (const name of ['Claude Code', 'Codex', 'OpenCode', 'Cards', 'List']) assert.match(body, new RegExp(`aria-pressed="[a-z]+"[^>]*>${name}</button>`), name);
+  assert.match(toolbar.slice(0, toolbar.indexOf('<details')), /Search skills/, 'the search comes first');
+  assert.match(toolbar.slice(toolbar.indexOf('</details>')), /Add skills/, 'and Add skills ends the row');
+  // The harness chips stay in view: they are where a card is dropped.
+  assert.match(markup, /class="lib-scopes"/); assert.match(markup, /data-scope="scope-copperfen"/);
+});
+
 test('the groups and their counts: 43 of yours, 1 found in several tools, and each skill is on one card', () => {
   const markup = render(), text = textOf(markup);
   assert.match(text, /Yours 43 skills/); assert.match(text, /Found in several tools 1 skill/); assert.match(text, /From libraries 1 library/);
@@ -136,6 +149,10 @@ test('with changes waiting, the waiting list shows the change bar\'s own words a
   const markup = render(s), text = textOf(markup);
   assert.match(text, /Waiting to apply \d+ edits? waiting\. \d+ files? would change\./); assert.match(text, /Claude Code: \d+ changed/); assert.match(text, /Apply on the Harness screen\./);
   assert.match(textOf(render()), /Waiting to apply No changes waiting Apply on the Harness screen\./);
+  // One plain line: the heading is for a screen reader, and the count and the pointer to the Harness screen are one paragraph.
+  const idle = render();
+  assert.match(idle, /<h2 id="[^"]+" class="sr">Waiting to apply<\/h2>/);
+  assert.match(idle, /<p class="lib-waiting-count"><strong>No changes waiting<\/strong> <span class="lib-waiting-where small muted">Apply on the Harness screen\.<\/span><\/p>/);
 });
 
 test('the words are plain: no helper, no team, no command line, no em-dash, and no path as a main label', () => {

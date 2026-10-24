@@ -65,7 +65,7 @@ function sentenceOf(world: World, node: HarnessNode, item: HarnessItem | undefin
       case 'tool':
         if (item.toolKind === 'hook') return 'A hook is a script that an interface runs on its own at set moments. It runs code with no prompt.';
         if (item.toolKind === 'prompt') return 'A tool is something an agent can use. This one is a saved prompt, a command you can run by name.';
-        return `A tool is something an agent can use. This one is an MCP server, a link to an outside service. ${item.secret === null ? 'It needs no secret.'
+        return `A tool is something an agent can use. This one is a tool connection (MCP), a link to an outside service. ${item.secret === null ? 'It needs no secret.'
           : `Its secret is kept in ${item.secret.kind === 'env' ? 'an environment variable' : 'the keychain'} named ${item.secret.name}. Bowerloom stores only that name, never the value.`}`;
     }
   }
@@ -95,7 +95,7 @@ function sentenceOf(world: World, node: HarnessNode, item: HarnessItem | undefin
 function flagsOf(world: World, node: HarnessNode, item: HarnessItem | undefined): string[] {
   const out: string[] = [];
   const nameOf = (id: string | null): string => (id === null ? 'another item' : (world.items.find(i => i.id === id)?.name ?? id));
-  if (node.hidden) out.push('Hidden here. It shows as a ghost and nothing is written for it.');
+  if (node.hidden) out.push('Hidden here. It shows faded and nothing is written for it.');
   else if (node.replaced) out.push(`Replaced here by ${nameOf(node.replacedBy)}.`);
   else if (node.inherited) out.push(`Inherited from ${node.fromScope ?? 'the global harness'}.`);
   if (node.runsCode) out.push('Runs code with no prompt.');
@@ -213,6 +213,57 @@ export function changeBarText(dirty: boolean, fileCount: number, editCount: numb
 /** The reason the Apply button is off, or null when it is on. */
 export function applyReason(dirty: boolean): string | null {
   return dirty ? null : 'There is nothing to apply. Make a change first.';
+}
+
+// ------------------------------------------------------------------------------------------------------------- the plan in one sentence
+
+type ItemKind = 'skill' | 'agent' | 'tool';
+type ItemAction = 'add' | 'change' | 'remove';
+/** The file a plan names, seen as the item it comes from: its kind and its name. The same item written to three interfaces, or to every project that inherits it, is one item. Null for a path it does not know. */
+function itemOf(path: string): { kind: ItemKind; key: string } | null {
+  const m = /^(.*)\/\.(?:claude|agents|codex|opencode)\/(skills?|agents?|mcp|commands?|prompts?)\/([^/]+?)(?:\/SKILL\.md|\.md|\.json)$/.exec(path);
+  if (m === null) return null;
+  const dir = m[2]!, kind: ItemKind = dir.startsWith('skill') ? 'skill' : dir.startsWith('agent') ? 'agent' : 'tool';
+  return { kind, key: `${kind}\u0000${m[3]}` };
+}
+
+const KIND_ONE: Readonly<Record<ItemKind, string>> = { skill: 'skill', agent: 'agent', tool: 'tool' };
+const VERBS: Readonly<Record<ItemAction, readonly [string, string]>> = { change: ['changes', 'change'], add: ['is added', 'are added'], remove: ['is removed', 'are removed'] };
+
+/**
+ * A plan as one plain sentence, built from the items its files belong to, not from the files: "3 agents change and 1 skill is removed."
+ * One item written to three interfaces is one item. Items with no file of their own (a project choice, a slice) are counted from `plan.edits`:
+ * "Also 2 other edits that write no file." A plan with no change says so.
+ */
+export function planSentence(plan: Plan): string {
+  const items = new Map<string, { kind: ItemKind; actions: Set<ItemAction> }>();
+  for (const c of plan.changes) {
+    const it = itemOf(c.path);
+    if (it === null) continue;
+    const have = items.get(it.key);
+    if (have === undefined) items.set(it.key, { kind: it.kind, actions: new Set([c.action]) }); else have.actions.add(c.action);
+  }
+  const tally = new Map<string, number>();
+  for (const { kind, actions } of items.values()) {
+    const action: ItemAction = actions.size === 1 ? [...actions][0]! : 'change';
+    tally.set(`${action}|${kind}`, (tally.get(`${action}|${kind}`) ?? 0) + 1);
+  }
+  const parts: string[] = [];
+  for (const action of ['change', 'add', 'remove'] as const) {
+    for (const kind of ['agent', 'skill', 'tool'] as const) {
+      const n = tally.get(`${action}|${kind}`) ?? 0;
+      if (n > 0) parts.push(`${n} ${n === 1 ? KIND_ONE[kind] : `${KIND_ONE[kind]}s`} ${VERBS[action][n === 1 ? 0 : 1]}`);
+    }
+  }
+  const other = Math.max(0, editsOf(plan) - items.size);
+  if (parts.length === 0) return other === 0 ? 'Nothing would change.' : `${count(other, 'edit')} ${other === 1 ? 'writes' : 'write'} no file.`;
+  return `${joinAnd(parts)}.${other === 0 ? '' : ` Also ${count(other, 'other edit')} that ${other === 1 ? 'writes' : 'write'} no file.`}`;
+}
+
+/** The interfaces a plan would write to, in one line. */
+export function willWriteLine(plan: Plan): string {
+  const groups = groupPlan(plan);
+  return groups.length === 0 ? 'No file would change.' : `It would write to ${joinAnd(groups.map(g => g.name))}. Nothing is written until you apply.`;
 }
 
 /** The words for an action on a file. */

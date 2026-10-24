@@ -233,7 +233,10 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   return (
     <div className="page map-page harness-page">
       <div className="map-head harness-head">
-        <h1 tabIndex={-1}>{ROUTE_LABELS.harness}</h1>
+        <div className="harness-title">
+          <h1 tabIndex={-1}>{ROUTE_LABELS.harness}</h1>
+          <p className="harness-purpose">Everything around your agents: skills, agents, tools and knowledge. Drag a skill onto an agent to connect it.</p>
+        </div>
         <p className={`harness-message${note?.refused === true ? ' is-refused' : ''}`} role="status" aria-live="polite">
           {note === null ? '' : <><strong>{note.refused ? 'Nothing changed.' : 'Done.'}</strong> {note.text}</>}
         </p>
@@ -246,7 +249,8 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
           </select>
         </label>
         <label className="toggle small"><input type="checkbox" checked={showInherited} disabled={scope?.kind !== 'project'} onChange={e => setShowInherited(e.target.checked)} /><span>Show inherited</span></label>
-        <div className="harness-chips" role="group" aria-label="Show only items found in">
+        <span className="harness-chips-label" id="harness-chips-label">Show what lands in:</span>
+        <div className="harness-chips" role="group" aria-labelledby="harness-chips-label">
           {INTERFACES.map(id => (
             <button key={id} type="button" className="harness-chip" aria-pressed={only === id} onClick={() => setOnly(prev => (prev === id ? null : id))}>{interfaceName(id)}</button>
           ))}
