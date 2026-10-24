@@ -463,3 +463,29 @@ export function foldersProblem(s: Snapshot): string | null {
   const p = s.problems.find(x => x.area === 'folders');
   return p === undefined ? null : `${codeWords(p.code)} Which folders exist, and which projects may read them, is not known.`;
 }
+
+// ------------------------------------------------------------------------------------------------------------- knowledge graph
+
+export interface StoreChoice {
+  key: string; name: string; kind: 'context-store' | 'knowledge-folder'; pages: number | null;
+  /** The Bowerloom things that point at this store, in plain words. */
+  readBy: { name: string; how: string }[]; manages: string[];
+}
+
+/** The stores the graph can show: every context store, and every registered knowledge folder that is not already one. */
+export function storeChoices(s: Snapshot): StoreChoice[] {
+  const stores = s.projects.filter(p => p.role === 'context-store');
+  const out: StoreChoice[] = stores.map(p => ({
+    key: p.key, name: p.label, kind: 'context-store' as const, pages: p.pages,
+    readBy: p.readBy.map(r => ({ name: r.name, how: r.via === 'permission' ? 'is allowed to read it' : `reads it with the reading list "${r.list}"` })),
+    manages: p.items.filter(i => i.note === null).map(i => `${titleOf(i.id)} (${KIND_WORDS[i.kind].one.toLowerCase()})`),
+  }));
+  for (const f of s.folders) {
+    if (f.state !== 'ready' || f.dir === null || stores.some(p => p.dir === f.dir)) continue;
+    const name = (key: string): string => s.projects.find(p => p.key === key)?.name ?? key;
+    const readBy = f.allowed.map(k => ({ name: name(k), how: 'is allowed to read it' }));
+    for (const p of s.projects) for (const sl of p.slices) if (sl.folder === f.name) readBy.push({ name: p.name, how: `reads it with the reading list "${sl.id}"` });
+    out.push({ key: f.dir, name: f.name, kind: 'knowledge-folder', pages: null, readBy, manages: [] });
+  }
+  return out;
+}

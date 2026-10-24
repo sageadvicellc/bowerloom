@@ -16,6 +16,8 @@ export const CHANNELS = Object.freeze({
   saveSketch: 'viewer:save-sketch',
   loadSketch: 'viewer:load-sketch',
   deleteSketch: 'viewer:delete-sketch',
+  getKnowledgeGraph: 'viewer:get-knowledge-graph',
+  getPageText: 'viewer:get-page-text',
   checkForUpdates: 'viewer:check-for-updates',
   openLink: 'viewer:open-link',
   copyText: 'viewer:copy-text',

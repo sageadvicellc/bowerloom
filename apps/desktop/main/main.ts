@@ -79,6 +79,8 @@ function registerIpc(): void {
   guarded('setRole', (key: string, role: Parameters<Controller['setRole']>[1]) => controller.setRole(key, role));
   guarded('checkForUpdates', () => controller.checkForUpdates());
   guarded('openLink', (url: string) => controller.openLink(url));
+  guarded('getKnowledgeGraph', (storeKey: unknown) => controller.getKnowledgeGraph(storeKey));
+  guarded('getPageText', (request: Parameters<Controller['getPageText']>[0]) => controller.getPageText(request));
   guarded('copyText', (text: string) => controller.copyText(text));
 }
 

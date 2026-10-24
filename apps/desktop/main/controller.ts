@@ -6,7 +6,7 @@ import { realpathSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { FOLDER_ROLES } from '../shared/types.js';
-import type { AppInfo, AppSettings, FolderRole, ItemContent, ItemKind, Mode, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot } from '../shared/types.js';
+import type { AppInfo, AppSettings, FolderRole, GraphResult, PageResult, ItemContent, ItemKind, Mode, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot } from '../shared/types.js';
 import { safeText } from '../shared/text.js';
 import { readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
@@ -17,6 +17,8 @@ import { SANDBOX_DIR } from './boundary.js';
 import { sandboxExists, sandboxPaths } from './sandbox.js';
 import { discoverNearby } from './discover.js';
 import { readItemContent } from './content.js';
+import { buildGraph, readPage } from './graph.js';
+import { storeChoices } from '../shared/viewmodel.js';
 import { readSnapshot } from './reader.js';
 import type { ReadContext } from './reader.js';
 import { seedSample } from './sample.js';
@@ -66,6 +68,8 @@ export interface Controller {
   deleteSketch(name: unknown): Promise<SketchResult<null>>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
+  getKnowledgeGraph(storeKey: unknown): Promise<GraphResult>;
+  getPageText(request: { storeKey: unknown; page: unknown }): Promise<PageResult>;
   copyText(text: string): Promise<boolean>;
 }
 
@@ -85,6 +89,7 @@ export function createController(host: Host): Controller {
   let mode: Mode | null = host.forcedMode ?? settings.mode;
   let sample: SampleWorld | null = null;
   let known = new Set<string>();
+  let stores = new Set<string>();
   let updates: UpdateState = initialUpdateState(UPDATES_ENABLED);
 
   const realHome = (): string => realpathSync(host.home ?? homedir());
@@ -120,7 +125,12 @@ export function createController(host: Host): Controller {
     if (c === null) return false;
     try { resolveInside(c.roots, key); return true; } catch { return false; }
   };
-  const forget = (): void => { known = new Set(); };
+  const forget = (): void => { known = new Set(); stores = new Set(); };
+  /** The folder of a store the window named: one of the last snapshot's stores, still a real folder. */
+  const storeFolder = (key: unknown): string | null => {
+    if (typeof key !== 'string' || !stores.has(key)) return null;
+    try { const real = realpathSync(key); return lstatSync(real).isDirectory() ? real : null; } catch { return null; }
+  };
 
   const info = (): AppInfo => {
     let storePath = '';
@@ -142,6 +152,7 @@ export function createController(host: Host): Controller {
       }
       const result = await readSnapshot(c);
       known = new Set(result.snapshot.projects.map(p => p.key));
+      stores = new Set(storeChoices(result.snapshot).map(c => c.key));
       return result.snapshot;
     },
     async getItemContent(request) {
@@ -212,6 +223,15 @@ export function createController(host: Host): Controller {
     async saveSketch(sketch) { return sketchResult(() => saveSketch(host.appDir, sketch)); },
     async loadSketch(name) { return sketchResult(() => loadSketch(host.appDir, name)); },
     async deleteSketch(name) { return sketchResult(() => { deleteSketch(host.appDir, name); return null; }); },
+    async getKnowledgeGraph(storeKey) {
+      const dir = storeFolder(storeKey);
+      if (dir === null) return { ok: false, graph: null, message: 'That store is not in the list any more. Choose "Look again".' };
+      try { return { ok: true, graph: buildGraph(dir), message: null }; } catch { return { ok: false, graph: null, message: 'The store could not be read.' }; }
+    },
+    async getPageText(request) {
+      const dir = storeFolder(request?.storeKey);
+      return dir === null ? { text: null, note: 'That store is not in the list any more. Choose "Look again".' } : readPage(dir, request.page);
+    },
     async checkForUpdates() { updates = await checkForUpdates(updates); return { status: updates.status }; },
     async openLink(url) {
       if (!isAllowedExternal(url)) return false;

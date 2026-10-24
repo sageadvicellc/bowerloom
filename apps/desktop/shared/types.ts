@@ -161,6 +161,12 @@ export interface AppSettings {
 export interface Sketch { version: 1; name: string; nodes: { id: string; kind: 'team' | 'agent' | 'skill' | 'prompt'; label: string; x: number; y: number }[]; edges: { from: string; to: string }[] }
 export interface SketchSummary { name: string; nodes: number; edges: number }
 export interface SketchResult<T> { ok: boolean; value: T | null; message: string | null }
+/** One page of a context store, as the graph knows it. Never the page's text. */
+export interface GraphNode { id: string; title: string; folder: string; tags: string[]; bytes: number; degree: number; inDegree: number; orphan: boolean; /** True when the page was too large to read for links. */ big: boolean }
+export interface GraphEdge { from: string; to: string }
+export interface KnowledgeGraph { nodes: GraphNode[]; edges: GraphEdge[]; folders: string[]; tags: string[]; /** Links that point at no page in the store. */ broken: number; /** Plain sentences about anything left out. */ notices: string[]; limits: { nodes: number; edges: number } }
+export interface GraphResult { ok: boolean; graph: KnowledgeGraph | null; message: string | null }
+export interface PageResult { text: string | null; note: string | null }
 export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
 export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
   /** The sandbox folder, and whether it has been made. */
@@ -186,6 +192,8 @@ export interface ViewerApi {
   saveSketch(sketch: Sketch): Promise<SketchResult<SketchSummary>>;
   loadSketch(name: string): Promise<SketchResult<Sketch>>;
   deleteSketch(name: string): Promise<SketchResult<null>>;
+  getKnowledgeGraph(storeKey: string): Promise<GraphResult>;
+  getPageText(request: { storeKey: string; page: string }): Promise<PageResult>;
   copyText(text: string): Promise<boolean>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
