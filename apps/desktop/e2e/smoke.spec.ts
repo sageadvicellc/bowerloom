@@ -48,7 +48,7 @@ test('security: the window is locked down', async () => {
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => [typeof (globalThis as { require?: unknown }).require, typeof (globalThis as { process?: unknown }).process, typeof (globalThis as { Buffer?: unknown }).Buffer])).toEqual(['undefined', 'undefined', 'undefined']);
     const names = await page.evaluate(() => Object.keys((window as unknown as { bowerloom: object }).bowerloom).sort());
-    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'deleteSketch', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'listSketches', 'loadSketch', 'openLink', 'removeRoot', 'saveSketch', 'setIncludeExamples', 'setMapLayout', 'setRole', 'setTheme']);
+    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'deleteSketch', 'getFileText', 'getInfo', 'getItemContent', 'getKnowledgeGraph', 'getPageText', 'getSettings', 'getSnapshot', 'listSketches', 'loadSketch', 'openLink', 'removeRoot', 'saveSketch', 'setIncludeExamples', 'setMapLayout', 'setRole', 'setTheme']);
     // An inline script is refused by the policy.
     const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
       document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true });
@@ -69,6 +69,9 @@ test('security: the window is locked down', async () => {
     // The page asks for another item with a path trick; it gets a refusal, not a file.
     const trick = await page.evaluate(() => (window as unknown as { bowerloom: { getItemContent(r: unknown): Promise<{ files: unknown[]; note: string | null }> } }).bowerloom.getItemContent({ kind: 'skill', id: '../../etc/passwd', projectKey: null }));
     expect(trick.files).toEqual([]);
+    // The page asks for a page of a store that was never listed, or for a graph of the whole disk; it gets a refusal.
+    const evil = await page.evaluate(async () => { const b = (window as unknown as { bowerloom: { getPageText(r: unknown): Promise<{ text: string | null }>; getKnowledgeGraph(k: string): Promise<{ ok: boolean }> } }).bowerloom; return { page: (await b.getPageText({ storeKey: '/', page: 'etc/passwd.md' })).text, graph: (await b.getKnowledgeGraph('/')).ok }; });
+    expect(evil).toEqual({ page: null, graph: false });
   } finally { await app.close(); }
 });
 
