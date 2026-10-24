@@ -7,14 +7,16 @@ import { Background, BackgroundVariant, Controls, Handle, MiniMap, Position, Rea
 import type { Connection, Edge, Node, NodeChange, NodeProps } from '@xyflow/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
-import { EDGE_RELS, KIND_WORDS_MAP, MAP_KINDS, REL_WORDS, STATUS_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../../shared/mapmodel.js';
+import { KIND_WORDS_MAP, MAP_KINDS, REL_WORDS, STATUS_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../../shared/mapmodel.js';
 import type { EdgeRel, MapKind, MapNode, MapStatus, ScopeFilter } from '../../shared/mapmodel.js';
 import { LAYOUT, autoLayout, snap } from '../../shared/maplayout.js';
+import { createKeeper } from '../../shared/layoutkeeper.js';
 import type { Place } from '../../shared/maplayout.js';
 import type { Snapshot, ViewerApi } from '../../shared/types.js';
 import type { Link } from '../../shared/viewmodel.js';
 import { MOTION, ms } from '../motion-tokens.js';
 import { KindIcon } from './icons.js';
+import { Legend } from './Legend.js';
 import { SketchBoard } from './SketchBoard.js';
 
 export interface MapProps {
@@ -31,18 +33,19 @@ export interface MapProps {
 interface NodeData extends Record<string, unknown> { n: MapNode; dim: boolean; exiting: boolean; dropped: boolean }
 type BwNodeType = Node<NodeData, 'bw'>;
 
-const STATUS_TONE: Record<MapStatus, string> = { ready: 'good', drifted: 'warn', held: 'warn', 'cannot-open': 'bad' };
+const STATUS_TONE: Record<MapStatus, string> = { ready: 'good', 'not-locked': 'quiet', drifted: 'warn', held: 'warn', 'cannot-open': 'bad' };
 
 const BwNode = memo(function BwNode({ data, selected }: NodeProps<BwNodeType>): ReactElement {
   const { n, dim, exiting, dropped } = data;
   return (
-    <div className={`bw-node kind-${n.kind}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${exiting ? ' is-exiting' : ''}${dropped ? ' is-dropped' : ''}`} title={hoverLine(n)}>
+    <div className={`bw-node kind-${n.kind}${selected ? ' is-selected' : ''}${dim ? ' is-dim' : ''}${exiting ? ' is-exiting' : ''}${dropped ? ' is-dropped' : ''}${n.unlisted === true ? ' is-unlisted' : ''}`} title={hoverLine(n)}>
       <Handle type="target" position={Position.Left} isConnectable={false} className="bw-handle" />
       <span className="bw-node-icon"><KindIcon kind={n.kind} /></span>
       <span className="bw-node-text">
         <span className="bw-node-kind">{KIND_WORDS_MAP[n.kind]}</span>
         <span className="bw-node-label">{n.label}</span>
       </span>
+      {n.unlisted === true ? <span className="bw-chip quiet">Not listed</span> : null}
       {n.status !== null ? <span className={`bw-chip ${STATUS_TONE[n.status]}`}>{STATUS_WORDS[n.status]}</span> : null}
       <Handle type="source" position={Position.Right} isConnectable={false} className="bw-handle" />
     </div>
@@ -91,7 +94,7 @@ function Canvas(props: MapProps): ReactElement {
       return [...next, ...leaving];
     });
     lastIds.current = now;
-    const timer = window.setTimeout(() => setNodes(prev => prev.filter(p => !p.data.exiting)), ms(MOTION.map.nodeExit.ms) + 20);
+    const timer = window.setTimeout(() => setNodes(prev => prev.filter(p => !p.data.exiting)), ms(MOTION.map.nodeExit.ms) + MOTION.map.exitGrace);
     void fresh;
     return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,8 +106,17 @@ function Canvas(props: MapProps): ReactElement {
   const edges: Edge[] = useMemo(() => view.edges.map(e => ({ id: e.id, source: e.from, target: e.to, className: `bw-edge rel-${e.rel}${activeId === null ? '' : e.from === activeId || e.to === activeId ? ' is-active' : ' is-faded'}`, selectable: false, focusable: false, data: { rel: e.rel } })), [view, activeId]);
 
   const onNodesChange = useCallback((changes: NodeChange<BwNodeType>[]) => setNodes(prev => applyNodeChanges(changes, prev)), []);
-  const timer = useRef<number | undefined>(undefined);
-  const keep = useCallback((next: Record<string, Place>) => { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => onLayout({ ...saved, ...next }), 400); }, [onLayout, saved]);
+  // Places are gathered, merged with what was saved, and written once. Two drags close together are both kept, and the write is
+  // forced when the screen goes away, the window loses focus, or the window closes.
+  const savedRef = useRef(saved), onLayoutRef = useRef(onLayout);
+  savedRef.current = saved; onLayoutRef.current = onLayout;
+  const keeper = useMemo(() => createKeeper({ delay: MOTION.map.saveDebounce, saved: () => savedRef.current, commit: l => onLayoutRef.current(l) }), []);
+  useEffect(() => {
+    const flush = (): void => keeper.flush();
+    window.addEventListener('blur', flush); window.addEventListener('beforeunload', flush); window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('blur', flush); window.removeEventListener('beforeunload', flush); window.removeEventListener('pagehide', flush); keeper.flush(); };
+  }, [keeper]);
+  const keep = useCallback((next: Record<string, Place>) => keeper.keep(next), [keeper]);
   const onDragStop = useCallback((_e: unknown, _n: BwNodeType, moved: BwNodeType[]) => {
     const next: Record<string, Place> = {}; for (const m of moved) next[m.id] = snap(m.position);
     setPlaces(p => ({ ...p, ...next })); keep(next);
@@ -115,19 +127,19 @@ function Canvas(props: MapProps): ReactElement {
     const placed = autoLayout(view.nodes, view.edges); const next: Record<string, Place> = {};
     for (const n of view.nodes) next[n.id] = snap(placed.get(n.id) ?? { x: 0, y: 0 });
     setTidying(true); setPlaces(p => ({ ...p, ...next })); setNodes(prev => prev.map(p => ({ ...p, position: next[p.id] ?? p.position }))); keep(next);
-    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + 30);
+    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
   }, [view, flow, keep, remember]);
   const reset = useCallback(() => {
     remember();
-    setPlaces({}); onLayout(null); setTidying(true);
+    setPlaces({}); keeper.forget(); setTidying(true);
     setNodes(prev => prev.map(p => ({ ...p, position: base.get(p.id) ?? p.position })));
-    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + 30);
-  }, [base, flow, onLayout, remember]);
+    window.setTimeout(() => { setTidying(false); void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
+  }, [base, flow, keeper, remember]);
   const undoMove = useCallback(() => {
     const last = undo[undo.length - 1]; if (last === undefined) return;
     setUndo(u => u.slice(0, -1)); setTidying(true);
     setNodes(prev => prev.map(p => ({ ...p, position: last[p.id] ?? p.position }))); setPlaces(p => ({ ...p, ...last })); keep(last);
-    window.setTimeout(() => setTidying(false), ms(MOTION.map.layoutMove.ms) + 30);
+    window.setTimeout(() => setTidying(false), ms(MOTION.map.layoutMove.ms) + MOTION.map.settleGrace);
   }, [undo, keep]);
   const fit = useCallback(() => { void flow.fitView({ duration: ms(MOTION.map.fit.ms), padding: 0.15 }); }, [flow]);
 
@@ -210,20 +222,23 @@ function OutlineView({ model, onOpen }: { model: { nodes: MapNode[]; edges: { id
   );
 }
 
-function Legend(): ReactElement {
-  const words: Record<EdgeRel, string> = { contains: 'holds', uses: 'uses', reads: 'reads', owns: 'owns', 'comes-from': 'comes from' };
-  return <ul className="bw-legend" aria-label="What the wires mean">{EDGE_RELS.map(r => <li key={r}><svg width="34" height="10" aria-hidden="true"><path d="M1 5h32" className={`bw-edge rel-${r}`} /></svg>{words[r]}</li>)}</ul>;
-}
-
 export function MapScreen(props: MapProps): ReactElement {
   const [tab, setTab] = useState<'map' | 'sketch'>('map');
+  const tabs = ['map', 'sketch'] as const;
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const i = tabs.indexOf(tab); let next: number | null = null;
+    if (e.key === 'ArrowRight') next = (i + 1) % tabs.length; else if (e.key === 'ArrowLeft') next = (i + tabs.length - 1) % tabs.length; else if (e.key === 'Home') next = 0; else if (e.key === 'End') next = tabs.length - 1;
+    if (next === null) return;
+    e.preventDefault(); setTab(tabs[next]!); document.getElementById(`bw-tab-${tabs[next]}`)?.focus();
+  };
+  // Both pages stay in the window and one is hidden, so what is on the sketch board, and where you were on the map, survive a switch.
   return (
     <div className="bw-wrap">
-        <div className="bw-tabs" role="tablist" aria-label="Map or sketch">
-          <button type="button" role="tab" aria-selected={tab === 'map'} onClick={() => setTab('map')}>Map</button>
-          <button type="button" role="tab" aria-selected={tab === 'sketch'} onClick={() => setTab('sketch')}>Sketch</button>
-        </div>
-        {tab === 'map' ? <ReactFlowProvider><Canvas {...props} /></ReactFlowProvider> : <ReactFlowProvider><SketchBoard snapshot={props.snapshot} api={props.api} /></ReactFlowProvider>}
+      <div className="bw-tabs" role="tablist" aria-label="Map or sketch" onKeyDown={onKey}>
+        {tabs.map(t => <button key={t} id={`bw-tab-${t}`} type="button" role="tab" aria-selected={tab === t} aria-controls={`bw-page-${t}`} tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)}>{t === 'map' ? 'Map' : 'Sketch'}</button>)}
       </div>
+      <div id="bw-page-map" role="tabpanel" aria-labelledby="bw-tab-map" hidden={tab !== 'map'}><ReactFlowProvider><Canvas {...props} /></ReactFlowProvider></div>
+      <div id="bw-page-sketch" role="tabpanel" aria-labelledby="bw-tab-sketch" hidden={tab !== 'sketch'}><ReactFlowProvider><SketchBoard snapshot={props.snapshot} api={props.api} /></ReactFlowProvider></div>
+    </div>
   );
 }

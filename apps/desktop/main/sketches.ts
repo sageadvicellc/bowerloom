@@ -6,6 +6,7 @@
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Sketch, SketchSummary } from '../shared/types.js';
+import { canThread } from '../shared/sketchrules.js';
 import { assertAppWritable } from './boundary.js';
 
 export const SKETCH_LIMITS = Object.freeze({ nodes: 200, edges: 400, files: 100, bytes: 256 * 1024, name: 48 });
@@ -17,7 +18,12 @@ export class SketchError extends Error {}
 const fail = (text: string): never => { throw new SketchError(text); };
 
 export const isSketchName = (name: unknown): name is string => typeof name === 'string' && NAME.test(name) && !name.endsWith(' ');
-const fileOf = (dir: string, name: string): string => join(dir, FOLDER, `${name.replace(/ /g, '_')}.json`);
+/**
+ * The file name of a sketch. Every character that is not a lower-case letter, a digit or "-" is written as "_" and two hex digits,
+ * so "My harness" and "My_harness" are different files, and so are "Abc" and "abc" on a computer that ignores case.
+ */
+export const sketchFileName = (name: string): string => `${[...name].map(c => (/[a-z0-9-]/.test(c) ? c : `_${c.charCodeAt(0).toString(16).padStart(2, '0')}`)).join('')}.json`;
+const fileOf = (dir: string, name: string): string => join(dir, FOLDER, sketchFileName(name));
 
 /** A sketch from untrusted data: exact shape, kinds from a short list, numbers that are numbers, edges between nodes that exist. */
 export function parseSketch(value: unknown): Sketch {
@@ -32,9 +38,11 @@ export function parseSketch(value: unknown): Sketch {
     ids.add(o.id);
     return { id: o.id, kind: o.kind as Sketch['nodes'][number]['kind'], label: o.label, x: o.x, y: o.y };
   });
+  const kindOf = new Map(nodes.map(n => [n.id, n.kind] as const)), threads = new Set<string>();
   const edges = v.edges.map((e): Sketch['edges'][number] => {
     const o = e as Record<string, unknown>;
-    if (e === null || typeof e !== 'object' || typeof o.from !== 'string' || typeof o.to !== 'string' || !ids.has(o.from) || !ids.has(o.to) || o.from === o.to) return fail('A thread in the sketch is not valid.');
+    if (e === null || typeof e !== 'object' || typeof o.from !== 'string' || typeof o.to !== 'string' || !ids.has(o.from) || !ids.has(o.to) || o.from === o.to || !canThread(kindOf.get(o.from)!, kindOf.get(o.to)!) || threads.has(`${o.from}\0${o.to}`)) return fail('A thread in the sketch is not valid.');
+    threads.add(`${o.from}\0${o.to}`);
     return { from: o.from, to: o.to };
   });
   return { version: 1, name: v.name, nodes, edges };

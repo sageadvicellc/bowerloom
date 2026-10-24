@@ -5,6 +5,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
 import { join } from 'node:path';
 import { createController } from '../main/controller.js';
 import type { Host } from '../main/controller.js';
+import { sketchFileName } from '../main/sketches.js';
 import { CONFIG_FILE, DEFAULT_SETTINGS, MAX_PLACES, MAX_ROOTS, loadSettings, parseSettings, saveSettings } from '../main/config.js';
 import { OFF_TEXT, UPDATES_ENABLED, UPDATE_FEED, checkForUpdates, initialUpdateState } from '../main/updates.js';
 import { SAMPLE_DIR, tempDir } from './support.js';
@@ -217,7 +218,7 @@ const SKETCH = { version: 1, name: 'My harness', nodes: [{ id: 'a', kind: 'team'
 test('sketches are saved, listed, loaded and deleted in the viewer\'s own folder, and nothing else is touched', async t => {
   const h = host(t), c = createController(h.host), made = await c.saveSketch(SKETCH);
   assert.deepEqual(made, { ok: true, value: { name: 'My harness', nodes: 3, edges: 2 }, message: null });
-  assert.deepEqual(readdirSync(join(h.app, 'sketches')), ['My_harness.json']); assert.equal(lstatSync(join(h.app, 'sketches', 'My_harness.json')).mode & 0o777, 0o600);
+  assert.deepEqual(readdirSync(join(h.app, 'sketches')), [sketchFileName('My harness')]); assert.equal(lstatSync(join(h.app, 'sketches', sketchFileName('My harness'))).mode & 0o777, 0o600);
   assert.deepEqual((await c.listSketches()).value, [{ name: 'My harness', nodes: 3, edges: 2 }]); assert.deepEqual((await c.loadSketch('My harness')).value, SKETCH);
   assert.equal((await c.saveSketch({ ...SKETCH, nodes: SKETCH.nodes.slice(0, 2), edges: [{ from: 'a', to: 'b' }] })).ok, true); assert.equal((await c.listSketches()).value!.length, 1, 'the same name is replaced');
   assert.equal((await c.deleteSketch('My harness')).ok, true); assert.deepEqual((await c.listSketches()).value, []); assert.equal((await c.loadSketch('My harness')).ok, false);
@@ -237,8 +238,8 @@ test('a sketch that is not valid is refused with a plain sentence: names, kinds,
 
 test('a sketch folder that is a link, or a sketch file that is a link or damaged, is never followed or trusted', async t => {
   const h = host(t), c = createController(h.host); mkdirSync(h.app, { recursive: true });
-  const outside = tempDir(t); writeFileSync(join(outside, 'My_harness.json'), JSON.stringify(SKETCH)); symlinkSync(outside, join(h.app, 'sketches'));
-  assert.equal((await c.saveSketch(SKETCH)).ok, false); assert.equal((await c.loadSketch('My harness')).ok, false); assert.equal(readFileSync(join(outside, 'My_harness.json'), 'utf8'), JSON.stringify(SKETCH));
-  unlinkSync(join(h.app, 'sketches')); mkdirSync(join(h.app, 'sketches')); writeFileSync(join(h.app, 'sketches', 'Broken.json'), '{ not json'); writeFileSync(join(h.app, 'sketches', 'Big.json'), 'x'.repeat(300000)); symlinkSync(join(outside, 'My_harness.json'), join(h.app, 'sketches', 'Linked.json'));
+  const outside = tempDir(t); writeFileSync(join(outside, sketchFileName('My harness')), JSON.stringify(SKETCH)); symlinkSync(outside, join(h.app, 'sketches'));
+  assert.equal((await c.saveSketch(SKETCH)).ok, false); assert.equal((await c.loadSketch('My harness')).ok, false); assert.equal(readFileSync(join(outside, sketchFileName('My harness')), 'utf8'), JSON.stringify(SKETCH));
+  unlinkSync(join(h.app, 'sketches')); mkdirSync(join(h.app, 'sketches')); writeFileSync(join(h.app, 'sketches', 'Broken.json'), '{ not json'); writeFileSync(join(h.app, 'sketches', 'Big.json'), 'x'.repeat(300000)); symlinkSync(join(outside, sketchFileName('My harness')), join(h.app, 'sketches', 'Linked.json'));
   assert.deepEqual((await c.listSketches()).value, [], 'damaged, huge and linked files are left out'); assert.equal((await c.loadSketch('Broken')).ok, false); assert.equal((await c.loadSketch('Linked')).ok, false);
 });

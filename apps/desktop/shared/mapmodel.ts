@@ -9,9 +9,9 @@ import { KIND_WORDS, codeWords, plural, titleOf } from './words.js';
 
 export type MapKind = 'machine' | 'workspace' | 'project' | 'context-store' | 'team' | 'agent' | 'skill' | 'prompt' | 'reading-list' | 'knowledge-folder';
 export const MAP_KINDS: readonly MapKind[] = ['machine', 'workspace', 'project', 'context-store', 'team', 'agent', 'skill', 'prompt', 'reading-list', 'knowledge-folder'];
-export type EdgeRel = 'contains' | 'uses' | 'reads' | 'owns' | 'comes-from';
-export const EDGE_RELS: readonly EdgeRel[] = ['contains', 'uses', 'reads', 'owns', 'comes-from'];
-export type MapStatus = 'ready' | 'drifted' | 'held' | 'cannot-open';
+export type EdgeRel = 'contains' | 'uses' | 'reads' | 'owns' | 'comes-from' | 'allowed' | 'registered';
+export const EDGE_RELS: readonly EdgeRel[] = ['contains', 'uses', 'reads', 'owns', 'comes-from', 'allowed', 'registered'];
+export type MapStatus = 'ready' | 'not-locked' | 'drifted' | 'held' | 'cannot-open';
 export type MapScope = 'global' | 'project';
 export type ScopeFilter = 'everything' | 'global' | 'project';
 
@@ -26,6 +26,10 @@ export interface MapNode {
   link: Link | null;
   /** The key of the project this belongs to, when it belongs to one. */
   owner: string | null;
+  /** True for an item that is on the project's disk but is not listed in what Bowerloom resolves. */
+  unlisted?: boolean;
+  /** A stack that stands for several items of one kind at once. Click it to open the stack. */
+  cluster?: { count: number; ids: string[] };
 }
 export interface MapEdge { id: string; from: string; to: string; rel: EdgeRel }
 export interface MapModel { nodes: MapNode[]; edges: MapEdge[] }
@@ -33,11 +37,11 @@ export interface MapModel { nodes: MapNode[]; edges: MapEdge[] }
 export const KIND_WORDS_MAP: Record<MapKind, string> = {
   machine: 'This computer', workspace: 'Workspace', project: 'Project', 'context-store': 'Context store', team: 'Team', agent: 'Helper', skill: 'Skill', prompt: 'Prompt', 'reading-list': 'Reading list', 'knowledge-folder': 'Knowledge folder',
 };
-export const REL_WORDS: Record<EdgeRel, string> = { contains: 'holds', uses: 'uses', reads: 'reads', owns: 'owns', 'comes-from': 'comes from' };
-export const STATUS_WORDS: Record<MapStatus, string> = { ready: 'Ready', drifted: 'Drifted', held: 'Held', 'cannot-open': 'Cannot open' };
+export const REL_WORDS: Record<EdgeRel, string> = { contains: 'holds', uses: 'uses', reads: 'reads', owns: 'owns', 'comes-from': 'comes from', allowed: 'is allowed to read', registered: 'is registered as' };
+export const STATUS_WORDS: Record<MapStatus, string> = { ready: 'Ready', 'not-locked': 'Nothing locked yet', drifted: 'Drifted', held: 'Held', 'cannot-open': 'Cannot open' };
 
 const firstSentence = (text: string): string => /^[^.]*\./.exec(text)?.[0] ?? text;
-const statusOfProject = (p: ProjectData): MapStatus | null => p.status === 'ready' || p.status === 'not-locked' ? 'ready' : p.status === 'unreadable' ? 'cannot-open' : p.status === 'not-set-up' ? null : 'drifted';
+const statusOfProject = (p: ProjectData): MapStatus | null => p.status === 'ready' ? 'ready' : p.status === 'not-locked' ? 'not-locked' : p.status === 'unreadable' ? 'cannot-open' : p.status === 'not-set-up' ? null : 'drifted';
 
 /** The nodes and edges of one snapshot. */
 export function buildMap(s: Snapshot): MapModel {
@@ -51,7 +55,7 @@ export function buildMap(s: Snapshot): MapModel {
   const storeId = (kind: ItemKind, id: string): string => `store:${kind}:${id}`;
   for (const [kind, list] of [['team', s.library.teams], ['skill', s.library.skills], ['prompt', s.library.prompts]] as const) {
     for (const item of list) {
-      node({ id: storeId(kind, item.id), kind, label: titleOf(item.id), scope: 'global', description: `${firstSentence(KIND_WORDS[kind].what)} In your shared library.`, status: item.problem === null ? null : 'held', reasons: item.problem === null ? [] : ['The folder for this skill is missing from your library.'], link: { screen: 'item', kind, id: item.id }, owner: null });
+      node({ id: storeId(kind, item.id), kind, label: titleOf(item.id), scope: 'global', description: `${firstSentence(KIND_WORDS[kind].what)} In your shared library.`, status: item.problem === null ? null : 'held', reasons: item.problem === null ? [] : [`The folder for this ${KIND_WORDS[kind].one.toLowerCase()} is missing from your library.`], link: { screen: 'item', kind, id: item.id }, owner: null });
       edge('machine', storeId(kind, item.id), 'contains');
     }
   }
@@ -81,9 +85,11 @@ export function buildMap(s: Snapshot): MapModel {
       if (i.note === 'reserved') continue;
       const id = `item:${p.key}:${i.kind}:${i.id}`;
       const status: MapStatus | null = i.hold !== null ? 'held' : i.lock === 'changed' || i.lock === 'missing' ? 'drifted' : null;
-      node({ id, kind: i.kind, label: titleOf(i.id), scope: 'project', owner: p.key, status, reasons: [...(i.hold === null ? [] : [codeWords(i.hold.code)]), ...(i.lock === 'changed' ? ['It changed in your library after the lock was written.'] : i.lock === 'missing' ? ['It is not in the lock.'] : [])], description: `${firstSentence(KIND_WORDS[i.kind].what)} Used by ${p.name}.`, link: { screen: 'item', kind: i.kind, id: i.id, fromProject: p.key } as Link });
-      edge(me, id, 'uses');
-      if (i.from === 'store') edge(id, storeId(i.kind, i.id), 'comes-from');
+      const unlisted = i.note === 'unlisted';
+      node({ id, kind: i.kind, label: titleOf(i.id), scope: 'project', owner: p.key, status, ...(unlisted ? { unlisted: true } : {}), reasons: [...(unlisted ? ['It is in the folder, but the project list does not name it, so Bowerloom does not use it.'] : []), ...(i.hold === null ? [] : [codeWords(i.hold.code)]), ...(i.lock === 'changed' ? ['It changed in your library after the lock was written.'] : i.lock === 'missing' ? ['It is not in the lock.'] : [])], description: unlisted ? `${firstSentence(KIND_WORDS[i.kind].what)} In ${p.name}'s folder, but not listed.` : `${firstSentence(KIND_WORDS[i.kind].what)} Used by ${p.name}.`, link: { screen: 'item', kind: i.kind, id: i.id, fromProject: p.key } as Link });
+      // A listed item is used by the project. An item that is only on disk is held by the folder, not used.
+      edge(me, id, unlisted ? 'contains' : 'uses');
+      if (i.from === 'store' && !unlisted) edge(id, storeId(i.kind, i.id), 'comes-from');
     }
     for (const a of p.agents) {
       const id = `agent:${p.key}:${a.role}`;
@@ -104,11 +110,13 @@ export function buildMap(s: Snapshot): MapModel {
     const id = `folder:${f.name}`;
     node({ id, kind: 'knowledge-folder', label: f.name, scope: 'global', owner: null, status: f.state === 'ready' ? 'ready' : 'cannot-open', reasons: f.state === 'ready' ? [] : [codeWords(f.code) || 'The folder is not at its saved place.'], description: 'A folder of notes outside your projects. Projects need permission to read it.', link: { screen: 'folders' } });
     edge('machine', id, 'contains');
+    // The context store is the real folder on disk; the knowledge folder is its registration, so the wire runs from the store to the record.
     const store = s.projects.find(p => p.role === 'context-store' && f.dir !== null && p.dir === f.dir);
-    if (store !== undefined) edge(id, idOfFolder(store), 'comes-from');
-    for (const key of f.allowed) { const p = s.projects.find(x => x.key === key); if (p !== undefined) edge(idOfFolder(p), id, 'reads'); }
+    if (store !== undefined) edge(idOfFolder(store), id, 'registered');
+    // A project is drawn next to a knowledge folder only when a permission for it exists.
+    for (const key of f.allowed) { const p = s.projects.find(x => x.key === key); if (p !== undefined) edge(idOfFolder(p), id, 'allowed'); }
   }
-  for (const p of s.projects) for (const sl of p.slices) if (sl.folder !== null) edge(`slice:${p.key}:${sl.id}`, `folder:${sl.folder}`, 'reads');
+  for (const f of s.folders) for (const p of s.projects) if (f.allowed.includes(p.key)) for (const sl of p.slices) if (sl.folder === f.name) edge(`slice:${p.key}:${sl.id}`, `folder:${f.name}`, 'reads');
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
@@ -130,20 +138,34 @@ export function filterMap(model: MapModel, filter: MapFilter): MapModel & { matc
   return { nodes, edges: model.edges.filter(e => ids.has(e.from) && ids.has(e.to)), matches };
 }
 
-/** The same map as nested words, for a person who does not see the canvas: each folder, then what it holds and what reads what. */
+/**
+ * The same map as nested words, for a person who does not see the canvas: each folder, then what it holds. Each entry also lists
+ * every wire it has that the nesting does not show: what it reads, what it comes from, and any other thing that holds or uses it.
+ */
 export function outlineOf(model: MapModel): { id: string; text: string; depth: number }[] {
   const byId = new Map(model.nodes.map(n => [n.id, n]));
-  const kids = new Map<string, MapEdge[]>(); for (const e of model.edges) if (e.rel === 'contains' || e.rel === 'uses' || e.rel === 'owns') kids.set(e.from, [...(kids.get(e.from) ?? []), e]);
-  const out: { id: string; text: string; depth: number }[] = [], seen = new Set<string>();
-  const describe = (n: MapNode): string => `${KIND_WORDS_MAP[n.kind]}: ${n.label}${n.status === null ? '' : `, ${STATUS_WORDS[n.status]}`}`;
-  const walk = (id: string, depth: number): void => {
-    const n = byId.get(id); if (n === undefined || seen.has(id) || depth > 8) return; seen.add(id);
-    const reads = model.edges.filter(e => e.from === id && (e.rel === 'reads' || e.rel === 'comes-from')).map(e => byId.get(e.to)?.label).filter(Boolean);
-    out.push({ id, depth, text: `${describe(n)}${reads.length ? `. ${REL_WORDS[model.edges.find(e => e.from === id && (e.rel === 'reads' || e.rel === 'comes-from'))!.rel]} ${reads.join(', ')}` : ''}` });
-    for (const e of kids.get(id) ?? []) walk(e.to, depth + 1);
+  const TREE = new Set<EdgeRel>(['contains', 'uses', 'owns']);
+  const kids = new Map<string, MapEdge[]>(); for (const e of model.edges) if (TREE.has(e.rel)) kids.set(e.from, [...(kids.get(e.from) ?? []), e]);
+  const out: { id: string; text: string; depth: number }[] = [], seen = new Set<string>(), parentOf = new Map<string, string>();
+  const describe = (n: MapNode): string => `${KIND_WORDS_MAP[n.kind]}: ${n.label}${n.unlisted === true ? ', not listed' : ''}${n.status === null ? '' : `, ${STATUS_WORDS[n.status]}`}`;
+  const relations = (id: string): string[] => {
+    const lines: string[] = [];
+    for (const e of model.edges) {
+      if (e.from === id && !TREE.has(e.rel)) { const other = byId.get(e.to); if (other !== undefined) lines.push(`${REL_WORDS[e.rel]} ${other.label}`); }
+      else if (e.to === id && !TREE.has(e.rel) && e.rel !== 'comes-from' && e.rel !== 'reads') { const other = byId.get(e.from); if (other !== undefined) lines.push(`${other.label} ${REL_WORDS[e.rel]} it`); }
+      else if (e.to === id && TREE.has(e.rel) && parentOf.get(id) !== e.from) { const other = byId.get(e.from); if (other !== undefined) lines.push(`also: ${other.label} ${REL_WORDS[e.rel]} it`); }
+    }
+    return lines;
   };
-  walk('machine', 0);
-  for (const n of model.nodes) if (!seen.has(n.id)) walk(n.id, 0);
+  const walk = (id: string, depth: number, parent: string | null): void => {
+    const n = byId.get(id); if (n === undefined || seen.has(id) || depth > 8) return; seen.add(id); if (parent !== null) parentOf.set(id, parent);
+    out.push({ id, depth, text: '' });
+    for (const e of kids.get(id) ?? []) walk(e.to, depth + 1, id);
+  };
+  walk('machine', 0, null);
+  for (const n of model.nodes) if (!seen.has(n.id)) walk(n.id, 0, null);
+  // Texts are written after the walk, when every node's first parent is known.
+  for (const row of out) { const n = byId.get(row.id)!; const rel = relations(row.id); row.text = `${describe(n)}${rel.length ? `. ${rel.join('; ')}` : ''}`; }
   return out;
 }
 

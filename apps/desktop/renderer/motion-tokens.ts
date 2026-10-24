@@ -38,6 +38,12 @@ export const MOTION = Object.freeze({
     drop: { ms: 220, ease: 'cubic-bezier(0.34, 1.4, 0.64, 1)', scaleFrom: 0.94 } satisfies Transition & { scaleFrom: number },
     connect: { ms: 260, ease: 'cubic-bezier(0.34, 1.4, 0.64, 1)' } satisfies Transition,
     fit: { ms: 300, ease: 'cubic-bezier(0.65, 0, 0.35, 1)' } satisfies Transition,
+    /** Small waits, in milliseconds, that go with the motion above: a leaving node stays this long past its exit, a tidy ends this long past its move. */
+    exitGrace: 20, settleGrace: 30,
+    /** Moves that land closer together than this are saved together. */
+    saveDebounce: 400,
+    /** Arrow-key moves closer together than this are one step to undo. */
+    keyMoveBurst: 500,
   }),
   // Jakub: panels are polished, brief, and slide a short way.
   panel: Object.freeze({ slide: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 16 } satisfies Slide, close: { ms: 150, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition }),
