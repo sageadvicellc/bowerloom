@@ -13,7 +13,7 @@ import { INTERFACE_WORDS, buildReview, keepBothProblem } from '../../shared/prot
 import type { Review, ReviewConflict } from '../../shared/proto/scan-review.js';
 import { FLOW_STEPS, STEP_COUNT, STEP_TITLES, folderChoices, initialSetup, nestingOf, reduceSetup, stepNumber } from '../../shared/proto/setup-flow.js';
 import type { SetupState } from '../../shared/proto/setup-flow.js';
-import type { World } from '../../shared/proto/types.js';
+import type { Version, World } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
 import { HarnessIcon } from './icons.js';
 import { useNavigate } from './nav.js';
@@ -31,6 +31,13 @@ const SHORT_STEPS: Readonly<Record<string, string>> = { welcome: 'Welcome', plac
 // The flow of one session is kept while the person visits another screen. It is keyed by the session's own dispatch function,
 // which is the same function for as long as the session lasts, so a new session (a restart) starts at the welcome step.
 const kept = new WeakMap<object, SetupState>();
+// How many versions there were when the current run began (on the welcome step). Done names only a version made after that, so a second
+// run never claims the version of the first.
+const startedWith = new WeakMap<object, number>();
+
+/** What Start again does and does not do, in one sentence. It resets this screen only. */
+export const START_AGAIN_WORDS = 'Start again resets these steps only; it does not undo changes already made to the harness, which you can drop with Discard on the Harness screen.';
+export const START_AGAIN_DONE_WORDS = 'Start again resets these steps only; it does not undo the version or any change already made to the harness, so use Versions to go back and Discard on the Harness screen for changes that wait.';
 
 export function SetupScreen({ world }: ScreenProps): ReactElement {
   const session = useOptionalSession();
@@ -53,6 +60,8 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
   const world = state.draft;
   const [flow, send] = useReducer(reduceSetup, undefined, () => initial ?? kept.get(dispatch) ?? initialSetup());
   useEffect(() => { kept.set(dispatch, flow); }, [dispatch, flow]);
+  const versionCount = state.committed.versions.length;
+  useEffect(() => { if (flow.step === 'welcome') startedWith.set(dispatch, versionCount); }, [dispatch, flow.step, versionCount]);
 
   const places = useMemo(() => buildScan(world), [world]);
   const ids = useMemo(() => new Set(places.map(p => p.id)), [places]);
@@ -71,7 +80,12 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
     <div className="page sx-page">
       <div className="sx-top">
         <h1 tabIndex={-1}>{ROUTE_LABELS.setup}</h1>
-        {flow.step !== 'welcome' && flow.step !== 'done' && <button type="button" className="btn secondary" onClick={() => send({ type: 'reset' })}>Start again</button>}
+        {flow.step !== 'welcome' && flow.step !== 'done' && (
+          <div className="sx-restart">
+            <button type="button" className="btn secondary" aria-describedby="sx-restart-note" onClick={() => send({ type: 'reset' })}>Start again</button>
+            <p id="sx-restart-note" className="small muted">{START_AGAIN_WORDS}</p>
+          </div>
+        )}
       </div>
       <ol className="sx-steps" aria-label="Setup steps">
         {FLOW_STEPS.filter(s => s !== 'done').map(s => {
@@ -93,7 +107,7 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
         {flow.step === 'contents' && <Contents send={send} places={places} ticked={ticked} />}
         {flow.step === 'review' && <ReviewStep flow={flow} send={send} review={review} session={session} />}
         {flow.step === 'bring-in' && <BringIn flow={flow} send={send} review={review} places={ticked.length} session={session} />}
-        {flow.step === 'done' && <Done send={send} review={review} session={session} />}
+        {flow.step === 'done' && <Done send={send} review={review} session={session} since={startedWith.get(dispatch) ?? 0} />}
       </section>
     </div>
   );
@@ -210,7 +224,8 @@ function Places({ flow, send, places, world }: { flow: SetupState; send: Send; p
 
 function Contents({ send, places, ticked }: { send: Send; places: ScanPlace[]; ticked: readonly string[] }): ReactElement {
   const on = new Set(ticked);
-  const items = places.filter(p => on.has(p.id)).reduce((n, p) => n + p.itemIds.length, 0);
+  // An item found in two ticked places is one item.
+  const items = new Set(places.filter(p => on.has(p.id)).flatMap(p => p.itemIds)).size;
   return (
     <>
       <p>Tick the places Bowerloom may read. Only ticked places are read, and only ticked places are counted in the next step.</p>
@@ -250,6 +265,20 @@ function Contents({ send, places, ticked }: { send: Send; places: ScanPlace[]; t
 function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: Send; review: Review; session: ProtoSession }): ReactElement {
   const left = review.conflicts.length;
   const settled = Object.entries(flow.resolved);
+  // Settling a conflict removes its card, and the keyboard was on that card. It goes to the next unsettled conflict, or to Continue when none is left.
+  const next = useRef<string | null>(null);
+  const continueButton = useRef<HTMLButtonElement>(null);
+  const settle = (itemId: string, words: string): void => {
+    const at = review.conflicts.findIndex(c => c.itemId === itemId);
+    next.current = (review.conflicts[at + 1] ?? review.conflicts[at - 1])?.itemId ?? '';
+    send({ type: 'resolved', itemId, summary: words });
+  };
+  useEffect(() => {
+    const target = next.current;
+    if (target === null) return;
+    next.current = null;
+    (target === '' ? continueButton.current : document.getElementById(conflictHeadingId(target)))?.focus();
+  }, [review]);
   return (
     <>
       <p>Here is what is in the ticked places. Bowerloom has read them. Nothing has been changed.</p>
@@ -297,17 +326,19 @@ function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: S
           </ul>
         )}
         <div className="sx-conflicts">
-          {review.conflicts.map(c => <Conflict key={c.itemId} conflict={c} session={session} onSettled={words => send({ type: 'resolved', itemId: c.itemId, summary: words })} />)}
+          {review.conflicts.map(c => <Conflict key={c.itemId} conflict={c} session={session} onSettled={words => settle(c.itemId, words)} />)}
         </div>
       </section>
       <div className="sx-actions">
         <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
-        <button type="button" className="btn" disabled={left > 0} aria-describedby="sx-review-hint" onClick={() => send({ type: 'next' })}>Continue</button>
+        <button ref={continueButton} type="button" className="btn" disabled={left > 0} aria-describedby="sx-review-hint" onClick={() => send({ type: 'next' })}>Continue</button>
         {left > 0 && <span id="sx-review-hint" className="small muted">Settle {plural(left, 'item')} above to go on.</span>}
       </div>
     </>
   );
 }
+
+const conflictHeadingId = (itemId: string): string => `sx-conflict-h-${itemId}`;
 
 const andList = (words: readonly string[]): string => (words.length < 3 ? words.join(' and ') : `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}`);
 
@@ -330,7 +361,7 @@ function Conflict({ conflict, session, onSettled }: { conflict: ReviewConflict; 
   const panel = `sx-conflict-${conflict.itemId}`;
   return (
     <article className="sx-conflict" aria-label={`Conflict: ${conflict.name}`}>
-      <h4>{conflict.name} <span className="chip warn">{conflict.variants.length} different texts</span></h4>
+      <h4 id={conflictHeadingId(conflict.itemId)} tabIndex={-1}>{conflict.name} <span className="chip warn">{conflict.variants.length} different texts</span></h4>
       <p className="small">Found in {andList(finds)}, with different text in each.</p>
       <button type="button" className="btn secondary sx-self" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>Choose a version of {conflict.name}</button>
       {open && (
@@ -387,23 +418,29 @@ function BringIn({ flow, send, review, places, session }: { flow: SetupState; se
   );
 }
 
-function goTo(label: string): void {
+/** A fallback for a screen drawn with no shell above it (no `NavContext`): it presses the navigation button with this label. The real shell never needs it. */
+function navigateWithoutShell(label: string): void {
   const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Main"] button'));
   buttons.find(b => (b.textContent ?? '').trim() === label)?.click();
 }
 
-function Done({ send, review, session }: { send: Send; review: Review; session: ProtoSession }): ReactElement {
+/** The version that bringing in made during this run: only versions after the first `since` count, so a second run never names the first run's version. */
+export function broughtInVersion(versions: readonly Version[], since: number): Version | undefined {
+  return [...versions.slice(since)].reverse().find(v => v.label === BROUGHT_IN_LABEL);
+}
+
+function Done({ send, review, session, since }: { send: Send; review: Review; session: ProtoSession; since: number }): ReactElement {
   const navigate = useNavigate();
-  const versions = session.state.committed.versions;
-  const made = [...versions].reverse().find(v => v.label === BROUGHT_IN_LABEL);
+  const made = broughtInVersion(session.state.committed.versions, since);
   return (
     <>
       <p className="sx-done" role="status">Done. {counts(review)} are now in Bowerloom as copies. Your original files were not touched.</p>
       <p>{made !== undefined ? `Version ${made.counter} was made: ${made.label}. It is in Versions.` : 'Your choices needed no change to the harness, so no version was made. The first change you apply makes version 1.'}</p>
       <div className="sx-actions">
-        <button type="button" className="btn big" onClick={() => (navigate !== null ? navigate('harness') : goTo(ROUTE_LABELS.harness))}>Go to the Harness screen</button>
-        <button type="button" className="btn secondary" onClick={() => send({ type: 'reset' })}>Start again</button>
+        <button type="button" className="btn big" onClick={() => (navigate !== null ? navigate('harness') : navigateWithoutShell(ROUTE_LABELS.harness))}>Go to the Harness screen</button>
+        <button type="button" className="btn secondary" aria-describedby="sx-restart-note" onClick={() => send({ type: 'reset' })}>Start again</button>
       </div>
+      <p id="sx-restart-note" className="small muted">{START_AGAIN_DONE_WORDS}</p>
     </>
   );
 }

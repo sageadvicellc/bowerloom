@@ -112,6 +112,11 @@ export interface GraphWayProps {
   readonly send: Send;
 }
 
+/** Gives each reason a key that is its place in the list plus its words. Two reasons can read the same (folders in different domains with the same last name), so the words alone are not a key. */
+export function keyedLines(lines: readonly string[]): { key: string; text: string }[] {
+  return lines.map((text, i) => ({ key: `${i}:${text}`, text }));
+}
+
 /** "Pick on the graph": the lasso, the picks, the rule the app inferred from them, and the offers. */
 export function GraphWay({ state, pages, send }: GraphWayProps): ReactElement {
   const hops = state.rule.linksFromSeeds === null ? 0 : state.rule.linksFromSeeds.hops;
@@ -128,7 +133,7 @@ export function GraphWay({ state, pages, send }: GraphWayProps): ReactElement {
       <RuleWords state={state} pages={pages} />
       {inferred !== null ? (
         <ul className="kn-why small">
-          {explainInference(inferred).map(line => <li key={line}>{line}</li>)}
+          {keyedLines(explainInference(inferred)).map(l => <li key={l.key}>{l.text}</li>)}
         </ul>
       ) : null}
       {inferred !== null && state.accepted.map(h => (

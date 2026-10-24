@@ -10,6 +10,8 @@ import { ACTION_WORDS, applyReason, changeBarText, groupPlan, savedLine, written
 import type { SelectionAction, SelectionView } from '../../shared/proto/editor-describe.js';
 import { conflictCopies, defaultCopyNames, keepBothProblem } from '../../shared/proto/editor-actions.js';
 import type { AccessClass, HarnessItem, Plan, World } from '../../shared/proto/types.js';
+import { makeOthersInert, watchFocusLoss } from './focus.js';
+import { HarnessIcon } from './icons.js';
 import './harness.css';
 
 // ------------------------------------------------------------------------------------------------------------- dialog
@@ -18,16 +20,25 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 
 /**
  * A modal box. Focus moves into it when it opens, Tab stays inside it, Escape closes it, and focus goes back to where it was when it closes.
+ * While it is open the rest of the page is inert, so Tab and a screen reader cannot reach it. When the control that has the keyboard is
+ * removed from the box (a button that swaps itself for a form), the keyboard goes to the first thing marked `data-autofocus`, or to the heading.
  * `fallbackFocus` finds a place for the focus when the thing that opened the box is gone by then.
  */
 export function Modal({ title, onClose, children, fallbackFocus }: { title: string; onClose(): void; children: ReactNode; fallbackFocus?: () => HTMLElement | null }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   useEffect(() => {
+    const el = box.current;
+    if (el === null) return undefined;
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const target = box.current?.querySelector<HTMLElement>('[data-autofocus]') ?? box.current?.querySelector<HTMLElement>(FOCUSABLE) ?? box.current;
-    target?.focus();
+    const restore = makeOthersInert(el);
+    const home = (): HTMLElement | null => el.querySelector<HTMLElement>('[data-autofocus]') ?? heading.current ?? el;
+    (el.querySelector<HTMLElement>('[data-autofocus]') ?? el.querySelector<HTMLElement>(FOCUSABLE) ?? el).focus();
+    const stop = watchFocusLoss(el, home);
     return () => {
+      stop();
+      restore();
       if (before !== null && before.isConnected) before.focus();
       else fallbackFocus?.()?.focus();
     };
@@ -38,13 +49,13 @@ export function Modal({ title, onClose, children, fallbackFocus }: { title: stri
     const list = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
     if (list.length === 0) { e.preventDefault(); return; }
     const first = list[0]!, last = list[list.length - 1]!, at = document.activeElement;
-    if (e.shiftKey && (at === first || at === box.current)) { e.preventDefault(); last.focus(); }
+    if (e.shiftKey && (at === first || at === box.current || at === heading.current)) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
   };
   return (
     <div className="harness-scrim" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={box} className="harness-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId} ref={heading} tabIndex={-1}>{title}</h2>
         {children}
       </div>
     </div>
@@ -83,6 +94,12 @@ export function ConflictDialog({ world, item, onKeepOne, onKeepBoth, onClose, fa
   const [names, setNames] = useState<string[]>(() => defaultCopyNames(item));
   const [showNames, setShowNames] = useState(false);
   const problem = showNames ? keepBothProblem(world, item, names) : null;
+  // The button that was pressed is replaced by the other half of the dialog, so the keyboard is sent to the first control of that half.
+  const firstName = useRef<HTMLInputElement>(null), keepBothButton = useRef<HTMLButtonElement>(null), switched = useRef(false);
+  useEffect(() => {
+    if (!switched.current) { switched.current = true; return; }
+    (showNames ? firstName.current : keepBothButton.current)?.focus();
+  }, [showNames]);
   return (
     <Modal title={`${item.name} has different text in different interfaces`} onClose={onClose} {...(fallbackFocus === undefined ? {} : { fallbackFocus })}>
       <p className="muted">Read the copies side by side. Keep one, or keep both under their own names. Nothing is written until you apply.</p>
@@ -103,7 +120,7 @@ export function ConflictDialog({ world, item, onKeepOne, onKeepBoth, onClose, fa
             {copies.map((copy, i) => (
               <label key={copy.index} className="harness-field">
                 <span>Name for the copy from {copy.interfaceNames}</span>
-                <input type="text" value={names[i] ?? ''} onChange={e => setNames(prev => prev.map((n, k) => (k === i ? e.target.value : n)))} aria-invalid={problem !== null} />
+                <input ref={i === 0 ? firstName : undefined} type="text" value={names[i] ?? ''} onChange={e => setNames(prev => prev.map((n, k) => (k === i ? e.target.value : n)))} aria-invalid={problem !== null} />
               </label>
             ))}
           </fieldset>
@@ -115,7 +132,7 @@ export function ConflictDialog({ world, item, onKeepOne, onKeepBoth, onClose, fa
         </form>
       ) : (
         <div className="harness-actions">
-          <button type="button" className="btn" onClick={() => setShowNames(true)}>Keep both under their own names</button>
+          <button ref={keepBothButton} type="button" className="btn" onClick={() => setShowNames(true)}>Keep both under their own names</button>
           <button type="button" className="btn secondary" onClick={onClose}>Cancel</button>
         </div>
       )}
@@ -130,24 +147,41 @@ const FLAG_TONE = (text: string): string => (/^(Secret missing)/.test(text) ? 'b
 /** What a replacement list offers: the item and a note on where it lives. */
 export interface ReplaceChoice { readonly id: string; readonly label: string }
 
-/** The panel beside the canvas: what the selected node is, where it came from, its states in words, and the buttons that apply. */
-export function Inspector({ view, onAction, onClose, headingRef, replace }: {
+/** The words that told a person to drop an inherited agent on the harness. The drop has no keyboard path, so with the button the note points at the button. */
+const DROP_WORDS = /drop it on this harness to make a copy you can change here/;
+const BUTTON_WORDS = 'press Copy to this harness to make a copy you can change here';
+
+/** The note under the inspector, in words that match what the screen can do. */
+export function noteFor(view: SelectionView, hasCopyButton: boolean): string | null {
+  if (view.readOnlyNote === null) return null;
+  return hasCopyButton ? view.readOnlyNote.replace(DROP_WORDS, BUTTON_WORDS) : view.readOnlyNote;
+}
+
+/** The panel beside the canvas: what the selected node is, where it came from, its states in words, and the buttons that apply. `copyHere` is the keyboard way to do what a drop on the harness does. */
+export function Inspector({ view, onAction, onClose, headingRef, replace, copyHere }: {
   view: SelectionView | null; onAction(action: SelectionAction): void; onClose(): void; headingRef: RefObject<HTMLHeadingElement | null>;
   replace: { choices: readonly ReplaceChoice[]; value: string; onChange(id: string): void; onConfirm(): void; onCancel(): void } | null;
+  copyHere?: (() => void) | null;
 }): ReactElement {
+  // A button here can remove itself (Remove the skill, Use this one). The keyboard then goes to the heading, not to the body.
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = panel.current;
+    return el === null ? undefined : watchFocusLoss(el, () => headingRef.current ?? el.querySelector<HTMLElement>('button'));
+  }, [headingRef]);
   if (view === null) {
     return (
-      <aside className="harness-inspector is-empty" aria-label="Details of the selected item">
+      <aside ref={panel} className="harness-inspector is-empty" aria-label="Details of the selected item">
         <h2>Details</h2>
         <p>Select a skill, agent, tool or slice to read about it.</p>
-        <p className="muted">To connect two items, drag from the side of one to the other, or press C on one, move to another and press Enter. Drop a skill on a harness to install a copy there.</p>
+        <p className="muted">To connect two items, drag from the side of one to the other, or press C on one, move to another and press Enter. To copy an inherited or library skill or agent into a harness, select it and press Copy to this harness, or drop it on the harness.</p>
       </aside>
     );
   }
   const choose = view.actions.filter(a => a.id === 'keep-from-global' || a.id === 'hide-here' || a.id === 'replace-here');
   const others = view.actions.filter(a => !choose.includes(a));
   return (
-    <aside className="harness-inspector" aria-label="Details of the selected item">
+    <aside ref={panel} className="harness-inspector" aria-label="Details of the selected item">
       <div className="harness-inspector-head">
         <span className="chip quiet">{view.kindWord}</span>
         <button type="button" className="harness-close" onClick={onClose} aria-label="Close the details">Close</button>
@@ -190,13 +224,16 @@ export function Inspector({ view, onAction, onClose, headingRef, replace }: {
           )}
         </section>
       )}
-      {others.length > 0 ? (
+      {others.length > 0 || copyHere != null ? (
         <section aria-labelledby="harness-more-actions">
           <h3 id="harness-more-actions">What you can do</h3>
-          <div className="harness-stackbuttons">{others.map(a => <button key={`${a.id}-${a.targetId ?? ''}`} type="button" className="btn secondary" onClick={() => onAction(a)}>{a.label}</button>)}</div>
+          <div className="harness-stackbuttons">
+            {copyHere == null ? null : <button type="button" className="btn secondary" onClick={copyHere}>Copy to this harness</button>}
+            {others.map(a => <button key={`${a.id}-${a.targetId ?? ''}`} type="button" className="btn secondary" onClick={() => onAction(a)}>{a.label}</button>)}
+          </div>
         </section>
       ) : null}
-      {view.readOnlyNote === null ? null : <p className="small muted harness-note">{view.readOnlyNote}</p>}
+      {view.readOnlyNote === null ? null : <p className="small muted harness-note">{noteFor(view, copyHere != null)}</p>}
     </aside>
   );
 }
@@ -264,7 +301,7 @@ export function ResultPanel({ plan, counter, label, onClose, headingRef }: { pla
   return (
     <section className="harness-result" aria-labelledby="harness-result-title">
       <div className="harness-result-head">
-        <h2 id="harness-result-title" ref={headingRef} tabIndex={-1}>{writtenLine(plan)}</h2>
+        <h2 id="harness-result-title" ref={headingRef} tabIndex={-1}><HarnessIcon name="saved" size={22} />{writtenLine(plan)}</h2>
         <button type="button" className="btn secondary" onClick={onClose}>Done</button>
       </div>
       <p>{counter === null ? 'Saving the version.' : savedLine(counter, label)}. You can restore it later from Versions.</p>

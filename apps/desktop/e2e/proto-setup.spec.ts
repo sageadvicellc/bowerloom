@@ -103,6 +103,8 @@ test('journey 1: welcome, roots, scan, tick, settle a conflict, bring in, and la
   await page.getByRole('button', { name: 'Keep the Codex version' }).click();
   await expect(page.getByText(/kept the Codex version\./)).toBeVisible();
   await expect(page.getByText('Settled').first()).toBeVisible();
+  // The card that had the keyboard is gone, and no conflict is left, so the keyboard is on Continue.
+  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
   // Bring in.
@@ -123,10 +125,57 @@ test('journey 1: welcome, roots, scan, tick, settle a conflict, bring in, and la
   // Back on Setup the finished state is still there, and Start again resets only the screen.
   await page.locator('nav.nav').getByRole('button', { name: 'Setup' }).click();
   await expect(step('Everything is brought in')).toBeVisible();
+  await expect(page.getByText(/Start again resets these steps only; it does not undo the version/)).toBeVisible();
   await page.getByRole('button', { name: 'Start again', exact: true }).click();
   await expect(step('Welcome')).toBeVisible();
   await page.locator('nav.nav').getByRole('button', { name: 'Versions' }).click();
   await expect(page.getByRole('heading', { level: 3, name: 'Version 1' })).toBeVisible();
+});
+
+test('Start again says what it does not undo, and a second run that changes nothing does not claim the first version', async () => {
+  test.setTimeout(120_000);
+  await toPlaces();
+  await page.getByRole('button', { name: 'Continue to the scan' }).click();
+  await page.getByRole('button', { name: 'Look for settings folders' }).click();
+  await page.getByRole('button', { name: 'Choose which places to read' }).click();
+  await expect(page.getByText('Start again resets these steps only; it does not undo changes already made to the harness, which you can drop with Discard on the Harness screen.')).toBeVisible();
+  await page.getByRole('button', { name: 'Select all' }).click();
+  await page.getByRole('button', { name: 'Read the ticked places' }).click();
+  await page.getByRole('button', { name: /^Choose a version of / }).click();
+  await page.getByRole('button', { name: 'Keep the Codex version' }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: 'Bring these in', exact: true }).click();
+  await expect(page.getByText('Version 1 was made: Brought in from this computer.')).toBeVisible();
+  // Second run: the conflict is already settled in the harness, so nothing changes and no version is made.
+  await page.getByRole('button', { name: 'Start again', exact: true }).click();
+  await expect(step('Welcome')).toBeFocused();
+  await expect(page.getByRole('group', { name: 'Harness root' })).toHaveCount(0);
+  await toPlaces();
+  await page.getByRole('button', { name: 'Continue to the scan' }).click();
+  await page.getByRole('button', { name: 'Look for settings folders' }).click();
+  await page.getByRole('button', { name: 'Choose which places to read' }).click();
+  await page.getByRole('checkbox', { name: /^Studio: \.claude\b/ }).check();
+  await page.getByRole('button', { name: 'Read the ticked places' }).click();
+  await expect(page.getByText('No item was found twice with different text.')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: 'Bring these in', exact: true }).click();
+  await expect(page.getByText(/no version was made/)).toBeVisible();
+  await expect(page.getByText(/Version 1 was made/)).toHaveCount(0);
+});
+
+test('an item found in two ticked places counts once in the running total', async () => {
+  test.setTimeout(120_000);
+  await toPlaces();
+  await page.getByRole('button', { name: 'Continue to the scan' }).click();
+  await page.getByRole('button', { name: 'Look for settings folders' }).click();
+  await page.getByRole('button', { name: 'Choose which places to read' }).click();
+  const total = async (): Promise<number> => Number(/(\d+) items? in them/.exec(await page.getByRole('status').filter({ hasText: /places ticked/ }).innerText())?.[1]);
+  await page.getByRole('button', { name: 'Select all' }).click();
+  const all = await total();
+  // The same text, summed place by place, is bigger: read it from the places step.
+  const sum = (await page.locator('.sx-tick .small.muted').allInnerTexts()).reduce((n, t) => n + [...t.matchAll(/(\d+) (?:skills?|agents?|tools?)/g)].reduce((m, x) => m + Number(x[1]), 0), 0);
+  expect(sum, 'summed place by place').toBeGreaterThan(all);
+  expect(all).toBeGreaterThan(0);
 });
 
 test('keep both: names must differ and be free, then three items replace the one', async () => {

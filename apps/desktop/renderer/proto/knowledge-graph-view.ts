@@ -70,6 +70,7 @@ export class GraphView {
   private overlayFrame = 0;
   private lastInside = -1;
   private disposed = false;
+  private fitted = false;
   private looked = false;
   private held: GraphNode[] = [];
   private pageList: readonly WikiPage[] = [];
@@ -237,8 +238,11 @@ export class GraphView {
     // A page held in place by a remembered layout is let go, so the person can still drag it later.
     for (const n of this.nodes) { memory.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 }); delete n.fx; delete n.fy; }
     rested.set(this.pageList, memory);
-    this.fit();
+    // The first rest fits every page into the picture. Later rests (the layout woke up because a page was dragged) leave the view where the person put it.
+    if (!this.fitted) { this.fitted = true; this.fit(); }
     this.host.dataset.settled = '1';
+    // A count of the times the layout came to rest, so a test can wait for the next rest after a drag.
+    this.host.dataset.rests = String(Number(this.host.dataset.rests ?? '0') + 1);
     this.events.onSettled();
   }
 
@@ -337,6 +341,13 @@ export class GraphView {
   screenOf(id: string): Point | null {
     const n = this.nodes.find(x => x.id === id);
     return n === undefined || n.x === undefined || n.y === undefined || this.fg === null ? null : this.fg.graph2ScreenCoords(n.x, n.y);
+  }
+
+  /** The zoom and the centre of the view, for a test: it says whether the view moved, whatever the pages did. */
+  viewport(): { k: number; x: number; y: number } | null {
+    if (this.fg === null) return null;
+    const c = this.fg.centerAt();
+    return { k: this.fg.zoom(), x: c.x, y: c.y };
   }
 
   dispose(): void {

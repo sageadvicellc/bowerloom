@@ -2,8 +2,8 @@
 import type { ReactElement } from 'react';
 import type { HarnessNode } from '../../shared/proto/harnessmodel.js';
 
-/** The icons: one per kind of node, one per kind of tool, and `hook` and `runs-code` for the badge on a hook. */
-export type HarnessIconName = 'scope' | 'interface' | 'skill' | 'agent' | 'tool-mcp' | 'tool-prompt' | 'tool-hook' | 'slice' | 'group' | 'hook' | 'runs-code';
+/** The icons: one per kind of node, one per kind of tool, and `hook` and `runs-code` for the badge on a hook, and `saved` for the result panel. */
+export type HarnessIconName = 'scope' | 'interface' | 'skill' | 'agent' | 'tool-mcp' | 'tool-prompt' | 'tool-hook' | 'slice' | 'group' | 'hook' | 'runs-code' | 'saved';
 
 const PATHS: Readonly<Record<HarnessIconName, readonly string[]>> = {
   // A folder with a flag: the place a harness lives.
@@ -28,6 +28,8 @@ const PATHS: Readonly<Record<HarnessIconName, readonly string[]>> = {
   hook: ['M12 3v9', 'M12 12a4 4 0 1 0 8 0', 'M9.5 5.5 12 3l2.5 2.5'],
   // A play triangle in a ring: it runs.
   'runs-code': ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M10 8.5 15.5 12 10 15.5z'],
+  // A check in a ring: it worked, and the result is saved.
+  saved: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M8 12.2l2.8 2.8L16 9.5'],
 };
 
 /** The icon that goes with a node: by kind, and by tool kind for a tool. */

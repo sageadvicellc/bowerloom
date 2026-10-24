@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem } from '../shared/proto/types.js';
+import { canvasSettled } from './proto-wait.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_HARNESS_SHOTS ?? null;
@@ -253,6 +254,143 @@ test('a drop on a harness installs an editable copy there, and the interface fil
   // The copy has the same name and text as the inherited skill, so the files it writes are the same ones: the draft changed, no file does.
   await expect(bar()).toContainText('Changes waiting. No file would change.');
   await expect(bar().getByRole('button', { name: 'Apply' })).toBeEnabled();
+});
+
+const otherSkill = world.items.find(i => i.kind === 'skill' && i.scopeId === 'global' && i.id !== CASE_IDS.hiddenSkill && i.id !== CASE_IDS.tripleSkill && i.id !== freeSkill.id && i.id !== inheritedSkill.id && !agent.definition.skillIds.includes(i.id))!;
+const undo = () => bar().getByRole('button', { name: 'Undo' });
+const focusedId = (): Promise<string | null> => page.evaluate(() => document.activeElement?.getAttribute('data-id') ?? null);
+
+test('Undo stops at a version: off after Apply and after a restore, on after a new change, and on after Discard', async () => {
+  test.setTimeout(120_000);
+  await fresh();
+  await expect(undo()).toBeDisabled();
+  await wire(freeSkill.id, agent.id);
+  await expect(undo()).toBeEnabled();
+  // Discard says that Undo brings the changes back, so Undo is on while nothing waits.
+  await bar().getByRole('button', { name: 'Discard' }).click();
+  await expect(bar()).toContainText('No changes waiting');
+  await expect(undo()).toBeEnabled();
+  await undo().click();
+  await expect(bar()).toContainText(/\d+ changes? waiting/);
+  await bar().getByLabel('Short label for this version').fill('One');
+  await bar().getByRole('button', { name: 'Apply' }).click();
+  const result = page.locator('section.harness-result');
+  await expect(result.getByRole('heading', { level: 2 })).toBeFocused();
+  await expect(result.locator('h2 svg'), 'the result has an icon as well as words').toBeVisible();
+  await expect(undo()).toBeDisabled();
+  await wire(otherSkill.id, agent.id);
+  await bar().getByLabel('Short label for this version').fill('Two');
+  await bar().getByRole('button', { name: 'Apply' }).click();
+  await expect(result).toContainText('Saved as version 2: Two');
+  await expect(undo()).toBeDisabled();
+  // Restore version 1 from Versions; back on this screen, Undo is still off until there is a new change.
+  await page.locator('nav.nav').getByRole('button', { name: 'Versions' }).click();
+  await page.getByRole('button', { name: /^Restore this version: version 1,/ }).click();
+  await expect(page.getByText(/Version 1 was restored as a new version, version 3\./)).toBeVisible();
+  await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
+  await page.waitForSelector('.react-flow__node');
+  await expect(undo()).toBeDisabled();
+  await wire(otherSkill.id, agent.id);
+  await expect(undo()).toBeEnabled();
+});
+
+test('the places a person gives the nodes are kept when the scope changes and when the screen is left and opened again', async () => {
+  test.setTimeout(120_000);
+  await fresh();
+  const y = async (): Promise<number> => (await node(freeSkill.id).boundingBox())!.y;
+  const startY = await y();
+  const b = (await node(freeSkill.id).boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + 10, b.y + b.height / 2 + 160, { steps: 10 }); await page.mouse.up();
+  await expect.poll(async () => Math.abs((await y()) - startY)).toBeGreaterThan(100);
+  const moved = await node(freeSkill.id).evaluate(e => (e as HTMLElement).style.transform);
+  await scope('scope-copperfen');
+  await scope('global');
+  expect(await node(freeSkill.id).evaluate(e => (e as HTMLElement).style.transform), 'after a visit to another scope').toBe(moved);
+  await page.locator('nav.nav').getByRole('button', { name: 'Skills' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Skills' })).toBeVisible();
+  await page.locator('nav.nav').getByRole('button', { name: 'Harness' }).click();
+  await page.waitForSelector('.react-flow__node');
+  await canvasSettled(page, { fitted: true });
+  expect(await node(freeSkill.id).evaluate(e => (e as HTMLElement).style.transform), 'after a visit to another screen').toBe(moved);
+  // A reload is a new session: the places are gone.
+  await fresh();
+  expect(Math.abs((await y()) - startY)).toBeLessThan(2);
+});
+
+test('closing the details sends the keyboard to the node, and a button that removes itself sends it to the heading', async () => {
+  test.setTimeout(120_000);
+  await fresh();
+  await node(agent.id).click();
+  const inspector = page.getByRole('complementary', { name: 'Details of the selected item' });
+  await inspector.getByRole('button', { name: 'Close the details' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(inspector.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
+  expect(await focusedId(), 'the node that was open').toBe(agent.id);
+  // A button that goes away: remove a skill from the open agent with the keyboard.
+  await node(agent.id).click();
+  const remove = inspector.getByRole('button', { name: /^Remove the skill / });
+  const before = await remove.count();
+  await remove.first().focus();
+  await page.keyboard.press('Enter');
+  await expect(remove).toHaveCount(before - 1);
+  await expect(inspector.getByRole('heading', { level: 2, name: agent.name })).toBeFocused();
+});
+
+test('an inherited agent can be copied into a project with the keyboard, and the note does not ask for a drag', async () => {
+  test.setTimeout(120_000);
+  await fresh();
+  await scope('scope-copperfen');
+  await node(agent.id).click();
+  const inspector = page.getByRole('complementary', { name: 'Details of the selected item' });
+  await expect(inspector).toContainText('Inherited from');
+  await expect(inspector.locator('.harness-note')).toContainText('press Copy to this harness');
+  await expect(inspector.locator('.harness-note')).not.toContainText(/drop it/i);
+  const copy = inspector.getByRole('button', { name: 'Copy to this harness' });
+  await expect(copy).toBeVisible();
+  await copy.focus();
+  await page.keyboard.press('Enter');
+  await expect(message()).toContainText(`Installed a copy of ${agent.name} into Copperfen.`);
+  await expect(bar().getByRole('button', { name: 'Apply' })).toBeEnabled();
+  expect(await page.evaluate(() => document.activeElement === document.body), 'the keyboard is not lost').toBe(false);
+  // A skill that is not inherited does not offer it.
+  await scope('global');
+  await node(freeSkill.id).click();
+  await expect(inspector.getByRole('button', { name: 'Copy to this harness' })).toHaveCount(0);
+});
+
+test('in the conflict dialog the keyboard never leaves when a button swaps for a form, the page behind is inert, and everything comes back on close', async () => {
+  test.setTimeout(120_000);
+  await fresh();
+  const dialog = page.getByRole('dialog');
+  const inertCount = (): Promise<number> => page.evaluate(() => document.querySelectorAll('[inert]').length);
+  const inside = (): Promise<boolean> => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null);
+  await node(CASE_IDS.tripleSkill).focus(); await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  expect(await inertCount(), 'the page behind is inert while the dialog is open').toBeGreaterThan(0);
+  await expect(page.locator('aside.sidebar')).toHaveJSProperty('inert', true);
+  await expect(page.locator('.harness-body')).toHaveJSProperty('inert', true);
+  // Swap the button for the form with the keyboard: the button that had the keyboard is gone.
+  await dialog.getByRole('button', { name: 'Keep both under their own names' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('textbox')).toHaveCount(3);
+  await expect(dialog.getByRole('textbox').first()).toBeFocused();
+  for (let i = 0; i < 12; i += 1) { await page.keyboard.press('Tab'); expect(await inside(), `Tab ${i + 1}`).toBe(true); }
+  for (let i = 0; i < 12; i += 1) { await page.keyboard.press('Shift+Tab'); expect(await inside(), `Shift+Tab ${i + 1}`).toBe(true); }
+  // And back: the form goes, the button comes back, and the keyboard goes to it.
+  await dialog.getByRole('button', { name: 'Back' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('button', { name: 'Keep both under their own names' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(await inertCount(), 'nothing stays inert').toBe(0);
+  expect(await focusedId(), 'the keyboard is back on the node that opened the dialog').toBe(CASE_IDS.tripleSkill);
+  // The dialog can also be closed by keeping one copy, which removes the opener's state: the keyboard still lands on the screen.
+  await node(CASE_IDS.tripleSkill).focus(); await page.keyboard.press('Enter');
+  await dialog.getByRole('button', { name: 'Keep the copy from Codex' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  expect(await inertCount()).toBe(0);
+  expect(await page.evaluate(() => document.activeElement === document.body), 'the keyboard is not lost').toBe(false);
 });
 
 test('reduce motion makes every duration 0, including the slide of the change bar; with motion on they come from the tokens', async () => {

@@ -49,7 +49,7 @@
 .sx-list .chip { margin-left: var(--space-2); }
 
 .sx-conflicts { display: flex; flex-direction: column; gap: var(--space-3); }
-.sx-conflict { border: 1px solid var(--border); border-left: 6px solid var(--warn-fg); border-radius: var(--radius); padding: var(--space-4) var(--space-5); background: var(--surface); display: flex; flex-direction: column; gap: var(--space-3); }
+.sx-conflict { border: 1px solid var(--warn-fg); border-radius: var(--radius); padding: var(--space-4) var(--space-5); background: var(--surface); display: flex; flex-direction: column; gap: var(--space-3); }
 .sx-conflict h4 { font-size: var(--text-base); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 0; }
 .sx-picker { display: flex; flex-direction: column; gap: var(--space-4); }
 .sx-variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3); }

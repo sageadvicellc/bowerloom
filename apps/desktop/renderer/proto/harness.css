@@ -104,10 +104,11 @@ main:has(.harness-page) { padding: var(--space-3) var(--space-4) var(--space-2);
 
 .harness-result {
   position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 5; max-height: min(24rem, calc(100vh - 20rem)); overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--good-fg); border-left-width: 6px; border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--space-3) var(--space-4);
+  background: var(--surface); border: 1px solid var(--good-fg); border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--space-3) var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-2); animation: harness-slide var(--motion-panel-slide-ms) var(--motion-panel-slide-ease) both;
 }
-.harness-result h2 { font-size: var(--text-large); }
+.harness-result h2 { font-size: var(--text-large); display: flex; align-items: center; gap: var(--space-2); }
+.harness-result h2 svg { flex: none; color: var(--good-fg); }
 .harness-result h2:focus { outline: none; }
 .harness-result h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .harness-result p { margin: 0; font-size: var(--text-small); }

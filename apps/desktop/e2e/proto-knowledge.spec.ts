@@ -304,6 +304,30 @@ test('a frozen slice shows its frozen count and how the live rule differs', asyn
   await expect(page.locator('.kn-preview .kn-frozen')).toHaveCount(0);
 });
 
+test('removing a picked page and picking it again leaves nothing to save', async () => {
+  test.setTimeout(90_000);
+  await launch();
+  await openKnowledge();
+  const slice = world.slices.find(s => s.seeds.length >= 2)!;
+  await chooseSlice(slice.name);
+  await page.getByRole('radio', { name: 'Build a rule' }).check();
+  const seed = pages.find(p => p.id === slice.seeds[0])!;
+  const save = page.getByRole('button', { name: 'Save changes' }), status = page.locator('.kn-actions p[role="status"][aria-live="polite"]');
+  await expect(save).toBeDisabled();
+  await expect(status).toHaveText('Everything is saved to the draft.');
+  await page.getByRole('button', { name: `Remove ${seed.title} from the picked pages` }).click();
+  await expect(status).toHaveText('There are changes to save.');
+  await expect(page.getByRole('button', { name: 'Undo my changes' })).toBeVisible();
+  // Pick it again from the list: it comes back last, so the order is not the saved one, but the pages are.
+  await page.getByRole('radio', { name: /^All \d+ pages$/ }).check();
+  await page.getByLabel('Search the list').fill(seed.title);
+  await page.getByRole('checkbox', { name: `Pick ${seed.title}`, exact: true }).check();
+  await expect(status).toHaveText('Everything is saved to the draft.');
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Undo my changes' })).toHaveCount(0);
+  await expect(page.getByText('The picked pages of a saved slice cannot change in place.')).toHaveCount(0);
+});
+
 test('the graph settles and then stops, and with reduce motion it is already settled', async () => {
   test.setTimeout(90_000);
   await launch();
@@ -325,6 +349,67 @@ test('the graph settles and then stops, and with reduce motion it is already set
   await expect(page.locator('.kn-canvas')).toHaveAttribute('data-settled', '1', { timeout: 10_000 });
   console.log(`reduce motion: settled ${Date.now() - calm} ms after the click`);
   await expect(page.getByTestId('graph-status')).toHaveText('The graph has settled.');
+});
+
+/** In the page: waits until the picture (the camera and the place of every page) stays the same for `frames` frames in a row. A real wait on the picture, not on a clock. */
+async function viewIsStill(id: string, frames = 20): Promise<void> {
+  await page.evaluate(([pageId, need]) => new Promise<void>((resolve, reject) => {
+    type View = { screenOf(id: string): { x: number; y: number } | null; placed(): readonly { x?: number; y?: number }[] };
+    const host = document.querySelector('.kn-canvas') as (HTMLElement & { graphView?: View }) | null;
+    let last = '', same = 0, tries = 0;
+    const tick = (): void => {
+      const view = host?.graphView, p = view?.screenOf(pageId as string) ?? null;
+      const spread = (view?.placed() ?? []).reduce((sum, n, i) => sum + ((n.x ?? 0) * 1.01 + (n.y ?? 0)) * ((i % 7) + 1), 0);
+      const now = p === null ? 'none' : `${p.x.toFixed(2)},${p.y.toFixed(2)},${spread.toFixed(2)}`;
+      same = now === last ? same + 1 : 0; last = now; tries += 1;
+      if (same >= (need as number)) resolve(); else if (tries > 2400) reject(new Error('The picture never stood still.')); else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), [id, frames] as const);
+}
+const restsOf = (): Promise<number> => page.locator('.kn-canvas').getAttribute('data-rests').then(v => Number(v ?? '0'));
+
+test('dragging a page lets the graph settle again and does not send the view back to fit-all pages', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  const box = await canvasBox(), middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  // Zoom in on the middle, so the view is not the fit-all view.
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.wheel(0, -700);
+  const ids = pages.map(p => p.id);
+  const onScreen = async (): Promise<{ id: string; x: number; y: number }[]> => (await Promise.all(ids.map(async id => ({ id, at: await screenOfPage(id) }))))
+    .filter((n): n is { id: string; at: { x: number; y: number } } => n.at !== null && n.at.x > box.x + 60 && n.at.x < box.x + box.width - 60 && n.at.y > box.y + 60 && n.at.y < box.y + box.height - 60)
+    .map(n => ({ id: n.id, ...n.at }));
+  let shown = await onScreen();
+  expect(shown.length, 'some pages are in view after the zoom').toBeGreaterThan(10);
+  const dragged = shown.reduce((best, n) => (Math.hypot(n.x - middle.x, n.y - middle.y) < Math.hypot(best.x - middle.x, best.y - middle.y) ? n : best));
+  const ref = shown.filter(n => n.id !== dragged.id && Math.hypot(n.x - dragged.x, n.y - dragged.y) > 80)[0]!;
+  await viewIsStill(ref.id);
+  const readView = (): Promise<{ k: number; x: number; y: number }> => page.evaluate(() => (document.querySelector('.kn-canvas') as HTMLElement & { graphView: { viewport(): { k: number; x: number; y: number } } }).graphView.viewport());
+  const zoomed = await readView();
+  expect(zoomed.k, 'the view is zoomed in').toBeGreaterThan(1.2);
+  const restsBefore = await restsOf();
+
+  // Drag the page next to the middle by hand.
+  const from = (await screenOfPage(dragged.id))!;
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 30, from.y + 20, { steps: 8 });
+  await page.mouse.up();
+  // The drag wakes the layout, and it rests again: the graph says so each time it comes to rest.
+  await expect.poll(restsOf, { timeout: 20_000 }).toBeGreaterThan(restsBefore);
+  await viewIsStill(ref.id);
+  const after = await readView();
+  expect(after.k, 'the zoom stayed').toBeCloseTo(zoomed.k, 2);
+  expect(Math.abs(after.x - zoomed.x) + Math.abs(after.y - zoomed.y), 'the centre stayed where the person left it').toBeLessThan(1);
+
+  // The Fit all pages button still does fit every page.
+  await page.getByRole('button', { name: 'Fit all pages' }).click();
+  await expect.poll(async () => (await readView()).k, { timeout: 5_000 }).toBeLessThan(zoomed.k * 0.8);
+  await viewIsStill(ref.id);
+  shown = await onScreen();
+  expect(shown.length, 'every page is in view after Fit all pages').toBeGreaterThan(600);
 });
 
 test('speed: a rule change repaints at once, and a lasso drag keeps a steady frame time', async () => {

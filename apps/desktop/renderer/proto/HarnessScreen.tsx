@@ -5,9 +5,9 @@
  * `HarnessScreen` draws a plain line when there is no session above it (the shell test renders every screen with only a world).
  * The editor itself is `HarnessEditor`, which reads and changes the store.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { ACCESS_WORDS, buildHarnessMap, interfaceName } from '../../shared/proto/harnessmodel.js';
+import { ACCESS_WORDS, buildHarnessMap, interfaceName, scopeNodeId } from '../../shared/proto/harnessmodel.js';
 import type { HarnessMapModel, HarnessView } from '../../shared/proto/harnessmodel.js';
 import {
   attachToolOutcome, connectOutcome, copyOutcome, dropOutcome, keepBothOutcome, keepOneOutcome, menuOutcome, overrideOutcome, replacementChoices,
@@ -17,13 +17,14 @@ import { describeSelection } from '../../shared/proto/editor-describe.js';
 import type { SelectionAction } from '../../shared/proto/editor-describe.js';
 import { planProjection } from '../../shared/proto/plan.js';
 import { isDirty } from '../../shared/proto/store.js';
-import type { StoreState } from '../../shared/proto/store.js';
 import type { AccessClass, InterfaceId, Plan } from '../../shared/proto/types.js';
 import { prefersReducedMotion } from '../motion-tokens.js';
 import { HarnessCanvas } from './HarnessCanvas.js';
 import { AccessDialog, ChangeBar, ConflictDialog, Inspector, ResultPanel } from './harness-parts.js';
+import { keepPositions, positionsFor } from './harness-positions.js';
 import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
+import { canRedoDraft, canUndoDraft } from './undo-guard.js';
 import { ROUTE_LABELS, countLine } from './words.js';
 import type { ScreenProps } from './words.js';
 
@@ -56,15 +57,6 @@ function useReducedMotion(): boolean {
     return () => query.removeEventListener('change', change);
   }, []);
   return reduced;
-}
-
-/**
- * The undo steps that belong to the draft. Applying makes a version, and going further back than that is for Versions, not for undo.
- * So the first time a clean draft is seen for a committed world, the length of the undo list is remembered as the floor.
- */
-const floors = new WeakMap<object, number>();
-function undoFloor(state: StoreState, clean: boolean): number {
-  return floors.get(state.committed) ?? (clean ? state.undoStack.length : 0);
 }
 
 interface Note { readonly text: string; readonly refused: boolean }
@@ -101,10 +93,11 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
   const selection = useMemo(() => (selectedId === null ? null : describeSelection(world, model, selectedId)), [world, model, selectedId]);
   const plan = useMemo<Plan>(() => (dirty ? planProjection(state.committed, state.draft) : { changes: [] }), [dirty, state.committed, state.draft]);
 
-  // The undo floor.
-  useEffect(() => { if (!dirty && !floors.has(state.committed)) floors.set(state.committed, state.undoStack.length); }, [dirty, state.committed, state.undoStack.length]);
-  const canUndo = dirty && state.undoStack.length > undoFloor(state, !dirty);
-  const canRedo = state.redoStack.length > 0;
+  // Undo and redo stop at the last version (see undo-guard.ts). Discard can be undone, so Undo can be on with nothing waiting.
+  const canUndo = canUndoDraft(state);
+  const canRedo = canRedoDraft(state);
+  // Where the person put the nodes, kept for the session and for each scope (the canvas keeps them only while it is on the screen).
+  const [, placesChanged] = useReducer((n: number) => n + 1, 0);
 
   // After Apply the store has a new version: pick up its number for the result panel.
   useEffect(() => {
@@ -137,6 +130,13 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
       case 'refused': say(o.message, true); break;
     }
   }, [ctx, dispatch, say]);
+
+  /** Where the keyboard goes when the details close: the node that was open, or the scope switch when it is gone. */
+  const focusCanvasOrScope = (): HTMLElement | null => {
+    const node = selectedId === null ? null : document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(selectedId)}"]`);
+    return node ?? document.querySelector<HTMLElement>('.harness-toolbar select');
+  };
+  const closeInspector = (): void => { focusCanvasOrScope()?.focus(); select(null); };
 
   const changeScope = (id: string): void => { setScopeId(id); setSelectedId(null); setReplaceFor(null); setNote(null); };
   const select = (id: string | null): void => { setSelectedId(id); setReplaceFor(null); };
@@ -181,6 +181,14 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
     }
     : null;
 
+  // The keyboard way to do what a drop on the harness does: only for a skill or an agent that this harness inherits, and not for a library item,
+  // which already has its own "Make an editable copy" button.
+  const selectedNode = selection === null ? undefined : model.nodes.find(n => n.id === selection.nodeId);
+  const selectedItem = selection === null ? undefined : world.items.find(i => i.id === selection.nodeId);
+  const copyHere = selection !== null && selectedNode?.inherited === true && selectedItem !== undefined && (selectedItem.kind === 'skill' || selectedItem.kind === 'agent') && !selection.actions.some(a => a.id === 'copy')
+    ? () => run(dropOutcome(ctx, selection.nodeId, scopeNodeId(model.scopeId)))
+    : null;
+
   const conflictItem = conflictFor === null ? undefined : world.items.find(i => i.id === conflictFor);
 
   const apply = (): void => {
@@ -222,9 +230,11 @@ function HarnessEditor({ session }: { session: ProtoSession }): ReactElement {
             onConnect={(from, to) => run(connectOutcome(ctx, from, to))}
             onDropOnNode={(dragged, target) => run(dropOutcome(ctx, dragged, target))}
             onNodeMenu={onNodeMenu}
+            positions={positionsFor(session.dispatch, model.scopeId)}
+            onPositionsChange={places => { keepPositions(session.dispatch, model.scopeId, places); placesChanged(); }}
           />
         </div>
-        <Inspector view={selection} onAction={onInspectorAction} onClose={() => select(null)} headingRef={inspectorHeading} replace={replace} />
+        <Inspector view={selection} onAction={onInspectorAction} onClose={closeInspector} headingRef={inspectorHeading} replace={replace} copyHere={copyHere} />
       </div>
 
       <div className="harness-foot">
