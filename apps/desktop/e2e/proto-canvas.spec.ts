@@ -8,11 +8,11 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { build } from 'esbuild';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canvasSettled } from './proto-wait.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_CANVAS_SHOTS ?? null;
@@ -23,7 +23,7 @@ const SIZES = [[1440, 900], [900, 600]] as const;
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  const dir = mkdtempSync(join(tmpdir(), 'bowerloom-proto-canvas-'));
+  const dir = tempDir('bowerloom-proto-canvas-');
   await build({
     entryPoints: [join(desktop, 'tests/perf/proto-canvas-harness.tsx')], outfile: join(dir, 'harness.js'), bundle: true, format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic',
     loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none', logLevel: 'warning',
@@ -32,11 +32,11 @@ test.beforeAll(async () => {
   const css = (name: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', name)).href}">`;
   writeFileSync(join(dir, 'harness.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8">${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="harness.css"><link rel="stylesheet" href="bar.css"></head><body><div id="root"></div><script src="harness.js"></script></body></html>`);
   base = pathToFileURL(join(dir, 'harness.html')).href;
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-canvas-ud-'));
+  const userData = tempDir('bowerloom-proto-canvas-ud-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample-data', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });
-test.afterAll(async () => { await app.close(); });
+test.afterAll(async () => { await app.close(); removeTempDirs(); });
 
 /** Opens the harness page in a second window of the given size. */
 async function open(query: string, w = 1440, h = 900): Promise<Page> {

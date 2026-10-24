@@ -9,11 +9,14 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { build } from 'esbuild';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { animationsDone, framesPainted } from './proto-wait.js';
+import { EXPORT_PROMISE } from '../shared/proto/export-flow.js';
+import { buildBundle } from '../shared/proto/bundle.js';
+import { generateWorld } from '../shared/proto/sample.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_SETUP_SHOTS ?? null;
@@ -25,16 +28,16 @@ type Store = { getState(): { committed: unknown; draft: unknown }; dispatch(a: u
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  const dir = mkdtempSync(join(tmpdir(), 'bowerloom-proto-versions-'));
+  const dir = tempDir('bowerloom-proto-versions-');
   await build({ entryPoints: [join(desktop, 'e2e/proto-versions-page.ts')], outfile: join(dir, 'page.js'), bundle: true, format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none', logLevel: 'warning' });
   const css = (file: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', file)).href}">`;
   writeFileSync(join(dir, 'page.html'), `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><title>Versions page</title>${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="page.css"></head><body><div class="shell"><aside class="sidebar"><div class="brand">Bowerloom</div><div class="sandbox-badge" role="note">Prototype: nothing is saved</div></aside><main id="main"></main><footer class="footer"><span>Bowerloom prototype</span><span class="spacer"></span><span>Sample data. Nothing is saved.</span></footer></div><script src="page.js"></script></body></html>`);
   url = pathToFileURL(join(dir, 'page.html')).href;
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-versions-ud-'));
+  const userData = tempDir('bowerloom-proto-versions-ud-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });
-test.afterAll(async () => { await app.close(); });
+test.afterAll(async () => { await app.close(); removeTempDirs(); });
 
 async function openPage(w = 1440, h = 900): Promise<Page> {
   const before = app.windows().length;
@@ -112,7 +115,8 @@ test('journey 4: export, save a file, open it in the colleague\'s Bowerloom, rea
   await p.getByRole('tab', { name: 'Share' }).click();
   await expect(p.getByRole('heading', { level: 2, name: 'Share' })).toBeVisible();
   await expect(p.getByRole('heading', { level: 3, name: 'Export' })).toBeVisible();
-  await expect(p.getByText('No secrets and no wiki page text are in this file.')).toBeVisible();
+  await expect(p.getByText(EXPORT_PROMISE, { exact: true })).toBeVisible();
+  await expect(p.getByText('No secrets and no wiki page text are in this file.')).toHaveCount(0);
   await expect(p.getByText(/Their harness now has 0 skills, 0 agents, 0 tools, and 0 slices\./)).toBeVisible();
   await expect(p.getByRole('button', { name: 'Open an exported file' })).toBeDisabled();
   await expect(p.getByText('Saved as a file (simulated)')).toHaveCount(0);
@@ -146,6 +150,11 @@ test('journey 4: export, save a file, open it in the colleague\'s Bowerloom, rea
   await expect(p.locator('.vx-preview').getByText('LANTERN_TOKEN, an environment variable')).toBeVisible();
   await expect(p.locator('.vx-preview').getByText('TIDAL_KEY, a keychain entry')).toBeVisible();
   await expect(p.getByRole('heading', { level: 5, name: 'Clashes (0)' })).toBeVisible();
+  // Every file says how big it is, and the grants are listed. The whole Studio file holds its owned skills, so nothing points at nothing.
+  await expect(p.locator('.vx-files li').first()).toContainText(/\d+ characters?$/);
+  await expect(p.getByRole('heading', { level: 5, name: /^What agents could use after the install \([1-9]\d*\)$/ })).toBeVisible();
+  await expect(p.locator('.vx-grants li').first()).toHaveText(/ may use .+: (read only|read and write)\.$/);
+  await expect(p.getByRole('heading', { level: 5, name: /^References that point at nothing/ })).toHaveCount(0);
   await expect(p.getByText(/Their harness now has 0 skills/)).toBeVisible();
   await shoot(p, '08-import-preview', () => atTop(p.getByRole('heading', { level: 3, name: "Colleague's Bowerloom" })));
 
@@ -171,6 +180,34 @@ test('journey 4: export, save a file, open it in the colleague\'s Bowerloom, rea
   expect(await snapshot(p)).toBe(mine);
 });
 
+test('one project scope travels whole, and a file with a missing reference says so before the install', async () => {
+  test.setTimeout(120_000);
+  const p = await openPage();
+  await p.getByRole('tab', { name: 'Share' }).click();
+  // Only Reedmarsh: its agents use skills that live elsewhere. Those owned skills travel in the file, so nothing is missing.
+  await p.getByRole('checkbox', { name: /^Studio/ }).uncheck();
+  await p.getByRole('checkbox', { name: /^Reedmarsh/ }).check();
+  await p.getByRole('button', { name: 'Save file' }).click();
+  await p.getByRole('button', { name: 'Open an exported file' }).click();
+  await expect(p.getByRole('heading', { level: 4, name: 'What opening this file would do' })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 5, name: /^What agents could use after the install \([1-9]\d*\)$/ })).toBeVisible();
+  await expect(p.getByRole('heading', { level: 5, name: /^References that point at nothing/ })).toHaveCount(0);
+  await expect(p.locator('.vx-missing')).toHaveCount(0);
+
+  // A hand-made file: the same bundle with its skills taken out, so each agent points at a skill the file does not hold.
+  const bundle = buildBundle(generateWorld(1), ['scope-reedmarsh']);
+  const broken = { ...bundle, items: bundle.items.filter(i => i.kind !== 'skill') };
+  expect(broken.items.some(i => i.kind === 'agent' && i.definition.skillIds.length > 0), 'the test file has an agent that uses a skill').toBe(true);
+  await p.getByLabel('Or paste the text of a file here').fill(JSON.stringify(broken));
+  await p.getByRole('button', { name: 'Open pasted text' }).click();
+  await expect(p.getByRole('heading', { level: 5, name: /^References that point at nothing \([1-9]\d*\)$/ })).toBeVisible();
+  await expect(p.locator('.vx-missing li').first()).toContainText('which is neither in this file nor in your setup.');
+  await expect(p.locator('.vx-missing li').first()).toContainText(' uses the skill ');
+  // Opening a good file again takes the line away.
+  await p.getByRole('button', { name: 'Open an exported file' }).click();
+  await expect(p.getByRole('heading', { level: 5, name: /^References that point at nothing/ })).toHaveCount(0);
+});
+
 test('reduce motion makes the versions token zero, and the list rows stop animating', async () => {
   const p = await openPage();
   const read = (name: string) => p.evaluate(n => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
@@ -182,7 +219,7 @@ test('reduce motion makes the versions token zero, and the list rows stop animat
 
 test('the real prototype: Setup makes version 1, Versions lists it, and there is nothing yet to compare or restore', async () => {
   test.setTimeout(120_000);
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-versions-real-'));
+  const userData = tempDir('bowerloom-proto-versions-real-');
   const real = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   try {
     const w = await real.firstWindow();

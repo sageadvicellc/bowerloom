@@ -6,21 +6,21 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { build } from 'esbuild';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 let app: ElectronApplication, page: Page;
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  const dir = mkdtempSync(join(tmpdir(), 'bowerloom-proto-setup-conflicts-'));
+  const dir = tempDir('bowerloom-proto-setup-conflicts-');
   await build({ entryPoints: [join(desktop, 'e2e/proto-setup-conflicts-page.ts')], outfile: join(dir, 'page.js'), bundle: true, format: 'iife', platform: 'browser', target: 'chrome140', jsx: 'automatic', loader: { '.css': 'css' }, define: { 'process.env.NODE_ENV': '"production"' }, legalComments: 'none', logLevel: 'warning' });
   const css = (file: string): string => `<link rel="stylesheet" href="${pathToFileURL(join(desktop, 'renderer', file)).href}">`;
   writeFileSync(join(dir, 'page.html'), `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><title>Setup page</title>${css('tokens.css')}${css('styles.css')}<link rel="stylesheet" href="page.css"></head><body><div class="shell"><aside class="sidebar"><div class="brand">Bowerloom</div></aside><main id="main"></main><footer class="footer"><span>Bowerloom prototype</span></footer></div><script src="page.js"></script></body></html>`);
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-setup-conflicts-ud-'));
+  const userData = tempDir('bowerloom-proto-setup-conflicts-ud-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
   await app.evaluate(({ BrowserWindow }, url) => { const win = new BrowserWindow({ width: 1440, height: 900, useContentSize: true, show: true, webPreferences: { contextIsolation: true, sandbox: true, partition: `proto-setup-conflicts-${Date.now()}` } }); void win.loadURL(url); }, pathToFileURL(join(dir, 'page.html')).href);
@@ -28,7 +28,7 @@ test.beforeAll(async () => {
   page = app.windows()[1]!;
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true, null, { timeout: 30_000 });
 });
-test.afterAll(async () => { await app.close(); });
+test.afterAll(async () => { await app.close(); removeTempDirs(); });
 
 const heading = (name: string) => page.getByRole('heading', { level: 4, name: new RegExp(`^${name} `) });
 const focusedHeadingText = (): Promise<string> => page.evaluate(() => (document.activeElement?.tagName === 'H4' ? document.activeElement.textContent ?? '' : `not a conflict heading: ${document.activeElement?.tagName}`));

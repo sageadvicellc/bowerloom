@@ -7,12 +7,12 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateWorld } from '../shared/proto/sample.js';
 import { animationsDone, framesPainted } from './proto-wait.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_KNOWLEDGE_SHOTS ?? null;
@@ -43,7 +43,7 @@ function expectedIds(r: Rule): Set<string> {
 let app: ElectronApplication, page: Page;
 
 async function launch(reduced = false): Promise<void> {
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-knowledge-'));
+  const userData = tempDir('bowerloom-proto-knowledge-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
@@ -51,7 +51,7 @@ async function launch(reduced = false): Promise<void> {
   if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
   await resize(1440, 900);
 }
-test.afterEach(async () => { await app.close(); });
+test.afterEach(async () => { await app.close(); removeTempDirs(); });
 
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { BrowserWindow.getAllWindows()[0]!.setContentSize(size.w, size.h); }, { w, h });

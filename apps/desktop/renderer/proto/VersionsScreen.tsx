@@ -8,7 +8,7 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { buildBundle } from '../../shared/proto/bundle.js';
-import { EXPORT_PROMISE, bundleText, clashWords, describeExport, installBundle, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
+import { EXPORT_PROMISE, bundleText, clashWords, describeExport, grantWords, installBundle, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
 import { globalScope } from '../../shared/proto/common.js';
 import { createStore, isDirty } from '../../shared/proto/store.js';
 import type { Store } from '../../shared/proto/store.js';
@@ -272,6 +272,8 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
   const [opened, setOpened] = useState<{ preview: ImportPreview; text: string; installed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [installedCounts, setInstalledCounts] = useState<ReturnType<typeof countsOf> | null>(null);
+  const [pasted, setPasted] = useState('');
+  const pasteId = useId();
 
   const open = (text: string): void => {
     // The file travels as plain text: parsed again here, as the other Bowerloom would read it from disk.
@@ -298,6 +300,11 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
         <button type="button" className="btn secondary" disabled={saved === null} aria-describedby="vx-open-hint" onClick={() => saved !== null && open(saved.text.slice(0, Math.floor(saved.text.length / 2)))}>Open a damaged file (to see the error)</button>
         <span id="vx-open-hint" className="small muted">{saved === null ? 'Save a file under Export first.' : `The last file holds: ${saved.scopes}.`}</span>
       </div>
+      <div className="vx-paste">
+        <label htmlFor={pasteId} className="vx-pick"><span>Or paste the text of a file here</span>
+          <textarea id={pasteId} rows={3} value={pasted} onChange={e => setPasted(e.target.value)} spellCheck={false} /></label>
+        <button type="button" className="btn secondary vx-self" disabled={pasted.trim() === ''} onClick={() => open(pasted)}>Open pasted text</button>
+      </div>
       <div role="alert" aria-live="assertive" className="vx-error-live">{error !== null && <p className="vx-error"><span className="chip bad">Could not open</span> {error}</p>}</div>
       <div aria-live="polite" className="vx-live">
         {opened !== null && (
@@ -306,8 +313,18 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
             <p className="small muted">Nothing has run. Nothing is written until you press Install.</p>
             <h5>Files that would be written ({opened.preview.files.length})</h5>
             <ul className="vx-lines vx-files">
-              {opened.preview.files.map(f => <li key={f.path}><span className="chip quiet">{f.action}</span> <span className="tech">{f.path}</span></li>)}
+              {opened.preview.files.map(f => <li key={f.path}><span className="chip quiet">{f.action}</span> <span className="tech">{f.path}</span> <span className="muted small">{plural(f.characters, 'character')}</span></li>)}
             </ul>
+            <h5>What agents could use after the install ({opened.preview.grants.length})</h5>
+            {opened.preview.grants.length === 0 ? <p className="small muted">None. No agent in this file is given a tool.</p>
+              : <ul className="vx-lines vx-grants">{opened.preview.grants.map(g => <li key={`${g.agent}\u0000${g.tool}`}>{grantWords(g)}</li>)}</ul>}
+            {opened.preview.missingRefs.length > 0 && (
+              <>
+                <h5>References that point at nothing ({opened.preview.missingRefs.length})</h5>
+                <p className="small muted">These will not work until the missing piece is added.</p>
+                <ul className="vx-lines vx-missing">{opened.preview.missingRefs.map(r => <li key={r}>{r}</li>)}</ul>
+              </>
+            )}
             <h5>Secrets you must add ({opened.preview.secretsToAdd.length})</h5>
             {opened.preview.secretsToAdd.length === 0 ? <p className="small muted">None.</p> : (
               <>

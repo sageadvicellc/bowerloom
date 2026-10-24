@@ -9,13 +9,13 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import type { CDPSession, ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { animationsDone, framesPainted } from './proto-wait.js';
 import { CASE_IDS, generateWorld } from '../shared/proto/sample.js';
 import type { AgentItem, SkillItem } from '../shared/proto/types.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_SKILLS_AGENTS_SHOTS ?? null;
@@ -36,12 +36,12 @@ test.beforeAll(async () => {
   // The prototype runs from the bundle, so the bundle is made fresh from the source in this folder.
   const built = spawnSync(process.execPath, [join(desktop, 'tools', 'bundle.mjs')], { cwd: desktop, encoding: 'utf8' });
   if (built.status !== 0 || !existsSync(join(desktop, 'dist', 'main.mjs'))) throw new Error(`The bundle did not build.\n${built.stdout}\n${built.stderr}`);
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-prototype-e2e-'));
+  const userData = tempDir('bowerloom-prototype-e2e-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
 });
-test.afterAll(async () => { await app.close(); });
+test.afterAll(async () => { await app.close(); removeTempDirs(); });
 
 /** The window here may be smaller than the sizes asked for, so the page is shown at the size by emulating the viewport. */
 async function resize(w: number, h: number): Promise<void> {

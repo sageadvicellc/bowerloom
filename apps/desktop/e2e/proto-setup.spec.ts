@@ -6,11 +6,11 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import electronPath from 'electron';
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { animationsDone, framesPainted } from './proto-wait.js';
+import { removeTempDirs, tempDir } from './proto-temp.js';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = process.env.PROTO_SETUP_SHOTS ?? null;
@@ -20,13 +20,13 @@ const SIZES = [[1440, 900], [900, 600]] as const;
 let app: ElectronApplication, page: Page;
 
 test.beforeEach(async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'bowerloom-proto-setup-'));
+  const userData = tempDir('bowerloom-proto-setup-');
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('heading', { level: 1, name: 'Setup' })).toBeVisible();
 });
-test.afterEach(async () => { await app.close(); });
+test.afterEach(async () => { await app.close(); removeTempDirs(); });
 
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { const win = BrowserWindow.getAllWindows()[0]!; win.setContentSize(size.w, size.h); }, { w, h });

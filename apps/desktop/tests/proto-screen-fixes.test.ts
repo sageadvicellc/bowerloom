@@ -39,7 +39,7 @@ test('Undo is off with nothing to undo, on after an edit, and off right after Ap
   edit(store);
   assert.equal(canUndoDraft(store.getState()), true, 'an edit can be undone');
   store.dispatch({ type: 'apply', label: 'One' });
-  assert.ok(store.getState().undoStack.length > 0, 'the store keeps the old steps today');
+  assert.equal(store.getState().undoStack.length, 0, 'the store clears the old steps on apply');
   assert.equal(canUndoDraft(store.getState()), false, 'but Undo does not walk back past the version');
   edit(store, 1);
   assert.equal(canUndoDraft(store.getState()), true, 'an edit after the apply can be undone');
