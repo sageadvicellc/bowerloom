@@ -6,12 +6,14 @@ import {
 } from '../shared/viewmodel.js';
 import type { Chip, Link, SliceGroup, SliceModel, Tone } from '../shared/viewmodel.js';
 import { ICONS, h, icon } from './dom.js';
+import { applyMotionTokens } from './motion-tokens.js';
+import { mapHost, renderMap } from './map/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 const api = window.bowerloom;
 
 type Screen = Link['screen'];
-interface Route extends Link { tab?: ItemKind; fromProject?: string }
+interface Route extends Link { tab?: ItemKind }
 interface Banner { text: string; retry: (() => void) | null }
 const state: { info: AppInfo | null; settings: AppSettings | null; snap: Snapshot | null; route: Route; history: Route[]; error: string | null; busy: boolean; notice: string | null; banner: Banner | null; focusHeading: boolean; raw: Record<string, { text: string | null; note: string | null } | undefined> } =
   { info: null, settings: null, snap: null, route: { screen: 'home' }, history: [], error: null, busy: false, notice: null, banner: null, focusHeading: false, raw: {} };
@@ -106,6 +108,18 @@ function homeScreen(s: Snapshot): HTMLElement {
         h('p', { text: a.body }), h('p', {}, h('strong', { text: 'What a person would do: ' }), a.todo),
         a.members ? h('details', { class: 'explain' }, h('summary', { text: `Show the ${a.members.length} projects` }), h('ul', { class: 'sentences' }, ...a.members.map(m => h('li', {}, h('button', { type: 'button', class: 'back', on: { click: () => go({ screen: 'project', key: m.key }) } }, m.name))))) : null,
         h('div', { class: 'toolbar' }, a.link ? button('Take me there', () => go(a.link!), 'btn secondary') : null, a.technical ? details([`Technical name: ${a.technical}`]) : null)))));
+}
+
+/** The map is drawn by React, in one element that is kept and put back each time, so it keeps its place while other screens are looked at. */
+function mapScreen(s: Snapshot): HTMLElement {
+  renderMap({
+    snapshot: s, saved: state.settings?.mapLayout ?? {}, api,
+    onOpen: link => go(link),
+    onLayout: layout => { void (async () => { settled(await act('Keeping the places', () => api.setMapLayout(layout))); })(); },
+  });
+  return h('div', { class: 'page wide map-page' },
+    h('div', { class: 'map-head' }, h('h1', { text: 'Map', title: 'Everything Bowerloom looks after, as things you can move. Your places are remembered by the viewer; nothing in your folders changes.' })),
+    mapHost());
 }
 
 function libraryScreen(s: Snapshot): HTMLElement {
@@ -301,7 +315,7 @@ function welcome(): HTMLElement {
 // ------------------------------------------------------------------------------------------------------------- shell
 
 const NAV: { screen: Screen; label: string; icon: readonly string[] }[] = [
-  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
+  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'map', label: 'Map', icon: ICONS.map }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
   { screen: 'folders', label: 'Knowledge folders', icon: ICONS.folders }, { screen: 'storage', label: 'Storage', icon: ICONS.storage }, { screen: 'settings', label: 'Settings', icon: ICONS.settings },
 ];
 const section = (screen: Screen): Screen => screen === 'item' ? 'library' : screen === 'project' ? 'projects' : screen;
@@ -323,6 +337,7 @@ function body(): HTMLElement {
   if (state.error) return h('div', { class: 'page', role: 'alert' }, empty('Something went wrong', state.error, button('Try again', () => { void reload(); })));
   if (state.snap === null) return h('div', { class: 'page' }, h('p', { class: 'muted', role: 'status', text: 'Reading your Bowerloom…' }));
   switch (state.route.screen) {
+    case 'map': return mapScreen(state.snap);
     case 'library': return libraryScreen(state.snap);
     case 'item': return itemScreen(state.snap);
     case 'projects': return projectsScreen(state.snap);
@@ -386,4 +401,6 @@ async function reload(): Promise<void> {
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+applyMotionTokens();
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
 void reload();

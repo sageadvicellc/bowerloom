@@ -6,12 +6,13 @@ import { realpathSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { FOLDER_ROLES } from '../shared/types.js';
-import type { AppInfo, AppSettings, FolderRole, ItemContent, ItemKind, Mode, SettingsResult, Snapshot } from '../shared/types.js';
+import type { AppInfo, AppSettings, FolderRole, ItemContent, ItemKind, Mode, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot } from '../shared/types.js';
 import { safeText } from '../shared/text.js';
 import { readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
-import { MAX_ROOTS, loadSettings, saveSettings } from './config.js';
+import { MAX_ROOTS, loadSettings, parseLayout, saveSettings } from './config.js';
+import { SketchError, deleteSketch, listSketches, loadSketch, saveSketch } from './sketches.js';
 import { SANDBOX_DIR } from './boundary.js';
 import { sandboxExists, sandboxPaths } from './sandbox.js';
 import { discoverNearby } from './discover.js';
@@ -58,6 +59,11 @@ export interface Controller {
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
   setIncludeExamples(on: boolean): Promise<SettingsResult>;
   setRole(projectKey: string, role: FolderRole | null): Promise<SettingsResult>;
+  setMapLayout(layout: unknown): Promise<SettingsResult>;
+  listSketches(): Promise<SketchResult<SketchSummary[]>>;
+  saveSketch(sketch: unknown): Promise<SketchResult<SketchSummary>>;
+  loadSketch(name: unknown): Promise<SketchResult<Sketch>>;
+  deleteSketch(name: unknown): Promise<SketchResult<null>>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
   copyText(text: string): Promise<boolean>;
@@ -65,6 +71,12 @@ export interface Controller {
 
 const KINDS: readonly ItemKind[] = ['skill', 'prompt', 'team'];
 const SAVE_FAILED = 'The change could not be saved, so it was not made. The viewer\'s settings folder may be full or not writable.';
+
+/** A sketch call answers with a sentence, never an error that escapes: a bad name, a damaged file and a refused path are all plain messages. */
+function sketchResult<T>(run: () => T): SketchResult<T> {
+  try { return { ok: true, value: run(), message: null }; }
+  catch (error) { return { ok: false, value: null, message: error instanceof SketchError ? error.message : 'The sketch could not be saved or read here.' }; }
+}
 
 export function createController(host: Host): Controller {
   const loaded = loadSettings(host.appDir);
@@ -192,6 +204,14 @@ export function createController(host: Host): Controller {
       if (role === null) delete roles[projectKey]; else roles[projectKey] = role;
       return persist({ ...settings, roles });
     },
+    async setMapLayout(layout) {
+      if (layout !== null && (typeof layout !== 'object' || Array.isArray(layout))) return { settings, message: 'That layout is not valid.' };
+      return persist({ ...settings, mapLayout: layout === null ? {} : parseLayout(layout) });
+    },
+    async listSketches() { return sketchResult(() => listSketches(host.appDir)); },
+    async saveSketch(sketch) { return sketchResult(() => saveSketch(host.appDir, sketch)); },
+    async loadSketch(name) { return sketchResult(() => loadSketch(host.appDir, name)); },
+    async deleteSketch(name) { return sketchResult(() => { deleteSketch(host.appDir, name); return null; }); },
     async checkForUpdates() { updates = await checkForUpdates(updates); return { status: updates.status }; },
     async openLink(url) {
       if (!isAllowedExternal(url)) return false;

@@ -23,6 +23,9 @@
   --accent: #3b6a50; --accent-strong: #2c5039; --accent-contrast: #ffffff; --accent-soft: #e2eee6;
   --good-bg: #e0eee5; --good-fg: #1d4a31; --warn-bg: #fbedc9; --warn-fg: #664400; --bad-bg: #f8ddd8; --bad-fg: #82201a; --quiet-bg: #e8e7df; --quiet-fg: #3a443e;
   --focus: #1f5fbf; --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 18px rgb(0 0 0 / 0.05);
+  /* The map: one muted colour for each kind of thing, a stripe and an icon, never the text. And the wires. */
+  --kind-machine: #5d6b78; --kind-workspace: #8a6f3b; --kind-project: #3b6a50; --kind-context-store: #5b5fa3; --kind-team: #a0662a; --kind-agent: #a64d6a; --kind-skill: #2d7a80; --kind-prompt: #7b5aa6; --kind-reading-list: #3a73a8; --kind-knowledge-folder: #6b7f2f;
+  --wire-contains: #8b948d; --wire-uses: #3b6a50; --wire-reads: #3a73a8; --wire-owns: #a64d6a; --wire-comes-from: #a0662a; --minimap-mask: rgb(246 245 240 / 0.7); --canvas-dots: #cfcdc2;
 }
 [data-theme="dark"] {
   color-scheme: dark;
@@ -30,4 +33,6 @@
   --accent: #8fc4a3; --accent-strong: #a9d6bb; --accent-contrast: #0f1a14; --accent-soft: #233a2d;
   --good-bg: #21392b; --good-fg: #bde5cc; --warn-bg: #3d3216; --warn-fg: #f2d78e; --bad-bg: #4a2421; --bad-fg: #ffb9ad; --quiet-bg: #2a332e; --quiet-fg: #c5cfc8;
   --focus: #8fbcff; --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 18px rgb(0 0 0 / 0.3);
+  --kind-machine: #9fb0bf; --kind-workspace: #d2b36f; --kind-project: #8fc4a3; --kind-context-store: #a2a6e6; --kind-team: #e0a967; --kind-agent: #e59ab4; --kind-skill: #7fcdd3; --kind-prompt: #c3a6ea; --kind-reading-list: #8dbbea; --kind-knowledge-folder: #b9cc7a;
+  --wire-contains: #6c776f; --wire-uses: #8fc4a3; --wire-reads: #8dbbea; --wire-owns: #e59ab4; --wire-comes-from: #e0a967; --minimap-mask: rgb(20 26 23 / 0.7); --canvas-dots: #34413a;
 }

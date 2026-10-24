@@ -90,7 +90,7 @@ test('the viewer\'s own files: inside its own folder, never through a link, neve
 const WRITE = /\b(writeFileSync|writeFile|mkdirSync|mkdir|rmSync|rm|cpSync|cp|chmodSync|chmod|renameSync|rename|unlinkSync|unlink|appendFileSync|appendFile|copyFileSync|copyFile|symlinkSync|symlink|truncateSync|rmdirSync|utimesSync|createWriteStream|openSync)\s*\(/;
 const WRITERS: Record<string, RegExp> = { 'main/config.ts': /assertAppWritable\(/, 'main/sample.ts': /assertAppWritable\(/ };
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && e.name.endsWith('.ts')).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
+function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 
 test('the viewer\'s source writes a file in only a short list of modules, and each asks the boundary first', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];

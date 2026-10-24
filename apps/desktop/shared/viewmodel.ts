@@ -7,7 +7,7 @@ import { KIND_WORDS, ORIGIN_WORDS, codeWords, humanBytes, isPowerful, plural, po
 
 export type Tone = 'good' | 'warn' | 'bad' | 'quiet';
 export interface Chip { label: string; tone: Tone }
-export interface Link { screen: 'home' | 'library' | 'item' | 'projects' | 'project' | 'folders' | 'storage' | 'settings'; kind?: ItemKind; id?: string; key?: string }
+export interface Link { screen: 'home' | 'map' | 'graph' | 'library' | 'item' | 'projects' | 'project' | 'folders' | 'storage' | 'settings'; kind?: ItemKind; id?: string; key?: string; fromProject?: string }
 
 // ------------------------------------------------------------------------------------------------------------- chips
 

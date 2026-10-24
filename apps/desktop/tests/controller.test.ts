@@ -1,11 +1,11 @@
 // The controller answers the window's calls. Tested without Electron, with a fake host.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createController } from '../main/controller.js';
 import type { Host } from '../main/controller.js';
-import { CONFIG_FILE, DEFAULT_SETTINGS, MAX_ROOTS, loadSettings, parseSettings, saveSettings } from '../main/config.js';
+import { CONFIG_FILE, DEFAULT_SETTINGS, MAX_PLACES, MAX_ROOTS, loadSettings, parseSettings, saveSettings } from '../main/config.js';
 import { OFF_TEXT, UPDATES_ENABLED, UPDATE_FEED, checkForUpdates, initialUpdateState } from '../main/updates.js';
 import { SAMPLE_DIR, tempDir } from './support.js';
 
@@ -86,17 +86,17 @@ test('links: only the allowlist reaches the browser', async t => {
 
 test('settings parsing is strict about shape and size, and never silently resets', t => {
   assert.equal(parseSettings('not json'), null); assert.equal(parseSettings('[]'), null); assert.equal(parseSettings('null'), null);
-  assert.deepEqual(parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true })), { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, roles: {}, discovered: false }, 'a file can no longer turn updates on');
+  assert.deepEqual(parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true })), { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }, 'a file can no longer turn updates on');
   assert.equal(parseSettings(JSON.stringify({ roots: Array.from({ length: 50 }, (_, i) => `/r${i}`) }))!.roots.length, MAX_ROOTS);
   const dir = tempDir(t);
   assert.deepEqual(loadSettings(dir), { settings: { ...DEFAULT_SETTINGS, roots: [] }, notice: null }, 'no file is a first run, with no notice');
-  writeFileSync(join(dir, CONFIG_FILE), 'x'.repeat(70000)); assert.match(loadSettings(dir).notice!, /far too big/);
+  writeFileSync(join(dir, CONFIG_FILE), 'x'.repeat(1100000)); assert.match(loadSettings(dir).notice!, /far too big/);
   writeFileSync(join(dir, CONFIG_FILE), '{ not json'); assert.match(loadSettings(dir).notice!, /damaged/);
   writeFileSync(join(dir, CONFIG_FILE), JSON.stringify({ roots: Array.from({ length: 30 }, (_, i) => `/r${i}`) })); assert.match(loadSettings(dir).notice!, /left out/);
   rmSync(join(dir, CONFIG_FILE)); symlinkSync('/etc/hosts', join(dir, CONFIG_FILE)); assert.match(loadSettings(dir).notice!, /shortcut/);
   rmSync(join(dir, CONFIG_FILE)); mkdirSync(join(dir, CONFIG_FILE)); assert.match(loadSettings(dir).notice!, /not a plain file/);
   rmSync(join(dir, CONFIG_FILE), { recursive: true });
-  saveSettings(dir, { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, discovered: false }); assert.deepEqual(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')), { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, discovered: false });
+  saveSettings(dir, { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, mapLayout: {}, discovered: false }); assert.deepEqual(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')), { theme: 'light', roots: ['/a'], mode: 'real', includeExamples: false, roles: {}, mapLayout: {}, discovered: false });
 });
 
 test('a damaged settings file is shown as a notice, kept as .bak before it is overwritten, and a failed save changes nothing and leaves no temp file', async t => {
@@ -149,23 +149,23 @@ test('updates when turned on: ask the GitHub feed once, never download by themse
 
 test('saving settings refuses a link where the backup or the temporary file goes, keeps the backup private, and never writes through a link', async t => {
   const dir = tempDir(t), target = join(tempDir(t), 'victim'); writeFileSync(target, 'precious');
-  saveSettings(dir, { theme: 'dark', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
+  saveSettings(dir, { theme: 'dark', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false });
   // 1. The .bak is a link: the save is refused, and the target of the link is untouched.
   symlinkSync(target, join(dir, `${CONFIG_FILE}.bak`));
-  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
   assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'dark', 'the settings file was not changed');
   rmSync(join(dir, `${CONFIG_FILE}.bak`));
   // 2. The .tmp is a link: refused, target untouched.
   symlinkSync(target, join(dir, `${CONFIG_FILE}.tmp`));
-  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
+  assert.throws(() => saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false })); assert.equal(readFileSync(target, 'utf8'), 'precious');
   rmSync(join(dir, `${CONFIG_FILE}.tmp`));
   // 3. With no links: it works, and the backup is private to the owner.
-  saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
+  saveSettings(dir, { theme: 'light', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false });
   assert.equal(lstatSync(join(dir, `${CONFIG_FILE}.bak`)).mode & 0o777, 0o600); assert.equal(lstatSync(join(dir, CONFIG_FILE)).mode & 0o777, 0o600);
   assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
   // 4. A leftover plain .tmp from a stopped save is replaced, not trusted.
   writeFileSync(join(dir, `${CONFIG_FILE}.tmp`), 'stale', { mode: 0o666 });
-  saveSettings(dir, { theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false }); assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'system'); assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
+  saveSettings(dir, { theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }); assert.equal(JSON.parse(readFileSync(join(dir, CONFIG_FILE), 'utf8')).theme, 'system'); assert.equal(existsSync(join(dir, `${CONFIG_FILE}.tmp`)), false);
 });
 
 test('the controller reports a refused save in plain words and keeps the old value', async t => {
@@ -200,4 +200,45 @@ test('the example-folder switch is saved, changes what is found, and clears the 
   const off = await c.getSnapshot(); assert.deepEqual(off.projects.map(p => p.name), ['mine']); assert.equal(off.scan.exampleFoldersTotal, 1);
   assert.equal((await c.setIncludeExamples(true)).settings.includeExamples, true); assert.equal(loadSettings(h.app).settings.includeExamples, true);
   const on = await c.getSnapshot(); assert.deepEqual(on.projects.map(p => p.name).sort(), ['e', 'mine']); assert.equal(on.scan.exampleFoldersTotal, 0);
+});
+
+test('the saved places on the map are kept by the viewer only, checked, capped, and cleared with a reset', async t => {
+  const h = host(t), c = createController(h.host);
+  assert.equal((await c.setMapLayout({ 'machine': { x: 1.4, y: 2.6 }, 'project:/a': { x: -50, y: 80 }, bad: { x: 'a', y: 1 }, huge: { x: 1e9, y: 0 }, nan: { x: NaN, y: 0 } })).message, null);
+  assert.deepEqual(loadSettings(h.app).settings.mapLayout, { machine: { x: 1, y: 3 }, 'project:/a': { x: -50, y: 80 } });
+  assert.match((await c.setMapLayout('nope' as never)).message!, /not valid/); assert.match((await c.setMapLayout([] as never)).message!, /not valid/);
+  const many: Record<string, { x: number; y: number }> = {}; for (let i = 0; i < 4000; i++) many[`n${i}`] = { x: i, y: i };
+  await c.setMapLayout(many); assert.equal(Object.keys(loadSettings(h.app).settings.mapLayout).length, MAX_PLACES);
+  assert.equal((await c.setMapLayout(null)).message, null); assert.deepEqual(loadSettings(h.app).settings.mapLayout, {});
+});
+
+const SKETCH = { version: 1, name: 'My harness', nodes: [{ id: 'a', kind: 'team', label: 'Studio', x: 0, y: 0 }, { id: 'b', kind: 'agent', label: 'editor', x: 300, y: 40 }, { id: 'c', kind: 'skill', label: 'House style', x: 600, y: 40 }], edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }] };
+
+test('sketches are saved, listed, loaded and deleted in the viewer\'s own folder, and nothing else is touched', async t => {
+  const h = host(t), c = createController(h.host), made = await c.saveSketch(SKETCH);
+  assert.deepEqual(made, { ok: true, value: { name: 'My harness', nodes: 3, edges: 2 }, message: null });
+  assert.deepEqual(readdirSync(join(h.app, 'sketches')), ['My_harness.json']); assert.equal(lstatSync(join(h.app, 'sketches', 'My_harness.json')).mode & 0o777, 0o600);
+  assert.deepEqual((await c.listSketches()).value, [{ name: 'My harness', nodes: 3, edges: 2 }]); assert.deepEqual((await c.loadSketch('My harness')).value, SKETCH);
+  assert.equal((await c.saveSketch({ ...SKETCH, nodes: SKETCH.nodes.slice(0, 2), edges: [{ from: 'a', to: 'b' }] })).ok, true); assert.equal((await c.listSketches()).value!.length, 1, 'the same name is replaced');
+  assert.equal((await c.deleteSketch('My harness')).ok, true); assert.deepEqual((await c.listSketches()).value, []); assert.equal((await c.loadSketch('My harness')).ok, false);
+});
+
+test('a sketch that is not valid is refused with a plain sentence: names, kinds, numbers, threads, size, and path tricks', async t => {
+  const h = host(t), c = createController(h.host);
+  const bad: [unknown, RegExp][] = [
+    [null, /not a sketch/], [{ ...SKETCH, name: '../evil' }, /needs a name/], [{ ...SKETCH, name: '' }, /needs a name/], [{ ...SKETCH, name: 'a'.repeat(60) }, /needs a name/], [{ ...SKETCH, name: 'x/y' }, /needs a name/],
+    [{ ...SKETCH, nodes: [{ id: 'a', kind: 'machine', label: 'x', x: 0, y: 0 }] }, /node/], [{ ...SKETCH, nodes: [{ id: 'a', kind: 'team', label: 'x', x: NaN, y: 0 }], edges: [] }, /node/], [{ ...SKETCH, nodes: [{ id: 'a', kind: 'team', label: 'x', x: 0, y: 0 }, { id: 'a', kind: 'team', label: 'y', x: 1, y: 1 }], edges: [] }, /node/],
+    [{ ...SKETCH, edges: [{ from: 'a', to: 'zzz' }] }, /thread/], [{ ...SKETCH, edges: [{ from: 'a', to: 'a' }] }, /thread/], [{ ...SKETCH, nodes: Array.from({ length: 201 }, (_, i) => ({ id: `n${i}`, kind: 'skill', label: 'x', x: 0, y: 0 })), edges: [] }, /too big/],
+  ];
+  for (const [sketch, re] of bad) { const r = await c.saveSketch(sketch); assert.equal(r.ok, false); assert.match(r.message!, re); }
+  for (const name of ['../x', '/etc/passwd', '', 'a/b', 'x'.repeat(60), 7, null]) { assert.equal((await c.loadSketch(name)).ok, false); assert.equal((await c.deleteSketch(name)).ok, false); }
+  assert.equal(existsSync(join(h.app, 'sketches')), false, 'nothing was written for a bad sketch');
+});
+
+test('a sketch folder that is a link, or a sketch file that is a link or damaged, is never followed or trusted', async t => {
+  const h = host(t), c = createController(h.host); mkdirSync(h.app, { recursive: true });
+  const outside = tempDir(t); writeFileSync(join(outside, 'My_harness.json'), JSON.stringify(SKETCH)); symlinkSync(outside, join(h.app, 'sketches'));
+  assert.equal((await c.saveSketch(SKETCH)).ok, false); assert.equal((await c.loadSketch('My harness')).ok, false); assert.equal(readFileSync(join(outside, 'My_harness.json'), 'utf8'), JSON.stringify(SKETCH));
+  unlinkSync(join(h.app, 'sketches')); mkdirSync(join(h.app, 'sketches')); writeFileSync(join(h.app, 'sketches', 'Broken.json'), '{ not json'); writeFileSync(join(h.app, 'sketches', 'Big.json'), 'x'.repeat(300000)); symlinkSync(join(outside, 'My_harness.json'), join(h.app, 'sketches', 'Linked.json'));
+  assert.deepEqual((await c.listSketches()).value, [], 'damaged, huge and linked files are left out'); assert.equal((await c.loadSketch('Broken')).ok, false); assert.equal((await c.loadSketch('Linked')).ok, false);
 });

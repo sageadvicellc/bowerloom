@@ -25,11 +25,17 @@ The first time you open your own Bowerloom, the app looks once at the folders ri
 ## What each screen shows
 
 - **Home.** One sentence on what is set up, the counts of teams, skills, prompts, and projects, and a "Needs attention" list. Each item says what it means and what a person would do about it.
+- **Map.** Everything Bowerloom looks after as things you can move, in the shape of your own setup: this computer, the workspace, projects, context stores, teams, helpers, skills, prompts, reading lists and knowledge folders, with wires for what holds, uses, reads, owns, and comes from what. Drag a thing to arrange it, drag a box to select several, press **Tidy up** to lay it out from left to right, **Fit all** to see everything, **Undo** to take back a move, **Reset layout** to forget your places. Choose **This computer** (the shared library and the knowledge folders) or **Projects** to see one side. Click a thing for a panel with what it is, why it has a status, and what it is connected to. Use Tab and Enter to reach and open things, and the arrow keys (after Space) to move one. **Text outline** gives the same map as a list. Your places are kept by the viewer only.
+- **Sketch** (a tab on the Map). A drawing board for a harness. Drag teams, helpers, skills and prompts from the shelf (or press Enter on one), pull a thread from one to the next (a team to a helper, a helper to a skill or a prompt), give the sketch a name and save it. A sketch is only a drawing. **Apply to a project** is switched off until the app can safely write.
 - **Library.** Your skills, prompts, and teams. Each row says where it came from (Yours, From GitHub, From npm), whether it is fixed to a version, and how many projects use it. Click one to read what is inside it. A helper with powerful settings gets a yellow warning.
 - **Projects.** Lists projects only. The workspace (the folder that holds the rest) and the context stores (the central knowledge) have their own places on the same screen. Each folder's page has "What kind of folder is this?", where you can change what the viewer guessed. Your choice is kept by the viewer only.  Each project with a status: Ready, Drifted, Lock problem, or Not set up. Open one to see what it uses, whether each item matches what was locked, what drifted and why, its helpers, its knowledge slices, and its project list and lock file in plain sentences. "Show the raw files" shows the files as they are.
 - **Knowledge folders.** Folders of notes outside your projects, which projects may read them, and a bar for each slice that compares what a helper reads at the start with reading everything.
 - **Storage.** Where your library is, whether it is shared on GitHub, whether a GitHub access key is set (never the key itself), and the saved copies and their sizes.
 - **Settings.** The folders the viewer searches for projects (adding or removing one only changes the viewer's own list), sample or your own data, light or dark, the version, and "Check for updates".
+
+## Motion
+
+Every duration, easing and distance of the app's motion is in one file, `renderer/motion-tokens.ts`, so you can retune it in one edit. The weighting in it is a recommendation, marked there as **unconfirmed, owner to choose**: the map is mostly restraint and speed, with a little playfulness only when you drop or connect something or tidy up; the knowledge graph is the gentle settling of the graph; panels are short and polished. If your computer is set to reduce motion, everything is instant.
 
 ## Where the viewer may write
 

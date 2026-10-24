@@ -152,9 +152,15 @@ export interface AppSettings {
   includeExamples: boolean;
   /** The kind the person chose for a folder, by its full path. Only the folders they changed are here. */
   roles: Record<string, FolderRole>;
+  /** Where the person put each node on the map, by the node's stable id. Never written to a Bowerloom folder. */
+  mapLayout: Record<string, { x: number; y: number }>;
   /** True once the folders near the person were looked for on the first real-data launch, so a removed folder is never added back. */
   discovered: boolean;
 }
+/** A drawing of a harness. Only a drawing: it is never applied to a project. */
+export interface Sketch { version: 1; name: string; nodes: { id: string; kind: 'team' | 'agent' | 'skill' | 'prompt'; label: string; x: number; y: number }[]; edges: { from: string; to: string }[] }
+export interface SketchSummary { name: string; nodes: number; edges: number }
+export interface SketchResult<T> { ok: boolean; value: T | null; message: string | null }
 export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
 export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
   /** The sandbox folder, and whether it has been made. */
@@ -175,6 +181,11 @@ export interface ViewerApi {
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
   setIncludeExamples(on: boolean): Promise<SettingsResult>;
   setRole(projectKey: string, role: FolderRole | null): Promise<SettingsResult>;
+  setMapLayout(layout: Record<string, { x: number; y: number }> | null): Promise<SettingsResult>;
+  listSketches(): Promise<SketchResult<SketchSummary[]>>;
+  saveSketch(sketch: Sketch): Promise<SketchResult<SketchSummary>>;
+  loadSketch(name: string): Promise<SketchResult<Sketch>>;
+  deleteSketch(name: string): Promise<SketchResult<null>>;
   copyText(text: string): Promise<boolean>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;

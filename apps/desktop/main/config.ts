@@ -8,12 +8,24 @@ import { assertAppWritable } from './boundary.js';
 export const CONFIG_FILE = 'viewer-settings.json';
 export const MAX_ROOTS = 20;
 export const MAX_ROLES = 200;
-const MAX_BYTES = 65536;
+const MAX_BYTES = 1024 * 1024;
 
-export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false }) as AppSettings;
-const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, discovered: false });
+export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }) as AppSettings;
+const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false });
 
 /** The settings in `text`, or null when it is not a settings file at all (not JSON, or not an object). Unknown keys are ignored. */
+/** Saved places on the map: at most MAX_PLACES, each a pair of finite numbers within a sane range, under a short id. */
+export const MAX_PLACES = 3000;
+export function parseLayout(value: unknown): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const [id, p] of Object.entries(value as Record<string, unknown>).slice(0, MAX_PLACES)) {
+    const o = p as { x?: unknown; y?: unknown } | null;
+    if (id.length <= 500 && o !== null && typeof o === 'object' && typeof o.x === 'number' && typeof o.y === 'number' && Number.isFinite(o.x) && Number.isFinite(o.y) && Math.abs(o.x) <= 1e6 && Math.abs(o.y) <= 1e6) out[id] = { x: Math.round(o.x), y: Math.round(o.y) };
+  }
+  return out;
+}
+
 export function parseSettings(text: string): AppSettings | null {
   let value: unknown;
   try { value = JSON.parse(text); } catch { return null; }
@@ -24,7 +36,7 @@ export function parseSettings(text: string): AppSettings | null {
   const mode = v.mode === 'sample' || v.mode === 'real' || v.mode === 'sandbox' ? v.mode : null;
   const roles: Record<string, FolderRole> = {};
   if (v.roles !== null && typeof v.roles === 'object' && !Array.isArray(v.roles)) for (const [k, r] of Object.entries(v.roles as Record<string, unknown>).slice(0, MAX_ROLES)) if (isAbsolute(k) && !k.includes('\0') && k.length < 4096 && (FOLDER_ROLES as readonly unknown[]).includes(r)) roles[k] = r as FolderRole;
-  return { theme, roots, mode, includeExamples: v.includeExamples === true, roles, discovered: v.discovered === true };
+  return { theme, roots, mode, includeExamples: v.includeExamples === true, roles, mapLayout: parseLayout(v.mapLayout), discovered: v.discovered === true };
 }
 
 export interface Loaded { settings: AppSettings; notice: string | null }

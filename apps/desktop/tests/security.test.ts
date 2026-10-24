@@ -9,7 +9,7 @@ import { CHANNELS } from '../shared/channels.js';
 import { DESKTOP } from './support.js';
 
 const read = (path: string): string => readFileSync(join(DESKTOP, path), 'utf8');
-const sources = (dir: string): { file: string; text: string }[] => readdirSync(join(DESKTOP, dir)).filter(f => f.endsWith('.ts')).map(f => ({ file: `${dir}/${f}`, text: read(`${dir}/${f}`) }));
+const sources = (dir: string): { file: string; text: string }[] => (readdirSync(join(DESKTOP, dir), { recursive: true }) as string[]).filter(f => /\.tsx?$/.test(f) && !f.endsWith('.d.ts')).map(f => ({ file: `${dir}/${f}`, text: read(`${dir}/${f}`) }));
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 test('the window has context isolation, no Node, a sandbox, and no webview', () => {
@@ -80,7 +80,7 @@ test('the bridge: one named call per channel, nothing generic, and main answers 
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'every handler goes through one guard that checks the sender');
   assert.match(main, /senderFrame/);
   // Every call the page can make is a read, or changes the app's own settings.
-  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setRole', 'setTheme']);
+  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'deleteSketch', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'listSketches', 'loadSketch', 'openLink', 'removeRoot', 'saveSketch', 'setIncludeExamples', 'setMapLayout', 'setRole', 'setTheme']);
 });
 
 test('the main process calls no command that writes Bowerloom data and starts no process or server', () => {
@@ -94,9 +94,9 @@ test('the main process calls no command that writes Bowerloom data and starts no
   assert.match(read('main/reader.ts'), /runProjectStatus\(\['status', '--json'\]/);
 });
 
-test('only three main files write a file: the settings, the sample copy, and the sandbox, each behind the write boundary', () => {
+test('only four main files write a file: the settings, the sample copy, the sandbox and the sketches, each behind the write boundary', () => {
   const writers = sources('main').filter(({ text }) => /\b(writeFileSync|writeFile|mkdirSync|rmSync|cpSync|chmodSync|renameSync|unlinkSync|appendFileSync|copyFileSync|symlinkSync)\b/.test(strip(text))).map(f => f.file).sort();
-  assert.deepEqual(writers, ['main/config.ts', 'main/sample.ts', 'main/sandbox.ts']);
+  assert.deepEqual(writers, ['main/config.ts', 'main/sample.ts', 'main/sandbox.ts', 'main/sketches.ts']);
   assert.match(read('main/sample.ts'), /isInside\(realpathSync\(appDir\), target\)/);
 });
 
@@ -120,4 +120,18 @@ test('the page is served by the app itself, and only files below its renderer fo
   for (const bad of ['/../main.mjs', '/%2e%2e/main.mjs', '/..%2fmain.mjs', '/a/../../main.mjs', '/%00', '/..\\main.mjs', '/%E0%A4%A']) assert.equal(resolveAppFile(dir, bad), null, bad);
   assert.equal(resolveAppFile('/app/dist/renderer', '/../renderer-evil/x'), null);
   const main = read('main/main.ts'); assert.match(main, /protocol\.handle\(APP_SCHEME/); assert.match(main, /registerSchemesAsPrivileged/); assert.match(main, /loadURL\(indexUrl\)/);
+});
+
+test('React is in the window only: the main process, the bridge, and the shared code are free of it, and no markup is built from text', () => {
+  for (const { file, text } of [...sources('main'), ...sources('preload'), ...sources('shared')]) assert.doesNotMatch(strip(text), /from ['"](react|react-dom|@xyflow\/react|force-graph)/, file);
+  for (const { file, text } of sources('renderer')) assert.doesNotMatch(strip(text), /dangerouslySetInnerHTML|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(/, file);
+  const html = read('renderer/index.html'); assert.match(html, /href="app\.css"/); assert.match(html, /href="graph\.css"/); assert.doesNotMatch(html, /<style/);
+});
+
+test('the libraries add no inline style element: the bundler removes the two that would, and the bundle holds none', () => {
+  const bundle = readFileSync(join(DESKTOP, 'dist', 'renderer', 'app.js'), 'utf8');
+  assert.doesNotMatch(bundle, /createElement\(["']style["']\)/, 'no code that makes a style element');
+  assert.doesNotMatch(bundle, /\beval\(|new Function\(/);
+  assert.match(read('tools/bundle.mjs'), /The style injection was not found/);
+  const css = read('renderer/graph.css'); assert.match(css, /force-graph-container canvas/); assert.match(css, /float-tooltip-kap/);
 });

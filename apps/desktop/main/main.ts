@@ -71,6 +71,11 @@ function registerIpc(): void {
   guarded('removeRoot', (path: string) => controller.removeRoot(path));
   guarded('setTheme', async (theme: Parameters<Controller['setTheme']>[0]) => { const s = await controller.setTheme(theme); nativeTheme.themeSource = s.settings.theme; return s; });
   guarded('setIncludeExamples', (on: boolean) => controller.setIncludeExamples(on));
+  guarded('setMapLayout', (layout: unknown) => controller.setMapLayout(layout));
+  guarded('listSketches', () => controller.listSketches());
+  guarded('saveSketch', (sketch: unknown) => controller.saveSketch(sketch));
+  guarded('loadSketch', (name: unknown) => controller.loadSketch(name));
+  guarded('deleteSketch', (name: unknown) => controller.deleteSketch(name));
   guarded('setRole', (key: string, role: Parameters<Controller['setRole']>[1]) => controller.setRole(key, role));
   guarded('checkForUpdates', () => controller.checkForUpdates());
   guarded('openLink', (url: string) => controller.openLink(url));

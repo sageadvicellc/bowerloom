@@ -48,7 +48,7 @@ test('security: the window is locked down', async () => {
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => [typeof (globalThis as { require?: unknown }).require, typeof (globalThis as { process?: unknown }).process, typeof (globalThis as { Buffer?: unknown }).Buffer])).toEqual(['undefined', 'undefined', 'undefined']);
     const names = await page.evaluate(() => Object.keys((window as unknown as { bowerloom: object }).bowerloom).sort());
-    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setRole', 'setTheme']);
+    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'deleteSketch', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'listSketches', 'loadSketch', 'openLink', 'removeRoot', 'saveSketch', 'setIncludeExamples', 'setMapLayout', 'setRole', 'setTheme']);
     // An inline script is refused by the policy.
     const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
       document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true });
@@ -160,7 +160,7 @@ test('a 900 pixel wide window never scrolls sideways', async () => {
   try {
     await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setContentSize(900, 640); });
     await page.waitForTimeout(300);
-    const screens = ['Home', 'Library', 'Projects', 'Knowledge folders', 'Storage', 'Settings'];
+    const screens = ['Home', 'Map', 'Library', 'Projects', 'Knowledge folders', 'Storage', 'Settings'];
     for (const label of screens) {
       await nav(page, label).click();
       await page.waitForTimeout(150);
