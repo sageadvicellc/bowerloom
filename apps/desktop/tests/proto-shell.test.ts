@@ -13,6 +13,7 @@ import { App, ROUTES } from '../renderer/proto/App.js';
 import { loadWorld } from '../renderer/proto/world.js';
 import { countLine } from '../renderer/proto/words.js';
 import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
+import { generateWorld } from '../shared/proto/sample.js';
 import type { World } from '../shared/proto/types.js';
 import { DESKTOP, tempDir } from './support.js';
 import { agent, makeWorld, skill } from './proto-testworld.js';
@@ -86,9 +87,9 @@ test('the screen words are plain: the right nouns, no helper, no team, no comman
   }
 });
 
-test('loadWorld is the one place the world comes from: an empty world for now, a fresh object every call', () => {
+test('loadWorld is the one place the world comes from: the seeded sample world, a fresh object every call', () => {
   const a = loadWorld(), b = loadWorld();
-  assert.deepEqual(a, createEmptyWorld()); assert.notEqual(a, b); assert.notEqual(a.items, b.items);
+  assert.deepEqual(a, generateWorld(1)); assert.deepEqual(a, b); assert.notEqual(a, b); assert.notEqual(a.items, b.items); assert.equal(a.wikiPages.length, 700);
   const source = strip(read('renderer/proto/world.ts'));
   assert.match(source, /export function loadWorld\(\)/);
   for (const file of filesUnder('renderer/proto').filter(f => /Screen\.tsx$|App\.tsx$/.test(f))) assert.doesNotMatch(strip(readFileSync(file, 'utf8')), /createEmptyWorld/, `${file} gets its world from loadWorld`);

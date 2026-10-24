@@ -11,6 +11,8 @@ import { KnowledgeScreen } from './KnowledgeScreen.js';
 import { SetupScreen } from './SetupScreen.js';
 import { SkillsScreen } from './SkillsScreen.js';
 import { VersionsScreen } from './VersionsScreen.js';
+import { createStore } from '../../shared/proto/store.js';
+import { ProtoProvider, useProtoStore } from './session.js';
 import { loadWorld } from './world.js';
 import { ROUTE_LABELS } from './words.js';
 import type { RouteId, ScreenProps } from './words.js';
@@ -36,8 +38,15 @@ function Icon({ paths, size = 22 }: { paths: readonly string[]; size?: number })
   );
 }
 
+/** The prototype: one in-memory store, built from the sample world, shared by every screen. */
 export function App() {
-  const [world] = useState(loadWorld);
+  const [store] = useState(() => createStore(loadWorld()));
+  return <ProtoProvider store={store}><Shell /></ProtoProvider>;
+}
+
+function Shell() {
+  const { state } = useProtoStore();
+  const world = state.draft;
   const [routeId, setRouteId] = useState<RouteId>(ROUTES[0]!.id);
   const route = ROUTES.find(r => r.id === routeId) ?? ROUTES[0]!;
   const Screen = route.Screen;
