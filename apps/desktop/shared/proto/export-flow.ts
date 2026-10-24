@@ -25,10 +25,26 @@ export function secretWords(slot: SecretSlot): string {
 }
 
 export function clashWords(clash: ImportClash): string {
-  return clash.reason === 'same-name'
-    ? `${clash.name}: already there with the same text, so it is not added again.`
-    : `${clash.name}: already there with different text, so it is kept under a new name.`;
+  if (clash.reason === 'same-name') return `${clash.name}: already there with the same text, so it is not added again.`;
+  if (clash.reason === 'different-secret') return `${clash.name}: same name, different secret, so both are kept under their own names.`;
+  return `${clash.name}: already there with different text, so it is kept under a new name.`;
 }
+
+/** "Planner was in the project proj, which this workspace does not have, so it goes to the global harness." */
+export const movedWords = (m: ImportPreview['moved'][number]): string => `${m.itemName} was in the project ${m.fromScope}, which this workspace does not have, so it goes to the global harness.`;
+
+/** A hook has no file and no code in a bundle, so say what arrives. */
+export const hookWords = (h: ImportPreview['hooks'][number]): string => `Hook ${h.name} runs code. It arrives as a name only: Bowerloom does not write the code.`;
+
+/** True when installing added nothing: the commit returned the very same world. */
+export const installNothingNew = (before: World, after: World): boolean => before === after;
+
+export const NOTHING_NEW = 'Nothing new: everything in this file is already here.';
+
+/** Why the export has nothing to hold: no harness ticked, or a ticked harness with no items of its own. */
+export const nothingToExportWords = (ticked: number): string => (ticked === 0
+  ? 'Tick a harness to see what its file would hold.'
+  : 'Project overrides are not exported; this harness has no items of its own.');
 
 /** "Planner may use Search: read and write." One access class an import would give. */
 export const grantWords = (g: ImportGrant): string => `${g.agent} may use ${g.tool}: ${ACCESS_WORDS[g.access]}.`;

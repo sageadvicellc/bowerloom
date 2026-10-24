@@ -72,12 +72,12 @@ test('journey 3: a bad edit, the history, a comparison, and a restore that keeps
   await expect(p.getByText('First version. Nothing came before it.')).toBeVisible();
   await expect(p.getByText('Based on version 2. 1 item changed.')).toBeVisible();
   await expect(p.getByText('Current')).toBeVisible();
-  await expect(p.getByText('Unsaved changes')).toHaveCount(0);
+  await expect(p.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
   await shoot(p, '05-versions-list');
 
   // The bad edit, made through the store as the Harness screen would. The draft is now dirty.
   await p.evaluate(() => { const w = window as unknown as { __store: Store; __ids: Record<string, string> }; w.__store.dispatch({ type: 'setOverride', scopeId: 'scope-copperfen', itemId: w.__ids.hiddenSkill, mode: 'hide' }); });
-  await expect(p.getByText('Unsaved changes')).toBeVisible();
+  await expect(p.getByText('Unsaved changes', { exact: true })).toBeVisible();
   await expect(p.getByText('Restoring a version replaces them.')).toBeVisible();
   const before = await snapshot(p);
 
@@ -95,10 +95,18 @@ test('journey 3: a bad edit, the history, a comparison, and a restore that keeps
 
   // Restore version 1: a NEW version is made, nothing is deleted, and the unsaved edit is gone.
   await p.getByRole('button', { name: /^Restore this version: version 1,/ }).click();
-  await expect(p.getByText(/Version 1 was restored as a new version, version 4\. History was kept: all 3 earlier versions are still in the list\./)).toBeVisible();
+  // The draft is dirty, so the screen asks first, with Cancel focused. Cancel changes nothing.
+  await expect(p.getByText(/Your unsaved changes will be dropped, and Undo will be cleared\. Restore version 1 anyway\?/)).toBeVisible();
+  await expect(p.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await p.getByRole('button', { name: 'Cancel' }).click();
+  await expect(p.getByText('Unsaved changes', { exact: true })).toBeVisible();
+  expect(await versionHeadings(p)).toEqual(['Version 3', 'Version 2', 'Version 1']);
+  await p.getByRole('button', { name: /^Restore this version: version 1,/ }).click();
+  await p.getByRole('button', { name: 'Restore and drop my changes' }).click();
+  await expect(p.getByText(/Version 1 was restored as a new version, version 4\. History was kept: all 3 earlier versions are still in the list\. Your unsaved changes were dropped\./)).toBeVisible();
   expect(await versionHeadings(p)).toEqual(['Version 4', 'Version 3', 'Version 2', 'Version 1']);
   await expect(p.locator('.vx-label').first()).toHaveText('Restored: First harness: copied a library agent');
-  await expect(p.getByText('Unsaved changes')).toHaveCount(0);
+  await expect(p.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
   const counters = await p.evaluate(() => (window as unknown as { __store: { getState(): { committed: { versions: { counter: number; id: string }[] } } } }).__store.getState().committed.versions.map(v => v.counter));
   expect(counters).toEqual([1, 2, 3, 4]);
 
@@ -245,6 +253,6 @@ test('the real prototype: Setup makes version 1, Versions lists it, and there is
     await expect(w.getByText('This is the version you have now.')).toBeVisible();
     await expect(w.getByRole('button', { name: /^Restore this version/ })).toHaveCount(0);
     await expect(w.getByText('Comparing needs two versions. There is one so far.')).toBeVisible();
-    await expect(w.getByText('Unsaved changes')).toHaveCount(0);
+    await expect(w.getByText('Unsaved changes', { exact: true })).toHaveCount(0);
   } finally { await real.close(); }
 });

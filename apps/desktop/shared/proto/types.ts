@@ -134,7 +134,7 @@ export interface Bundle { readonly scopeIds: readonly string[]; readonly items: 
 export interface ImportFile { readonly path: string; readonly action: 'add' | 'change'; readonly characters: number }
 
 /** An imported item that meets one already there. */
-export interface ImportClash { readonly itemId: string; readonly name: string; readonly reason: 'same-name' | 'different-text' }
+export interface ImportClash { readonly itemId: string; readonly name: string; readonly reason: 'same-name' | 'different-text' | 'different-secret' }
 
 /** One access class an import would give: this agent may use this tool this way. */
 export interface ImportGrant { readonly agent: string; readonly tool: string; readonly access: AccessClass }
@@ -146,4 +146,8 @@ export interface ImportGrant { readonly agent: string; readonly tool: string; re
 export interface ImportPreview {
   readonly files: readonly ImportFile[]; readonly secretsToAdd: readonly SecretSlot[]; readonly clashes: readonly ImportClash[];
   readonly grants: readonly ImportGrant[]; readonly missingRefs: readonly string[];
+  /** Items whose harness this workspace does not have, so they land in the global harness. `fromScope` is the id the file gave. */
+  readonly moved: readonly { readonly itemName: string; readonly fromScope: string; readonly toScope: string }[];
+  /** Hooks that would arrive. A hook has no file and no code: it arrives as a name only. */
+  readonly hooks: readonly { readonly name: string; readonly scope: string }[];
 }

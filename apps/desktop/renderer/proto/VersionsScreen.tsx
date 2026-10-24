@@ -5,10 +5,10 @@
  * in-memory Bowerloom that this screen holds. Nothing on this screen changes the first store except `restore`, and nothing is written anywhere.
  * With no provider (the shell test) the screen shows the same title and count line as the stub did.
  */
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { buildBundle } from '../../shared/proto/bundle.js';
-import { EXPORT_PROMISE, bundleText, clashWords, describeExport, grantWords, installBundle, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
+import { EXPORT_PROMISE, NOTHING_NEW, bundleText, clashWords, describeExport, grantWords, hookWords, installBundle, installNothingNew, movedWords, nothingToExportWords, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
 import { globalScope } from '../../shared/proto/common.js';
 import { createStore, isDirty } from '../../shared/proto/store.js';
 import type { Store } from '../../shared/proto/store.js';
@@ -90,12 +90,21 @@ function History({ session }: { session: ProtoSession }): ReactElement {
     const byId = new Map(versions.map(v => [v.id, v]));
     return new Map(versions.map(v => [v.id, v.parentId === null ? null : (() => { const p = byId.get(v.parentId); return p === undefined ? null : diffVersions(p, v); })()]));
   }, [versions]);
-  const [restored, setRestored] = useState<{ from: number; before: number } | null>(null);
+  const [restored, setRestored] = useState<{ from: number; before: number; dropped: boolean } | null>(null);
+  // A restore over an unsaved draft asks first. The question is a small inline one, with Cancel focused.
+  const [confirming, setConfirming] = useState<Version | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const restoreButtons = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => { if (confirming !== null) cancelRef.current?.focus(); }, [confirming]);
 
+  // `dirty` is read at the click, so the notice tells what this restore did to the draft.
   const restore = (v: Version): void => {
-    setRestored({ from: v.counter, before: versions.length });
+    setConfirming(null);
+    setRestored({ from: v.counter, before: versions.length, dropped: dirty });
     dispatch({ type: 'restore', versionId: v.id });
   };
+  const ask = (v: Version): void => { if (dirty) setConfirming(v); else restore(v); };
+  const cancel = (v: Version): void => { setConfirming(null); restoreButtons.current.get(v.id)?.focus(); };
   const head = newest[0];
   return (
     <section aria-labelledby="vx-history-h" className="vx-section">
@@ -122,7 +131,16 @@ function History({ session }: { session: ProtoSession }): ReactElement {
                 <p className="vx-label">{v.label}</p>
                 <p className="small muted">{parent === undefined ? 'First version. Nothing came before it.' : `Based on version ${parent}. ${diff === null ? '' : diffWords(diff)}.`}</p>
                 {current && !dirty ? <p className="small muted">This is the version you have now.</p> : (
-                  <button type="button" className="btn secondary vx-self" aria-label={`Restore this version: version ${v.counter}, ${v.label}`} onClick={() => restore(v)}>Restore this version</button>
+                  <button type="button" className="btn secondary vx-self" aria-label={`Restore this version: version ${v.counter}, ${v.label}`} ref={el => { if (el === null) restoreButtons.current.delete(v.id); else restoreButtons.current.set(v.id, el); }} onClick={() => ask(v)}>Restore this version</button>
+                )}
+                {confirming !== null && confirming.id === v.id && dirty && (
+                  <div role="group" aria-label={`Confirm the restore of version ${v.counter}`} className="vx-confirm">
+                    <p>Your unsaved changes will be dropped, and Undo will be cleared. Restore version {v.counter} anyway?</p>
+                    <div className="vx-actions">
+                      <button type="button" className="btn secondary" ref={cancelRef} onClick={() => cancel(v)}>Cancel</button>
+                      <button type="button" className="btn" onClick={() => restore(v)}>Restore and drop my changes</button>
+                    </div>
+                  </div>
                 )}
               </li>
             );
@@ -131,7 +149,7 @@ function History({ session }: { session: ProtoSession }): ReactElement {
       )}
       <div aria-live="polite" className="vx-live">
         {restored !== null && (versions.length > restored.before && head !== undefined
-          ? <p className="vx-notice vx-in" key={head.id}><span className="chip good">Restored</span> Version {restored.from} was restored as a new version, version {head.counter}. History was kept: all {plural(restored.before, 'earlier version')} are still in the list.</p>
+          ? <p className="vx-notice vx-in" key={head.id}><span className="chip good">Restored</span> Version {restored.from} was restored as a new version, version {head.counter}. History was kept: all {plural(restored.before, 'earlier version')} are still in the list.{restored.dropped ? ' Your unsaved changes were dropped.' : ''}</p>
           : <p className="vx-notice"><span className="chip bad">Not restored</span> That version could not be restored. Nothing was changed.</p>)}
       </div>
       <Compare versions={newest} />
@@ -176,8 +194,8 @@ function Compare({ versions }: { versions: readonly Version[] }): ReactElement {
                 <>
                   <p>{plural(result.diff.entries.length, 'item')} differ: {result.diff.added.length} added, {result.diff.removed.length} removed, {result.diff.changed.length} changed.</p>
                   <ul className="vx-diff">
-                    {result.diff.entries.map(e => (
-                      <li key={`${e.change}${e.kind}${e.name}`}><span className={`chip ${CHANGE_TONE[e.change]}`}>{CHANGE_WORDS[e.change]}</span> <span className="muted">{KIND_WORDS[e.kind]}</span> {e.name}</li>
+                    {result.diff.entries.map((e, n) => (
+                      <li key={`${n}-${e.change}-${e.kind}-${e.name}`}><span className={`chip ${CHANGE_TONE[e.change]}`}>{CHANGE_WORDS[e.change]}</span> <span className="muted">{KIND_WORDS[e.kind]}</span> {e.name}</li>
                     ))}
                   </ul>
                 </>
@@ -235,21 +253,21 @@ function Share({ session }: { session: ProtoSession }): ReactElement {
         </fieldset>
         <div aria-live="polite" className="vx-live">
           <h4>What the file holds</h4>
-          {nothing ? <p className="muted">Tick a harness to see what its file would hold.</p> : (
+          {nothing ? <p className="muted">{nothingToExportWords(chosen.length)}</p> : (
             <>
               <p><strong>{plural(summary.skills, 'skill')}, {plural(summary.agents, 'agent')}, {plural(summary.tools.length, 'tool reference')}, {plural(summary.slices.length, 'slice rule')}.</strong> About {Math.max(1, Math.round(summary.bytes / 1024))} KB. Library items are not in the file.</p>
               {summary.tools.length > 0 && (
                 <>
                   <h5>Tool references</h5>
                   <ul className="vx-lines">
-                    {summary.tools.map(t => <li key={t.id}>{t.name}, {t.kindWords}.{t.secretWords !== null && <span className="muted"> Needs a secret: {t.secretWords}.</span>}</li>)}
+                    {summary.tools.map((t, n) => <li key={`${n}-${t.id}`}>{t.name}, {t.kindWords}.{t.secretWords !== null && <span className="muted"> Needs a secret: {t.secretWords}.</span>}</li>)}
                   </ul>
                 </>
               )}
               {summary.slices.length > 0 && (
                 <>
                   <h5>Slice rules</h5>
-                  <ul className="vx-lines">{summary.slices.map(s => <li key={s.name}><strong>{s.name}.</strong> {s.words}</li>)}</ul>
+                  <ul className="vx-lines">{summary.slices.map((s, n) => <li key={`${n}-${s.name}`}><strong>{s.name}.</strong> {s.words}</li>)}</ul>
                 </>
               )}
             </>
@@ -272,18 +290,20 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
   const [opened, setOpened] = useState<{ preview: ImportPreview; text: string; installed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [installedCounts, setInstalledCounts] = useState<ReturnType<typeof countsOf> | null>(null);
+  const [nothingNew, setNothingNew] = useState(false);
   const [pasted, setPasted] = useState('');
   const pasteId = useId();
 
   const open = (text: string): void => {
     // The file travels as plain text: parsed again here, as the other Bowerloom would read it from disk.
     const result = openExportedFile(text, theirs);
-    if (result.ok) { setOpened({ preview: result.preview, text, installed: false }); setError(null); setInstalledCounts(null); } else { setOpened(null); setError(result.message); }
+    if (result.ok) { setOpened({ preview: result.preview, text, installed: false }); setError(null); setInstalledCounts(null); setNothingNew(false); } else { setOpened(null); setError(result.message); }
   };
   const install = (): void => {
     if (opened === null) return;
     const result = installBundle(opened.text, theirs);
     if (!result.ok) { setError(result.message); return; }
+    setNothingNew(installNothingNew(theirs, result.world));
     setStore(createStore(result.world));
     setInstalledCounts(countsOf(result.world));
     setOpened({ ...opened, installed: true });
@@ -313,33 +333,47 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
             <p className="small muted">Nothing has run. Nothing is written until you press Install.</p>
             <h5>Files that would be written ({opened.preview.files.length})</h5>
             <ul className="vx-lines vx-files">
-              {opened.preview.files.map(f => <li key={f.path}><span className="chip quiet">{f.action}</span> <span className="tech">{f.path}</span> <span className="muted small">{plural(f.characters, 'character')}</span></li>)}
+              {opened.preview.files.map((f, n) => <li key={`${n}-${f.path}`}><span className="chip quiet">{f.action}</span> <span className="tech">{f.path}</span> <span className="muted small">{plural(f.characters, 'character')}</span></li>)}
             </ul>
+            {opened.preview.moved.length > 0 && (
+              <>
+                <h5>Moved to the global harness ({opened.preview.moved.length})</h5>
+                <ul className="vx-lines vx-moved">{opened.preview.moved.map((m, n) => <li key={`${n}-${m.fromScope}-${m.itemName}`}>{movedWords(m)}</li>)}</ul>
+              </>
+            )}
+            {opened.preview.hooks.length > 0 && (
+              <>
+                <h5>Hooks ({opened.preview.hooks.length})</h5>
+                <ul className="vx-lines vx-hooks">{opened.preview.hooks.map((h, n) => <li key={`${n}-${h.name}`}>{hookWords(h)}</li>)}</ul>
+              </>
+            )}
             <h5>What agents could use after the install ({opened.preview.grants.length})</h5>
             {opened.preview.grants.length === 0 ? <p className="small muted">None. No agent in this file is given a tool.</p>
-              : <ul className="vx-lines vx-grants">{opened.preview.grants.map(g => <li key={`${g.agent}\u0000${g.tool}`}>{grantWords(g)}</li>)}</ul>}
+              : <ul className="vx-lines vx-grants">{opened.preview.grants.map((g, n) => <li key={`${n}-${g.agent}\u0000${g.tool}`}>{grantWords(g)}</li>)}</ul>}
             {opened.preview.missingRefs.length > 0 && (
               <>
                 <h5>References that point at nothing ({opened.preview.missingRefs.length})</h5>
                 <p className="small muted">These will not work until the missing piece is added.</p>
-                <ul className="vx-lines vx-missing">{opened.preview.missingRefs.map(r => <li key={r}>{r}</li>)}</ul>
+                <ul className="vx-lines vx-missing">{opened.preview.missingRefs.map((r, n) => <li key={`${n}-${r}`}>{r}</li>)}</ul>
               </>
             )}
             <h5>Secrets you must add ({opened.preview.secretsToAdd.length})</h5>
             {opened.preview.secretsToAdd.length === 0 ? <p className="small muted">None.</p> : (
               <>
                 <p className="small muted">The file never holds a secret value. Add each one where the interface keeps it.</p>
-                <ul className="vx-lines">{opened.preview.secretsToAdd.map(s => <li key={`${s.kind}${s.name}`}>{secretWords(s)}</li>)}</ul>
+                <ul className="vx-lines">{opened.preview.secretsToAdd.map((s, n) => <li key={`${n}-${s.kind}${s.name}`}>{secretWords(s)}</li>)}</ul>
               </>
             )}
             <h5>Clashes ({opened.preview.clashes.length})</h5>
             {opened.preview.clashes.length === 0 ? <p className="small muted">None. Nothing here meets something that is already there.</p>
-              : <ul className="vx-lines">{opened.preview.clashes.map(k => <li key={k.itemId}>{clashWords(k)}</li>)}</ul>}
+              : <ul className="vx-lines">{opened.preview.clashes.map((k, n) => <li key={`${n}-${k.itemId}`}>{clashWords(k)}</li>)}</ul>}
             {!opened.installed && <button type="button" className="btn vx-self" onClick={install}>Install</button>}
           </div>
         )}
         {installedCounts !== null && (
-          <p className="vx-notice vx-in"><span className="chip good">Installed</span> Their harness now has {plural(installedCounts.skills, 'skill')}, {plural(installedCounts.agents, 'agent')}, {plural(installedCounts.tools, 'tool')}, and {plural(installedCounts.slices, 'slice')}. Your own harness was not changed.</p>
+          nothingNew
+            ? <p className="vx-notice vx-in"><span className="chip quiet">Nothing new</span> {NOTHING_NEW} Your own harness was not changed.</p>
+            : <p className="vx-notice vx-in"><span className="chip good">Installed</span> Their harness now has {plural(installedCounts.skills, 'skill')}, {plural(installedCounts.agents, 'agent')}, {plural(installedCounts.tools, 'tool')}, and {plural(installedCounts.slices, 'slice')}. Your own harness was not changed.</p>
         )}
       </div>
     </section>

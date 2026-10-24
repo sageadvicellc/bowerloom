@@ -226,7 +226,7 @@ function land(input: unknown, world: World): Landing {
 
   // Three id maps, one per kind of thing, so a skill id and a tool id can never be taken for each other.
   const itemMap = new Map<string, string>(), toolMap = new Map<string, string>(), sliceMap = new Map<string, string>();
-  const secrets: SecretSlot[] = [], clashes: ImportClash[] = [];
+  const secrets: SecretSlot[] = [], clashes: ImportClash[] = [], moved: ImportPreview['moved'][number][] = [], hooks: ImportPreview['hooks'][number][] = [];
   const toolFiles: ImportFile[] = [], sliceFiles: ImportFile[] = [], skillFiles = new Map<string, ImportFile>(), agentFiles = new Map<string, ImportFile>();
   const toolNames = new Map<string, string>(world.items.filter(i => i.kind === 'tool').map(i => [i.id, i.name]));
 
@@ -236,7 +236,9 @@ function land(input: unknown, world: World): Landing {
   const sameSecret = (t: ToolItem, slot: SecretSlot | null): boolean => (t.toolKind !== 'mcp' ? slot === null : slot === null ? t.secret === null : t.secret !== null && t.secret.kind === slot.kind && t.secret.name === slot.name);
   for (const ref of bundle.toolRefs) {
     const names = new Set([...worldTools, ...tools].map(t => t.name));
-    const have = [...worldTools, ...tools].find(t => t.toolKind === ref.toolKind && (t.name === ref.name || (family(ref.name, names).includes(t.name) && sameSecret(t, ref.secret))));
+    // A tool is the same tool only when its kind, its name and its secret all match. The same name with another secret is a different tool.
+    const have = [...worldTools, ...tools].find(t => t.toolKind === ref.toolKind && sameSecret(t, ref.secret) && (t.name === ref.name || family(ref.name, names).includes(t.name)));
+    const otherSecret = have === undefined && [...worldTools, ...tools].some(t => t.toolKind === ref.toolKind && t.name === ref.name);
     if (ref.secret !== null) {
       const slot = ref.secret, ready = have !== undefined && have.toolKind === 'mcp' && have.secret !== null && have.secret.state === 'present' && have.secret.kind === slot.kind && have.secret.name === slot.name;
       if (!ready && !secrets.some(s => slotKey(s) === slotKey(slot))) secrets.push({ kind: slot.kind, name: slot.name });
@@ -247,7 +249,7 @@ function land(input: unknown, world: World): Landing {
     let name = ref.name;
     if (ref.toolKind !== 'hook') {
       name = freeName(ref.name, toolGroup.names, toolGroup.slugs);
-      if (name !== ref.name) clashes.push({ itemId: ref.toolId, name: ref.name, reason: 'different-text' });
+      if (name !== ref.name) clashes.push({ itemId: ref.toolId, name: ref.name, reason: otherSecret ? 'different-secret' : 'different-text' });
       toolGroup.names.add(name); toolGroup.slugs.add(slugOf(name));
     }
     toolNames.set(id, name);
@@ -257,7 +259,7 @@ function land(input: unknown, world: World): Landing {
       tools.push({ ...shared, toolKind: 'mcp', secret });
       toolFiles.push({ path: harness(home.path, `tools/${fileSlug(name)}.json`), action: 'add', characters: JSON.stringify({ name, secret: ref.secret }).length });
     } else if (ref.toolKind === 'prompt') { tools.push({ ...shared, toolKind: 'prompt' }); toolFiles.push({ path: harness(home.path, `tools/${fileSlug(name)}.md`), action: 'add', characters: `Saved prompt: ${name}`.length }); }
-    else tools.push({ ...shared, toolKind: 'hook', runsCode: true });
+    else { tools.push({ ...shared, toolKind: 'hook', runsCode: true }); hooks.push({ name, scope: home.name }); }
   }
 
   // Slices: a rule that is already there under the same name is kept; a new one arrives with no seed pages, because page ids belong to one wiki.
@@ -302,6 +304,7 @@ function land(input: unknown, world: World): Landing {
       const foundAt = mapped.foundAt.map(f => ({ ...f, path: `${scope.path.replace(/\/+$/, '')}/${exportPath(f.path)}` }));
       const final: BundleItem = { ...withName(mapped, name), id, scopeId: scope.id, foundAt };
       placed.set(item.id, final);
+      if (!scopes.has(item.scopeId)) moved.push({ itemName: name, fromScope: item.scopeId, toScope: scope.name });
       g.names.add(name); g.slugs.add(slugOf(name)); g.byName.set(name, final);
       const file: ImportFile = { path: harness(scope.path, kind === 'skill' ? `skills/${fileSlug(name)}/SKILL.md` : `agents/${fileSlug(name)}.md`), action: 'add', characters: fileText(final).length };
       (kind === 'skill' ? skillFiles : agentFiles).set(item.id, file);
@@ -326,7 +329,7 @@ function land(input: unknown, world: World): Landing {
     for (const s of d.skillIds) if (kindOf.get(s) !== 'skill') missing.push(`${item.name} uses the skill ${s}, which is neither in this file nor in your setup.`);
     if (d.sliceId !== undefined && !knownSlices.has(d.sliceId)) missing.push(`${item.name} reads the slice ${d.sliceId}, which is neither in this file nor in your setup.`);
   }
-  return { tools, placed, order, slices, sliceItems, preview: { files, secretsToAdd: secrets, clashes, grants, missingRefs: [...new Set(missing)] } };
+  return { tools, placed, order, slices, sliceItems, preview: { files, secretsToAdd: secrets, clashes, grants, missingRefs: [...new Set(missing)], moved, hooks } };
 }
 
 /** What importing `bundle` into `world` would do, and nothing more: every file it would write, every secret to add, every clash, every grant, every missing reference. Changes nothing. */

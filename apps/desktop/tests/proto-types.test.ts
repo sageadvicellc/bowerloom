@@ -42,7 +42,7 @@ const bundle: Bundle = { scopeIds: ['global'], items: [bundleItem, agent], toolR
 const importFile: ImportFile = { path: '/sample/y', action: 'change', characters: 12 };
 const grant: ImportGrant = { agent: 'Planner', tool: 'Mcp', access: 'read-only' };
 const clash: ImportClash = { itemId: 's1', name: 'Skill', reason: 'different-text' };
-const importPreview: ImportPreview = { files: [importFile], secretsToAdd: [slot], clashes: [clash], grants: [grant], missingRefs: ['skill lib-skill, used by Planner'] };
+const importPreview: ImportPreview = { files: [importFile], secretsToAdd: [slot], clashes: [clash], grants: [grant], missingRefs: ['skill lib-skill, used by Planner'], moved: [{ itemName: 'Skill', fromScope: 'proj', toScope: 'Global' }], hooks: [{ name: 'Format hook', scope: 'Global' }] };
 const world: World = { interfaces: [info], items: [skill, agent, mcp, prompt, hook, contextSlice], scopes: [scope], overrides: [override], wikiPages: [page], slices: [slice], versions: [version], libraries: [source] };
 
 // One entry per exported type name. A name in the file but not here, or here but not in the file, fails the test below.
