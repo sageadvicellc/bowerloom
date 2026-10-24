@@ -7,8 +7,9 @@
  * Nothing here reads a clock or a random number, and nothing changes an input: every update builds new objects.
  * An action that would change nothing (or that names something that is not there) returns the very same state, so it leaves no step to undo.
  */
-import type { AccessClass, AgentItem, HarnessItem, OverrideMode, Slice, SliceRule, Version, World } from './types.js';
+import type { AccessClass, AgentItem, HarnessItem, OverrideMode, SkillItem, Slice, SliceRule, Version, World } from './types.js';
 import { globalScope, uniqueId } from './common.js';
+import { LIBRARY_CATALOG, catalogAgentPath, catalogAgentText, catalogHash, catalogItemId, catalogSkillPath } from './library-catalog.js';
 import { liveMatch } from './slicematch.js';
 
 /** Every action the store understands. The first group edits the draft; the second group moves between draft, committed and versions. */
@@ -19,6 +20,8 @@ export type StoreAction =
   | { readonly type: 'attachTool'; readonly agentId: string; readonly toolId: string; readonly access: AccessClass }
   | { readonly type: 'detachTool'; readonly agentId: string; readonly toolId: string }
   | { readonly type: 'installItem'; readonly itemId: string; readonly targetScopeId: string }
+  | { readonly type: 'addLibrary'; readonly libraryId: string }
+  | { readonly type: 'moveSkill'; readonly agentId: string; readonly skillId: string; readonly toIndex: number }
   | { readonly type: 'resolveConflict'; readonly itemId: string; readonly keep: number }
   | { readonly type: 'resolveConflict'; readonly itemId: string; readonly keep: 'keep-both'; readonly names: readonly string[] }
   | { readonly type: 'createSlice'; readonly name: string; readonly rule: SliceRule; readonly seeds?: readonly string[]; readonly scopeId?: string }
@@ -135,6 +138,43 @@ function installItem(world: World, a: Extract<StoreAction, { type: 'installItem'
   return { ...world, items: [...world.items, copy] };
 }
 
+/**
+ * Adds one library of the invented catalog: its source, and its skills and agents as read-only items of the global harness, pinned to its version.
+ * Refused (the same state comes back) when the library is not in the catalog, is already there, there is no global harness, or an item id is taken.
+ */
+function addLibrary(world: World, a: Extract<StoreAction, { type: 'addLibrary' }>): World {
+  const lib = LIBRARY_CATALOG.find(l => l.id === a.libraryId), global = globalScope(world);
+  if (lib === undefined || global === undefined || world.libraries.some(l => l.id === lib.id)) return world;
+  const taken = new Set(world.items.map(i => i.id));
+  const ids = [...lib.skills.map(s => catalogItemId(lib.id, s.key)), ...lib.agents.map(g => catalogItemId(lib.id, g.key))];
+  if (ids.some(id => taken.has(id)) || new Set(ids).size !== ids.length) return world;
+  const ref = { library: lib.id, pinnedVersion: lib.version } as const;
+  const skills = lib.skills.map((s): SkillItem => ({
+    id: catalogItemId(lib.id, s.key), kind: 'skill', name: s.name, scopeId: global.id, library: ref, description: s.description,
+    foundAt: s.interfaces.map(face => ({ interface: face, path: catalogSkillPath(lib, s, face), contentHash: catalogHash(s.text), text: s.text })),
+  }));
+  const agents = lib.agents.map((g): AgentItem => {
+    const text = catalogAgentText(g);
+    return {
+      id: catalogItemId(lib.id, g.key), kind: 'agent', name: g.name, scopeId: global.id, library: ref,
+      foundAt: [{ interface: 'claude-code', path: catalogAgentPath(lib, g), contentHash: catalogHash(text), text }],
+      definition: { name: g.name, role: g.role, instructions: g.instructions, skillIds: g.skillKeys.map(k => catalogItemId(lib.id, k)), toolAttachments: [] }, extras: [],
+    };
+  });
+  return { ...world, libraries: [...world.libraries, { id: lib.id, name: lib.name, installedVersion: lib.version }], items: [...world.items, ...skills, ...agents] };
+}
+
+/** Moves one skill of an agent to a new place in its list. Nothing changes for an unknown skill, a place outside the list, or the place it has now. */
+function moveSkill(world: World, a: Extract<StoreAction, { type: 'moveSkill' }>): World {
+  return editAgent(world, a.agentId, agent => {
+    const ids = agent.definition.skillIds, from = ids.indexOf(a.skillId);
+    if (from < 0 || !Number.isInteger(a.toIndex) || a.toIndex < 0 || a.toIndex >= ids.length || a.toIndex === from) return agent;
+    const next = ids.filter(id => id !== a.skillId);
+    next.splice(a.toIndex, 0, a.skillId);
+    return { ...agent, definition: { ...agent.definition, skillIds: next } };
+  });
+}
+
 function resolveConflict(world: World, a: Extract<StoreAction, { type: 'resolveConflict' }>): World {
   const index = world.items.findIndex(i => i.id === a.itemId), item = world.items[index];
   if (item === undefined) return world;
@@ -191,6 +231,8 @@ function editDraft(world: World, action: StoreAction): World {
     });
     case 'detachTool': return editAgent(world, action.agentId, a => (a.definition.toolAttachments.some(t => t.toolId === action.toolId) ? { ...a, definition: { ...a.definition, toolAttachments: a.definition.toolAttachments.filter(t => t.toolId !== action.toolId) } } : a));
     case 'installItem': return installItem(world, action);
+    case 'addLibrary': return addLibrary(world, action);
+    case 'moveSkill': return moveSkill(world, action);
     case 'resolveConflict': return resolveConflict(world, action);
     case 'createSlice': return createSlice(world, action);
     case 'updateSliceRule': return editSlice(world, action.sliceId, s => (JSON.stringify(s.rule) === JSON.stringify(action.rule) ? s : { ...s, rule: structuredClone(action.rule) }));
