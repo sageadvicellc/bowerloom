@@ -5,11 +5,16 @@
  */
 .kn-page { gap: var(--space-3); }
 main:has(.kn-page) { padding-top: var(--space-4); }
-.kn-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-5); }
+/* The title, the slice picker and one line of explanation share the top, so the graph starts high on the screen. */
+.kn-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-5); }
 .kn-head h1 { margin: 0; }
-.kn-slice { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
-.kn-lead { margin: 0; font-size: var(--text-base); max-width: none; }
+.kn-slice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.kn-slice .kn-field { flex-direction: row; align-items: center; gap: var(--space-3); }
+.kn-slice .btn { padding: var(--space-2) var(--space-4); }
+.kn-lead { margin: 0; font-size: var(--text-small); max-width: none; flex: 1 1 100%; order: 3; }
 .kn-graph-section, .kn-pick, .kn-preview, .kn-actions, .kn-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); box-shadow: var(--shadow); }
+.kn-graph-section { gap: var(--space-2); padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.kn-graph-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .kn-graph-section h2, .kn-pick h2, .kn-preview h2, .kn-actions h2, .kn-list h2 { margin: 0; }
 .kn-preview h3, .kn-actions h3, .kn-list h3 { margin: var(--space-2) 0 0; font-size: var(--text-base); }
 .kn-way h4 { margin: var(--space-2) 0 0; font-size: var(--text-base); }
@@ -23,21 +28,26 @@ main:has(.kn-page) { padding-top: var(--space-4); }
 @media (max-width: 1100px) { .kn-columns { grid-template-columns: 1fr; } .kn-side { position: static; } }
 
 /* The graph */
-.kn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.kn-toolbar .btn { padding: var(--space-2) var(--space-4); }
+.kn-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.kn-toolbar .btn { padding: var(--space-1) var(--space-4); }
 .kn-toolbar .btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-.kn-toolbar .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.kn-graph { position: relative; display: flex; flex-direction: column; gap: var(--space-2); }
-.kn-canvas { position: relative; height: clamp(20rem, 56vh, 40rem); border: 1px solid var(--border); border-radius: var(--radius-small); background-color: var(--surface-2); background-image: radial-gradient(var(--canvas-dots) 1px, transparent 1px); background-size: 22px 22px; overflow: hidden; }
-.kn-overlay { position: absolute; left: 0; top: 0; width: 100%; height: clamp(20rem, 56vh, 40rem); pointer-events: none; touch-action: none; }
+.kn-graph { position: relative; display: flex; flex-direction: column; gap: var(--space-2); --kn-canvas-h: clamp(18rem, calc(100vh - 17rem), 44rem); }
+.kn-canvas { position: relative; height: var(--kn-canvas-h); border: 1px solid var(--border); border-radius: var(--radius-small); background-color: var(--surface-2); background-image: radial-gradient(var(--canvas-dots) 1px, transparent 1px); background-size: 22px 22px; overflow: hidden; }
+.kn-overlay { position: absolute; left: 0; top: 0; width: 100%; height: var(--kn-canvas-h); pointer-events: none; touch-action: none; }
 .kn-overlay.kn-lasso-on { pointer-events: auto; cursor: crosshair; }
 .kn-canvas:has(+ .kn-lasso-on) { outline: 2px solid var(--accent); outline-offset: -2px; }
-.kn-summary, .kn-status { margin: 0; }
+.kn-summary, .kn-status, .kn-hint { margin: 0; }
 .kn-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
 .kn-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
-.kn-sw { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; flex: none; }
-.kn-sw-0 { background: var(--graph-1); } .kn-sw-1 { background: var(--graph-2); } .kn-sw-2 { background: var(--graph-3); } .kn-sw-3 { background: var(--graph-4); }
-.kn-sw-4 { background: var(--graph-5); } .kn-sw-5 { background: var(--graph-6); } .kn-sw-6 { background: var(--graph-7); } .kn-sw-7 { background: var(--graph-8); }
+/* A domain's mark: its colour and its own shape, the same as on the graph. */
+.kn-sw { display: inline-block; width: 1rem; height: 1rem; flex: none; }
+.kn-sw svg { display: block; width: 100%; height: 100%; fill: currentColor; stroke: var(--text); stroke-width: 0.12; }
+.kn-sw-0 { color: var(--graph-1); } .kn-sw-1 { color: var(--graph-2); } .kn-sw-2 { color: var(--graph-3); } .kn-sw-3 { color: var(--graph-4); }
+.kn-sw-4 { color: var(--graph-5); } .kn-sw-5 { color: var(--graph-6); } .kn-sw-6 { color: var(--graph-7); } .kn-sw-7 { color: var(--graph-8); }
+/* The box next to the pointer that names the page under it. */
+.kn-tip { position: absolute; z-index: 2; pointer-events: none; display: flex; flex-direction: column; max-width: 18rem; padding: var(--space-2) var(--space-3); background: var(--surface); color: var(--text); border: 1px solid var(--text-muted); border-radius: var(--radius-small); box-shadow: var(--shadow); font-size: var(--text-small); line-height: 1.35; }
+.kn-tip[hidden] { display: none; }
+.kn-tip span { color: var(--text-muted); }
 .kn-key { display: inline-block; flex: none; }
 .kn-key-lit { width: 0.9rem; height: 0.9rem; border-radius: 50%; background: var(--graph-5); border: 2px solid var(--text); }
 .kn-key-dim { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--graph-5); opacity: 0.25; }
@@ -72,7 +82,6 @@ main:has(.kn-page) { padding-top: var(--space-4); }
 .kn-seeds, .kn-holders, .kn-outside { display: flex; flex-direction: column; gap: var(--space-1); }
 .kn-small { padding: 0.1rem var(--space-3); font-size: var(--text-small); }
 .btn:focus-visible, .kn-disclose:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* The preview */
 .kn-count { font-size: var(--text-large); display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }

@@ -50,7 +50,9 @@ test('with a provider the page count shown is the count of the rule engine, for 
 test('the preview says the numbers in plain words, with the estimate called rough', () => {
   const text = textOf(draw());
   assert.match(text, /\d+ pages are in this slice/);
-  assert.match(text, /The pages add up to about [\d,]+ tokens\. This is a rough estimate\./);
+  assert.match(text, /The pages add up to about [\d,]+ tokens, a rough measure of size\./);
+  assert.equal([...text.matchAll(/rough measure of size/g)].length, 1, 'tokens are explained once');
+  assert.match(text, /The map alone is about [\d,]+ tokens\./);
   assert.match(text, /The agent gets a map of \d+ pages: a title and one line for each\./);
   assert.match(text, /3 pages joined since your last visit\./);
   assert.match(text, /\d+ links leave this slice\. They are drawn as dashed lines on the graph\./);

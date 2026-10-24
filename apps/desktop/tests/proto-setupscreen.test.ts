@@ -95,13 +95,16 @@ test('review: counts, library items as a reference, a hook that runs code, a mis
   assert.match(t, /120 items from Evergreen Kit 2\.3\.0/);
   assert.match(t, /runs code/);
   assert.match(t, /Needs a secret/); assert.match(t, /LANTERN_TOKEN, an environment variable, and it is not set/);
-  assert.match(t, /Same item, different text/); assert.match(t, /3 different texts/);
+  assert.match(t, /Same item, different text/); assert.match(t, /3 different copies/);
   assert.match(t, /Found in Claude Code, Codex, and OpenCode, with different text in each\./);
-  assert.match(t, /Choose a version of /);
+  assert.doesNotMatch(t, /Choose a version of /, 'no disclosure button: the copies are all in view');
+  for (const who of ['Claude Code', 'Codex', 'OpenCode']) assert.ok(t.includes(`${who}'s copy`), `${who}'s copy`);
+  assert.equal([...steps.review!.matchAll(/>Keep this copy</g)].length, 3, 'one Keep this copy button for each copy');
+  assert.doesNotMatch(t, /Keep the .* version|different texts/, 'a conflict says copy, not version');
   assert.match(steps.review!, /<button[^>]*disabled=""[^>]*>Continue/, 'the conflict must be settled first');
   assert.match(t, /Settle 1 item above to go on\./);
-  const settled = draw(at({ ...roots, step: 'review', scanned: true, ticked: allIds, resolved: { x: 'Thing: kept the Codex version.' } }));
-  assert.match(textOf(settled), /Settled Thing: kept the Codex version\./);
+  const settled = draw(at({ ...roots, step: 'review', scanned: true, ticked: allIds, resolved: { x: "Thing: kept Codex's copy." } }));
+  assert.match(textOf(settled), /Settled Thing: kept Codex's copy\./);
 });
 
 test('bring in and done: the copy note, the roots, and the way on to the Harness screen', () => {
@@ -150,4 +153,42 @@ test('the style sheet uses tokens for colour and the setup reveal tokens for mot
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/, 'no colour value of its own');
   assert.match(css, /--motion-setup-reveal-ms/); assert.match(css, /--motion-setup-reveal-stagger/); assert.match(css, /--motion-setup-reveal-ease/);
   assert.match(css, /prefers-reduced-motion/);
+});
+
+test('the way on is in a footer at the bottom of every step, and a step never shows a button beside Back that cannot be pressed', () => {
+  for (const [name, markup] of Object.entries(steps)) {
+    if (name === 'welcome' || name === 'pickers' || name === 'places' || name === 'scanned' || name === 'contents' || name === 'review' || name === 'bring-in' || name === 'done') assert.match(markup, /<div class="sx-footer" role="group" aria-label="Next step">/, name);
+  }
+  assert.match(steps.welcome!, /sx-footer[^>]*>[\s\S]*Choose where your harness lives/, 'the first step opens the pickers from the footer');
+  // Before the scan, the footer holds the scan button, enabled. After the scan, it holds the next step, and there is no greyed scan button.
+  assert.match(steps.places!, /sx-footer[\s\S]*<button type="button" class="btn">Look for settings folders<\/button>/);
+  assert.doesNotMatch(steps.scanned!, /<button[^>]*>Look for settings folders/, 'no greyed scan button after the scan');
+  assert.match(steps.scanned!, /sx-footer[\s\S]*Choose which places to read/);
+  assert.doesNotMatch(steps.scanned!.slice(0, steps.scanned!.indexOf('sx-footer')), /Choose which places to read/, 'the next step is not above the list');
+});
+
+test('the step list comes before the card, Start again is one short line beside the title, and the footer is last in its card', () => {
+  const m = steps.scanned!;
+  assert.ok(m.indexOf('sx-restart') < m.indexOf('sx-steps'), 'Start again is above the steps, beside the title');
+  assert.match(m, /<div class="sx-top"><h1[^>]*>Setup<\/h1><div class="sx-restart"><p id="sx-restart-note"[^>]*>Resets these steps only\. Changes already made stay\.<\/p>/);
+  assert.ok(m.lastIndexOf('sx-footer') > m.lastIndexOf('sx-place'), 'the footer follows the list');
+});
+
+test('a conflict shows every copy at once: the copy name, one path line with the full path in a title, changed lines with a word, and Keep this copy', () => {
+  const t = textOf(steps.review!), markup = steps.review!;
+  assert.equal([...markup.matchAll(/class="sx-variant"/g)].length, 3);
+  assert.match(markup, /class="sx-path tech small muted" title="[^"]*\/[^"]*"/, 'the full path is in a title');
+  assert.match(markup, /<span class="sr">Path: [^<]*<\/span>/, 'and in the words a screen reader reads');
+  assert.match(markup, /aria-label="Claude Code&#x27;s copy, at /, 'and in the name of the copy');
+  assert.match(markup, /aria-label="Keep this copy: Codex&#x27;s copy"/);
+  assert.match(markup, /class="sx-line is-changed"><span class="sx-mark">changed<\/span>/, 'a changed line has the word as well as the background');
+  assert.match(t, /The other copies are compared with this one\./);
+  assert.match(t, /\d+ lines? changed/);
+  assert.match(t, /Name for Codex's copy/); assert.match(t, /Keep all 3 copies/); assert.match(t, /Or keep every copy under its own name/);
+});
+
+test('Tools in the review name MCP once, as a tool connection', () => {
+  const t = textOf(steps.review!);
+  assert.match(t, /tool connections? \(MCP, the link to an outside service\)/);
+  assert.doesNotMatch(t, /MCP server/);
 });

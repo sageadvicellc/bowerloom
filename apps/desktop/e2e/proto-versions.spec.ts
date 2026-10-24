@@ -166,6 +166,10 @@ test('journey 4: export, save a file, open it in the colleague\'s Bowerloom, rea
   await expect(p.getByText(/Their harness now has 0 skills/)).toBeVisible();
   await shoot(p, '08-import-preview', () => atTop(p.getByRole('heading', { level: 3, name: "Colleague's Bowerloom" })));
 
+  // The test aids are in a disclosure that starts closed.
+  await expect(p.getByRole('button', { name: 'Open a damaged file (to see the error)' })).toBeHidden();
+  await expect(p.locator('details.vx-try')).not.toHaveAttribute('open', '');
+  await p.getByText('Try it with a file of your own', { exact: true }).click();
   // A damaged file is refused in plain words, in a live region.
   await p.getByRole('button', { name: 'Open a damaged file (to see the error)' }).click();
   await expect(p.getByRole('alert')).toContainText('This file is damaged, or it is not a Bowerloom file. Bowerloom could not read it. Nothing was installed.');
@@ -206,7 +210,11 @@ test('one project scope travels whole, and a file with a missing reference says 
   const bundle = buildBundle(generateWorld(1), ['scope-reedmarsh']);
   const broken = { ...bundle, items: bundle.items.filter(i => i.kind !== 'skill') };
   expect(broken.items.some(i => i.kind === 'agent' && i.definition.skillIds.length > 0), 'the test file has an agent that uses a skill').toBe(true);
+  await p.getByText('Try it with a file of your own', { exact: true }).click();
   await p.getByLabel('Or paste the text of a file here').fill(JSON.stringify(broken));
+  // The paste box and its button sit together: no blank gap between them.
+  const pasteBox = await p.getByLabel('Or paste the text of a file here').boundingBox(), pasteButton = await p.getByRole('button', { name: 'Open pasted text' }).boundingBox();
+  expect(pasteButton!.y - (pasteBox!.y + pasteBox!.height), 'the gap between the paste box and its button').toBeLessThan(40);
   await p.getByRole('button', { name: 'Open pasted text' }).click();
   await expect(p.getByRole('heading', { level: 5, name: /^References that point at nothing \([1-9]\d*\)$/ })).toBeVisible();
   await expect(p.locator('.vx-missing li').first()).toContainText('which is neither in this file nor in your setup.');
@@ -243,8 +251,7 @@ test('the real prototype: Setup makes version 1, Versions lists it, and there is
     await w.getByRole('button', { name: 'Choose which places to read' }).click();
     await w.getByRole('button', { name: 'Select all' }).click();
     await w.getByRole('button', { name: 'Read the ticked places' }).click();
-    await w.getByRole('button', { name: /^Choose a version of / }).click();
-    await w.getByRole('button', { name: 'Keep the OpenCode version' }).click();
+    await w.getByRole('button', { name: "Keep this copy: OpenCode's copy" }).click();
     await w.getByRole('button', { name: 'Continue', exact: true }).click();
     await w.getByRole('button', { name: 'Bring these in', exact: true }).click();
     await w.getByRole('button', { name: 'Versions' }).click();

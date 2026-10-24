@@ -190,15 +190,16 @@ test('an item found in two ticked places is counted once in "items in them"', ()
   assert.ok(places.reduce((n, p) => n + p.itemIds.length, 0) > seen.size, 'the old sum would have been bigger');
 });
 
-test('Start again says in one sentence what it does and does not undo, on the steps and on the last screen', () => {
+test('Start again says in one short line what it does and does not undo, on the steps and on the last screen', () => {
   const mid = textOf(draw({ ...initialSetup(), ...roots, step: 'places', scanned: true }));
   assert.ok(mid.includes(START_AGAIN_WORDS));
-  assert.match(START_AGAIN_WORDS, /does not undo changes already made to the harness/);
-  assert.match(START_AGAIN_WORDS, /Discard on the Harness screen/);
-  assert.equal(START_AGAIN_WORDS.split('. ').length, 1, 'one sentence');
+  assert.match(START_AGAIN_WORDS, /Resets these steps only\./);
+  assert.match(START_AGAIN_WORDS, /Changes already made stay\./);
+  assert.ok(START_AGAIN_WORDS.length <= 60, `one line on a normal window: ${START_AGAIN_WORDS.length} characters`);
   const done = draw({ ...initialSetup(), ...roots, step: 'done', scanned: true, ticked: places.map(p => p.id), broughtIn: true });
   assert.ok(textOf(done).includes(START_AGAIN_DONE_WORDS));
-  assert.equal(START_AGAIN_DONE_WORDS.split('. ').length, 1);
+  assert.match(START_AGAIN_DONE_WORDS, /version/); assert.match(START_AGAIN_DONE_WORDS, /Versions/);
+  assert.ok(START_AGAIN_DONE_WORDS.length <= 100);
   for (const words of [START_AGAIN_WORDS, START_AGAIN_DONE_WORDS]) assert.doesNotMatch(words, /\u2014|--|\bnpm\b|\bgit\b/);
   assert.match(done, /aria-describedby="sx-restart-note"/);
 });

@@ -6,7 +6,7 @@ import { useEffect, useId, useMemo, useRef } from 'react';
 import type { ReactElement, RefObject } from 'react';
 import { explainInference, inferRule } from '../../shared/proto/slice-infer.js';
 import type { Handle, Inference } from '../../shared/proto/slice-infer.js';
-import { badgeFor, frozenSentence, tokenSentence } from '../../shared/proto/slice-preview.js';
+import { badgeFor, frozenSentence, tokenGloss, tokenSentence } from '../../shared/proto/slice-preview.js';
 import type { Preview } from '../../shared/proto/slice-preview.js';
 import { buildFolderTree, facetCounts, folderState, pagesInFolder, pagesWithTag } from '../../shared/proto/slice-tree.js';
 import type { FolderNode } from '../../shared/proto/slice-tree.js';
@@ -14,6 +14,7 @@ import type { KnowledgeAction, KnowledgeState } from '../../shared/proto/knowled
 import { describeRule } from '../../shared/proto/slicerule.js';
 import type { AgentItem, InterfaceInfo, Slice, WikiPage } from '../../shared/proto/types.js';
 import { plural } from '../../shared/words.js';
+import { DomainMark } from './knowledge-mark.js';
 
 export type Send = (action: KnowledgeAction) => void;
 
@@ -51,7 +52,7 @@ export function PreviewPanel({ state, pages, preview, interfaces, saved, liveCou
       <h3>The rule in plain words</h3>
       <p className="kn-rule" data-testid="rule-words">{describeRule(state.rule, pages)}</p>
       <h3>How big it is</h3>
-      <p>The pages add up to {tokenSentence(preview.tokens)}</p>
+      <p>The pages add up to {tokenGloss(preview.tokens)}</p>
       <p>The agent gets a map of {plural(preview.count, 'page')}: a title and one line for each. The map alone is {tokenSentence(preview.mapTokens)}</p>
       <p>{joined === 1 ? '1 page' : `${joined} pages`} joined since your last visit.</p>
       <h3>Links that leave this slice</h3>
@@ -177,7 +178,7 @@ function DomainRow({ node, index, state, open, onOpen, send }: { node: FolderNod
     <li className="kn-domain">
       <div className="kn-domain-row">
         <Check checked={st === 'on'} indeterminate={st === 'partial'} folder={node.folder} onChange={() => send({ type: 'toggleFolder', folder: node.folder })}
-          label={<><span className={`kn-sw kn-sw-${index % 8}`} aria-hidden="true" />{node.name} <span className="muted">{count(node.count)}</span></>} />
+          label={<><DomainMark index={index} />{node.name} <span className="muted">{count(node.count)}</span></>} />
         <button type="button" className="kn-disclose" aria-expanded={open} aria-controls={id} onClick={onOpen}>
           {open ? 'Hide' : 'Show'} the {plural(node.children.length, 'folder')} inside {node.name}
         </button>

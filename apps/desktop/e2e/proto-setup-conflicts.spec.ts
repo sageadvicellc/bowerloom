@@ -50,9 +50,7 @@ test('settling a conflict sends the keyboard to the next open conflict, then to 
 
   // Settle the first with the keyboard: the second card gets the keyboard.
   const settle = async (n: number): Promise<void> => {
-    await cards.nth(0).getByRole('button', { name: /^Choose a version of / }).focus();
-    await page.keyboard.press('Enter');
-    await cards.nth(0).getByRole('button', { name: /^Keep the .* version$/ }).first().focus();
+    await cards.nth(0).getByRole('button', { name: /^Keep this copy: / }).first().focus();
     await page.keyboard.press('Enter');
     await expect(cards).toHaveCount(n);
   };

@@ -26,7 +26,7 @@ export interface KnowledgeGraphProps {
 export { domainsOf };
 
 export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, onPageClick, viewRef }: KnowledgeGraphProps): ReactElement {
-  const hostRef = useRef<HTMLDivElement>(null), overlayRef = useRef<HTMLCanvasElement>(null), view = useRef<GraphView | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null), overlayRef = useRef<HTMLCanvasElement>(null), tipRef = useRef<HTMLDivElement>(null), view = useRef<GraphView | null>(null);
   const [settled, setSettled] = useState(false), [inside, setInside] = useState<number | null>(null), [failed, setFailed] = useState(false);
   // The latest callbacks, so the view is built once and never rebuilt for a new function.
   const latest = useRef({ onLasso, onPageClick });
@@ -45,7 +45,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
       onLassoMove: n => setInside(n),
       onPageClick: id => latest.current.onPageClick(id),
       onSettled: () => setSettled(true),
-    });
+    }, tipRef.current);
     view.current = v;
     if (viewRef !== undefined) viewRef.current = v;
     void startGraph(v, pages, error => { if (view.current === v) setFailed(true); console.error('The wiki graph could not be drawn.', error); });
@@ -72,6 +72,7 @@ export function KnowledgeGraph({ pages, lit, marked, preview, lasso, onLasso, on
         onPointerDown={e => view.current?.down(e.nativeEvent)} onPointerMove={e => view.current?.move(e.nativeEvent)}
         onPointerUp={e => view.current?.up(e.nativeEvent)} onPointerCancel={() => view.current?.cancel()}
       />
+      <div className="kn-tip" ref={tipRef} hidden aria-hidden="true" data-testid="graph-tip" />
       <p id="kn-graph-summary" className="kn-summary small muted">{summary}</p>
       <p className="kn-status small" role="status" aria-live="polite" data-testid="graph-status">
         {failed ? GRAPH_FAILED_WORDS : inside !== null ? `${plural(inside, 'page')} inside the loop.` : settled ? 'The graph has settled.' : 'The graph is settling.'}

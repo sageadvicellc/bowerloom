@@ -5,12 +5,13 @@
  * the draft has a change in it. With no provider (the shell test) the screen shows the same title and count line as the stub did.
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { isDirty, reduceStore, snapshotOf } from '../../shared/proto/store.js';
 import type { StoreAction } from '../../shared/proto/store.js';
 import { PLACE_GROUPS, buildScan } from '../../shared/proto/scan-places.js';
 import type { ScanPlace } from '../../shared/proto/scan-places.js';
 import { keepBothProblem } from '../../shared/proto/conflicts.js';
+import { diffLines, plainLines, splitPath } from '../../shared/proto/setup-diff.js';
 import { INTERFACE_WORDS, buildReview } from '../../shared/proto/scan-review.js';
 import type { Review, ReviewConflict } from '../../shared/proto/scan-review.js';
 import { BRING_BLOCKED_WORDS, FLOW_STEPS, STEP_COUNT, STEP_TITLES, bringInWords, folderChoices, initialSetup, nestingOf, reduceSetup, settledList, stepNumber, unrelatedEdits } from '../../shared/proto/setup-flow.js';
@@ -38,10 +39,12 @@ const kept = new WeakMap<object, SetupState>();
 const startedWith = new WeakMap<object, number>();
 // What the draft was when the run began, and after the run's own last edit (a settled conflict). Edits made elsewhere show up as a difference.
 const baselines = new WeakMap<object, DraftBaseline>();
+// Sessions that have already seen the list of found places appear. The reveal plays once per session, so a later list (after Back, or after Start again) is just there.
+const revealed = new WeakSet<object>();
 
-/** What Start again does and does not do, in one sentence. It resets this screen only. */
-export const START_AGAIN_WORDS = 'Start again resets these steps only; it does not undo changes already made to the harness, which you can drop with Discard on the Harness screen.';
-export const START_AGAIN_DONE_WORDS = 'Start again resets these steps only; it does not undo the version or any change already made to the harness, so use Versions to go back and Discard on the Harness screen for changes that wait.';
+/** What Start again does and does not do, in one short line. It resets this screen only. */
+export const START_AGAIN_WORDS = 'Resets these steps only. Changes already made stay.';
+export const START_AGAIN_DONE_WORDS = 'Resets these steps only. The version and your harness changes stay. Use Versions to go back.';
 
 export function SetupScreen({ world }: ScreenProps): ReactElement {
   const session = useOptionalProtoStore();
@@ -76,10 +79,15 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
   const review = useMemo(() => buildReview(world, ticked), [world, ticked]);
 
   // A new step moves the keyboard to its heading. The first draw does not: the shell has already put it on the screen's title.
+  // Each step opens scrolled to the top, so the screen title, the step list and the step heading are all in view. The footer holds the way on.
   const heading = useRef<HTMLHeadingElement>(null);
   const opened = useRef(false);
   useEffect(() => {
-    if (opened.current) heading.current?.focus();
+    if (opened.current) {
+      const main = heading.current?.closest('main');
+      if (main instanceof HTMLElement) main.scrollTop = 0;
+      heading.current?.focus({ preventScroll: true });
+    }
     opened.current = true;
   }, [flow.step]);
 
@@ -89,8 +97,8 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
         <h1 tabIndex={-1}>{ROUTE_LABELS.setup}</h1>
         {flow.step !== 'welcome' && flow.step !== 'done' && (
           <div className="sx-restart">
-            <button type="button" className="btn secondary" aria-describedby="sx-restart-note" onClick={() => send({ type: 'reset' })}>Start again</button>
             <p id="sx-restart-note" className="small muted">{START_AGAIN_WORDS}</p>
+            <button type="button" className="btn secondary sx-small" aria-describedby="sx-restart-note" onClick={() => send({ type: 'reset' })}>Start again</button>
           </div>
         )}
       </div>
@@ -110,7 +118,7 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
         <p className="muted small">{flow.step === 'done' ? 'All steps finished' : `Step ${stepNumber(flow.step)} of ${STEP_COUNT}`}</p>
         <h2 id="sx-heading" ref={heading} tabIndex={-1} className="sx-heading">{STEP_TITLES[flow.step]}</h2>
         {flow.step === 'welcome' && <Welcome flow={flow} send={send} choices={folderChoices(world)} />}
-        {flow.step === 'places' && <Places flow={flow} send={send} places={places} world={world} />}
+        {flow.step === 'places' && <Places flow={flow} send={send} places={places} world={world} dispatch={dispatch} />}
         {flow.step === 'contents' && <Contents send={send} places={places} ticked={ticked} />}
         {flow.step === 'review' && <ReviewStep flow={flow} send={send} review={review} session={session} />}
         {flow.step === 'bring-in' && <BringIn flow={flow} send={send} review={review} places={ticked.length} world={world} session={session} blocked={blocked} />}
@@ -121,6 +129,11 @@ export function SetupFlow({ session, initial }: { session: ProtoSession; initial
 }
 
 type Send = (action: Parameters<typeof reduceSetup>[1]) => void;
+
+/** The bottom of a step: the way on, always in view. A button that cannot be pressed yet says why in words beside it. */
+function Footer({ children }: { children: ReactNode }): ReactElement {
+  return <div className="sx-footer" role="group" aria-label="Next step">{children}</div>;
+}
 
 // ---------------------------------------------------------------------------------------------------- 1. welcome
 
@@ -135,7 +148,6 @@ function Welcome({ flow, send, choices }: { flow: SetupState; send: Send; choice
     <>
       <p className="lead">A harness is everything around an AI model that is not the model itself.</p>
       <p>Setup finds the skills, agents, and tools already on this computer, and brings them in as copies. Nothing is read yet.</p>
-      {!flow.pickersOpen && <button type="button" className="btn big sx-self" onClick={() => send({ type: 'openPickers' })}>Choose where your harness lives</button>}
       {flow.pickersOpen && (
         <div className="sx-pickers">
           <Picker legend="Harness root" hint="The folder that holds your harness." name="harness-root" choices={choices} value={flow.harnessRoot} onPick={path => send({ type: 'pickHarnessRoot', path })} />
@@ -143,12 +155,14 @@ function Welcome({ flow, send, choices }: { flow: SetupState; send: Send; choice
         </div>
       )}
       <p className="small muted" role="status">{nestingWords}</p>
-      {flow.pickersOpen && (
-        <div className="sx-actions">
-          <button type="button" className="btn" disabled={!both} aria-describedby="sx-welcome-hint" onClick={() => send({ type: 'next' })}>Continue to the scan</button>
-          {!both && <span id="sx-welcome-hint" className="small muted">Pick a folder for each root to go on.</span>}
-        </div>
-      )}
+      <Footer>
+        {!flow.pickersOpen
+          ? <button type="button" className="btn big" onClick={() => send({ type: 'openPickers' })}>Choose where your harness lives</button>
+          : <>
+            <button type="button" className="btn" disabled={!both} aria-describedby="sx-welcome-hint" onClick={() => send({ type: 'next' })}>Continue to the scan</button>
+            {!both && <span id="sx-welcome-hint" className="small muted">Pick a folder for each root to go on.</span>}
+          </>}
+      </Footer>
     </>
   );
 }
@@ -173,25 +187,24 @@ function Picker({ legend, hint, name, choices, value, onPick }: { legend: string
 /** Sets the index that the stagger delay is counted from. The delay itself is in the style sheet, from the motion tokens. */
 const stagger = (n: number) => (el: HTMLElement | null): void => { el?.style.setProperty('--i', String(Math.min(n, 24))); };
 
-function Places({ flow, send, places, world }: { flow: SetupState; send: Send; places: ScanPlace[]; world: World }): ReactElement {
+function Places({ flow, send, places, world, dispatch }: { flow: SetupState; send: Send; places: ScanPlace[]; world: World; dispatch: object }): ReactElement {
   let row = 0;
   // The scan moves the keyboard to its result line, so the new list is read out and the button that was pressed is not lost.
   const found = useRef<HTMLParagraphElement>(null);
   const wasScanned = useRef(flow.scanned);
   useEffect(() => {
-    if (flow.scanned && !wasScanned.current) found.current?.focus();
+    if (flow.scanned && !wasScanned.current) found.current?.focus({ preventScroll: true });
     wasScanned.current = flow.scanned;
   }, [flow.scanned]);
+  // The found places appear one after another the first time in a session, and are simply there after that.
+  const play = useMemo(() => !revealed.has(dispatch), [dispatch]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (flow.scanned) revealed.add(dispatch); }, [dispatch, flow.scanned]);
   const everyId = new Set(places.flatMap(p => p.itemIds));
   const total = { skills: 0, agents: 0, tools: 0 };
   for (const item of world.items) if (everyId.has(item.id)) { if (item.kind === 'skill') total.skills += 1; else if (item.kind === 'agent') total.agents += 1; else if (item.kind === 'tool') total.tools += 1; }
   return (
     <>
       <p>Bowerloom looks for the folders where Claude Code, Codex, and OpenCode keep their settings. This shows places and counts only. It reads no file contents.</p>
-      <div className="sx-actions">
-        <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
-        <button type="button" className="btn" disabled={flow.scanned} onClick={() => send({ type: 'scan' })}>Look for settings folders</button>
-      </div>
       <div aria-live="polite" className="sx-live">
         {flow.scanned && <p ref={found} tabIndex={-1} className="sx-found">Found {plural(places.length, 'place')} with {counts(total)}. An item found in two places is counted in each place below.</p>}
       </div>
@@ -206,7 +219,7 @@ function Places({ flow, send, places, world }: { flow: SetupState; send: Send; p
                   {here.length === 0 ? <p className="small muted">{g.id === 'older' ? 'No older Bowerloom layouts found.' : 'Nothing found here.'}</p> : (
                     <ul className="sx-places">
                       {here.map(p => (
-                        <li key={p.id} className="sx-place sx-reveal" ref={stagger(row++)}>
+                        <li key={p.id} className={play ? 'sx-place sx-reveal' : 'sx-place'} ref={stagger(row++)}>
                           <span className="sx-place-name">{p.label}{p.library && <span className="chip quiet">from a library</span>}</span>
                           <span className="small">{counts(p)}</span>
                           <span className="tech sx-place-path">{p.path}</span>
@@ -218,11 +231,14 @@ function Places({ flow, send, places, world }: { flow: SetupState; send: Send; p
               );
             })}
           </div>
-          <div className="sx-actions">
-            <button type="button" className="btn" onClick={() => send({ type: 'next' })}>Choose which places to read</button>
-          </div>
         </>
       )}
+      <Footer>
+        <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
+        {flow.scanned
+          ? <button type="button" className="btn" onClick={() => send({ type: 'next' })}>Choose which places to read</button>
+          : <button type="button" className="btn" onClick={() => send({ type: 'scan' })}>Look for settings folders</button>}
+      </Footer>
     </>
   );
 }
@@ -258,11 +274,11 @@ function Contents({ send, places, ticked }: { send: Send; places: ScanPlace[]; t
           </fieldset>
         ))}
       </div>
-      <div className="sx-actions">
+      <Footer>
         <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
         <button type="button" className="btn" disabled={ticked.length === 0} aria-describedby="sx-contents-hint" onClick={() => send({ type: 'next' })}>Read the ticked places</button>
         {ticked.length === 0 && <span id="sx-contents-hint" className="small muted">Tick at least one place to go on.</span>}
-      </div>
+      </Footer>
     </>
   );
 }
@@ -293,7 +309,7 @@ function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: S
       <dl className="kv sx-summary">
         <dt>Skills</dt><dd>{review.skills}</dd>
         <dt>Agents</dt><dd>{review.agents}</dd>
-        <dt>Tools</dt><dd>{review.tools} ({plural(review.mcp, 'MCP server')}, {plural(review.prompts, 'saved prompt')}, {plural(review.hooks.length, 'hook')})</dd>
+        <dt>Tools</dt><dd>{review.tools}: {plural(review.mcp, 'tool connection')} (MCP, the link to an outside service), {plural(review.prompts, 'saved prompt')}, {plural(review.hooks.length, 'hook')}</dd>
       </dl>
       {review.libraryItems.length > 0 && (
         <section aria-labelledby="sx-lib">
@@ -337,11 +353,11 @@ function ReviewStep({ flow, send, review, session }: { flow: SetupState; send: S
           {review.conflicts.map(c => <Conflict key={c.itemId} conflict={c} session={session} onSettled={words => settle(c.itemId, words)} />)}
         </div>
       </section>
-      <div className="sx-actions">
+      <Footer>
         <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
         <button ref={continueButton} type="button" className="btn" disabled={left > 0} aria-describedby="sx-review-hint" onClick={() => send({ type: 'next' })}>Continue</button>
         {left > 0 && <span id="sx-review-hint" className="small muted">Settle {plural(left, 'item')} above to go on.</span>}
-      </div>
+      </Footer>
     </>
   );
 }
@@ -357,54 +373,94 @@ const conflictHeadingId = (itemId: string): string => `sx-conflict-h-${itemId}`;
 
 const andList = (words: readonly string[]): string => (words.length < 3 ? words.join(' and ') : `${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]}`);
 
+/** What a copy is called: "Claude Code's copy", or, when several interfaces hold the same text, "Copy shared by Claude Code and Codex". */
+export const copyName = (finds: string, interfaces: number): string => (interfaces === 1 ? `${finds}'s copy` : `Copy shared by ${finds}`);
+
+/** One path on one line. The middle is cut short with "..." when it does not fit, and the end (the last folder and the file name) always shows. The whole path is in the title and in the words a screen reader reads. */
+function PathLine({ paths }: { paths: readonly string[] }): ReactElement {
+  const first = paths[0] ?? '', { head, tail } = splitPath(first), more = paths.length - 1;
+  return (
+    <p className="sx-path tech small muted" title={paths.join('\n')}>
+      <span className="sr">Path: {paths.join(', ')}</span>
+      <span className="sx-path-head" aria-hidden="true">{head}</span>
+      <span className="sx-path-tail" aria-hidden="true">{tail}</span>
+      {more > 0 && <span className="sx-path-more" aria-hidden="true">+{more} more</span>}
+    </p>
+  );
+}
+
+/** The text of one copy. A line that differs from the first copy has a background and the word "changed". If the first such line is below the fold of the box, the box starts there. */
+function CopyText({ label, lines }: { label: string; lines: readonly { text: string; changed: boolean }[] }): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current, first = el?.querySelector<HTMLElement>('.is-changed');
+    if (el === null || el === undefined || first === null || first === undefined) return;
+    if (first.offsetTop + first.offsetHeight > el.clientHeight) el.scrollTop = Math.max(0, first.offsetTop - 2 * first.offsetHeight);
+  }, [lines]);
+  return (
+    <div className="sx-text" ref={box} tabIndex={0} role="group" aria-label={`Text of ${label}`}>
+      {lines.map((line, i) => (
+        <div key={`${i}-${line.text}`} className={line.changed ? 'sx-line is-changed' : 'sx-line'}>
+          {line.changed && <span className="sx-mark">changed</span>}
+          <span className="sx-code">{line.text === '' ? ' ' : line.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Conflict({ conflict, session, onSettled }: { conflict: ReviewConflict; session: ProtoSession; onSettled: (words: string) => void }): ReactElement {
-  const [open, setOpen] = useState(false);
   const [names, setNames] = useState<string[]>(() => [...conflict.defaultNames]);
   const [problem, setProblem] = useState<string | null>(null);
   const finds = conflict.variants.map(v => v.interfaces.map(f => INTERFACE_WORDS[f]).join(' and '));
+  const labels = conflict.variants.map((v, n) => copyName(finds[n]!, v.interfaces.length));
+  // Every copy is compared with the first one, line by line.
+  const first = conflict.variants[0]?.text ?? '';
+  const shown = conflict.variants.map((v, n) => (n === 0 ? { lines: plainLines(v.text), changed: 0, missing: 0 } : diffLines(first, v.text)));
   const settle = (index: number, label: string): void => {
     dispatchOwn(session, { type: 'resolveConflict', itemId: conflict.itemId, keep: index });
-    onSettled(`${conflict.name}: kept the ${label} version.`);
+    onSettled(`${conflict.name}: kept ${label}.`);
   };
   const keepBoth = (): void => {
     const why = keepBothProblem(session.state.draft, conflict.itemId, names);
     setProblem(why);
     if (why !== null) return;
     dispatchOwn(session, { type: 'resolveConflict', itemId: conflict.itemId, keep: 'keep-both', names: names.map(n => n.trim()) });
-    onSettled(`${conflict.name}: kept all ${conflict.variants.length} versions under separate names (${names.map(n => n.trim()).join(', ')}).`);
+    onSettled(`${conflict.name}: kept all ${conflict.variants.length} copies under separate names (${names.map(n => n.trim()).join(', ')}).`);
   };
-  const panel = `sx-conflict-${conflict.itemId}`;
   return (
     <article className="sx-conflict" aria-label={`Conflict: ${conflict.name}`}>
-      <h4 id={conflictHeadingId(conflict.itemId)} tabIndex={-1}>{conflict.name} <span className="chip warn">{conflict.variants.length} different texts</span></h4>
-      <p className="small">Found in {andList(finds)}, with different text in each.</p>
-      <button type="button" className="btn secondary sx-self" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>Choose a version of {conflict.name}</button>
-      {open && (
-        <div id={panel} className="sx-picker">
-          <div className="sx-variants">
-            {conflict.variants.map((v, n) => (
-              <section key={v.hash} className="sx-variant" aria-label={`${finds[n]} version`}>
-                <h5>{finds[n]} version</h5>
-                <p className="tech small">{v.paths.join(', ')}</p>
-                <pre className="file sx-text" tabIndex={0} aria-label={`Text of the ${finds[n]} version`}>{v.text}</pre>
-                <button type="button" className="btn secondary" onClick={() => settle(v.index, finds[n]!)}>Keep the {finds[n]} version</button>
-              </section>
-            ))}
-          </div>
-          <fieldset className="sx-fieldset">
-            <legend>Or keep every version under its own name</legend>
-            {!conflict.canKeepBoth && <p className="small muted">Tick every place that holds this item to keep more than one version.</p>}
-            {conflict.variants.map((v, n) => (
-              <label key={v.hash} className="sx-name">
-                <span>Name for the {finds[n]} version</span>
-                <input type="text" value={names[n] ?? ''} disabled={!conflict.canKeepBoth} onChange={e => setNames(names.map((x, i) => (i === n ? e.target.value : x)))} />
-              </label>
-            ))}
-            <div aria-live="polite" className="small sx-problem">{problem}</div>
-            <button type="button" className="btn secondary sx-self" disabled={!conflict.canKeepBoth} onClick={keepBoth}>Keep all {conflict.variants.length} versions</button>
-          </fieldset>
+      <h4 id={conflictHeadingId(conflict.itemId)} tabIndex={-1}>{conflict.name} <span className="chip warn">{conflict.variants.length} different copies</span></h4>
+      <p className="small">Found in {andList(finds)}, with different text in each. Lines marked <span className="sx-mark">changed</span> differ from the first copy.</p>
+      <div className="sx-variants">
+        {conflict.variants.map((v, n) => (
+          <section key={v.hash} className="sx-variant" aria-label={`${labels[n]}, at ${v.paths.join(', ')}`}>
+            <h5>{labels[n]}</h5>
+            <PathLine paths={v.paths} />
+            <p className="small muted sx-count-line">
+              {n === 0 ? 'The other copies are compared with this one.'
+                : shown[n]!.changed === 0 && shown[n]!.missing === 0 ? 'No line differs from the first copy.'
+                : `${plural(shown[n]!.changed, 'line')} changed${shown[n]!.missing > 0 ? `, ${plural(shown[n]!.missing, 'line')} of the first copy left out` : ''}.`}
+            </p>
+            <CopyText label={labels[n]!} lines={shown[n]!.lines} />
+            <button type="button" className="btn secondary" aria-label={`Keep this copy: ${labels[n]}`} onClick={() => settle(v.index, labels[n]!)}>Keep this copy</button>
+          </section>
+        ))}
+      </div>
+      <fieldset className="sx-fieldset sx-keepall">
+        <legend>Or keep every copy under its own name</legend>
+        {!conflict.canKeepBoth && <p className="small muted">Tick every place that holds this item to keep more than one copy.</p>}
+        <div className="sx-names">
+          {conflict.variants.map((v, n) => (
+            <label key={v.hash} className="sx-name">
+              <span>Name for {labels[n]}</span>
+              <input type="text" value={names[n] ?? ''} disabled={!conflict.canKeepBoth} onChange={e => setNames(names.map((x, i) => (i === n ? e.target.value : x)))} />
+            </label>
+          ))}
         </div>
-      )}
+        <div aria-live="polite" className="small sx-problem">{problem}</div>
+        <button type="button" className="btn secondary sx-self" disabled={!conflict.canKeepBoth} onClick={keepBoth}>Keep all {conflict.variants.length} copies</button>
+      </fieldset>
     </article>
   );
 }
@@ -427,11 +483,12 @@ export function BringIn({ flow, send, review, places, world, session, blocked }:
         <dt>Harness root</dt><dd className="tech">{flow.harnessRoot}</dd>
         <dt>Knowledge root</dt><dd className="tech">{flow.knowledgeRoot}</dd>
       </dl>
-      <div className="sx-actions">
+      {blocked && <p id="sx-bring-blocked" className="warning" role="alert">{BRING_BLOCKED_WORDS}</p>}
+      <Footer>
         <button type="button" className="btn secondary" onClick={() => send({ type: 'back' })}>Back</button>
         <button type="button" className="btn big" disabled={blocked} aria-describedby={blocked ? 'sx-bring-blocked' : undefined} onClick={bring}>Bring these in</button>
-      </div>
-      {blocked && <p id="sx-bring-blocked" className="warning" role="alert">{BRING_BLOCKED_WORDS}</p>}
+        {blocked && <span className="small muted">Read the note above first.</span>}
+      </Footer>
     </>
   );
 }
@@ -454,11 +511,11 @@ function Done({ send, review, session, since }: { send: Send; review: Review; se
     <>
       <p className="sx-done" role="status">Done. {counts(review)} are now in Bowerloom as copies. Your original files were not touched.</p>
       <p>{made !== undefined ? `Version ${made.counter} was made: ${made.label}. It is in Versions.` : 'Your choices needed no change to the harness, so no version was made. The first change you apply makes version 1.'}</p>
-      <div className="sx-actions">
+      <p id="sx-restart-note" className="small muted">{START_AGAIN_DONE_WORDS}</p>
+      <Footer>
         <button type="button" className="btn big" onClick={() => (navigate !== null ? navigate('harness') : navigateWithoutShell(ROUTE_LABELS.harness))}>Go to the Harness screen</button>
         <button type="button" className="btn secondary" aria-describedby="sx-restart-note" onClick={() => send({ type: 'reset' })}>Start again</button>
-      </div>
-      <p id="sx-restart-note" className="small muted">{START_AGAIN_DONE_WORDS}</p>
+      </Footer>
     </>
   );
 }

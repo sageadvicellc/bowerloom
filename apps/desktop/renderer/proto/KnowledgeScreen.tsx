@@ -13,6 +13,7 @@ import { buildPreview, memoMatch } from '../../shared/proto/slice-preview.js';
 import { domainsOf } from './knowledge-graph-view.js';
 import type { GraphView } from './knowledge-graph-view.js';
 import { KnowledgeGraph } from './knowledge-graph.js';
+import { DomainMark } from './knowledge-mark.js';
 import { ActionsPanel, GraphWay, PageList, PreviewPanel, RuleBuilder } from './knowledge-panels.js';
 import { useOptionalProtoStore } from './harness-session.js';
 import type { ProtoSession } from './session.js';
@@ -94,6 +95,7 @@ export function KnowledgeFlow({ session, initial }: { session: ProtoSession; ini
     <div className="page wide kn-page">
       <div className="kn-head">
         <h1 tabIndex={-1}>{ROUTE_LABELS.knowledge}</h1>
+        <p className="kn-lead muted">{countLine('knowledge', world)} in your wiki. A slice is a saved choice of pages.</p>
         <section className="kn-slice" aria-labelledby="kn-slice-h">
           <h2 id="kn-slice-h" className="sr">Slice</h2>
           <label className="kn-field">
@@ -106,25 +108,26 @@ export function KnowledgeFlow({ session, initial }: { session: ProtoSession; ini
           <button type="button" className="btn secondary" onClick={() => send({ type: 'newSlice' })}>Make a new slice</button>
         </section>
       </div>
-      <p className="kn-lead muted">{countLine('knowledge', world)} in your wiki. A slice is a saved choice of pages. Pick one to see what an agent would get.</p>
 
       <div className="kn-columns">
         <div className="kn-main">
           <section className="kn-graph-section" aria-labelledby="kn-graph-h">
-            <h2 id="kn-graph-h">Graph of your wiki</h2>
-            <div className="kn-toolbar" role="group" aria-label="Graph tools">
-              <button type="button" className="btn secondary" aria-pressed={ks.lasso} disabled={frozen} onClick={() => send({ type: 'lasso', on: !ks.lasso })}>
-                Lasso: {ks.lasso ? 'on' : 'off'}
-              </button>
-              <button type="button" className="btn secondary" onClick={() => view.current?.fit()}>Fit all pages</button>
-              <span className="small muted kn-hint">
-                {frozen ? 'This slice is frozen. Unfreeze it to pick pages.' : ks.lasso ? 'Drag a loop around pages. Shift adds. Alt removes. Escape stops.' : 'Turn the lasso on to pick pages by drawing a loop.'}
-              </span>
+            <div className="kn-graph-head">
+              <h2 id="kn-graph-h">Graph of your wiki</h2>
+              <div className="kn-toolbar" role="group" aria-label="Graph tools">
+                <button type="button" className="btn secondary" aria-pressed={ks.lasso} disabled={frozen} onClick={() => send({ type: 'lasso', on: !ks.lasso })}>
+                  Lasso: {ks.lasso ? 'on' : 'off'}
+                </button>
+                <button type="button" className="btn secondary" onClick={() => view.current?.fit()}>Fit all pages</button>
+              </div>
             </div>
             <KnowledgeGraph pages={pages} lit={lit} marked={marked} preview={preview} lasso={ks.lasso && !frozen} viewRef={view}
               onLasso={(ids, mode) => send({ type: 'lassoResult', ids, mode })} onPageClick={id => send({ type: 'focusPage', id })} />
+            <p className="small muted kn-hint" id="kn-lasso-hint">
+              {frozen ? 'This slice is frozen. Unfreeze it to pick pages.' : ks.lasso ? 'Drag a loop around pages. Shift adds. Alt removes. Escape stops.' : 'Turn the lasso on to pick pages by drawing a loop.'}
+            </p>
             <ul className="kn-legend small" aria-label="Key to the graph">
-              {domains.map((d, i) => <li key={d}><span className={`kn-sw kn-sw-${i % 8}`} aria-hidden="true" />{d}</li>)}
+              {domains.map((d, i) => <li key={d}><DomainMark index={i} />{d}</li>)}
               <li><span className="kn-key kn-key-lit" aria-hidden="true" />Lit: in the slice</li>
               <li><span className="kn-key kn-key-dim" aria-hidden="true" />Dim: not in the slice</li>
               <li><span className="kn-key kn-key-cut" aria-hidden="true" />Dashed line: a link that leaves the slice</li>

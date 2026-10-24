@@ -20,7 +20,7 @@ test('the export summary has counts, tool references and slice rules in words, a
   assert.match(d.promise, /^This file has no secret values that Bowerloom holds and no wiki page text\./);
   assert.equal(EXPORT_PROMISE, d.promise);
   const missing = d.tools.find(t => t.id === CASE_IDS.mcpMissing)!;
-  assert.equal(missing.kindWords, 'MCP server');
+  assert.equal(missing.kindWords, 'tool connection');
   assert.match(missing.secretWords!, /LANTERN_TOKEN/);
   assert.equal(d.tools.find(t => t.id === CASE_IDS.hook)!.kindWords, 'hook (runs code)');
   assert.ok(d.bytes > 1000);

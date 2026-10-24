@@ -8,7 +8,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { buildBundle } from '../../shared/proto/bundle.js';
-import { EXPORT_PROMISE, NOTHING_NEW, bundleText, clashWords, describeExport, grantWords, hookWords, installBundle, installNothingNew, movedWords, nothingToExportWords, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
+import { EXPORT_PROMISE, MCP_GLOSS, NOTHING_NEW, bundleText, clashWords, describeExport, grantWords, hookWords, installBundle, installNothingNew, movedWords, nothingToExportWords, openExportedFile, secretWords } from '../../shared/proto/export-flow.js';
 import { globalScope } from '../../shared/proto/common.js';
 import { createStore, isDirty } from '../../shared/proto/store.js';
 import type { Store } from '../../shared/proto/store.js';
@@ -259,6 +259,7 @@ function Share({ session }: { session: ProtoSession }): ReactElement {
               {summary.tools.length > 0 && (
                 <>
                   <h5>Tool references</h5>
+                  {summary.tools.some(t => t.kindWords === 'tool connection') && <p className="small muted">{MCP_GLOSS}</p>}
                   <ul className="vx-lines">
                     {summary.tools.map((t, n) => <li key={`${n}-${t.id}`}>{t.name}, {t.kindWords}.{t.secretWords !== null && <span className="muted"> Needs a secret: {t.secretWords}.</span>}</li>)}
                   </ul>
@@ -317,14 +318,23 @@ function Colleague({ saved }: { saved: SavedFile | null }): ReactElement {
       <p className="small muted">Their harness now has {plural(c.skills, 'skill')}, {plural(c.agents, 'agent')}, {plural(c.tools, 'tool')}, and {plural(c.slices, 'slice')}.</p>
       <div className="vx-actions">
         <button type="button" className="btn" disabled={saved === null} aria-describedby="vx-open-hint" onClick={() => saved !== null && open(saved.text)}>Open an exported file</button>
-        <button type="button" className="btn secondary" disabled={saved === null} aria-describedby="vx-open-hint" onClick={() => saved !== null && open(saved.text.slice(0, Math.floor(saved.text.length / 2)))}>Open a damaged file (to see the error)</button>
         <span id="vx-open-hint" className="small muted">{saved === null ? 'Save a file under Export first.' : `The last file holds: ${saved.scopes}.`}</span>
       </div>
-      <div className="vx-paste">
-        <label htmlFor={pasteId} className="vx-pick"><span>Or paste the text of a file here</span>
-          <textarea id={pasteId} rows={3} value={pasted} onChange={e => setPasted(e.target.value)} spellCheck={false} /></label>
-        <button type="button" className="btn secondary vx-self" disabled={pasted.trim() === ''} onClick={() => open(pasted)}>Open pasted text</button>
-      </div>
+      <details className="explain vx-try">
+        <summary>Try it with a file of your own</summary>
+        <div className="vx-try-body">
+          <p className="small muted">For testing. Open a broken file to see the error, or paste the text of a file.</p>
+          <div className="vx-actions">
+            <button type="button" className="btn secondary" disabled={saved === null} aria-describedby="vx-open-hint" onClick={() => saved !== null && open(saved.text.slice(0, Math.floor(saved.text.length / 2)))}>Open a damaged file (to see the error)</button>
+          </div>
+          <div className="vx-paste">
+            <label htmlFor={pasteId} className="vx-pick"><span>Or paste the text of a file here</span>
+              <textarea id={pasteId} rows={3} value={pasted} onChange={e => setPasted(e.target.value)} spellCheck={false} /></label>
+            <button type="button" className="btn secondary vx-self" disabled={pasted.trim() === ''} aria-describedby={pasted.trim() === '' ? 'vx-paste-hint' : undefined} onClick={() => open(pasted)}>Open pasted text</button>
+            {pasted.trim() === '' && <span id="vx-paste-hint" className="small muted">Paste some text to open it.</span>}
+          </div>
+        </div>
+      </details>
       <div role="alert" aria-live="assertive" className="vx-error-live">{error !== null && <p className="vx-error"><span className="chip bad">Could not open</span> {error}</p>}</div>
       <div aria-live="polite" className="vx-live">
         {opened !== null && (

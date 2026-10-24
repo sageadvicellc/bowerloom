@@ -125,3 +125,19 @@ test('the style sheet uses tokens for colour and the versions token for motion',
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/);
   assert.match(css, /--motion-versions-ms/); assert.match(css, /--motion-versions-ease/); assert.match(css, /prefers-reduced-motion/);
 });
+
+test('the test aids sit in one closed disclosure, and the Share tab says what MCP is only where a tool connection is listed', () => {
+  const markup = draw(withVersions(1), 'share');
+  assert.match(markup, /<details class="explain vx-try"><summary>Try it with a file of your own<\/summary>/, 'closed: no open attribute');
+  const inside = markup.slice(markup.indexOf('<details class="explain vx-try"'), markup.indexOf('</details>'));
+  for (const aid of ['Open a damaged file (to see the error)', 'Or paste the text of a file here', 'Open pasted text']) assert.ok(inside.includes(aid), aid);
+  const outside = markup.replace(inside, '');
+  for (const aid of ['Open a damaged file', 'paste the text', 'Open pasted text']) assert.ok(!outside.includes(aid), `${aid} is not outside the disclosure`);
+  assert.ok(outside.includes('Open an exported file'), 'the real action stays outside');
+  assert.doesNotMatch(textOf(markup), /MCP server/);
+});
+
+test('the paste box does not leave a gap before its button', () => {
+  const css = readFileSync(join(DESKTOP, 'renderer', 'proto', 'versions-screen.css'), 'utf8');
+  assert.match(css, /\.vx-paste \.vx-pick \{[^}]*flex: none/, 'a label that grows would make a gap in a column');
+});

@@ -131,7 +131,7 @@ test('journey 5: pick a slice, read the preview, build rules, lasso on the graph
   const first = world.slices[0]!;
   const lit = expectedIds({ folders: [...first.rule.folders], types: [], tags: [], hops: 0, seeds: [...first.seeds] });
   await expect(page.getByTestId('slice-count')).toHaveText(String(lit.size));
-  await expect(page.getByText(/^The pages add up to about [\d,]+ tokens\. This is a rough estimate\.$/)).toBeVisible();
+  await expect(page.getByText(/^The pages add up to about [\d,]+ tokens, a rough measure of size\.$/)).toBeVisible();
   await expect(page.getByText(/^\d+ pages joined since your last visit\.$/)).toHaveText('3 pages joined since your last visit.');
   await expect(page.getByText(/links? leaves? this slice\. They are drawn as dashed lines on the graph\./)).toBeVisible();
   await expect(page.getByText(/^The agent gets a map of \d+ pages: a title and one line for each\./)).toBeVisible();
@@ -453,4 +453,185 @@ test('speed: a rule change repaints at once, and a lasso drag keeps a steady fra
   const fs = [...frames].sort((a, b) => a - b);
   console.log(`lasso drag, 240 moves over 700 pages: ${fs.length} frames, median ${fs[Math.floor(fs.length / 2)]!.toFixed(1)} ms, p95 ${fs[Math.floor(fs.length * 0.95)]!.toFixed(1)} ms, worst ${fs[fs.length - 1]!.toFixed(1)} ms`);
   expect(fs[Math.floor(fs.length * 0.95)]!).toBeLessThan(50);
+});
+
+// ------------------------------------------------------------------------------------------------------- words on the picture
+
+interface Label { kind: 'hub' | 'page'; text: string; x0: number; y0: number; x1: number; y1: number; fontPx: number }
+const labelsOf = (): Promise<Label[]> => page.evaluate(() => [...((document.querySelector('.kn-canvas') as HTMLElement & { graphView: { labels(): Label[] } }).graphView.labels())]);
+const overlapping = (a: Label, b: Label): boolean => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
+test('the graph names its eight domain folders and its busiest pages, never covers one label with another, and keeps every word at 12 pixels or more', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  const domains = [...new Set(pages.map(p => p.folder.split('/')[0]!))].sort();
+  const sizes: string[] = [];
+  for (const [w, h] of [[1440, 900], [900, 600]] as const) {
+    await resize(w, h);
+    await expect.poll(async () => (await labelsOf()).filter(l => l.kind === 'hub').length, { timeout: 10_000 }).toBe(8);
+    const labels = await labelsOf(), hubs = labels.filter(l => l.kind === 'hub');
+    expect(hubs.map(l => l.text).sort(), `${w}x${h}: every domain is named`).toEqual(domains);
+    for (const l of labels) { expect(l.fontPx, `${l.text} is at least 12 px`).toBeGreaterThanOrEqual(12); expect(l.y1 - l.y0, `${l.text} is tall enough for its words`).toBeGreaterThanOrEqual(12); }
+    for (let i = 0; i < labels.length; i += 1) for (let j = i + 1; j < labels.length; j += 1) expect(overlapping(labels[i]!, labels[j]!), `${labels[i]!.text} and ${labels[j]!.text} do not overlap`).toBe(false);
+    // Every label is on the picture.
+    const box = await canvasBox();
+    for (const l of hubs) { expect(l.x0).toBeGreaterThanOrEqual(-1); expect(l.x1).toBeLessThanOrEqual(box.width + 1); expect(l.y0).toBeGreaterThanOrEqual(-1); expect(l.y1).toBeLessThanOrEqual(box.height + 1); }
+    sizes.push(`${w}x${h}: ${labels.length} labels (${hubs.length} domains, ${labels.length - hubs.length} pages), smallest word ${Math.min(...labels.map(l => l.fontPx))} px`);
+  }
+  console.log(sizes.join('; '));
+  // The page labels are the pages with the most links.
+  await resize(1440, 900);
+  const degree = new Map<string, number>();
+  for (const p of pages) for (const to of p.links) if (to !== p.id && pages.some(q => q.id === to)) { degree.set(p.id, (degree.get(p.id) ?? 0) + 1); degree.set(to, (degree.get(to) ?? 0) + 1); }
+  const top = [...pages].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.id.localeCompare(b.id)).slice(0, 12).map(p => p.title);
+  const named = (await labelsOf()).filter(l => l.kind === 'page').map(l => l.text.replace(/…$/, ''));
+  expect(named.length, 'some busy pages are named when there is room').toBeGreaterThan(2);
+  for (const t of named) expect(top.some(full => full.startsWith(t)), `${t} is one of the 12 busiest pages`).toBe(true);
+});
+
+test('a lit slice names its busiest lit pages, and a page that is not in the slice has a fainter link', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  await resize(1440, 900);
+  await chooseSlice(world.slices[0]!.name);
+  const litIds = expectedIds({ folders: [...world.slices[0]!.rule.folders], types: [], tags: [], hops: 0, seeds: [...world.slices[0]!.seeds] });
+  const litTitles = pages.filter(p => litIds.has(p.id)).map(p => p.title);
+  await expect.poll(async () => (await labelsOf()).filter(l => l.kind === 'page').length, { timeout: 10_000 }).toBeGreaterThan(0);
+  const named = (await labelsOf()).filter(l => l.kind === 'page').map(l => l.text.replace(/…$/, ''));
+  expect(named.some(t => litTitles.some(full => full.startsWith(t))), 'at least one named page is in the slice').toBe(true);
+});
+
+test('the pointer over a page names it: its title and its domain folder, in a box next to the pointer', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  await resize(1440, 900);
+  // A page with room around it, so the pointer is over that page and no other.
+  const target = await page.evaluate(() => {
+    const host = document.querySelector('.kn-canvas') as HTMLElement & { graphView: { placed(): { id: string; title: string; folder: string; degree: number }[]; screenOf(id: string): { x: number; y: number } | null } };
+    const r = host.getBoundingClientRect(), all = host.graphView.placed().map(n => ({ id: n.id, title: n.title, folder: n.folder, p: host.graphView.screenOf(n.id) })).filter(n => n.p !== null && n.p.x > 60 && n.p.x < r.width - 60 && n.p.y > 60 && n.p.y < r.height - 60);
+    const alone = all.find(n => all.every(m => m === n || Math.hypot(m.p!.x - n.p!.x, m.p!.y - n.p!.y) > 16))!;
+    return { id: alone.id, title: alone.title, folder: alone.folder, x: alone.p!.x + r.left, y: alone.p!.y + r.top };
+  });
+  const tip = page.getByTestId('graph-tip');
+  await expect(tip).toBeHidden();
+  await page.mouse.move(target.x - 80, target.y - 70);
+  await page.mouse.move(target.x, target.y, { steps: 5 });
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText(target.title);
+  await expect(tip).toContainText(`Folder ${target.folder.split('/')[0]}`);
+  // Next to the pointer, not far from it.
+  const tipBox = (await tip.boundingBox())!;
+  expect(Math.abs(tipBox.x - target.x), 'the box is close to the pointer in x').toBeLessThan(260);
+  expect(Math.abs(tipBox.y - target.y), 'the box is close to the pointer in y').toBeLessThan(120);
+  // The pointer leaves the graph: the box goes.
+  const outside = await canvasBox();
+  await page.mouse.move(outside.x - 40, outside.y + 40, { steps: 5 });
+  await expect(tip).toBeHidden();
+  await page.mouse.move(target.x - 80, target.y - 70, { steps: 3 });
+  await page.mouse.move(target.x, target.y, { steps: 5 });
+  await expect(tip).toBeVisible();
+  // The lasso takes the pointer, so the box is not shown while it is on.
+  await page.getByRole('button', { name: /^Lasso: / }).click();
+  await page.mouse.move(target.x - 3, target.y - 3, { steps: 3 });
+  await page.mouse.move(target.x, target.y, { steps: 3 });
+  await expect(tip).toBeHidden();
+});
+
+test('the graph stops asking for frames when it rests, starts again when the pointer moves over it, and stops again', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await page.evaluate(() => {
+    const w = window as unknown as { __raf: number };
+    w.__raf = 0;
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (f: FrameRequestCallback): number => { w.__raf += 1; return raf(f); };
+  });
+  await openKnowledge();
+  const calls = (): Promise<number> => page.evaluate(() => (window as unknown as { __raf: number }).__raf);
+  // The graph says when its drawing loop has gone to sleep (`looping`), and nothing is animating either.
+  const asleep = async (): Promise<void> => {
+    await expect.poll(() => page.evaluate(() => (document.querySelector('.kn-canvas') as HTMLElement & { graphView: { looping(): boolean } }).graphView.looping()), { timeout: 15_000 }).toBe(false);
+    await expect.poll(() => page.evaluate(() => document.getAnimations().length), { timeout: 10_000 }).toBe(0);
+  };
+  // A window in which to count: the page itself waits this long, and the number of frames asked for in it is read before and after.
+  const during = (ms: number): Promise<void> => page.evaluate(t => new Promise<void>(resolve => { setTimeout(resolve, t); }), ms);
+  await asleep();
+  const idleFrom = await calls();
+  await during(3000);
+  const idle = (await calls()) - idleFrom;
+  console.log(`rAF calls in 3 s idle after settle: ${idle}`);
+  expect(idle, 'no drawing loop while nothing changes').toBeLessThanOrEqual(3);
+  // Moving the pointer over the graph wakes it.
+  const box = await canvasBox(), moveFrom = await calls(), start = Date.now();
+  for (let i = 0; Date.now() - start < 3000; i += 1) { await page.mouse.move(box.x + 80 + ((i * 7) % 400), box.y + 80 + ((i * 13) % 300)); await framesPainted(page); }
+  const moving = (await calls()) - moveFrom;
+  console.log(`rAF calls in 3 s of pointer movement: ${moving}`);
+  expect(moving, 'the loop runs while the pointer moves').toBeGreaterThan(60);
+  // And it goes back to sleep.
+  await asleep();
+  const againFrom = await calls();
+  await during(3000);
+  expect((await calls()) - againFrom, 'asleep again').toBeLessThanOrEqual(3);
+  // A new slice still lights up and fades in while the loop was asleep: the picture changes, so a frame was drawn.
+  const before = await page.locator('.kn-canvas').screenshot({ scale: 'css' });
+  await chooseSlice(world.slices[1]!.name);
+  await expect.poll(async () => !(await page.locator('.kn-canvas').screenshot({ scale: 'css' })).equals(before), { timeout: 5_000 }).toBe(true);
+  await asleep();
+  const slept = await calls();
+  await during(2500);
+  expect((await calls()) - slept, 'asleep again after the fade').toBeLessThanOrEqual(3);
+  // The lasso still picks pages after a sleep.
+  await page.getByRole('button', { name: 'Make a new slice' }).click();
+  await page.getByRole('button', { name: /^Lasso: / }).click();
+  const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await dragLoop(ring(c.x, c.y, 60), []);
+  await expect(page.locator('.kn-picked')).toContainText(/\d+ pages? picked\./);
+});
+
+test('the graph starts high on the screen: its top is above y 220 in a tall window, and the whole graph shows in a small one', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  const read = async (): Promise<{ top: number; bottom: number; inner: number; footer: number }> => page.evaluate(() => {
+    const c = document.querySelector('.kn-canvas')!.getBoundingClientRect(), f = document.querySelector('footer')!.getBoundingClientRect();
+    return { top: c.top, bottom: c.bottom, inner: window.innerHeight, footer: f.top };
+  });
+  // The real window cannot be taller than this screen, so a tall window is the browser's own size override at 1440 by 900.
+  const cdp = await page.context().newCDPSession(page);
+  for (const [w, h] of [[1440, 900], [900, 600]] as const) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+    await expect.poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight])).toEqual([w, h]);
+    await framesPainted(page);
+    const m = await read();
+    console.log(`${w}x${h}: the graph starts at y ${m.top.toFixed(0)} and ends at y ${m.bottom.toFixed(0)} (footer at ${m.footer.toFixed(0)})`);
+    expect(m.top, `${w}x${h}: the graph starts above y 220`).toBeLessThan(220);
+    expect(m.bottom, `${w}x${h}: the whole graph is in the first screenful`).toBeLessThanOrEqual(m.footer);
+  }
+  await cdp.send('Emulation.clearDeviceMetricsOverride');
+});
+
+test('the graph is fitted again when the window changes size, until the person moves the view', async () => {
+  test.setTimeout(120_000);
+  await launch();
+  await openKnowledge();
+  const inView = async (): Promise<number> => {
+    const box = await canvasBox();
+    return (await Promise.all(pages.map(async p => ({ at: await screenOfPage(p.id) })))).filter(n => n.at !== null && n.at.x > box.x && n.at.x < box.x + box.width && n.at.y > box.y && n.at.y < box.y + box.height).length;
+  };
+  await resize(900, 600);
+  await expect.poll(inView, { timeout: 10_000 }).toBeGreaterThan(600);
+  await resize(1440, 900);
+  await expect.poll(inView, { timeout: 10_000 }).toBeGreaterThan(600);
+  const box = await canvasBox(), middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.wheel(0, -600);
+  await viewIsStill(pages[0]!.id, 30);
+  const zoomed = await page.evaluate(() => (document.querySelector('.kn-canvas') as HTMLElement & { graphView: { viewport(): { k: number } } }).graphView.viewport().k);
+  await resize(900, 600);
+  await viewIsStill(pages[0]!.id, 30);
+  const after = await page.evaluate(() => (document.querySelector('.kn-canvas') as HTMLElement & { graphView: { viewport(): { k: number } } }).graphView.viewport().k);
+  expect(after, 'a view the person zoomed is left as it is').toBeCloseTo(zoomed, 2);
 });

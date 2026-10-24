@@ -10,6 +10,9 @@ import { ACCESS_WORDS } from './harnessmodel.js';
 import type { Bundle, ImportClash, ImportGrant, ImportPreview, SecretSlot, ToolKind, World } from './types.js';
 
 /** What the file holds and does not hold. Skill text, agent text and file locations are in it as written, so the promise says so. */
+/** Said once, under the list of tool references: what "MCP" is. */
+export const MCP_GLOSS = 'A tool connection (MCP) links an agent to an outside service.';
+
 export const EXPORT_PROMISE = 'This file has no secret values that Bowerloom holds and no wiki page text. It does have the text of your skills and agents, and file locations inside each harness. Read it before you share it.';
 
 /** The bundle as the text of the file. */
@@ -17,7 +20,7 @@ export function bundleText(bundle: Bundle): string {
   return JSON.stringify(bundle);
 }
 
-const KIND_WORDS: Readonly<Record<ToolKind, string>> = { mcp: 'MCP server', prompt: 'saved prompt', hook: 'hook (runs code)' };
+const KIND_WORDS: Readonly<Record<ToolKind, string>> = { mcp: 'tool connection', prompt: 'saved prompt', hook: 'hook (runs code)' };
 
 /** "LANTERN_TOKEN, an environment variable" or "TIDAL_KEY, a keychain entry". The value is never named. */
 export function secretWords(slot: SecretSlot): string {

@@ -65,8 +65,11 @@ export function formatCount(n: number): string {
   return `${n < 0 ? '-' : ''}${out.join(',')}`;
 }
 
-/** "about 12,400 tokens. This is a rough estimate." */
-export const tokenSentence = (tokens: number): string => `about ${formatCount(tokens)} ${tokens === 1 ? 'token' : 'tokens'}. This is a rough estimate.`;
+const tokenNoun = (tokens: number): string => (tokens === 1 ? 'token' : 'tokens');
+/** The first time the screen says "tokens", it says what they are: "about 12,400 tokens, a rough measure of size." */
+export const tokenGloss = (tokens: number): string => `about ${formatCount(tokens)} ${tokenNoun(tokens)}, a rough measure of size.`;
+/** Every time after that: "about 12,400 tokens." */
+export const tokenSentence = (tokens: number): string => `about ${formatCount(tokens)} ${tokenNoun(tokens)}.`;
 
 const MEANING: Readonly<Record<Enforcement, string>> = {
   'blocks reads': 'The agent cannot read pages outside this slice. The interface refuses the read.',

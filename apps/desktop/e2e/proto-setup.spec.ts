@@ -96,14 +96,24 @@ test('journey 1: welcome, roots, scan, tick, settle a conflict, bring in, and la
   await expect(page.getByRole('heading', { level: 3, name: 'Same item, different text' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
   await expect(page.getByText('Settle 1 item above to go on.')).toBeVisible();
-  const open = page.getByRole('button', { name: /^Choose a version of / });
-  await expect(open).toHaveAttribute('aria-expanded', 'false');
-  await open.click();
-  await expect(open).toHaveAttribute('aria-expanded', 'true');
-  for (const who of ['Claude Code', 'Codex', 'OpenCode']) await expect(page.getByRole('region', { name: `${who} version` })).toBeVisible();
+  // All three copies are in view at once: there is no button to open them.
+  await expect(page.getByRole('button', { name: /^Choose a version of / })).toHaveCount(0);
+  for (const who of ['Claude Code', 'Codex', 'OpenCode']) {
+    const copy = page.getByRole('region', { name: new RegExp(`^${who}'s copy, at `) });
+    await expect(copy).toBeVisible();
+    await expect(copy.getByRole('button', { name: 'Keep this copy' })).toBeVisible();
+    await expect(copy.locator('.sx-path')).toHaveAttribute('title', /\//);
+    await expect(copy.locator('.sx-path .sr')).toContainText('Path: /');
+  }
+  // The other two copies mark the lines that differ from the first, with the word "changed" and a background.
+  const marked = page.getByRole('region', { name: /^Codex's copy, at / }).locator('.sx-line.is-changed');
+  expect(await marked.count(), 'Codex differs from Claude Code').toBeGreaterThan(0);
+  await expect(marked.first().locator('.sx-mark')).toHaveText('changed');
+  await expect(marked.first()).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.getByRole('region', { name: /^Claude Code's copy, at / }).locator('.sx-line.is-changed')).toHaveCount(0);
   await shoot('03-review-conflict', () => page.getByRole('heading', { level: 3, name: 'Same item, different text' }).evaluate(el => { el.scrollIntoView({ block: 'start' }); }));
-  await page.getByRole('button', { name: 'Keep the Codex version' }).click();
-  await expect(page.getByText(/kept the Codex version\./)).toBeVisible();
+  await page.getByRole('button', { name: "Keep this copy: Codex's copy" }).click();
+  await expect(page.getByText(/kept Codex's copy\./)).toBeVisible();
   await expect(page.getByText('Settled').first()).toBeVisible();
   // The card that had the keyboard is gone, and no conflict is left, so the keyboard is on Continue.
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeFocused();
@@ -127,7 +137,7 @@ test('journey 1: welcome, roots, scan, tick, settle a conflict, bring in, and la
   // Back on Setup the finished state is still there, and Start again resets only the screen.
   await page.locator('nav.nav').getByRole('button', { name: 'Setup' }).click();
   await expect(step('Everything is brought in')).toBeVisible();
-  await expect(page.getByText(/Start again resets these steps only; it does not undo the version/)).toBeVisible();
+  await expect(page.getByText('Resets these steps only. The version and your harness changes stay. Use Versions to go back.')).toBeVisible();
   await page.getByRole('button', { name: 'Start again', exact: true }).click();
   await expect(step('Welcome')).toBeVisible();
   await page.locator('nav.nav').getByRole('button', { name: 'Versions' }).click();
@@ -140,11 +150,10 @@ test('Start again says what it does not undo, and a second run that changes noth
   await page.getByRole('button', { name: 'Continue to the scan' }).click();
   await page.getByRole('button', { name: 'Look for settings folders' }).click();
   await page.getByRole('button', { name: 'Choose which places to read' }).click();
-  await expect(page.getByText('Start again resets these steps only; it does not undo changes already made to the harness, which you can drop with Discard on the Harness screen.')).toBeVisible();
+  await expect(page.getByText('Resets these steps only. Changes already made stay.')).toBeVisible();
   await page.getByRole('button', { name: 'Select all' }).click();
   await page.getByRole('button', { name: 'Read the ticked places' }).click();
-  await page.getByRole('button', { name: /^Choose a version of / }).click();
-  await page.getByRole('button', { name: 'Keep the Codex version' }).click();
+  await page.getByRole('button', { name: "Keep this copy: Codex's copy" }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Bring these in', exact: true }).click();
   await expect(page.getByText('Version 1 was made: Brought in from this computer.')).toBeVisible();
@@ -190,18 +199,17 @@ test('keep both: names must differ and be free, then three items replace the one
   await page.getByRole('button', { name: 'Read the ticked places' }).click();
   await expect(page.getByText(/from a library, kept as a reference/)).toBeVisible();
   await expect(page.getByText(/120 items from Evergreen Kit 2\.3\.0/)).toBeVisible();
-  await page.getByRole('button', { name: /^Choose a version of / }).click();
-  const first = page.getByLabel(/^Name for the Claude Code version$/), second = page.getByLabel(/^Name for the Codex version$/);
+  const first = page.getByLabel(/^Name for Claude Code's copy$/), second = page.getByLabel(/^Name for Codex's copy$/);
   await second.fill(await first.inputValue());
-  await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
+  await page.getByRole('button', { name: 'Keep all 3 copies' }).click();
   await expect(page.getByText('Each copy needs its own name.')).toBeVisible();
   await second.fill('');
-  await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
+  await page.getByRole('button', { name: 'Keep all 3 copies' }).click();
   await expect(page.getByText('Every copy needs a name.')).toBeVisible();
   await second.fill((await first.inputValue()) + ' (Codex)');
-  await page.getByRole('button', { name: 'Keep all 3 versions' }).click();
-  await expect(page.getByText(/kept all 3 versions under separate names/)).toBeVisible();
-  await expect(page.getByText('3 different texts')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Keep all 3 copies' }).click();
+  await expect(page.getByText(/kept all 3 copies under separate names/)).toBeVisible();
+  await expect(page.getByText('3 different copies')).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Bring these in', exact: true }).click();
   await expect(page.getByText('Version 1 was made: Brought in from this computer.')).toBeVisible();
@@ -238,4 +246,68 @@ test('the reveal uses the Jhey tokens, and reduce motion makes them zero', async
   await expect(page.locator('.sx-place').last()).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect.poll(() => read('--motion-setup-reveal-ms')).toBe('280ms');
+});
+
+/** The footer of the step is on the screen without any scrolling, and the title of the screen and the heading of the step are both in view. */
+async function expectWayOnInView(label: string, entry = true): Promise<void> {
+  const view = await page.evaluate(() => ({ h: window.innerHeight, main: document.querySelector('main')!.scrollTop }));
+  const footer = await page.locator('.sx-footer').boundingBox(), heading = await page.locator('#sx-heading').boundingBox(), title = await page.getByRole('heading', { level: 1, name: 'Setup' }).boundingBox();
+  expect(footer, `${label}: footer`).not.toBeNull(); expect(heading, `${label}: heading`).not.toBeNull(); expect(title, `${label}: title`).not.toBeNull();
+  expect(footer!.y + footer!.height, `${label}: the footer ends inside the window`).toBeLessThanOrEqual(view.h);
+  expect(footer!.y, `${label}: the footer starts inside the window`).toBeGreaterThan(0);
+  if (!entry) return; // the person has scrolled to reach a control: only the way on has to stay in view
+  expect(title!.y, `${label}: the screen title is not cut off`).toBeGreaterThanOrEqual(0);
+  expect(heading!.y, `${label}: the step heading is not cut off`).toBeGreaterThanOrEqual(0);
+  expect(heading!.y + heading!.height, `${label}: the step heading is above the footer`).toBeLessThan(footer!.y);
+}
+
+test('every step has its way on in view without scrolling, opens at its heading, and the disabled button is explained in words', async () => {
+  test.setTimeout(120_000);
+  await resize(900, 600);
+  await expectWayOnInView('welcome');
+  await toPlaces();
+  await expectWayOnInView('roots', false);
+  await page.getByRole('button', { name: 'Continue to the scan' }).click();
+  await expectWayOnInView('places before the scan');
+  await expect(page.locator('.sx-footer').getByRole('button', { name: 'Look for settings folders' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Look for settings folders' }).click();
+  // The scan makes a long list, and the next step is still in view at the bottom of the window. There is no greyed scan button.
+  await expect(page.locator('.sx-place').last()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Look for settings folders' })).toHaveCount(0);
+  await expectWayOnInView('places after the scan');
+  await expect(page.locator('.sx-footer').getByRole('button', { name: 'Choose which places to read' })).toBeVisible();
+  // Scroll away, then go on: the next step opens at the top, with the title and the heading in view.
+  await page.locator('main').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.getByRole('button', { name: 'Choose which places to read' }).click();
+  await expect(step('Choose what to read')).toBeFocused();
+  expect(await page.locator('main').evaluate(el => el.scrollTop), 'the new step starts at the top').toBe(0);
+  await expectWayOnInView('contents');
+  await expect(page.locator('.sx-footer').getByRole('button', { name: 'Read the ticked places' })).toBeDisabled();
+  await expect(page.locator('.sx-footer')).toContainText('Tick at least one place to go on.');
+  await page.getByRole('button', { name: 'Select all' }).click();
+  await page.getByRole('button', { name: 'Read the ticked places' }).click();
+  await expectWayOnInView('review');
+  await expect(page.locator('.sx-footer')).toContainText('Settle 1 item above to go on.');
+  await expect(page.locator('.sx-footer').getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  // The path of a copy is on one line, and its last part is whole.
+  const path = page.locator('.sx-variant .sx-path').first(), box = await path.boundingBox(), line = await path.evaluate(el => parseFloat(getComputedStyle(el).lineHeight));
+  expect(box!.height, 'one line').toBeLessThanOrEqual(line + 2);
+  const tail = page.locator('.sx-variant .sx-path-tail').first();
+  expect(await tail.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'the end of the path is not cut').toBe(true);
+});
+
+test('the reveal of the found places plays the first time only, and the list is simply there after Back', async () => {
+  test.setTimeout(120_000);
+  await toPlaces();
+  await page.getByRole('button', { name: 'Continue to the scan' }).click();
+  await page.getByRole('button', { name: 'Look for settings folders' }).click();
+  await expect(page.locator('.sx-place.sx-reveal')).toHaveCount(await page.locator('.sx-place').count());
+  await animationsDone(page);
+  await page.getByRole('button', { name: 'Choose which places to read' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(step('Look for settings folders')).toBeVisible();
+  const count = await page.locator('.sx-place').count();
+  expect(count).toBeGreaterThan(8);
+  await expect(page.locator('.sx-place.sx-reveal'), 'no place is revealed a second time').toHaveCount(0);
+  expect(await page.evaluate(() => document.getAnimations().filter(a => a instanceof CSSAnimation && a.playState === 'running').map(a => (a as CSSAnimation).animationName)), 'no reveal is playing').toEqual([]);
 });

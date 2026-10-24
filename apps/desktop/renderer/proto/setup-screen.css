@@ -2,8 +2,15 @@
  * The setup and scan screen. Colours and sizes come from tokens.css only. The reveal of found places uses the setup tokens that
  * motion-tokens.ts publishes (--motion-setup-reveal-*); with "reduce motion" on they are 0, and nothing moves.
  */
-.sx-page { max-width: 56rem; }
-.sx-top { min-height: 3.25rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.sx-page { max-width: 56rem; padding-bottom: var(--space-6); }
+/* The footer of a step sticks to the bottom edge of the scrolling area, so that area has no padding of its own at the bottom: the page has it instead. */
+main:has(.sx-page) { padding-bottom: 0; }
+.sx-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.sx-top h1 { margin: 0; }
+/* Start again sits beside the title, with its one short line, so it does not push the steps down. */
+.sx-restart { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-3); }
+.sx-restart p { margin: 0; }
+.sx-small { padding: var(--space-1) var(--space-4); }
 
 .sx-steps { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: 0; margin: 0; list-style: none; font-size: var(--text-small); color: var(--text-muted); }
 .sx-steps li { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); border-radius: var(--radius-pill); border: 1px solid transparent; }
@@ -13,6 +20,9 @@
 .sx-steps li.is-past .sx-num { background: var(--good-bg); color: var(--good-fg); border-color: var(--good-fg); }
 
 .sx-card { gap: var(--space-4); }
+/* The way on is always in view: a bar at the bottom of the card that sticks to the bottom of the window while the step is longer than the window. */
+.sx-footer { position: sticky; bottom: 0; z-index: 1; margin-top: auto; margin-inline: calc(-1 * var(--space-5)); margin-bottom: calc(-1 * var(--space-5)); padding: var(--space-3) var(--space-5); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius); }
+.sx-footer .btn.big { padding: var(--space-3) var(--space-5); font-size: var(--text-base); }
 .sx-heading { font-size: var(--text-title); line-height: 1.25; }
 .sx-heading:focus { outline: none; }
 .sx-heading:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
@@ -51,12 +61,22 @@
 .sx-conflicts { display: flex; flex-direction: column; gap: var(--space-3); }
 .sx-conflict { border: 1px solid var(--warn-fg); border-radius: var(--radius); padding: var(--space-4) var(--space-5); background: var(--surface); display: flex; flex-direction: column; gap: var(--space-3); }
 .sx-conflict h4 { font-size: var(--text-base); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 0; }
-.sx-picker { display: flex; flex-direction: column; gap: var(--space-4); }
-.sx-variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3); }
-.sx-variant > button { margin-top: auto; padding: var(--space-3); }
+/* The copies sit side by side, all in view at once. Each one shows its path on one line and the lines that differ from the first copy. */
+.sx-variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); align-items: stretch; }
 .sx-variant { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.sx-variant > .btn { margin-top: auto; justify-content: center; padding: var(--space-2) var(--space-3); }
 .sx-variant h5 { margin: 0; font-size: var(--text-base); font-weight: 650; }
-.sx-text { margin: 0; max-height: 9rem; overflow: auto; font-size: 0.8rem; }
+.sx-path { display: flex; min-width: 0; margin: 0; white-space: nowrap; }
+.sx-path-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sx-path-tail, .sx-path-more { flex: none; }
+.sx-path-more { margin-left: var(--space-2); }
+.sx-count-line { margin: 0; }
+.sx-text { position: relative; margin: 0; max-height: 14rem; overflow: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.45; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) 0; }
+.sx-line { padding: 0 var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sx-line.is-changed { background: var(--warn-bg); color: var(--warn-fg); }
+/* A changed line has a word, not only a background. */
+.sx-mark { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-pill); font-family: var(--font-body); font-size: 0.7rem; font-weight: 650; line-height: 1.35; vertical-align: 1px; color: var(--warn-fg); background: var(--warn-bg); }
+.sx-keepall .sx-names { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
 .sx-name { display: flex; flex-direction: column; gap: var(--space-1); }
 .sx-name input { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
 .sx-name input:disabled { background: var(--surface-2); color: var(--text-muted); }

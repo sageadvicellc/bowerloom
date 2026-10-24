@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { generateWorld } from '../shared/proto/sample.js';
 import { countMatches, describeRule, matchPages } from '../shared/proto/slicerule.js';
 import { buildFolderTree, facetCounts, folderState, pagesInFolder, pagesWithTag, setHops, toggleFolder, toggleTag, toggleType } from '../shared/proto/slice-tree.js';
-import { badgeFor, buildPreview, estimateMapTokens, formatCount, memoMatch, tokenSentence } from '../shared/proto/slice-preview.js';
+import { badgeFor, buildPreview, estimateMapTokens, formatCount, memoMatch, tokenGloss, tokenSentence } from '../shared/proto/slice-preview.js';
 import { combinePicks, lassoMode, nearestNode, nodesInPolygon, pointInPolygon, polygonBounds, thinPath } from '../shared/proto/slice-lasso.js';
 import { EMPTY_RULE, initialKnowledge, isDirty, reduceKnowledge, workingSlice } from '../shared/proto/knowledge-state.js';
 import type { KnowledgeState } from '../shared/proto/knowledge-state.js';
@@ -92,8 +92,9 @@ test('memoMatch gives the very same set for the same rule, and the same answer a
 
 test('the words for tokens and for each interface are plain', () => {
   assert.equal(formatCount(1234567), '1,234,567');
-  assert.match(tokenSentence(12400), /^about 12,400 tokens\. This is a rough estimate\.$/);
-  assert.match(tokenSentence(1), /^about 1 token\./);
+  assert.equal(tokenGloss(12400), 'about 12,400 tokens, a rough measure of size.', 'the first mention says what a token is');
+  assert.equal(tokenSentence(12400), 'about 12,400 tokens.', 'later mentions do not repeat it');
+  assert.match(tokenGloss(1), /^about 1 token,/); assert.match(tokenSentence(1), /^about 1 token\./);
   const blocks = badgeFor({ id: 'claude-code', installed: 'installed', notice: null, enforcement: 'blocks reads' });
   const advisory = badgeFor({ id: 'codex', installed: 'installed', notice: null, enforcement: 'advisory only' });
   assert.equal(blocks.label, 'Claude Code: blocks reads'); assert.equal(advisory.label, 'Codex: advisory only');
