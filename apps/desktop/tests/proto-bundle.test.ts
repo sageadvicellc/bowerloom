@@ -113,10 +113,13 @@ test('export, then a plain JSON round trip, then import into a second store give
   second.dispatch({ type: 'apply', label: 'empty' });
   const landed = commitImport(roundTrip(exported), second.getState().committed);
   const got = landed.items.filter(i => i.kind === 'skill' || i.kind === 'agent');
-  assert.deepEqual(got, exported.items);
+  const rooted = (items: readonly (typeof got)[number][]) => items.map(i => ({ ...i, foundAt: i.foundAt.map(f => ({ ...f, path: f.path.replace('/sample/harness/', '') })) }));
+  assert.deepEqual(rooted(got), exported.items, 'the same items, except that a found path now sits under the receiving harness');
+  assert.ok(got.every(i => i.foundAt.every(f => f.path.startsWith('/sample/harness/'))));
   assert.deepEqual(landed.slices.map(s => ({ id: s.id, name: s.name, rule: s.rule, seeds: s.seeds, pinned: s.pinned })), [{ id: 'slice-1', name: 'Notes', rule: RULE, seeds: [], pinned: false }]);
   const tools = landed.items.filter(i => i.kind === 'tool');
   assert.deepEqual(tools.map(t => [t.id, t.name]), [['t1', 'Search'], ['t2', 'Summarize'], ['t3', 'Format hook']]);
+  assert.equal(landed.items.filter(i => i.kind === 'context-slice').length, 1, 'the slice rule arrives with its slice item');
   const mcp = tools[0] as McpTool;
   assert.deepEqual(mcp.secret, { kind: 'env', name: 'SEARCH_TOKEN', state: 'missing' }, 'the secret is still to be added');
   assert.equal(JSON.stringify(landed).includes('sk-live-123456'), false);
@@ -129,7 +132,7 @@ test('the import into a world that already has the same name keeps both: the new
   const w = source(), exported = roundTrip(buildBundle(w, ['global']));
   const base = makeWorld(), existing: World = { ...base, items: [skill('s1', 'Review', 'global', 'Another text.'), skill('x', 'Other')] };
   const landed = commitImport(exported, existing);
-  assert.equal(landed.items.length, 2 + 3 + 4 - 0, 'two existing, three tools, four items; nothing dropped');
+  assert.equal(landed.items.length, 2 + 3 + 4 + 1, 'two existing, three tools, four items and one slice item; nothing dropped');
   const names = landed.items.filter(i => i.kind === 'skill').map(i => i.name);
   assert.deepEqual(names, ['Review', 'Other', 'Review (imported)', 'Plan']);
   const renamed = landed.items.find(i => i.name === 'Review (imported)') as SkillItem;
@@ -182,7 +185,7 @@ test('a bundle of 2,000 skills previews and imports quickly', () => {
 
 test('special characters survive an export and an import', () => {
   const name = "Réseau \u{1F33F} '; DROP TABLE x; --", text = 'Zeile eins\n‮ line \u0000 two';
-  const w: World = { ...makeWorld(), items: [{ ...skill('u1', name), foundAt: [found('claude-code', '/sample/u', text)] }] };
+  const w: World = { ...makeWorld(), items: [{ ...skill('u1', name), foundAt: [found('claude-code', '/sample/u', text, 'h-u')] }] };
   const landed = commitImport(roundTrip(buildBundle(w, ['global'])), target());
   assert.equal(landed.items[0]!.name, name); assert.equal((landed.items[0] as SkillItem).foundAt[0]!.text, text);
 });

@@ -91,7 +91,7 @@ test('share: export has scope ticks, counts, tool references, slice rules, the p
   assert.match(t, /Tool references/); assert.match(t, /Needs a secret: LANTERN_TOKEN, an environment variable\./);
   assert.match(t, /hook \(runs code\)/);
   assert.match(t, /Slice rules/); assert.match(t, /Library items are not in the file\./);
-  assert.match(t, /No secrets and no wiki page text are in this file\./);
+  assert.match(t, /This file has no secret values that Bowerloom holds and no wiki page text\./);
   assert.match(markup, /<button[^>]*>Save file<\/button>/);
   assert.doesNotMatch(t, /Saved as a file/, 'nothing is saved before the button is pressed');
 });

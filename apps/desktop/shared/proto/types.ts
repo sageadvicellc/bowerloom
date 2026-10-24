@@ -130,11 +130,20 @@ export type BundleItem = SkillItem | AgentItem;
 /** An export bundle (spec 6.7): harness items, tool references with no secret values, and slice rules. No wiki page text. */
 export interface Bundle { readonly scopeIds: readonly string[]; readonly items: readonly BundleItem[]; readonly toolRefs: readonly ToolReference[]; readonly sliceRules: readonly { readonly sliceId: string; readonly name: string; readonly rule: SliceRule }[] }
 
-/** A file an import would write. */
-export interface ImportFile { readonly path: string; readonly action: 'add' | 'change' }
+/** A file an import would write. `characters` is how many characters the file would hold. */
+export interface ImportFile { readonly path: string; readonly action: 'add' | 'change'; readonly characters: number }
 
 /** An imported item that meets one already there. */
 export interface ImportClash { readonly itemId: string; readonly name: string; readonly reason: 'same-name' | 'different-text' }
 
-/** What an import would do, shown before it does anything: every file, every secret the person must add, and every clash. */
-export interface ImportPreview { readonly files: readonly ImportFile[]; readonly secretsToAdd: readonly SecretSlot[]; readonly clashes: readonly ImportClash[] }
+/** One access class an import would give: this agent may use this tool this way. */
+export interface ImportGrant { readonly agent: string; readonly tool: string; readonly access: AccessClass }
+
+/**
+ * What an import would do, shown before it does anything: every file, every secret the person must add, every clash, every access class it
+ * would grant, and every reference it cannot resolve (`missingRefs`, one plain sentence each).
+ */
+export interface ImportPreview {
+  readonly files: readonly ImportFile[]; readonly secretsToAdd: readonly SecretSlot[]; readonly clashes: readonly ImportClash[];
+  readonly grants: readonly ImportGrant[]; readonly missingRefs: readonly string[];
+}

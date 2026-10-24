@@ -7,7 +7,7 @@ import * as typesModule from '../shared/proto/types.js';
 import { createEmptyWorld } from '../renderer/proto/fakeApi.js';
 import type {
   AccessClass, AgentDefinition, AgentItem, Bundle, BundleItem, ContextSliceItem, Enforcement, FoundAt, HarnessItem, HarnessItemKind, HookTool,
-  ImportClash, ImportFile, ImportPreview, InstalledState, InterfaceExtra, InterfaceId, InterfaceInfo, LibraryRef, LibrarySource, McpTool,
+  ImportClash, ImportFile, ImportGrant, ImportPreview, InstalledState, InterfaceExtra, InterfaceId, InterfaceInfo, LibraryRef, LibrarySource, McpTool,
   Override, OverrideMode, Plan, PlanChange, PromptTool, Scope, ScopeKind, SecretRef, SecretSlot, SkillItem, Slice, SliceRule, ToolAttachment,
   ToolItem, ToolKind, ToolReference, Version, WikiPage, World,
 } from '../shared/proto/types.js';
@@ -39,16 +39,17 @@ const slot: SecretSlot = { kind: 'keychain', name: 'EXAMPLE' };
 const toolRef: ToolReference = { toolId: 't1', name: 'Mcp', toolKind: 'mcp', secret: slot };
 const bundleItem: BundleItem = skill;
 const bundle: Bundle = { scopeIds: ['global'], items: [bundleItem, agent], toolRefs: [toolRef], sliceRules: [{ sliceId: 'sl1', name: 'Slice', rule }] };
-const importFile: ImportFile = { path: '/sample/y', action: 'change' };
+const importFile: ImportFile = { path: '/sample/y', action: 'change', characters: 12 };
+const grant: ImportGrant = { agent: 'Planner', tool: 'Mcp', access: 'read-only' };
 const clash: ImportClash = { itemId: 's1', name: 'Skill', reason: 'different-text' };
-const importPreview: ImportPreview = { files: [importFile], secretsToAdd: [slot], clashes: [clash] };
+const importPreview: ImportPreview = { files: [importFile], secretsToAdd: [slot], clashes: [clash], grants: [grant], missingRefs: ['skill lib-skill, used by Planner'] };
 const world: World = { interfaces: [info], items: [skill, agent, mcp, prompt, hook, contextSlice], scopes: [scope], overrides: [override], wikiPages: [page], slices: [slice], versions: [version], libraries: [source] };
 
 // One entry per exported type name. A name in the file but not here, or here but not in the file, fails the test below.
 const SAMPLES: Record<string, unknown> = {
   AccessClass: 'read-write' satisfies AccessClass, AgentDefinition: definition, AgentItem: agent, Bundle: bundle, BundleItem: bundleItem, ContextSliceItem: contextSlice,
   Enforcement: 'blocks reads' satisfies Enforcement, FoundAt: found, HarnessItem: skill satisfies HarnessItem, HarnessItemKind: 'context-slice' satisfies HarnessItemKind,
-  HookTool: hook, ImportClash: clash, ImportFile: importFile, ImportPreview: importPreview, InstalledState: 'not-installed' satisfies InstalledState,
+  HookTool: hook, ImportClash: clash, ImportFile: importFile, ImportGrant: grant, ImportPreview: importPreview, InstalledState: 'not-installed' satisfies InstalledState,
   InterfaceExtra: extra, InterfaceId: 'claude-code' satisfies InterfaceId, InterfaceInfo: info, LibraryRef: lib, LibrarySource: source, McpTool: mcp,
   Override: override, OverrideMode: 'hide' satisfies OverrideMode, Plan: plan, PlanChange: change, PromptTool: prompt, Scope: scope, ScopeKind: 'project' satisfies ScopeKind,
   SecretRef: secret, SecretSlot: slot, SkillItem: skill, Slice: slice, SliceRule: rule, ToolAttachment: attachment, ToolItem: hook satisfies ToolItem,

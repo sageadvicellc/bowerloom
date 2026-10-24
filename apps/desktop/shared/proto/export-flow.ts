@@ -4,11 +4,13 @@
  * what would happen. "Installing" returns a new world for the second Bowerloom. The first world is never passed in here for writing.
  * Pure: no clock, no random number, no file.
  */
-import { commitImport, parseBundle, previewImport } from './bundle.js';
+import { BUNDLE_LIMITS, commitImport, parseBundle, previewImport } from './bundle.js';
 import { describeRule } from './slicerule.js';
-import type { Bundle, ImportClash, ImportPreview, SecretSlot, ToolKind, World } from './types.js';
+import { ACCESS_WORDS } from './harnessmodel.js';
+import type { Bundle, ImportClash, ImportGrant, ImportPreview, SecretSlot, ToolKind, World } from './types.js';
 
-export const EXPORT_PROMISE = 'No secrets and no wiki page text are in this file.';
+/** What the file holds and does not hold. Skill text, agent text and file locations are in it as written, so the promise says so. */
+export const EXPORT_PROMISE = 'This file has no secret values that Bowerloom holds and no wiki page text. It does have the text of your skills and agents, and file locations inside each harness. Read it before you share it.';
 
 /** The bundle as the text of the file. */
 export function bundleText(bundle: Bundle): string {
@@ -27,6 +29,9 @@ export function clashWords(clash: ImportClash): string {
     ? `${clash.name}: already there with the same text, so it is not added again.`
     : `${clash.name}: already there with different text, so it is kept under a new name.`;
 }
+
+/** "Planner may use Search: read and write." One access class an import would give. */
+export const grantWords = (g: ImportGrant): string => `${g.agent} may use ${g.tool}: ${ACCESS_WORDS[g.access]}.`;
 
 export interface ExportTool { readonly id: string; readonly name: string; readonly kindWords: string; readonly secretWords: string | null }
 export interface ExportSlice { readonly name: string; readonly words: string }
@@ -66,6 +71,7 @@ export type OpenResult =
 
 /** Reads the text of an exported file and previews the import into `target`. `target` is not changed. */
 export function openExportedFile(text: string, target: World): OpenResult {
+  if (new TextEncoder().encode(text).length > BUNDLE_LIMITS.textBytes) return { ok: false, message: 'This file is larger than 2 MB, which is more than a Bowerloom file ever holds. Nothing was installed.' };
   try {
     const bundle = parseBundle(JSON.parse(text) as unknown);
     return { ok: true, bundle, preview: previewImport(bundle, target) };

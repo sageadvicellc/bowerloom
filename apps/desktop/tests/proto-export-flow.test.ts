@@ -17,7 +17,7 @@ test('the export summary has counts, tool references and slice rules in words, a
   assert.equal(d.tools.length, bundle.toolRefs.length);
   assert.equal(d.slices.length, bundle.sliceRules.length);
   assert.ok(d.slices.every(s => s.words.endsWith('.') && !/[*]|\*\*/.test(s.words)));
-  assert.equal(d.promise, 'No secrets and no wiki page text are in this file.');
+  assert.match(d.promise, /^This file has no secret values that Bowerloom holds and no wiki page text\./);
   assert.equal(EXPORT_PROMISE, d.promise);
   const missing = d.tools.find(t => t.id === CASE_IDS.mcpMissing)!;
   assert.equal(missing.kindWords, 'MCP server');

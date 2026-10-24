@@ -29,13 +29,13 @@ interface Rendered { readonly interface: InterfaceId; readonly path: string; rea
 
 const joinPath = (base: string, rel: string): string => `${base.replace(/\/+$/, '')}/${rel}`;
 
-/** The first `PREVIEW_LIMIT` characters, cut before a split pair of UTF-16 units, with an ellipsis when something was cut. */
+/** The first `PREVIEW_LIMIT` characters, cut before a split pair of UTF-16 units. When something was cut, an ellipsis and a line say how many characters the whole file holds. */
 function shorten(text: string): string {
   if (text.length <= PREVIEW_LIMIT) return text;
   let end = PREVIEW_LIMIT;
   const last = text.charCodeAt(end - 1);
   if (last >= 0xd800 && last <= 0xdbff) end -= 1;
-  return `${text.slice(0, end).trimEnd()}…`;
+  return `${text.slice(0, end).trimEnd()}…\n[Cut here. The whole file is ${text.length.toLocaleString('en-US')} characters.]`;
 }
 
 const textFor = (item: HarnessItem, iface: InterfaceId): string => (item.foundAt.find(f => f.interface === iface) ?? item.foundAt[0])?.text ?? '';
