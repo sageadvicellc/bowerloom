@@ -13,7 +13,7 @@ ul { padding: 0; list-style: none; }
 .brand { display: flex; align-items: center; gap: var(--space-3); font-weight: 650; font-size: var(--text-large); padding: 0 var(--space-2); }
 .brand svg { color: var(--accent); }
 .nav { display: flex; flex-direction: column; gap: var(--space-1); }
-.nav button { display: flex; align-items: center; gap: var(--space-3); width: 100%; text-align: left; background: none; border: 0; padding: var(--space-3); border-radius: var(--radius-small); cursor: pointer; color: var(--text-muted); transition: background var(--motion); }
+.nav button { display: flex; align-items: center; gap: var(--space-3); width: 100%; text-align: left; background: none; border: 0; padding: var(--space-3); border-radius: var(--radius-small); cursor: pointer; color: var(--text-muted); transition: background var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 .nav button:hover { background: var(--surface-2); }
 .nav button[aria-current="page"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 .nav .badge { margin-left: auto; }
@@ -39,12 +39,12 @@ h3 { font-size: var(--text-base); font-weight: 650; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-5); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: var(--space-3); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: var(--space-4); }
-.stat { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); cursor: pointer; display: flex; flex-direction: column; gap: var(--space-1); box-shadow: var(--shadow); transition: border-color var(--motion); }
+.stat { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); cursor: pointer; display: flex; flex-direction: column; gap: var(--space-1); box-shadow: var(--shadow); transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 .stat:hover { border-color: var(--accent); }
 .stat .value { font-size: var(--text-display); font-weight: 700; line-height: 1.1; }
 .stack { display: flex; flex-direction: column; gap: var(--space-4); }
 .row-list { display: flex; flex-direction: column; gap: var(--space-3); }
-.row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-4); align-items: center; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); cursor: pointer; transition: border-color var(--motion); }
+.row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2) var(--space-4); align-items: center; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); cursor: pointer; transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 .row:hover { border-color: var(--accent); }
 .row .title { font-weight: 650; }
 .row .meta { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--text-small); display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
@@ -60,10 +60,10 @@ h3 { font-size: var(--text-base); font-weight: 650; }
 .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border); }
-.tabs button { background: none; border: 0; padding: var(--space-3) var(--space-4); border-bottom: 3px solid transparent; cursor: pointer; color: var(--text-muted); font-weight: 600; }
+.tabs button { background: none; border: 0; padding: var(--space-3) var(--space-4); border-bottom: 3px solid transparent; cursor: pointer; color: var(--text-muted); font-weight: 600; transition: color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
 
-.btn { display: inline-flex; align-items: center; gap: var(--space-2); background: var(--accent); color: var(--accent-contrast); border: 0; border-radius: var(--radius-small); padding: var(--space-3) var(--space-5); font-weight: 650; cursor: pointer; transition: background var(--motion); }
+.btn { display: inline-flex; align-items: center; gap: var(--space-2); background: var(--accent); color: var(--accent-contrast); border: 0; border-radius: var(--radius-small); padding: var(--space-3) var(--space-5); font-weight: 650; cursor: pointer; transition: background var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
 .btn:hover { background: var(--accent-strong); }
 .btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .btn.secondary:hover { background: var(--accent-soft); }

@@ -63,7 +63,7 @@ test('no request leaves the machine: the session lets through only files under t
 test('the packaged window turns the developer tools off, and every frame navigation and device permission is refused', () => {
   assert.equal(webPreferences('/p', true).devTools, false); assert.equal(webPreferences('/p', false).devTools, true); assert.equal(webPreferences('/p').devTools, true);
   const main = read('main/main.ts');
-  assert.match(main, /webPreferences\(join\(root, 'preload\.cjs'\), app\.isPackaged\)/); assert.match(main, /'will-frame-navigate'/); assert.match(main, /setDevicePermissionHandler\(\(\) => false\)/);
+  assert.match(main, /webPreferences\(prototypeMode \? undefined : join\(root, 'preload\.cjs'\), app\.isPackaged\)/); assert.match(main, /'will-frame-navigate'/); assert.match(main, /setDevicePermissionHandler\(\(\) => false\)/);
   assert.match(main, /setPermissionRequestHandler\(\(_contents, _permission, callback\) => callback\(false\)\)/); assert.match(main, /setPermissionCheckHandler\(\(\) => false\)/);
 });
 

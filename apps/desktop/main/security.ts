@@ -20,7 +20,11 @@ export const CSP = [
   "frame-src 'none'",
 ].join('; ');
 
-export const webPreferences = (preload: string, packaged = false) => ({
+// The prototype's data folder rules are shared with the launcher, which cannot load TypeScript. See prototype-dir.mjs.
+export { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removeAndReport, removePrototypeDataDir, userDataArg } from './prototype-dir.mjs';
+
+/** The window's settings. `preload` is the bridge script; the prototype page gets none (pass undefined), so it has no `window.bowerloom` at all. */
+export const webPreferences = (preload: string | undefined, packaged = false) => ({
   contextIsolation: true,
   nodeIntegration: false,
   nodeIntegrationInWorker: false,
@@ -34,7 +38,7 @@ export const webPreferences = (preload: string, packaged = false) => ({
   navigateOnDragDrop: false,
   // The developer tools are available only in a build that is run from source.
   devTools: !packaged,
-  preload,
+  ...(preload === undefined ? {} : { preload }),
 }) as const;
 
 /** The hosts the app may open in the person's browser. Each link must also be https, with no user name, password, or port. */
@@ -73,6 +77,14 @@ export function resolveAppFile(folder: string, pathname: string): string | null 
 export function decideNavigation(url: string, appIndexUrl: string): 'allow-app' | 'open-external' | 'block' {
   if (isAppUrl(url, appIndexUrl)) return 'allow-app';
   return isAllowedExternal(url) ? 'open-external' : 'block';
+}
+
+/**
+ * Whether the page that sent an IPC call may be answered. In prototype mode the answer is always no, for every channel: the prototype page
+ * keeps everything in memory and gets no IPC. Otherwise only the app's own page (any hash) is answered. `frameUrl` is null when there is no sender frame.
+ */
+export function isAllowedSender(prototypeMode: boolean, frameUrl: string | null, appIndexUrl: string): boolean {
+  return !prototypeMode && frameUrl !== null && decideNavigation(frameUrl, appIndexUrl) === 'allow-app';
 }
 
 /**

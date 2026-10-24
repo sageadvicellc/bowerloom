@@ -15,7 +15,6 @@
   --radius: 0.75rem; --radius-small: 0.5rem; --radius-pill: 999px;
   --sidebar: 15.5rem;
   --measure: 46rem;
-  --motion: 140ms;
 }
 :root, [data-theme="light"] {
   color-scheme: light;

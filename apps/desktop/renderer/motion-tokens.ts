@@ -1,11 +1,16 @@
 /**
  * Motion tokens: every duration, easing, distance and spring of the app, in one place, so they can be retuned in one edit.
  *
- * UNCONFIRMED, OWNER TO CHOOSE. The weighting below is a recommendation from the design-motion-principles skill (Create mode),
- * checked against the apple-design rules (purposeful, brief, cancellable, never the only carrier of meaning, reduced motion honoured):
- *   Node map ........ mostly Emil Kowalski (restraint and speed), with Jhey Tompkins (playful) only on connect, drop and layout moves.
- *   Knowledge graph . mostly Jhey Tompkins (the graph settling is the ambient motion), still brief, with no looping decoration.
- *   Panels .......... Jakub Krehel (polish: a short slide with a small fade).
+ * CONFIRMED. Hanna set the weighting on 2026-10-24 (spec section 7 of the Bowerloom 0.8 spec). The design-motion-principles skill names three lenses:
+ * Emil Kowalski (restraint and speed), Jakub Krehel (production polish), and Jhey Tompkins (play). Checked against the apple-design rules
+ * (purposeful, brief, cancellable, never the only carrier of meaning, reduced motion honoured). The weighting:
+ *   Whole product ........................ Jakub leads, with Emil on the busy actions.
+ *   Harness editor, skills, agents ....... Emil leads, with Jhey on drop and connect (a short settle).
+ *   Knowledge graph ...................... Jhey leads: the graph settles into place and stops, brief, never looping.
+ *   Setup and scan ....................... Jhey leads the reveal of found items.
+ *   Versions and export .................. Jakub leads.
+ * The map group below keeps the first recommendation (Emil, with Jhey on connect, drop and layout moves); the panels are Jakub; the `proto` group
+ * holds the four tokens the prototype added.
  * Where the two sources differ, the accessibility rules win: with "reduce motion" on, every duration here becomes 0, nothing moves,
  * and nothing is left half-finished. Frequent actions (selecting, hovering, typing in search, arrow-key moves) get no travel at all.
  */
@@ -45,6 +50,17 @@ export const MOTION = Object.freeze({
     /** Arrow-key moves closer together than this are one step to undo. */
     keyMoveBurst: 500,
   }),
+  // The prototype's own tokens (weighting above). A reveal is slow and staggered, a lasso is quick, a drop settles with the existing settle ease.
+  proto: Object.freeze({
+    /** Jhey: found items appear one after another, `stagger` apart, and rise `distance` pixels as they come. */
+    setupReveal: { ms: 280, stagger: 40, distance: 6, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition & { stagger: number; distance: number },
+    /** Jakub: the version list and the export view. A new result rises `distance` pixels as it fades in. */
+    versions: { ms: 240, distance: 4, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition & { distance: number },
+    /** Emil: the lasso on the knowledge graph is a busy action, so it is quick. */
+    lasso: { ms: 90, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+    /** Jhey: the short settle after a drop. It uses the same ease as `ease.settle`. */
+    dropSettle: { ms: 220, ease: 'cubic-bezier(0.34, 1.4, 0.64, 1)' } satisfies Transition,
+  }),
   // Jakub: panels are polished, brief, and slide a short way.
   panel: Object.freeze({ slide: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 16 } satisfies Slide, close: { ms: 150, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition }),
   graph: Object.freeze({
@@ -74,6 +90,8 @@ export const ms = (value: number): number => (prefersReducedMotion() ? 0 : value
  */
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const set = (name: string, value: string): void => { root.style.setProperty(`--motion-${name}`, value); };
+  // A distance is 0 when the person asked for less motion, as a duration is: nothing travels.
+  const travel = (name: string, px: number): void => { set(name, `${prefersReducedMotion() ? 0 : px}px`); };
   const t = (name: string, tr: Transition): void => { set(`${name}-ms`, `${ms(tr.ms)}ms`); set(`${name}-ease`, tr.ease); };
   const m = MOTION.map;
   t('node-enter', m.nodeEnter); set('node-enter-distance', `${m.nodeEnter.distance}px`); set('node-enter-scale', String(m.nodeEnter.scaleFrom));
@@ -81,5 +99,10 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   t('drop', m.drop); set('drop-scale', String(m.drop.scaleFrom)); t('connect', m.connect); t('fit', m.fit);
   t('panel-slide', MOTION.panel.slide); set('panel-slide-distance', `${MOTION.panel.slide.distance}px`); t('panel-close', MOTION.panel.close);
   t('graph-highlight', MOTION.graph.highlight);
+  const p = MOTION.proto;
+  t('setup-reveal', p.setupReveal); set('setup-reveal-stagger', `${ms(p.setupReveal.stagger)}ms`); t('versions', p.versions); t('lasso', p.lasso); t('drop-settle', p.dropSettle);
+  // One ease for the shared parts of the app (the navigation, buttons, rows, cards and tabs), which time themselves with --motion-hover-ms.
+  set('ease-out', MOTION.ease.out);
+  travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);
   set('reduced', prefersReducedMotion() ? '1' : '0');
 }

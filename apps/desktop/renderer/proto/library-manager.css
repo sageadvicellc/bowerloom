@@ -1,0 +1,265 @@
+/*
+ * The skills and agents screens. Colours, sizes and spaces come from tokens.css only; motion comes from motion-tokens.ts, which publishes
+ * --motion-* properties on the page (every duration is 0 with "reduce motion" on). Emil leads: hover and select are near-instant and nothing travels.
+ * Jhey adds one short settle, only where a person has just dropped or installed something. State is shown with words and a full outline, never colour alone.
+ */
+/* No padding above or below: a sticky row sticks to the edge of the content box, so the page keeps its own space instead. */
+main:has(.lib-page) { padding: 0 var(--space-5); }
+.lib-page { padding-top: var(--space-5); }
+.lib-page h2, .lib-panel { scroll-margin-top: 5rem; }
+.lib-page { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.lib-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-5); }
+.lib-lead { max-width: var(--measure); font-size: var(--text-small); color: var(--text-muted); margin: 0; }
+.lib-page h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); }
+.lib-count { font-size: var(--text-small); font-weight: 400; color: var(--text-muted); }
+.lib-page h4 { margin: 0; }
+.lib-page h2:focus { outline: none; }
+.lib-page h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+/* The live line is inside the waiting bar at the bottom, so it is seen wherever the page is scrolled. It takes no room until it has something to say. */
+.lib-note { margin: 0; font-size: var(--text-small); line-height: 1.4; border-radius: var(--radius-small); }
+.lib-note:not(:empty) { padding: var(--space-1) var(--space-3); background: var(--good-bg); color: var(--good-fg); }
+.lib-note.is-refused:not(:empty) { background: var(--warn-bg); color: var(--warn-fg); }
+
+/* Fields and chips. */
+.lib-field { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 600; font-size: var(--text-small); }
+.lib-field.inline { flex-direction: row; align-items: center; gap: var(--space-2); }
+.lib-field input, .lib-field select, .lib-combo input {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-1) var(--space-3); min-height: 2.25rem; font-weight: 400; font-size: var(--text-small);
+}
+.lib-field select { max-width: 100%; }
+.lib-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-4); }
+.lib-search input { min-width: 15rem; }
+/* One row: search, a Filters button that opens the rest, and Add skills. */
+.lib-filters { position: relative; align-self: flex-end; }
+.lib-filters > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; min-height: 2.25rem; padding: 0 var(--space-3); font-size: var(--text-small); font-weight: 650; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); }
+.lib-filters > summary::-webkit-details-marker { display: none; }
+.lib-filters > summary::after { content: "\25BE" / ""; margin-left: var(--space-2); }
+.lib-filters[open] > summary::after { content: "\25B4" / ""; }
+.lib-filters > summary:hover { border-color: var(--accent); }
+.lib-filters > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.lib-filters-on { margin-left: var(--space-1); font-weight: 400; color: var(--text-muted); }
+.lib-filters-body { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin-top: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); }
+.lib-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.lib-chip {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-3); min-height: 2.25rem; cursor: pointer; font-size: var(--text-small);
+  transition: background var(--motion-hover-ms) var(--motion-hover-ease), border-color var(--motion-hover-ms) var(--motion-hover-ease);
+}
+.lib-chip:hover { border-color: var(--accent); }
+.lib-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-strong); font-weight: 650; }
+.lib-chip[aria-pressed="true"]::before { content: "\2713\00a0" / ""; }
+.lib-page .btn { padding: var(--space-2) var(--space-4); font-size: var(--text-small); }
+.lib-page .btn[aria-disabled="true"], .lib-page .btn:disabled { opacity: 0.6; cursor: not-allowed; border-style: dashed; }
+.lib-page .btn.is-off:hover { background: var(--surface-2); }
+
+/* The harness chips are also where a card is dropped. */
+/* The row stays at the top while the page scrolls, so a card far down can always be dropped on a harness. */
+.lib-scopes { position: sticky; top: 0; z-index: 22; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); background: var(--bg); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.lib-scopes-label { font-weight: 650; font-size: var(--text-small); }
+.lib-scopechip.is-target { border-style: dashed; border-color: var(--accent-strong); }
+.lib-scopechip.is-over { outline: 3px solid var(--accent); outline-offset: 1px; background: var(--accent-soft); border-style: solid; }
+.lib-drophint { font-weight: 650; }
+.lib-scopechip.is-settle-a { animation: lib-settle-a var(--motion-drop-settle-ms) var(--motion-drop-settle-ease) both; }
+.lib-scopechip.is-settle-b { animation: lib-settle-b var(--motion-drop-settle-ms) var(--motion-drop-settle-ease) both; }
+
+.lib-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); margin: 0; padding: var(--space-2) var(--space-4); border-radius: var(--radius-small); background: var(--warn-bg); color: var(--warn-fg); font-size: var(--text-small); }
+
+/* Sections and cards. */
+.lib-section { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.lib-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: var(--space-3); align-items: stretch; }
+.lib-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0;
+  cursor: grab; transition: border-color var(--motion-hover-ms) var(--motion-hover-ease);
+}
+.lib-card:hover { border-color: var(--accent); }
+.lib-card { touch-action: pan-y; }
+.lib-card:has(.lib-menuwrap.is-open) { position: relative; z-index: 20; }
+.lib-card.is-hidden { border-style: dashed; }
+.lib-card.is-new { outline: 2px solid var(--accent); outline-offset: 1px; animation: lib-settle-a var(--motion-drop-settle-ms) var(--motion-drop-settle-ease) both; }
+.lib-card-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.lib-card-head h3, .lib-card-head h4 { font-size: var(--text-base); font-weight: 650; overflow-wrap: anywhere; line-height: 1.3; }
+.lib-kind { flex: none; color: var(--accent-strong); display: inline-flex; }
+.lib-flags { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+.lib-flags:empty { display: none; }
+.lib-flags .chip { white-space: normal; border-radius: var(--radius-small); }
+.lib-desc { margin: 0; font-size: var(--text-small); }
+.lib-facts { margin: 0; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-small); }
+.lib-facts div { display: grid; grid-template-columns: 6.25rem minmax(0, 1fr); gap: var(--space-2); }
+.lib-facts dt { color: var(--text-muted); }
+.lib-facts dd { margin: 0; overflow-wrap: anywhere; }
+.lib-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: auto; padding-top: var(--space-1); }
+
+/* The list view puts the parts of a card side by side while there is room. */
+@media (min-width: 1100px) {
+  .lib-cards.is-list { grid-template-columns: 1fr; }
+  .is-list .lib-card { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(16rem, 2fr) auto; grid-template-areas: "head desc actions" "flags facts actions"; column-gap: var(--space-5); align-items: start; cursor: grab; }
+  .is-list .lib-card-head { grid-area: head; }
+  .is-list .lib-flags { grid-area: flags; align-self: start; }
+  .is-list .lib-desc { grid-area: desc; }
+  .is-list .lib-facts { grid-area: facts; }
+  .is-list .lib-card-actions { grid-area: actions; margin-top: 0; flex-direction: column; align-items: stretch; }
+}
+@media (max-width: 1099px) { .lib-cards.is-list { grid-template-columns: 1fr; } }
+
+/* A library: one line that opens. */
+.lib-group { display: flex; flex-direction: column; gap: var(--space-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3) var(--space-3); }
+.lib-group h3 { font-size: var(--text-base); }
+.lib-group-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: none; border: 0; padding: var(--space-2); border-radius: var(--radius-small); cursor: pointer; font-weight: 650; }
+.lib-group-toggle.is-plain { cursor: default; }
+button.lib-group-toggle:hover { background: var(--surface-2); }
+.lib-group-name { font-weight: 650; }
+.lib-chevron { flex: none; }
+.lib-chevron.is-open { transform: rotate(90deg); }
+.lib-group-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin: 0; padding: 0 var(--space-2); font-size: var(--text-small); color: var(--text-muted); }
+
+/* Add skills. */
+.lib-panel { background: var(--surface); border: 1px solid var(--accent-strong); border-radius: var(--radius); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.lib-panel-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: var(--space-4); align-items: start; }
+.lib-source { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.lib-source h3 { font-size: var(--text-base); }
+.lib-source p { margin: 0; }
+.lib-folders, .lib-offers { display: flex; flex-direction: column; gap: var(--space-3); }
+.lib-fieldset { border: 1px solid var(--border); border-radius: var(--radius-small); margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.lib-fieldset legend { font-weight: 650; padding: 0 var(--space-2); }
+.lib-fieldset ul { display: flex; flex-direction: column; gap: var(--space-2); }
+.lib-fieldset .btn { align-self: flex-start; }
+.lib-tick { display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer; font-size: var(--text-small); }
+.lib-tick input { width: 1.25rem; height: 1.25rem; accent-color: var(--accent); flex: none; margin-top: 0.1rem; }
+.lib-tickdesc { display: block; }
+.lib-offer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); }
+.lib-offer p { margin: 0; }
+
+/* The waiting list sticks to the bottom of the screen, so a change is never out of sight. */
+.lib-waiting {
+  position: sticky; bottom: var(--space-2); margin-bottom: var(--space-2); z-index: 22; display: flex; flex-direction: column; gap: var(--space-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: var(--space-2) var(--space-4);
+}
+.lib-waiting-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-4); }
+.lib-waiting.is-dirty { border-color: var(--accent-strong); }
+.lib-waiting h2 { font-size: var(--text-base); }
+.lib-waiting p { margin: 0; }
+.lib-waiting-lines { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-small); }
+.lib-waiting-where { margin-left: var(--space-1); }
+
+/* The menu that a button opens. It opens below the button, or above it when there is no room. */
+.lib-menuwrap { position: relative; display: inline-block; }
+.lib-caret { margin-left: var(--space-1); }
+.lib-menu {
+  position: absolute; top: calc(100% + var(--space-1)); left: 0; z-index: 30; min-width: 15rem; max-width: 22rem; display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); box-shadow: var(--shadow); padding: var(--space-1);
+}
+.lib-menu.is-up { top: auto; bottom: calc(100% + var(--space-1)); }
+.lib-menuitem { display: flex; flex-direction: column; align-items: flex-start; gap: 0; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); cursor: pointer; font-size: var(--text-small); }
+.lib-menuitem:hover, .lib-menuitem:focus-visible { background: var(--accent-soft); }
+.lib-menuitem.is-off { color: var(--text-muted); }
+.lib-menunote { font-size: var(--text-small); color: var(--text-muted); }
+
+/* The combobox: a text box with a list under it. */
+.lib-combo { position: relative; display: flex; flex-direction: column; gap: var(--space-1); max-width: 26rem; margin-top: var(--space-2); }
+.lib-combo input { width: 100%; }
+.lib-listbox {
+  position: absolute; top: calc(100% + var(--space-1)); left: 0; right: 0; z-index: 25; max-height: 17rem; overflow-y: auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-small); box-shadow: var(--shadow); padding: var(--space-1); font-size: var(--text-small);
+}
+.lib-listbox li { padding: var(--space-2) var(--space-3); border-radius: var(--radius-small); cursor: pointer; display: flex; flex-direction: column; }
+.lib-listbox li[aria-selected="true"] { background: var(--accent-soft); outline: 2px solid var(--accent-strong); outline-offset: -2px; }
+.lib-listbox li.lib-listempty { cursor: default; color: var(--text-muted); }
+.lib-optionhint { color: var(--text-muted); font-size: var(--text-small); }
+
+/* Agents. */
+.agents-body { display: grid; grid-template-columns: 1fr; gap: var(--space-4); align-items: start; min-width: 0; }
+.agents-list { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; max-height: 24rem; overflow-y: auto; padding: 0 var(--space-1) var(--space-2) 0; }
+/* From a middle-sized window up, the list and the detail are two panes side by side. Each scrolls on its own and the waiting bar stays in view under them. */
+@media (min-width: 880px) {
+  main:has(.agents-page) { display: flex; flex-direction: column; overflow: hidden; }
+  .agents-page { flex: 1 1 auto; min-height: 0; width: 100%; }
+  .agents-body { flex: 1 1 auto; min-height: 0; grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .agents-list { max-height: none; min-height: 0; }
+  .agents-pane { overflow-y: auto; min-height: 0; padding-right: var(--space-1); }
+  .agents-page .lib-waiting { position: static; flex: none; }
+}
+.agents-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.agents-group h2 { font-size: var(--text-large); }
+.agents-rows { display: flex; flex-direction: column; gap: var(--space-1); }
+.agents-row {
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); cursor: pointer;
+  transition: border-color var(--motion-hover-ms) var(--motion-hover-ease);
+}
+.agents-row:hover { border-color: var(--accent); }
+.agents-row[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent-strong); outline: 2px solid var(--accent-strong); outline-offset: -2px; }
+.agents-row[aria-current="true"] .agents-row-name::before { content: "\2713\00a0" / ""; }
+.agents-row-name { font-weight: 650; font-size: var(--text-small); overflow-wrap: anywhere; }
+.agents-row-role { font-size: var(--text-small); color: var(--text-muted); }
+.agents-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.agents-more p { margin: 0; }
+
+.agents-pane { min-width: 0; }
+.agents-detail, .agents-empty { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.agents-detail h3 { font-size: var(--text-base); margin-bottom: var(--space-2); }
+.agents-detail h4 { font-size: var(--text-small); font-weight: 650; }
+.agents-detail-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.agents-detail-head h2 { font-size: var(--text-title); overflow-wrap: anywhere; line-height: 1.2; }
+.agents-origin, .agents-role { margin: 0; }
+.agents-role { font-size: var(--text-large); }
+.agents-readonly { border: 2px solid var(--border); border-radius: var(--radius-small); background: var(--surface-2); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+.agents-readonly p { margin: 0; }
+.agents-copy { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.agents-instructions { max-height: 11rem; font-size: 0.9rem; }
+
+.agents-skills { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 0 var(--space-3); padding: 0; list-style: none; counter-reset: skill; }
+.agents-skill {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3);
+  counter-increment: skill;
+}
+.agents-skill.is-over { outline: 2px dashed var(--accent-strong); outline-offset: 1px; }
+.agents-skill-name { font-size: var(--text-small); font-weight: 600; overflow-wrap: anywhere; }
+.agents-skill-name::before { content: counter(skill) ".\00a0"; color: var(--text-muted); font-weight: 400; }
+.agents-skill-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-start; }
+@media (min-width: 1250px) {
+  .agents-skill { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .agents-skill-actions { grid-column: auto; justify-content: flex-end; }
+}
+.agents-skill-actions .btn { padding: var(--space-1) var(--space-3); }
+.agents-handle { color: var(--text-muted); display: inline-flex; cursor: grab; touch-action: none; padding: var(--space-1); }
+.agents-skill.is-lifted, .lib-card.is-lifted { border-style: dashed; border-color: var(--accent-strong); }
+.is-dragging, .is-dragging * { cursor: grabbing; user-select: none; }
+.lib-ghost { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; background: var(--accent); color: var(--accent-contrast); border-radius: var(--radius-small); padding: var(--space-1) var(--space-3); font-size: var(--text-small); font-weight: 650; box-shadow: var(--shadow); max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-skill.is-moved-a { animation: lib-settle-a var(--motion-drop-settle-ms) var(--motion-drop-settle-ease) both; }
+.agents-skill.is-moved-b { animation: lib-settle-b var(--motion-drop-settle-ms) var(--motion-drop-settle-ease) both; }
+
+.agents-tools { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.agents-tools li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); }
+.agents-tool-name { font-weight: 600; font-size: var(--text-small); overflow-wrap: anywhere; }
+.agents-tools .btn { padding: var(--space-1) var(--space-3); }
+.agents-attach { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.agents-extras { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-small); }
+.agents-landing { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3); align-items: start; }
+.agents-landing > li { border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.agents-landing p { margin: 0; font-size: var(--text-small); }
+.agents-landing summary { cursor: pointer; font-size: var(--text-small); font-weight: 600; color: var(--accent-strong); }
+.agents-landing details ul { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.agents-landing .tech { font-size: 0.8rem; }
+.agents-landing pre.file { margin-top: var(--space-1); max-height: 9rem; font-size: 0.8rem; }
+
+/* A short window: the chips and fields take a little less room, so more of the page shows. */
+@media (max-height: 720px) {
+  .lib-page { padding-top: var(--space-3); }
+  .lib-chip { min-height: 2rem; padding: 0 var(--space-2); }
+  .lib-page { gap: var(--space-2); }
+  .lib-page .lib-field input, .lib-field select { min-height: 2rem; }
+  .lib-scopes { padding: var(--space-1) 0; }
+  .lib-scopes-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .lib-banner { padding: var(--space-1) var(--space-3); }
+  .lib-banner .btn { padding: 0.15rem 0.6rem; }
+  .lib-kind-suffix { display: none; }
+  .lib-toolbar .lib-field { flex-direction: row; align-items: center; gap: var(--space-2); }
+  .lib-waiting { padding: var(--space-1) var(--space-3); gap: var(--space-1); }
+  .lib-lead { font-size: 0.875rem; line-height: 1.4; }
+}
+
+/* The short settle after a drop, an install or a move. Reduce motion makes the duration 0 through the tokens; the rule below also removes it. */
+@keyframes lib-settle-a { from { transform: scale(var(--motion-drop-scale)); } to { transform: none; } }
+@keyframes lib-settle-b { from { transform: scale(var(--motion-drop-scale)); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .lib-scopechip.is-settle-a, .lib-scopechip.is-settle-b, .lib-card.is-new, .agents-skill.is-moved-a, .agents-skill.is-moved-b { animation: none; }
+}

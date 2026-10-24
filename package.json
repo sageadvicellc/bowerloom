@@ -58,6 +58,7 @@
     "desktop:build": "npm --prefix apps/desktop run build",
     "desktop:test": "npm --prefix apps/desktop run test",
     "desktop:sandbox": "node apps/desktop/tools/run.mjs --sandbox",
+    "desktop:prototype": "node apps/desktop/tools/run.mjs --prototype",
     "sandbox:reset": "npm --prefix apps/desktop run sandbox:reset"
   },
   "devDependencies": {

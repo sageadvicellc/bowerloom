@@ -1,6 +1,7 @@
 /** Electron entry. Opens one window onto the viewer page and answers its named calls. */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS } from '../shared/channels.js';
@@ -8,7 +9,7 @@ import type { ChannelName } from '../shared/channels.js';
 import type { Mode } from '../shared/types.js';
 import { createController } from './controller.js';
 import type { Controller } from './controller.js';
-import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, decideNavigation, resolveAppFile, webPreferences } from './security.js';
+import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(root, 'renderer');
@@ -17,6 +18,22 @@ const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true } }]);
 
 const argv = process.argv.slice(1);
+// The clickable prototype (Bowerloom 0.8): the same page with #prototype added, and no IPC at all.
+const prototypeMode = argv.includes('--prototype');
+// The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
+// is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
+// Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small files (Local State, Preferences)
+// after the quit event, so a start without the launcher can leave those four files. The launcher removes the folder again once the app has exited.
+// The folder holds only browser settings and cache, never prototype data, and the system clears its temporary folder.
+if (prototypeMode) {
+  const choice = chooseUserData(userDataArg(argv), tmpdir());
+  const dir = choice.action === 'keep' ? choice.dir : makePrototypeDataDir();
+  if (choice.action === 'make') app.setPath('userData', dir);
+  // Says on stderr when the folder is still there after the attempt, so the person can delete it.
+  const cleanUp = (): void => { removeAndReport(dir); };
+  app.once('quit', cleanUp);
+  process.once('exit', cleanUp);
+}
 const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : argv.includes('--sandbox') ? 'sandbox' : null;
 
 let controller: Controller;
@@ -27,7 +44,7 @@ function hardenContents(contents: Electron.WebContents): void {
     const verdict = decideNavigation(url, indexUrl);
     if (verdict === 'allow-app') return;
     event.preventDefault();
-    if (verdict === 'open-external') void controller.openLink(url);
+    if (verdict === 'open-external' && !prototypeMode) void controller.openLink(url);
   });
   contents.on('will-frame-navigate', (event) => {
     const verdict = decideNavigation(event.url, indexUrl);
@@ -35,29 +52,39 @@ function hardenContents(contents: Electron.WebContents): void {
   });
   contents.on('will-redirect', event => event.preventDefault());
   contents.setWindowOpenHandler(({ url }) => {
-    if (decideNavigation(url, indexUrl) === 'open-external') void controller.openLink(url);
+    if (decideNavigation(url, indexUrl) === 'open-external' && !prototypeMode) void controller.openLink(url);
     return { action: 'deny' };
   });
   contents.on('will-attach-webview', event => event.preventDefault());
+}
+
+/** A start that failed, or a page that did not load, must not leave a process with no window and no word. Say so on stderr and in a box, then exit with an error. */
+function startupFailed(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`${prototypeMode ? 'Bowerloom prototype' : 'Bowerloom'} could not start: ${message}\n`);
+  try { dialog.showErrorBox(prototypeMode ? 'Bowerloom prototype could not start' : 'Bowerloom could not start', message); } catch { /* no box could be shown; stderr has the message */ }
+  app.exit(1);
 }
 
 function createWindow(): void {
   window = new BrowserWindow({
     width: 1100, height: 760, useContentSize: true, minWidth: 900, minHeight: 600, show: false, title: 'Bowerloom Viewer',
     backgroundColor: '#f6f5f0',
-    webPreferences: webPreferences(join(root, 'preload.cjs'), app.isPackaged),
+    // The prototype page gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
+    webPreferences: webPreferences(prototypeMode ? undefined : join(root, 'preload.cjs'), app.isPackaged),
   });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = null; });
-  void window.loadURL(indexUrl);
+  if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
+  else window.loadURL(indexUrl).catch(startupFailed);
 }
 
 function registerIpc(): void {
   const guarded = <T extends unknown[], R>(name: ChannelName, handler: (...args: T) => Promise<R>): void => {
     ipcMain.handle(CHANNELS[name], (event, ...args) => {
-      // Only our own page may ask.
+      // Only our own page may ask, and the prototype page may not ask at all.
       const frame = event.senderFrame;
-      if (frame === null || decideNavigation(frame.url, indexUrl) !== 'allow-app') throw new Error('Not allowed.');
+      if (!isAllowedSender(prototypeMode, frame === null ? null : frame.url, indexUrl)) throw new Error('Not allowed.');
       return handler(...(args as T));
     });
   };
@@ -86,7 +113,7 @@ function registerIpc(): void {
 
 app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 
-void app.whenReady().then(async () => {
+app.whenReady().then(async () => {
   // The page is served by the app itself, from its own renderer folder only.
   protocol.handle(APP_SCHEME, async request => {
     const url = new URL(request.url), file = url.host === APP_HOST ? resolveAppFile(rendererDir, url.pathname) : null;
@@ -120,6 +147,6 @@ void app.whenReady().then(async () => {
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+}).catch(startupFailed);
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

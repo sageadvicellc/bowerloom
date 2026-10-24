@@ -9,9 +9,12 @@ import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
 import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
+import { mountPrototype } from './proto/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
-const api = window.bowerloom;
+// The prototype page has no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
+// this file from failing, and any call on it is refused. The prototype is mounted at the bottom and never calls it.
+const api: ViewerApi = window.bowerloom ?? new Proxy({} as ViewerApi, { get: () => () => Promise.reject(new Error('This page has no bridge.')) });
 
 type Screen = Link['screen'];
 interface Route extends Link { tab?: ItemKind }
@@ -415,4 +418,5 @@ async function reload(): Promise<void> {
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 applyMotionTokens();
 window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
-void reload();
+// The clickable prototype of Bowerloom 0.8 opens on the address #prototype. It keeps everything in memory and skips the normal start.
+if (location.hash === '#prototype') { applyTheme(); mountPrototype(root); } else void reload();
