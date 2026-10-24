@@ -5,16 +5,19 @@
 //   npm --prefix <repo> run desktop:prototype (the Bowerloom 0.8 clickable prototype: all in memory, with a temporary data folder)
 // It installs what is missing, builds the app, and opens the window. Pass --build-only to stop before the window.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { constants } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { makePrototypeDataDir, removePrototypeDataDir } from '../main/prototype-dir.mjs';
+
+// The data folder rules (how the folder is made, and the checks before it is removed) live in main/prototype-dir.mjs, which the app shares.
+export { makePrototypeDataDir, removePrototypeDataDir };
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
 const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype', '--build-only']);
 const MODES = new Set(['--sample-data', '--real-data', '--sandbox', '--prototype']);
-const PROTOTYPE_PREFIX = 'bowerloom-prototype-';
 
 /**
  * The only environment an install script gets: where to find programs and the person's home, the network settings npm
@@ -60,22 +63,34 @@ export function electronBinary(desktop = join(dirname(fileURLToPath(import.meta.
   } catch { return null; }
 }
 
-/** A new, empty data folder for the prototype, made under the temporary folder of the system, so the prototype writes nothing to the real app data. */
-export function makePrototypeDataDir(tmp = tmpdir()) { return mkdtempSync(join(tmp, PROTOTYPE_PREFIX)); }
+/** The exit code a shell shows for a process that a signal ended: 128 plus the signal number (SIGINT 130, SIGTERM 143, SIGHUP 129). 1 for a signal we do not know. */
+export function exitCodeFor(signal) {
+  const n = signal ? constants.signals[signal] : undefined;
+  return typeof n === 'number' ? 128 + n : 1;
+}
+
+const PASSED_ON = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
 /**
- * Removes a prototype data folder, and only that: a real folder (not a link) that sits directly in `tmp` and has the prototype's name.
- * Answers true when it removed one. Anything else is left exactly as it is.
+ * Looks after the app window until it is gone. A stop signal (SIGINT, SIGTERM, SIGHUP) is passed on to the window, and the launcher WAITS: it exits
+ * only when the window has, so the window is never left running with its folder pulled away. The data folder is removed in the window's `exit`
+ * handler, which runs on every way the window can end. What cannot be caught: SIGKILL of the launcher leaves the window running (it removes its own
+ * folder when it quits, see main/main.ts), and SIGKILL of the window or a crash of the machine leaves the folder in the temporary folder, where
+ * the system clears it. That leftover holds only the browser's cache, and the next run uses a fresh folder.
+ * `proc`, `remove` and `fail` are there so a test can stand in for the process.
  */
-export function removePrototypeDataDir(dir, tmp = tmpdir()) {
-  try {
-    if (!basename(dir).startsWith(PROTOTYPE_PREFIX)) return false;
-    const info = lstatSync(dir);
-    if (info.isSymbolicLink() || !info.isDirectory()) return false;
-    if (dirname(realpathSync(dir)) !== realpathSync(tmp)) return false;
-    rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch { return false; }
+export function superviseChild(child, { dataDir = null, proc = process, remove = removePrototypeDataDir, fail: failWith = fail } = {}) {
+  let passedOn = null;
+  const cleanUp = () => { if (dataDir !== null) remove(dataDir); };
+  for (const signal of PASSED_ON) proc.on(signal, () => { passedOn ??= signal; child.kill(signal); });
+  proc.once('exit', cleanUp);
+  child.on('error', error => { cleanUp(); failWith(`The app window could not start.\n${error.message}`, 1); });
+  child.on('exit', (code, signal) => {
+    cleanUp();
+    if (signal && signal === passedOn) proc.exit(exitCodeFor(signal));
+    else if (signal) failWith(`The app window stopped suddenly (${signal}).`, 1);
+    else proc.exit(code ?? 0);
+  });
 }
 
 /** What the app window is started with: the app folder, the data folder when there is one, then the mode flags. */
@@ -117,13 +132,8 @@ function main() {
   const flags = args.filter(a => MODES.has(a));
   // The prototype starts with a fresh, empty data folder and removes it when the window closes, so it leaves nothing in the real app data.
   const dataDir = args.includes('--prototype') ? makePrototypeDataDir() : null;
-  if (dataDir !== null) { process.once('exit', () => { removePrototypeDataDir(dataDir); }); process.once('SIGINT', () => process.exit(130)); process.once('SIGTERM', () => process.exit(143)); }
   const child = spawn(electron, electronArgs(desktop, flags, dataDir), { stdio: 'inherit', env: process.env });
-  child.on('error', error => fail(`The app window could not start.\n${error.message}`, 1));
-  child.on('exit', (code, signal) => {
-    if (signal) fail(`The app window stopped suddenly (${signal}).`, 1);
-    process.exit(code ?? 0);
-  });
+  superviseChild(child, { dataDir });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

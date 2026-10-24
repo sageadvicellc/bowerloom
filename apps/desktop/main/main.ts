@@ -1,6 +1,7 @@
 /** Electron entry. Opens one window onto the viewer page and answers its named calls. */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, protocol, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS } from '../shared/channels.js';
@@ -8,7 +9,7 @@ import type { ChannelName } from '../shared/channels.js';
 import type { Mode } from '../shared/types.js';
 import { createController } from './controller.js';
 import type { Controller } from './controller.js';
-import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, decideNavigation, isAllowedSender, resolveAppFile, webPreferences } from './security.js';
+import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removePrototypeDataDir, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(root, 'renderer');
@@ -19,6 +20,19 @@ protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standa
 const argv = process.argv.slice(1);
 // The clickable prototype (Bowerloom 0.8): the same page with #prototype added, and no IPC at all.
 const prototypeMode = argv.includes('--prototype');
+// The prototype writes nothing to the real app data, whoever starts it. It keeps its own temporary data folder (or the one it was given, when that
+// is one of its own), and removes it when the app quits. The launcher does the same; this keeps the promise when the app is started without it.
+// Not caught: a hard kill (SIGKILL, a crash, a power cut) leaves the folder, and the browser engine writes a few small files (Local State, Preferences)
+// after the quit event, so a start without the launcher can leave those four files. The launcher removes the folder again once the app has exited.
+// The folder holds only browser settings and cache, never prototype data, and the system clears its temporary folder.
+if (prototypeMode) {
+  const choice = chooseUserData(userDataArg(argv), tmpdir());
+  const dir = choice.action === 'keep' ? choice.dir : makePrototypeDataDir();
+  if (choice.action === 'make') app.setPath('userData', dir);
+  const cleanUp = (): void => { removePrototypeDataDir(dir); };
+  app.once('quit', cleanUp);
+  process.once('exit', cleanUp);
+}
 const forcedMode: Mode | null = argv.includes('--sample-data') ? 'sample' : argv.includes('--real-data') ? 'real' : argv.includes('--sandbox') ? 'sandbox' : null;
 
 let controller: Controller;
@@ -47,7 +61,8 @@ function createWindow(): void {
   window = new BrowserWindow({
     width: 1100, height: 760, useContentSize: true, minWidth: 900, minHeight: 600, show: false, title: 'Bowerloom Viewer',
     backgroundColor: '#f6f5f0',
-    webPreferences: webPreferences(join(root, 'preload.cjs'), app.isPackaged),
+    // The prototype page gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
+    webPreferences: webPreferences(prototypeMode ? undefined : join(root, 'preload.cjs'), app.isPackaged),
   });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = null; });

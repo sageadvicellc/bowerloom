@@ -20,7 +20,11 @@ export const CSP = [
   "frame-src 'none'",
 ].join('; ');
 
-export const webPreferences = (preload: string, packaged = false) => ({
+// The prototype's data folder rules are shared with the launcher, which cannot load TypeScript. See prototype-dir.mjs.
+export { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removePrototypeDataDir, userDataArg } from './prototype-dir.mjs';
+
+/** The window's settings. `preload` is the bridge script; the prototype page gets none (pass undefined), so it has no `window.bowerloom` at all. */
+export const webPreferences = (preload: string | undefined, packaged = false) => ({
   contextIsolation: true,
   nodeIntegration: false,
   nodeIntegrationInWorker: false,
@@ -34,7 +38,7 @@ export const webPreferences = (preload: string, packaged = false) => ({
   navigateOnDragDrop: false,
   // The developer tools are available only in a build that is run from source.
   devTools: !packaged,
-  preload,
+  ...(preload === undefined ? {} : { preload }),
 }) as const;
 
 /** The hosts the app may open in the person's browser. Each link must also be https, with no user name, password, or port. */

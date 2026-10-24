@@ -147,7 +147,7 @@ test('app.ts mounts the prototype only for the #prototype hash and leaves the no
 
 test('the launcher: --prototype is a known flag, a mode that excludes the other modes, and is passed on', () => {
   const src = strip(read('tools/run.mjs'));
-  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /args\.includes\('--prototype'\)/); assert.match(src, /mkdtempSync\(/);
+  assert.match(src, /KNOWN = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /MODES = new Set\(\[[^\]]*'--prototype'/); assert.match(src, /args\.includes\('--prototype'\)/); assert.match(src, /makePrototypeDataDir\(\)/); assert.match(strip(read('main/prototype-dir.mjs')), /mkdtempSync\(/);
   for (const other of ['--sample-data', '--real-data', '--sandbox']) {
     const r = spawnSync(process.execPath, [join(DESKTOP, 'tools', 'run.mjs'), '--prototype', other], { cwd: tmpdir(), encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, other); assert.match(r.stderr, /not more/); assert.doesNotMatch(r.stdout, /Installing|Building/);

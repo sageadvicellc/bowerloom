@@ -12,7 +12,9 @@ import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
 import { mountPrototype } from './proto/mount.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
-const api = window.bowerloom;
+// The prototype page has no bridge (main.ts leaves the preload out there), so `window.bowerloom` is missing then. This stand-in keeps the top of
+// this file from failing, and any call on it is refused. The prototype is mounted at the bottom and never calls it.
+const api: ViewerApi = window.bowerloom ?? new Proxy({} as ViewerApi, { get: () => () => Promise.reject(new Error('This page has no bridge.')) });
 
 type Screen = Link['screen'];
 interface Route extends Link { tab?: ItemKind }
