@@ -1,0 +1,127 @@
+/*
+ * The harness graph canvas. Colours come from tokens.css only (no hex value here) and motion from motion-tokens.ts: HarnessCanvas.tsx
+ * publishes it as --hc-* properties on its root, with every duration 0 when "reduce motion" is on.
+ */
+.hc-frame { position: relative; width: 100%; height: 100%; min-height: 20rem; }
+.hc-root {
+  position: absolute; inset: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: var(--text);
+  --hc-kind-scope: var(--kind-project); --hc-kind-interface: var(--kind-machine); --hc-kind-skill: var(--kind-skill); --hc-kind-agent: var(--kind-agent);
+  --hc-kind-tool: var(--kind-prompt); --hc-kind-context-slice: var(--kind-knowledge-folder); --hc-kind-group: var(--kind-workspace);
+}
+.hc-root .react-flow {
+  --xy-background-color: transparent; --xy-background-pattern-dots-color-default: var(--canvas-dots); --xy-edge-stroke-default: var(--wire-contains);
+  --xy-minimap-background-color-default: var(--surface); --xy-controls-button-background-color-default: var(--surface); --xy-controls-button-color-default: var(--text);
+  --xy-controls-button-border-color-default: var(--border); --xy-controls-button-background-color-hover-default: var(--accent-soft); --xy-attribution-background-color-default: transparent;
+  background: transparent; color: var(--text); font-family: var(--font-body);
+}
+.hc-root .react-flow__attribution { font-size: 0.7rem; opacity: 0.7; }
+.hc-root .react-flow__controls { border: 1px solid var(--border); border-radius: var(--radius-small); overflow: hidden; box-shadow: none; }
+.hc-root .react-flow__minimap { border: 1px solid var(--border); border-radius: var(--radius-small); overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
+.hc-root .react-flow__node { cursor: grab; border-radius: var(--radius-small); }
+.hc-root .react-flow__node.dragging { cursor: grabbing; }
+.hc-root .react-flow__node:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.hc-root.is-settling .react-flow__node { transition: transform var(--hc-drop-ms, 0ms) var(--hc-drop-ease, ease); }
+
+/* A node. Colour marks the kind (a stripe and the icon); the words say it again. */
+.hc-node {
+  --hc-accent: var(--kind-machine);
+  position: relative; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: var(--hc-w); height: var(--hc-h); padding: 6px 10px 6px 8px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 6px solid var(--hc-accent); border-radius: var(--radius-small); box-shadow: var(--shadow);
+  transition: box-shadow var(--hc-hover-ms, 0ms) var(--hc-hover-ease, ease), border-color var(--hc-select-ms, 0ms) var(--hc-select-ease, ease), opacity var(--hc-select-ms, 0ms) var(--hc-select-ease, ease);
+  animation: hc-enter var(--hc-enter-ms, 0ms) var(--hc-enter-ease, ease) both;
+}
+.hc-node:hover { border-color: var(--text-muted); box-shadow: 0 0 0 1px var(--border), var(--shadow); }
+.hc-node.is-selected { border-color: var(--focus); box-shadow: 0 0 0 2px var(--focus), var(--shadow); }
+.hc-node.kind-scope { --hc-accent: var(--hc-kind-scope); }
+.hc-node.kind-interface { --hc-accent: var(--hc-kind-interface); }
+.hc-node.kind-skill { --hc-accent: var(--hc-kind-skill); }
+.hc-node.kind-agent { --hc-accent: var(--hc-kind-agent); }
+.hc-node.kind-tool { --hc-accent: var(--hc-kind-tool); }
+.hc-node.kind-tool.tool-mcp { --hc-accent: var(--kind-reading-list); }
+.hc-node.kind-tool.tool-hook { --hc-accent: var(--kind-team); }
+.hc-node.kind-context-slice { --hc-accent: var(--hc-kind-context-slice); }
+.hc-node.kind-group { --hc-accent: var(--hc-kind-group); box-shadow: 5px 5px 0 -1px var(--surface), 5px 5px 0 0 var(--border), 10px 10px 0 -1px var(--surface), 10px 10px 0 0 var(--border); }
+.hc-node.kind-scope { border-width: 2px; border-left-width: 8px; }
+/* Faded: inherited from the global harness. Dashed and struck through: hidden or replaced here. The words in the chips say the same. */
+.hc-node.is-inherited { opacity: 0.55; background: var(--surface-2); box-shadow: none; }
+.hc-node.is-inherited:hover, .hc-node.is-inherited.is-selected { opacity: 1; }
+.hc-node.is-hidden { opacity: 0.5; border-style: dashed; background: var(--surface-2); }
+.hc-node.is-hidden .hc-label, .hc-node.is-replaced .hc-label { text-decoration: line-through; text-decoration-thickness: 1px; }
+.hc-node.is-replaced { border-style: dashed; }
+.hc-node.is-hidden:hover, .hc-node.is-hidden.is-selected { opacity: 1; }
+.hc-node.is-missing { border-style: dashed; }
+.hc-node.is-conflict { border-top: 2px solid var(--warn-fg); }
+.hc-node.is-dropped { animation: hc-drop var(--hc-drop-ms, 0ms) var(--hc-drop-ease, ease) both; }
+.hc-node.is-connected { animation: hc-connect var(--hc-connect-ms, 0ms) var(--hc-connect-ease, ease) both; }
+
+.hc-icon { flex: none; display: inline-flex; color: var(--hc-accent); }
+.hc-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; gap: 1px; }
+.hc-top { display: flex; align-items: center; gap: 4px; min-width: 0; height: 15px; white-space: nowrap; overflow: hidden; }
+.hc-kind { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--text-muted); }
+.hc-label { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-detail { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-chip { flex: none; font-size: 10.5px; font-weight: 650; line-height: 14px; padding: 0 6px; border-radius: var(--radius-pill); white-space: nowrap; background: var(--quiet-bg); color: var(--quiet-fg); }
+.hc-chip.good { background: var(--good-bg); color: var(--good-fg); }
+.hc-chip.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.hc-chip.bad { background: var(--bad-bg); color: var(--bad-fg); }
+.hc-toggle { flex: none; margin-left: auto; font: inherit; font-size: 11px; font-weight: 650; line-height: 13px; padding: 0 8px; background: var(--accent-soft); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-pill); cursor: pointer; }
+.hc-toggle:hover { background: var(--surface-2); }
+
+/* The ends of a wire. They show when you point at a node, so a wire can be started from either side. */
+.hc-handle { width: 14px; height: 14px; background: var(--surface); border: 2px solid var(--hc-accent, var(--kind-machine)); opacity: 0; transition: opacity var(--hc-hover-ms, 0ms) var(--hc-hover-ease, ease); }
+.hc-node:hover .hc-handle, .hc-node.is-selected .hc-handle, .react-flow__node:focus-visible .hc-handle, .hc-root.is-linking .hc-handle { opacity: 1; }
+.hc-root .react-flow__handle.connectingto, .hc-root .react-flow__handle.valid { opacity: 1; background: var(--accent); }
+.hc-root .react-flow__connection-path { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 6 4; fill: none; }
+
+/* Wires. The way each is drawn says what it means, so colour is never the only carrier. */
+.react-flow__edge.hc-edge .react-flow__edge-path { fill: none; stroke-width: 1.6; stroke-linecap: round; opacity: 0.5; transition: opacity var(--hc-hover-ms, 0ms) var(--hc-hover-ease, ease); }
+.react-flow__edge.hc-edge.rel-uses .react-flow__edge-path { stroke: var(--wire-uses); }
+.react-flow__edge.hc-edge.rel-has-tool .react-flow__edge-path { stroke: var(--wire-owns); stroke-width: 2.2; stroke-dasharray: 10 3 2 3; }
+.react-flow__edge.hc-edge.rel-reads .react-flow__edge-path { stroke: var(--wire-reads); stroke-dasharray: 8 4; }
+.react-flow__edge.hc-edge.rel-lands-in .react-flow__edge-path { stroke: var(--wire-contains); stroke-dasharray: 2 5; }
+.react-flow__edge.hc-edge.rel-lands-in.is-plain .react-flow__edge-path { opacity: 0.3; }
+.react-flow__edge.hc-edge.rel-replaces .react-flow__edge-path { stroke: var(--wire-comes-from); stroke-width: 2.2; stroke-dasharray: 1 4; }
+.hc-root.is-busy .react-flow__edge.hc-edge.is-plain .react-flow__edge-path { opacity: 0.18; }
+.react-flow__edge.hc-edge.is-quiet .react-flow__edge-path { opacity: 0.1; }
+.react-flow__edge.hc-edge.is-active .react-flow__edge-path { opacity: 1; stroke-width: 2.6; }
+.react-flow__edge.hc-edge .react-flow__edge-path { animation: hc-edge-draw var(--hc-edge-ms, 0ms) var(--hc-edge-ease, ease) both; }
+/* A word on a wire (for a tool, its access) shows when the wire is in use: pointed at, or next to the chosen node. */
+.react-flow__edge.hc-edge .react-flow__edge-text { fill: var(--text); font-size: 11px; font-weight: 650; }
+.react-flow__edge.hc-edge .react-flow__edge-textbg { fill: var(--surface); stroke: var(--border); }
+.react-flow__edge.hc-edge:not(.is-active) .react-flow__edge-text, .react-flow__edge.hc-edge:not(.is-active) .react-flow__edge-textbg { display: none; }
+
+/* Far away: only the name, larger, and the flags that need a look. The shape and the stripe still say the kind. */
+.hc-root.is-far .hc-kind, .hc-root.is-far .hc-detail, .hc-root.is-far .hc-chip:not(.flag) { display: none; }
+.hc-root.is-far .hc-node:not(.has-flags) .hc-top { display: none; }
+.hc-root.is-far .hc-top { height: 20px; }
+.hc-root.is-far .hc-chip { font-size: 14px; line-height: 18px; padding: 0 8px; }
+.hc-root.is-far .hc-toggle { font-size: 14px; line-height: 16px; }
+.hc-root.is-far .hc-label { font-size: var(--hc-far-font, 19px); line-height: 1.1; white-space: normal; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+.hc-root.is-many .hc-node, .hc-root.is-many .react-flow__edge.hc-edge .react-flow__edge-path { animation: none; }
+
+/* Tools on the page. */
+.hc-fit, .hc-legend summary { font: inherit; font-size: 13px; font-weight: 600; padding: 3px 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); cursor: pointer; transition: background var(--hc-hover-ms, 0ms) var(--hc-hover-ease, ease); }
+.hc-fit:hover, .hc-legend[open] summary, .hc-legend summary:hover { background: var(--accent-soft); }
+.hc-fit:focus-visible, .hc-legend summary:focus-visible, .hc-menu-item:focus-visible, .hc-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hc-legend summary { list-style: none; width: fit-content; }
+.hc-legend ul { margin: 4px 0 0; padding: 8px 10px; list-style: none; display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); box-shadow: var(--shadow); font-size: 12.5px; color: var(--text); }
+.hc-legend li { display: flex; align-items: center; gap: 8px; }
+.hc-legend line { fill: none; stroke-width: 2; stroke-linecap: round; }
+.hc-legend .rel-uses line { stroke: var(--wire-uses); }
+.hc-legend .rel-has-tool line { stroke: var(--wire-owns); stroke-dasharray: 10 3 2 3; }
+.hc-legend .rel-reads line { stroke: var(--wire-reads); stroke-dasharray: 8 4; }
+.hc-legend .rel-lands-in line { stroke: var(--wire-contains); stroke-dasharray: 2 5; }
+.hc-legend .rel-replaces line { stroke: var(--wire-comes-from); stroke-dasharray: 1 4; }
+
+.hc-menu { position: absolute; z-index: 30; min-width: 13rem; display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); box-shadow: var(--shadow); }
+.hc-menu-item { font: inherit; font-size: 13.5px; text-align: left; padding: 6px 10px; background: none; color: var(--text); border: 0; border-radius: var(--radius-small); cursor: pointer; }
+.hc-menu-item:hover { background: var(--accent-soft); }
+.hc-banner { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 25; margin: 0; padding: 4px 12px; font-size: 13px; background: var(--accent-soft); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); max-width: calc(100% - 2rem); }
+.hc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+@keyframes hc-enter { from { opacity: 0; transform: translateY(var(--hc-enter-distance, 0)) scale(var(--hc-enter-scale, 1)); } to { opacity: 1; transform: none; } }
+@keyframes hc-drop { from { transform: scale(var(--hc-drop-scale, 1)); } to { transform: none; } }
+@keyframes hc-connect { from { box-shadow: 0 0 0 0 var(--accent); } 55% { box-shadow: 0 0 0 7px var(--accent-soft); } to { box-shadow: 0 0 0 0 transparent; } }
+@keyframes hc-edge-draw { from { stroke-dashoffset: 400; stroke-dasharray: 400; } to { stroke-dashoffset: 0; } }
+.hc-root.is-reduced *, .hc-root.is-reduced *::before, .hc-root.is-reduced *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .hc-root *, .hc-root *::before, .hc-root *::after { animation: none !important; transition: none !important; } }
