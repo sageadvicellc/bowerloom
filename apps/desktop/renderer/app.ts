@@ -8,6 +8,7 @@ import type { Chip, Link, SliceGroup, SliceModel, Tone } from '../shared/viewmod
 import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
+import { knowledgeHost } from './graph/knowledge.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 const api = window.bowerloom;
@@ -120,6 +121,13 @@ function mapScreen(s: Snapshot): HTMLElement {
   return h('div', { class: 'page wide map-page' },
     h('div', { class: 'map-head' }, h('h1', { text: 'Map', title: 'Everything Bowerloom looks after, as things you can move. Your places are remembered by the viewer; nothing in your folders changes.' })),
     mapHost());
+}
+
+/** The graph is drawn on a canvas in one element that is kept, so its picture and place survive other screens. */
+function graphScreen(s: Snapshot): HTMLElement {
+  return h('div', { class: 'page wide map-page' },
+    h('div', { class: 'map-head' }, h('h1', { text: 'Knowledge graph', title: 'The pages of a context store and the links between them. Read only: nothing in your folders changes.' })),
+    knowledgeHost({ snapshot: s, api, storeKey: state.route.key ?? null }));
 }
 
 function libraryScreen(s: Snapshot): HTMLElement {
@@ -315,7 +323,7 @@ function welcome(): HTMLElement {
 // ------------------------------------------------------------------------------------------------------------- shell
 
 const NAV: { screen: Screen; label: string; icon: readonly string[] }[] = [
-  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'map', label: 'Map', icon: ICONS.map }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
+  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'map', label: 'Map', icon: ICONS.map }, { screen: 'graph', label: 'Knowledge graph', icon: ICONS.graph }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
   { screen: 'folders', label: 'Knowledge folders', icon: ICONS.folders }, { screen: 'storage', label: 'Storage', icon: ICONS.storage }, { screen: 'settings', label: 'Settings', icon: ICONS.settings },
 ];
 const section = (screen: Screen): Screen => screen === 'item' ? 'library' : screen === 'project' ? 'projects' : screen;
@@ -338,6 +346,7 @@ function body(): HTMLElement {
   if (state.snap === null) return h('div', { class: 'page' }, h('p', { class: 'muted', role: 'status', text: 'Reading your Bowerloom…' }));
   switch (state.route.screen) {
     case 'map': return mapScreen(state.snap);
+    case 'graph': return graphScreen(state.snap);
     case 'library': return libraryScreen(state.snap);
     case 'item': return itemScreen(state.snap);
     case 'projects': return projectsScreen(state.snap);

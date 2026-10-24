@@ -1,0 +1,27 @@
+/* The knowledge graph. Colours come from tokens.css; motion from motion-tokens.ts (published as --motion-* properties). */
+.kg-host { display: flex; flex-direction: column; gap: var(--space-2); }
+.kg-bar { align-items: center; }
+.kg-input { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); max-width: 15rem; }
+.kg-check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); }
+.kg-stage { display: flex; gap: var(--space-3); align-items: stretch; }
+.kg-main { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); position: relative; height: clamp(22rem, calc(100vh - 21rem), 60rem); overflow: auto; }
+.kg-canvas { position: absolute; inset: 0; background-image: radial-gradient(var(--map-dot, var(--border)) 1px, transparent 1px); background-size: 22px 22px; }
+.kg-canvas[hidden], .kg-list[hidden] { display: none; }
+.kg-canvas.kg-pointer { cursor: pointer; }
+.kg-list { padding: var(--space-3); }
+.kg-panel { width: 22rem; max-width: 36%; flex: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--space-3) var(--space-4); overflow: auto; max-height: clamp(22rem, calc(100vh - 21rem), 60rem); }
+.kg-panel.kg-in { animation: kg-slide var(--motion-panel-slide-ms, 0ms) var(--motion-panel-slide-ease, ease) both; }
+@keyframes kg-slide { from { opacity: 0; transform: translateX(var(--motion-panel-slide-distance, 0px)); } to { opacity: 1; transform: none; } }
+.kg-panel h2 { margin: 0 0 var(--space-2); font-size: var(--text-large, 1.15rem); overflow-wrap: anywhere; }
+.kg-panel h3 { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-body); }
+.kg-path { overflow-wrap: anywhere; }
+.kg-ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.kg-link { background: none; border: 0; padding: 2px 0; color: var(--accent-strong); text-align: left; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.kg-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.kg-tag { background: var(--accent-soft); color: var(--text); border: 0; border-radius: var(--radius-pill); padding: 0.1rem 0.6rem; cursor: pointer; font-size: var(--text-small); }
+.kg-panel .bw-btn { margin: var(--space-2) var(--space-2) 0 0; }
+.kg-notice { margin: 0; }
+.kg-notices { display: flex; flex-direction: column; gap: var(--space-1); }
+.kg-status { margin: 0; }
+@media (max-width: 900px) { .kg-stage { flex-direction: column; } .kg-panel { width: auto; max-width: none; max-height: 18rem; } }
+@media (prefers-reduced-motion: reduce) { .kg-panel.kg-in { animation: none; } }

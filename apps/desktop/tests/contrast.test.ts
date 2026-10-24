@@ -24,3 +24,9 @@ for (const [name, vars] of [['light', light], ['dark', dark]] as const) {
     for (const bg of ['bg', 'surface']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);
   });
 }
+
+for (const [name, vars] of [['light', light], ['dark', dark]] as const) {
+  test(`${name} theme: the eight graph colours are each seen against the graph's background (3 to 1, for shapes)`, () => {
+    for (let i = 1; i <= 8; i++) assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `graph-${i} is ${ratio(vars[`graph-${i}`]!, vars.surface!).toFixed(2)}`);
+  });
+}
