@@ -34,6 +34,8 @@ export function icon(paths: readonly string[], size = 22): SVGSVGElement {
 /** The icon set, drawn here: simple outlines. No emoji, no outside library. */
 export const ICONS = {
   home: ['M3 11.5 12 4l9 7.5', 'M5.5 10v9.5h13V10', 'M10 19.5v-5h4v5'],
+  map: ['M5 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M5 22a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M19 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M7 5h4a4 4 0 0 1 4 4v1', 'M7 19h4a4 4 0 0 0 4-4v-1'],
+  graph: ['M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M10 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z', 'M7.6 6.4l8.6 1.6', 'M6.7 7l2.4 9.2', 'M17 10l-5.4 6'],
   library: ['M5 4h4v16H5z', 'M11 4h4v16h-4z', 'M17.2 5.2l3.4 14.4-3.7.9-3.4-14.4z'],
   projects: ['M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'],
   folders: ['M4 5h16v14H4z', 'M8 9h8', 'M8 13h8', 'M8 16.5h5'],

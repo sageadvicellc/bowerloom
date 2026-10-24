@@ -1,22 +1,27 @@
 /** The window. It asks the main process for plain data, works out the words with the shared view models, and draws them. */
-import type { AppInfo, AppSettings, ItemContent, ItemKind, SettingsResult, Snapshot, ViewerApi } from '../shared/types.js';
+import type { AppInfo, AppSettings, FolderRole, ItemContent, ItemKind, SettingsResult, Snapshot, ViewerApi } from '../shared/types.js';
 import { EXPLAINERS, KIND_WORDS, humanBytes, plural, titleOf } from '../shared/words.js';
 import {
-  cacheSummary, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, projectDetail, projectRows, slicesByProject, storeSummary,
+  cacheSummary, contextStoreRows, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, projectDetail, projectRows, rowsOfRole, slicesByProject, storeSummary, ROLE_WORDS,
 } from '../shared/viewmodel.js';
 import type { Chip, Link, SliceGroup, SliceModel, Tone } from '../shared/viewmodel.js';
 import { ICONS, h, icon } from './dom.js';
+import { applyMotionTokens } from './motion-tokens.js';
+import { mapHost, renderMap } from './map/mount.js';
+import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 const api = window.bowerloom;
 
 type Screen = Link['screen'];
-interface Route extends Link { tab?: ItemKind; fromProject?: string }
+interface Route extends Link { tab?: ItemKind }
 interface Banner { text: string; retry: (() => void) | null }
 const state: { info: AppInfo | null; settings: AppSettings | null; snap: Snapshot | null; route: Route; history: Route[]; error: string | null; busy: boolean; notice: string | null; banner: Banner | null; focusHeading: boolean; raw: Record<string, { text: string | null; note: string | null } | undefined> } =
   { info: null, settings: null, snap: null, route: { screen: 'home' }, history: [], error: null, busy: false, notice: null, banner: null, focusHeading: false, raw: {} };
 
 const root = document.getElementById('root')!;
+// The graph screen lives as long as the window; its observers are released when the window goes away.
+window.addEventListener('pagehide', () => disposeKnowledge());
 
 /**
  * Runs one call to the main process. A refusal or a failure shows a plain message with a way to try again, and never leaves
@@ -108,6 +113,25 @@ function homeScreen(s: Snapshot): HTMLElement {
         h('div', { class: 'toolbar' }, a.link ? button('Take me there', () => go(a.link!), 'btn secondary') : null, a.technical ? details([`Technical name: ${a.technical}`]) : null)))));
 }
 
+/** The map is drawn by React, in one element that is kept and put back each time, so it keeps its place while other screens are looked at. */
+function mapScreen(s: Snapshot): HTMLElement {
+  renderMap({
+    snapshot: s, saved: state.settings?.mapLayout ?? {}, api,
+    onOpen: link => go(link),
+    onLayout: layout => { void (async () => { settled(await act('Keeping the places', () => api.setMapLayout(layout))); })(); },
+  });
+  return h('div', { class: 'page wide map-page' },
+    h('div', { class: 'map-head' }, h('h1', { text: 'Map', title: 'Everything Bowerloom looks after, as things you can move. Your places are remembered by the viewer; nothing in your folders changes.' })),
+    mapHost());
+}
+
+/** The graph is drawn on a canvas in one element that is kept, so its picture and place survive other screens. */
+function graphScreen(s: Snapshot): HTMLElement {
+  return h('div', { class: 'page wide map-page' },
+    h('div', { class: 'map-head' }, h('h1', { text: 'Knowledge graph', title: 'The pages of a context store and the links between them. Read only: nothing in your folders changes.' })),
+    knowledgeHost({ snapshot: s, api, storeKey: state.route.key ?? null }));
+}
+
 function libraryScreen(s: Snapshot): HTMLElement {
   const tab = state.route.tab ?? state.route.kind ?? 'skill';
   const kinds: ItemKind[] = ['skill', 'prompt', 'team'];
@@ -150,14 +174,37 @@ function itemScreen(s: Snapshot): HTMLElement {
     ...d.files.map(f => h('div', { class: 'card' }, fileBlock(f.path, f.text, f.note, f.powers))));
 }
 
+function folderRowView(r: ReturnType<typeof projectRows>[number]): HTMLElement {
+  return rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }), r.guess === null ? null : h('span', { class: 'guess', text: r.guess })));
+}
+
+/** Who is reading what, and how the person says what kind of folder each is. Used on a folder's own page and in Settings. */
+function roleChooser(key: string, current: FolderRole, guess: FolderRole, chosen: boolean): HTMLElement {
+  const set = async (role: FolderRole | null): Promise<void> => { settled(await act('Saving your choice', () => api.setRole(key, role))); await reload(); };
+  return h('div', { class: 'card' }, h('h2', { text: 'What kind of folder is this?' }),
+    h('p', { class: 'muted', text: chosen ? `You chose this. Bowerloom's guess was: ${ROLE_WORDS[guess].label}.` : `This is Bowerloom's guess: ${ROLE_WORDS[guess].label}. You can change it.` }),
+    h('div', { class: 'chips', role: 'group', aria: { label: 'Kind of folder' } }, ...(['project', 'workspace', 'context-store'] as FolderRole[]).map(role => h('button', { type: 'button', class: current === role ? 'btn' : 'btn secondary', aria: { pressed: String(current === role) }, on: { click: () => { void set(role); } } }, ROLE_WORDS[role].label))),
+    chosen ? h('div', {}, button('Use the guess again', () => { void set(null); }, 'btn secondary')) : null,
+    h('p', { class: 'small muted', text: ROLE_WORDS[current].what }), explain('role'));
+}
+
 function projectsScreen(s: Snapshot): HTMLElement {
-  const rows = projectRows(s);
+  const projects = rowsOfRole(s, 'project'), workspaces = rowsOfRole(s, 'workspace'), stores = contextStoreRows(s);
   const addFolder = button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); });
   return h('div', { class: 'page' },
     h('div', { class: 'toolbar' }, h('h1', { text: 'Projects' }), s.mode === 'real' ? addFolder : null),
     h('p', { class: 'lead', text: 'The folders on this computer that use Bowerloom, and whether each one is in good shape.' }),
-    rows.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : undefined)
-      : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }))))));
+    workspaces.length ? h('h2', { text: 'Workspace' }) : null, workspaces.length ? h('p', { class: 'muted', text: 'The folder that holds the rest. It is not a project itself.' }) : null,
+    ...workspaces.map(folderRowView),
+    h('h2', { text: 'Projects' }), h('p', { class: 'small muted', text: 'Bowerloom guesses what kind of folder each one is. If one is wrong, open it and change it.' }),
+    projects.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : undefined)
+      : h('div', { class: 'row-list' }, ...projects.map(folderRowView)),
+    stores.length ? h('h2', { text: 'Context stores' }) : null, stores.length ? explain('contextStore') : null,
+    ...stores.map(c => h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('h3', { text: c.name }), chip(c.chip)),
+      h('p', { text: `Holds ${c.pages}.` }), c.manages.length ? h('p', { class: 'small', text: `Looked after by: ${c.manages.join(', ')}.` }) : null,
+      c.guess === null ? null : h('p', { class: 'small guess', text: `${c.guess} Open the folder and choose "What kind of folder is this?".` }),
+      h('p', { text: c.note }), c.readBy.length ? h('ul', { class: 'sentences' }, ...c.readBy.map(r => h('li', {}, h('button', { type: 'button', class: 'back', on: { click: () => go({ screen: 'project', key: r.key }) } }, r.name), ` ${r.how}.`))) : null,
+      h('div', {}, button('Open this folder', () => go({ screen: 'project', key: c.key }), 'btn secondary')))));
 }
 
 function sliceCard(sm: SliceModel): HTMLElement {
@@ -190,6 +237,7 @@ function projectScreen(s: Snapshot): HTMLElement {
   };
   return h('div', { class: 'page' },
     backButton('Back'), h('div', { class: 'toolbar' }, h('h1', { text: d.name }), chip(d.chip)),     h('p', { class: 'lead', text: d.sentence }),
+    d.role !== 'project' ? h('div', { class: 'card' }, h('p', {}, h('strong', { text: `${d.roleLabel}. ` }), d.roleWhat)) : null,
     d.olderNote ? h('div', { class: 'warning', role: 'note' }, icon(ICONS.warning, 20), d.olderNote) : null,
     d.reasons.length ? h('div', { class: 'card' }, h('h2', { text: 'What is different, and why' }), h('ul', { class: 'sentences' }, ...d.reasons.map(r => h('li', { text: r }))), explain('drift')) : null,
     h('h2', { text: 'What this project uses' }),
@@ -209,6 +257,7 @@ function projectScreen(s: Snapshot): HTMLElement {
     h('div', { class: 'card' }, h('ul', { class: 'sentences' }, ...d.config.map(c => h('li', { text: c })))),
     d.older ? null : h('h2', { text: 'The lock file' }), d.older ? null : explain('lock'),
     d.older ? null : h('div', { class: 'card' }, h('p', { text: d.lockSentence }), d.lock.length ? h('ul', { class: 'sentences' }, ...d.lock.map(l => h('li', { text: l }))) : null),
+    roleChooser(p.key, p.role, p.roleGuess, p.roleChosen),
     details(d.details),
     d.older ? null : h('div', {}, button(showRaw ? 'Hide the raw files' : 'Show the raw files', () => { void toggleRaw(); }, 'btn secondary')),
     !d.older && showRaw ? h('div', { class: 'stack' }, fileBlock('bowerloom.json', state.raw[`${p.key}:config`]?.text ?? null, state.raw[`${p.key}:config`]?.note ?? null), fileBlock('bowerloom.lock.json', state.raw[`${p.key}:lock`]?.text ?? null, state.raw[`${p.key}:lock`]?.note ?? null)) : null);
@@ -251,8 +300,14 @@ function settingsScreen(s: Snapshot): HTMLElement {
       s.mode === 'sample' ? h('p', { text: 'You are looking at sample data, so this list is not used.' }) : set.roots.length === 0 ? h('p', { class: 'muted', text: 'No folders yet.' }) : h('div', { class: 'row-list' }, ...set.roots.map(r => h('div', { class: 'row static-row' }, h('span', { class: 'tech', text: r }), button('Remove from the list', async () => { settled(await act('Removing the folder', () => api.removeRoot(r))); await reload(); }, 'btn secondary')))),
       s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : null,
       s.mode === 'real' ? h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: state.settings?.includeExamples === true, on: { change: async on => { settled(await act('Changing the setting', () => api.setIncludeExamples(on))); await reload(); } } }), h('span', { text: 'Also look inside example and test folders' })) : null),
-    h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }), h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
-      button(info.mode === 'sample' ? 'Look at my Bowerloom instead' : 'Try the sample data instead', async () => { state.info = (await act('Switching', () => api.chooseMode(info.mode === 'sample' ? 'real' : 'sample'))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')),
+    s.projects.length ? h('div', { class: 'card' }, h('h2', { text: 'What kind of folder is each one?' }), h('p', { class: 'muted', text: 'Bowerloom guesses. Your choice is remembered by the viewer only, and changes no folder.' }),
+      h('div', { class: 'row-list' }, ...s.projects.map(p => h('div', { class: 'row static-row' }, h('span', { class: 'title', text: p.name }),
+        h('span', { class: 'chips', role: 'group', aria: { label: `Kind of folder: ${p.name}` } }, ...(['project', 'workspace', 'context-store'] as FolderRole[]).map(role => h('button', { type: 'button', class: p.role === role ? 'btn' : 'btn secondary', aria: { pressed: String(p.role === role) }, on: { click: () => { void (async () => { settled(await act('Saving your choice', () => api.setRole(p.key, role))); await reload(); })(); } } }, ROLE_WORDS[role].label))))))) : null,
+    h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }),
+      h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : info.mode === 'sandbox' ? 'The sandbox: invented content in its own pretend home, safe to break.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
+      h('div', { class: 'chips' }, ...(['real', 'sample', 'sandbox'] as const).filter(m => m !== info.mode && (m !== 'sandbox' || info.sandbox.exists)).map(m =>
+        button(m === 'real' ? 'Look at my Bowerloom' : m === 'sample' ? 'Try the sample data' : 'Open the sandbox', async () => { state.info = (await act('Switching', () => api.chooseMode(m))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary'))),
+      !info.sandbox.exists ? h('p', { class: 'small muted', text: 'There is no sandbox yet. It is made by the sandbox command (see the README).' }) : null),
     h('div', { class: 'card' }, h('h2', { text: 'Appearance' }), h('div', { class: 'chips' }, theme('system', 'Match my computer'), theme('light', 'Light'), theme('dark', 'Dark'))),
     h('div', { class: 'card' }, h('h2', { text: 'About' }), h('dl', { class: 'kv' }, h('dt', { text: 'Version' }), h('dd', { text: info.version }), h('dt', { text: 'Updates' }), h('dd', { text: info.updates.status })),
       button('Check for updates', async () => { const r = await act('Checking for updates', () => api.checkForUpdates()); if (r !== null) { state.notice = r.status; state.info = (await act('Reading the version', () => api.getInfo())) ?? state.info; } render(); }, 'btn secondary'), state.notice ? h('p', { role: 'status', text: state.notice }) : null,
@@ -271,7 +326,7 @@ function welcome(): HTMLElement {
 // ------------------------------------------------------------------------------------------------------------- shell
 
 const NAV: { screen: Screen; label: string; icon: readonly string[] }[] = [
-  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
+  { screen: 'home', label: 'Home', icon: ICONS.home }, { screen: 'map', label: 'Map', icon: ICONS.map }, { screen: 'graph', label: 'Knowledge graph', icon: ICONS.graph }, { screen: 'library', label: 'Library', icon: ICONS.library }, { screen: 'projects', label: 'Projects', icon: ICONS.projects },
   { screen: 'folders', label: 'Knowledge folders', icon: ICONS.folders }, { screen: 'storage', label: 'Storage', icon: ICONS.storage }, { screen: 'settings', label: 'Settings', icon: ICONS.settings },
 ];
 const section = (screen: Screen): Screen => screen === 'item' ? 'library' : screen === 'project' ? 'projects' : screen;
@@ -284,15 +339,17 @@ function shell(content: HTMLElement, banner: HTMLElement | null = null): HTMLEle
     return b;
   }));
   return h('div', { class: 'shell' },
-    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), nav, button('Look again', () => { void reload(); }, 'btn secondary')),
+    h('aside', { class: 'sidebar' }, h('div', { class: 'brand' }, icon(ICONS.leaf, 28), 'Bowerloom'), info.mode === 'sandbox' ? h('div', { class: 'sandbox-badge', role: 'note' }, 'Sandbox: safe to break') : null, nav, button('Look again', () => { void reload(); }, 'btn secondary')),
     h('main', { id: 'main' }, banner, content),
-    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom Viewer ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : 'Showing your own Bowerloom' })));
+    h('footer', { class: 'footer' }, h('span', { text: `Bowerloom Viewer ${info.version}` }), h('span', { text: info.updates.status }), h('span', { class: 'spacer' }), h('span', { text: info.mode === 'sample' ? 'Showing sample data' : info.mode === 'sandbox' ? 'Sandbox: safe to break' : 'Showing your own Bowerloom' })));
 }
 
 function body(): HTMLElement {
   if (state.error) return h('div', { class: 'page', role: 'alert' }, empty('Something went wrong', state.error, button('Try again', () => { void reload(); })));
   if (state.snap === null) return h('div', { class: 'page' }, h('p', { class: 'muted', role: 'status', text: 'Reading your Bowerloom…' }));
   switch (state.route.screen) {
+    case 'map': return mapScreen(state.snap);
+    case 'graph': return graphScreen(state.snap);
     case 'library': return libraryScreen(state.snap);
     case 'item': return itemScreen(state.snap);
     case 'projects': return projectsScreen(state.snap);
@@ -356,4 +413,6 @@ async function reload(): Promise<void> {
 }
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+applyMotionTokens();
+window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => applyMotionTokens());
 void reload();

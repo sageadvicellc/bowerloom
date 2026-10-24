@@ -18,6 +18,11 @@ ul { padding: 0; list-style: none; }
 .nav button[aria-current="page"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
 .nav .badge { margin-left: auto; }
 main { grid-row: 1; overflow-y: auto; padding: var(--space-6) var(--space-7) var(--space-7); }
+main > .page.wide { max-width: none; }
+main:has(.map-page) { padding: var(--space-4) var(--space-5) var(--space-3); }
+.map-page { gap: var(--space-1); }
+.map-page h1 { font-size: var(--text-large); }
+.map-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-5); }
 main > .page { max-width: 62rem; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-5); }
 .footer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; padding: var(--space-2) var(--space-5); border-top: 1px solid var(--border); background: var(--surface); font-size: var(--text-small); color: var(--text-muted); }
 .footer .spacer { flex: 1; }
@@ -97,6 +102,7 @@ h1:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .toggle { display: flex; gap: var(--space-3); align-items: center; cursor: pointer; }
 .toggle input { width: 1.25rem; height: 1.25rem; accent-color: var(--accent); }
 .looking { display: flex; flex-direction: column; gap: var(--space-2); }
+.sandbox-badge { background: var(--warn-bg); color: var(--warn-fg); border: 1px dashed var(--warn-fg); border-radius: var(--radius-small); padding: var(--space-2) var(--space-3); font-weight: 650; font-size: var(--text-small); text-align: center; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (max-width: 1000px) {
@@ -107,3 +113,10 @@ h1:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+.guess { display: block; color: var(--text-muted); font-size: var(--text-small); }
+
+main:has(.map-page) { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+main > .map-page { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; }
+.map-page > .kg-host { flex: 1; min-height: 0; }
+.shell { min-height: 0; }

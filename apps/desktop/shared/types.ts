@@ -1,8 +1,11 @@
 /** Plain data that crosses from the main process to the window. JSON only: no class, no function, no path the window can ask for. */
 
-export type Mode = 'sample' | 'real';
+export type Mode = 'sample' | 'real' | 'sandbox';
 export type ItemKind = 'skill' | 'prompt' | 'team';
 export type Origin = 'yours' | 'github' | 'npm';
+/** What a Bowerloom folder is: a `workspace` that holds other layers, a `project`, or the central `context-store` of knowledge. */
+export type FolderRole = 'workspace' | 'project' | 'context-store';
+export const FOLDER_ROLES: readonly FolderRole[] = ['workspace', 'project', 'context-store'];
 export type ProjectStatus = 'ready' | 'not-locked' | 'drifted' | 'lock-problem' | 'not-set-up' | 'unreadable';
 
 export interface Hold { code: string; next: string }
@@ -30,6 +33,8 @@ export interface ProjectItem {
   resolvedFrom: 'store' | 'lock' | 'project';
   origin: Origin; pin: string | null;
   hold: Hold | null; lock: LockMatch;
+  /** On the project's disk but not listed in what Bowerloom resolves: `reserved` (the personal assistant that setup keeps for itself) or `unlisted`. */
+  note: 'reserved' | 'unlisted' | null;
 }
 export interface AgentRow {
   role: string; team: string | null; state: string; action: string; hold: Hold | null;
@@ -61,6 +66,12 @@ export interface ProjectData {
   key: string; name: string; dir: string;
   /** `library`: uses bowerloom.json and the shared library. `older`: set up the older way, a .bowerloom folder alone. `none`: neither. */
   layout: 'library' | 'older' | 'none';
+  /** What kind of folder this is, after the person's own choice, if any. */
+  role: FolderRole; roleGuess: FolderRole; roleChosen: boolean;
+  /** For a context store: how many markdown pages it holds (counted, capped), else null. */
+  pages: number | null;
+  /** For a context store: the keys of the folders (projects) that read it, and the reading lists that read it. */
+  readBy: { key: string; name: string; via: 'permission' | 'reading-list'; list: string | null }[];
   /** Files that Bowerloom manages and that were edited by hand (from its own check). */
   ownedEdited: string[];
   /** The git folder that this folder's work tree belongs to, when it is one of several checkouts of one repository. */
@@ -80,7 +91,9 @@ export interface ProjectData {
 }
 
 export interface FolderData {
-  name: string; path: string | null; state: 'ready' | 'missing' | 'refused'; code: string | null;
+  name: string; path: string | null;
+  /** The full path of the folder on this computer, for matching it to a context store. Not shown. */
+  dir: string | null; state: 'ready' | 'missing' | 'refused'; code: string | null;
   /** Keys of the projects with a valid grant. */
   allowed: string[];
   /** Keys of the projects with a grant file that no longer matches. */
@@ -137,11 +150,27 @@ export interface AppSettings {
   theme: 'system' | 'light' | 'dark'; roots: string[]; mode: Mode | null;
   /** Also look inside folders named examples, fixtures, test, tests. Off by default. */
   includeExamples: boolean;
+  /** The kind the person chose for a folder, by its full path. Only the folders they changed are here. */
+  roles: Record<string, FolderRole>;
+  /** Where the person put each node on the map, by the node's stable id. Never written to a Bowerloom folder. */
+  mapLayout: Record<string, { x: number; y: number }>;
   /** True once the folders near the person were looked for on the first real-data launch, so a removed folder is never added back. */
   discovered: boolean;
 }
+/** A drawing of a harness. Only a drawing: it is never applied to a project. */
+export interface Sketch { version: 1; name: string; nodes: { id: string; kind: 'team' | 'agent' | 'skill' | 'prompt'; label: string; x: number; y: number }[]; edges: { from: string; to: string }[] }
+export interface SketchSummary { name: string; nodes: number; edges: number }
+export interface SketchResult<T> { ok: boolean; value: T | null; message: string | null }
+/** One page of a context store, as the graph knows it. Never the page's text. */
+export interface GraphNode { id: string; title: string; folder: string; tags: string[]; bytes: number; degree: number; inDegree: number; orphan: boolean; /** True when the page was too large to read for links. */ big: boolean }
+export interface GraphEdge { from: string; to: string }
+export interface KnowledgeGraph { nodes: GraphNode[]; edges: GraphEdge[]; folders: string[]; tags: string[]; /** Links that point at no page in the store. */ broken: number; /** Plain sentences about anything left out. */ notices: string[]; limits: { nodes: number; edges: number } }
+export interface GraphResult { ok: boolean; graph: KnowledgeGraph | null; message: string | null }
+export interface PageResult { text: string | null; note: string | null }
 export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
 export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
+  /** The sandbox folder, and whether it has been made. */
+  sandbox: { path: string; exists: boolean };
   /** A plain sentence about the viewer's own settings file (damaged, unreadable, could not be saved), or null. */
   notice: string | null }
 
@@ -157,6 +186,14 @@ export interface ViewerApi {
   removeRoot(path: string): Promise<SettingsResult>;
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
   setIncludeExamples(on: boolean): Promise<SettingsResult>;
+  setRole(projectKey: string, role: FolderRole | null): Promise<SettingsResult>;
+  setMapLayout(layout: Record<string, { x: number; y: number }> | null): Promise<SettingsResult>;
+  listSketches(): Promise<SketchResult<SketchSummary[]>>;
+  saveSketch(sketch: Sketch): Promise<SketchResult<SketchSummary>>;
+  loadSketch(name: string): Promise<SketchResult<Sketch>>;
+  deleteSketch(name: string): Promise<SketchResult<null>>;
+  getKnowledgeGraph(storeKey: string): Promise<GraphResult>;
+  getPageText(request: { storeKey: string; page: string }): Promise<PageResult>;
   copyText(text: string): Promise<boolean>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;

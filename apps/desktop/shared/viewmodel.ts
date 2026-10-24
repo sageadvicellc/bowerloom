@@ -2,12 +2,12 @@
  * What each screen says, in plain words, worked out from the snapshot. Pure functions: no file, no window.
  * The renderer only draws these results.
  */
-import type { CacheData, FolderData, ItemContent, ItemKind, LibraryItem, LockMatch, ProjectData, ProjectItem, ProjectStatus, Snapshot, StoreData } from './types.js';
+import type { CacheData, FolderData, FolderRole, ItemContent, ItemKind, LibraryItem, LockMatch, ProjectData, ProjectStatus, Snapshot, StoreData } from './types.js';
 import { KIND_WORDS, ORIGIN_WORDS, codeWords, humanBytes, isPowerful, plural, powerWords, titleOf } from './words.js';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'quiet';
 export interface Chip { label: string; tone: Tone }
-export interface Link { screen: 'home' | 'library' | 'item' | 'projects' | 'project' | 'folders' | 'storage' | 'settings'; kind?: ItemKind; id?: string; key?: string }
+export interface Link { screen: 'home' | 'map' | 'graph' | 'library' | 'item' | 'projects' | 'project' | 'folders' | 'storage' | 'settings'; kind?: ItemKind; id?: string; key?: string; fromProject?: string }
 
 // ------------------------------------------------------------------------------------------------------------- chips
 
@@ -19,6 +19,14 @@ export const STATUS_CHIP: Record<ProjectStatus, Chip> = {
   'not-set-up': { label: 'Not set up', tone: 'quiet' },
   unreadable: { label: 'Cannot open', tone: 'bad' },
 };
+
+export const ROLE_WORDS: Record<FolderRole, { label: string; what: string }> = {
+  project: { label: 'Project', what: 'A folder of work that uses Bowerloom.' },
+  workspace: { label: 'Workspace', what: 'A folder that holds other Bowerloom folders, the layers of one body of work.' },
+  'context-store': { label: 'Context store', what: 'The central store of knowledge that projects read from. It is not a project.' },
+};
+/** The chip of a folder that is not a project: neutral words, since "drifted" belongs to projects. */
+export function chipFor(p: ProjectData): Chip { return p.role === 'project' || p.status === 'ready' || p.status === 'unreadable' || p.status === 'lock-problem' ? STATUS_CHIP[p.status] : { label: 'Setup differs', tone: 'warn' }; }
 
 export const STATUS_SENTENCE: Record<ProjectStatus, string> = {
   ready: 'Everything this project asks for is in place and matches what was locked.',
@@ -135,13 +143,13 @@ export function homeModel(s: Snapshot): HomeModel {
     { label: 'Teams', value: n(lib.teams, 'team'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'team' } as Link },
     { label: 'Skills', value: n(lib.skills, 'skill'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'skill' } as Link },
     { label: 'Prompts', value: n(lib.prompts, 'prompt'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'prompt' } as Link },
-    { label: 'Projects', value: reps.length, link: { screen: 'projects' } as Link },
+    { label: 'Projects', value: reps.filter(r => r.project.role === 'project').length, link: { screen: 'projects' } as Link },
   ];
   const sentence = fromProjects
-    ? `Across your ${plural(reps.length, 'project')}, you have ${plural(held('team'), 'team')}, ${plural(held('skill'), 'skill')} and ${plural(held('prompt'), 'prompt')}. The shared library (the newer beta.3 store) is not set up yet, and that is normal.`
+    ? `Across your ${plural(reps.filter(r => r.project.role === 'project').length, 'project')}${reps.some(r => r.project.role !== 'project') ? ' and the folders around them' : ''}, you have ${plural(held('team'), 'team')}, ${plural(held('skill'), 'skill')} and ${plural(held('prompt'), 'prompt')}. The shared library (the newer beta.3 store) is not set up yet, and that is normal.`
     : failed ? 'Your library could not be read, so the numbers of teams, skills and prompts are not known.'
     : s.store.state === 'ready'
-      ? `You have ${plural(lib.teams.length, 'team')}, ${plural(lib.skills.length, 'skill')} and ${plural(lib.prompts.length, 'prompt')} in your library, used by ${plural(reps.length, 'project')}.`
+      ? `You have ${plural(lib.teams.length, 'team')}, ${plural(lib.skills.length, 'skill')} and ${plural(lib.prompts.length, 'prompt')} in your library, used by ${plural(reps.filter(r => r.project.role === 'project').length, 'project')}.`
       : noLibrary ? 'The shared library (the newer beta.3 store) is not set up yet, and that is normal. No project was found to show.' : 'Bowerloom could not read your library.';
   const attention: Attention[] = [];
   const needsFolder = s.mode === 'real' && s.scan.roots.length === 0;
@@ -153,7 +161,8 @@ export function homeModel(s: Snapshot): HomeModel {
     const reasons = projectReasons(p);
     const older = p.layout === 'older';
     const tone: Tone = p.status === 'drifted' ? 'warn' : 'bad';
-    const title = p.status === 'lock-problem' ? `The lock file of ${p.name} has a problem` : p.status === 'unreadable' ? `Bowerloom cannot open ${p.name}` : older ? `${p.name} differs from what was set up` : `${p.name} has drifted`;
+    const noun = p.role === 'context-store' ? `${p.name} (context store)` : p.role === 'workspace' ? `${p.name} (workspace)` : p.name;
+    const title = p.status === 'lock-problem' ? `The lock file of ${p.name} has a problem` : p.status === 'unreadable' ? `Bowerloom cannot open ${p.name}` : older || p.role !== 'project' ? `${noun} differs from what was set up` : `${p.name} has drifted`;
     const body = reasons.length ? reasons.join(' ') : STATUS_SENTENCE[p.status];
     const card: Attention = {
       id: `project:${p.key}`, tone, title, body,
@@ -239,10 +248,28 @@ export function itemDetail(s: Snapshot, kind: ItemKind, id: string, content: Ite
 
 // ----------------------------------------------------------------------------------------------------------- projects
 
-export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string; older: boolean; alsoIn: number }
+/** The sentence that says a kind of folder was guessed, and that the person can change it. Only where the guess is not the plain default. */
+export const guessNote = (p: ProjectData): string | null => p.roleChosen || p.role === 'project' ? null : `We guessed that this is a ${ROLE_WORDS[p.role].label.toLowerCase()}. You can change it.`;
+export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string; older: boolean; alsoIn: number; role: FolderRole;
+  /** The kind of folder is Bowerloom's guess, not the person's choice, and the guess matters (a workspace or a context store). Null when it is not a guess or is the plain default. */
+  guess: string | null }
+/** Folders of one kind, as rows. The Projects screen shows only projects: the workspace and the context stores have their own places. */
+export function rowsOfRole(s: Snapshot, role: FolderRole): ProjectRow[] { return projectRows(s).filter(r => r.role === role); }
+
+export interface ContextStoreRow { key: string; name: string; chip: Chip; pages: string; guess: string | null; manages: string[]; readBy: { key: string; name: string; how: string }[]; note: string }
+/** Each context store, with what it holds, what manages it, and who reads it. */
+export function contextStoreRows(s: Snapshot): ContextStoreRow[] {
+  return s.projects.filter(p => p.role === 'context-store').map(p => ({
+    key: p.key, name: p.name, chip: chipFor(p), pages: p.pages === null ? 'Pages not counted' : plural(p.pages, 'page'), guess: guessNote(p),
+    manages: p.items.filter(i => i.note === null).map(i => `${titleOf(i.id)} (${KIND_WORDS[i.kind].one.toLowerCase()})`),
+    readBy: p.readBy.map(r => ({ key: r.key, name: r.name, how: r.via === 'permission' ? 'is allowed to read it' : `reads it with the reading list "${r.list}"` })),
+    note: p.readBy.length === 0 ? 'No project is allowed to read this store yet.' : `${plural(new Set(p.readBy.map(r => r.key)).size, 'project')} read${p.readBy.length === 1 ? 's' : ''} it.`,
+  }));
+}
+
 export function projectRows(s: Snapshot): ProjectRow[] {
   return representatives(s.projects).map(({ project: p, alsoIn }) => ({
-    key: p.key, name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], older: p.layout === 'older', alsoIn,
+    key: p.key, name: p.name, dir: p.dir, chip: chipFor(p), older: p.layout === 'older', alsoIn, role: p.role, guess: guessNote(p),
     summary: `${p.status === 'not-set-up' ? 'No project list yet' : p.status === 'unreadable' ? codeWords(p.openCode) : `${plural(p.items.filter(i => i.kind === 'skill').length, 'skill')}, ${plural(p.items.filter(i => i.kind === 'prompt').length, 'prompt')}, ${plural(p.items.filter(i => i.kind === 'team').length, 'team')}`}${p.layout === 'older' ? '. Set up the older way' : ''}${alsoIn > 0 ? `. Also checked out in ${plural(alsoIn, 'other place')}` : ''}`,
   }));
 }
@@ -250,6 +277,7 @@ export function projectRows(s: Snapshot): ProjectRow[] {
 export interface ProjectDetail {
   /** Set up the older way: a .bowerloom folder, no project list, no lock, no shared library. */
   older: boolean; olderNote: string | null;
+  role: FolderRole; roleLabel: string; roleWhat: string; roleChosen: boolean; roleGuessLabel: string;
   name: string; dir: string; chip: Chip; sentence: string; reasons: string[]; technical: string[];
   items: { kind: ItemKind; id: string; label: string; origin: string; version: string; from: string; match: { text: string; tone: Tone }; hold: string | null }[];
   agents: { role: string; team: string | null; status: string; tone: Tone; powers: string[]; rawPowers: string[]; hold: string | null; holdCode: string | null; slices: string[] }[];
@@ -375,14 +403,23 @@ function olderSentence(p: ProjectData): string {
   return p.status === 'ready' ? 'Everything that Bowerloom set up here is in place.' : 'Something differs from what Bowerloom set up here. What differs is listed below.';
 }
 
+/** What a context store or a workspace says about itself: it is not a project, so it does not "drift". */
+function nonProjectSentence(p: ProjectData): string {
+  const what = p.role === 'context-store' ? 'This is a store of knowledge that projects read from. It is not a project.' : 'This is a workspace: a folder that holds other Bowerloom folders. It is not a project.';
+  if (p.status === 'ready') return `${what} Its own setup is in place.`;
+  if (p.status === 'unreadable') return `${what} Bowerloom could not open it.`;
+  return `${what} Its own setup differs from how it was made. What differs is listed below.`;
+}
+
 export function projectDetail(p: ProjectData): ProjectDetail {
   const reasons = projectReasons(p);
   const older = p.layout === 'older';
   return {
     older, olderNote: older ? OLDER_NOTE : null,
-    name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], sentence: older ? olderSentence(p) : STATUS_SENTENCE[p.status], reasons,
+    role: p.role, roleLabel: ROLE_WORDS[p.role].label, roleWhat: ROLE_WORDS[p.role].what, roleChosen: p.roleChosen, roleGuessLabel: ROLE_WORDS[p.roleGuess].label,
+    name: p.name, dir: p.dir, chip: chipFor(p), sentence: p.role !== 'project' ? nonProjectSentence(p) : older ? olderSentence(p) : STATUS_SENTENCE[p.status], reasons,
     technical: [...p.drift.map(d => `${d.kind}${d.code ? ` (${d.code})` : ''}: ${d.path}`), ...(p.lockCode ? [p.lockCode] : []), ...(p.unavailable ? [p.unavailable] : [])],
-    items: p.items.map(i => ({ kind: i.kind, id: i.id, label: titleOf(i.id), origin: ORIGIN_WORDS[i.origin], version: pinWords(i.pin, i.origin), from: i.from === 'store' ? 'Your library' : 'This project', match: older ? { text: 'Part of this project', tone: 'quiet' as Tone } : LOCK_MATCH_WORDS[i.lock], hold: i.hold === null ? null : codeWords(i.hold.code) })),
+    items: p.items.map(i => ({ kind: i.kind, id: i.id, label: titleOf(i.id), origin: ORIGIN_WORDS[i.origin], version: pinWords(i.pin, i.origin), from: i.from === 'store' ? 'Your library' : 'This project', match: i.note === 'reserved' ? { text: 'Kept by Bowerloom itself', tone: 'quiet' as Tone } : i.note === 'unlisted' ? { text: 'In the folder, but not listed', tone: 'quiet' as Tone } : older ? { text: 'Part of this project', tone: 'quiet' as Tone } : LOCK_MATCH_WORDS[i.lock], hold: i.hold === null ? null : codeWords(i.hold.code) })),
     agents: p.agents.map(a => ({ role: a.role, team: a.team, status: a.hold ? 'Waiting for a review' : a.state === 'new' ? 'Not installed yet' : a.state === 'up-to-date' ? 'Installed' : titleOf(a.state), tone: a.hold ? 'warn' : 'quiet', powers: [...new Set(a.notices.filter(isPowerful).map(powerWords))], rawPowers: a.notices.filter(isPowerful), hold: a.hold === null ? null : codeWords(a.hold.code), holdCode: a.hold?.code ?? null, slices: a.slices })),
     slices: sliceGroups(p), config: configLines(p), lock: p.lockRows.map(r => `${KIND_WORDS[r.kind].one} ${r.id}: ${lockSourceWords(r.source)}`), lockSentence: lockSentence(p),
     details: projectDetails(p),
@@ -429,4 +466,30 @@ export function storeSummary(st: StoreData): { location: string; state: string; 
 export function foldersProblem(s: Snapshot): string | null {
   const p = s.problems.find(x => x.area === 'folders');
   return p === undefined ? null : `${codeWords(p.code)} Which folders exist, and which projects may read them, is not known.`;
+}
+
+// ------------------------------------------------------------------------------------------------------------- knowledge graph
+
+export interface StoreChoice {
+  key: string; name: string; kind: 'context-store' | 'knowledge-folder'; pages: number | null;
+  /** The Bowerloom things that point at this store, in plain words. */
+  readBy: { name: string; how: string }[]; manages: string[];
+}
+
+/** The stores the graph can show: every context store, and every registered knowledge folder that is not already one. */
+export function storeChoices(s: Snapshot): StoreChoice[] {
+  const stores = s.projects.filter(p => p.role === 'context-store');
+  const out: StoreChoice[] = stores.map(p => ({
+    key: p.key, name: p.label, kind: 'context-store' as const, pages: p.pages,
+    readBy: p.readBy.map(r => ({ name: r.name, how: r.via === 'permission' ? 'is allowed to read it' : `reads it with the reading list "${r.list}"` })),
+    manages: p.items.filter(i => i.note === null).map(i => `${titleOf(i.id)} (${KIND_WORDS[i.kind].one.toLowerCase()})`),
+  }));
+  for (const f of s.folders) {
+    if (f.state !== 'ready' || f.dir === null || stores.some(p => p.dir === f.dir)) continue;
+    const name = (key: string): string => s.projects.find(p => p.key === key)?.name ?? key;
+    const readBy = f.allowed.map(k => ({ name: name(k), how: 'is allowed to read it' }));
+    for (const p of s.projects) for (const sl of p.slices) if (sl.folder === f.name) readBy.push({ name: p.name, how: `reads it with the reading list "${sl.id}"` });
+    out.push({ key: f.dir, name: f.name, kind: 'knowledge-folder', pages: null, readBy, manages: [] });
+  }
+  return out;
 }

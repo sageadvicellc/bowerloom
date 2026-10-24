@@ -5,14 +5,19 @@
 import { realpathSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { AppInfo, AppSettings, ItemContent, ItemKind, Mode, SettingsResult, Snapshot } from '../shared/types.js';
+import { FOLDER_ROLES } from '../shared/types.js';
+import type { AppInfo, AppSettings, FolderRole, GraphResult, PageResult, ItemContent, ItemKind, Mode, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot } from '../shared/types.js';
 import { safeText } from '../shared/text.js';
 import { readGuarded } from '../../../packages/project-authoring/src/files.js';
-import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
-import { MAX_ROOTS, loadSettings, saveSettings } from './config.js';
+import { MAX_ROOTS, loadSettings, parseLayout, saveSettings } from './config.js';
+import { SketchError, deleteSketch, listSketches, loadSketch, saveSketch } from './sketches.js';
+import { SANDBOX_DIR } from './boundary.js';
+import { sandboxExists, sandboxPaths } from './sandbox.js';
 import { discoverNearby } from './discover.js';
 import { readItemContent } from './content.js';
+import { buildGraph, readPage } from './graph.js';
+import { storeChoices } from '../shared/viewmodel.js';
 import { readSnapshot } from './reader.js';
 import type { ReadContext } from './reader.js';
 import { seedSample } from './sample.js';
@@ -36,6 +41,8 @@ export interface Host {
   copyText?(text: string): void;
   /** A launch flag that fixes the mode for this run. */
   forcedMode: Mode | null;
+  /** Where the sandbox is. Default: the one constant. Tests only. */
+  sandboxDir?: string;
   /** The real home folder and the environment names the viewer is allowed to pass on. */
   home?: string;
   env?: NodeJS.ProcessEnv;
@@ -52,13 +59,27 @@ export interface Controller {
   removeRoot(path: string): Promise<SettingsResult>;
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
   setIncludeExamples(on: boolean): Promise<SettingsResult>;
+  setRole(projectKey: string, role: FolderRole | null): Promise<SettingsResult>;
+  setMapLayout(layout: unknown): Promise<SettingsResult>;
+  listSketches(): Promise<SketchResult<SketchSummary[]>>;
+  saveSketch(sketch: unknown): Promise<SketchResult<SketchSummary>>;
+  loadSketch(name: unknown): Promise<SketchResult<Sketch>>;
+  deleteSketch(name: unknown): Promise<SketchResult<null>>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
+  getKnowledgeGraph(storeKey: unknown): Promise<GraphResult>;
+  getPageText(request: { storeKey: unknown; page: unknown }): Promise<PageResult>;
   copyText(text: string): Promise<boolean>;
 }
 
 const KINDS: readonly ItemKind[] = ['skill', 'prompt', 'team'];
 const SAVE_FAILED = 'The change could not be saved, so it was not made. The viewer\'s settings folder may be full or not writable.';
+
+/** A sketch call answers with a sentence, never an error that escapes: a bad name, a damaged file and a refused path are all plain messages. */
+function sketchResult<T>(run: () => T): SketchResult<T> {
+  try { return { ok: true, value: run(), message: null }; }
+  catch (error) { return { ok: false, value: null, message: error instanceof SketchError ? error.message : 'The sketch could not be saved or read here.' }; }
+}
 
 export function createController(host: Host): Controller {
   const loaded = loadSettings(host.appDir);
@@ -67,19 +88,25 @@ export function createController(host: Host): Controller {
   let mode: Mode | null = host.forcedMode ?? settings.mode;
   let sample: SampleWorld | null = null;
   let known = new Set<string>();
+  let stores = new Set<string>();
   let updates: UpdateState = initialUpdateState(UPDATES_ENABLED);
 
   const realHome = (): string => realpathSync(host.home ?? homedir());
   const readContext = (): ReadContext | null => {
     if (mode === 'sample') {
       sample ??= seedSample(host.appDir, host.sampleDir);
-      return { mode, home: sample.home, env: sample.env, roots: [sample.projects] };
+      return { mode, home: sample.home, env: sample.env, roots: [sample.projects], roles: settings.roles };
+    }
+    if (mode === 'sandbox') {
+      const sb = sandboxPaths(host.sandboxDir ?? SANDBOX_DIR);
+      if (!sandboxExists(sb.root)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
+      return { mode, home: sb.home, env: { HOME: sb.home, XDG_STATE_HOME: sb.state }, roots: [sb.workspace], roles: settings.roles };
     }
     if (mode === 'real') {
       const home = realHome(), state = host.env?.XDG_STATE_HOME ?? process.env.XDG_STATE_HOME;
       const env: NodeJS.ProcessEnv = { HOME: home };
       if (typeof state === 'string' && state.startsWith('/')) env.XDG_STATE_HOME = state;
-      return { mode, home, env, roots: settings.roots, includeExamples: settings.includeExamples, tokenSource: host.env ?? process.env };
+      return { mode, home, env, roots: settings.roots, includeExamples: settings.includeExamples, roles: settings.roles, tokenSource: host.env ?? process.env };
     }
     return null;
   };
@@ -97,12 +124,17 @@ export function createController(host: Host): Controller {
     if (c === null) return false;
     try { resolveInside(c.roots, key); return true; } catch { return false; }
   };
-  const forget = (): void => { known = new Set(); };
+  const forget = (): void => { known = new Set(); stores = new Set(); };
+  /** The folder of a store the window named: one of the last snapshot's stores, still a real folder. */
+  const storeFolder = (key: unknown): string | null => {
+    if (typeof key !== 'string' || !stores.has(key)) return null;
+    try { const real = realpathSync(key); return lstatSync(real).isDirectory() ? real : null; } catch { return null; }
+  };
 
   const info = (): AppInfo => {
     let storePath = '';
     try { const c = readContext(); storePath = c === null ? '' : storeRootOf(c.home); } catch { storePath = ''; }
-    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice };
+    return { version: host.version, mode, storePath, updates, platform: host.platform, firstRun: mode === null, notice, sandbox: { path: host.sandboxDir ?? SANDBOX_DIR, exists: sandboxExists(host.sandboxDir ?? SANDBOX_DIR) } };
   };
 
   return {
@@ -119,6 +151,7 @@ export function createController(host: Host): Controller {
       }
       const result = await readSnapshot(c);
       known = new Set(result.snapshot.projects.map(p => p.key));
+      stores = new Set(storeChoices(result.snapshot).map(c => c.key));
       return result.snapshot;
     },
     async getItemContent(request) {
@@ -145,7 +178,8 @@ export function createController(host: Host): Controller {
       }
     },
     async chooseMode(next) {
-      if (next !== 'sample' && next !== 'real') throw new Error('Unknown choice.');
+      if (next !== 'sample' && next !== 'real' && next !== 'sandbox') throw new Error('Unknown choice.');
+      if (next === 'sandbox' && !sandboxExists(host.sandboxDir ?? SANDBOX_DIR)) throw new Error('The sandbox has not been made yet. Run the sandbox command first.');
       mode = next; forget();
       if (host.forcedMode === null && next === 'real') { const r = persist({ ...settings, mode: 'real' }); if (r.message !== null) notice = r.message; }
       if (next === 'sample') sample = null;
@@ -173,6 +207,29 @@ export function createController(host: Host): Controller {
     async setIncludeExamples(on) {
       forget();
       return persist({ ...settings, includeExamples: on === true });
+    },
+    async setRole(projectKey, role) {
+      if (!liveKey(projectKey) || (role !== null && !FOLDER_ROLES.includes(role))) return { settings, message: 'That folder is not in the list any more. Choose "Look again".' };
+      const roles = { ...settings.roles };
+      if (role === null) delete roles[projectKey]; else roles[projectKey] = role;
+      return persist({ ...settings, roles });
+    },
+    async setMapLayout(layout) {
+      if (layout !== null && (typeof layout !== 'object' || Array.isArray(layout))) return { settings, message: 'That layout is not valid.' };
+      return persist({ ...settings, mapLayout: layout === null ? {} : parseLayout(layout) });
+    },
+    async listSketches() { return sketchResult(() => listSketches(host.appDir)); },
+    async saveSketch(sketch) { return sketchResult(() => saveSketch(host.appDir, sketch)); },
+    async loadSketch(name) { return sketchResult(() => loadSketch(host.appDir, name)); },
+    async deleteSketch(name) { return sketchResult(() => { deleteSketch(host.appDir, name); return null; }); },
+    async getKnowledgeGraph(storeKey) {
+      const dir = storeFolder(storeKey);
+      if (dir === null) return { ok: false, graph: null, message: 'That store is not in the list any more. Choose "Look again".' };
+      try { return { ok: true, graph: buildGraph(dir), message: null }; } catch { return { ok: false, graph: null, message: 'The store could not be read.' }; }
+    },
+    async getPageText(request) {
+      const dir = storeFolder(request?.storeKey);
+      return dir === null ? { text: null, note: 'That store is not in the list any more. Choose "Look again".' } : readPage(dir, request.page);
     },
     async checkForUpdates() { updates = await checkForUpdates(updates); return { status: updates.status }; },
     async openLink(url) {

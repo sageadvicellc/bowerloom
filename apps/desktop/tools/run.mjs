@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
-const KNOWN = new Set(['--sample-data', '--real-data', '--build-only']);
+const KNOWN = new Set(['--sample-data', '--real-data', '--sandbox', '--build-only']);
 
 /**
  * The only environment an install script gets: where to find programs and the person's home, the network settings npm
@@ -73,7 +73,7 @@ function main() {
   const args = process.argv.slice(2);
   const unknown = args.filter(a => !KNOWN.has(a));
   if (unknown.length) fail(`I do not know ${unknown.map(a => `"${a}"`).join(', ')}. Use --sample-data to open the sample, --real-data to open your own Bowerloom, or --build-only to only build.`, 2);
-  if (args.includes('--sample-data') && args.includes('--real-data')) fail('Choose --sample-data or --real-data, not both.', 2);
+  if (args.filter(a => a === '--sample-data' || a === '--real-data' || a === '--sandbox').length > 1) fail('Choose one of --sample-data, --real-data and --sandbox, not more.', 2);
 
   const npm = npmCommand();
   const clean = installEnv();
@@ -84,10 +84,12 @@ function main() {
   step('Building the viewer...', process.execPath, [join(desktop, 'tools', 'bundle.mjs')], desktop, process.env);
   if (args.includes('--build-only')) process.exit(0);
 
+  // The sandbox is made once if it is missing. Its own tool checks everything before it writes.
+  if (args.includes('--sandbox')) step('Making the sandbox if it is missing...', process.execPath, [join(desktop, 'tools', 'make-sandbox.mjs')], desktop, process.env);
   console.log('\nOpening the viewer...');
   const electron = electronBinary(desktop);
   if (electron === null) fail('The app window is not installed. Run the command again.', 1);
-  const flags = args.filter(a => a === '--sample-data' || a === '--real-data');
+  const flags = args.filter(a => a === '--sample-data' || a === '--real-data' || a === '--sandbox');
   const child = spawn(electron, [desktop, ...flags], { stdio: 'inherit', env: process.env });
   child.on('error', error => fail(`The app window could not start.\n${error.message}`, 1));
   child.on('exit', (code, signal) => {

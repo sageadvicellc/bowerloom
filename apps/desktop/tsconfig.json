@@ -11,8 +11,23 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
-    "lib": ["ES2023", "DOM"],
-    "types": ["node"]
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "jsx": "react-jsx"
   },
-  "include": ["main/**/*.ts", "preload/**/*.ts", "renderer/**/*.ts", "shared/**/*.ts", "tests/**/*.ts", "playwright.config.ts", "e2e/**/*.ts"]
+  "include": [
+    "main/**/*.ts",
+    "preload/**/*.ts",
+    "renderer/**/*.ts",
+    "renderer/**/*.tsx", "renderer/**/*.d.ts",
+    "shared/**/*.ts",
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "e2e/**/*.ts"
+  ]
 }
