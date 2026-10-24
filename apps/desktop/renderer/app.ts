@@ -175,7 +175,7 @@ function itemScreen(s: Snapshot): HTMLElement {
 }
 
 function folderRowView(r: ReturnType<typeof projectRows>[number]): HTMLElement {
-  return rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary })));
+  return rowButton(() => go({ screen: 'project', key: r.key }), h('span', { class: 'title', text: r.name }), chip(r.chip), h('span', { class: 'meta' }, h('span', { text: r.summary }), r.guess === null ? null : h('span', { class: 'guess', text: r.guess })));
 }
 
 /** Who is reading what, and how the person says what kind of folder each is. Used on a folder's own page and in Settings. */
@@ -196,12 +196,13 @@ function projectsScreen(s: Snapshot): HTMLElement {
     h('p', { class: 'lead', text: 'The folders on this computer that use Bowerloom, and whether each one is in good shape.' }),
     workspaces.length ? h('h2', { text: 'Workspace' }) : null, workspaces.length ? h('p', { class: 'muted', text: 'The folder that holds the rest. It is not a project itself.' }) : null,
     ...workspaces.map(folderRowView),
-    h('h2', { text: 'Projects' }),
+    h('h2', { text: 'Projects' }), h('p', { class: 'small muted', text: 'Bowerloom guesses what kind of folder each one is. If one is wrong, open it and change it.' }),
     projects.length === 0 ? empty('No projects found yet', s.mode === 'sample' ? 'The sample has no projects.' : 'Tell the viewer where your projects live. It looks inside that folder, a few levels deep, for projects that use Bowerloom.', s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : undefined)
       : h('div', { class: 'row-list' }, ...projects.map(folderRowView)),
     stores.length ? h('h2', { text: 'Context stores' }) : null, stores.length ? explain('contextStore') : null,
     ...stores.map(c => h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('h3', { text: c.name }), chip(c.chip)),
       h('p', { text: `Holds ${c.pages}.` }), c.manages.length ? h('p', { class: 'small', text: `Looked after by: ${c.manages.join(', ')}.` }) : null,
+      c.guess === null ? null : h('p', { class: 'small guess', text: `${c.guess} Open the folder and choose "What kind of folder is this?".` }),
       h('p', { text: c.note }), c.readBy.length ? h('ul', { class: 'sentences' }, ...c.readBy.map(r => h('li', {}, h('button', { type: 'button', class: 'back', on: { click: () => go({ screen: 'project', key: r.key }) } }, r.name), ` ${r.how}.`))) : null,
       h('div', {}, button('Open this folder', () => go({ screen: 'project', key: c.key }), 'btn secondary')))));
 }

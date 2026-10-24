@@ -230,6 +230,7 @@ function Canvas(props: MapProps): ReactElement {
               <div className="bw-panel-head"><span className={`bw-node-icon kind-${selected.kind}`}><KindIcon kind={selected.kind} size={22} /></span><div><p className="bw-node-kind">{KIND_WORDS_MAP[selected.kind]}</p><h2 ref={heading} tabIndex={-1}>{selected.label}</h2></div><button type="button" className="bw-btn" onClick={closePanel} aria-label="Close the details">Close</button></div>
               {selected.status !== null ? <p><span className={`bw-chip ${STATUS_TONE[selected.status]}`}>{STATUS_WORDS[selected.status]}</span></p> : null}
               <p>{selected.description}</p>
+              {selected.guess !== undefined ? <p className="small muted">{selected.guess} Open the full page to change it.</p> : null}
               {selected.reasons.length > 0 ? <><h3>Why</h3><ul>{selected.reasons.map(r => <li key={r}>{r}</li>)}</ul></> : null}
               {connections.length > 0 ? <><h3>Connected to</h3><ul className="bw-conn">{connections.map(c => <li key={c.id}><button type="button" className="bw-link" onClick={() => setPanel(c.other)}>{c.text}</button></li>)}</ul></> : null}
               {selected.link !== null ? <button type="button" className="bw-btn primary" onClick={() => onOpen(selected.link!)}>Open the full page</button> : null}

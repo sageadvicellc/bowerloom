@@ -113,3 +113,5 @@ h1:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+.guess { display: block; color: var(--text-muted); font-size: var(--text-small); }

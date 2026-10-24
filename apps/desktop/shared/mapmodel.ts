@@ -3,7 +3,7 @@
  * Every id is stable: it is made from names and paths, so a node keeps its saved place from one look to the next.
  */
 import type { ItemKind, ProjectData, Snapshot } from './types.js';
-import { reasonsOf } from './viewmodel.js';
+import { guessNote, reasonsOf } from './viewmodel.js';
 import type { Link } from './viewmodel.js';
 import { KIND_WORDS, codeWords, plural, titleOf } from './words.js';
 
@@ -28,6 +28,8 @@ export interface MapNode {
   owner: string | null;
   /** True for an item that is on the project's disk but is not listed in what Bowerloom resolves. */
   unlisted?: boolean;
+  /** For a folder: the sentence that says its kind was guessed and can be changed, or absent when the person chose it. */
+  guess?: string;
   /** A stack that stands for several items of one kind at once. Click it to open the stack. */
   cluster?: { count: number; ids: string[] };
 }
@@ -70,6 +72,7 @@ export function buildMap(s: Snapshot): MapModel {
       id: idOfFolder(p), kind: kindOfFolder(p), label: p.name, scope: 'project', owner: p.key, status: statusOfProject(p), reasons,
       description: p.role === 'workspace' ? 'A folder that holds other Bowerloom folders.' : p.role === 'context-store' ? `The central store of knowledge${p.pages === null ? '' : `, ${plural(p.pages, 'page')}`}.` : p.layout === 'older' ? 'A project set up the older way.' : 'A project that uses the shared library.',
       link: { screen: 'project', key: p.key },
+      ...(guessNote(p) === null ? {} : { guess: guessNote(p)! }),
     });
   }
   // A folder sits inside the nearest folder that holds it; the rest sit on the machine.

@@ -191,14 +191,15 @@ const grantFields = (g: Grant | null): Pick<SliceRow, 'grantStyle' | 'grantKey' 
     : g.state === 'unknown' ? { grantStyle: 'unknown', grantKey: null, grantCode: g.code } : { grantStyle: g.style, grantKey: g.key, grantCode: null };
 
 /** Gives each folder its kind: the guess, then the person's own choice if they made one. Context stores also get their pages and who reads them. */
-function assignRoles(ctx: ReadContext, projects: ProjectData[], folders: readonly FolderData[]): void {
+async function assignRoles(ctx: ReadContext, projects: ProjectData[], folders: readonly FolderData[]): Promise<void> {
   const allDirs = projects.map(p => p.dir), registeredDirs = folders.flatMap(f => f.dir === null ? [] : [f.dir]);
-  for (const p of projects) {
-    p.roleGuess = guessRole({ dir: p.dir, allDirs, registeredDirs });
+  const guesses = await Promise.all(projects.map(p => guessRole({ dir: p.dir, allDirs, registeredDirs })));
+  for (const [i, p] of projects.entries()) {
+    p.roleGuess = guesses[i]!;
     const chosen = ctx.roles?.[p.dir];
     p.role = chosen ?? p.roleGuess; p.roleChosen = chosen !== undefined;
     if (p.role === 'context-store') {
-      p.pages = pageCount(p.dir);
+      p.pages = await pageCount(p.dir);
       // Who reads it: a project allowed to read a registered folder that is this store, or that has a reading list on it.
       for (const f of folders) {
         if (f.dir === null || f.dir !== p.dir) continue;
@@ -370,7 +371,7 @@ export async function readSnapshot(ctx: ReadContext): Promise<{ snapshot: Snapsh
   }
   const folderRead = readFolders(ctx, projects, contexts), folders = folderRead.folders;
   if (folderRead.failed !== null) problems.push({ area: 'folders', code: folderRead.failed });
-  assignRoles(ctx, projects, folders);
+  await assignRoles(ctx, projects, folders);
   const cache = await readCache(ctx);
   if (inspectStoreSafe(ctx.home) === 'foreign') problems.push({ area: 'store', code: 'STORE_INVALID' });
   return { snapshot: { mode: ctx.mode, at: new Date().toISOString(), store, library, folders, projects, cache, scan: found.info, problems }, contexts };

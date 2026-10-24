@@ -248,15 +248,19 @@ export function itemDetail(s: Snapshot, kind: ItemKind, id: string, content: Ite
 
 // ----------------------------------------------------------------------------------------------------------- projects
 
-export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string; older: boolean; alsoIn: number; role: FolderRole }
+/** The sentence that says a kind of folder was guessed, and that the person can change it. Only where the guess is not the plain default. */
+export const guessNote = (p: ProjectData): string | null => p.roleChosen || p.role === 'project' ? null : `We guessed that this is a ${ROLE_WORDS[p.role].label.toLowerCase()}. You can change it.`;
+export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string; older: boolean; alsoIn: number; role: FolderRole;
+  /** The kind of folder is Bowerloom's guess, not the person's choice, and the guess matters (a workspace or a context store). Null when it is not a guess or is the plain default. */
+  guess: string | null }
 /** Folders of one kind, as rows. The Projects screen shows only projects: the workspace and the context stores have their own places. */
 export function rowsOfRole(s: Snapshot, role: FolderRole): ProjectRow[] { return projectRows(s).filter(r => r.role === role); }
 
-export interface ContextStoreRow { key: string; name: string; chip: Chip; pages: string; manages: string[]; readBy: { key: string; name: string; how: string }[]; note: string }
+export interface ContextStoreRow { key: string; name: string; chip: Chip; pages: string; guess: string | null; manages: string[]; readBy: { key: string; name: string; how: string }[]; note: string }
 /** Each context store, with what it holds, what manages it, and who reads it. */
 export function contextStoreRows(s: Snapshot): ContextStoreRow[] {
   return s.projects.filter(p => p.role === 'context-store').map(p => ({
-    key: p.key, name: p.name, chip: chipFor(p), pages: p.pages === null ? 'Pages not counted' : plural(p.pages, 'page'),
+    key: p.key, name: p.name, chip: chipFor(p), pages: p.pages === null ? 'Pages not counted' : plural(p.pages, 'page'), guess: guessNote(p),
     manages: p.items.filter(i => i.note === null).map(i => `${titleOf(i.id)} (${KIND_WORDS[i.kind].one.toLowerCase()})`),
     readBy: p.readBy.map(r => ({ key: r.key, name: r.name, how: r.via === 'permission' ? 'is allowed to read it' : `reads it with the reading list "${r.list}"` })),
     note: p.readBy.length === 0 ? 'No project is allowed to read this store yet.' : `${plural(new Set(p.readBy.map(r => r.key)).size, 'project')} read${p.readBy.length === 1 ? 's' : ''} it.`,
@@ -265,7 +269,7 @@ export function contextStoreRows(s: Snapshot): ContextStoreRow[] {
 
 export function projectRows(s: Snapshot): ProjectRow[] {
   return representatives(s.projects).map(({ project: p, alsoIn }) => ({
-    key: p.key, name: p.name, dir: p.dir, chip: chipFor(p), older: p.layout === 'older', alsoIn, role: p.role,
+    key: p.key, name: p.name, dir: p.dir, chip: chipFor(p), older: p.layout === 'older', alsoIn, role: p.role, guess: guessNote(p),
     summary: `${p.status === 'not-set-up' ? 'No project list yet' : p.status === 'unreadable' ? codeWords(p.openCode) : `${plural(p.items.filter(i => i.kind === 'skill').length, 'skill')}, ${plural(p.items.filter(i => i.kind === 'prompt').length, 'prompt')}, ${plural(p.items.filter(i => i.kind === 'team').length, 'team')}`}${p.layout === 'older' ? '. Set up the older way' : ''}${alsoIn > 0 ? `. Also checked out in ${plural(alsoIn, 'other place')}` : ''}`,
   }));
 }

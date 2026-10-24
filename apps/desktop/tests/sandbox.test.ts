@@ -30,8 +30,8 @@ test('the tool makes the sandbox with its mark, its own pretend home, and the sh
   assert.equal(escapingLink(ROOT), null, 'no link leaves the sandbox');
 });
 
-test('the invented wiki has 40 to 60 pages, links between them, tags, an index, a hub, broken links, and orphans', () => {
-  const kb = join(sandboxPaths(ROOT).workspace, 'knowledge-base'), wiki = markdownFiles(join(kb, 'wiki')).files;
+test('the invented wiki has 40 to 60 pages, links between them, tags, an index, a hub, broken links, and orphans', async () => {
+  const kb = join(sandboxPaths(ROOT).workspace, 'knowledge-base'), wiki = (await markdownFiles(join(kb, 'wiki'))).files;
   assert.ok(wiki.length >= 40 && wiki.length <= 60, String(wiki.length));
   const texts = new Map(wiki.map(f => [f.slice(kb.length), readFileSync(f, 'utf8')])); const all = [...texts.values()].join('\n');
   assert.ok(/\[\[[a-z]+-\d\d\]\]/.test(all)); assert.ok(/#[a-z]+/.test(all)); assert.ok(texts.has('/wiki/index.md') && texts.has('/wiki/hub.md')); assert.ok(all.includes('[[a-page-that-is-not-there]]'));
