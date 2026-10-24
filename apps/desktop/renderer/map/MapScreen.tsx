@@ -4,12 +4,12 @@
  * The Sketch tab is a drawing board for a harness; it is only a drawing.
  */
 import { Background, BackgroundVariant, Controls, Handle, MiniMap, Position, ReactFlow, ReactFlowProvider, applyNodeChanges, useReactFlow } from '@xyflow/react';
-import type { Connection, Edge, Node, NodeChange, NodeProps } from '@xyflow/react';
+import type { Edge, Node, NodeChange, NodeProps } from '@xyflow/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { KIND_WORDS_MAP, MAP_KINDS, REL_WORDS, STATUS_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../../shared/mapmodel.js';
 import type { EdgeRel, MapKind, MapNode, MapStatus, ScopeFilter } from '../../shared/mapmodel.js';
-import { LAYOUT, autoLayout, snap } from '../../shared/maplayout.js';
+import { LAYOUT, PLACE_LIMITS, autoLayout, prunePlaces, snap } from '../../shared/maplayout.js';
 import { createKeeper } from '../../shared/layoutkeeper.js';
 import type { Place } from '../../shared/maplayout.js';
 import type { Snapshot, ViewerApi } from '../../shared/types.js';
@@ -17,6 +17,7 @@ import type { Link } from '../../shared/viewmodel.js';
 import { MOTION, ms } from '../motion-tokens.js';
 import { KindIcon } from './icons.js';
 import { Legend } from './Legend.js';
+import { createWireCache, sameNode } from './wires.js';
 import { SketchBoard } from './SketchBoard.js';
 
 export interface MapProps {
@@ -60,7 +61,7 @@ const SCOPES: { id: ScopeFilter; label: string; hint: string }[] = [
 ];
 
 function Canvas(props: MapProps): ReactElement {
-  const { snapshot, saved, api, onOpen, onLayout } = props;
+  const { snapshot, saved, onOpen, onLayout } = props;
   const flow = useReactFlow();
   const model = useMemo(() => buildMap(snapshot), [snapshot]);
   const [scope, setScope] = useState<ScopeFilter>('everything');
@@ -68,7 +69,6 @@ function Canvas(props: MapProps): ReactElement {
   const [query, setQuery] = useState('');
   const [tool, setTool] = useState<'select' | 'move'>('select');
   const [panel, setPanel] = useState<string | null>(null);
-  const [hover, setHover] = useState<string>('');
   const [outline, setOutline] = useState(false);
   const [tidying, setTidying] = useState(false);
   const [places, setPlaces] = useState<Record<string, Place>>({});
@@ -83,33 +83,39 @@ function Canvas(props: MapProps): ReactElement {
   const nodesRef = useRef<BwNodeType[]>([]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   const remember = useCallback(() => setUndo(u => [...u.slice(-29), Object.fromEntries(nodesRef.current.filter(n => !n.data.exiting).map(n => [n.id, n.position]))]), []);
-  const lastIds = useRef<Set<string>>(new Set());
+  // The things the canvas holds. A node whose words did not change keeps the very same object, so a keystroke in the search box or a
+  // new scan redraws only what changed. A node that is filtered out stays for a moment, marked as leaving, so it can fade.
+  const placeRef = useRef(placeOf), queryRef = useRef(query);
+  placeRef.current = placeOf; queryRef.current = query;
   useEffect(() => {
-    const now = new Set(view.nodes.map(n => n.id));
-    const fresh = view.nodes.filter(n => !lastIds.current.has(n.id)).length;
+    const now = new Set(view.nodes.map(n => n.id)), dimming = queryRef.current.trim() !== '';
     setNodes(prev => {
       const prevById = new Map(prev.map(p => [p.id, p]));
-      const next: BwNodeType[] = view.nodes.map(n => { const old = prevById.get(n.id); return { id: n.id, type: 'bw', position: old?.position ?? placeOf(n.id), selected: old?.selected ?? false, data: { n, dim: query.trim() !== '' && !view.matches.has(n.id), exiting: false, dropped: false } }; });
+      const next = view.nodes.map((n): BwNodeType => {
+        const old = prevById.get(n.id), dim = dimming && !view.matches.has(n.id);
+        if (old !== undefined && !old.data.exiting && !old.data.dropped && old.data.dim === dim && sameNode(old.data.n, n)) return old;
+        return { id: n.id, type: 'bw', position: old?.position ?? placeRef.current(n.id), selected: old?.selected ?? false, data: { n: old !== undefined && sameNode(old.data.n, n) ? old.data.n : n, dim, exiting: false, dropped: false } };
+      });
       const leaving = prev.filter(p => !now.has(p.id) && !p.data.exiting).map(p => ({ ...p, data: { ...p.data, exiting: true } }));
       return [...next, ...leaving];
     });
-    lastIds.current = now;
     const timer = window.setTimeout(() => setNodes(prev => prev.filter(p => !p.data.exiting)), ms(MOTION.map.nodeExit.ms) + MOTION.map.exitGrace);
-    void fresh;
     return () => window.clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // Wires next to the chosen or hovered thing are drawn strongly, and the rest step back, so the way through a busy map can be followed.
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const activeId = panel ?? hoverId;
-  const edges: Edge[] = useMemo(() => view.edges.map(e => ({ id: e.id, source: e.from, target: e.to, className: `bw-edge rel-${e.rel}${activeId === null ? '' : e.from === activeId || e.to === activeId ? ' is-active' : ' is-faded'}`, selectable: false, focusable: false, data: { rel: e.rel } })), [view, activeId]);
+  // Wires next to the chosen or hovered thing are drawn strongly and the rest step back. One state, and one object for each wire, so
+  // pointing at a thing redraws only the wires next to it.
+  const [hoverId, setHoverId] = useState<string | null>(null), [showAll, setShowAll] = useState(false);
+  const activeId = panel ?? hoverId, wires = useMemo(createWireCache, []);
+  const edges: Edge[] = useMemo(() => wires.edges(view.edges, activeId, showAll), [wires, view, activeId, showAll]);
+  const byId = useMemo(() => new Map(model.nodes.map(n => [n.id, n] as const)), [model]);
+  const hover = hoverId === null || byId.get(hoverId) === undefined ? '' : hoverLine(byId.get(hoverId)!);
 
   // Places are gathered, merged with what was saved, and written once. Two drags close together are both kept, and the write is
   // forced when the screen goes away, the window loses focus, or the window closes.
-  const savedRef = useRef(saved), onLayoutRef = useRef(onLayout);
-  savedRef.current = saved; onLayoutRef.current = onLayout;
-  const keeper = useMemo(() => createKeeper({ delay: MOTION.map.saveDebounce, saved: () => savedRef.current, commit: l => onLayoutRef.current(l) }), []);
+  const savedRef = useRef(saved), onLayoutRef = useRef(onLayout), validRef = useRef<ReadonlySet<string>>(new Set());
+  savedRef.current = saved; onLayoutRef.current = onLayout; validRef.current = new Set(model.nodes.map(n => n.id));
+  const keeper = useMemo(() => createKeeper({ delay: MOTION.map.saveDebounce, saved: () => savedRef.current, commit: l => onLayoutRef.current(l === null ? null : prunePlaces(l, validRef.current, PLACE_LIMITS.soft, PLACE_LIMITS.hard)) }), []);
   useEffect(() => {
     const flush = (): void => keeper.flush();
     window.addEventListener('blur', flush); window.addEventListener('beforeunload', flush); window.addEventListener('pagehide', flush);
@@ -191,6 +197,7 @@ function Canvas(props: MapProps): ReactElement {
         <button type="button" className="bw-btn" onClick={tidy} title="Lay things out from left to right">Tidy up</button>
         <button type="button" className="bw-btn" onClick={fit}>Fit all</button>
         <button type="button" className="bw-btn" onClick={reset} title="Forget the places you chose">Reset layout</button>
+        <button type="button" className={`bw-btn${showAll ? ' on' : ''}`} aria-pressed={showAll} onClick={() => setShowAll(a => !a)} title="Draw every wire at full strength">Show all wires</button>
         <button type="button" className={`bw-btn${outline ? ' on' : ''}`} aria-pressed={outline} onClick={() => setOutline(o => !o)}>Text outline</button>
       </div>
       <details className="bw-kinds-menu">
@@ -203,8 +210,8 @@ function Canvas(props: MapProps): ReactElement {
         <div className="bw-canvas" role="group" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it.">
           <ReactFlow<BwNodeType, Edge>
             nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={() => { dragging.current = true; remember(); }} onNodeDragStop={onDragStop}
-            onNodeClick={(_e, n) => setPanel(n.id)} onPaneClick={() => undefined}
-            onNodeMouseEnter={(_e, n) => { setHover(hoverLine(n.data.n)); setHoverId(n.id); }} onNodeMouseLeave={() => { setHover(''); setHoverId(null); }}
+            onNodeClick={(_e, n) => setPanel(n.id)}
+            onNodeMouseEnter={(_e, n) => setHoverId(n.id)} onNodeMouseLeave={() => setHoverId(null)}
             fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1} maxZoom={2}
             snapToGrid snapGrid={[LAYOUT.gridSnap, LAYOUT.gridSnap]} nodesConnectable={false} elementsSelectable nodesFocusable edgesFocusable={false}
             selectionOnDrag={tool === 'select'} panOnDrag={tool === 'move' ? true : [1, 2]} panOnScroll multiSelectionKeyCode={['Meta', 'Shift']} deleteKeyCode={null}

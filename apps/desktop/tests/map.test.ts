@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EDGE_RELS, MAP_KINDS, REL_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../shared/mapmodel.js';
 import type { MapKind, MapModel } from '../shared/mapmodel.js';
-import { LAYOUT, autoLayout, snap, syntheticMap } from '../shared/maplayout.js';
+import { LAYOUT, autoLayout, prunePlaces, snap, syntheticMap } from '../shared/maplayout.js';
+import { createWireCache, sameNode, wireState } from '../renderer/map/wires.js';
 import { clone, sampleSnapshot } from './support.js';
 
 const all = { scope: 'everything' as const, kinds: null, query: '' };
@@ -115,4 +116,28 @@ test('an outline entry lists all of its relations, and a thing held by two is na
   const row = outlineOf(m).find(o => o.id === 'a')!.text;
   assert.match(row, /is allowed to read f/); assert.match(row, /reads p1/); assert.match(row, /also: p2 owns it/);
   assert.match(outlineOf(m).find(o => o.id === 'f')!.text, /a is allowed to read it/);
+});
+
+test('pointing at a thing changes only the wires next to it, and the other wire objects are the same ones', () => {
+  const edges = [{ id: 'a', from: 'x', to: 'y', rel: 'uses' as const }, { id: 'b', from: 'y', to: 'z', rel: 'owns' as const }, { id: 'c', from: 'p', to: 'q', rel: 'reads' as const }];
+  const cache = createWireCache(), none = cache.edges(edges, null, false), onY = cache.edges(edges, 'y', false), again = cache.edges(edges, null, false);
+  assert.ok(none.every(e => /is-dim/.test(e.className!))); assert.match(onY[0]!.className!, /is-active/); assert.match(onY[1]!.className!, /is-active/); assert.match(onY[2]!.className!, /is-dim/);
+  assert.equal(onY[2], none[2], 'a wire that is not next to it keeps its object'); assert.equal(again[0], none[0], 'going back reuses the old ones');
+  assert.deepEqual(cache.edges(edges, null, true).map(e => e.className), ['bw-edge rel-uses', 'bw-edge rel-owns', 'bw-edge rel-reads']);
+  assert.deepEqual(cache.edges(edges, 'y', true).map(e => wireState(e.data as never, 'y', true)).length, 3);
+  assert.equal(wireState({ from: 'p', to: 'q' }, 'y', true), 'faded'); assert.equal(wireState({ from: 'p', to: 'q' }, 'y', false), 'dim');
+  assert.equal(none[0]!.type, 'smoothstep');
+});
+
+test('a node whose words did not change is the same node, so a search keystroke or a re-scan redraws nothing', async () => {
+  const a = buildMap(await sampleSnapshot()), b = buildMap(await sampleSnapshot());
+  assert.ok(a.nodes.every((n, i) => sameNode(n, b.nodes[i]!)));
+  assert.equal(sameNode(a.nodes[1]!, { ...a.nodes[1]!, label: 'other' }), false); assert.equal(sameNode(a.nodes[1]!, { ...a.nodes[1]!, reasons: ['x'] }), false);
+});
+
+test('saved places: past the soft limit the places of removed things go first, then the oldest; new places are never refused', () => {
+  const layout: Record<string, { x: number; y: number }> = {}; for (let i = 0; i < 10; i++) layout[`n${i}`] = { x: i, y: i };
+  assert.equal(Object.keys(prunePlaces(layout, new Set(), 20, 20)).length, 10, 'under the limit nothing goes');
+  assert.deepEqual(Object.keys(prunePlaces(layout, new Set(['n3', 'n7', 'n9']), 5, 20)), ['n3', 'n7', 'n9'], 'removed things go first');
+  assert.deepEqual(Object.keys(prunePlaces(layout, new Set(Object.keys(layout)), 5, 4)), ['n6', 'n7', 'n8', 'n9'], 'then the oldest, and the newest stay');
 });

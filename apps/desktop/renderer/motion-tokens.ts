@@ -50,6 +50,12 @@ export const MOTION = Object.freeze({
   graph: Object.freeze({
     /** How long the graph keeps settling before it rests by itself, and how it cools. Not a loop: it ends. */
     settleMs: 3500, cooldownTicks: 220, alphaDecay: 0.03, velocityDecay: 0.38,
+    /** With reduced motion the graph settles before it is drawn. The ticks are capped by the size of the graph (about `budget` node-ticks in all). */
+    warmup: { max: 200, min: 20, budget: 100000 },
+    /** Pages that are not next to the pointed-at page fade by this much (0 to 1). */
+    dimAlpha: 0.82,
+    /** Typing in the search waits this long before the picture is filtered. */
+    searchDebounce: 150,
     /** Neighbours light up on hover. */
     highlight: { ms: 140, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** The camera moves to a chosen page. */

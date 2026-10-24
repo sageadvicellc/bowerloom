@@ -3,23 +3,25 @@ import { chmodSync, closeSync, constants, copyFileSync, lstatSync, mkdirSync, op
 import { isAbsolute, join } from 'node:path';
 import { FOLDER_ROLES } from '../shared/types.js';
 import type { AppSettings, FolderRole } from '../shared/types.js';
+import { PLACE_LIMITS } from '../shared/maplayout.js';
 import { assertAppWritable } from './boundary.js';
 
 export const CONFIG_FILE = 'viewer-settings.json';
 export const MAX_ROOTS = 20;
 export const MAX_ROLES = 200;
-const MAX_BYTES = 1024 * 1024;
+const MAX_BYTES = 8 * 1024 * 1024;
 
 export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }) as AppSettings;
 const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false });
 
 /** The settings in `text`, or null when it is not a settings file at all (not JSON, or not an object). Unknown keys are ignored. */
 /** Saved places on the map: at most MAX_PLACES, each a pair of finite numbers within a sane range, under a short id. */
-export const MAX_PLACES = 3000;
+export const MAX_PLACES = PLACE_LIMITS.hard;
 export function parseLayout(value: unknown): Record<string, { x: number; y: number }> {
   const out: Record<string, { x: number; y: number }> = {};
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out;
-  for (const [id, p] of Object.entries(value as Record<string, unknown>).slice(0, MAX_PLACES)) {
+  // When there are too many, the newest (the last written) are kept, so a place the person just set is never the one that is dropped.
+  for (const [id, p] of Object.entries(value as Record<string, unknown>).slice(-MAX_PLACES)) {
     const o = p as { x?: unknown; y?: unknown } | null;
     if (id.length <= 500 && o !== null && typeof o === 'object' && typeof o.x === 'number' && typeof o.y === 'number' && Number.isFinite(o.x) && Number.isFinite(o.y) && Math.abs(o.x) <= 1e6 && Math.abs(o.y) <= 1e6) out[id] = { x: Math.round(o.x), y: Math.round(o.y) };
   }

@@ -8,7 +8,7 @@ import type { Chip, Link, SliceGroup, SliceModel, Tone } from '../shared/viewmod
 import { ICONS, h, icon } from './dom.js';
 import { applyMotionTokens } from './motion-tokens.js';
 import { mapHost, renderMap } from './map/mount.js';
-import { knowledgeHost } from './graph/knowledge.js';
+import { disposeKnowledge, knowledgeHost } from './graph/knowledge.js';
 
 declare global { interface Window { bowerloom: ViewerApi } }
 const api = window.bowerloom;
@@ -20,6 +20,8 @@ const state: { info: AppInfo | null; settings: AppSettings | null; snap: Snapsho
   { info: null, settings: null, snap: null, route: { screen: 'home' }, history: [], error: null, busy: false, notice: null, banner: null, focusHeading: false, raw: {} };
 
 const root = document.getElementById('root')!;
+// The graph screen lives as long as the window; its observers are released when the window goes away.
+window.addEventListener('pagehide', () => disposeKnowledge());
 
 /**
  * Runs one call to the main process. A refusal or a failure shows a plain message with a way to try again, and never leaves

@@ -36,7 +36,13 @@ let hovered: string | null = null;
 let paused = false, listView = false, loadToken = 0;
 let fg: InstanceType<typeof ForceGraph> | null = null;
 /** The picture fits itself to the window once after each load, then the person's own zoom is left alone. */
-let fitted = false;
+let fitted = false, lastAsked: string | null = null;
+/**
+ * This screen is a singleton on purpose: it lives as long as the window, so the picture, the filters and the chosen page survive a visit to
+ * another screen. Its observers are kept here so `disposeKnowledge` can release them (it runs when the window is going away).
+ */
+const watchers: (ResizeObserver | IntersectionObserver | MutationObserver)[] = [];
+let scheme: MediaQueryList | null = null, schemeListener: (() => void) | null = null, searchTimer: number | undefined;
 let palette: string[] = [], inkColour = '#222', mutedColour = '#666', surfaceColour = '#fff';
 
 // Elements
@@ -54,7 +60,7 @@ const colourOf = (n: GraphNode): string => palette[colourSlot(keyOf(n), SLOTS)] 
 
 let shown = { nodes: [] as GraphNode[], edges: [] as { from: string; to: string }[] };
 let neighbourSet = new Set<string>();
-let fade = 0, fadeTarget = 0, fadeAt = 0;
+let fadeAt = 0;
 
 function focusSet(): Set<string> {
   const id = hovered ?? selected;
@@ -63,9 +69,20 @@ function focusSet(): Set<string> {
   for (const e of shown.edges) { if (e.from === id) set.add(e.to); if (e.to === id) set.add(e.from); }
   return set;
 }
+/**
+ * force-graph draws again only when something moves, so after a change that does not move anything (a colour, a highlight) the picture
+ * has to be asked to draw. For a fade it is asked on every frame until the fade is over.
+ */
+function repaint(forMs = 0): void {
+  if (fg === null) return;
+  const start = performance.now();
+  const step = (): void => { const c = fg!.centerAt(); fg!.centerAt(c.x, c.y); if (performance.now() - start < forMs) requestAnimationFrame(step); };
+  step();
+}
 function setHover(id: string | null): void {
   if (id === hovered) return;
-  hovered = id; neighbourSet = focusSet(); fadeTarget = id !== null || selected !== null ? 1 : 0; fadeAt = performance.now();
+  hovered = id; neighbourSet = focusSet(); fadeAt = performance.now();
+  repaint(ms(MOTION.graph.highlight.ms));
 }
 
 /** Fits the pages that have links; pages with no links drift near the edge and would shrink the picture. */
@@ -82,9 +99,8 @@ function buildCanvas(): void {
     .nodeCanvasObjectMode(() => 'replace')
     .nodeCanvasObject((raw: object, ctx: CanvasRenderingContext2D, scale: number) => {
       const n = raw as FGNode, r = radiusOf(n), x = n.x ?? 0, y = n.y ?? 0, active = neighbourSet.size > 0;
-      const t = ms(MOTION.graph.highlight.ms) === 0 ? fadeTarget : Math.min(1, (performance.now() - fadeAt) / MOTION.graph.highlight.ms), f = fadeTarget === 1 ? t : 1 - t;
-      const lit = !active || neighbourSet.has(n.id);
-      ctx.globalAlpha = lit ? 1 : 1 - 0.82 * (active ? Math.max(f, fadeTarget === 1 ? t : 0) : 0);
+      const t = ms(MOTION.graph.highlight.ms) === 0 ? 1 : Math.min(1, (performance.now() - fadeAt) / MOTION.graph.highlight.ms);
+      ctx.globalAlpha = !active || neighbourSet.has(n.id) ? 1 : 1 - MOTION.graph.dimAlpha * t;
       ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
       if (n.orphan) { ctx.lineWidth = 1.4 / scale; ctx.strokeStyle = colourOf(n); ctx.fillStyle = surfaceColour; ctx.fill(); ctx.stroke(); } else { ctx.fillStyle = colourOf(n); ctx.fill(); }
       if (n.id === selected) { ctx.lineWidth = 2.2 / scale; ctx.strokeStyle = inkColour; ctx.beginPath(); ctx.arc(x, y, r + 2.5 / scale, 0, 2 * Math.PI); ctx.stroke(); }
@@ -103,29 +119,41 @@ function buildCanvas(): void {
   const charge = fg.d3Force('charge') as { strength?: (v: number) => { distanceMax?: (v: number) => unknown } } | undefined; charge?.strength?.(-70);
   (fg.d3Force('charge') as { distanceMax?: (v: number) => unknown } | undefined)?.distanceMax?.(140);
   const link = fg.d3Force('link') as { distance?: (v: number) => unknown } | undefined; link?.distance?.(38);
-  new ResizeObserver(size).observe(canvasBox); size();
   // Stop drawing while the screen is not in view, and again when it comes back, unless the person paused it.
-  new IntersectionObserver(entries => { const visible = entries.some(e => e.isIntersecting); if (!visible) fg!.pauseAnimation(); else if (!paused) fg!.resumeAnimation(); }).observe(canvasBox);
-  const recolour = (): void => { readColours(); };
-  new MutationObserver(recolour).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', recolour);
+  const visibleChanged = (entries: IntersectionObserverEntry[]): void => { const visible = entries.some(e => e.isIntersecting); if (!visible) fg!.pauseAnimation(); else if (!paused) fg!.resumeAnimation(); };
+  // The theme can change while the picture is at rest, so a change of theme re-reads the colours and asks for a new drawing.
+  const recolour = (): void => { readColours(); repaint(); };
+  watchers.push(new ResizeObserver(size), new IntersectionObserver(visibleChanged), new MutationObserver(recolour));
+  (watchers[0] as ResizeObserver).observe(canvasBox); (watchers[1] as IntersectionObserver).observe(canvasBox); (watchers[2] as MutationObserver).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  scheme = matchMedia('(prefers-color-scheme: dark)'); scheme.addEventListener('change', recolour); schemeListener = recolour;
+  size();
 }
 
 /** Puts the current filter's pages into the canvas. Pages that stay keep their places, so filtering does not scramble the picture. */
-function refresh(): void {
+function refresh(refit = false): void {
   if (graph === null) return;
   shown = filterGraph(graph, filter);
   buildCanvas();
   const old = new Map<string, FGNode>(((fg!.graphData().nodes as FGNode[]) ?? []).map(n => [n.id, n]));
   const nodes: FGNode[] = shown.nodes.map(n => { const prev = old.get(n.id); return prev ? Object.assign(prev, n) : { ...n }; });
   const calm = prefersReducedMotion();
-  fg!.warmupTicks(calm ? 200 : 0).cooldownTicks(calm ? 0 : MOTION.graph.cooldownTicks).cooldownTime(MOTION.graph.settleMs);
-  fitted = false;
+  const warm = calm ? Math.max(MOTION.graph.warmup.min, Math.min(MOTION.graph.warmup.max, Math.floor(MOTION.graph.warmup.budget / Math.max(1, nodes.length)))) : 0;
+  fg!.warmupTicks(warm).cooldownTicks(calm ? 0 : MOTION.graph.cooldownTicks).cooldownTime(MOTION.graph.settleMs);
+  if (refit) fitted = false;
   fg!.graphData({ nodes, links: shown.edges.map(e => ({ source: e.from, target: e.to })) });
   neighbourSet = focusSet();
   status.textContent = graph === null ? '' : summary(graph, shown); delete status.dataset.settled;
   renderList(); renderPanel(); syncControls();
   if (!paused && !listView) fg!.resumeAnimation();
+}
+
+/** Releases the observers and the picture. The screen can be built again afterwards. */
+export function disposeKnowledge(): void {
+  window.clearTimeout(searchTimer);
+  for (const w of watchers.splice(0)) w.disconnect();
+  if (scheme !== null && schemeListener !== null) scheme.removeEventListener('change', schemeListener);
+  scheme = null; schemeListener = null;
+  fg?._destructor(); fg = null; canvasBox.replaceChildren(); built = false; host.replaceChildren();
 }
 
 /** Runs a redraw of part of the screen and, if the keyboard was on a control inside it, puts the keyboard back on the same control. */
@@ -138,9 +166,8 @@ const announcer = el('p', 'sr-only'); announcer.setAttribute('role', 'status'); 
 
 function select(id: string | null, fromList: boolean): void {
   const before = selected;
-  selected = id; neighbourSet = focusSet(); fadeTarget = id !== null || hovered !== null ? 1 : 0; fadeAt = performance.now();
+  selected = id; neighbourSet = focusSet(); fadeAt = performance.now(); repaint(ms(MOTION.graph.highlight.ms));
   if (filter.local !== null) filter = { ...filter, local: id === null ? null : { id, depth: filter.local.depth } };
-  if (id !== null && fg !== null && !fromList) { /* the picture stays where it is when you click in it */ }
   if (id !== null && fg !== null && fromList) { const n = (fg.graphData().nodes as FGNode[]).find(x => x.id === id); if (n?.x !== undefined && n.y !== undefined) fg.centerAt(n.x, n.y, ms(MOTION.graph.focus.ms)); }
   if (filter.local !== null) refresh(); else { renderPanel(); renderList(); }
   // The panel takes the keyboard when it opens. Closing it gives the keyboard back to the page it was about.
@@ -190,7 +217,7 @@ function drawPanel(): void {
     const list = (title: string, nodes: GraphNode[]): void => { panel.append(el('h3', '', `${title} (${nodes.length})`)); if (!nodes.length) panel.append(el('p', 'muted small', 'None.')); else { const ul = el('ul', 'kg-ul'); for (const n of nodes) { const li = el('li'); li.append(pageButton(n, 'panel')); ul.append(li); } panel.append(ul); } };
     list('Links to', nb.out); list('Linked from', nb.back);
     const read = btn('Read this page', async () => { const r = await api.getPageText({ storeKey: store!.key, page: by.id }); pageText = { id: by.id, ...r }; renderPanel(); });
-    panel.append(el('div', 'kg-actions'), read, btn('Show only nearby pages', () => { filter = { ...filter, local: { id: by.id, depth: 1 } }; refresh(); }), close);
+    const actions = el('div', 'kg-actions'); actions.append(read, btn('Show only nearby pages', () => { filter = { ...filter, local: { id: by.id, depth: 1 } }; refresh(); }), close); panel.append(actions);
     if (pageText !== null && pageText.id === by.id) { const pre = el('pre', 'file', pageText.text ?? pageText.note ?? ''); pre.tabIndex = 0; panel.append(pre); }
   }
   const d = el('details', 'explain'); d.append(el('summary', '', 'Bowerloom items that point at this store'));
@@ -213,33 +240,35 @@ function drawList(): void {
 async function load(next: StoreChoice | null): Promise<void> {
   const token = ++loadToken;
   store = next; graph = null; selected = null; hovered = null; pageText = null; filter = NO_FILTER; neighbourSet = new Set();
-  notices.replaceChildren(); panel.replaceChildren();
-  if (next === null) { status.textContent = 'There is no context store to show yet.'; fg?.graphData({ nodes: [], links: [] }); return; }
+  // The last store's picture goes at once, so a slow or failed read never shows the wrong store.
+  notices.replaceChildren(); panel.replaceChildren(); listBox.replaceChildren(); shown = { nodes: [], edges: [] }; fg?.graphData({ nodes: [], links: [] }); host.classList.add('is-loading');
+  if (next === null) { status.textContent = 'There is no context store to show yet.'; host.classList.remove('is-loading'); return; }
   status.textContent = 'Reading the pages…';
   const result = await api.getKnowledgeGraph(next.key);
   if (token !== loadToken) return;
-  if (!result.ok || result.graph === null) { status.textContent = result.message ?? 'The store could not be read.'; return; }
-  graph = result.graph;
+  host.classList.remove('is-loading');
+  if (!result.ok || result.graph === null) { status.textContent = result.message ?? 'The store could not be read.'; status.classList.add('kg-error'); return; }
+  status.classList.remove('kg-error'); graph = result.graph;
   for (const n of graph.notices) { const p = el('p', 'warning kg-notice', n); p.setAttribute('role', 'note'); notices.append(p); }
   if (graph.broken > 0) notices.append(el('p', 'muted small', `${graph.broken} ${graph.broken === 1 ? 'link points' : 'links point'} at a page that is not in the store.`));
-  refresh();
+  refresh(true);
 }
 
 function build(): void {
   built = true;
   searchBox.type = 'search'; searchBox.placeholder = 'Search pages'; searchBox.setAttribute('aria-label', 'Search pages');
-  searchBox.addEventListener('input', () => { filter = { ...filter, search: searchBox.value }; refresh(); });
+  searchBox.addEventListener('input', () => { window.clearTimeout(searchTimer); searchTimer = window.setTimeout(() => { filter = { ...filter, search: searchBox.value }; refresh(); }, MOTION.graph.searchDebounce); });
   picker.setAttribute('aria-label', 'Context store'); picker.addEventListener('change', () => { void load(choices.find(c => c.key === picker.value) ?? null); });
   folderSel.setAttribute('aria-label', 'Folder'); folderSel.addEventListener('change', () => { filter = { ...filter, folder: folderSel.value || null }; refresh(); });
   tagSel.setAttribute('aria-label', 'Tag'); tagSel.addEventListener('change', () => { filter = { ...filter, tag: tagSel.value || null }; refresh(); });
   for (const [v, l] of [['folder', 'Colour by folder'], ['tag', 'Colour by tag']] as const) { const o = el('option', '', l); o.value = v; colourSel.append(o); }
-  colourSel.setAttribute('aria-label', 'Colour pages by'); colourSel.addEventListener('change', () => { colourBy = colourSel.value === 'tag' ? 'tag' : 'folder'; });
+  colourSel.setAttribute('aria-label', 'Colour pages by'); colourSel.addEventListener('change', () => { colourBy = colourSel.value === 'tag' ? 'tag' : 'folder'; repaint(); });
   for (const [v, l] of [['0', 'Whole graph'], ['1', 'Selected page and 1 step'], ['2', 'Selected page and 2 steps']] as const) { const o = el('option', '', l); o.value = v; depthSel.append(o); }
   depthSel.setAttribute('aria-label', 'How much of the graph to show'); depthSel.addEventListener('change', () => { const d = Number(depthSel.value); filter = { ...filter, local: d === 0 || selected === null ? null : { id: selected, depth: d === 2 ? 2 : 1 } }; if (d !== 0 && selected === null) { depthSel.value = '0'; status.textContent = 'Choose a page first, then show only its neighbours.'; return; } refresh(); });
   orphanBox.type = 'checkbox'; orphanBox.checked = true; orphanBox.addEventListener('change', () => { filter = { ...filter, showOrphans: orphanBox.checked }; refresh(); });
   const orphanLabel = el('label', 'kg-check'); orphanLabel.append(orphanBox, ' Show pages with no links');
   const fit = btn('Fit all', fitAll);
-  const reset = btn('Clear filters', () => { filter = NO_FILTER; searchBox.value = ''; refresh(); });
+  const reset = btn('Clear filters', () => { window.clearTimeout(searchTimer); filter = NO_FILTER; searchBox.value = ''; refresh(); });
   const bar = el('div', 'bw-toolbar kg-bar'); bar.append(picker, searchBox, folderSel, tagSel, colourSel, depthSel, orphanLabel, fit, pauseBtn, listBtn, reset);
   const stage = el('div', 'kg-stage'); canvasBox.setAttribute('role', 'img'); canvasBox.setAttribute('aria-label', 'A picture of the pages and their links. Use "Show as a list" for a version you can read and move through with the keyboard.');
   listBox.hidden = true; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
@@ -257,7 +286,9 @@ export function knowledgeHost(props: KnowledgeProps): HTMLElement {
   const next = storeChoices(props.snapshot);
   const same = next.length === choices.length && next.every((c, i) => c.key === choices[i]!.key);
   choices = next;
-  if (!same) {
+  const asked = props.storeKey !== null && props.storeKey !== lastAsked && choices.some(c => c.key === props.storeKey);
+  lastAsked = props.storeKey;
+  if (!same || asked) {
     picker.replaceChildren(); for (const c of choices) { const o = el('option', '', `${c.name}${c.kind === 'knowledge-folder' ? ' (knowledge folder)' : ''}`); o.value = c.key; picker.append(o); }
     picker.hidden = choices.length <= 1;
     const wanted = choices.find(c => c.key === props.storeKey) ?? choices.find(c => c.key === store?.key) ?? choices[0] ?? null;

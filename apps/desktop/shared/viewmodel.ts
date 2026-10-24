@@ -2,7 +2,7 @@
  * What each screen says, in plain words, worked out from the snapshot. Pure functions: no file, no window.
  * The renderer only draws these results.
  */
-import type { CacheData, FolderData, FolderRole, ItemContent, ItemKind, LibraryItem, LockMatch, ProjectData, ProjectItem, ProjectStatus, Snapshot, StoreData } from './types.js';
+import type { CacheData, FolderData, FolderRole, ItemContent, ItemKind, LibraryItem, LockMatch, ProjectData, ProjectStatus, Snapshot, StoreData } from './types.js';
 import { KIND_WORDS, ORIGIN_WORDS, codeWords, humanBytes, isPowerful, plural, powerWords, titleOf } from './words.js';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'quiet';

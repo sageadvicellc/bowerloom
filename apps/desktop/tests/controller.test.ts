@@ -91,7 +91,7 @@ test('settings parsing is strict about shape and size, and never silently resets
   assert.equal(parseSettings(JSON.stringify({ roots: Array.from({ length: 50 }, (_, i) => `/r${i}`) }))!.roots.length, MAX_ROOTS);
   const dir = tempDir(t);
   assert.deepEqual(loadSettings(dir), { settings: { ...DEFAULT_SETTINGS, roots: [] }, notice: null }, 'no file is a first run, with no notice');
-  writeFileSync(join(dir, CONFIG_FILE), 'x'.repeat(1100000)); assert.match(loadSettings(dir).notice!, /far too big/);
+  writeFileSync(join(dir, CONFIG_FILE), 'x'.repeat(9 * 1024 * 1024)); assert.match(loadSettings(dir).notice!, /far too big/);
   writeFileSync(join(dir, CONFIG_FILE), '{ not json'); assert.match(loadSettings(dir).notice!, /damaged/);
   writeFileSync(join(dir, CONFIG_FILE), JSON.stringify({ roots: Array.from({ length: 30 }, (_, i) => `/r${i}`) })); assert.match(loadSettings(dir).notice!, /left out/);
   rmSync(join(dir, CONFIG_FILE)); symlinkSync('/etc/hosts', join(dir, CONFIG_FILE)); assert.match(loadSettings(dir).notice!, /shortcut/);
@@ -208,8 +208,9 @@ test('the saved places on the map are kept by the viewer only, checked, capped, 
   assert.equal((await c.setMapLayout({ 'machine': { x: 1.4, y: 2.6 }, 'project:/a': { x: -50, y: 80 }, bad: { x: 'a', y: 1 }, huge: { x: 1e9, y: 0 }, nan: { x: NaN, y: 0 } })).message, null);
   assert.deepEqual(loadSettings(h.app).settings.mapLayout, { machine: { x: 1, y: 3 }, 'project:/a': { x: -50, y: 80 } });
   assert.match((await c.setMapLayout('nope' as never)).message!, /not valid/); assert.match((await c.setMapLayout([] as never)).message!, /not valid/);
-  const many: Record<string, { x: number; y: number }> = {}; for (let i = 0; i < 4000; i++) many[`n${i}`] = { x: i, y: i };
-  await c.setMapLayout(many); assert.equal(Object.keys(loadSettings(h.app).settings.mapLayout).length, MAX_PLACES);
+  const many: Record<string, { x: number; y: number }> = {}; for (let i = 0; i < MAX_PLACES + 1000; i++) many[`n${i}`] = { x: i, y: i };
+  await c.setMapLayout(many); const kept = loadSettings(h.app).settings.mapLayout; assert.equal(Object.keys(kept).length, MAX_PLACES);
+  assert.ok(kept[`n${MAX_PLACES + 999}`] !== undefined && kept.n0 === undefined, 'the newest places are kept and the oldest go');
   assert.equal((await c.setMapLayout(null)).message, null); assert.deepEqual(loadSettings(h.app).settings.mapLayout, {});
 });
 

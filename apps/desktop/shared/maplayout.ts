@@ -41,7 +41,6 @@ export const snap = (p: Place, size: number = LAYOUT.gridSnap): Place => ({ x: M
 export function syntheticMap(n: number): { nodes: MapNode[]; edges: MapEdge[] } {
   const nodes: MapNode[] = [{ id: 'machine', kind: 'machine', label: 'This computer', scope: 'global', description: '', status: null, reasons: [], link: null, owner: null }], edges: MapEdge[] = [];
   const add = (id: string, kind: MapKind, parent: string, rel: MapEdge['rel']): void => { nodes.push({ id, kind, label: id, scope: 'project', description: '', status: null, reasons: [], link: null, owner: null }); edges.push({ id: `${parent}>${rel}>${id}`, from: parent, to: id, rel }); };
-  let i = 0;
   for (let w = 0; nodes.length < n; w++) {
     add(`ws-${w}`, 'workspace', 'machine', 'contains');
     for (let p = 0; p < 5 && nodes.length < n; p++) {
@@ -49,7 +48,20 @@ export function syntheticMap(n: number): { nodes: MapNode[]; edges: MapEdge[] } 
       for (let t = 0; t < 2 && nodes.length < n; t++) { add(`t-${w}-${p}-${t}`, 'team', `p-${w}-${p}`, 'uses'); add(`a-${w}-${p}-${t}`, 'agent', `t-${w}-${p}-${t}`, 'owns'); }
       for (let s = 0; s < 6 && nodes.length < n; s++) add(`s-${w}-${p}-${s}`, 'skill', `p-${w}-${p}`, 'uses');
     }
-    i++;
   }
-  void i; return { nodes: nodes.slice(0, n), edges: edges.filter(e => nodes.slice(0, n).some(x => x.id === e.to)) };
+  return { nodes: nodes.slice(0, n), edges: edges.filter(e => nodes.slice(0, n).some(x => x.id === e.to)) };
+}
+
+/**
+ * Keeps the saved places within a limit without ever refusing a new place. Past `soft` places, the places of things that are no
+ * longer on the map (a removed project) go first; if more than `hard` remain, the oldest go. The newest places are always kept.
+ */
+/** Past `soft` saved places, those of things no longer on the map go first. The settings file holds at most `hard`. One set of numbers for the window and the main process. */
+export const PLACE_LIMITS = Object.freeze({ soft: 5000, hard: 20000 });
+
+export function prunePlaces(layout: Record<string, Place>, valid: ReadonlySet<string>, soft: number, hard: number): Record<string, Place> {
+  let entries = Object.entries(layout);
+  if (entries.length > soft) entries = entries.filter(([id]) => valid.has(id));
+  if (entries.length > hard) entries = entries.slice(entries.length - hard);
+  return Object.fromEntries(entries);
 }

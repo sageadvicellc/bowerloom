@@ -9,7 +9,6 @@ import { FOLDER_ROLES } from '../shared/types.js';
 import type { AppInfo, AppSettings, FolderRole, GraphResult, PageResult, ItemContent, ItemKind, Mode, SettingsResult, Sketch, SketchResult, SketchSummary, Snapshot } from '../shared/types.js';
 import { safeText } from '../shared/text.js';
 import { readGuarded } from '../../../packages/project-authoring/src/files.js';
-import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { MAX_ROOTS, loadSettings, parseLayout, saveSettings } from './config.js';
 import { SketchError, deleteSketch, listSketches, loadSketch, saveSketch } from './sketches.js';
