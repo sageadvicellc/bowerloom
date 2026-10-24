@@ -120,6 +120,16 @@ const broken = mk('old-archive'); put(join(broken, 'bowerloom.json'), config());
 approveNet(broken, ['use', 'skill', 'house-style'], netEnv);
 put(join(broken, 'bowerloom.lock.json'), '<<<<<<< HEAD\n{"format": "bowerloom/lock/v1beta1"\n');
 
+// 4. A project set up the older way: a .bowerloom folder made by `up`, with no bowerloom.json and no shared library.
+const office = mk('studio-office');
+{
+  const upArgs = ['up', '--team', 'studio-crew', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
+  const planned = run(office, [...upArgs, '--json']);
+  if (planned.status !== 3) throw new Error(`plan up: ${planned.status} ${planned.stderr}${planned.stdout.slice(0, 300)}`);
+  const applied = run(office, [...upArgs, '--approve', JSON.parse(planned.stdout).revision]);
+  if (applied.status !== 4) throw new Error(`apply up: ${applied.status} ${applied.stderr}`);
+}
+
 // Copy the authored files only.
 rmSync(out, { recursive: true, force: true });
 cpSync(home, join(out, 'home'), { recursive: true, filter: src => !/(^|\/)(\.git|\.claude|\.codex|\.local|meeting-archive)(\/|$)/.test(src.slice(home.length)) || /\.bowerloom\/folders\//.test(src) });

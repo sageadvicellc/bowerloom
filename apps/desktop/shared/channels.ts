@@ -9,6 +9,7 @@ export const CHANNELS = Object.freeze({
   addRoot: 'viewer:add-root',
   removeRoot: 'viewer:remove-root',
   setTheme: 'viewer:set-theme',
+  setIncludeExamples: 'viewer:set-include-examples',
   checkForUpdates: 'viewer:check-for-updates',
   openLink: 'viewer:open-link',
   copyText: 'viewer:copy-text',

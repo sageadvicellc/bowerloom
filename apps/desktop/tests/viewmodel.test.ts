@@ -1,7 +1,7 @@
 // What each screen says. A drifted project says why, in plain words, and no screen shows a command line.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lockSourceWords, STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
+import { OLDER_NOTE, lockSourceWords, representatives, STATUS_CHIP, STATUS_SENTENCE, cacheSummary, configLines, folderRows, foldersProblem, homeModel, itemDetail, libraryRows, lockSentence, pinWords, projectDetail, projectRows, sliceGroups, sliceModels, sliceReason, slicesByProject, storeSummary } from '../shared/viewmodel.js';
 import { GENERIC_CODE_WORDS, codeWords, humanBytes, isPowerful, powerWords, titleOf } from '../shared/words.js';
 import { safeLine, safeText } from '../shared/text.js';
 import type { Snapshot } from '../shared/types.js';
@@ -52,8 +52,8 @@ test('status chips: Ready, Drifted, Lock problem, Not set up', () => {
 
 test('home: a sentence, four counts that link to their screens, and the list that needs attention', async () => {
   const s = await sampleSnapshot(), h = homeModel(s);
-  assert.equal(h.sentence, 'You have 2 teams, 4 skills and 2 prompts in your library, used by 3 projects.');
-  assert.deepEqual(h.counts.map(c => [c.label, c.value]), [['Teams', 2], ['Skills', 4], ['Prompts', 2], ['Projects', 3]]);
+  assert.equal(h.sentence, 'You have 2 teams, 4 skills and 2 prompts in your library, used by 4 projects.');
+  assert.deepEqual(h.counts.map(c => [c.label, c.value]), [['Teams', 2], ['Skills', 4], ['Prompts', 2], ['Projects', 4]]);
   assert.deepEqual(h.counts.map(c => c.link.screen), ['library', 'library', 'library', 'projects']);
   const titles = h.attention.map(a => a.title);
   assert.ok(titles.includes('The lock file of old-archive has a problem')); assert.ok(titles.includes('newsletter has drifted')); assert.ok(titles.includes('Helper "publisher" is waiting for a review'));
@@ -67,7 +67,7 @@ test('home: each kind of problem gets a plain explanation and a thing to do', as
   s.folders[0]!.state = 'missing'; s.folders[1]!.state = 'refused'; s.folders[1]!.code = 'FOLDER_UNSAFE';
   s.store.git!.problem = 'unpushed'; s.store.gitignoreMissing = true; s.store.foldersTracked = true; s.store.leftovers = ['.store.json.0123456789abcdef.tmp'];
   s.scan.roots.push({ path: '/gone', ok: false, reason: 'This folder is not there any more.' }); s.scan.truncated = true; s.problems.push({ area: 'library', code: 'STORE_UNREADABLE' });
-  s.projects.push({ ...clone(s.projects[0]!), key: '/x/locked', name: 'locked', status: 'unreadable', openCode: 'PROJECT_IN_CLOUD_FOLDER', items: [], agents: [] });
+  s.projects.push({ ...clone(s.projects[0]!), key: '/x/locked', name: 'locked', gitCommon: null, status: 'unreadable', openCode: 'PROJECT_IN_CLOUD_FOLDER', items: [], agents: [] });
   const text = homeModel(s).attention.map(a => `${a.title} ${a.body} ${a.todo}`).join('\n');
   for (const part of ['"client-archive" is missing', 'cannot be used', 'not shared on GitHub', 'may share private files', 'tracked by git', 'Leftover files', 'cannot be searched', 'Some projects may be missing', 'Part of the library could not be read', 'Bowerloom cannot open locked', 'cloud-synced']) assert.ok(text.includes(part), part);
   for (const a of homeModel(s).attention) { assert.ok(a.todo.length > 10, a.id); assert.ok(a.body.length > 10, a.id); }
@@ -75,7 +75,7 @@ test('home: each kind of problem gets a plain explanation and a thing to do', as
 
 test('home: a store that is absent, foreign, or refused is explained', async () => {
   const s = clone(await sampleSnapshot()); s.projects = [];
-  s.store.state = 'absent'; assert.equal(homeModel(s).sentence, 'There is no Bowerloom library on this computer yet.'); assert.match(homeModel(s).attention[0]!.title, /No library yet/);
+  s.store.state = 'absent'; assert.match(homeModel(s).sentence, /shared library .* is not set up yet, and that is normal/); assert.equal(homeModel(s).attention[0]!.title, 'The shared library is not set up yet'); assert.match(homeModel(s).attention[0]!.body, /This is normal/);
   s.store.state = 'foreign'; assert.match(homeModel(s).attention.find(a => a.id === 'store:problem')!.body, /not a Bowerloom library/);
   s.store.state = 'refused'; s.store.code = 'STORE_UNSAFE'; assert.match(homeModel(s).attention.find(a => a.id === 'store:problem')!.body, /not safe to use/);
 });
@@ -258,9 +258,9 @@ test('home: unknown counts, no folder chosen, the sample banner, a time, and lim
   assert.deepEqual(homeModel(s).counts.slice(0, 3).map(c => c.value), [null, null, null]); assert.match(homeModel(s).sentence, /could not be read, so the numbers/); assert.ok(homeModel(s).attention.some(a => a.id === 'library:failed'));
   const t = clone(base); t.mode = 'real'; t.projects = []; t.scan.roots = []; t.store.token = 'set';
   assert.equal(homeModel(t).needsFolder, true); assert.equal(homeModel(t).sample, false);
-  const u = clone(base); u.scan.truncated = true; u.scan.depthReached = true; u.scan.skipped = [{ path: '/x', reason: 'cannot be opened' }, { path: '/y', reason: 'is a link, so it is not followed' }];
+  const u = clone(base); u.scan.truncated = true; u.scan.depthReached = true; u.scan.depthFolders = ['code/deep']; u.scan.unopenedFolders = 1; u.scan.linkedFolders = ['shared-notes']; u.scan.linkedFoldersTotal = 1;
   const missing = homeModel(u).attention.find(a => a.id === 'scan:limits')!;
-  assert.equal(missing.title, 'Some projects may be missing'); for (const part of ['stopped early', '4 folders deep', '1 folder could not be opened', '1 shortcut']) assert.ok(missing.body.includes(part), part);
+  assert.equal(missing.title, 'Some projects may be missing'); for (const part of ['stopped early', '4 folders deep', 'reached that limit in "code/deep"', '1 folder could not be opened', '1 folder that is a shortcut was not searched: shared-notes']) assert.ok(missing.body.includes(part), part);
   const v = clone(base); v.problems.push({ area: 'folders', code: 'STORE_UNREADABLE' }); v.folders = [];
   assert.match(homeModel(v).attention.find(a => a.id === 'problem:folders')!.title, /knowledge folders could not be read/); assert.match(foldersProblem(v)!, /not known/);
   assert.equal(foldersProblem(base), null);
@@ -290,4 +290,52 @@ test('a held reading list that has no counted files says so, not "no files yet"'
   for (const id of ['client-history', 'meeting-archive-all', 'old-reports-list', 'team-titles']) { assert.equal(by(id).stateLabel, 'Held', id); assert.equal(by(id).files, 'Not counted while held', id); }
   assert.equal(by('team-notes').files, '4 files');
   const t = clone(s), live = t.projects.find(x => x.name === 'newsletter')!.slices.find(x => x.id === 'team-notes')!; live.members = 0; assert.equal(sliceModels(t.projects.find(x => x.name === 'newsletter')!).find(c => c.id === 'team-notes')!.files, '0 files', 'a live list with none really has none');
+});
+
+test('a project set up the older way says so, never talks about a library, and lists what differs', async () => {
+  const s = await sampleSnapshot(), p = s.projects.find(x => x.name === 'studio-office')!, d = projectDetail(p);
+  assert.equal(p.layout, 'older'); assert.equal(d.older, true); assert.equal(d.olderNote, 'Set up the older way (a .bowerloom folder). The shared library from beta.3 is not used here yet.'); assert.equal(OLDER_NOTE, d.olderNote);
+  assert.equal(d.chip.label, 'Drifted'); assert.deepEqual(d.reasons, ['This folder moved, or was copied, since it was set up.']);
+  assert.match(d.sentence, /Something differs from what Bowerloom set up here\. What differs is listed below\./);
+  for (const text of [d.sentence, ...d.reasons, ...d.config, ...d.items.map(i => `${i.match.text} ${i.from}`)]) assert.doesNotMatch(text, /library|lock/i, text);
+  assert.deepEqual(d.items.map(i => `${i.kind}:${i.id}:${i.match.text}`), ['team:first-team:Part of this project']); assert.equal(d.config[0], 'It uses 1 team: first-team (in this project).');
+  assert.ok(d.details.includes('Set up: the older way (a .bowerloom folder, no bowerloom.json)'));
+  const card = homeModel(s).attention.find(a => a.title === 'studio-office differs from what was set up')!; assert.match(card.body, /moved, or was copied/);
+  // A drifted older project with nothing reported still says what it knows, and that nothing was named.
+  const t = clone(s), q = t.projects.find(x => x.name === 'studio-office')!; q.drift = []; assert.match(projectDetail(q).reasons[0]!, /did not say what/);
+  q.drift = [{ kind: 'changed', path: '.bowerloom/x', code: null }, { kind: 'missing', path: '.bowerloom/y', code: null }]; q.ownedEdited = ['.bowerloom/a', '.bowerloom/b'];
+  assert.deepEqual(projectDetail(q).reasons, ['A file that Bowerloom set up has changed.', 'A file that Bowerloom set up is missing.', '2 files that Bowerloom manages were edited by hand.']);
+  q.status = 'ready'; q.drift = []; assert.equal(projectDetail(q).sentence, 'Everything that Bowerloom set up here is in place.'); assert.deepEqual(projectDetail(q).reasons, []);
+});
+
+test('with no shared library the numbers are what the projects hold, and the library is called not set up yet, which is normal', async () => {
+  const s = clone(await sampleSnapshot()); s.store.state = 'absent'; s.library = { skills: [], prompts: [], teams: [], unlisted: 0, pinsError: null, failed: null };
+  const h = homeModel(s); assert.equal(h.countsFrom, 'projects');
+  assert.deepEqual(h.counts.map(c => [c.label, c.value]), [['Teams', 3], ['Skills', 6], ['Prompts', 2], ['Projects', 4]]);
+  assert.match(h.sentence, /Across your 4 projects, you have 3 teams, 6 skills and 2 prompts\. The shared library .* is not set up yet, and that is normal\./);
+  assert.ok(h.attention.some(a => a.title === 'The shared library is not set up yet' && /This is normal/.test(a.body)));
+});
+
+test('identical problems are one card with the list of projects, and the badge counts cards', async () => {
+  const s = clone(await sampleSnapshot()), base = s.projects.find(x => x.name === 'studio-office')!;
+  for (let i = 0; i < 5; i++) s.projects.push({ ...clone(base), key: `/x/copy${i}`, dir: `/x/copy${i}`, name: `copy${i}`, gitCommon: null });
+  const h = homeModel(s), group = h.attention.find(a => a.members !== undefined)!;
+  assert.equal(group.title, '6 projects share this problem'); assert.equal(group.members!.length, 6); assert.deepEqual(group.members!.map(m => m.name).sort(), ['copy0', 'copy1', 'copy2', 'copy3', 'copy4', 'studio-office']);
+  assert.equal(h.attention.filter(a => a.title.includes('studio-office') || a.title.includes('copy')).length, 0, 'no copy of the same card is left');
+  assert.equal(h.attention.length, 5, 'the old-archive, helper, newsletter, the group, and the token: five cards, not eleven');
+  assert.equal(h.counts.find(c => c.label === 'Projects')!.value, 9);
+});
+
+test('checkouts of one repository are one row with a count of the other places', async () => {
+  const s = clone(await sampleSnapshot()); const [a, b, c] = s.projects;
+  a!.gitCommon = '/repo/.git'; b!.gitCommon = '/repo/.git'; c!.gitCommon = '/repo/.git'; b!.dir = `${b!.dir}-other`; c!.dir = `${c!.dir}-another-place`;
+  const reps = representatives(s.projects); assert.equal(reps.length, 2); assert.equal(reps.find(r => r.alsoIn > 0)!.alsoIn, 2);
+  const rows = projectRows(s); assert.equal(rows.length, 2); assert.match(rows.find(r => /Also checked out/.test(r.summary))!.summary, /Also checked out in 2 other places/);
+  assert.equal(homeModel(s).counts.find(x => x.label === 'Projects')!.value, 2);
+});
+
+test('example folders that hid a project are named in a notice, and only then', async () => {
+  const s = clone(await sampleSnapshot()); assert.ok(!homeModel(s).attention.some(a => a.id === 'scan:examples'));
+  s.scan.exampleFolders = ['examples', 'code/tests']; s.scan.exampleFoldersTotal = 3;
+  const a = homeModel(s).attention.find(x => x.id === 'scan:examples')!; assert.equal(a.title, '3 example folders were skipped'); assert.match(a.todo, /Also look inside example and test folders/);
 });

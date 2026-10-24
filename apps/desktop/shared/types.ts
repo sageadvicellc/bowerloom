@@ -59,6 +59,14 @@ export interface LockRow { kind: ItemKind; id: string; source: string }
 
 export interface ProjectData {
   key: string; name: string; dir: string;
+  /** `library`: uses bowerloom.json and the shared library. `older`: set up the older way, a .bowerloom folder alone. `none`: neither. */
+  layout: 'library' | 'older' | 'none';
+  /** Files that Bowerloom manages and that were edited by hand (from its own check). */
+  ownedEdited: string[];
+  /** The git folder that this folder's work tree belongs to, when it is one of several checkouts of one repository. */
+  gitCommon: string | null;
+  /** What to call it on screen: the folder name, or its path inside the chosen folder when two share a name. */
+  label: string;
   status: ProjectStatus;
   /** The refusal code when Bowerloom would not open the folder. */
   openCode: string | null;
@@ -105,6 +113,14 @@ export interface ScanInfo {
   skippedMore: boolean;
   /** How many levels down the search went. */
   depthLimit: number;
+  /** Names of folders that are shortcuts (links to folders) and were not searched. Links to files are not counted. */
+  linkedFolders: string[]; linkedFoldersTotal: number;
+  /** The folders, relative to the chosen folder, where the depth limit was reached. */
+  depthFolders: string[];
+  /** Folders that could not be opened. */
+  unopenedFolders: number;
+  /** Example and test folders that were skipped and hold a project, and how many. Empty when they are searched. */
+  exampleFolders: string[]; exampleFoldersTotal: number;
 }
 
 export interface Snapshot {
@@ -117,7 +133,13 @@ export interface Snapshot {
 export interface FileView { path: string; text: string | null; note: string | null; bytes: number }
 export interface ItemContent { kind: ItemKind; id: string; where: 'store' | 'project'; files: FileView[]; pinned: { lines: string[] } | null; note: string | null }
 
-export interface AppSettings { theme: 'system' | 'light' | 'dark'; roots: string[]; mode: Mode | null }
+export interface AppSettings {
+  theme: 'system' | 'light' | 'dark'; roots: string[]; mode: Mode | null;
+  /** Also look inside folders named examples, fixtures, test, tests. Off by default. */
+  includeExamples: boolean;
+  /** True once the folders near the person were looked for on the first real-data launch, so a removed folder is never added back. */
+  discovered: boolean;
+}
 export interface SettingsResult { settings: AppSettings; /** A plain sentence when the change could not be made or kept, else null. */ message: string | null }
 export interface AppInfo { version: string; mode: Mode | null; storePath: string; updates: { enabled: boolean; status: string }; platform: string; firstRun: boolean;
   /** A plain sentence about the viewer's own settings file (damaged, unreadable, could not be saved), or null. */
@@ -134,6 +156,7 @@ export interface ViewerApi {
   addRoot(): Promise<SettingsResult>;
   removeRoot(path: string): Promise<SettingsResult>;
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
+  setIncludeExamples(on: boolean): Promise<SettingsResult>;
   copyText(text: string): Promise<boolean>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;

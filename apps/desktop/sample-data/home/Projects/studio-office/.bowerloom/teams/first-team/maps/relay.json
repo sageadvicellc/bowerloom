@@ -1,0 +1,49 @@
+{
+  "format": "trellis/relay-map/v0.7-alpha",
+  "participants": [
+    "lead",
+    "maker",
+    "reviewer"
+  ],
+  "routes": [
+    {
+      "fromOwner": "lead",
+      "fromTask": "scope",
+      "toOwner": "maker",
+      "toTask": "draft",
+      "delivery": "accepted-output",
+      "bindings": [
+        {
+          "output": "document",
+          "input": "scope"
+        }
+      ]
+    },
+    {
+      "fromOwner": "lead",
+      "fromTask": "scope",
+      "toOwner": "reviewer",
+      "toTask": "review",
+      "delivery": "accepted-output",
+      "bindings": [
+        {
+          "output": "document",
+          "input": "scope"
+        }
+      ]
+    },
+    {
+      "fromOwner": "maker",
+      "fromTask": "draft",
+      "toOwner": "reviewer",
+      "toTask": "review",
+      "delivery": "accepted-output",
+      "bindings": [
+        {
+          "output": "document",
+          "input": "draft"
+        }
+      ]
+    }
+  ]
+}

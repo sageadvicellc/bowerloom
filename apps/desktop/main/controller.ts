@@ -11,6 +11,7 @@ import { readGuarded } from '../../../packages/project-authoring/src/files.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { MAX_ROOTS, loadSettings, saveSettings } from './config.js';
+import { discoverNearby } from './discover.js';
 import { readItemContent } from './content.js';
 import { readSnapshot } from './reader.js';
 import type { ReadContext } from './reader.js';
@@ -50,6 +51,7 @@ export interface Controller {
   addRoot(): Promise<SettingsResult>;
   removeRoot(path: string): Promise<SettingsResult>;
   setTheme(theme: AppSettings['theme']): Promise<SettingsResult>;
+  setIncludeExamples(on: boolean): Promise<SettingsResult>;
   checkForUpdates(): Promise<{ status: string }>;
   openLink(url: string): Promise<boolean>;
   copyText(text: string): Promise<boolean>;
@@ -77,7 +79,7 @@ export function createController(host: Host): Controller {
       const home = realHome(), state = host.env?.XDG_STATE_HOME ?? process.env.XDG_STATE_HOME;
       const env: NodeJS.ProcessEnv = { HOME: home };
       if (typeof state === 'string' && state.startsWith('/')) env.XDG_STATE_HOME = state;
-      return { mode, home, env, roots: settings.roots, tokenSource: host.env ?? process.env };
+      return { mode, home, env, roots: settings.roots, includeExamples: settings.includeExamples, tokenSource: host.env ?? process.env };
     }
     return null;
   };
@@ -110,6 +112,11 @@ export function createController(host: Host): Controller {
       let c: ReadContext | null;
       try { c = readContext(); } catch { throw new Error('The sample data could not be prepared. Try again, or choose your own Bowerloom.'); }
       if (c === null) throw new Error('Choose what to look at first.');
+      // The first real-data launch with no folder chosen: look near the person once, and use what is found. They can change the list.
+      if (c.mode === 'real' && !settings.discovered && settings.roots.length === 0) {
+        const found = discoverNearby(c.home).slice(0, MAX_ROOTS), r = persist({ ...settings, roots: found, discovered: true });
+        if (r.message !== null) notice = r.message; else c = readContext()!;
+      }
       const result = await readSnapshot(c);
       known = new Set(result.snapshot.projects.map(p => p.key));
       return result.snapshot;
@@ -162,6 +169,10 @@ export function createController(host: Host): Controller {
     async setTheme(theme) {
       if (theme !== 'system' && theme !== 'light' && theme !== 'dark') return { settings, message: null };
       return persist({ ...settings, theme });
+    },
+    async setIncludeExamples(on) {
+      forget();
+      return persist({ ...settings, includeExamples: on === true });
     },
     async checkForUpdates() { updates = await checkForUpdates(updates); return { status: updates.status }; },
     async openLink(url) {

@@ -3,7 +3,7 @@
  * so nothing read from a file can become markup or script.
  */
 type Child = Node | string | null | undefined | false;
-export interface Props { class?: string; text?: string; type?: string; role?: string; href?: string; id?: string; title?: string; open?: boolean; disabled?: boolean; tabindex?: number; on?: { click?: () => void }; aria?: Record<string, string> }
+export interface Props { class?: string; text?: string; type?: string; role?: string; href?: string; id?: string; title?: string; open?: boolean; disabled?: boolean; tabindex?: number; on?: { click?: () => void; change?: (checked: boolean) => void }; checked?: boolean; aria?: Record<string, string> }
 const SAFE_ATTR = new Set(['class', 'type', 'role', 'id', 'title']);
 
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -11,7 +11,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = 
   for (const [key, value] of Object.entries(props)) {
     if (value === undefined) continue;
     if (key === 'text') el.textContent = String(value);
-    else if (key === 'on') { const on = value as NonNullable<Props['on']>; if (on.click) el.addEventListener('click', () => on.click!()); }
+    else if (key === 'on') { const on = value as NonNullable<Props['on']>; if (on.click) el.addEventListener('click', () => on.click!()); if (on.change) el.addEventListener('change', () => on.change!((el as unknown as HTMLInputElement).checked)); }
+    else if (key === 'checked') { (el as unknown as HTMLInputElement).checked = value === true; }
     else if (key === 'aria') for (const [k, v] of Object.entries(value as Record<string, string>)) el.setAttribute(`aria-${k}`, v);
     else if (key === 'open') { if (value) el.setAttribute('open', ''); }
     else if (key === 'disabled') { if (value) el.setAttribute('disabled', ''); }

@@ -48,9 +48,29 @@ export function pinWords(pin: string | null, origin: LibraryItem['origin']): str
 
 // ------------------------------------------------------------------------------------------------------------- home
 
-export interface Attention { id: string; tone: Tone; title: string; body: string; todo: string; technical: string | null; link: Link | null }
+export interface Attention { id: string; tone: Tone; title: string; body: string; todo: string; technical: string | null; link: Link | null; /** When several projects share one problem: each of them. */ members?: { key: string; name: string }[] }
+
+/**
+ * One row for each repository: checkouts of one repository (git work trees that share a git folder) are shown once, with a count of
+ * the other places. The shortest path is the one shown. A folder that is not a git checkout is always its own row.
+ */
+export function representatives(projects: readonly ProjectData[]): { project: ProjectData; alsoIn: number }[] {
+  const groups = new Map<string, ProjectData[]>(), out: { project: ProjectData; alsoIn: number }[] = [];
+  for (const p of projects) { if (p.gitCommon === null) { out.push({ project: p, alsoIn: 0 }); continue; } groups.set(p.gitCommon, [...(groups.get(p.gitCommon) ?? []), p]); }
+  for (const list of groups.values()) { const sorted = [...list].sort((a, b) => a.dir.length - b.dir.length || (a.dir < b.dir ? -1 : 1)); out.push({ project: sorted[0]!, alsoIn: sorted.length - 1 }); }
+  const order = new Map(projects.map((p, i) => [p.key, i])); return out.sort((a, b) => order.get(a.project.key)! - order.get(b.project.key)!);
+}
 
 const pathName = (key: string): string => key.split('/').filter(Boolean).pop() ?? key;
+
+/** What one kind of difference means, in plain words. The file or folder is in the details, not here. */
+const DRIFT_WORDS: Record<string, string> = {
+  missing: 'A file that Bowerloom set up is missing.', changed: 'A file that Bowerloom set up has changed.', unsafe: 'Something in the setup is not safe for Bowerloom to read: a shortcut, or a file other people can change.',
+  unexpected: 'Bowerloom\'s setup check found something in this project that it did not expect.', 'invalid-receipt': 'The record of the setup (the receipt) cannot be read.',
+  'installation-binding-changed': 'This folder moved, or was copied, since it was set up.', 'compiler-failed': 'The team description could not be put together again.',
+  'revision-pending': 'A change to this project was started and not finished.', 'owner-refused': 'A part of the setup was refused by the check that owns it.',
+};
+function driftWords(kind: string, layout: ProjectData['layout']): string { return DRIFT_WORDS[kind] ?? (layout === 'older' ? 'Bowerloom\'s check found a difference that this viewer cannot describe. It is in the details.' : 'Something differs from what was set up.'); }
 
 function projectReasons(p: ProjectData): string[] {
   const out: string[] = [];
@@ -68,11 +88,11 @@ function projectReasons(p: ProjectData): string[] {
     else if (h.kind === 'slice') { const row = p.slices.find(x => x.id === h.id); out.push(`Reading list "${h.id}": ${(row === undefined ? null : sliceReason(row)) ?? codeWords(h.code)}`); }
   }
   for (const d of p.drift) {
-    if (d.kind === 'unexpected') out.push('Bowerloom\'s setup check found something in this project that it did not expect.');
-    else if (d.kind === 'resolve-error') out.push(codeWords(d.code));
-    else if (d.kind === 'edited') out.push('A file that Bowerloom manages was edited by hand.');
-    else if (!['config-invalid', 'lock-invalid', 'lock-orphan'].includes(d.kind)) out.push('Something differs from what was set up.');
+    if (d.kind === 'resolve-error') out.push(codeWords(d.code));
+    else if (!['config-invalid', 'lock-invalid', 'lock-orphan'].includes(d.kind)) out.push(driftWords(d.kind, p.layout));
   }
+  if (p.ownedEdited.length > 0 && p.status !== 'ready') out.push(`${plural(p.ownedEdited.length, 'file')} that Bowerloom manages ${p.ownedEdited.length === 1 ? 'was' : 'were'} edited by hand.`);
+  if (p.layout === 'older' && p.status === 'drifted' && out.length === 0) out.push('Bowerloom\'s own check says this differs from what was set up, but did not say what. Everything it reported is in the details.');
   if (p.storeCode !== null) out.push(codeWords(p.storeCode));
   if (p.unavailable !== null) out.push(codeWords(p.unavailable));
   if (p.lockState === 'absent') out.push('This project is shared but has no lock file yet.');
@@ -83,6 +103,8 @@ export const reasonsOf = projectReasons;
 
 export interface HomeModel {
   sentence: string; counts: { label: string; value: number | null; link: Link }[]; attention: Attention[];
+  /** `library`: the numbers are the shared library's. `projects`: there is no library, so they are what the projects hold. */
+  countsFrom: 'library' | 'projects';
   /** Real data with no project folder chosen: Home asks for one and never says "All clear". */
   needsFolder: boolean; sample: boolean; asOf: string;
 }
@@ -93,44 +115,53 @@ export function asOfText(at: string): string {
   return Number.isNaN(d.getTime()) ? 'As of an unknown time' : `As of ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-/** The things that may hide a project from the list: limits of the search, and folders that could not be opened. */
+/** The things that may hide a project from the list: limits of the search, and folders that were not searched. */
 function scanCauses(s: Snapshot): string[] {
   const out: string[] = [];
   if (s.scan.truncated) out.push('The search stopped early because it found a lot of folders or projects.');
-  if (s.scan.depthReached) out.push(`The search looks ${s.scan.depthLimit} folders deep. Some folders go deeper than that, so a project far inside them would not be found.`);
-  const opened = s.scan.skipped.filter(x => /cannot be opened/.test(x.reason)).length, links = s.scan.skipped.filter(x => /link/.test(x.reason)).length;
-  if (opened > 0) out.push(`${plural(opened, 'folder')} could not be opened, so what is inside ${opened === 1 ? 'it' : 'them'} was not searched.`);
-  if (links > 0) out.push(`${plural(links, 'shortcut')} (links) ${links === 1 ? 'was' : 'were'} not followed, so what they point to was not searched.`);
-  if (s.scan.skippedMore) out.push('More folders were skipped than are listed here.');
+  if (s.scan.depthReached) out.push(`The search looks ${s.scan.depthLimit} folders deep. It reached that limit in ${s.scan.depthFolders.slice(0, 3).map(n => `"${n}"`).join(', ')}${s.scan.depthFolders.length > 3 ? `, and ${s.scan.depthFolders.length - 3} more places` : ''}, so a project further inside would not be found.`);
+  if (s.scan.unopenedFolders > 0) out.push(`${plural(s.scan.unopenedFolders, 'folder')} could not be opened, so what is inside ${s.scan.unopenedFolders === 1 ? 'it' : 'them'} was not searched.`);
+  if (s.scan.linkedFoldersTotal > 0) out.push(`${plural(s.scan.linkedFoldersTotal, 'folder')} that ${s.scan.linkedFoldersTotal === 1 ? 'is a shortcut was' : 'are shortcuts were'} not searched: ${s.scan.linkedFolders.join(', ')}${s.scan.linkedFoldersTotal > s.scan.linkedFolders.length ? ', and more' : ''}.`);
   return out;
 }
 
 export function homeModel(s: Snapshot): HomeModel {
-  const lib = s.library, failed = lib.failed !== null;
-  const n = (list: unknown[]): number | null => failed ? null : list.length;
+  const lib = s.library, failed = lib.failed !== null, reps = representatives(s.projects);
+  const noLibrary = s.store.state === 'absent';
+  const held = (kind: ItemKind): number => reps.reduce((n, r) => n + r.project.items.filter(i => i.kind === kind).length, 0);
+  const fromProjects = noLibrary && reps.length > 0;
+  const n = (list: unknown[], kind: ItemKind): number | null => fromProjects ? held(kind) : failed ? null : list.length;
   const counts = [
-    { label: 'Teams', value: n(lib.teams), link: { screen: 'library', kind: 'team' } as Link },
-    { label: 'Skills', value: n(lib.skills), link: { screen: 'library', kind: 'skill' } as Link },
-    { label: 'Prompts', value: n(lib.prompts), link: { screen: 'library', kind: 'prompt' } as Link },
-    { label: 'Projects', value: s.projects.length, link: { screen: 'projects' } as Link },
+    { label: 'Teams', value: n(lib.teams, 'team'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'team' } as Link },
+    { label: 'Skills', value: n(lib.skills, 'skill'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'skill' } as Link },
+    { label: 'Prompts', value: n(lib.prompts, 'prompt'), link: { screen: fromProjects ? 'projects' : 'library', kind: 'prompt' } as Link },
+    { label: 'Projects', value: reps.length, link: { screen: 'projects' } as Link },
   ];
-  const sentence = failed ? 'Your library could not be read, so the numbers of teams, skills and prompts are not known.'
+  const sentence = fromProjects
+    ? `Across your ${plural(reps.length, 'project')}, you have ${plural(held('team'), 'team')}, ${plural(held('skill'), 'skill')} and ${plural(held('prompt'), 'prompt')}. The shared library (the newer beta.3 store) is not set up yet, and that is normal.`
+    : failed ? 'Your library could not be read, so the numbers of teams, skills and prompts are not known.'
     : s.store.state === 'ready'
-      ? `You have ${plural(lib.teams.length, 'team')}, ${plural(lib.skills.length, 'skill')} and ${plural(lib.prompts.length, 'prompt')} in your library, used by ${plural(s.projects.length, 'project')}.`
-      : s.store.state === 'absent' ? 'There is no Bowerloom library on this computer yet.' : 'Bowerloom could not read your library.';
+      ? `You have ${plural(lib.teams.length, 'team')}, ${plural(lib.skills.length, 'skill')} and ${plural(lib.prompts.length, 'prompt')} in your library, used by ${plural(reps.length, 'project')}.`
+      : noLibrary ? 'The shared library (the newer beta.3 store) is not set up yet, and that is normal. No project was found to show.' : 'Bowerloom could not read your library.';
   const attention: Attention[] = [];
   const needsFolder = s.mode === 'real' && s.scan.roots.length === 0;
 
-  for (const p of s.projects) {
+  // Projects with one and the same problem are one card, with the list of projects, so a repeated card never buries the rest.
+  const groups = new Map<string, { first: Attention; members: { key: string; name: string }[] }>();
+  for (const { project: p } of reps) {
     if (p.status === 'ready' || p.status === 'not-set-up') continue;
     const reasons = projectReasons(p);
+    const older = p.layout === 'older';
     const tone: Tone = p.status === 'drifted' ? 'warn' : 'bad';
-    const title = p.status === 'lock-problem' ? `The lock file of ${p.name} has a problem` : p.status === 'unreadable' ? `Bowerloom cannot open ${p.name}` : `${p.name} has drifted`;
-    attention.push({
-      id: `project:${p.key}`, tone, title, body: reasons.length ? reasons.join(' ') : STATUS_SENTENCE[p.status],
+    const title = p.status === 'lock-problem' ? `The lock file of ${p.name} has a problem` : p.status === 'unreadable' ? `Bowerloom cannot open ${p.name}` : older ? `${p.name} differs from what was set up` : `${p.name} has drifted`;
+    const body = reasons.length ? reasons.join(' ') : STATUS_SENTENCE[p.status];
+    const card: Attention = {
+      id: `project:${p.key}`, tone, title, body,
       todo: p.status === 'lock-problem' ? 'Ask the person who looks after this project to rebuild the lock file. Until then, nothing can be confirmed.' : p.status === 'unreadable' ? 'Move the project somewhere Bowerloom can open it, such as a plain folder in your home folder.' : 'Open the project to see what is different. A person then brings it back in line.',
       technical: [p.lockCode, p.configCode, p.openCode].filter(Boolean).join(', ') || null, link: { screen: 'project', key: p.key },
-    });
+    };
+    const key = `${tone}|${p.status}|${body}|${card.todo}`, found = groups.get(key);
+    if (found === undefined) groups.set(key, { first: card, members: [{ key: p.key, name: p.name }] }); else found.members.push({ key: p.key, name: p.name });
     for (const a of p.agents) {
       if (a.hold === null) continue;
       attention.push({
@@ -139,12 +170,13 @@ export function homeModel(s: Snapshot): HomeModel {
       });
     }
   }
+  for (const { first, members } of groups.values()) attention.push(members.length === 1 ? first : { ...first, id: `group:${first.id}`, title: `${members.length} projects share this problem`, members, link: { screen: 'projects' } });
   for (const f of s.folders) {
     if (f.state === 'missing') attention.push({ id: `folder:${f.name}`, tone: 'warn', title: `The knowledge folder "${f.name}" is missing`, body: `Bowerloom saved ${f.path ?? 'its place'} but nothing is there now.`, todo: 'Put the folder back where it was, or ask the person who looks after Bowerloom to remove the saved place.', technical: null, link: { screen: 'folders' } });
     else if (f.state === 'refused') attention.push({ id: `folder:${f.name}`, tone: 'bad', title: `The knowledge folder "${f.name}" cannot be used`, body: codeWords(f.code), todo: 'Ask the person who looks after Bowerloom to check the folder.', technical: f.code, link: { screen: 'folders' } });
   }
   const st = s.store;
-  if (st.state === 'absent') attention.push({ id: 'store:absent', tone: 'quiet', title: 'No library yet', body: 'The .bowerloom folder is not in your home folder, so there are no skills, prompts, or teams to show.', todo: 'It is made the first time you create something with Bowerloom.', technical: null, link: { screen: 'storage' } });
+  if (st.state === 'absent') attention.push({ id: 'store:absent', tone: 'quiet', title: 'The shared library is not set up yet', body: 'This is normal. The shared library is a newer feature (beta.3) that lets many projects use the same skills, prompts and teams. Until it is set up, each project keeps its own, and they are listed under Projects.', todo: 'Nothing to do. You do not need the library to look at your projects.', technical: null, link: { screen: 'projects' } });
   else if (st.state !== 'ready') attention.push({ id: 'store:problem', tone: 'bad', title: 'Your library has a problem', body: st.state === 'foreign' ? codeWords('STORE_INVALID') : codeWords(st.code), todo: 'Ask the person who looks after Bowerloom to check the .bowerloom folder in your home folder.', technical: st.code, link: { screen: 'storage' } });
   else {
     if (st.git !== null && st.git.problem !== null) attention.push({ id: 'store:git', tone: 'warn', title: 'Your library is not shared on GitHub yet', body: 'Teammates cannot fetch items that only exist on this computer, so projects that are shared cannot lock them.', todo: 'Ask the person who looks after Bowerloom to put the library on GitHub.', technical: st.git.problem, link: { screen: 'storage' } });
@@ -156,12 +188,13 @@ export function homeModel(s: Snapshot): HomeModel {
   if (failed) attention.push({ id: 'library:failed', tone: 'bad', title: 'Your library could not be read', body: `${codeWords(lib.failed)} The numbers above are not known, and the Library screen may be incomplete.`, todo: 'Choose "Look again". If it keeps happening, ask the person who looks after Bowerloom.', technical: lib.failed, link: { screen: 'storage' } });
   const causes = scanCauses(s);
   if (causes.length > 0 && !needsFolder) attention.push({ id: 'scan:limits', tone: 'warn', title: 'Some projects may be missing', body: causes.join(' '), todo: 'Add the folder that holds the project itself in Settings, so the search starts closer to it.', technical: null, link: { screen: 'settings' } });
+  if (s.scan.exampleFoldersTotal > 0) attention.push({ id: 'scan:examples', tone: 'quiet', title: `${plural(s.scan.exampleFoldersTotal, 'example folder')} ${s.scan.exampleFoldersTotal === 1 ? 'was' : 'were'} skipped`, body: `Folders named examples, fixtures, test or tests are not searched, and ${s.scan.exampleFoldersTotal === 1 ? 'one of them holds' : 'these hold'} projects: ${s.scan.exampleFolders.slice(0, 3).join(', ')}${s.scan.exampleFoldersTotal > 3 ? `, and ${s.scan.exampleFoldersTotal - 3} more` : ''}.`, todo: 'To see them, turn on "Also look inside example and test folders" in Settings.', technical: null, link: { screen: 'settings' } });
   const tokenRelevant = st.git?.remote != null || s.projects.some(p => p.shared);
   if (st.token !== 'set' && tokenRelevant) attention.push({ id: 'token', tone: 'quiet', title: st.token === 'invalid' ? 'The GitHub access key looks wrong' : 'No GitHub access key is set', body: 'Without a key, this computer can only fetch public files from GitHub. Private shared items cannot be fetched.', todo: 'If your shared library is private, ask the person who looks after Bowerloom to set the key. The viewer never shows it.', technical: null, link: { screen: 'storage' } });
   for (const r of s.scan.roots) if (!r.ok) attention.push({ id: `root:${r.path}`, tone: 'warn', title: 'A folder you added cannot be searched', body: `${r.path}: ${r.reason ?? ''}`, todo: 'Open Settings to remove it or add it again.', technical: null, link: { screen: 'settings' } });
   const order: Record<string, number> = { bad: 0, warn: 1, quiet: 2, good: 3 };
   attention.sort((a, b) => (order[a.tone] ?? 2) - (order[b.tone] ?? 2));
-  return { sentence, counts, attention, needsFolder, sample: s.mode === 'sample', asOf: asOfText(s.at) };
+  return { sentence, counts, countsFrom: fromProjects ? 'projects' : 'library', attention, needsFolder, sample: s.mode === 'sample', asOf: asOfText(s.at) };
 }
 
 
@@ -206,15 +239,17 @@ export function itemDetail(s: Snapshot, kind: ItemKind, id: string, content: Ite
 
 // ----------------------------------------------------------------------------------------------------------- projects
 
-export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string }
+export interface ProjectRow { key: string; name: string; dir: string; chip: Chip; summary: string; older: boolean; alsoIn: number }
 export function projectRows(s: Snapshot): ProjectRow[] {
-  return s.projects.map(p => ({
-    key: p.key, name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status],
-    summary: p.status === 'not-set-up' ? 'No project list yet' : p.status === 'unreadable' ? codeWords(p.openCode) : `${plural(p.items.filter(i => i.kind === 'skill').length, 'skill')}, ${plural(p.items.filter(i => i.kind === 'prompt').length, 'prompt')}, ${plural(p.items.filter(i => i.kind === 'team').length, 'team')}`,
+  return representatives(s.projects).map(({ project: p, alsoIn }) => ({
+    key: p.key, name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], older: p.layout === 'older', alsoIn,
+    summary: `${p.status === 'not-set-up' ? 'No project list yet' : p.status === 'unreadable' ? codeWords(p.openCode) : `${plural(p.items.filter(i => i.kind === 'skill').length, 'skill')}, ${plural(p.items.filter(i => i.kind === 'prompt').length, 'prompt')}, ${plural(p.items.filter(i => i.kind === 'team').length, 'team')}`}${p.layout === 'older' ? '. Set up the older way' : ''}${alsoIn > 0 ? `. Also checked out in ${plural(alsoIn, 'other place')}` : ''}`,
   }));
 }
 
 export interface ProjectDetail {
+  /** Set up the older way: a .bowerloom folder, no project list, no lock, no shared library. */
+  older: boolean; olderNote: string | null;
   name: string; dir: string; chip: Chip; sentence: string; reasons: string[]; technical: string[];
   items: { kind: ItemKind; id: string; label: string; origin: string; version: string; from: string; match: { text: string; tone: Tone }; hold: string | null }[];
   agents: { role: string; team: string | null; status: string; tone: Tone; powers: string[]; rawPowers: string[]; hold: string | null; holdCode: string | null; slices: string[] }[];
@@ -245,10 +280,10 @@ export function lockSentence(p: ProjectData): string {
 }
 
 export function configLines(p: ProjectData): string[] {
-  if (p.configState === 'absent') return ['This project has no project list (bowerloom.json).'];
+  if (p.configState === 'absent' && p.layout !== 'older') return ['This project has no project list (bowerloom.json).'];
   if (p.configState === 'invalid') return [codeWords(p.configCode)];
   const by = (k: ItemKind) => p.items.filter(i => i.kind === k);
-  const list = (k: ItemKind): string => { const items = by(k); return items.length === 0 ? `It uses no ${KIND_WORDS[k].many.toLowerCase()}.` : `It uses ${plural(items.length, KIND_WORDS[k].one.toLowerCase())}: ${items.map(i => `${i.id} (${i.from === 'store' ? 'from your library' : 'made in this project'})`).join(', ')}.`; };
+  const list = (k: ItemKind): string => { const items = by(k); return items.length === 0 ? `It uses no ${KIND_WORDS[k].many.toLowerCase()}.` : `It uses ${plural(items.length, KIND_WORDS[k].one.toLowerCase())}: ${items.map(i => `${i.id} (${i.from === 'store' ? 'from your library' : p.layout === 'older' ? 'in this project' : 'made in this project'})`).join(', ')}.`; };
   return [list('team'), list('skill'), list('prompt')];
 }
 
@@ -326,19 +361,28 @@ export function lockSourceWords(source: string): string {
 }
 export function projectDetails(p: ProjectData): string[] {
   return [
-    `Folder: ${p.dir}`, ...(p.configState !== 'absent' ? ['Project list file: bowerloom.json'] : []), `Lock file state: ${p.lockState}${p.lockCode ? ` (${p.lockCode})` : ''}`,
+    `Folder: ${p.dir}`, `Set up: ${p.layout === 'older' ? 'the older way (a .bowerloom folder, no bowerloom.json)' : p.layout === 'library' ? 'with a project list (bowerloom.json)' : 'not set up'}`, ...p.ownedEdited.map(f => `Edited by hand: ${f}`), ...(p.configState !== 'absent' ? ['Project list file: bowerloom.json'] : []), `Lock file state: ${p.lockState}${p.lockCode ? ` (${p.lockCode})` : ''}`,
     ...(p.openCode ? [`Could not open: ${p.openCode}`] : []), ...p.drift.map(d => `Setup check: ${d.kind}${d.code ? ` (${d.code})` : ''}: ${d.path}`), ...(p.unavailable ? [`Plan: ${p.unavailable}`] : []),
     ...p.held.map(h => `Held ${h.kind} ${h.id}: ${h.code}`), ...p.items.filter(i => i.hold).map(i => `Item ${i.kind} ${i.id}: ${i.hold!.code}`),
     ...p.lockRows.map(r => `Lock: ${r.kind} ${r.id}: ${r.source}`), ...p.slices.filter(x => x.grantStyle === 'unknown').map(x => `Reading list ${x.id}: permission check failed (${x.grantCode})`),
   ];
 }
 
+export const OLDER_NOTE = 'Set up the older way (a .bowerloom folder). The shared library from beta.3 is not used here yet.';
+/** The one sentence under the name of a project that is set up the older way. It lists nothing that is not there to list: the reasons follow it. */
+function olderSentence(p: ProjectData): string {
+  if (p.status === 'unreadable') return STATUS_SENTENCE.unreadable;
+  return p.status === 'ready' ? 'Everything that Bowerloom set up here is in place.' : 'Something differs from what Bowerloom set up here. What differs is listed below.';
+}
+
 export function projectDetail(p: ProjectData): ProjectDetail {
   const reasons = projectReasons(p);
+  const older = p.layout === 'older';
   return {
-    name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], sentence: STATUS_SENTENCE[p.status], reasons,
+    older, olderNote: older ? OLDER_NOTE : null,
+    name: p.name, dir: p.dir, chip: STATUS_CHIP[p.status], sentence: older ? olderSentence(p) : STATUS_SENTENCE[p.status], reasons,
     technical: [...p.drift.map(d => `${d.kind}${d.code ? ` (${d.code})` : ''}: ${d.path}`), ...(p.lockCode ? [p.lockCode] : []), ...(p.unavailable ? [p.unavailable] : [])],
-    items: p.items.map(i => ({ kind: i.kind, id: i.id, label: titleOf(i.id), origin: ORIGIN_WORDS[i.origin], version: pinWords(i.pin, i.origin), from: i.from === 'store' ? 'Your library' : 'This project', match: LOCK_MATCH_WORDS[i.lock], hold: i.hold === null ? null : codeWords(i.hold.code) })),
+    items: p.items.map(i => ({ kind: i.kind, id: i.id, label: titleOf(i.id), origin: ORIGIN_WORDS[i.origin], version: pinWords(i.pin, i.origin), from: i.from === 'store' ? 'Your library' : 'This project', match: older ? { text: 'Part of this project', tone: 'quiet' as Tone } : LOCK_MATCH_WORDS[i.lock], hold: i.hold === null ? null : codeWords(i.hold.code) })),
     agents: p.agents.map(a => ({ role: a.role, team: a.team, status: a.hold ? 'Waiting for a review' : a.state === 'new' ? 'Not installed yet' : a.state === 'up-to-date' ? 'Installed' : titleOf(a.state), tone: a.hold ? 'warn' : 'quiet', powers: [...new Set(a.notices.filter(isPowerful).map(powerWords))], rawPowers: a.notices.filter(isPowerful), hold: a.hold === null ? null : codeWords(a.hold.code), holdCode: a.hold?.code ?? null, slices: a.slices })),
     slices: sliceGroups(p), config: configLines(p), lock: p.lockRows.map(r => `${KIND_WORDS[r.kind].one} ${r.id}: ${lockSourceWords(r.source)}`), lockSentence: lockSentence(p),
     details: projectDetails(p),

@@ -2,7 +2,8 @@
  * Reads everything Bowerloom manages and returns it as plain data. It calls Bowerloom's own read functions in this
  * process: it starts no command, opens no port, and never calls a function that writes.
  */
-import { basename, join } from 'node:path';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { discoverProject, inspectStore, listFolderGrants, listFolders, privateStateRoot, resolveRegisteredFolder } from '../../../packages/project-context/src/index.js';
 import type { ProjectContext } from '../../../packages/project-context/src/types.js';
 import { LOCK_FILE, readConfig, readLock, lockItem, lockSourceLabel } from '../../../packages/project-config/src/index.js';
@@ -24,7 +25,7 @@ import { scanRoots } from './scan.js';
 import { OutsideRoot, resolveInside } from './safe.js';
 import { tokenState } from './token.js';
 
-export interface ReadContext { mode: Mode; home: string; env: NodeJS.ProcessEnv; roots: string[]; tokenSource?: NodeJS.ProcessEnv }
+export interface ReadContext { mode: Mode; home: string; env: NodeJS.ProcessEnv; roots: string[]; includeExamples?: boolean; tokenSource?: NodeJS.ProcessEnv }
 
 export const codeOf = (error: unknown): string => {
   if (error instanceof OutsideRoot) return error.code;
@@ -114,8 +115,23 @@ function lockRowsOf(resolved: Resolved | null): ProjectData['lockRows'] {
   return rows;
 }
 
+/** The repository that a folder is a checkout of, found cheaply from its `.git`: a `gitdir:` file (a linked work tree) or a folder. Null when none. */
+export function gitCommonDir(dir: string): string | null {
+  const dot = join(dir, '.git');
+  try {
+    const stat = lstatSync(dot);
+    if (stat.isDirectory()) return dot;
+    if (!stat.isFile() || stat.size > 4096) return null;
+    const m = /^gitdir:\s*(.+)\s*$/m.exec(readFileSync(dot, 'utf8'));
+    if (m === null) return null;
+    const git = resolve(dir, m[1]!);
+    const at = git.lastIndexOf(`${sep}worktrees${sep}`);
+    return at > 0 ? git.slice(0, at) : git;
+  } catch { return null; }
+}
+
 const empty = (dir: string): ProjectData => ({
-  key: dir, name: basename(dir), dir, status: 'unreadable', openCode: null, setup: null, configState: 'absent', configCode: null, lockState: 'not-used', lockCode: null,
+  key: dir, name: basename(dir), dir, layout: 'none', ownedEdited: [], gitCommon: null, label: basename(dir), status: 'unreadable', openCode: null, setup: null, configState: 'absent', configCode: null, lockState: 'not-used', lockCode: null,
   drift: [], notes: [], storeCode: null, unavailable: null, items: [], agents: [], slices: [], held: [], measure: [], measureCode: null, baselineBytes: null, baselineFiles: null, lockRows: [], shared: false,
 });
 
@@ -169,7 +185,7 @@ async function readProjectInner(ctx: ReadContext, dir: string): Promise<ProjectD
   if (project.dir !== dir) return { ...data, openCode: 'PROJECT_MOVED' };
 
   // 1. The same words `bowerloom status` gives.
-  let status: { status?: string; setup?: string; drift?: { kind: string; path: string; code?: string }[]; config?: Record<string, unknown> | null } = {};
+  let status: { status?: string; setup?: string; drift?: { kind: string; path: string; code?: string }[]; owned?: { path: string; state: string }[]; config?: Record<string, unknown> | null } = {};
   let statusCode: string | null = null;
   try { status = JSON.parse(await runProjectStatus(['status', '--json'], dir, ctx.home, ctx.env)); } catch (error) { statusCode = codeOf(error); }
 
@@ -180,7 +196,10 @@ async function readProjectInner(ctx: ReadContext, dir: string): Promise<ProjectD
   // A bowerloom.json that is there but cannot be read is a project Bowerloom cannot open, never one that is not set up.
   if (configProblem === null && config.state === 'absent' && project.configPresent) configProblem = 'CONFIG_UNREADABLE';
   if (configProblem !== null) return { ...data, status: 'unreadable', openCode: configProblem, configState: 'invalid', configCode: configProblem };
-  if (config.state === 'valid') {
+  const older = config.state === 'absent' && project.bowerloomIdentity !== null;
+  // A project with no bowerloom.json but a .bowerloom folder is set up the older way. Bowerloom's resolver reads it as it always has:
+  // the skills in its skills.json, its prompts, and its teams.
+  if (config.state === 'valid' || older) {
     try { resolved = resolveProject({ project, home: ctx.home, frozen: false, tolerateStore: true }); }
     catch (error) { const code = codeOf(error); if (code.startsWith('LOCK_')) lockError = code; else resolveCode = code; }
   }
@@ -221,11 +240,12 @@ async function readProjectInner(ctx: ReadContext, dir: string): Promise<ProjectD
   // finished, or a recovery that is needed. `Ready` is for a project whose lock is used and matches, with nothing held.
   const drifted = status.status === 'drifted' || status.status === 'revision-pending' || ['stale', 'mismatch', 'absent'].includes(lockState) || plan.held.length > 0 || staleItems > 0 || resolved?.storeCode != null || resolveCode !== null
     || plan.unavailable !== null || config.state === 'invalid' || items.some(i => i.hold !== null) || slices.some(x => x.grantStyle === 'unknown');
-  const unlocked = lockState === 'not-used' || (lockState !== 'valid');
+  // Only a project that uses the shared library has a lock to compare. One set up the older way has none, and is Ready or not by its own check.
+  const unlocked = !older && lockState !== 'valid';
   const projectStatus: ProjectStatus = notSetUp ? 'not-set-up' : statusCode !== null && status.status === undefined ? 'unreadable' : lockProblem ? 'lock-problem' : drifted ? 'drifted' : unlocked ? 'not-locked' : 'ready';
 
   return {
-    ...data, status: projectStatus, setup: status.status ?? null,
+    ...data, layout: older ? 'older' : config.state === 'absent' ? 'none' : 'library', ownedEdited: (status.owned ?? []).filter(o => o.state === 'edited').map(o => o.path), gitCommon: gitCommonDir(dir), status: projectStatus, setup: status.status ?? null,
     configState: config.state, configCode: config.state === 'invalid' ? config.code : null, lockState, lockCode,
     drift: resolveCode === null ? drift : [...drift, { kind: 'resolve-error', path: 'bowerloom.json', code: resolveCode }],
     notes: resolved?.notes.map(n => n.trim()) ?? [], storeCode: resolved?.storeCode ?? null, unavailable: plan.unavailable,
@@ -286,13 +306,25 @@ export async function readSnapshot(ctx: ReadContext): Promise<{ snapshot: Snapsh
   const store = readStoreData(ctx);
   const { library, storeProblem } = readLibrary(ctx);
   if (storeProblem !== null && store.state === 'ready') problems.push({ area: 'library', code: storeProblem });
-  const found = scanRoots(ctx.roots);
+  const found = scanRoots(ctx.roots, { includeExamples: ctx.includeExamples === true });
   const projects: ProjectData[] = [];
   const contexts = new Map<string, ProjectContext>();
   for (const dir of found.dirs) {
     projects.push(await readProject(ctx, dir));
     try { contexts.set(dir, discoverProject(dir, ctx.home)); } catch { /* shown as unreadable */ }
   }
+  // Two projects with one name are told apart by their path inside the folder that was chosen.
+  const byName = new Map<string, ProjectData[]>();
+  for (const p of projects) byName.set(p.name, [...(byName.get(p.name) ?? []), p]);
+  for (const same of byName.values()) {
+    if (same.length < 2) continue;
+    for (const p of same) {
+      const root = ctx.roots.map(r => { try { return realpathSync(r); } catch { return r; } }).filter(r => p.dir === r || p.dir.startsWith(r.endsWith(sep) ? r : r + sep)).sort((a, b) => b.length - a.length)[0];
+      const rel = root === undefined ? p.dir : relative(root, p.dir);
+      p.name = rel === '' ? `${basename(p.dir)} (the folder you chose)` : rel;
+    }
+  }
+  for (const p of projects) p.label = p.name;
   // Which projects use which library item.
   for (const p of projects) for (const i of p.items) {
     if (i.from !== 'store') continue;

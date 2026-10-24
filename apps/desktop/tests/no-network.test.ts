@@ -63,7 +63,7 @@ for (const mode of ['sample', 'real'] as const) {
     const log = join(mkdtempSync(join(tmpdir(), 'bowerloom-viewer-deny-log-')), 'hits.log');
     t.after(() => rmSync(join(log, '..'), { recursive: true, force: true }));
     const r = spawnSync(process.execPath, ['--import', join(DESKTOP, 'tests', 'helpers', 'deny.mjs'), join(DESKTOP, '.build', 'helpers', 'read-sample.mjs'), SAMPLE_DIR, mode], { encoding: 'utf8', timeout: 120000, env: { ...process.env, DENY_LOG: log } });
-    assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, new RegExp(`READ 3 projects \\(${mode}\\)`));
+    assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, new RegExp(`READ 4 projects \\(${mode}\\)`));
     assert.equal(existsSync(log) ? readFileSync(log, 'utf8') : '', '', 'nothing was denied, so nothing was tried');
   });
 }

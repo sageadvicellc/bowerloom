@@ -31,7 +31,7 @@ test('the build targets are macOS (dmg and zip), Windows (nsis), and Linux (AppI
 });
 
 test('the commands: one to open the app, one for sample data, both from the repository root', () => {
-  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data');
+  assert.equal(root.scripts.desktop, 'node apps/desktop/tools/run.mjs --real-data'); assert.equal(root.scripts['desktop:sample'], 'node apps/desktop/tools/run.mjs --sample-data');
   for (const name of ['desktop:dev', 'desktop:build', 'desktop:test']) assert.ok(root.scripts[name], name);
 });
 

@@ -70,6 +70,7 @@ function registerIpc(): void {
   guarded('addRoot', () => controller.addRoot());
   guarded('removeRoot', (path: string) => controller.removeRoot(path));
   guarded('setTheme', async (theme: Parameters<Controller['setTheme']>[0]) => { const s = await controller.setTheme(theme); nativeTheme.themeSource = s.settings.theme; return s; });
+  guarded('setIncludeExamples', (on: boolean) => controller.setIncludeExamples(on));
   guarded('checkForUpdates', () => controller.checkForUpdates());
   guarded('openLink', (url: string) => controller.openLink(url));
   guarded('copyText', (text: string) => controller.copyText(text));

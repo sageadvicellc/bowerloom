@@ -80,7 +80,7 @@ test('the bridge: one named call per channel, nothing generic, and main answers 
   assert.equal([...main.matchAll(/ipcMain\.handle/g)].length, 1, 'every handler goes through one guard that checks the sender');
   assert.match(main, /senderFrame/);
   // Every call the page can make is a read, or changes the app's own settings.
-  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setTheme']);
+  assert.deepEqual(names.sort(), ['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setTheme']);
 });
 
 test('the main process calls no command that writes Bowerloom data and starts no process or server', () => {

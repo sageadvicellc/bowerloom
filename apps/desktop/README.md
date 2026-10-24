@@ -20,7 +20,7 @@ npm --prefix "/Users/hannamacintosh/Sage Advice/code/internal-tools/bowerloom-de
 
 If you keep the code somewhere else, put that folder between the quote marks instead.
 
-The first time you open your own Bowerloom, the app asks you to add a folder where your projects live. It looks a few levels deep in that folder for projects. Nothing in that folder changes.
+The first time you open your own Bowerloom, the app looks once at the folders right inside your home folder for ones that hold Bowerloom, and starts with those. Home shows what it is reading, with Remove and Add buttons, so you can change it. It never looks inside Documents or Desktop by itself. It reads a few levels deep inside each folder, finds projects set up the older way (a .bowerloom folder) as well as newer ones, and skips folders named examples, fixtures or test unless you turn that on in Settings. Nothing in those folders changes.
 
 ## What each screen shows
 

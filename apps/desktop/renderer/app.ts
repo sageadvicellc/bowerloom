@@ -78,6 +78,16 @@ const fileBlock = (name: string, text: string | null, note: string | null, power
 
 // ------------------------------------------------------------------------------------------------------------- screens
 
+/** What is being read, with a way to change it. Only for real data: the sample is fixed. */
+function lookingAt(s: Snapshot): HTMLElement | null {
+  if (s.mode !== 'real') return null;
+  const roots = state.settings?.roots ?? [];
+  const add = button('Add a folder', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }, 'btn secondary');
+  return h('div', { class: 'card' }, h('h2', { text: 'Looking at' }),
+    roots.length === 0 ? h('p', { text: 'No folder yet. Add the folder where your projects live.' }) : h('ul', { class: 'looking' }, ...roots.map(r => h('li', { class: 'toolbar' }, h('span', { class: 'tech', text: r }), button('Remove', async () => { settled(await act('Removing the folder', () => api.removeRoot(r))); await reload(); }, 'btn secondary')))),
+    h('div', {}, add));
+}
+
 function homeScreen(s: Snapshot): HTMLElement {
   const m = homeModel(s);
   const addFolder = (): HTMLElement => button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); });
@@ -85,6 +95,7 @@ function homeScreen(s: Snapshot): HTMLElement {
     h('h1', { text: 'Home' }),
     m.sample ? h('div', { class: 'warning', role: 'note' }, icon(ICONS.warning, 20), 'You are looking at sample data, a made-up library with three projects. It is not your own Bowerloom.') : null,
     h('p', { class: 'lead', text: m.sentence }), asOfBar(m.asOf),
+    lookingAt(s),
     h('div', { class: 'grid' }, ...m.counts.map(c => h('button', { type: 'button', class: 'stat', on: { click: () => go(c.link) } }, h('span', { class: 'value', text: c.value === null ? 'Unknown' : String(c.value) }), h('span', { class: 'muted', text: c.label })))),
     h('h2', { text: 'Needs attention' }),
     m.needsFolder ? h('div', { class: 'card' }, h('h3', { text: 'No project folder chosen yet' }), h('p', { text: 'The viewer does not know where your projects live, so it cannot say how they are doing. Choose the folder that holds them. It looks a few levels deep for projects that use Bowerloom, and changes nothing there.' }), h('div', {}, addFolder())) : null,
@@ -93,6 +104,7 @@ function homeScreen(s: Snapshot): HTMLElement {
       : h('div', { class: 'row-list' }, ...m.attention.map(a => h('div', { class: `card attention ${a.tone}` },
         h('div', { class: 'toolbar' }, h('h3', { text: a.title }), chip({ label: a.tone === 'bad' ? 'Needs a person' : a.tone === 'warn' ? 'Worth a look' : 'For your information', tone: a.tone })),
         h('p', { text: a.body }), h('p', {}, h('strong', { text: 'What a person would do: ' }), a.todo),
+        a.members ? h('details', { class: 'explain' }, h('summary', { text: `Show the ${a.members.length} projects` }), h('ul', { class: 'sentences' }, ...a.members.map(m => h('li', {}, h('button', { type: 'button', class: 'back', on: { click: () => go({ screen: 'project', key: m.key }) } }, m.name))))) : null,
         h('div', { class: 'toolbar' }, a.link ? button('Take me there', () => go(a.link!), 'btn secondary') : null, a.technical ? details([`Technical name: ${a.technical}`]) : null)))));
 }
 
@@ -106,7 +118,8 @@ function libraryScreen(s: Snapshot): HTMLElement {
     h('div', { class: 'tabs', role: 'tablist' }, ...kinds.map(k => h('button', { type: 'button', role: 'tab', aria: { selected: String(k === tab) }, on: { click: () => go({ screen: 'library', tab: k }, true) } }, `${KIND_WORDS[k].many} (${s.library.failed ? '?' : (k === 'skill' ? s.library.skills : k === 'prompt' ? s.library.prompts : s.library.teams).length})`))),
     h('p', { class: 'muted', text: KIND_WORDS[tab].what }),
     s.library.pinsError ? h('div', { class: 'warning' }, icon(ICONS.warning, 20), 'The list of fixed-version skills could not be read, so some skills may be missing here.') : null,
-    rows.length === 0 && s.library.failed ? null : rows.length === 0 ? empty(`No ${KIND_WORDS[tab].many.toLowerCase()} yet`, `Your library has no ${KIND_WORDS[tab].many.toLowerCase()} yet. They appear here when someone creates them with Bowerloom.`)
+    s.store.state === 'absent' ? empty('The shared library is not set up yet', 'This is normal. The shared library is a newer feature (beta.3). Until it is set up, each of your projects keeps its own skills, prompts and teams. Open Projects to see them.', button('Open Projects', () => go({ screen: 'projects' }), 'btn secondary')) : null,
+    s.store.state === 'absent' ? null : rows.length === 0 && s.library.failed ? null : rows.length === 0 ? empty(`No ${KIND_WORDS[tab].many.toLowerCase()} yet`, `Your library has no ${KIND_WORDS[tab].many.toLowerCase()} yet. They appear here when someone creates them with Bowerloom.`)
       : h('div', { class: 'row-list' }, ...rows.map(r => rowButton(() => go({ screen: 'item', kind: r.kind, id: r.id }),
         h('span', { class: 'title', text: r.label }), chip({ label: r.origin, tone: r.originTone }),
         h('span', { class: 'meta' }, h('span', { text: r.version }), h('span', { text: r.used }), r.problem ? chip({ label: r.problem, tone: 'bad' }) : null)))));
@@ -177,6 +190,7 @@ function projectScreen(s: Snapshot): HTMLElement {
   };
   return h('div', { class: 'page' },
     backButton('Back'), h('div', { class: 'toolbar' }, h('h1', { text: d.name }), chip(d.chip)),     h('p', { class: 'lead', text: d.sentence }),
+    d.olderNote ? h('div', { class: 'warning', role: 'note' }, icon(ICONS.warning, 20), d.olderNote) : null,
     d.reasons.length ? h('div', { class: 'card' }, h('h2', { text: 'What is different, and why' }), h('ul', { class: 'sentences' }, ...d.reasons.map(r => h('li', { text: r }))), explain('drift')) : null,
     h('h2', { text: 'What this project uses' }),
     d.items.length === 0 ? h('p', { class: 'muted', text: 'Nothing is listed.' }) : h('div', { class: 'row-list' }, ...d.items.map(i => rowButton(() => go({ screen: 'item', kind: i.kind, id: i.id, ...(i.from === 'This project' ? { fromProject: p.key } : {}) }),
@@ -191,13 +205,13 @@ function projectScreen(s: Snapshot): HTMLElement {
       details([...(a.holdCode ? [`Technical name: ${a.holdCode}`] : []), ...(a.rawPowers.length ? [`Settings: ${a.rawPowers.join(', ')}`] : [])]))),
     d.agents.length ? explain('agent') : null,
     d.slices.length ? h('h2', { text: 'Reading lists (slices)' }) : null, d.slices.length ? explain('slice') : null, ...d.slices.map(sliceGroupView),
-    h('h2', { text: 'The project list' }), explain('config'),
+    d.older ? null : h('h2', { text: 'The project list' }), d.older ? null : explain('config'),
     h('div', { class: 'card' }, h('ul', { class: 'sentences' }, ...d.config.map(c => h('li', { text: c })))),
-    h('h2', { text: 'The lock file' }), explain('lock'),
-    h('div', { class: 'card' }, h('p', { text: d.lockSentence }), d.lock.length ? h('ul', { class: 'sentences' }, ...d.lock.map(l => h('li', { text: l }))) : null),
+    d.older ? null : h('h2', { text: 'The lock file' }), d.older ? null : explain('lock'),
+    d.older ? null : h('div', { class: 'card' }, h('p', { text: d.lockSentence }), d.lock.length ? h('ul', { class: 'sentences' }, ...d.lock.map(l => h('li', { text: l }))) : null),
     details(d.details),
-    h('div', {}, button(showRaw ? 'Hide the raw files' : 'Show the raw files', () => { void toggleRaw(); }, 'btn secondary')),
-    showRaw ? h('div', { class: 'stack' }, fileBlock('bowerloom.json', state.raw[`${p.key}:config`]?.text ?? null, state.raw[`${p.key}:config`]?.note ?? null), fileBlock('bowerloom.lock.json', state.raw[`${p.key}:lock`]?.text ?? null, state.raw[`${p.key}:lock`]?.note ?? null)) : null);
+    d.older ? null : h('div', {}, button(showRaw ? 'Hide the raw files' : 'Show the raw files', () => { void toggleRaw(); }, 'btn secondary')),
+    !d.older && showRaw ? h('div', { class: 'stack' }, fileBlock('bowerloom.json', state.raw[`${p.key}:config`]?.text ?? null, state.raw[`${p.key}:config`]?.note ?? null), fileBlock('bowerloom.lock.json', state.raw[`${p.key}:lock`]?.text ?? null, state.raw[`${p.key}:lock`]?.note ?? null)) : null);
 }
 
 function foldersScreen(s: Snapshot): HTMLElement {
@@ -235,7 +249,8 @@ function settingsScreen(s: Snapshot): HTMLElement {
     h('h1', { text: 'Settings' }),
     h('div', { class: 'card' }, h('h2', { text: 'Folders being searched for projects' }), h('p', { class: 'muted', text: 'The viewer looks inside these folders for projects. Adding or removing one only changes this list in the viewer. It never changes the folder.' }),
       s.mode === 'sample' ? h('p', { text: 'You are looking at sample data, so this list is not used.' }) : set.roots.length === 0 ? h('p', { class: 'muted', text: 'No folders yet.' }) : h('div', { class: 'row-list' }, ...set.roots.map(r => h('div', { class: 'row static-row' }, h('span', { class: 'tech', text: r }), button('Remove from the list', async () => { settled(await act('Removing the folder', () => api.removeRoot(r))); await reload(); }, 'btn secondary')))),
-      s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : null),
+      s.mode === 'real' ? button('Add a folder where your projects live', async () => { settled(await act('Adding the folder', () => api.addRoot())); await reload(); }) : null,
+      s.mode === 'real' ? h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: state.settings?.includeExamples === true, on: { change: async on => { settled(await act('Changing the setting', () => api.setIncludeExamples(on))); await reload(); } } }), h('span', { text: 'Also look inside example and test folders' })) : null),
     h('div', { class: 'card' }, h('h2', { text: 'What you are looking at' }), h('p', { text: info.mode === 'sample' ? 'Sample data, made to show every state.' : 'Your own Bowerloom.' }), h('p', { class: 'tech', text: info.storePath }),
       button(info.mode === 'sample' ? 'Look at my Bowerloom instead' : 'Try the sample data instead', async () => { state.info = (await act('Switching', () => api.chooseMode(info.mode === 'sample' ? 'real' : 'sample'))) ?? state.info; state.history = []; await reload(); go({ screen: 'home' }, true); }, 'btn secondary')),
     h('div', { class: 'card' }, h('h2', { text: 'Appearance' }), h('div', { class: 'chips' }, theme('system', 'Match my computer'), theme('light', 'Light'), theme('dark', 'Dark'))),
@@ -329,7 +344,12 @@ async function reload(): Promise<void> {
   state.info = info; state.settings = settings; applyTheme();
   if (state.info.mode === null) { state.snap = null; render(); return; }
   state.error = null; state.snap = null; render();
-  try { state.snap = await api.getSnapshot(); state.banner = null; }
+  try {
+    state.snap = await api.getSnapshot(); state.banner = null;
+    // The first real-data look may have found and saved folders while it read, so the list shown is read again.
+    state.settings = (await api.getSettings().catch(() => null)) ?? state.settings;
+    state.info = (await api.getInfo().catch(() => null)) ?? state.info;
+  }
   catch (error) { state.error = error instanceof Error && /sample data could not be prepared|Choose what to look at/.test(error.message) ? error.message.replace(/^Error invoking remote method '[^']*': (Error: )?/, '') : 'Bowerloom could not be read. Choose "Look again" to try once more.'; }
   state.focusHeading = true;
   render();

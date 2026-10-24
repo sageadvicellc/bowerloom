@@ -7,8 +7,8 @@ export const CONFIG_FILE = 'viewer-settings.json';
 export const MAX_ROOTS = 20;
 const MAX_BYTES = 65536;
 
-export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null }) as AppSettings;
-const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null });
+export const DEFAULT_SETTINGS: AppSettings = Object.freeze({ theme: 'system', roots: [], mode: null, includeExamples: false, discovered: false }) as AppSettings;
+const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, includeExamples: false, discovered: false });
 
 /** The settings in `text`, or null when it is not a settings file at all (not JSON, or not an object). Unknown keys are ignored. */
 export function parseSettings(text: string): AppSettings | null {
@@ -19,7 +19,7 @@ export function parseSettings(text: string): AppSettings | null {
   const theme = v.theme === 'light' || v.theme === 'dark' ? v.theme : 'system';
   const roots = Array.isArray(v.roots) ? [...new Set(v.roots.filter((r): r is string => typeof r === 'string' && isAbsolute(r) && !r.includes('\0') && r.length < 4096))].slice(0, MAX_ROOTS) : [];
   const mode = v.mode === 'sample' || v.mode === 'real' ? v.mode : null;
-  return { theme, roots, mode };
+  return { theme, roots, mode, includeExamples: v.includeExamples === true, discovered: v.discovered === true };
 }
 
 export interface Loaded { settings: AppSettings; notice: string | null }

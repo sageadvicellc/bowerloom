@@ -5,7 +5,7 @@ import { chmodSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readProject, readSnapshot } from '../main/reader.js';
 import { readItemContent } from '../main/content.js';
-import { sampleSnapshot, sampleWorld } from './support.js';
+import { DESKTOP, sampleSnapshot, sampleWorld } from './support.js';
 import { storeRootOf } from '../../../packages/project-context/src/index.js';
 import { listFolderGrants } from '../../../packages/project-context/src/index.js';
 
@@ -13,9 +13,9 @@ const byName = async () => { const s = await sampleSnapshot(); return { s, p: (n
 
 test('the sample has the three projects, one in each state', async () => {
   const { s, p } = await byName();
-  assert.deepEqual(s.projects.map(x => x.name), ['newsletter', 'old-archive', 'studio-site']);
+  assert.deepEqual(s.projects.map(x => x.name), ['newsletter', 'old-archive', 'studio-office', 'studio-site']);
   assert.equal(p('studio-site').status, 'ready'); assert.equal(p('newsletter').status, 'drifted'); assert.equal(p('old-archive').status, 'lock-problem');
-  assert.equal(s.scan.found, 3); assert.deepEqual(s.problems, []);
+  assert.equal(s.scan.found, 4); assert.deepEqual(s.problems, []);
 });
 
 test('healthy project: every item matches the lock, with no hold and no drift', async () => {
@@ -117,7 +117,7 @@ test('a project outside the chosen folders is refused, and so is one reached thr
   symlinkSync(join(world.projects, 'studio-site'), join(world.projects, 'shortcut'));
   const linked = await readProject(ctx, join(world.projects, 'shortcut'));
   assert.equal(linked.status, 'unreadable'); assert.ok(['THROUGH_LINK', 'OUTSIDE_ROOT'].includes(linked.openCode!));
-  const { snapshot } = await readSnapshot(ctx); assert.equal(snapshot.projects.length, 3, 'the link adds no project');
+  const { snapshot } = await readSnapshot(ctx); assert.equal(snapshot.projects.length, 4, 'the link adds no project');
 });
 
 test('item contents: a skill, a prompt, a team with its files, and a pinned skill, all as text', t => {
@@ -235,7 +235,7 @@ test('one project that cannot be read never fails the others', async t => {
   const fs = await import('node:fs'); fs.mkdirSync(join(world.projects, 'broken'));
   writeFileSync(join(world.projects, 'broken', 'bowerloom.json'), '{}\n'); fs.chmodSync(join(world.projects, 'broken'), 0o777);
   const { snapshot } = await readSnapshot(ctx);
-  assert.equal(snapshot.projects.length, 4); assert.equal(snapshot.projects.find(x => x.name === 'studio-site')!.status, 'ready');
+  assert.equal(snapshot.projects.length, 5); assert.equal(snapshot.projects.find(x => x.name === 'studio-site')!.status, 'ready');
   assert.equal(snapshot.projects.find(x => x.name === 'broken')!.status, 'unreadable');
 });
 
@@ -262,7 +262,7 @@ test('a folder list or grant list that cannot be read is reported, not shown as 
   const { world, ctx } = sampleWorld(t), grants = join(storeRootOf(world.home), 'folders', 'team-notes.grants');
   fs.chmodSync(grants, 0o777);
   const sample = await readSnapshot(ctx), f = sample.snapshot.folders.find(x => x.name === 'team-notes')!;
-  assert.equal(f.allowed.length, 0); assert.equal(f.unknown.length, 3, 'every project is unknown, not "not allowed"');
+  assert.equal(f.allowed.length, 0); assert.equal(f.unknown.length, 4, 'every project is unknown, not "not allowed"');
 });
 
 test('the library read failing leaves the counts unknown', async t => {
@@ -270,4 +270,29 @@ test('the library read failing leaves the counts unknown', async t => {
   const home = tempDir(t); fs.mkdirSync(join(home, '.bowerloom'), { mode: 0o700 }); writeFileSync(join(home, '.bowerloom', 'x'), 'x');
   const { snapshot } = await readSnapshot({ mode: 'real', home, env: { HOME: home }, roots: [] });
   assert.equal(snapshot.library.failed, 'STORE_INVALID');
+});
+
+test('a project set up the older way is read with the same plan and status code: its team, its status, and what differs', async () => {
+  const o = (await byName()).p('studio-office');
+  assert.equal(o.layout, 'older'); assert.equal(o.configState, 'absent'); assert.equal(o.lockState, 'not-used');
+  assert.deepEqual(o.items.map(i => `${i.kind}:${i.id}:${i.from}`), ['team:first-team:project']);
+  assert.equal(o.setup, 'drifted'); assert.equal(o.status, 'drifted'); assert.deepEqual(o.drift.map(d => d.kind), ['installation-binding-changed']);
+  assert.equal((await byName()).p('studio-site').layout, 'library');
+});
+
+test('a project that is only a .bowerloom folder, as the owner\'s real layers are, is found, read, and Ready when its own check is ready', async t => {
+  const { tempDir } = await import('./support.js'), { spawnSync } = await import('node:child_process'), fs = await import('node:fs');
+  const home = tempDir(t), dir = join(home, 'Studio'); fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+  const cli = join(DESKTOP, '..', '..', 'dist', 'apps', 'cli', 'src', 'main.js'), env = { PATH: process.env.PATH, HOME: home, XDG_STATE_HOME: join(home, 'state') };
+  const args = ['up', '--team', 'studio-crew', '--goal', 'Prepare a fictional onboarding kit for an independent design studio.'];
+  const planned = spawnSync(process.execPath, [cli, ...args, '--json'], { cwd: dir, env, encoding: 'utf8' }); assert.equal(planned.status, 3, planned.stderr);
+  assert.equal(spawnSync(process.execPath, [cli, ...args, '--approve', JSON.parse(planned.stdout).revision], { cwd: dir, env, encoding: 'utf8' }).status, 4);
+  const ctx = { mode: 'real' as const, home, env: { HOME: home, XDG_STATE_HOME: join(home, 'state') }, roots: [home] };
+  const { snapshot } = await readSnapshot(ctx), p = snapshot.projects[0]!;
+  assert.equal(snapshot.projects.length, 1); assert.equal(p.layout, 'older'); assert.equal(p.status, 'ready'); assert.deepEqual(p.drift, []); assert.deepEqual(p.items.map(i => i.id), ['first-team']);
+  // The item opens to readable detail.
+  const content = readItemContent(dir, 'project', 'team', 'first-team'); assert.ok(content.files.some(f => f.path === 'team.yaml' && (f.text ?? '').length > 10));
+  // Two projects with one name are told apart by their path inside the chosen folder.
+  fs.mkdirSync(join(home, 'Other', 'Studio', '.bowerloom'), { recursive: true });
+  const two = await readSnapshot(ctx); assert.deepEqual(two.snapshot.projects.map(x => x.name).sort(), ['Other/Studio', 'Studio']);
 });

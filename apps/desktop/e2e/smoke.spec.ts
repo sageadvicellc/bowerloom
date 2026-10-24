@@ -47,7 +47,7 @@ test('security: the window is locked down', async () => {
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => [typeof (globalThis as { require?: unknown }).require, typeof (globalThis as { process?: unknown }).process, typeof (globalThis as { Buffer?: unknown }).Buffer])).toEqual(['undefined', 'undefined', 'undefined']);
     const names = await page.evaluate(() => Object.keys((window as unknown as { bowerloom: object }).bowerloom).sort());
-    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setTheme']);
+    expect(names).toEqual(['addRoot', 'checkForUpdates', 'chooseMode', 'copyText', 'getFileText', 'getInfo', 'getItemContent', 'getSettings', 'getSnapshot', 'openLink', 'removeRoot', 'setIncludeExamples', 'setTheme']);
     // An inline script is refused by the policy.
     const blocked = await page.evaluate(() => new Promise<boolean>(resolve => {
       document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true });
@@ -129,6 +129,14 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: /old-archive/ }).click();
       await expect(page.getByText('The lock file cannot be read').first()).toBeVisible();
       await snap(page, '11-project-bad-lock', theme);
+
+      await nav(page, 'Projects').click();
+      await page.getByRole('button', { name: /studio-office/ }).click();
+      await expect(page.getByText('Set up the older way (a .bowerloom folder). The shared library from beta.3 is not used here yet.')).toBeVisible();
+      await snap(page, '11b-project-older-way', theme);
+      await page.getByRole('button', { name: /First team \(team\)/ }).click();
+      await expect(page.getByRole('heading', { name: 'First team' })).toBeVisible();
+      await snap(page, '11c-older-way-team-detail', theme);
 
       await nav(page, 'Knowledge folders').click();
       await expect(page.getByRole('heading', { name: 'Knowledge folders' })).toBeVisible();
