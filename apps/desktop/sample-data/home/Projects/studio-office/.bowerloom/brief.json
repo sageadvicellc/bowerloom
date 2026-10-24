@@ -1,0 +1,13 @@
+{
+  "format": "bowerloom/brief/v1alpha1",
+  "projectName": "studio-office",
+  "goal": "Prepare a fictional onboarding kit for an independent design studio.",
+  "assistantName": "Personal assistant",
+  "teamName": "studio-crew",
+  "reviewMode": "milestones",
+  "profile": "engineer",
+  "origin": "explicit-user-brief",
+  "generation": "deterministic-scaffold",
+  "reviewRequired": true,
+  "executionAuthorized": false
+}

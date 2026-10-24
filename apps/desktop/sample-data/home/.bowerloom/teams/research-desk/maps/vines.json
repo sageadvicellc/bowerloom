@@ -1,0 +1,36 @@
+{
+  "format": "trellis/vines-map/v0.7-alpha",
+  "purpose": "logging-only",
+  "entries": [
+    {
+      "task": "scope",
+      "owner": "lead",
+      "evidence": [
+        "runtime.status",
+        "workspace.receipt",
+        "test.acceptance"
+      ],
+      "sink": "local-session"
+    },
+    {
+      "task": "draft",
+      "owner": "maker",
+      "evidence": [
+        "runtime.status",
+        "workspace.receipt",
+        "test.acceptance"
+      ],
+      "sink": "local-session"
+    },
+    {
+      "task": "review",
+      "owner": "reviewer",
+      "evidence": [
+        "runtime.status",
+        "workspace.receipt",
+        "test.acceptance"
+      ],
+      "sink": "local-session"
+    }
+  ]
+}

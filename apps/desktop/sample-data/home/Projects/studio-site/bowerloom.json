@@ -1,0 +1,32 @@
+{
+  "format": "bowerloom/project/v1beta1",
+  "harnesses": [
+    "claude",
+    "codex"
+  ],
+  "skills": [
+    {
+      "id": "house-style",
+      "source": "store"
+    },
+    {
+      "id": "meeting-notes",
+      "source": "store",
+      "via": [
+        "research-desk"
+      ]
+    }
+  ],
+  "prompts": [
+    {
+      "id": "weekly-update",
+      "source": "store"
+    }
+  ],
+  "teams": [
+    {
+      "id": "research-desk",
+      "source": "store"
+    }
+  ]
+}

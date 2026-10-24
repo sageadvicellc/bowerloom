@@ -840,6 +840,20 @@ export function listFoldersWith(home: string, hooks: FolderHooks = {}): FolderLi
 }
 
 /**
+ * The ids of the projects that hold a grant file for registered folder `name`: the names in `<store>/folders/<name>.grants/`
+ * that are project ids. Reads only, and the grants folder is checked as every other reader checks it. It says who has a grant
+ * file, not whether the grant still matches the record and the project folder: `resolveRegisteredFolder` decides that.
+ * An absent store, record, or grants folder gives an empty list.
+ */
+export function listFolderGrantsWith(home: string, name: string, hooks: FolderHooks = {}): { readonly projectIds: readonly string[] } {
+  if (!isFolderName(name)) throw refuse('FOLDER_NAME_INVALID');
+  const found = inspectStoreWith(home, hooks);
+  if (found.state === 'absent') return { projectIds: [] };
+  if (found.state === 'foreign') throw refuse('STORE_INVALID');
+  return { projectIds: grantsState(found.context, name, hooks).names.filter(entry => PROJECT_ID.test(entry)) };
+}
+
+/**
  * The recorded path of registered folder `name`, after the folder passed the checks of `folder add`. FOLDER_NOT_FOUND when the
  * store or the record is absent, FOLDER_UNSAFE (`The folder does not exist.`) when the folder is gone, and the other FOLDER_*
  * refusals when it is unsafe. It asks for no grant: it is for `slice create`, which only writes a name.
@@ -864,3 +878,4 @@ export const planFolderAllow = (home: string, project: GrantProject, name: strin
 export const applyFolderAllow = (home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal, stateRoot?: string, summary = 'heading'): Promise<{ name: string }> => applyFolderAllowWith(home, project, name, revision, signal, stateRoot === undefined ? {} : { stateRoot }, summary);
 export const planFolderDeny = (home: string, project: GrantProject, name: string): FolderDenyPlan => planFolderDenyWith(home, project, name);
 export const applyFolderDeny = (home: string, project: GrantProject, name: string, revision: string, signal: AbortSignal): Promise<{ name: string }> => applyFolderDenyWith(home, project, name, revision, signal);
+export const listFolderGrants = (home: string, name: string): { readonly projectIds: readonly string[] } => listFolderGrantsWith(home, name);
