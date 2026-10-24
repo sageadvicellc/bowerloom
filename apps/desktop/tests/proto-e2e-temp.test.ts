@@ -1,7 +1,7 @@
 // The clean-up of the e2e specs removes only what it made, and only a real folder directly inside the OS temp folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isRemovable, removeTempDirs, tempDir } from '../e2e/proto-temp.js';
@@ -42,4 +42,23 @@ test('isRemovable refuses a wrong prefix, a short prefix, a nested folder, a lin
     assert.equal(isRemovable(join(root, 'bowerloom-proto-file'), 'bowerloom-proto-', root), false, 'a file');
     assert.equal(isRemovable(ok, 'bowerloom-proto-', nestedParent), false, 'a folder in another root');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a folder that cannot be removed is warned about, and the others are still removed', { skip: process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0) }, () => {
+  const stuck = tempDir('bowerloom-proto-unit-stuck-'), fine = tempDir('bowerloom-proto-unit-fine-');
+  const inner = join(stuck, 'locked'); mkdirSync(inner); writeFileSync(join(inner, 'f'), 'x'); chmodSync(inner, 0o500);
+  const warned: string[] = [];
+  try {
+    assert.deepEqual(removeTempDirs(text => warned.push(text)), [fine]);
+    assert.equal(existsSync(fine), false); assert.equal(existsSync(stuck), true);
+    assert.equal(warned.length, 1); assert.ok(warned[0]!.includes(`Could not remove ${stuck}. Delete it yourself.`), warned[0]);
+  } finally { chmodSync(inner, 0o700); rmSync(stuck, { recursive: true, force: true }); }
+});
+
+test('a made folder that no longer passes the checks is warned about, not skipped in silence', () => {
+  const dir = tempDir('bowerloom-proto-unit-swap-');
+  rmSync(dir, { recursive: true, force: true }); writeFileSync(dir, 'a file took its place');
+  const warned: string[] = [];
+  try { assert.deepEqual(removeTempDirs(text => warned.push(text)), []); assert.equal(warned.length, 1); assert.match(warned[0]!, /Delete it yourself\./); }
+  finally { rmSync(dir, { force: true }); }
 });

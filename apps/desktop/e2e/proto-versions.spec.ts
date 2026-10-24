@@ -37,7 +37,7 @@ test.beforeAll(async () => {
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--prototype', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });
-test.afterAll(async () => { await app.close(); removeTempDirs(); });
+test.afterAll(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 async function openPage(w = 1440, h = 900): Promise<Page> {
   const before = app.windows().length;

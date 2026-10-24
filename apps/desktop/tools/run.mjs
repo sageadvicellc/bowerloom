@@ -9,10 +9,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makePrototypeDataDir, removePrototypeDataDir } from '../main/prototype-dir.mjs';
+import { makePrototypeDataDir, removeAndReport, removePrototypeDataDir } from '../main/prototype-dir.mjs';
 
 // The data folder rules (how the folder is made, and the checks before it is removed) live in main/prototype-dir.mjs, which the app shares.
 export { makePrototypeDataDir, removePrototypeDataDir };
+// The launcher removes through removeAndReport, so a folder it cannot remove is named on stderr: "Could not remove <dir>. Delete it yourself."
 
 const desktop = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(desktop, '..', '..');
@@ -79,7 +80,7 @@ const PASSED_ON = ['SIGINT', 'SIGTERM', 'SIGHUP'];
  * the system clears it. That leftover holds only the browser's cache, and the next run uses a fresh folder.
  * `proc`, `remove` and `fail` are there so a test can stand in for the process.
  */
-export function superviseChild(child, { dataDir = null, proc = process, remove = removePrototypeDataDir, fail: failWith = fail } = {}) {
+export function superviseChild(child, { dataDir = null, proc = process, remove = dir => removeAndReport(dir), fail: failWith = fail } = {}) {
   let passedOn = null;
   const cleanUp = () => { if (dataDir !== null) remove(dataDir); };
   for (const signal of PASSED_ON) proc.on(signal, () => { passedOn ??= signal; child.kill(signal); });

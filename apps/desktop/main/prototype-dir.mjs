@@ -1,7 +1,7 @@
 // The data folder of the clickable prototype: how it is chosen, made and removed. Plain JavaScript on purpose, so the launcher
 // (tools/run.mjs, which runs with no build step) and the app (main/main.ts, through security.ts) share ONE set of checks.
 // Types are in prototype-dir.d.mts.
-import { chmodSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 
@@ -42,13 +42,32 @@ export function makePrototypeDataDir(tmp = tmpdir()) {
   return dir;
 }
 
-/** Removes a prototype data folder, and only that. Answers true when it removed one. Anything else is left exactly as it is. */
+/**
+ * Removes a prototype data folder, and only that. Answers why: 'removed' (it did), 'absent' (there was no such folder), 'refused' (the folder is not
+ * one of ours, so it was left exactly as it is) or 'failed' (it is ours, but it could not be removed).
+ */
 export function removePrototypeDataDir(dir, tmp = tmpdir()) {
   try {
-    if (!basename(dir).startsWith(PROTOTYPE_PREFIX)) return false;
-    const info = lstatSync(dir);
-    if (!mayRemovePrototypeDir(dir, { isSymbolicLink: info.isSymbolicLink(), isDirectory: info.isDirectory(), realParent: dirname(realpathSync(dir)), realTmp: realpathSync(tmp) })) return false;
+    if (!basename(dir).startsWith(PROTOTYPE_PREFIX)) return 'refused';
+    let info;
+    try { info = lstatSync(dir); } catch (error) { return error && error.code === 'ENOENT' ? 'absent' : 'failed'; }
+    if (!mayRemovePrototypeDir(dir, { isSymbolicLink: info.isSymbolicLink(), isDirectory: info.isDirectory(), realParent: dirname(realpathSync(dir)), realTmp: realpathSync(tmp) })) return 'refused';
     rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch { return false; }
+    return 'removed';
+  } catch { return 'failed'; }
+}
+
+const told = new Set();
+
+/**
+ * Removes the folder and, when it could not (refused or failed) and the folder is still there, says so on stderr, once per folder.
+ * `write` is there so a test can listen. Answers the reason from `removePrototypeDataDir`.
+ */
+export function removeAndReport(dir, tmp = tmpdir(), write = text => process.stderr.write(text)) {
+  const reason = removePrototypeDataDir(dir, tmp);
+  if ((reason === 'refused' || reason === 'failed') && existsSync(dir) && !told.has(dir)) {
+    told.add(dir);
+    write(`Could not remove ${dir}. Delete it yourself.\n`);
+  }
+  return reason;
 }

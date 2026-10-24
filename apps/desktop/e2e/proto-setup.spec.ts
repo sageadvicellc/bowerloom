@@ -26,7 +26,7 @@ test.beforeEach(async () => {
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('heading', { level: 1, name: 'Setup' })).toBeVisible();
 });
-test.afterEach(async () => { await app.close(); removeTempDirs(); });
+test.afterEach(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { const win = BrowserWindow.getAllWindows()[0]!; win.setContentSize(size.w, size.h); }, { w, h });

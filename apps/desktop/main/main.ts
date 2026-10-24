@@ -9,7 +9,7 @@ import type { ChannelName } from '../shared/channels.js';
 import type { Mode } from '../shared/types.js';
 import { createController } from './controller.js';
 import type { Controller } from './controller.js';
-import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removePrototypeDataDir, resolveAppFile, userDataArg, webPreferences } from './security.js';
+import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(root, 'renderer');
@@ -29,7 +29,8 @@ if (prototypeMode) {
   const choice = chooseUserData(userDataArg(argv), tmpdir());
   const dir = choice.action === 'keep' ? choice.dir : makePrototypeDataDir();
   if (choice.action === 'make') app.setPath('userData', dir);
-  const cleanUp = (): void => { removePrototypeDataDir(dir); };
+  // Says on stderr when the folder is still there after the attempt, so the person can delete it.
+  const cleanUp = (): void => { removeAndReport(dir); };
   app.once('quit', cleanUp);
   process.once('exit', cleanUp);
 }
@@ -57,6 +58,14 @@ function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-attach-webview', event => event.preventDefault());
 }
 
+/** A start that failed, or a page that did not load, must not leave a process with no window and no word. Say so on stderr and in a box, then exit with an error. */
+function startupFailed(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`${prototypeMode ? 'Bowerloom prototype' : 'Bowerloom'} could not start: ${message}\n`);
+  try { dialog.showErrorBox(prototypeMode ? 'Bowerloom prototype could not start' : 'Bowerloom could not start', message); } catch { /* no box could be shown; stderr has the message */ }
+  app.exit(1);
+}
+
 function createWindow(): void {
   window = new BrowserWindow({
     width: 1100, height: 760, useContentSize: true, minWidth: 900, minHeight: 600, show: false, title: 'Bowerloom Viewer',
@@ -66,8 +75,8 @@ function createWindow(): void {
   });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = null; });
-  if (prototypeMode) void window.loadURL(`${indexUrl}#prototype`);
-  else void window.loadURL(indexUrl);
+  if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);
+  else window.loadURL(indexUrl).catch(startupFailed);
 }
 
 function registerIpc(): void {
@@ -104,7 +113,7 @@ function registerIpc(): void {
 
 app.on('web-contents-created', (_event, contents) => hardenContents(contents));
 
-void app.whenReady().then(async () => {
+app.whenReady().then(async () => {
   // The page is served by the app itself, from its own renderer folder only.
   protocol.handle(APP_SCHEME, async request => {
     const url = new URL(request.url), file = url.host === APP_HOST ? resolveAppFile(rendererDir, url.pathname) : null;
@@ -138,6 +147,6 @@ void app.whenReady().then(async () => {
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+}).catch(startupFailed);
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

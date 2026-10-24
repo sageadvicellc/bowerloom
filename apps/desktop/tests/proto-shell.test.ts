@@ -156,20 +156,20 @@ test('the launcher: --prototype is a known flag, a mode that excludes the other 
 
 test('the launcher gives the prototype a fresh temporary data folder, and removes only such a folder', async t => {
   const { electronArgs, makePrototypeDataDir, removePrototypeDataDir } = await import(`${join(DESKTOP, 'tools', 'run.mjs')}`) as {
-    electronArgs(desktop: string, flags: string[], userDataDir: string | null): string[]; makePrototypeDataDir(tmp: string): string; removePrototypeDataDir(dir: string, tmp: string): boolean;
+    electronArgs(desktop: string, flags: string[], userDataDir: string | null): string[]; makePrototypeDataDir(tmp: string): string; removePrototypeDataDir(dir: string, tmp: string): string;
   };
   assert.deepEqual(electronArgs('/d', ['--prototype'], '/tmp/x'), ['/d', '--user-data-dir=/tmp/x', '--prototype']);
   assert.deepEqual(electronArgs('/d', ['--sample-data'], null), ['/d', '--sample-data']);
   const tmp = tempDir(t), a = makePrototypeDataDir(tmp), b = makePrototypeDataDir(tmp);
   assert.notEqual(a, b); assert.equal(a.startsWith(tmp), true); assert.match(a, /bowerloom-prototype-/); assert.equal(lstatSync(a).isDirectory(), true);
   writeFileSync(join(a, 'cache'), 'x');
-  assert.equal(removePrototypeDataDir(a, tmp), true); assert.equal(existsSync(a), false); assert.equal(existsSync(b), true);
+  assert.equal(removePrototypeDataDir(a, tmp), 'removed'); assert.equal(existsSync(a), false); assert.equal(existsSync(b), true);
   // Anything else is left alone: a folder with another name, a folder outside the temp folder, a link that points somewhere else, a missing folder.
-  const other = join(tmp, 'keep-me'); mkdirSync(other); assert.equal(removePrototypeDataDir(other, tmp), false); assert.equal(existsSync(other), true);
-  const elsewhere = tempDir(t); const decoy = join(elsewhere, 'bowerloom-prototype-decoy'); mkdirSync(decoy); assert.equal(removePrototypeDataDir(decoy, tmp), false); assert.equal(existsSync(decoy), true);
+  const other = join(tmp, 'keep-me'); mkdirSync(other); assert.equal(removePrototypeDataDir(other, tmp), 'refused'); assert.equal(existsSync(other), true);
+  const elsewhere = tempDir(t); const decoy = join(elsewhere, 'bowerloom-prototype-decoy'); mkdirSync(decoy); assert.equal(removePrototypeDataDir(decoy, tmp), 'refused'); assert.equal(existsSync(decoy), true);
   const target = tempDir(t); writeFileSync(join(target, 'precious'), 'x'); const link = join(tmp, 'bowerloom-prototype-link'); symlinkSync(target, link);
-  assert.equal(removePrototypeDataDir(link, tmp), false); assert.equal(existsSync(join(target, 'precious')), true);
-  assert.equal(removePrototypeDataDir(join(tmp, 'bowerloom-prototype-gone'), tmp), false);
+  assert.equal(removePrototypeDataDir(link, tmp), 'refused'); assert.equal(existsSync(join(target, 'precious')), true);
+  assert.equal(removePrototypeDataDir(join(tmp, 'bowerloom-prototype-gone'), tmp), 'absent');
 });
 
 test('the root package has the desktop:prototype command', () => {

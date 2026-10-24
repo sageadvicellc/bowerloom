@@ -21,7 +21,7 @@ export const CSP = [
 ].join('; ');
 
 // The prototype's data folder rules are shared with the launcher, which cannot load TypeScript. See prototype-dir.mjs.
-export { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removePrototypeDataDir, userDataArg } from './prototype-dir.mjs';
+export { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removeAndReport, removePrototypeDataDir, userDataArg } from './prototype-dir.mjs';
 
 /** The window's settings. `preload` is the bridge script; the prototype page gets none (pass undefined), so it has no `window.bowerloom` at all. */
 export const webPreferences = (preload: string | undefined, packaged = false) => ({

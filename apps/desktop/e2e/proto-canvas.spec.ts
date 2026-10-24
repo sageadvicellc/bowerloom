@@ -36,7 +36,7 @@ test.beforeAll(async () => {
   app = await electron.launch({ executablePath: electronPath as unknown as string, args: [desktop, '--sample-data', `--user-data-dir=${userData}`], env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' } });
   await app.firstWindow();
 });
-test.afterAll(async () => { await app.close(); removeTempDirs(); });
+test.afterAll(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 /** Opens the harness page in a second window of the given size. */
 async function open(query: string, w = 1440, h = 900): Promise<Page> {

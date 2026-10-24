@@ -28,7 +28,7 @@ test.beforeAll(async () => {
   page = app.windows()[1]!;
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true, null, { timeout: 30_000 });
 });
-test.afterAll(async () => { await app.close(); removeTempDirs(); });
+test.afterAll(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 const heading = (name: string) => page.getByRole('heading', { level: 4, name: new RegExp(`^${name} `) });
 const focusedHeadingText = (): Promise<string> => page.evaluate(() => (document.activeElement?.tagName === 'H4' ? document.activeElement.textContent ?? '' : `not a conflict heading: ${document.activeElement?.tagName}`));

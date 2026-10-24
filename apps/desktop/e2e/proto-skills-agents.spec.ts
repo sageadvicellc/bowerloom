@@ -41,7 +41,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
 });
-test.afterAll(async () => { await app.close(); removeTempDirs(); });
+test.afterAll(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 /** The window here may be smaller than the sizes asked for, so the page is shown at the size by emulating the viewport. */
 async function resize(w: number, h: number): Promise<void> {

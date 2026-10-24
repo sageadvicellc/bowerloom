@@ -4,4 +4,6 @@ export function isPrototypeDataPath(dir: string, tmp: string): boolean;
 export function chooseUserData(arg: string | null, tmp: string): { readonly action: 'keep'; readonly dir: string } | { readonly action: 'make' };
 export function mayRemovePrototypeDir(dir: string, facts: { readonly isSymbolicLink: boolean; readonly isDirectory: boolean; readonly realParent: string; readonly realTmp: string }): boolean;
 export function makePrototypeDataDir(tmp?: string): string;
-export function removePrototypeDataDir(dir: string, tmp?: string): boolean;
+export type RemoveReason = 'removed' | 'absent' | 'refused' | 'failed';
+export function removePrototypeDataDir(dir: string, tmp?: string): RemoveReason;
+export function removeAndReport(dir: string, tmp?: string, write?: (text: string) => unknown): RemoveReason;

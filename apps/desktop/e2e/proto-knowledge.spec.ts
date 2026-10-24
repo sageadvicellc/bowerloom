@@ -51,7 +51,7 @@ async function launch(reduced = false): Promise<void> {
   if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
   await resize(1440, 900);
 }
-test.afterEach(async () => { await app.close(); removeTempDirs(); });
+test.afterEach(async () => { try { await app.close(); } finally { removeTempDirs(); } });
 
 async function resize(w: number, h: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => { BrowserWindow.getAllWindows()[0]!.setContentSize(size.w, size.h); }, { w, h });

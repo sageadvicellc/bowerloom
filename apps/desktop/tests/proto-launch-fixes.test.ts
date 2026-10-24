@@ -2,9 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removePrototypeDataDir, userDataArg } from '../main/security.js';
+import { PROTOTYPE_PREFIX, chooseUserData, isPrototypeDataPath, makePrototypeDataDir, mayRemovePrototypeDir, removeAndReport, removePrototypeDataDir, userDataArg } from '../main/security.js';
 import { webPreferences } from '../main/security.js';
 import { DESKTOP, tempDir } from './support.js';
 
@@ -59,10 +59,11 @@ test('a new prototype data folder is private and fresh, and only such a folder i
   assert.notEqual(a, b); assert.ok(a.startsWith(tmp)); assert.match(a, /bowerloom-prototype-/);
   if (process.platform !== 'win32') assert.equal(lstatSync(a).mode & 0o777, 0o700, 'only the owner may enter');
   writeFileSync(join(a, 'cache'), 'x');
-  assert.equal(removePrototypeDataDir(a, tmp), true); assert.equal(existsSync(a), false); assert.equal(existsSync(b), true);
-  const other = join(tmp, 'keep-me'); mkdirSync(other); assert.equal(removePrototypeDataDir(other, tmp), false); assert.equal(existsSync(other), true);
+  assert.equal(removePrototypeDataDir(a, tmp), 'removed'); assert.equal(existsSync(a), false); assert.equal(existsSync(b), true);
+  assert.equal(removePrototypeDataDir(a, tmp), 'absent', 'already gone');
+  const other = join(tmp, 'keep-me'); mkdirSync(other); assert.equal(removePrototypeDataDir(other, tmp), 'refused'); assert.equal(existsSync(other), true);
   const target = tempDir(t); writeFileSync(join(target, 'precious'), 'x'); const link = join(tmp, 'bowerloom-prototype-link'); symlinkSync(target, link);
-  assert.equal(removePrototypeDataDir(link, tmp), false); assert.equal(existsSync(join(target, 'precious')), true);
+  assert.equal(removePrototypeDataDir(link, tmp), 'refused'); assert.equal(existsSync(join(target, 'precious')), true);
 });
 
 test('main.ts gives the prototype its own temporary data folder before the app is ready, and removes it on quit', () => {
@@ -70,7 +71,7 @@ test('main.ts gives the prototype its own temporary data folder before the app i
   assert.match(main, /app\.setPath\('userData', /);
   assert.ok(main.indexOf("app.setPath('userData'") > -1 && main.indexOf("app.setPath('userData'") < main.indexOf('app.whenReady()'), 'set before the app is ready');
   assert.match(main, /chooseUserData\(userDataArg\(argv\), tmpdir\(\)\)/);
-  assert.match(main, /removePrototypeDataDir\(/);
+  assert.match(main, /removeAndReport\(/);
   assert.match(main, /app\.once\('quit'/);
   assert.match(main, /process\.once\('exit'/);
 });
@@ -146,4 +147,40 @@ test('app.ts does not fail when the page has no bridge, and the prototype is sti
   assert.match(app, /location\.hash === '#prototype'/);
   const preload = strip(read('preload/preload.ts'));
   assert.doesNotMatch(preload, /prototype/i);
+});
+
+// ---- fix pass C3: a folder that cannot be removed is said out loud, and a failed start is shown
+
+const canLock = process.platform !== 'win32' && typeof process.getuid === 'function' && process.getuid() !== 0;
+
+test('a folder that cannot be removed answers failed, and removeAndReport says so once', { skip: !canLock }, t => {
+  const tmp = tempDir(t), dir = makePrototypeDataDir(tmp), inner = join(dir, 'locked');
+  mkdirSync(inner); writeFileSync(join(inner, 'f'), 'x'); chmodSync(inner, 0o500);
+  try {
+    assert.equal(removePrototypeDataDir(dir, tmp), 'failed'); assert.equal(existsSync(dir), true);
+    const said: string[] = [];
+    assert.equal(removeAndReport(dir, tmp, text => said.push(text)), 'failed');
+    assert.equal(removeAndReport(dir, tmp, text => said.push(text)), 'failed');
+    assert.deepEqual(said, [`Could not remove ${dir}. Delete it yourself.\n`], 'said once, with the folder named');
+  } finally { chmodSync(inner, 0o700); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('removeAndReport is silent when the folder is gone or was removed, and says so when it refuses a folder that is still there', t => {
+  const tmp = tempDir(t), said: string[] = [], say = (text: string): void => { said.push(text); };
+  const dir = makePrototypeDataDir(tmp);
+  assert.equal(removeAndReport(dir, tmp, say), 'removed'); assert.equal(removeAndReport(dir, tmp, say), 'absent');
+  assert.deepEqual(said, []);
+  const other = join(tmp, 'keep-me'); mkdirSync(other);
+  assert.equal(removeAndReport(other, tmp, say), 'refused');
+  assert.deepEqual(said, [`Could not remove ${other}. Delete it yourself.\n`]);
+});
+
+test('main.ts shows an error box and exits when the start fails or the page does not load', () => {
+  const main = strip(read('main/main.ts'));
+  assert.match(main, /dialog\.showErrorBox\(/); assert.match(main, /Bowerloom prototype could not start/); assert.match(main, /app\.exit\(1\)/);
+  assert.match(main, /process\.stderr\.write\(/);
+  assert.match(main, /app\.whenReady\(\)\.then\(async[\s\S]*\}\)\.catch\(startupFailed\)/, 'whenReady has a catch');
+  assert.equal([...main.matchAll(/window\.loadURL\([^;]*\)\.catch\(startupFailed\)/g)].length, 2, 'both loadURL calls have a catch');
+  assert.doesNotMatch(main, /void window\.loadURL/);
+  assert.match(main, /removeAndReport\(/, 'the quit clean-up says when it could not remove the folder');
 });

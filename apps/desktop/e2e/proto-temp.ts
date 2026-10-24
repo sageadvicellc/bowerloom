@@ -6,7 +6,7 @@
  * A data folder for the app is made with the prefix `bowerloom-prototype-e2e-`: the prototype keeps a `--user-data-dir` only when its name starts with
  * `bowerloom-prototype-`, and otherwise it makes (and, on a hard close, leaves) a folder of its own that this helper does not know about.
  */
-import { lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -30,12 +30,13 @@ export function tempDir(prefix: string): string {
   return path;
 }
 
-/** Removes the folders that `tempDir` made in this process, when they pass `isRemovable`. Returns the paths it removed. */
-export function removeTempDirs(): string[] {
+/** Removes the folders that `tempDir` made in this process, when they pass `isRemovable`. Returns the paths it removed. A folder it could not remove is named in a warning (`warn`, stderr by default). */
+export function removeTempDirs(warn: (text: string) => unknown = text => process.stderr.write(text)): string[] {
   const removed: string[] = [];
   for (const { path, prefix } of made.splice(0)) {
-    if (!isRemovable(path, prefix)) continue;
-    try { rmSync(path, { recursive: true, force: true }); removed.push(path); } catch { /* a folder that is still in use is left; the next run does not depend on it */ }
+    if (!existsSync(path)) continue;
+    if (!isRemovable(path, prefix)) { warn(`Could not remove ${path}. Delete it yourself.\n`); continue; }
+    try { rmSync(path, { recursive: true, force: true }); removed.push(path); } catch { warn(`Could not remove ${path}. Delete it yourself.\n`); }
   }
   return removed;
 }
