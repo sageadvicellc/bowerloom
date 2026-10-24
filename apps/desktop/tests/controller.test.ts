@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createController } from '../main/controller.js';
 import type { Host } from '../main/controller.js';
 import { sketchFileName } from '../main/sketches.js';
+import { ownPlace } from '../shared/maplayout.js';
 import { CONFIG_FILE, DEFAULT_SETTINGS, MAX_PLACES, MAX_ROOTS, loadSettings, parseSettings, saveSettings } from '../main/config.js';
 import { OFF_TEXT, UPDATES_ENABLED, UPDATE_FEED, checkForUpdates, initialUpdateState } from '../main/updates.js';
 import { SAMPLE_DIR, tempDir } from './support.js';
@@ -87,7 +88,7 @@ test('links: only the allowlist reaches the browser', async t => {
 
 test('settings parsing is strict about shape and size, and never silently resets', t => {
   assert.equal(parseSettings('not json'), null); assert.equal(parseSettings('[]'), null); assert.equal(parseSettings('null'), null);
-  assert.deepEqual(parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true })), { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }, 'a file can no longer turn updates on');
+  { const parsed = parseSettings(JSON.stringify({ theme: 'weird', roots: ['/ok', 'relative', 5, '/ok', '/bad\0'], mode: 'x', updatesEnabled: true }))!; assert.deepEqual({ ...parsed, roles: { ...parsed.roles }, mapLayout: { ...parsed.mapLayout } }, { theme: 'system', roots: ['/ok'], mode: null, includeExamples: false, roles: {}, mapLayout: {}, discovered: false }, 'a file can no longer turn updates on'); }
   assert.equal(parseSettings(JSON.stringify({ roots: Array.from({ length: 50 }, (_, i) => `/r${i}`) }))!.roots.length, MAX_ROOTS);
   const dir = tempDir(t);
   assert.deepEqual(loadSettings(dir), { settings: { ...DEFAULT_SETTINGS, roots: [] }, notice: null }, 'no file is a first run, with no notice');
@@ -206,12 +207,12 @@ test('the example-folder switch is saved, changes what is found, and clears the 
 test('the saved places on the map are kept by the viewer only, checked, capped, and cleared with a reset', async t => {
   const h = host(t), c = createController(h.host);
   assert.equal((await c.setMapLayout({ 'machine': { x: 1.4, y: 2.6 }, 'project:/a': { x: -50, y: 80 }, bad: { x: 'a', y: 1 }, huge: { x: 1e9, y: 0 }, nan: { x: NaN, y: 0 } })).message, null);
-  assert.deepEqual(loadSettings(h.app).settings.mapLayout, { machine: { x: 1, y: 3 }, 'project:/a': { x: -50, y: 80 } });
+  assert.deepEqual({ ...loadSettings(h.app).settings.mapLayout }, { machine: { x: 1, y: 3 }, 'project:/a': { x: -50, y: 80 } });
   assert.match((await c.setMapLayout('nope' as never)).message!, /not valid/); assert.match((await c.setMapLayout([] as never)).message!, /not valid/);
   const many: Record<string, { x: number; y: number }> = {}; for (let i = 0; i < MAX_PLACES + 1000; i++) many[`n${i}`] = { x: i, y: i };
   await c.setMapLayout(many); const kept = loadSettings(h.app).settings.mapLayout; assert.equal(Object.keys(kept).length, MAX_PLACES);
   assert.ok(kept[`n${MAX_PLACES + 999}`] !== undefined && kept.n0 === undefined, 'the newest places are kept and the oldest go');
-  assert.equal((await c.setMapLayout(null)).message, null); assert.deepEqual(loadSettings(h.app).settings.mapLayout, {});
+  assert.equal((await c.setMapLayout(null)).message, null); assert.deepEqual({ ...loadSettings(h.app).settings.mapLayout }, {});
 });
 
 const SKETCH = { version: 1, name: 'My harness', nodes: [{ id: 'a', kind: 'team', label: 'Studio', x: 0, y: 0 }, { id: 'b', kind: 'agent', label: 'editor', x: 300, y: 40 }, { id: 'c', kind: 'skill', label: 'House style', x: 600, y: 40 }], edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }] };
@@ -243,4 +244,15 @@ test('a sketch folder that is a link, or a sketch file that is a link or damaged
   assert.equal((await c.saveSketch(SKETCH)).ok, false); assert.equal((await c.loadSketch('My harness')).ok, false); assert.equal(readFileSync(join(outside, sketchFileName('My harness')), 'utf8'), JSON.stringify(SKETCH));
   unlinkSync(join(h.app, 'sketches')); mkdirSync(join(h.app, 'sketches')); writeFileSync(join(h.app, 'sketches', 'Broken.json'), '{ not json'); writeFileSync(join(h.app, 'sketches', 'Big.json'), 'x'.repeat(300000)); symlinkSync(join(outside, sketchFileName('My harness')), join(h.app, 'sketches', 'Linked.json'));
   assert.deepEqual((await c.listSketches()).value, [], 'damaged, huge and linked files are left out'); assert.equal((await c.loadSketch('Broken')).ok, false); assert.equal((await c.loadSketch('Linked')).ok, false);
+});
+
+
+test('keys such as __proto__ and constructor in the settings are plain keys, never reach a prototype, and the window reads places by own key only', () => {
+  const text = '{"roles":{"/a":"workspace"},"mapLayout":{"__proto__":{"x":1,"y":2},"constructor":{"x":3,"y":4},"machine":{"x":5,"y":6}}}';
+  const s = parseSettings(text)!;
+  assert.equal(Object.getPrototypeOf(s.mapLayout), null); assert.equal(Object.getPrototypeOf(s.roles), null);
+  assert.deepEqual({ ...s.mapLayout }, { ['__proto__']: { x: 1, y: 2 }, constructor: { x: 3, y: 4 }, machine: { x: 5, y: 6 } });
+  assert.equal(({} as Record<string, unknown>).x, undefined, 'the shared Object prototype was not changed');
+  assert.deepEqual(parseSettings('{"roles":{"__proto__":"workspace"}}')!.roles['__proto__'], undefined, 'not an absolute path, so not a role');
+  assert.deepEqual(ownPlace({ ...s.mapLayout }, 'machine'), { x: 5, y: 6 }); assert.equal(ownPlace({}, 'constructor'), undefined); assert.equal(ownPlace({}, '__proto__'), undefined); assert.equal(ownPlace({ a: { x: 'no', y: 1 } as never }, 'a'), undefined);
 });

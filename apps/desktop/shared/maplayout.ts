@@ -34,6 +34,13 @@ export function autoLayout(nodes: readonly MapNode[], edges: readonly MapEdge[])
   return out;
 }
 
+/** A saved place by its own key only: `constructor`, `__proto__` and the like are never found, and a place that is not two finite numbers is not a place. */
+export function ownPlace(places: Readonly<Record<string, Place>> | undefined, id: string): Place | undefined {
+  if (places === undefined || !Object.hasOwn(places, id)) return undefined;
+  const p = places[id] as Partial<Place> | undefined;
+  return p !== undefined && typeof p.x === 'number' && typeof p.y === 'number' && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : undefined;
+}
+
 /** Snaps a place to the grid. */
 export const snap = (p: Place, size: number = LAYOUT.gridSnap): Place => ({ x: Math.round(p.x / size) * size, y: Math.round(p.y / size) * size });
 

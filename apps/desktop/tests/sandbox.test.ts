@@ -2,11 +2,11 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SENTINEL_NAME, SENTINEL_TEXT, BoundaryError, createBoundary } from '../main/boundary.js';
-import { deleteSandbox, ensureSandbox, escapingLink, sandboxExists, sandboxPaths } from '../main/sandbox.js';
+import { SANDBOX_NAME, SENTINEL_NAME, SENTINEL_TEXT, BoundaryError, createBoundary, isPackagedRuntime, sandboxDirFor } from '../main/boundary.js';
+import { deleteSandbox, ensureSandbox, escapingLink, sandboxExists, sandboxPaths, unsafeEntry, writeSandboxFile } from '../main/sandbox.js';
 import { createController } from '../main/controller.js';
 import { markdownFiles } from '../main/roles.js';
 import { DESKTOP, SAMPLE_DIR, tempDir } from './support.js';
@@ -66,19 +66,19 @@ test('reset deletes nothing unless the path equals the constant AND the mark is 
   const unmarked = make('Plain Sandbox', false), marked = make('Marked Sandbox');
   const b = (root: string) => createBoundary({ roots: [root], home });
   // Not the constant: a marked sandbox is still not deleted when it is not the expected path.
-  assert.throws(() => deleteSandbox({ root: marked, expected: join(home, 'Other Sandbox'), boundary: b(marked) }), refused('NOT_THE_SANDBOX')); assert.ok(existsSync(join(marked, 'precious.txt')));
+  assert.throws(() => deleteSandbox({ root: marked, expected: join(home, 'Other Sandbox'), boundary: b(marked), override: true }), refused('NOT_THE_SANDBOX')); assert.ok(existsSync(join(marked, 'precious.txt')));
   // No mark: refused, files stay.
-  assert.throws(() => deleteSandbox({ root: unmarked, expected: unmarked, boundary: b(unmarked) }), refused('NO_SENTINEL')); assert.ok(existsSync(join(unmarked, 'precious.txt')));
+  assert.throws(() => deleteSandbox({ root: unmarked, expected: unmarked, boundary: b(unmarked), override: true }), refused('NO_SENTINEL')); assert.ok(existsSync(join(unmarked, 'precious.txt')));
   // A link that leads outside: refused.
   const outside = tempDir(t); writeFileSync(join(outside, 'f'), 'x'); symlinkSync(outside, join(marked, 'leaves'));
-  assert.throws(() => deleteSandbox({ root: marked, expected: marked, boundary: b(marked) }), refused('LINK')); assert.ok(existsSync(join(marked, 'precious.txt'))); assert.ok(existsSync(join(outside, 'f')));
+  assert.throws(() => deleteSandbox({ root: marked, expected: marked, boundary: b(marked), override: true }), refused('LINK')); assert.ok(existsSync(join(marked, 'precious.txt'))); assert.ok(existsSync(join(outside, 'f')));
   unlinkSync(join(marked, 'leaves'));
   // A link that stays inside is fine, and then the delete happens, and only inside.
   symlinkSync(join(marked, 'precious.txt'), join(marked, 'stays')); assert.equal(escapingLink(marked), null);
-  assert.equal(deleteSandbox({ root: marked, expected: marked, boundary: b(marked) }), marked); assert.equal(existsSync(marked), false); assert.ok(existsSync(join(outside, 'f')));
+  assert.equal(deleteSandbox({ root: marked, expected: marked, boundary: b(marked), override: true }), marked); assert.equal(existsSync(marked), false); assert.ok(existsSync(join(outside, 'f')));
   // The folder that holds real work is never a sandbox.
   const real2 = join(home, 'Real Sandbox'); mkdirSync(join(real2, '.bowerloom'), { recursive: true }); writeFileSync(join(real2, SENTINEL_NAME), SENTINEL_TEXT);
-  assert.throws(() => deleteSandbox({ root: real2, expected: real2, boundary: b(real2) }), refused('ROOT_IS_REAL')); assert.ok(existsSync(join(real2, '.bowerloom')));
+  assert.throws(() => deleteSandbox({ root: real2, expected: real2, boundary: b(real2), override: true }), refused('ROOT_IS_REAL')); assert.ok(existsSync(join(real2, '.bowerloom')));
   void real;
 });
 
@@ -103,4 +103,39 @@ test('the tool\'s reset rebuilds the sandbox from scratch and takes away what wa
   const r = tool({ BOWERLOOM_VIEWER_SANDBOX: ROOT }, '--reset'); assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, /The old sandbox was deleted/);
   assert.equal(existsSync(join(ROOT, 'junk.txt')), false); assert.ok(sandboxExists(ROOT)); assert.ok(existsSync(join(sandboxPaths(ROOT).workspace, 'knowledge-base', 'wiki', 'hub.md')));
   const again = tool({ BOWERLOOM_VIEWER_SANDBOX: ROOT }); assert.equal(again.status, 0); assert.match(again.stdout, /already there/);
+});
+
+
+test('the installed app ignores the environment variable; run from source it is honoured; the fixed place is under the home folder', () => {
+  const env = { BOWERLOOM_VIEWER_SANDBOX: '/somewhere/My Sandbox' };
+  assert.equal(sandboxDirFor({ env, home: '/home/x', packaged: true }), join('/home/x', SANDBOX_NAME)); assert.equal(sandboxDirFor({ env, home: '/home/x', packaged: false }), '/somewhere/My Sandbox');
+  assert.equal(sandboxDirFor({ env: {}, home: '/home/x', packaged: false }), '/home/x/Sage Advice Sandbox'); assert.equal(SANDBOX_NAME, 'Sage Advice Sandbox');
+  assert.equal(isPackagedRuntime({ versions: { electron: '44' } }), true); assert.equal(isPackagedRuntime({ versions: { electron: '44' }, defaultApp: true }), false); assert.equal(isPackagedRuntime({ versions: {} }), false);
+});
+
+test('with no override, a reset deletes only "Sage Advice Sandbox" directly under the real home, whatever the constant says', t => {
+  const home = tempDir(t), mark = (dir: string) => { mkdirSync(dir); writeFileSync(join(dir, SENTINEL_NAME), SENTINEL_TEXT); writeFileSync(join(dir, 'f'), 'x'); return dir; };
+  const wrongName = mark(join(home, 'Other Sandbox')), nested = join(home, 'deeper'); mkdirSync(nested); const wrongPlace = mark(join(nested, SANDBOX_NAME)), right = mark(join(home, SANDBOX_NAME));
+  for (const root of [wrongName, wrongPlace]) { assert.throws(() => deleteSandbox({ root, expected: root, boundary: createBoundary({ roots: [root], home }), override: false, home }), refused('NOT_THE_SANDBOX'), root); assert.ok(existsSync(join(root, 'f'))); }
+  assert.equal(deleteSandbox({ root: right, expected: right, boundary: createBoundary({ roots: [right], home }), override: false, home }), right); assert.equal(existsSync(right), false);
+});
+
+test('a file with a second name, and a folder that is another disk, stop a reset and are found by the search', t => {
+  const home = tempDir(t), root = join(home, 'Hard Sandbox'); mkdirSync(join(root, 'sub'), { recursive: true }); writeFileSync(join(root, SENTINEL_NAME), SENTINEL_TEXT); writeFileSync(join(root, 'sub', 'f'), 'x');
+  const elsewhere = tempDir(t); linkSync(join(root, 'sub', 'f'), join(elsewhere, 'second-name'));
+  assert.deepEqual(unsafeEntry(root)?.why, 'hardlink'); assert.throws(() => deleteSandbox({ root, expected: root, boundary: createBoundary({ roots: [root], home }), override: true }), refused('HARDLINK')); assert.ok(existsSync(join(root, 'sub', 'f')));
+  rmSync(join(elsewhere, 'second-name')); assert.equal(unsafeEntry(root), null);
+  // A folder on another disk: faked by a different device number.
+  const real = realpathSync(root), fake = (path: string) => { const s = lstatSync(path); return path === join(real, 'sub') ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, { dev: s.dev + 1 }) as typeof s : s; };
+  assert.equal(unsafeEntry(root, fake)?.why, 'mount');
+});
+
+test('a file written into the sandbox replaces an old plain file, and is refused when it has a second name, is a link, or the folder is a link', t => {
+  const home = tempDir(t), root = join(home, 'Write Sandbox'); mkdirSync(root); writeFileSync(join(root, SENTINEL_NAME), SENTINEL_TEXT);
+  const b = createBoundary({ roots: [root], home });
+  writeSandboxFile(join(root, 'a', 'one.txt'), 'first', 0o644, b); writeSandboxFile(join(root, 'a', 'one.txt'), 'second', 0o644, b); assert.equal(readFileSync(join(root, 'a', 'one.txt'), 'utf8'), 'second');
+  const outside = tempDir(t); writeFileSync(join(outside, 'precious'), 'keep'); linkSync(join(outside, 'precious'), join(root, 'a', 'hard.txt'));
+  assert.throws(() => writeSandboxFile(join(root, 'a', 'hard.txt'), 'bad', 0o644, b), refused('HARDLINK')); assert.equal(readFileSync(join(outside, 'precious'), 'utf8'), 'keep');
+  symlinkSync(join(outside, 'precious'), join(root, 'a', 'soft.txt')); assert.throws(() => writeSandboxFile(join(root, 'a', 'soft.txt'), 'bad', 0o644, b), (e: unknown) => e instanceof BoundaryError); assert.equal(readFileSync(join(outside, 'precious'), 'utf8'), 'keep');
+  symlinkSync(outside, join(root, 'dir')); assert.throws(() => writeSandboxFile(join(root, 'dir', 'x'), 'bad', 0o644, b), refused('LINK')); assert.equal(existsSync(join(outside, 'x')), false);
 });

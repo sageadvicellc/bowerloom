@@ -9,7 +9,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { KIND_WORDS_MAP, MAP_KINDS, REL_WORDS, STATUS_WORDS, buildMap, filterMap, hoverLine, outlineOf } from '../../shared/mapmodel.js';
 import type { EdgeRel, MapKind, MapNode, MapStatus, ScopeFilter } from '../../shared/mapmodel.js';
-import { LAYOUT, PLACE_LIMITS, autoLayout, prunePlaces, snap } from '../../shared/maplayout.js';
+import { LAYOUT, PLACE_LIMITS, autoLayout, ownPlace, prunePlaces, snap } from '../../shared/maplayout.js';
 import { createKeeper } from '../../shared/layoutkeeper.js';
 import type { Place } from '../../shared/maplayout.js';
 import type { Snapshot, ViewerApi } from '../../shared/types.js';
@@ -76,7 +76,7 @@ function Canvas(props: MapProps): ReactElement {
   const [undo, setUndo] = useState<Record<string, Place>[]>([]);
   const base = useMemo(() => autoLayout(model.nodes, model.edges), [model]);
   const view = useMemo(() => filterMap(model, { scope, kinds, query }), [model, scope, kinds, query]);
-  const placeOf = useCallback((id: string): Place => places[id] ?? saved[id] ?? base.get(id) ?? { x: 0, y: 0 }, [places, saved, base]);
+  const placeOf = useCallback((id: string): Place => ownPlace(places, id) ?? ownPlace(saved, id) ?? base.get(id) ?? { x: 0, y: 0 }, [places, saved, base]);
 
   // The nodes React Flow holds. They leave gently: a node that is filtered out stays for a moment, marked as leaving.
   const [nodes, setNodes] = useState<BwNodeType[]>([]);

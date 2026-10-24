@@ -17,8 +17,10 @@ const fresh = (): AppSettings => ({ theme: 'system', roots: [], mode: null, incl
 /** The settings in `text`, or null when it is not a settings file at all (not JSON, or not an object). Unknown keys are ignored. */
 /** Saved places on the map: at most MAX_PLACES, each a pair of finite numbers within a sane range, under a short id. */
 export const MAX_PLACES = PLACE_LIMITS.hard;
+/** An object with no prototype, so a key such as `__proto__` or `constructor` from a file is only ever a plain key. */
+const bare = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 export function parseLayout(value: unknown): Record<string, { x: number; y: number }> {
-  const out: Record<string, { x: number; y: number }> = {};
+  const out: Record<string, { x: number; y: number }> = bare();
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out;
   // When there are too many, the newest (the last written) are kept, so a place the person just set is never the one that is dropped.
   for (const [id, p] of Object.entries(value as Record<string, unknown>).slice(-MAX_PLACES)) {
@@ -36,7 +38,7 @@ export function parseSettings(text: string): AppSettings | null {
   const theme = v.theme === 'light' || v.theme === 'dark' ? v.theme : 'system';
   const roots = Array.isArray(v.roots) ? [...new Set(v.roots.filter((r): r is string => typeof r === 'string' && isAbsolute(r) && !r.includes('\0') && r.length < 4096))].slice(0, MAX_ROOTS) : [];
   const mode = v.mode === 'sample' || v.mode === 'real' || v.mode === 'sandbox' ? v.mode : null;
-  const roles: Record<string, FolderRole> = {};
+  const roles: Record<string, FolderRole> = bare();
   if (v.roles !== null && typeof v.roles === 'object' && !Array.isArray(v.roles)) for (const [k, r] of Object.entries(v.roles as Record<string, unknown>).slice(0, MAX_ROLES)) if (isAbsolute(k) && !k.includes('\0') && k.length < 4096 && (FOLDER_ROLES as readonly unknown[]).includes(r)) roles[k] = r as FolderRole;
   return { theme, roots, mode, includeExamples: v.includeExamples === true, roles, mapLayout: parseLayout(v.mapLayout), discovered: v.discovered === true };
 }

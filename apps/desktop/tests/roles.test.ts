@@ -69,14 +69,14 @@ test('a role the person chose wins over the guess, is remembered by the viewer o
   assert.match((await controller.setRole('/etc', 'workspace')).message!, /not in the list/); assert.match((await controller.setRole(p.key, 'bogus' as never)).message!, /not in the list/);
   assert.equal((await controller.setRole(p.key, 'context-store')).message, null);
   const second = (await controller.getSnapshot()).projects.find(x => x.name === 'newsletter')!; assert.equal(second.role, 'context-store'); assert.equal(second.roleGuess, 'project'); assert.equal(second.roleChosen, true); assert.equal(typeof second.pages, 'number');
-  assert.deepEqual(loadSettings(app).settings.roles, { [p.key]: 'context-store' });
-  assert.equal((await controller.setRole(p.key, null)).message, null); assert.equal((await controller.getSnapshot()).projects.find(x => x.name === 'newsletter')!.role, 'project'); assert.deepEqual(loadSettings(app).settings.roles, {});
+  assert.deepEqual({ ...loadSettings(app).settings.roles }, { [p.key]: 'context-store' });
+  assert.equal((await controller.setRole(p.key, null)).message, null); assert.equal((await controller.getSnapshot()).projects.find(x => x.name === 'newsletter')!.role, 'project'); assert.deepEqual({ ...loadSettings(app).settings.roles }, {});
 });
 
 test('the settings file keeps only valid roles for full paths', () => {
   const s = parseSettings(JSON.stringify({ roles: { '/a': 'workspace', '/b': 'nonsense', 'relative': 'project', '/c': 'context-store' } }))!;
-  assert.deepEqual(s.roles, { '/a': 'workspace', '/c': 'context-store' });
-  assert.deepEqual(parseSettings(JSON.stringify({ roles: ['project'] }))!.roles, {});
+  assert.deepEqual({ ...s.roles }, { '/a': 'workspace', '/c': 'context-store' });
+  assert.deepEqual({ ...parseSettings(JSON.stringify({ roles: ['project'] }))!.roles }, {});
 });
 
 test('a registered knowledge folder that is the store makes it a context store, with who reads it', async t => {

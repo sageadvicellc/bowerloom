@@ -76,7 +76,8 @@ test('nothing exported can widen the allowed places, the settings file cannot, a
 
 test('the sandbox folder is one constant beside Sage Advice, and only an environment variable read at load can change it', () => {
   assert.equal(boundaryModule.SANDBOX_DIR, process.env.BOWERLOOM_VIEWER_SANDBOX ?? join(homedir(), 'Sage Advice Sandbox'));
-  assert.match(readFileSync(join(DESKTOP, 'main', 'boundary.ts'), 'utf8'), /export const SANDBOX_DIR: string = process\.env\.BOWERLOOM_VIEWER_SANDBOX \?\? join\(homedir\(\), 'Sage Advice Sandbox'\);/);
+  assert.match(readFileSync(join(DESKTOP, 'main', 'boundary.ts'), 'utf8'), /export const SANDBOX_DIR: string = sandboxDirFor\(\{ env: process\.env, home: homedir\(\), packaged: isPackagedRuntime\(\) \}\);/);
+  assert.match(readFileSync(join(DESKTOP, 'main', 'boundary.ts'), 'utf8'), /export const SANDBOX_NAME = 'Sage Advice Sandbox';/);
 });
 
 test('the viewer\'s own files: inside its own folder, never through a link, never with ".."', t => {

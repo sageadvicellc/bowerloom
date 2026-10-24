@@ -13,8 +13,24 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 
 export const SENTINEL_NAME = '.bowerloom-sandbox';
 export const SENTINEL_TEXT = 'bowerloom viewer sandbox v1: this folder was made by the viewer, and may be deleted and rebuilt by it.\n';
-/** The one sandbox: a sibling of the Sage Advice folder. The environment variable is for tests only, and is read once, here. */
-export const SANDBOX_DIR: string = process.env.BOWERLOOM_VIEWER_SANDBOX ?? join(homedir(), 'Sage Advice Sandbox');
+/** The hard-coded name of the one sandbox folder, under the person's home folder. */
+export const SANDBOX_NAME = 'Sage Advice Sandbox';
+
+/** True when this is the installed app, not a run from source. (The same test as Electron's `app.isPackaged`, without Electron.) */
+export const isPackagedRuntime = (proc: { versions: { electron?: string | undefined }; defaultApp?: boolean | undefined } = process): boolean => typeof proc.versions.electron === 'string' && proc.defaultApp !== true;
+
+/**
+ * Where the sandbox is. The environment variable is for tests and for running from source only: the installed app ignores it, so
+ * nothing in the environment can point the viewer's delete at another folder.
+ */
+export function sandboxDirFor(options: { env: NodeJS.ProcessEnv; home: string; packaged: boolean }): string {
+  const named = options.env.BOWERLOOM_VIEWER_SANDBOX;
+  return !options.packaged && typeof named === 'string' && named !== '' ? named : join(options.home, SANDBOX_NAME);
+}
+/** The one sandbox: read once, here. */
+export const SANDBOX_DIR: string = sandboxDirFor({ env: process.env, home: homedir(), packaged: isPackagedRuntime() });
+/** True when the folder came from the environment, not from the fixed place. */
+export const SANDBOX_OVERRIDDEN: boolean = SANDBOX_DIR !== join(homedir(), SANDBOX_NAME);
 
 export class BoundaryError extends Error {
   readonly code: string;
@@ -38,15 +54,20 @@ function lstatOrNull(path: string): Stats | null {
   try { return lstatSync(path) as Stats; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return null; throw error; }
 }
 
-/** Every folder from `root` down to `target` that exists must be a real folder: a link anywhere below the root is refused. */
+/**
+ * Every folder from `root` down to `target` that exists must be a real folder on the same disk as the root: a link anywhere below
+ * the root is refused, and so is a folder that is another disk mounted inside it (a mount point).
+ */
 function noLinksBelow(root: string, target: string): void {
   const parts = target.slice(root.length).split(sep).filter(Boolean);
+  const rootDev = lstatOrNull(root)?.dev;
   let at = root;
   for (const part of parts) {
     at = join(at, part);
     const stat = lstatOrNull(at);
     if (stat === null) return;
     if (stat.isSymbolicLink()) refuse('LINK', 'A shortcut (link) is on the way, so the viewer will not write there.');
+    if (rootDev !== undefined && stat.dev !== rootDev) refuse('MOUNT', 'Another disk is attached inside the sandbox, so the viewer will not write there.');
   }
 }
 
