@@ -35,6 +35,8 @@ const sandboxRoot = (): string => {
   return box;
 };
 const snap = async (page: Page, name: string, theme: string): Promise<void> => { await page.waitForTimeout(450); await page.screenshot({ path: join(shots, `${name}-${theme}.png`), scale: 'css' }); };
+/** Opens the "More" menu of the map toolbar if it is shut. */
+const more = async (page: Page, on = true): Promise<void> => { const d = page.locator('#bw-page-map details.bw-more'), open = (await d.getAttribute('open')) !== null; if (open !== on) await d.locator(':scope > summary').click(); };
 const nodeCount = (page: Page) => page.locator('#bw-page-map .react-flow__node').count();
 
 for (const theme of ['light', 'dark'] as const) {
@@ -60,14 +62,14 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await nodeCount(page)).toBeGreaterThan(15);
       // Wires are faint until a thing is pointed at, or all are asked for. The small map and the key are on request, and do not cover anything.
       await expect(page.locator('#bw-page-map .react-flow__edge.is-dim').first()).toBeAttached();
-      await page.getByRole('button', { name: 'Small map' }).click(); await expect(page.locator('#bw-page-map .react-flow__minimap')).toBeVisible();
+      await more(page); await page.getByRole('button', { name: 'Small map' }).click(); await expect(page.locator('#bw-page-map .react-flow__minimap')).toBeVisible();
       await page.locator('#bw-page-map summary', { hasText: 'What the wires mean' }).click(); await expect(page.locator('#bw-page-map .bw-legend')).toBeVisible();
       const mini = (await page.locator('#bw-page-map .react-flow__minimap').boundingBox())!, status = (await page.locator('#bw-page-map .bw-overlay').boundingBox())!;
       expect(mini.x).toBeGreaterThanOrEqual(status.x + status.width - 1);
-      await snap(page, 'M1b-map-everything', theme);
-      await page.getByRole('button', { name: 'Small map' }).click(); await page.getByRole('button', { name: 'Show all wires' }).click(); await expect(page.locator('#bw-page-map .react-flow__edge.is-dim')).toHaveCount(0);
-      await snap(page, 'M1c-map-all-wires', theme);
-      await page.getByRole('button', { name: 'Show all wires' }).click();
+      await more(page, false); await snap(page, 'M1b-map-everything', theme);
+      await more(page); await page.getByRole('button', { name: 'Small map' }).click(); await page.getByRole('button', { name: 'Show all wires' }).click(); await expect(page.locator('#bw-page-map .react-flow__edge.is-dim')).toHaveCount(0);
+      await more(page, false); await snap(page, 'M1c-map-all-wires', theme);
+      await more(page); await page.getByRole('button', { name: 'Show all wires' }).click(); await more(page, false);
 
       // Scope: this computer shows only the shared library and the knowledge folders.
       await page.getByRole('button', { name: 'This computer', exact: true }).click(); await page.waitForTimeout(400);
@@ -123,14 +125,14 @@ for (const theme of ['light', 'dark'] as const) {
       // Tidy up, fit all, reset layout.
       await page.getByRole('button', { name: 'Tidy up' }).click(); await page.waitForTimeout(700);
       await page.getByRole('button', { name: 'Fit all' }).click(); await page.waitForTimeout(500);
-      await page.getByRole('button', { name: 'Reset layout' }).click(); await page.waitForTimeout(700);
+      await more(page); await page.getByRole('button', { name: 'Reset layout' }).click(); await more(page, false); await page.waitForTimeout(700);
       const cleared = await page.evaluate(async () => (await (window as unknown as { bowerloom: { getSettings(): Promise<{ mapLayout: object }> } }).bowerloom.getSettings()).mapLayout);
       expect(Object.keys(cleared)).toHaveLength(0);
 
       // The text outline is the same map as words.
-      await page.getByRole('button', { name: 'Text outline' }).click(); await expect(page.getByRole('region', { name: 'The map as text' })).toContainText('This computer: This computer');
+      await more(page); await page.getByRole('button', { name: 'Text outline' }).click(); await more(page, false); await expect(page.getByRole('region', { name: 'The map as text' })).toContainText('This computer: This computer');
       await snap(page, 'M4-map-outline', theme);
-      await page.getByRole('button', { name: 'Text outline' }).click();
+      await more(page); await page.getByRole('button', { name: 'Text outline' }).click(); await more(page, false);
 
       // Keyboard: a node can be reached with Tab, and Enter opens it.
       await page.locator('#bw-page-map .react-flow__node').first().focus(); await page.keyboard.press('Enter'); await expect(page.locator('#bw-page-map .bw-panel.open')).toBeVisible();

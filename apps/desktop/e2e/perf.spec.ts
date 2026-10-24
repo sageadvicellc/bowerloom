@@ -32,7 +32,7 @@ for (const n of [200, 500]) {
       await page.screenshot({ path: join(shots, `M5-map-large-${n}-overview.png`) });
       await page.getByRole('button', { name: 'Everything', exact: true }).click(); await page.waitForTimeout(600);
       await page.screenshot({ path: join(shots, `M6-map-large-${n}-everything-stacked.png`) });
-      await page.getByRole('button', { name: 'Open all stacks' }).click(); await page.waitForTimeout(1500);
+      await page.locator('#bw-page-map summary', { hasText: 'More' }).click(); await page.getByRole('button', { name: 'Open all stacks' }).click(); await page.keyboard.press('Escape'); await page.waitForTimeout(1500);
       await page.screenshot({ path: join(shots, `M7-map-large-${n}-all-open.png`) });
       const rendered = await page.locator('.react-flow__node').count();
       await page.evaluate(() => { const w = window as unknown as { __frames: number[]; __stop: boolean }; w.__frames = []; w.__stop = false; let last = performance.now(); const tick = (t: number): void => { w.__frames.push(t - last); last = t; if (!w.__stop) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });

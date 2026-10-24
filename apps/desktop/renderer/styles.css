@@ -115,3 +115,8 @@ h1:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 }
 
 .guess { display: block; color: var(--text-muted); font-size: var(--text-small); }
+
+main:has(.map-page) { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+main > .map-page { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; }
+.map-page > .kg-host { flex: 1; min-height: 0; }
+.shell { min-height: 0; }

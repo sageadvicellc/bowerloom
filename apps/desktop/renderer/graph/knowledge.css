@@ -30,5 +30,6 @@
 .kg-status.kg-error { color: var(--bad-fg); font-weight: 600; }
 .kg-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .kg-actions .bw-btn { margin: 0; }
-.kg-main, .kg-panel { height: clamp(24rem, calc(100vh - 15rem), 60rem); max-height: none; }
+.kg-stage { flex: 1; min-height: 0; }
+.kg-main, .kg-panel { height: auto; max-height: none; min-height: 0; }
 .kg-bar .bw-btn, .kg-bar .kg-input { font-size: 0.85rem; padding: 3px 10px; }

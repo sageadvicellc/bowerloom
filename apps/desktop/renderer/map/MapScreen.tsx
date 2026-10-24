@@ -36,7 +36,7 @@ interface NodeData extends Record<string, unknown> { n: MapNode; dim: boolean; e
 type BwNodeType = Node<NodeData, 'bw'>;
 
 /** Fitting never zooms out past the size at which the words can be read; the rest of a large map is a pan away. */
-const FIT = { padding: 0.1, minZoom: 0.55, maxZoom: 1.1 } as const;
+const FIT = { minZoom: 0.55, maxZoom: 1.1, margin: { left: 56, top: 16, right: 16, bottom: 44 } } as const;
 const STATUS_TONE: Record<MapStatus, string> = { ready: 'good', 'not-locked': 'quiet', drifted: 'warn', held: 'warn', 'cannot-open': 'bad' };
 
 const BwNode = memo(function BwNode({ data, selected }: NodeProps<BwNodeType>): ReactElement {
@@ -73,7 +73,7 @@ function Canvas(props: MapProps): ReactElement {
   const [query, setQuery] = useState('');
   const [tool, setTool] = useState<'select' | 'move'>('select');
   const [panel, setPanel] = useState<string | null>(null);
-  const [outline, setOutline] = useState(false), [showMini, setShowMini] = useState(false);
+  const [outline, setOutline] = useState(false), [showMini, setShowMini] = useState(false), [zoomedOut, setZoomedOut] = useState(false), [minZoom, setMinZoom] = useState(0.2);
   // Folders opened in the overview, and stacks opened. Each change lays the map out again, once.
   const [openFolders, setOpenFolders] = useState<ReadonlySet<string>>(new Set()), [openStacks, setOpenStacks] = useState<ReadonlySet<string>>(new Set()), relayout = useRef<'tidy' | 'fit' | null>('fit');
   const [tidying, setTidying] = useState(false);
@@ -81,14 +81,14 @@ function Canvas(props: MapProps): ReactElement {
   // Every move can be taken back: the places before each change are kept (the last 30), and Undo puts them back.
   const [undo, setUndo] = useState<Record<string, Place>[]>([]);
   // Long lists are drawn as stacks. A search shows what matches, so it opens every stack.
-  const stacked = useMemo(() => clusterMap(model, openStacks), [model, openStacks]);
-  const base = useMemo(() => autoLayout(stacked.nodes, stacked.edges), [stacked]);
   const view = useMemo(() => {
     const filtered = filterMap(model, { scope, kinds, query, open: openFolders });
     if (query.trim() !== '') return filtered;
     const grouped = clusterMap(filtered, openStacks);
     return { ...grouped, matches: filtered.matches };
   }, [model, scope, kinds, query, openFolders, openStacks]);
+  // The automatic places are worked out for what is shown, so a small view is laid out compactly. Places the person chose always win.
+  const base = useMemo(() => autoLayout(view.nodes, view.edges), [view]);
   const placeOf = useCallback((id: string): Place => ownPlace(places, id) ?? ownPlace(saved, id) ?? base.get(id) ?? { x: 0, y: 0 }, [places, saved, base]);
 
   // The nodes React Flow holds. They leave gently: a node that is filtered out stays for a moment, marked as leaving.
@@ -106,8 +106,9 @@ function Canvas(props: MapProps): ReactElement {
       const prevById = new Map(prev.map(p => [p.id, p]));
       const next = view.nodes.map((n): BwNodeType => {
         const old = prevById.get(n.id), dim = dimming && !view.matches.has(n.id);
-        if (old !== undefined && !old.data.exiting && !old.data.dropped && old.data.dim === dim && sameNode(old.data.n, n)) return old;
-        return { id: n.id, type: 'bw', position: old?.position ?? placeRef.current(n.id), selected: old?.selected ?? false, data: { n: old !== undefined && sameNode(old.data.n, n) ? old.data.n : n, dim, exiting: false, dropped: false } };
+        const position = placeRef.current(n.id);
+        if (old !== undefined && !old.data.exiting && !old.data.dropped && old.data.dim === dim && sameNode(old.data.n, n) && old.position.x === position.x && old.position.y === position.y) return old;
+        return { id: n.id, type: 'bw', position, selected: old?.selected ?? false, data: { n: old !== undefined && sameNode(old.data.n, n) ? old.data.n : n, dim, exiting: false, dropped: false } };
       });
       const leaving = prev.filter(p => !now.has(p.id) && !p.data.exiting).map(p => ({ ...p, data: { ...p.data, exiting: true } }));
       return [...next, ...leaving];
@@ -155,17 +156,34 @@ function Canvas(props: MapProps): ReactElement {
     setPlaces(p => ({ ...p, ...next })); keep(next);
   }, [keep]);
 
-  // Fit all: the whole map if it can be read at that size. If it cannot, the words matter more than the whole picture, so the map is
-  // shown at the smallest readable size, from its top left corner, and the rest is a pan away.
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const fit = useCallback((attempt = 0): void => {
+  // Fit all: the whole map is always put inside the window, centred, whatever size that takes. When that is too small to read, the toolbar
+  // says so, and (for the first fit of a view) the stacks are closed so the map has fewer things. The readable floor, FIT.minZoom, is
+  // only the point at which that hint appears; a person who zooms by hand is never pushed back.
+  const moreRef = useRef<HTMLDetailsElement>(null);
+  // The extra actions close when you press Escape or click anywhere else.
+  useEffect(() => {
+    const close = (e: Event): void => { const d = moreRef.current; if (d?.open && !(e.target instanceof Node && d.contains(e.target))) d.open = false; };
+    const esc = (e: KeyboardEvent): void => { if (e.key === 'Escape' && moreRef.current?.open) { moreRef.current.open = false; moreRef.current.querySelector('summary')?.focus(); } };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
+  }, []);
+  const canvasRef = useRef<HTMLDivElement>(null), stacksRef = useRef(openStacks), closedOnce = useRef(false);
+  stacksRef.current = openStacks;
+  const fit = useCallback((auto = false, attempt = 0): void => {
     const el = canvasRef.current, list = flow.getNodes().filter(n => !n.data.exiting);
     // The map is built before it is in the page, and its nodes are measured a moment later, so try again shortly.
-    if (el === null || list.length === 0 || el.clientWidth === 0 || list.some(n => n.measured?.width === undefined)) { if (attempt < 20) window.setTimeout(() => fit(attempt + 1), 100); return; }
-    const b = flow.getNodesBounds(list), pad = 24, duration = ms(MOTION.map.fit.ms);
-    const wanted = Math.min(el.clientWidth / (b.width + 2 * pad), el.clientHeight / (b.height + 2 * pad));
-    if (wanted >= FIT.minZoom) void flow.fitView({ duration, ...FIT, nodes: list });
-    else void flow.setViewport({ x: pad - b.x * FIT.minZoom, y: pad - b.y * FIT.minZoom, zoom: FIT.minZoom }, { duration });
+    if (el === null || list.length === 0 || el.clientWidth === 0 || list.some(n => n.measured?.width === undefined)) { if (attempt < 20) window.setTimeout(() => fit(auto, attempt + 1), 100); return; }
+    const b = flow.getNodesBounds(list), w = el.clientWidth, h = el.clientHeight;
+    // Room is kept for the zoom buttons (left) and the status line (bottom).
+    const left = FIT.margin.left, top = FIT.margin.top, right = FIT.margin.right, bottom = FIT.margin.bottom;
+    const zoom = Math.min((w - left - right) / b.width, (h - top - bottom) / b.height, FIT.maxZoom);
+    const unreadable = zoom < FIT.minZoom;
+    setZoomedOut(unreadable);
+    if (unreadable && auto && stacksRef.current.size > 0 && !closedOnce.current) { closedOnce.current = true; relayout.current = 'fit'; setOpenStacks(new Set()); return; }
+    if (!unreadable) closedOnce.current = false;
+    setMinZoom(Math.min(0.2, zoom * 0.8));
+    const x = left + (w - left - right - b.width * zoom) / 2 - b.x * zoom, y = top + (h - top - bottom - b.height * zoom) / 2 - b.y * zoom;
+    window.requestAnimationFrame(() => { void flow.setViewport({ x, y, zoom }, { duration: ms(MOTION.map.fit.ms) }); });
   }, [flow]);
   const tidy = useCallback(() => {
     remember();
@@ -193,7 +211,7 @@ function Canvas(props: MapProps): ReactElement {
   useEffect(() => {
     const what = relayout.current; if (what === null || view.nodes.length === 0) return;
     relayout.current = null;
-    window.setTimeout(() => { if (what === 'tidy') actions.current.tidy(); else actions.current.fit(); }, ms(MOTION.map.nodeExit.ms) + MOTION.map.settleGrace);
+    window.setTimeout(() => { if (what === 'tidy') actions.current.tidy(); else actions.current.fit(true); }, ms(MOTION.map.nodeExit.ms) + MOTION.map.settleGrace);
   }, [view]);
   const selected = panel === null ? null : model.nodes.find(n => n.id === panel) ?? null;
   // The panel takes the keyboard when it opens, and Close gives it back to the thing it was about. A screen reader is told in words.
@@ -224,28 +242,32 @@ function Canvas(props: MapProps): ReactElement {
       <div className="bw-toolbar" role="toolbar" aria-label="Map controls">
         <div className="bw-seg" role="group" aria-label="What to show">{SCOPES.map(s => <button key={s.id} type="button" className={scope === s.id ? 'on' : ''} aria-pressed={scope === s.id} title={s.hint} onClick={() => { relayout.current = 'fit'; setScope(s.id); }}>{s.label}</button>)}</div>
         <input className="bw-search" type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Find something" aria-label="Find something on the map" />
-        <div className="bw-seg" role="group" aria-label="Tool">
-          <button type="button" className={tool === 'select' ? 'on' : ''} aria-pressed={tool === 'select'} title="Drag a box to select several things" onClick={() => setTool('select')}>Select</button>
-          <button type="button" className={tool === 'move' ? 'on' : ''} aria-pressed={tool === 'move'} title="Drag to move the whole picture" onClick={() => setTool('move')}>Move</button>
-        </div>
         <button type="button" className="bw-btn" onClick={undoMove} disabled={undo.length === 0} title="Take back the last move">Undo</button>
         <button type="button" className="bw-btn" onClick={tidy} title="Lay things out from left to right">Tidy up</button>
         <button type="button" className="bw-btn" onClick={() => fit()}>Fit all</button>
-        <button type="button" className="bw-btn" onClick={reset} title="Forget the places you chose">Reset layout</button>
-        <button type="button" className={`bw-btn${showMini ? ' on' : ''}`} aria-pressed={showMini} onClick={() => setShowMini(m => !m)} title="A small map of everything, in the corner">Small map</button>
-        {view.nodes.some(n => n.cluster !== undefined) ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set(view.nodes.filter(n => n.cluster !== undefined).map(n => n.id))); }} title="Draw every item in the stacks">Open all stacks</button> : null}
-        {openStacks.size > 0 ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set()); }} title="Stack the long lists again">Stack lists</button> : null}
-        <button type="button" className={`bw-btn${showAll ? ' on' : ''}`} aria-pressed={showAll} onClick={() => setShowAll(a => !a)} title="Draw every wire at full strength">Show all wires</button>
-        <button type="button" className={`bw-btn${outline ? ' on' : ''}`} aria-pressed={outline} onClick={() => setOutline(o => !o)}>Text outline</button>
-      </div>
-      <div className="bw-menus">
-      <details className="bw-kinds-menu">
-        <summary>Kinds shown: {kinds === null ? 'all' : `${kinds.size} of ${MAP_KINDS.length - 1}`}</summary>
-        <div className="bw-kinds" role="group" aria-label="Kinds of thing to show">
-          {MAP_KINDS.filter(k => k !== 'machine').map(k => <button key={k} type="button" className={`bw-kindchip kind-${k}${kinds === null || kinds.has(k) ? ' on' : ''}`} aria-pressed={kinds === null || kinds.has(k)} onClick={() => toggleKind(k)}><KindIcon kind={k} size={14} />{KIND_WORDS_MAP[k]}</button>)}
-        </div>
-      </details>
-      <details className="bw-kinds-menu bw-key"><summary>What the wires mean</summary><Legend /></details>
+        {zoomedOut ? <span className="bw-hint" role="status">Zoomed out to fit: use stacks or filter to read more</span> : null}
+        <details className="bw-more" ref={moreRef}>
+          <summary>More</summary>
+          <div className="bw-more-pop">
+            <div className="bw-seg" role="group" aria-label="Tool">
+              <button type="button" className={tool === 'select' ? 'on' : ''} aria-pressed={tool === 'select'} title="Drag a box to select several things" onClick={() => setTool('select')}>Select</button>
+              <button type="button" className={tool === 'move' ? 'on' : ''} aria-pressed={tool === 'move'} title="Drag to move the whole picture" onClick={() => setTool('move')}>Move</button>
+            </div>
+            <button type="button" className="bw-btn" onClick={reset} title="Forget the places you chose">Reset layout</button>
+            <button type="button" className={`bw-btn${showMini ? ' on' : ''}`} aria-pressed={showMini} onClick={() => setShowMini(m => !m)} title="A small map of everything, in the corner">Small map</button>
+            {view.nodes.some(n => n.cluster !== undefined) ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set(view.nodes.filter(n => n.cluster !== undefined).map(n => n.id))); }} title="Draw every item in the stacks">Open all stacks</button> : null}
+            {openStacks.size > 0 ? <button type="button" className="bw-btn" onClick={() => { relayout.current = 'tidy'; setOpenStacks(new Set()); }} title="Stack the long lists again">Stack lists</button> : null}
+            <button type="button" className={`bw-btn${showAll ? ' on' : ''}`} aria-pressed={showAll} onClick={() => setShowAll(a => !a)} title="Draw every wire at full strength">Show all wires</button>
+            <button type="button" className={`bw-btn${outline ? ' on' : ''}`} aria-pressed={outline} onClick={() => setOutline(o => !o)}>Text outline</button>
+            <details className="bw-kinds-menu">
+              <summary>Kinds shown: {kinds === null ? 'all' : `${kinds.size} of ${MAP_KINDS.length - 1}`}</summary>
+              <div className="bw-kinds" role="group" aria-label="Kinds of thing to show">
+                {MAP_KINDS.filter(k => k !== 'machine').map(k => <button key={k} type="button" className={`bw-kindchip kind-${k}${kinds === null || kinds.has(k) ? ' on' : ''}`} aria-pressed={kinds === null || kinds.has(k)} onClick={() => toggleKind(k)}><KindIcon kind={k} size={14} />{KIND_WORDS_MAP[k]}</button>)}
+              </div>
+            </details>
+            <details className="bw-kinds-menu bw-key"><summary>What the wires mean</summary><Legend /></details>
+          </div>
+        </details>
       </div>
       <div className="bw-stage">
         <div className="bw-canvas" ref={canvasRef} role="group" aria-label="The map. Tab to a thing, press Enter to open it, arrow keys move it.">
@@ -253,7 +275,7 @@ function Canvas(props: MapProps): ReactElement {
             nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={() => { dragging.current = true; remember(); }} onNodeDragStop={onDragStop}
             onNodeClick={(_e, n) => { if (n.data.n.cluster !== undefined) { relayout.current = 'tidy'; setOpenStacks(prev => new Set(prev).add(n.id)); } else setPanel(n.id); }}
             onNodeMouseEnter={(_e, n) => setHoverId(n.id)} onNodeMouseLeave={() => setHoverId(null)}
-            minZoom={0.2} maxZoom={2}
+            minZoom={minZoom} maxZoom={2}
             snapToGrid snapGrid={[LAYOUT.gridSnap, LAYOUT.gridSnap]} nodesConnectable={false} elementsSelectable nodesFocusable edgesFocusable={false}
             selectionOnDrag={tool === 'select'} panOnDrag={tool === 'move' ? true : [1, 2]} panOnScroll multiSelectionKeyCode={['Meta', 'Shift']} deleteKeyCode={null}
             onlyRenderVisibleElements={view.nodes.length > 80} nodeDragThreshold={3} aria-label="Map of what Bowerloom manages"
