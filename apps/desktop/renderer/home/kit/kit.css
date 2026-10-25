@@ -50,7 +50,7 @@
 [data-home] .kit-dot { flex: none; width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: currentColor; }
 [data-home] .kit-status[data-tone="info"] .kit-dot { background: var(--accent-strong); }
 /* A button of this kind keeps the size of its words but a hit area of 24 px, taken from its own padding and balanced by a negative margin, so a row never grows. */
-[data-home] button.kit-status { max-width: none; cursor: pointer; position: relative; z-index: 1; touch-action: manipulation; min-height: var(--hm-target-min); padding: 0 var(--hm-space-2); margin: calc(-1 * var(--hm-space-1)) calc(-1 * var(--hm-space-2)); border-radius: var(--hm-radius-small); }
+[data-home] button.kit-status { max-width: calc(100% + 2 * var(--hm-space-2)); cursor: pointer; position: relative; z-index: 1; touch-action: manipulation; min-height: var(--hm-target-min); padding: 0 var(--hm-space-2); margin: calc(-1 * var(--hm-space-1)) calc(-1 * var(--hm-space-2)); border-radius: var(--hm-radius-small); }
 [data-home] button.kit-status:hover { text-decoration: underline; text-underline-offset: 3px; }
 [data-home] button.kit-status:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 /* The "Preview" mark of the top bar: plain words and a dot, a full 32 px target, an underline while its popover is open. */
