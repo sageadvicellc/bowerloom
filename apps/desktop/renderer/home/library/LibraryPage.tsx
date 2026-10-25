@@ -14,6 +14,7 @@ import type { LibraryKind, LibrarySort, UpdateInfo } from '../../../shared/home/
 import type { AgentRef } from '../../../shared/home/details.js';
 import { addToAgentAction, makeOwnCopyAction, removeFromLibraryAction, useUpdateAction } from '../../../shared/home/library-actions.js';
 import { plainNameOf } from '../../../shared/home/plain-names.js';
+import { stillInDraft } from '../../../shared/home/change-undo.js';
 import { reduceStore } from '../../../shared/proto/store.js';
 import { useProtoStore } from '../../proto/session.js';
 import { CopiesDialog } from '../copies/CopiesDialog.js';
@@ -68,6 +69,8 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   const [webOpen, setWebOpen] = useState(false);
   const [say, setSay] = useState('');
   const [note, setNote] = useState('');
+  // The edit that the note is about: the note goes when the draft no longer holds it (Ctrl+Z, an Undo in the list, Go back).
+  const [noteEdit, setNoteEdit] = useState<object | null>(null);
   const removing = useLeaving(removeFor), updating = useLeaving(updateFor), copies = useLeaving(copiesFor);
   const panelId = useId();
   const panel = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), webButton = useRef<HTMLButtonElement>(null);
@@ -100,7 +103,8 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
     (buttons[Math.min(after.row, buttons.length - 1)] ?? body.current?.querySelector<HTMLElement>('main h1'))?.focus();
   });
 
-  const clearSays = (): void => { setSay(''); setNote(''); };
+  const clearSays = (): void => { setSay(''); setNote(''); setNoteEdit(null); };
+  useEffect(() => { if (noteEdit !== null && !stillInDraft(state, noteEdit)) { setNote(''); setNoteEdit(null); } }, [state, noteEdit]);
   const changeKind = (next: LibraryKind): void => { if (next === kind) return; setKind(next); setQuery(''); setUnusedOnly(false); setSelectedId(null); clearSays(); };
   const pick = (id: string): void => { setSelectedId(current => (current === id ? null : id)); clearSays(); };
   const rowButton = (id: string | null): HTMLElement | null => (id === null ? null : body.current?.querySelector<HTMLElement>(`.lb-list li[data-row-id="${CSS.escape(id)}"] .kit-card-main`) ?? null);
@@ -125,9 +129,10 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   const confirmRemove = (): void => {
     if (removeFor === null) return;
     focusAfter.current = { row: Math.max(0, listed.rows.findIndex(r => r.id === removeFor.id)) };
-    dispatch(removeFromLibraryAction(removeFor.id));
+    const removal = removeFromLibraryAction(removeFor.id);
+    dispatch(removal);
     setRemoveFor(null); setSelectedId(null); setSay('');
-    setNote(removedLine(removeFor.name));
+    setNote(removedLine(removeFor.name)); setNoteEdit(removal);
   };
   const makeCopy = (): void => {
     if (selectedId === null) return;

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createStore, draftActions, reduceStore, snapshotOf } from '../shared/proto/store.js';
 import type { StoreAction, StoreState } from '../shared/proto/store.js';
 import type { AgentItem } from '../shared/proto/types.js';
-import { UNDO_WORDS, changeEntries, placeOf } from '../shared/home/change-undo.js';
+import { UNDO_WORDS, changeEntries, placeOf, stillInDraft } from '../shared/home/change-undo.js';
 import { libraryChangeCount } from '../shared/home/library-changes.js';
 import { addToAgentAction, planAdd, removeFromLibraryAction } from '../shared/home/library-actions.js';
 import { SAMPLE_SOURCES, defaultTicked } from '../shared/home/library-sources.js';
@@ -247,4 +247,37 @@ test('what a shared file adds is undone alone, whole, and a later change that us
   const s2 = act(s1, addToAgentAction(s1.draft, 'skill', added.id, 'agent-05'));
   const blocked = changeEntries(s2).filter(r => r.undo === null);
   assert.ok(blocked.length >= 1 && blocked.every(r => r.reason === UNDO_WORDS.later), JSON.stringify(changeEntries(s2)));
+});
+
+test('a removal is still in the draft until undo, withdraw, discard or save takes it out; a draft with no list of edits never loses its note', () => {
+  const s0 = fresh(), ids = agent(s0, 'agent-01').definition.skillIds;
+  const one = detach('agent-01', ids[0]!), two = detach('agent-01', ids[1]!);
+  const s2 = act(act(s0, one), two);
+  assert.equal(stillInDraft(s2, one), true);
+  assert.equal(stillInDraft(s2, two), true);
+  // Ctrl+Z takes the last removal away: the note about it is stale, the one about the first removal is not.
+  const undone = reduceStore(s2, { type: 'undo' });
+  assert.equal(stillInDraft(undone, two), false);
+  assert.equal(stillInDraft(undone, one), true);
+  // Ctrl+Shift+Z puts it back.
+  assert.equal(stillInDraft(reduceStore(undone, { type: 'redo' }), two), true);
+  // One Undo in the list takes only its own removal.
+  const withdrawn = withdraw(s2, [placeOf(s2, one)]);
+  assert.equal(stillInDraft(withdrawn, one), false);
+  assert.equal(stillInDraft(withdrawn, two), true);
+  // Undo all changes and Save leave no removal behind.
+  assert.equal(stillInDraft(reduceStore(s2, { type: 'discard' }), one), false);
+  assert.equal(stillInDraft(reduceStore(s2, { type: 'apply', label: 'x' }), one), false);
+  // A draft put together by hand cannot say: the note stays.
+  const hand: StoreState = { ...s0, draft: { ...s0.committed, items: s0.committed.items.slice(1) } };
+  assert.equal(stillInDraft(hand, one), true);
+});
+
+test('a removal from the library is a remembered edit too, so its note goes with Ctrl+Z', () => {
+  const s0 = fresh();
+  const removal = removeFromLibraryAction('skill-010');
+  const s1 = act(s0, removal);
+  assert.equal(stillInDraft(s1, removal), true);
+  assert.notEqual(draftActions(s1), null);
+  assert.equal(stillInDraft(reduceStore(s1, { type: 'undo' }), removal), false);
 });

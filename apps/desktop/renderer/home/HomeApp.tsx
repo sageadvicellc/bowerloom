@@ -43,7 +43,7 @@ import { skillTrust, toolTrust } from '../../shared/home/details-trust.js';
 import { savePointRows } from '../../shared/home/points.js';
 import { saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
-import { barSaid, placeOf } from '../../shared/home/change-undo.js';
+import { barSaid, placeOf, stillInDraft } from '../../shared/home/change-undo.js';
 import { reduceStore } from '../../shared/proto/store.js';
 import type { StoreAction } from '../../shared/proto/store.js';
 import { useProtoStore } from '../proto/session.js';
@@ -188,6 +188,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   latest.current = state;
   // The list has an Undo for every change, so the note after Remove (which sits under the list) gives way to it.
   useEffect(() => { if (changeList.open) setNote(null); }, [changeList.open]);
+  // A note about a removal is true only while the draft still holds that removal: Ctrl+Z, an Undo in the list or Go back takes the note away with the change.
+  useEffect(() => { if (note !== null && note.watch !== undefined && !stillInDraft(state, note.watch)) setNote(null); }, [state, note]);
   const stepId = currentStep(tour)?.id ?? null;
   const freshNotes = fresh !== null && fresh.notes === true && fresh.agentId === picked ? (shelves?.notes[0]?.id ?? null) : null;
 
@@ -374,12 +376,12 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setTouched(current => touch(current, agentId));
     setSelected({ kind: 'agent', id: agentId });
     setFresh(null);
-    say('check', removedNote(entry.name), { label: WORDS.label.undo, run: () => undoRemoval(removal) });
+    say('check', removedNote(entry.name), { label: WORDS.label.undo, run: () => undoRemoval(removal) }, removal);
   };
   /** Shows a note above the Save bar. A new note replaces the one that was there and starts its six seconds again. */
-  const say = (icon: NoteView['icon'], text: string, action?: NoteView['action']): void => {
+  const say = (icon: NoteView['icon'], text: string, action?: NoteView['action'], watch?: object): void => {
     noteKeys.current += 1;
-    setNote({ key: noteKeys.current, icon, text, ...(action === undefined ? {} : { action }) });
+    setNote({ key: noteKeys.current, icon, text, ...(action === undefined ? {} : { action }), ...(watch === undefined ? {} : { watch }) });
   };
   /** "Undo" on the note after Remove: takes that one removal out of the draft, if it is still part of it. The focus goes to the panel heading, as after any change. */
   const undoRemoval = (removal: StoreAction): void => {

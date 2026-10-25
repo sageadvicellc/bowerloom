@@ -1,6 +1,6 @@
 /**
  * Wave C, group 2, in the real window (Electron started with --prototype-v2): the labeled Share button next to Add, the Help button with its word, the note after
- * Remove (six seconds, pauses on hover and focus, fades) with its Undo, the Save bar's "N changes" as a button that opens a list with one Undo for each change
+ * Remove (eight seconds, pauses on hover and focus, fades) with its Undo, the Save bar's "N changes" as a button that opens a list with one Undo for each change
  * (one change taken back alone; a change another one needs says why it cannot go), "Undo all changes", Ctrl+Z and Shift+Ctrl+Z, and the same bar and list on the Library page.
  * Set HOME_WC_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.
  */
@@ -106,26 +106,40 @@ test('Remove shows "Removed <name>. Undo" above the Save bar at the left; Undo p
   expect(await budget()).toEqual([]);
 });
 
-test('the note stays six seconds and fades, waits while the pointer is on it, and waits while the focus is on its button', async () => {
+test('the note stays eight seconds and fades, waits while the pointer is on it, and waits while the focus is on its button', async () => {
   test.setTimeout(120_000);
   const p = page();
   await pick();
+  // A watcher in the page writes down when the note opens and when it starts to fade, so no poll can miss either.
+  await p.evaluate(() => {
+    const times: Record<string, number> = {};
+    (window as unknown as { __undoNote: Record<string, number> }).__undoNote = times;
+    new MutationObserver(() => {
+      const t = document.querySelector('.hm-toast'); if (t === null) return;
+      const now = performance.now();
+      if (t.hasAttribute('data-open') && times.open === undefined) times.open = now;
+      if (t.hasAttribute('data-leaving') && times.leaving === undefined) times.leaving = now;
+    }).observe(document.body, { subtree: true, attributes: true, childList: true });
+  });
   await removeSkill('Write a reply');
   await expect(note()).toBeVisible();
-  await expect(note()).toBeHidden({ timeout: 9_000 });
-  // Held by the pointer: it is still there well after six seconds.
+  await expect(note()).toBeHidden({ timeout: 11_000 });
+  const t = await p.evaluate(() => (window as unknown as { __undoNote: Record<string, number> }).__undoNote);
+  expect(t.leaving! - t.open!).toBeGreaterThanOrEqual(7_900);
+  expect(t.leaving! - t.open!).toBeLessThan(9_000);
+  // Held by the pointer: it is still there well after eight seconds.
   await removeSkill('List action items');
   await expect(note()).toBeVisible();
   await note().hover();
-  await p.waitForTimeout(7_000);
+  await p.waitForTimeout(9_500);
   await expect(note()).toBeVisible();
   await p.mouse.move(640, 300);
-  await expect(note()).toBeHidden({ timeout: 9_000 });
+  await expect(note()).toBeHidden({ timeout: 11_000 });
   // Held by the keyboard focus.
   await removeSkill('Summarize a meeting');
   await expect(note()).toBeVisible();
   await note().getByRole('button', { name: 'Undo' }).focus();
-  await p.waitForTimeout(7_000);
+  await p.waitForTimeout(9_500);
   await expect(note()).toBeVisible();
 });
 

@@ -114,3 +114,13 @@ export function placeOf(state: StoreState, action: object): number {
   const log = draftActions(state);
   return log === null ? -1 : log.indexOf(action as never);
 }
+
+/**
+ * True while one edit the screen made earlier is still part of the draft. It is also true when the store cannot say which edits made the draft (it keeps no list
+ * then), so a note is never taken away only because the list is missing. The note after "Remove" asks this after every change, so it never describes a change that
+ * Ctrl+Z, an Undo in the list or "Go back" has already taken away.
+ */
+export function stillInDraft(state: StoreState, action: object): boolean {
+  const log = draftActions(state);
+  return log === null ? true : log.indexOf(action as never) >= 0;
+}
