@@ -208,6 +208,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     const timer = window.setTimeout(() => el.removeAttribute('data-moving'), MOVING_MS);
     return () => window.clearTimeout(timer);
   }, [drawer]);
+  // The panel shows a new thing when the selection changes, so it starts at its top: a skill opened from the foot of an agent's long panel would otherwise show its middle.
+  const shown = selected === null ? '' : `${selected.kind}:${selected.id}:${selected.ownerAgentId ?? ''}`;
+  useLayoutEffect(() => { if (panel.current !== null) panel.current.scrollTop = 0; }, [shown]);
   // After a card is removed (or a change is put back) the focus would fall to the page: put it on the card that took its place, or on the panel heading.
   useLayoutEffect(() => {
     const after = focusAfter.current;
