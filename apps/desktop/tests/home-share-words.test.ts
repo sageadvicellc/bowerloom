@@ -27,6 +27,7 @@ const within = (markup: string): void => assert.deepEqual(assertTextBudget(marku
 const said = (markup: string): string => extractText(markup).map(p => p.text).join(' | ');
 const NO_PATH = /\.bowerloom|\/sample\/|SKILL\.md|\/Users\/|\.claude\/|\.codex\/|\.opencode\/|\.json\b/;
 const none = (): void => undefined;
+const noFile = (): boolean => false;
 const world = withSampleCopies(generateWorld(1));
 const ids = ownedAgents(world).map(a => a.id);
 const sheet = (hidden: readonly string[] = [], unsaved = false): string => html(createElement(ShareSheet, { world, hidden, unsaved, onClose: none, onCopy: none, onOpenFile: none }));
@@ -49,11 +50,12 @@ for (const [group, limit] of groups) {
   });
 }
 
-test('the words of Share are the ones the brief asks for, and the secrets line is two hints of at most 12 words', () => {
+test('the words of Share are the ones the brief asks for, and the keys and text lines are hints of at most 12 words', () => {
   const l = SHARE_WORDS.label, h = SHARE_WORDS.hint;
   assert.deepEqual([l.share, l.shareAgents, l.openFile, l.saveCopy, l.copyReady], ['Share', 'Share my agents', 'Open a shared file', 'Save a copy', 'Copy ready']);
-  assert.equal(`${h.secretsOut} ${h.keysAsk}`, 'Secrets are left out. Tools that need a key will ask for one.');
-  assert.ok(countWords(h.secretsOut) <= LIMITS.hint && countWords(h.keysAsk) <= LIMITS.hint);
+  // Reworded after the review: the sheet no longer claims that every secret is left out, because the text of a skill or an agent goes in as written.
+  assert.equal(`${h.secretsOut} ${h.textIn} ${h.keysAsk}`, 'Keys that Bowerloom keeps are left out. Your own text is included, so read it first. Tools that need a key will ask for one.');
+  assert.ok(countWords(h.secretsOut) <= LIMITS.hint && countWords(h.textIn) <= LIMITS.hint && countWords(h.keysAsk) <= LIMITS.hint);
   assert.equal(h.nothingWritten, 'Nothing was written to your computer in this preview.');
 });
 
@@ -108,7 +110,8 @@ test('the sheet is a labelled modal dialog with the counts, the left-out line, t
   const plan = planShare(world, ids, []);
   assert.ok(m.includes(`>${countsLine(plan.counts)}<`), 'the counts line');
   assert.ok(m.includes(`>${leftOutLine(plan.keys, 0)}<`), 'the left-out line');
-  assert.match(m, /Secrets are left out\./);
+  assert.match(m, /Keys that Bowerloom keeps are left out\./);
+  assert.match(m, /Your own text is included, so read it first\./);
   assert.match(m, /Tools that need a key will ask for one\./);
   assert.equal([...m.matchAll(/type="checkbox"/g)].length, 10);
   assert.equal([...m.matchAll(/type="checkbox"[^>]*checked=""/g)].length, 10, 'every agent starts ticked');
@@ -137,8 +140,8 @@ test('the sheet with no agent to share says so and cannot save', () => {
 
 test('"From a shared file" offers "Open my last copy" only when a copy exists', () => {
   const text = planShare(world, ids, []).text;
-  const without = html(createElement(FileTab, { world, nameOf: plainName, onAddFile: none }));
-  const withCopy = html(createElement(FileTab, { world, nameOf: plainName, onAddFile: none, lastCopy: text }));
+  const without = html(createElement(FileTab, { world, nameOf: plainName, onAddFile: noFile }));
+  const withCopy = html(createElement(FileTab, { world, nameOf: plainName, onAddFile: noFile, lastCopy: text }));
   assert.doesNotMatch(without, /Open my last copy/);
   assert.match(withCopy, /Open my last copy<\/button>/);
   within(withCopy);

@@ -4,6 +4,8 @@
  * The result never carries a file path: the preview's file list is not passed on. Pure: no React, no DOM, no clock.
  */
 import { BUNDLE_LIMITS, commitImport } from '../proto/bundle.js';
+import { reduceStore } from '../proto/store.js';
+import type { StoreAction, StoreState } from '../proto/store.js';
 import { openExportedFile } from '../proto/export-flow.js';
 import type { Bundle, HarnessItem, ImportPreview, World } from '../proto/types.js';
 
@@ -23,11 +25,30 @@ export interface SharedFilePreview {
   readonly differentCopies: readonly string[];
   /** How many new tools need a key from the person. */
   readonly keysNeeded: number;
+  /** How many things the file points to (skills, tools, notes) that are in neither the file nor the person's setup. */
+  readonly missing: number;
+  /** True when the file is valid and holds nothing at all. */
+  readonly empty: boolean;
 }
+
+/** Why a file was refused: too big, with too many things in it, nested too deeply, two parts with one id, or not readable for any other reason. */
+export type FileFailure = 'unreadable' | 'too-large' | 'too-many' | 'too-deep' | 'same-id';
 
 export type SharedFileResult =
   | { readonly ok: true; readonly preview: SharedFilePreview }
-  | { readonly ok: false; readonly reason: 'unreadable' | 'too-large' };
+  | { readonly ok: false; readonly reason: FileFailure };
+
+/** The most skills and agents a file may hold when a person opens it. Real files hold a few dozen; the bundle limit (2,000) is for the checks, not for the window. */
+export const FILE_MAX_ITEMS = 200;
+
+/** The reason for a refusal, from the plain sentence the bundle check gave. */
+export function failureOf(message: string): FileFailure {
+  if (/nested too deeply/i.test(message)) return 'too-deep';
+  if (/same id/i.test(message)) return 'same-id';
+  if (/too many/i.test(message)) return 'too-many';
+  if (/larger than 2 MB/i.test(message)) return 'too-large';
+  return 'unreadable';
+}
 
 /** What a person calls an item: a set of notes, or the kind it is. */
 const kindOf = (item: HarnessItem): FileThingKind => ('sliceId' in item ? 'note' : item.kind);
@@ -57,8 +78,8 @@ function clashNames(preview: ImportPreview, reasons: readonly ImportPreview['cla
 /** Reads the text of a shared file against the world it would be added to. The world is not changed. */
 export function readSharedFile(text: string, world: World, nameOf: (name: string) => string = n => n): SharedFileResult {
   if (new TextEncoder().encode(text).length > FILE_MAX_BYTES) return { ok: false, reason: 'too-large' };
-  const opened = openExportedFile(text, world);
-  if (!opened.ok) return { ok: false, reason: 'unreadable' };
+  const opened = openExportedFile(text, world, FILE_MAX_ITEMS);
+  if (!opened.ok) return { ok: false, reason: failureOf(opened.message) };
   let after: World;
   try { after = commitImport(opened.bundle, world); } catch { return { ok: false, reason: 'unreadable' }; }
   const { preview } = opened;
@@ -70,8 +91,19 @@ export function readSharedFile(text: string, world: World, nameOf: (name: string
       alreadyHere: clashNames(preview, ['same-name'], nameOf),
       differentCopies: clashNames(preview, ['different-text', 'different-secret'], nameOf),
       keysNeeded: preview.secretsToAdd.length,
+      missing: preview.missingRefs.length,
+      empty: opened.bundle.items.length === 0 && opened.bundle.toolRefs.length === 0 && opened.bundle.sliceRules.length === 0,
     },
   };
+}
+
+/** The store action that adds a file's things to the draft (the same one `importFileAction` builds for the screen). */
+export const fileAction = (bundle: Bundle): StoreAction => ({ type: 'importBundle', bundle });
+
+/** What adding a file would do: the action to send, and whether it would really change the draft. A file that adds nothing is no change and sends nothing. */
+export function stageFile(state: StoreState, bundle: Bundle): { readonly action: StoreAction; readonly changed: boolean } {
+  const action = fileAction(bundle);
+  return { action, changed: reduceStore(state, action) !== state };
 }
 
 /** How many things of one kind the file adds. */
@@ -85,7 +117,7 @@ export type FileStep =
   | { readonly step: 'idle' }
   | { readonly step: 'reading' }
   | { readonly step: 'preview'; readonly preview: SharedFilePreview }
-  | { readonly step: 'failed'; readonly reason: 'unreadable' | 'too-large' }
+  | { readonly step: 'failed'; readonly reason: FileFailure }
   | { readonly step: 'done'; readonly count: number };
 
 export const FILE_IDLE: FileStep = Object.freeze({ step: 'idle' });

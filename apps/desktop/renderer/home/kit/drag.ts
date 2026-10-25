@@ -52,6 +52,11 @@ export function useCardDrag({ targetOf, onDrop, onMiss }: { targetOf(el: Element
 
   const finish = useCallback((): void => { stop.current?.(); stop.current = null; model.current = idleDrag; setView(null); }, []);
   useEffect(() => () => { stop.current?.(); }, []);
+  /**
+   * Keeps `dragged` for the one click that follows the release of a drag, and clears it the moment that click had its chance. The click comes in the same
+   * task as the release, so the next task is after it. Without this a keyboard Enter or Space on a card, long after a drop, would be taken for that click.
+   */
+  const holdForClick = useCallback((): void => { dragged.current = true; window.setTimeout(() => { dragged.current = false; }, 0); }, []);
 
   const start = useCallback((e: ReactPointerEvent, id: string, label: string): void => {
     if (e.button !== 0 || !e.isPrimary || model.current.phase !== 'idle') return;
@@ -70,15 +75,26 @@ export function useCardDrag({ targetOf, onDrop, onMiss }: { targetOf(el: Element
     };
     const up = (ev: PointerEvent): void => {
       const released = dragRelease(model.current, model.current.phase === 'dragging' ? under(ev) : null);
-      dragged.current = released.wasDrag;
       finish();
+      if (released.wasDrag) holdForClick(); else dragged.current = false;
       if (released.drop !== null) latest.current.onDrop(released.drop.id, released.drop.target);
       else if (released.missed) latest.current.onMiss?.();
     };
-    const key = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') { model.current = dragCancel(model.current); finish(); } };
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', finish); window.addEventListener('keydown', key);
-    stop.current = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', finish); window.removeEventListener('keydown', key); };
-  }, [finish]);
+    // Escape cancels a press or a drag, and nothing else: it is marked handled in the capture phase, before a drawer's own Escape can see it. After a
+    // drag was cancelled the button is still down, and the click that its release makes must not press the card, so it is held until that release.
+    const key = (ev: KeyboardEvent): void => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      const wasDrag = model.current.phase === 'dragging';
+      model.current = dragCancel(model.current);
+      finish();
+      if (!wasDrag) return;
+      dragged.current = true;
+      window.addEventListener('pointerup', () => { window.setTimeout(() => { dragged.current = false; }, 0); }, { once: true });
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', finish); window.addEventListener('keydown', key, true);
+    stop.current = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', finish); window.removeEventListener('keydown', key, true); };
+  }, [finish, holdForClick]);
 
   const followRef = useCallback((el: HTMLElement | null): void => { if (el !== null) el.style.transform = `translate(${spot.current.x + 14}px, ${spot.current.y + 14}px)`; }, []);
   /** True once, right after a drag ended: the click that follows a drag must not select the card. */

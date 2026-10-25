@@ -59,10 +59,18 @@ export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile
   // A copy that was made stops being "ready" the moment the choice changes, and the focus moves to the line that says it is ready.
   useEffect(() => { if (made !== null) ready.current?.focus(); }, [made]);
 
-  const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); latest.current(); return; }
-    if (dialog.current !== null) trapTab(e, dialog.current);
-  };
+  // Escape closes this sheet and nothing under it, wherever the focus is (see CopiesDialog): a window listener in the capture phase hears it first.
+  useEffect(() => {
+    const escape = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      latest.current();
+    };
+    window.addEventListener('keydown', escape, true);
+    return () => window.removeEventListener('keydown', escape, true);
+  }, []);
+
+  const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => { if (dialog.current !== null) trapTab(e, dialog.current); };
   const tick = (id: string): void => { setLeft(current => toggleLeftOut(current, id)); setMade(null); };
   const save = (): void => { if (!canSave(plan)) return; onCopy(plan.text); setMade({ bytes: plan.bytes }); };
   const empty = !canSave(plan);
@@ -82,11 +90,13 @@ export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile
           <h3 className="kit-heading" id={`${listId}-goes`}>{L.goesIn}</h3>
           <div aria-live="polite" className="sh-live">
             <p className="sh-counts" data-empty={empty ? '' : undefined}>{empty ? H.nothingPicked : countsLine(plan.counts)}</p>
-            <p className="sh-left">{leftOutLine(plan.keys, plan.leftOutAgents)}</p>
+            <p className="sh-left">{leftOutLine(plan.keys, plan.leftOutAgents, plan.readyMade)}</p>
           </div>
           <div className="sh-secrets">
             <p className="kit-hint">{H.secretsOut}</p>
+            <p className="kit-hint">{H.textIn}</p>
             <p className="kit-hint">{H.keysAsk}</p>
+            {plan.readyMade > 0 ? <p className="kit-hint">{H.readyMadeOut}</p> : null}
           </div>
           {unsaved ? <p className="kit-hint">{H.unsaved}</p> : null}
         </section>

@@ -88,11 +88,17 @@ export type OpenResult =
   | { readonly ok: true; readonly bundle: Bundle; readonly preview: ImportPreview }
   | { readonly ok: false; readonly message: string };
 
-/** Reads the text of an exported file and previews the import into `target`. `target` is not changed. */
-export function openExportedFile(text: string, target: World): OpenResult {
+/**
+ * Reads the text of an exported file and previews the import into `target`. `target` is not changed. `maxItems` is a lower limit on the skills and agents a
+ * file may hold than the bundle limit, for a reader that a person points at any file: a file past it is refused before it is checked or worked out.
+ */
+export function openExportedFile(text: string, target: World, maxItems?: number): OpenResult {
   if (new TextEncoder().encode(text).length > BUNDLE_LIMITS.textBytes) return { ok: false, message: 'This file is larger than 2 MB, which is more than a Bowerloom file ever holds. Nothing was installed.' };
   try {
-    const bundle = parseBundle(JSON.parse(text) as unknown);
+    const raw = JSON.parse(text) as unknown;
+    const listed = typeof raw === 'object' && raw !== null ? (raw as { items?: unknown }).items : undefined;
+    if (maxItems !== undefined && Array.isArray(listed) && listed.length > maxItems) return { ok: false, message: `This file has too many things to read (more than ${maxItems}). Nothing was installed.` };
+    const bundle = parseBundle(raw);
     return { ok: true, bundle, preview: previewImport(bundle, target) };
   } catch (error) { return { ok: false, message: messageOf(error) }; }
 }

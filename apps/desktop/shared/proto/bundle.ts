@@ -33,6 +33,18 @@ export function exportPath(path: string, scopePath?: string): string {
   return parts.length === 0 ? 'unnamed' : parts.join('/');
 }
 
+/**
+ * A found path as it leaves in a copy. Under its scope's own folder it is kept whole, relative to that folder. Anywhere else (another drive, a network share, a
+ * folder of another person, a client's folder) only its last two segments leave, so no folder name of that machine travels. The scope's own path is the only
+ * prefix this function knows, so any other prefix is cut the same way.
+ */
+export function leavingPath(path: string, scopePath: string | undefined): string {
+  const slashed = path.replace(/\\/g, '/'), base = scopePath === undefined ? '' : scopePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (base !== '' && slashed.startsWith(`${base}/`)) return exportPath(path, scopePath);
+  const parts = slashed.replace(/^[A-Za-z]:(?=\/|$)/, '').split('/').filter(p => p !== '' && p !== '.' && p !== '..');
+  return parts.length === 0 ? 'unnamed' : parts.slice(-2).join('/');
+}
+
 /** Makes a bundle of the skills, agents, tool references and slice rules that belong to the chosen scopes. Scopes the world does not have are left out. */
 export function buildBundle(world: World, scopeIds: readonly string[]): Bundle {
   const known = new Set(world.scopes.map(s => s.id));
@@ -46,7 +58,7 @@ export function buildBundle(world: World, scopeIds: readonly string[]): Bundle {
     const skill = byId.get(id);
     if (skill !== undefined && skill.kind === 'skill' && skill.library === null) used.add(id);
   }
-  const items = world.items.filter(owned).filter(i => inScope.has(i.scopeId) || used.has(i.id)).map((i): BundleItem => ({ ...i, foundAt: i.foundAt.map(f => ({ ...f, path: exportPath(f.path, scopePath.get(i.scopeId)) })) }));
+  const items = world.items.filter(owned).filter(i => inScope.has(i.scopeId) || used.has(i.id)).map((i): BundleItem => ({ ...i, foundAt: i.foundAt.map(f => ({ ...f, path: leavingPath(f.path, scopePath.get(i.scopeId)) })) }));
   const toolIds = new Set<string>(), sliceIds = new Set<string>();
   for (const i of world.items) if (i.kind === 'tool' && inScope.has(i.scopeId)) toolIds.add(i.id); else if (i.kind === 'context-slice' && inScope.has(i.scopeId)) sliceIds.add(i.sliceId);
   for (const i of items) if (i.kind === 'agent') {
@@ -188,6 +200,12 @@ function family(base: string, taken: ReadonlySet<string>): string[] {
   return out;
 }
 
+/** The first name of the family of `base` that `holders` holds, walking the names that `taken` holds from the front and stopping at the first match. */
+function firstTaken(base: string, taken: ReadonlySet<string>, holders: ReadonlySet<string>): string | undefined {
+  for (let n = 0; taken.has(importedName(base, n)); n += 1) if (holders.has(importedName(base, n))) return importedName(base, n);
+  return undefined;
+}
+
 /** The first "base (imported)" name that is free: the name is not taken and its file name is not either. */
 function freeName(base: string, names: ReadonlySet<string>, slugs: ReadonlySet<string>): string {
   let name = base;
@@ -204,8 +222,32 @@ function fileText(item: BundleItem): string {
   return [`Agent: ${item.name}`, `Role: ${d.role}`, `Instructions: ${d.instructions}`, `Skills: ${d.skillIds.join(', ')}`, `Tools: ${d.toolAttachments.map(t => `${t.toolId} (${t.access})`).join(', ')}`, ...item.extras.map(e => `${e.badge}: ${e.key} = ${e.value}`)].join('\n');
 }
 
+/**
+ * The text that makes an item what it is, without its name, so two items can be compared by one string each. An agent keeps its name in its definition too:
+ * that is blanked. An agent whose definition name is not its item name can never be the twin of anything, so it has no text (null).
+ */
+function bareContent(item: HarnessItem): string | null {
+  if (item.kind !== 'agent') return contentOf(item);
+  return item.definition.name === item.name ? JSON.stringify([{ ...item.definition, name: '' }, item.extras]) : null;
+}
+
+/** What `land` worked out, kept per world and per bundle, so the preview, the file reader and the store's commit do not each work it out again. */
+const landings = new WeakMap<World, WeakMap<object, Landing>>();
+
 /** Works out everything an import does. The preview and the commit both read this one result, so what the person is shown is what happens. */
 function land(input: unknown, world: World): Landing {
+  const cached = typeof input === 'object' && input !== null ? landings.get(world)?.get(input) : undefined;
+  if (cached !== undefined) return cached;
+  const landed = landNew(input, world);
+  if (typeof input === 'object' && input !== null) {
+    let per = landings.get(world);
+    if (per === undefined) { per = new WeakMap(); landings.set(world, per); }
+    per.set(input, landed);
+  }
+  return landed;
+}
+
+function landNew(input: unknown, world: World): Landing {
   const bundle = parseBundle(input);
   const home = globalScope(world) ?? world.scopes[0];
   if (home === undefined) throw new Error('This workspace has no place to put the imported items.');
@@ -215,14 +257,25 @@ function land(input: unknown, world: World): Landing {
 
   const itemIds = new Set(world.items.map(i => i.id)), sliceIds = new Set(world.slices.map(s => s.id));
   // Per scope and kind: the item with each name, the names, and the file names in lower case, so a new item never lands on an old one.
-  const groups = new Map<string, { byName: Map<string, HarnessItem>; names: Set<string>; slugs: Set<string> }>();
-  const group = (scopeId: string, kind: string) => {
+  // `byText` lists, for each text (name left out), the names of the items that hold it, so the twin of an incoming item is found without comparing it with every item.
+  interface Group { byName: Map<string, HarnessItem>; names: Set<string>; slugs: Set<string>; byText: Map<string, Set<string>> }
+  const groups = new Map<string, Group>();
+  const group = (scopeId: string, kind: string): Group => {
     const key = `${scopeId}\u0000${kind}`;
     let g = groups.get(key);
-    if (g === undefined) { g = { byName: new Map(), names: new Set(), slugs: new Set() }; groups.set(key, g); }
+    if (g === undefined) { g = { byName: new Map(), names: new Set(), slugs: new Set(), byText: new Map() }; groups.set(key, g); }
     return g;
   };
-  for (const i of world.items) { const g = group(i.scopeId, i.kind); if (!g.byName.has(i.name)) g.byName.set(i.name, i); g.names.add(i.name); g.slugs.add(slugOf(i.name)); }
+  /** The item holds its name in the group. The first item with a name is the one that name stands for. */
+  const keep = (g: Group, item: HarnessItem): void => {
+    if (!g.byName.has(item.name)) {
+      g.byName.set(item.name, item);
+      const text = bareContent(item);
+      if (text !== null) { const holders = g.byText.get(text); if (holders === undefined) g.byText.set(text, new Set([item.name])); else holders.add(item.name); }
+    }
+    g.names.add(item.name); g.slugs.add(slugOf(item.name));
+  };
+  for (const i of world.items) keep(group(i.scopeId, i.kind), i);
 
   // Three id maps, one per kind of thing, so a skill id and a tool id can never be taken for each other.
   const itemMap = new Map<string, string>(), toolMap = new Map<string, string>(), sliceMap = new Map<string, string>();
@@ -292,8 +345,8 @@ function land(input: unknown, world: World): Landing {
       if (item.kind !== kind) continue;
       const scope = scopeFor(item.scopeId), g = group(scope.id, kind), mapped: BundleItem = item.kind === 'agent' ? remap(item) : item;
       // The same thing may be there already, under its own name or under a name an earlier import gave it.
-      const twin = family(mapped.name, g.names).map(n => g.byName.get(n)).find((existing): existing is HarnessItem => existing !== undefined && contentOf(existing) === contentOf(withName(mapped, existing.name)));
-      if (twin !== undefined) { clashes.push({ itemId: item.id, name: item.name, reason: 'same-name' }); itemMap.set(item.id, twin.id); continue; }
+      const holders = g.byText.get(bareContent(mapped) ?? '\u0000'), twin = holders === undefined ? undefined : firstTaken(mapped.name, g.names, holders);
+      if (twin !== undefined) { clashes.push({ itemId: item.id, name: item.name, reason: 'same-name' }); itemMap.set(item.id, g.byName.get(twin)!.id); continue; }
       let name = mapped.name;
       if (g.byName.has(name) || g.slugs.has(slugOf(name))) {
         clashes.push({ itemId: item.id, name: item.name, reason: 'different-text' });
@@ -305,7 +358,7 @@ function land(input: unknown, world: World): Landing {
       const final: BundleItem = { ...withName(mapped, name), id, scopeId: scope.id, foundAt };
       placed.set(item.id, final);
       if (!scopes.has(item.scopeId)) moved.push({ itemName: name, fromScope: item.scopeId, toScope: scope.name });
-      g.names.add(name); g.slugs.add(slugOf(name)); g.byName.set(name, final);
+      keep(g, final);
       const file: ImportFile = { path: harness(scope.path, kind === 'skill' ? `skills/${fileSlug(name)}/SKILL.md` : `agents/${fileSlug(name)}.md`), action: 'add', characters: fileText(final).length };
       (kind === 'skill' ? skillFiles : agentFiles).set(item.id, file);
     }

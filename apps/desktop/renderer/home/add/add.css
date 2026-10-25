@@ -82,6 +82,7 @@
 /* The buttons that finish a preview stay in view at the bottom of the drawer while a long list scrolls under them. */
 [data-home] .add-preview > .add-actions { position: sticky; bottom: calc(-1 * var(--hm-space-5)); margin: 0 calc(-1 * var(--hm-space-5)) calc(-1 * var(--hm-space-5)); padding: var(--hm-space-3) var(--hm-space-5); background: var(--surface); border-top: 1px solid var(--border); }
 [data-home] .add-drop .add-actions { justify-content: center; }
+[data-home] .kit-hint.add-missing { margin: 0; color: var(--text); }
 [data-home] .add-lead { margin: 0; display: flex; align-items: center; gap: var(--hm-space-2); font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
 [data-home] .add-section { display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-4); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); }
 [data-home] .add-things { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-2); }

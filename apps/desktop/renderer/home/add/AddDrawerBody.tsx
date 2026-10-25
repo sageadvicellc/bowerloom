@@ -17,7 +17,8 @@ import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
 import type { AddEntry, AddTab, AgentChoice, HintOf, NameOf } from '../../../shared/home/add-model.js';
 import { useProtoStore } from '../../proto/session.js';
-import { importFileAction } from '../store-actions.js';
+import { stageFile } from '../../../shared/home/add-file.js';
+import type { Bundle } from '../../../shared/proto/types.js';
 import { DragFollower } from '../kit/DragFollower.js';
 import { useCardDrag } from '../kit/drag.js';
 import { Button } from '../kit/Button.js';
@@ -77,10 +78,10 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
   /** Adds one skill, tool or note set to one agent, and tells the person. */
   const addTo = (entry: AddEntry, agent: AgentChoice, row: HTMLElement | null): void => {
     const result = stageAdd(state, agent.id, entry);
-    if (result.status === 'refused') return;
+    if (result.status === 'refused') { say(H.didNotWork); return; }
     if (result.status === 'already') { say(alreadyOn(agent.name)); return; }
     const action = addAction(agent.id, entry);
-    if (action === null) return;
+    if (action === null) { say(H.didNotWork); return; }
     dispatch(action);
     say(addedTo(agent.name));
     drawLine(agent.id, row);
@@ -90,20 +91,27 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
   const install = (entry: AddEntry, row: HTMLElement | null): void => {
     const result = stageInstall(state, entry);
     const action = installAction(world, entry);
-    if (result.status !== 'added' || action === null) return;
+    if (result.status !== 'added' || action === null) { say(H.didNotWork); return; }
     const made = newAgentId(world, result.state.draft);
     dispatch(action);
     say(agentAdded(entry.name));
     if (made !== null) { drawLine(made, row); onAdded?.({ agentId: made, entry }); }
   };
 
+  /** Adds a shared file's things to the draft. Answers whether the draft really changed, so the tab never says "Added" for nothing. */
+  const addFile = (bundle: Bundle): boolean => {
+    const { action, changed } = stageFile(state, bundle);
+    if (changed) dispatch(action);
+    return changed;
+  };
+
   const drag = useCardDrag({
     targetOf: dropAgentOf,
     onDrop: (id, agentId) => {
       const entry = byId.get(id);
-      if (entry === undefined) return;
-      const agent = agentChoices(world, entry, nameOf, hideAgents).find(c => c.id === agentId);
-      if (agent !== undefined) addTo(entry, agent, rowOf(id));
+      const agent = entry === undefined ? undefined : agentChoices(world, entry, nameOf, hideAgents).find(c => c.id === agentId);
+      if (entry === undefined || agent === undefined) { say(H.didNotWork); return; }
+      addTo(entry, agent, rowOf(id));
     },
     onMiss: () => say(H.dropMiss),
   });
@@ -118,14 +126,6 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
     for (const el of targets) { el.setAttribute('data-drop-ready', ''); if (el.getAttribute(DROP_ATTRIBUTE) === over) el.setAttribute('data-drop-over', ''); }
     return () => { for (const el of targets) { el.removeAttribute('data-drop-ready'); el.removeAttribute('data-drop-over'); } };
   }, [dragging, over]);
-
-  // Escape during a drag cancels the drag and nothing else: the drawer's own Escape must not see it, so it is marked handled before it gets there.
-  useEffect(() => {
-    if (!dragging) return undefined;
-    const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') e.preventDefault(); };
-    window.addEventListener('keydown', key, true);
-    return () => window.removeEventListener('keydown', key, true);
-  }, [dragging]);
 
   const choose = (next: AddTab): void => { setTab(next); setOpenId(null); setNote(null); };
   const tabKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
@@ -147,7 +147,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
         ))}
       </div>
       <div className="add-panel" role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} data-tab={tab}>
-        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={bundle => dispatch(importFileAction(bundle))} {...(sampleFile === undefined ? {} : { sampleFile })} {...(lastCopy === undefined ? {} : { lastCopy })} /> : (
+        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={addFile} {...(sampleFile === undefined ? {} : { sampleFile })} {...(lastCopy === undefined ? {} : { lastCopy })} /> : (
           <>
             <p className="kit-hint">{tab === 'agents' ? H.agentsTip : H.dragTip}</p>
             {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (

@@ -6,13 +6,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent, ReactElement } from 'react';
 import { FILE_IDLE, FILE_KIND_ORDER, FILE_MAX_BYTES, addsNothing, capList, countOf, readSharedFile, stepAfterAdd, stepFromResult } from '../../../shared/home/add-file.js';
-import type { FileStep, FileThing, FileThingKind, SharedFilePreview } from '../../../shared/home/add-file.js';
+import type { FileFailure, FileStep, FileThing, FileThingKind, SharedFilePreview } from '../../../shared/home/add-file.js';
 import type { NameOf } from '../../../shared/home/add-model.js';
 import type { Bundle, World } from '../../../shared/proto/types.js';
 import { Button } from '../kit/Button.js';
 import { KitIcon } from '../kit/icons.js';
 import type { KitIconName } from '../kit/icons.js';
-import { ADD_WORDS, fileAdded, keysNeeded, kindCount, kindWord, moreCount } from './add-words.js';
+import { ADD_WORDS, fileAdded, keysNeeded, kindCount, kindWord, moreCount, pointsToMissing } from './add-words.js';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
 const ICON: Readonly<Record<FileThingKind, KitIconName>> = { skill: 'skill', agent: 'agent', tool: 'tool', note: 'note' };
@@ -22,8 +22,8 @@ const SHOWN = 6;
 export interface FileTabProps {
   world: World;
   nameOf: NameOf;
-  /** Adds what the file holds to the draft. */
-  onAddFile(bundle: Bundle): void;
+  /** Adds what the file holds to the draft. Answers true when the draft really changed. */
+  onAddFile(bundle: Bundle): boolean;
   /** The text of a small file to offer under "Try a sample file". The Add test page passes one; the shell does not. */
   sampleFile?: string;
   /** The text of the copy the person just made with Share. The shell passes it so the tab can offer "Open my last copy"; the prototype writes no file, so this is how a copy comes back. */
@@ -40,12 +40,18 @@ function Names({ names }: { names: readonly string[] }): ReactElement {
   );
 }
 
-function Preview({ preview, onAdd, onAnother }: { preview: SharedFilePreview; onAdd(): void; onAnother(): void }): ReactElement {
+/** The plain sentence for a refused file. */
+const FAILURE_TEXT: Readonly<Record<FileFailure, string>> = {
+  unreadable: H.fileUnreadable, 'too-large': H.fileTooLarge, 'too-many': H.fileTooMany, 'too-deep': H.fileTooDeep, 'same-id': H.fileSameId,
+};
+
+function Preview({ preview, firstOnly, onAdd, onAnother }: { preview: SharedFilePreview; firstOnly: boolean; onAdd(): void; onAnother(): void }): ReactElement {
   const nothing = addsNothing(preview);
   const { shown, more } = capList(preview.added, SHOWN);
   return (
     <div className="add-preview" data-step="preview">
-      {nothing ? <p className="add-lead" role="status">{H.fileNothing}</p> : (
+      {firstOnly ? <p className="kit-hint" role="status">{H.firstFileOnly}</p> : null}
+      {nothing ? <p className="add-lead" role="status" data-empty={preview.empty ? '' : undefined}>{preview.empty ? H.fileEmpty : H.fileNothing}</p> : (
         <section className="add-section" aria-labelledby="add-will-add">
           <h3 className="kit-heading" id="add-will-add">{L.willAdd}</h3>
           <p className="kit-hint">{FILE_KIND_ORDER.filter(k => countOf(preview, k) > 0).map(k => kindCount(k, countOf(preview, k))).join(', ')}</p>
@@ -72,6 +78,7 @@ function Preview({ preview, onAdd, onAnother }: { preview: SharedFilePreview; on
           <Names names={preview.alreadyHere} />
         </section>
       ) : null}
+      {preview.missing > 0 ? <p className="kit-hint add-missing">{pointsToMissing(preview.missing)}</p> : null}
       <div className="add-actions">
         {nothing ? null : <Button variant="primary" icon="plus" onClick={onAdd}>{L.addThese}</Button>}
         <Button onClick={onAnother}>{L.chooseAnother}</Button>
@@ -83,6 +90,8 @@ function Preview({ preview, onAdd, onAnother }: { preview: SharedFilePreview; on
 export function FileTab({ world, nameOf, onAddFile, sampleFile, lastCopy }: FileTabProps): ReactElement {
   const [step, setStep] = useState<FileStep>(FILE_IDLE);
   const [over, setOver] = useState(false);
+  /** True when several files were let go at once: only the first is read, and the screen says so. */
+  const [firstOnly, setFirstOnly] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const counter = useRef(0);
 
@@ -102,23 +111,24 @@ export function FileTab({ world, nameOf, onAddFile, sampleFile, lastCopy }: File
     try { text = await read(); } catch { if (mine === counter.current) setStep({ step: 'failed', reason: 'unreadable' }); return; }
     if (mine === counter.current) setStep(stepFromResult(readSharedFile(text, world, nameOf)));
   };
-  const openFile = (file: File | undefined): void => { if (file !== undefined) void open(() => file.text(), file.size); };
-  const openSample = (): void => { if (sampleFile !== undefined) void open(() => Promise.resolve(sampleFile), sampleFile.length); };
-  const openLastCopy = (): void => { if (lastCopy !== undefined) void open(() => Promise.resolve(lastCopy), lastCopy.length); };
-  const drop = (e: ReactDragEvent<HTMLDivElement>): void => { e.preventDefault(); setOver(false); openFile(e.dataTransfer.files[0]); };
+  const openFile = (file: File | undefined, several = false): void => { if (file !== undefined) { setFirstOnly(several); void open(() => file.text(), file.size); } };
+  const openSample = (): void => { if (sampleFile !== undefined) { setFirstOnly(false); void open(() => Promise.resolve(sampleFile), sampleFile.length); } };
+  const openLastCopy = (): void => { if (lastCopy !== undefined) { setFirstOnly(false); void open(() => Promise.resolve(lastCopy), lastCopy.length); } };
+  const drop = (e: ReactDragEvent<HTMLDivElement>): void => { e.preventDefault(); setOver(false); openFile(e.dataTransfer.files[0], e.dataTransfer.files.length > 1); };
   const hasFile = (e: ReactDragEvent<HTMLDivElement>): boolean => e.dataTransfer.types.includes('Files');
-  const again = (): void => { counter.current += 1; setStep(FILE_IDLE); if (input.current !== null) input.current.value = ''; };
+  const again = (): void => { counter.current += 1; setFirstOnly(false); setStep(FILE_IDLE); if (input.current !== null) input.current.value = ''; };
 
-  if (step.step === 'preview') return <Preview preview={step.preview} onAdd={() => { onAddFile(step.preview.bundle); setStep(stepAfterAdd(step)); }} onAnother={again} />;
+  if (step.step === 'preview') return <Preview preview={step.preview} firstOnly={firstOnly} onAdd={() => { const changed = onAddFile(step.preview.bundle); setStep(changed ? stepAfterAdd(step) : { step: 'done', count: 0 }); }} onAnother={again} />;
   if (step.step === 'done') return (
     <div className="add-preview" data-step="done">
-      <p className="add-lead" role="status"><KitIcon name="check" size={20} />{fileAdded(step.count)}</p>
+      {step.count > 0 ? <p className="add-lead" role="status"><KitIcon name="check" size={20} />{fileAdded(step.count)}</p> : <p className="add-lead" role="status">{H.nothingAdded}</p>}
       <div className="add-actions"><Button onClick={again}>{L.chooseAnother}</Button></div>
     </div>
   );
   if (step.step === 'failed') return (
     <div className="add-preview" data-step="failed">
-      <p className="add-lead" role="alert">{step.reason === 'too-large' ? H.fileTooLarge : H.fileUnreadable}</p>
+      <p className="add-lead" role="alert">{FAILURE_TEXT[step.reason]}</p>
+      {firstOnly ? <p className="kit-hint">{H.firstFileOnly}</p> : null}
       <p className="kit-hint">{H.nothingAdded}</p>
       <div className="add-actions"><Button onClick={again}>{L.chooseAnother}</Button></div>
     </div>

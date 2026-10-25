@@ -36,7 +36,7 @@ test('the path is always finite numbers and the hold time is about a second', ()
 });
 
 test('the file tab steps: a good read shows a preview, a bad read shows why, adding finishes, other steps stay', () => {
-  const preview = { bundle: { scopeIds: [], items: [], toolRefs: [], sliceRules: [] }, added: [{ kind: 'skill', name: 'A' }, { kind: 'agent', name: 'B' }], alreadyHere: [], differentCopies: [], keysNeeded: 0 } as const satisfies SharedFilePreview;
+  const preview = { bundle: { scopeIds: [], items: [], toolRefs: [], sliceRules: [] }, added: [{ kind: 'skill', name: 'A' }, { kind: 'agent', name: 'B' }], alreadyHere: [], differentCopies: [], keysNeeded: 0, missing: 0, empty: false } as const satisfies SharedFilePreview;
   const shown = stepFromResult({ ok: true, preview });
   assert.equal(shown.step, 'preview');
   assert.deepEqual(stepAfterAdd(shown), { step: 'done', count: 2 });

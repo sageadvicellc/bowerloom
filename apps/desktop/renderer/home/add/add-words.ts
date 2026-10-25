@@ -61,7 +61,13 @@ export const ADD_WORDS = deepFreeze({
     fileReading: 'Reading the file.',
     fileUnreadable: 'Bowerloom cannot read this file.',
     fileTooLarge: 'This file is too large.',
+    fileTooMany: 'This file has too many things to read.',
+    fileTooDeep: 'This file is nested too deeply.',
+    fileSameId: 'Two parts of this file share one id.',
+    fileEmpty: 'There is nothing in this file.',
+    firstFileOnly: 'Only the first file was read.',
     nothingAdded: 'Nothing was added.',
+    didNotWork: 'That did not work.',
     fileNothing: 'Everything in this file is already here.',
     bothKept: 'Both copies are kept.',
     notAgain: 'Not added again.',
@@ -99,6 +105,8 @@ export const changesCount = (n: number): string => (n === 0 ? 'No changes yet' :
 export const moreCount = (n: number): string => `and ${n} more`;
 /** "Added 5 things from the file." */
 export const fileAdded = (n: number): string => `Added ${plural(n, 'thing', 'things')} from the file.`;
+/** "1 thing this file points to is not here." or "4 things this file points to are not here." */
+export const pointsToMissing = (n: number): string => `${n} ${n === 1 ? 'thing this file points to is' : 'things this file points to are'} not here.`;
 /** "1 tool needs a key." */
 export const keysNeeded = (n: number): string => `${n} ${n === 1 ? 'tool needs' : 'tools need'} a key.`;
 /** "3 skills", "1 agent", "2 tools", "1 set of notes". */

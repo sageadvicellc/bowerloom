@@ -7,6 +7,7 @@
  */
 import type { ShareCounts } from '../../../shared/home/share-model.js';
 import { kindCount } from '../add/add-words.js';
+import { joinWords } from '../../../shared/proto/words.js';
 import { WORDS } from '../words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -33,7 +34,9 @@ export const SHARE_WORDS = deepFreeze({
   hint: {
     shareTip: 'Send your agents to someone else.',
     openTip: 'Add agents that someone shared with you.',
-    secretsOut: 'Secrets are left out.',
+    secretsOut: 'Keys that Bowerloom keeps are left out.',
+    textIn: 'Your own text is included, so read it first.',
+    readyMadeOut: 'Ready-made items travel as a name only.',
     keysAsk: 'Tools that need a key will ask for one.',
     pickTip: 'Untick an agent to leave it out.',
     nothingPicked: 'Tick at least one agent to share.',
@@ -58,10 +61,10 @@ export function countsLine(counts: ShareCounts): string {
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
-/** "Left out: 2 keys", "Left out: 2 keys and 1 agent", "Left out: 3 agents" or "Left out: nothing". */
-export function leftOutLine(keys: number, agents: number): string {
-  const parts = [keys > 0 ? plural(keys, 'key', 'keys') : null, agents > 0 ? plural(agents, 'agent', 'agents') : null].filter((p): p is string => p !== null);
-  return `Left out: ${parts.length === 0 ? 'nothing' : parts.join(' and ')}`;
+/** "Left out: 2 keys", "Left out: 2 keys and 1 agent", "Left out: 3 agents", "Left out: 2 keys, 1 agent and 1 ready-made item" or "Left out: nothing". */
+export function leftOutLine(keys: number, agents: number, readyMade = 0): string {
+  const parts = [keys > 0 ? plural(keys, 'key', 'keys') : null, agents > 0 ? plural(agents, 'agent', 'agents') : null, readyMade > 0 ? plural(readyMade, 'ready-made item', 'ready-made items') : null].filter((p): p is string => p !== null);
+  return `Left out: ${parts.length === 0 ? 'nothing' : joinWords(parts)}`;
 }
 
 /** "Under 1 KB", "About 33 KB" or "About 1.4 MB". */

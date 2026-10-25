@@ -62,6 +62,17 @@ export const keysIn = (bundle: Bundle): number => new Set(bundle.toolRefs.flatMa
 /** The size of a copy in bytes. */
 export const sizeBytes = (text: string): number => new TextEncoder().encode(text).length;
 
+/**
+ * How many ready-made skills and tools the agents in the copy use that travel as a name only. A ready-made item is kept by its library, so the copy does not
+ * hold its text: the agent points to it, and whoever opens the copy needs to have it.
+ */
+export function readyMadeIn(bundle: Bundle): number {
+  const held = new Set<string>([...bundle.items.map(i => i.id), ...bundle.toolRefs.map(t => t.toolId)]);
+  const named = new Set<string>();
+  for (const i of bundle.items) if (i.kind === 'agent') for (const id of [...i.definition.skillIds, ...i.definition.toolAttachments.map(t => t.toolId)]) if (!held.has(id)) named.add(id);
+  return named.size;
+}
+
 /** Everything the Share sheet shows and saves for one choice of agents. */
 export interface SharePlan {
   readonly bundle: Bundle;
@@ -72,6 +83,8 @@ export interface SharePlan {
   readonly keys: number;
   /** Agents on offer that the person unticked. */
   readonly leftOutAgents: number;
+  /** Ready-made skills and tools that the copy points to and does not hold. */
+  readonly readyMade: number;
   readonly bytes: number;
 }
 
@@ -80,7 +93,7 @@ export function planShare(world: World, offered: readonly string[], leftOut: rea
   const left = offered.filter(id => leftOut.includes(id));
   const bundle = buildShare(world, offered.filter(id => !leftOut.includes(id)));
   const text = bundleText(bundle);
-  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), leftOutAgents: left.length, bytes: sizeBytes(text) };
+  return { bundle, text, counts: shareCounts(bundle), keys: keysIn(bundle), leftOutAgents: left.length, readyMade: readyMadeIn(bundle), bytes: sizeBytes(text) };
 }
 
 /** True when the copy holds an agent, so there is something to save. */
