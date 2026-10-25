@@ -101,6 +101,14 @@ const clippedWithoutDots = async (): Promise<string[]> => page().evaluate(() => 
   return out;
 });
 
+/** In a row that has a state and a Remove, the words of the state end before Remove begins (the two share the second line of a narrow row). */
+const statesOverRemove = async (): Promise<string[]> => page().evaluate(() => [...document.querySelectorAll('.kit-card')].flatMap(card => {
+  const words = card.querySelector('.kit-status > span:last-child'), remove = card.querySelector('.kit-remove');
+  if (words === null || remove === null || words.getBoundingClientRect().width === 0 || getComputedStyle(words).visibility === 'hidden') return [];
+  const w = words.getBoundingClientRect(), r = remove.getBoundingClientRect();
+  return w.right > r.left + 0.5 ? [`${words.textContent} runs into Remove by ${(w.right - r.left).toFixed(1)} px`] : [];
+}));
+
 /** Nothing sticks out past the window sideways. */
 const overflowX = async (): Promise<number> => page().evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 
@@ -124,6 +132,8 @@ for (const [w, h] of SIZES_D) {
       expect(sizes).toHaveLength(10);
       expect(new Set(sizes.map(s => s.join('x'))).size, JSON.stringify(sizes)).toBe(1);
       expect(sizes[0]).toEqual([TILE.w, TILE.h]);
+      const fold = await p.evaluate(() => { const stage = document.querySelector('.hm-stage')!.getBoundingClientRect(), list = [...document.querySelectorAll('.hm-grid .kit-card[data-kind="agent"]')].map(c => c.getBoundingClientRect()); return { whole: list.filter(c => c.bottom <= stage.bottom).length, touched: list.filter(c => c.top < stage.bottom).length, rows: new Set(list.map(c => Math.round(c.top / 20))).size, columns: new Set(list.map(c => Math.round(c.left))).size }; });
+      console.log(`MEASURED tiles at ${w} by ${h}, ${look}:`, JSON.stringify(fold));
       // A tile with a 0-tool agent, one with three counts and one with a single count are the same size as the rest (Schedule keeper has skills and nothing else).
       expect(await boxOf(tile('Schedule keeper'))).toMatchObject({ w: TILE.w, h: TILE.h }); expect(await boxOf(tile('Meeting assistant'))).toMatchObject({ w: TILE.w, h: TILE.h });
       expect(await clippedWithoutDots()).toEqual([]);
@@ -307,6 +317,7 @@ for (const [w, h] of SIZES_D) {
         expect(await smallText(), `${screen.name}: words under 14 px`).toEqual([]);
         expect(await pills(), `${screen.name}: pills`).toEqual([]);
         expect(await badStates(), `${screen.name}: states`).toEqual([]);
+        expect(await statesOverRemove(), `${screen.name}: a state and Remove`).toEqual([]);
         expect(await smallTargets(), `${screen.name}: targets`).toEqual([]);
         expect(await clippedWithoutDots(), `${screen.name}: clipped`).toEqual([]);
         expect(await overflowX(), `${screen.name}: sideways scroll`).toBeLessThanOrEqual(0);

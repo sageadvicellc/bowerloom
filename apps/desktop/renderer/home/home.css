@@ -29,7 +29,7 @@ html, body { height: 100%; }
 @media (min-width: 761px) and (max-width: 1266px) {
   [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr) 0px; }
   [data-home] .hm-body[data-drawer] .hm-panel { opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; padding-left: 0; padding-right: 0; border-left-width: 0; }
-  [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-5)); }
+  [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-4)); }
 }
 /* Under 760 px (smaller than the window can be) the shelves sit under the map, and a drawer simply takes their place. */
 @media (max-width: 760px) {
@@ -47,7 +47,7 @@ html, body { height: 100%; }
 [data-home] .hm-grid > li.hm-tray-slot { grid-column: 1 / -1; min-width: 0; display: block; }
 
 [data-home] .hm-panel {
-  overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-4);
+  overflow-y: auto; padding: var(--hm-space-5) var(--hm-space-4); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-4);
   transition: opacity var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), visibility var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), padding var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out);
 }
 [data-home] .hm-panel-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
