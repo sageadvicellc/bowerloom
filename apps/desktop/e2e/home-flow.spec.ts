@@ -643,7 +643,10 @@ test('the tour closes the Choose notes sheet when it starts', async () => {
 
 test('the keyboard does all of it: pick an agent, open Choose notes, pick a topic, Use these notes, Save, Go back', async () => {
   const p = page();
-  await tabTo(agentButton('Report builder'));
+  // The tiles are one stop of the Tab order: Tab reaches the first tile, the arrow keys go on to Report builder (the fifth).
+  await tabTo(agentButton('Inbox sorter'));
+  for (let i = 0; i < 4; i += 1) await p.keyboard.press('ArrowRight');
+  await expect(agentButton('Report builder')).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(panel().getByRole('heading', { level: 2, name: 'Report builder' })).toBeVisible();
   await tabTo(chooseButton());

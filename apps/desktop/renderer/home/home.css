@@ -5,6 +5,9 @@
  */
 html, body { height: 100%; }
 [data-home].hm-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; height: 100vh; min-height: 0; }
+/* The link to the details panel: out of sight until the keyboard reaches it (it is the second stop of the page, after the page's own "Skip to the content"). */
+[data-home] .hm-skip { position: absolute; left: -9999px; top: var(--hm-space-3); z-index: 2000; display: inline-flex; align-items: center; min-height: var(--hm-control-h); padding: 0 var(--hm-space-4); box-sizing: border-box; font-size: var(--hm-text-base); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: var(--accent-contrast); background: var(--accent-strong); border-radius: var(--hm-radius-small); }
+[data-home] .hm-skip:focus { left: var(--hm-space-3); outline: 3px solid var(--focus); outline-offset: 2px; }
 [data-home] .hm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 [data-home] .hm-bar { display: flex; align-items: center; gap: var(--hm-space-3); min-height: var(--hm-bar-h); box-sizing: border-box; padding: var(--hm-space-2) var(--hm-space-5); background: var(--surface); border-bottom: 1px solid var(--hm-border); }

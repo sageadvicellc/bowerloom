@@ -449,15 +449,15 @@ test('the drawer, its list and every word on screen say Version history, never s
 });
 
 // ---- The keyboard does all of it.
-test('the keyboard order is the tile, its counts, then the rows of the tray that is open (it follows the last tile of the row); Enter opens a tray and Space on a row shows its details', async () => {
+test('the keyboard order is the tile that has the stop, its counts, then the rows of the tray that is open (it follows the last tile of the row); Enter opens a tray and Space on a row shows its details', async () => {
   const p = page();
   const focused = async (): Promise<string> => p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); });
   await main('Meeting assistant').focus();
   await p.keyboard.press('Tab'); expect(await focused()).toBe('4 skills');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('1 tool');
   await p.keyboard.press('Tab'); expect(await focused()).toBe('1 note set');
-  // Closed lists cannot be reached: the next stop is the next card.
-  await p.keyboard.press('Tab'); expect(await focused()).toBe('Money tracker');
+  // The other tiles are not stops (the arrow keys reach them) and closed lists cannot be reached: the next stop is outside the grid.
+  await p.keyboard.press('Tab'); expect(await p.evaluate(() => document.activeElement?.closest('.hm-grid') === null)).toBe(true);
   await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab');
   expect(await focused()).toBe('4 skills');
   await p.keyboard.press('Enter');

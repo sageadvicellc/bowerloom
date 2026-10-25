@@ -102,3 +102,13 @@ test('every agent card on the map carries the id of its agent, once each', () =>
   assert.equal(ids.length, 10); assert.equal(new Set(ids).size, 10); assert.ok(ids.every(id => /^agent-\d\d$/.test(id)), ids.join());
   assert.match(m, /class="hm-sort"/); assert.doesNotMatch(m, /class="hm-group|data-kind="group"/);
 });
+
+test('the window starts with a link to the details, before the top bar, and exactly one tile of the grid is in the Tab order', () => {
+  const m = html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
+  assert.match(m, /<div class="hm-root" data-home=""><a class="hm-skip" href="#hm-panel-title">Skip to details<\/a><header/);
+  const tiles = m.slice(m.indexOf('class="hm-grid"'), m.indexOf('</main>'));
+  assert.equal([...tiles.matchAll(/class="kit-card-main"[^>]*tabindex="0"/g)].length, 1, 'one tile is the stop');
+  assert.equal([...tiles.matchAll(/class="kit-card-main"[^>]*tabindex="-1"/g)].length, 9, 'the other nine are reached by the arrow keys');
+  assert.ok([...tiles.matchAll(/class="kit-count"[^>]*tabindex="0"/g)].length >= 1);
+  within(m);
+});

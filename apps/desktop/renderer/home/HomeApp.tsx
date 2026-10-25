@@ -26,9 +26,9 @@
  * The tour's second step waits for a real click on an agent: that click is the step's action.
  */
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react';
 import type { InterfaceId } from '../../shared/proto/types.js';
-import { agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
+import { CHIP_KINDS, agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
 import { agentOfSelected, detailsOf } from '../../shared/home/details.js';
 import type { Selected } from '../../shared/home/details.js';
 import { DEFAULT_TAB } from '../../shared/home/add-model.js';
@@ -140,6 +140,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
   // The tray that is open under the map: one at a time, the list of one kind of one agent.
   const [tray, setTray] = useState<{ readonly agentId: string; readonly kind: ShelfEntry['kind'] } | null>(null);
+  // The one tile of the grid that is a Tab stop: the one that had the focus last, else the agent that is picked, else the first.
+  const [stopId, setStopId] = useState<string | null>(null);
   const grid = useRef<HTMLUListElement>(null);
   const columns = useColumns(grid, 3, view);
   const copies = useLeaving(copiesFor);
@@ -167,6 +169,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const shelves = useMemo(() => (agent === null ? null : shelvesOf(world, agent)), [world, agent]);
   const details = useMemo(() => detailsOf(world, agents, selected), [world, agents, selected]);
   const shelvesById = useMemo(() => new Map(agents.map(a => [a.id, shelvesOf(world, a)] as const)), [world, agents]);
+  const tabId = stopId !== null && agents.some(a => a.id === stopId) ? stopId : agent?.id ?? agents[0]?.id ?? null;
   // One set of helpers counts and names the changes of both places, so a change made on the Library page lands in the same Save bar and the same history.
   const changes = libraryChangeCount(state.committed, state.draft);
   const said = useMemo(() => barSaid(libraryChangeList(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
@@ -270,6 +273,40 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     // The drawer is a dependency so that, in a window where it hides the shelves, closing it brings the new card into view.
   }, [fresh, drawer]);
 
+  /** The arrow keys, Home and End on a tile or on one of its counts: the focus (and the one Tab stop) goes to another tile, in reading order; Up and Down go by a row. */
+  const gridKeys = (e: ReactKeyboardEvent<HTMLUListElement>): void => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const from = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-drop-agent]') : null;
+    if (from === null || !grid.current?.contains(from)) return;
+    const at = agents.findIndex(a => a.id === from.getAttribute('data-drop-agent'));
+    if (at < 0) return;
+    const last = agents.length - 1;
+    const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'ArrowDown' ? at + columns : e.key === 'ArrowUp' ? at - columns : e.key === 'Home' ? 0 : e.key === 'End' ? last : null;
+    if (to === null) return;
+    e.preventDefault();
+    const next = agents[Math.max(0, Math.min(last, to))];
+    if (next === undefined || next.id === agents[at]?.id) return;
+    // A tile that is not the Tab stop can still take the focus from here; it becomes the stop as it does (gridFocus).
+    dropTargetFor(next.id, grid.current ?? document)?.querySelector<HTMLElement>('.kit-card-main')?.focus();
+  };
+  /** The focus came to a tile or one of its counts: that tile is the Tab stop from now on. */
+  const gridFocus = (e: ReactFocusEvent<HTMLUListElement>): void => {
+    const tile = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-drop-agent]') : null;
+    const id = tile?.getAttribute('data-drop-agent');
+    if (id !== null && id !== undefined) setStopId(id);
+  };
+  /** Space on a tile: the tray of its first count opens, or the tray that is open under it closes. */
+  const spaceOn = (agentId: string, shelves: ReturnType<typeof shelvesOf>): void => {
+    if (tray !== null && tray.agentId === agentId) { setTray(null); return; }
+    const lists = { skill: shelves.skills, tool: shelves.tools, note: shelves.notes };
+    const first = CHIP_KINDS.find(kind => lists[kind].length > 0);
+    if (first !== undefined) setTray({ agentId, kind: first });
+  };
+  /** "Skip to details": the focus goes to the heading of the details panel. */
+  const skipToDetails = (e: ReactMouseEvent<HTMLAnchorElement>): void => {
+    e.preventDefault();
+    document.querySelector<HTMLElement>('.hm-panel [tabindex="-1"]')?.focus();
+  };
   /** A count on a tile was pressed: its tray opens, another tray closes, and the same count again closes it. */
   const toggleTray = (agentId: string, kind: ShelfEntry['kind']): void => setTray(current => (current !== null && current.agentId === agentId && current.kind === kind ? null : { agentId, kind }));
   const toggle = (id: DrawerId): void => { if (id === 'add') setAddTab(DEFAULT_TAB); setDrawer(current => (current === id ? null : id)); };
@@ -372,6 +409,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
 
   return (
     <div className="hm-root" data-home="">
+      <a className="hm-skip" href="#hm-panel-title" onClick={skipToDetails}>{WORDS.label.skipToDetails}</a>
       <header className="hm-bar" data-tour="bar">
         <div className="hm-brand"><KitIcon name="leaf" size={24} /><span>{WORDS.label.appName}</span></div>
         <div className="hm-preview" data-preview="">
@@ -403,7 +441,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
                 {onFindMore === undefined ? null : <Button variant="text" onClick={onFindMore}>{FIND_WORDS.label.findMore}</Button>}
               </div>
             </div>
-            <ul className="hm-grid" ref={grid} data-tour="map" aria-label={WORDS.label.yourAgents}>
+            <ul className="hm-grid" ref={grid} data-tour="map" aria-label={WORDS.label.yourAgents} onKeyDown={gridKeys} onFocus={gridFocus}>
               {agents.flatMap((a, i) => {
                 const words = agentCard(a), shelves = shelvesById.get(a.id) ?? shelvesOf(world, a);
                 const mine = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === a.id ? selected.id : null;
@@ -411,7 +449,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
                 const tile = (
                   <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id} className="hm-tile">
                     <AgentCard name={words.name} hint={words.hint} shelves={shelves} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)}
-                      openKind={kindsOpen} onToggleKind={kind => toggleTray(a.id, kind)}
+                      openKind={kindsOpen} onToggleKind={kind => toggleTray(a.id, kind)} tabStop={a.id === tabId} onSpace={() => spaceOn(a.id, shelves)}
                       dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
                   </li>
                 );

@@ -233,7 +233,9 @@ test('a tray shows 12 rows and "Show more" after that; the counts are Tab stops 
   const tray = await trayFor(button);
   expect(await tray.locator('.kit-card-main').count()).toBe(5);
   expect(await tray.locator('.kit-tray-more').count()).toBe(0);
-  expect(await tile('Writing coach').locator('.kit-count').evaluateAll(list => list.every(b => b.tagName === 'BUTTON' && b.getAttribute('tabindex') === null))).toBe(true);
+  // The counts of the tile that has the keyboard are Tab stops (the counts of the other tiles are reached by the arrow keys).
+  expect(await tile('Writing coach').locator('.kit-count').evaluateAll(list => list.every(b => b.tagName === 'BUTTON' && b.getAttribute('tabindex') === '0'))).toBe(true);
+  expect(await tile('Money tracker').locator('.kit-count').evaluateAll(list => list.every(b => b.getAttribute('tabindex') === '-1'))).toBe(true);
   await p.keyboard.press('Space'); await expect(button).toHaveAttribute('aria-expanded', 'false');
 });
 

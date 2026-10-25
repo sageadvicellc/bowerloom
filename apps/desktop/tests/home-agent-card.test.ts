@@ -77,3 +77,15 @@ test('the tile carries the id of its agent and the tour id, and every sample til
     assert.deepEqual(assertTextBudget(text), [], a.id);
   }
 });
+
+// ---- Wave C: the tiles of the map are one stop in the Tab order.
+test('the tile that is the stop of the grid has its name and its counts in the Tab order; any other tile has none of them (the arrow keys reach it)', () => {
+  const stop = html({ tabStop: true }), other = html({ tabStop: false });
+  assert.match(stop, /class="kit-card-main"[^>]*tabindex="0"/);
+  assert.equal([...stop.matchAll(/class="kit-count"[^>]*tabindex="0"/g)].length, 3);
+  assert.match(other, /class="kit-card-main"[^>]*tabindex="-1"/);
+  assert.equal([...other.matchAll(/class="kit-count"[^>]*tabindex="-1"/g)].length, 3);
+  assert.doesNotMatch(other, /tabindex="0"/);
+  assert.match(html(), /class="kit-card-main"[^>]*tabindex="0"/, 'a tile that is told nothing keeps its place in the Tab order (the kit gallery)');
+  assert.deepEqual(assertTextBudget(other), []);
+});
