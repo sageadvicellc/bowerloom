@@ -14,7 +14,11 @@ export const POINT_WORDS = Object.freeze({
 });
 
 /** One row. `current` is the newest point: the world is there now. */
-export interface SavePointRow { readonly id: string; readonly name: string; readonly when: string; readonly changes: string; readonly current: boolean }
+export interface SavePointRow {
+  readonly id: string; readonly name: string; readonly when: string; readonly changes: string; readonly current: boolean;
+  /** The time the point was made, in words read from the screen's clock when it was saved ("Today, 8:42 AM"); empty for a point that has none (the one a session starts with). */
+  readonly madeAt?: string;
+}
 
 const VERB: Readonly<Record<DiffChange, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed' };
 const lower = (text: string): string => `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
@@ -53,5 +57,6 @@ export function savePointRows(world: World, nameOf: NameOf): SavePointRow[] {
     when: v.counter === head ? POINT_WORDS.justNow : v.parentId === null ? POINT_WORDS.whenBegan : whenOf(head - v.counter),
     changes: changesOf(world, v, nameOf),
     current: v.counter === head,
+    madeAt: v.madeAt ?? '',
   }));
 }

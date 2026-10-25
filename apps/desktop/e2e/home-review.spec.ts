@@ -303,7 +303,7 @@ test('a "Preview" badge with its own help sits in the top bar and says nothing i
   await expect(badge).toBeVisible();
   const about = p.locator('header.hm-bar').getByRole('button', { name: 'About this preview', exact: true });
   await about.click();
-  await expect(p.getByRole('group', { name: 'About this preview' })).toContainText('This is a preview. Nothing is written to your computer.');
+  await expect(p.getByRole('group', { name: 'About this preview' })).toContainText('This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.');
   expect(await budget()).toEqual([]);
   for (const [w, h] of SIZES) for (const look of THEMES) {
     await resize(p, w, h); await setLook(p, look);

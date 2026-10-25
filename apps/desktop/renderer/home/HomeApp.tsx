@@ -38,6 +38,8 @@ import { agentForTour, sortAgents, touch } from '../../shared/home/order.js';
 import type { SortMode } from '../../shared/home/order.js';
 import { libraryChangeCount, libraryChangeList } from '../../shared/home/library-changes.js';
 import { plainHintOf, plainNameOf, plainNameOfSaved } from '../../shared/home/plain-names.js';
+import { nowInWords } from '../clock.js';
+import { skillTrust, toolTrust } from '../../shared/home/details-trust.js';
 import { savePointRows } from '../../shared/home/points.js';
 import { saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
@@ -168,6 +170,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const agent = agents.find(a => a.id === picked) ?? null;
   const shelves = useMemo(() => (agent === null ? null : shelvesOf(world, agent)), [world, agent]);
   const details = useMemo(() => detailsOf(world, agents, selected), [world, agents, selected]);
+  // The maker and the release of a skill from outside, and what a tool reaches: read from the Library's facts, for the details panel.
+  const skillFacts = useMemo(() => (details !== null && details.kind === 'skill' ? skillTrust(world, details.id) : null), [world, details]);
+  const toolFacts = useMemo(() => (details !== null && details.kind === 'tool' ? toolTrust(world, details.id) : null), [world, details]);
   const shelvesById = useMemo(() => new Map(agents.map(a => [a.id, shelvesOf(world, a)] as const)), [world, agents]);
   const tabId = stopId !== null && agents.some(a => a.id === stopId) ? stopId : agent?.id ?? agents[0]?.id ?? null;
   // One set of helpers counts and names the changes of both places, so a change made on the Library page lands in the same Save bar and the same history.
@@ -387,7 +392,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   };
   const save = (): void => {
     const savePoints = state.committed.versions.length;
-    dispatch(saveAction(said ?? changesCount(changes)));
+    dispatch(saveAction(said ?? changesCount(changes), nowInWords()));
     setPhase({ kind: 'saved', at: savePoints + 1, backTo: state.headVersionId });
     setFresh(null);
     // The first Save of a guided session says so once more, in a note.
@@ -396,7 +401,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); setPhase(null); setNote(null); dispatch(discardAction()); };
   /** Makes the world as it was at one save point. The bar says so, and the focus stays where the person pressed. */
   const goBackTo = (versionId: string, focus: boolean): void => {
-    const action = goBackAction(versionId);
+    const action = goBackAction(versionId, nowInWords());
     // A save point that cannot be restored leaves everything as it is, and the bar must not say it went back.
     if (reduceStore(state, action) === state) return;
     if (focus) focusAfter.current = 'heading';
@@ -465,7 +470,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           </main>
 
           <aside className="hm-panel" ref={panel} data-tour="details" aria-labelledby="hm-panel-title">
-            <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} />
+            <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} skillTrust={skillFacts} toolTrust={toolFacts} />
           </aside>
           </div>
         ) : (

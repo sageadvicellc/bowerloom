@@ -13,6 +13,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Fragment } from 'react';
 import type { ShelfEntry } from '../../../shared/home/cards.js';
 import { removeFromLabel } from '../../../shared/home/details.js';
+import type { SkillTrust, ToolTrust } from '../../../shared/home/details-trust.js';
 import type { AgentDetails, AgentRef, Details, NoteDetails, Selected, SkillDetails, ToolDetails } from '../../../shared/home/details.js';
 import { Badge } from '../kit/Badge.js';
 import { Button } from '../kit/Button.js';
@@ -39,6 +40,9 @@ export interface DetailsPanelProps {
   freshNotes?: string | null;
   /** The kit gallery and the tests draw the full text open. */
   textOpen?: boolean;
+  /** Who made the skill that is shown and which release it is (a skill from outside), and what the tool that is shown reaches. */
+  skillTrust?: SkillTrust | null;
+  toolTrust?: ToolTrust | null;
 }
 
 /** A block with a small heading. */
@@ -98,7 +102,7 @@ export function AgentBody({ details, onSelect, onRemove, onBadgePress, onChoose,
   );
 }
 
-function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false }: DetailsPanelProps & { details: SkillDetails }): ReactElement {
+function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false, skillTrust = null }: DetailsPanelProps & { details: SkillDetails }): ReactElement {
   const [open, setOpen] = useState(textOpen);
   const textId = useId();
   return (
@@ -108,7 +112,15 @@ function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false
       <Block title={L.whatItDoes}><p>{details.hint}</p></Block>
       <UsedBy agents={details.usedBy} onSelect={onSelect} />
       <Block title={L.whereItWorks}><Programs works={details.works} /></Block>
-      <Block title={L.whereItCameFrom}><p>{details.source}</p></Block>
+      <Block title={L.whereItCameFrom}>
+        <p>{details.source}</p>
+        {skillTrust === null ? null : (
+          <dl className="dt-facts" data-origin="">
+            <dt>{L.madeBy}</dt><dd data-field="author" data-budget="content">{skillTrust.madeBy}</dd>
+            {skillTrust.release === null ? null : <><dt>{L.release}</dt><dd data-field="release" data-budget="content">{skillTrust.release}</dd></>}
+          </dl>
+        )}
+      </Block>
       {details.badge === null ? null : <div className="dt-badge"><Badge badge={details.badge} onPress={() => onBadgePress(details.id)} /></div>}
       <div className="dt-full">
         <Button aria-expanded={open} aria-controls={textId} onClick={() => setOpen(o => !o)}>{open ? L.hideFullText : L.showFullText}</Button>
@@ -119,12 +131,13 @@ function SkillBody({ details, onSelect, onRemove, onBadgePress, textOpen = false
   );
 }
 
-function ToolBody({ details, onSelect, onRemove }: DetailsPanelProps & { details: ToolDetails }): ReactElement {
+function ToolBody({ details, onSelect, onRemove, toolTrust = null }: DetailsPanelProps & { details: ToolDetails }): ReactElement {
   return (
     <>
       <Back owner={details.owner} onSelect={onSelect} />
       <Head kind={L.kindTool} glyph="tool" name={details.name} line="" />
       <Block title={L.whatItReaches}><p>{details.hint}</p></Block>
+      {toolTrust === null ? null : <Block title={L.reaches}><p data-reaches="" data-budget="content">{toolTrust.reaches}</p><p className="kit-hint" data-can="">{toolTrust.can}</p></Block>}
       <Block title={L.howFarItGoes}><p data-access="">{details.access}</p></Block>
       {details.needsKey ? <div className="dt-key" data-key="missing">{details.badge === null ? null : <Badge badge={details.badge} />}<p>{H.needsKeyLine}</p></div> : null}
       {details.keyReady ? <p className="dt-key" data-key="ready">{H.keyReady}</p> : null}

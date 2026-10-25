@@ -12,3 +12,6 @@
 /* The warning above the list is a dot and words, with no fill and no border (the dot comes from the Status look of the kit). It may wrap, because it is a sentence. */
 [data-home] .pt-warn { white-space: normal; align-items: flex-start; font-weight: 600; }
 [data-home] .pt-warn .kit-dot { margin-top: 0.4em; }
+
+/* The time a point was made, in words, under its name; the words of how long ago are the quiet line under it. */
+[data-home] .pt-clock { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }

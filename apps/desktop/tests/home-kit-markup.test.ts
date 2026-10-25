@@ -146,7 +146,7 @@ test('the Preview mark is one text button, plain words and a dot, that opens its
   assert.doesNotMatch(closed, /kit-badge|kit-pill|<svg/, 'no pill and no icon');
   assert.equal([...closed.matchAll(/<button/g)].length, 1, 'one button, not a pill and a circle'); assert.doesNotMatch(closed, />\?</); within(closed);
   const open = html(createElement(HelpPopover, { label: 'About this preview', text: WORDS.popover.preview, pill: 'Preview', defaultOpen: true }));
-  assert.match(open, /<p>This is a preview\. Nothing is written to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
+  assert.match(open, /<p>This is a preview\. It sends nothing, stores nothing, and writes nothing to your computer\.<\/p>/); assert.match(open, /aria-expanded="true"/); within(open);
 });
 
 test('the shell has no bare "?": Help is a button with its word at the far right; Preview is plain words with a dot and Tools has a hint line', () => {

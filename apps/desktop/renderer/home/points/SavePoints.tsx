@@ -1,6 +1,6 @@
 /**
- * The body of the Version history drawer: a list of the points the person has saved, newest first. Each row has its name, when it was made ("just now",
- * "2 saves ago", "when you began"), one short line about what changed, and "Go back to this" (the newest point says "You are here" instead). Going back
+ * The body of the Version history drawer: a list of the points the person has saved, newest first. Each row has its name, the time it was made ("Today, 8:42 AM", read from
+ * the clock when it was saved), then how long ago in words ("just now", one short line about what changed, and "Go back to this" (the newest point says "You are here" instead). Going back
  * makes a new point equal to the old one, so nothing is lost and the list only grows. The rows come from `savePointRows`. Under the list, Share has its
  * own section: "Share my agents" and "Open a shared file" (storyboard open question 4: Share lives in this drawer, not in the main window).
  */
@@ -33,6 +33,7 @@ export function SavePoints({ rows, unsaved, onGoBack, onShare, onOpenFile }: Sav
           <li key={row.id} className="pt-row" data-point={row.id} data-current={row.current ? '' : undefined}>
             <div className="pt-text">
               <p className="pt-name" id={`pt-name-${row.id}`}>{row.name}</p>
+              {row.madeAt === undefined || row.madeAt === '' ? null : <p className="pt-clock" data-clock="">{row.madeAt}</p>}
               <p className="kit-hint pt-when">{row.when}</p>
               {row.changes === '' ? null : <p className="kit-hint pt-changes">{row.changes}</p>}
             </div>

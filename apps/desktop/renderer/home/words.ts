@@ -25,6 +25,9 @@ export const WORDS = deepFreeze({
     add: 'Add',
     help: 'Help',
     skipToDetails: 'Skip to details',
+    reaches: 'Reaches',
+    madeBy: 'Made by',
+    release: 'Release',
     viewAgents: 'Agents',
     viewLibrary: 'Library',
     viewSwitch: 'Pages',
@@ -157,7 +160,7 @@ export const WORDS = deepFreeze({
   /** The text behind a "?" button: at most 25 words, and the only place a technical term may appear. */
   popover: {
     help: 'New here? The tour shows where everything is, and you can replay it.',
-    preview: 'This is a preview. Nothing is written to your computer.',
+    preview: 'This is a preview. It sends nothing, stores nothing, and writes nothing to your computer.',
     versionHistory: 'Version history lists the copies of your agents that you can go back to.',
     connection: 'A connection lets an agent use another program. Its technical name is MCP.',
   },

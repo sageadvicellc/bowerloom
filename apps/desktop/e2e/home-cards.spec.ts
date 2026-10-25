@@ -284,7 +284,8 @@ test('a tool\'s details: what it can reach, how far it may go, a key that is nee
   expect(await tray('Meeting assistant', 'tool').locator('button.kit-status').count()).toBe(0);
   await line('Meeting assistant', 'tool', 'Read my calendar').click();
   await expect(title()).toHaveText('Read my calendar');
-  await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it can reach', 'How far it can go', 'Used by']);
+  await expect(panel().getByRole('heading', { level: 3 })).toHaveText(['What it can reach', 'Reaches', 'How far it can go', 'Used by']);
+  await expect(panel().locator('[data-reaches]')).toHaveText('calendar.example.com');
   await expect(panel().getByText('Looks at your calendar to find the right times.')).toBeVisible();
   await expect(panel().locator('[data-access]')).toHaveText('Can change things');
   await expect(panel().locator('[data-key="missing"]')).toContainText('needs a key'); await expect(panel().locator('[data-key="missing"]')).toContainText('Add this key when asked.');
