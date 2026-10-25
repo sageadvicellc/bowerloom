@@ -1,5 +1,5 @@
 /**
- * Every word a person reads in Share (the section of the Save points drawer and the Share sheet), in one frozen table of the same shape as `WORDS`
+ * Every word a person reads in Share (the section of the Version history drawer and the Share sheet), in one frozen table of the same shape as `WORDS`
  * (renderer/home/words.ts): a label has at most 5 words, a hint at most 12, and no banned word appears. The storyboard names the action "Share" and
  * "Open a shared file"; the words "export" and "import" never reach a screen. `tests/home-share-words.test.ts` holds this table, the builders at the
  * bottom and the markup of both parts to those rules. The counts of what goes in use the same words as the Add drawer's "From a shared file" tab

@@ -1,5 +1,5 @@
 /**
- * Share in the real window (Electron started with --prototype-v2, on the home app itself): the Share section at the foot of the Save points drawer, the Share
+ * Share in the real window (Electron started with --prototype-v2, on the home app itself): the Share section at the foot of the Version history drawer, the Share
  * sheet (counts, what is left out, the agents to leave out, "Save a copy"), the round trip into "Open a shared file" (the same counts come back), the agents
  * that Find skipped, the keyboard alone, less motion, Escape one layer at a time, text size, and the text budget on the real page at every step.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.
@@ -35,7 +35,7 @@ const rowOf = (name: string): Locator => sheet().locator('.sh-row').filter({ has
 const firstRows = async (n: number): Promise<string[]> => (await sheet().locator('.sh-row').evaluateAll(rows => rows.map(r => r.getAttribute('data-agent') ?? ''))).slice(0, n);
 
 async function openPoints(): Promise<void> {
-  if (!(await pointsDrawer().isVisible())) await topBar('Save points').click();
+  if (!(await pointsDrawer().isVisible())) await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   await animationsDone(page());
 }
@@ -81,9 +81,11 @@ test.beforeEach(async () => {
 });
 
 // ---- Where Share lives.
-test('Share lives in the Save points drawer, under the list, and not in the main window', async () => {
+test('Share lives in the Version history drawer, under the list, and not in the main window', async () => {
   const p = page();
-  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', 'Save points', 'Add', '?']);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
+  // Version history is an icon-only clock button: no text of its own, and its name is the aria-label.
+  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Preview', '', 'Add', '?']);
+  expect(await p.locator('header.hm-bar').getByRole('button').evaluateAll(list => list.map(b => b.getAttribute('aria-label')))).toEqual(['About this preview', 'Version history', null, 'Help']);   // the Preview pill is its own help button, so Help is the only "?" (fix list item 3)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();
@@ -295,7 +297,7 @@ test('agents of a place skipped in Find are not offered in Add or in Share', asy
 });
 
 // ---- Layers and keys.
-test('Escape closes one layer at a time: the Share sheet, then the Save points drawer', async () => {
+test('Escape closes one layer at a time: the Share sheet, then the Version history drawer', async () => {
   const p = page();
   await openSheet();
   await p.keyboard.press('Escape');
@@ -304,7 +306,7 @@ test('Escape closes one layer at a time: the Share sheet, then the Save points d
   await expect(section().getByRole('button', { name: 'Share my agents' })).toBeFocused();
   await p.keyboard.press('Escape');
   await expect(pointsDrawer()).toHaveCount(0);
-  await expect(topBar('Save points')).toBeFocused();
+  await expect(topBar('Version history')).toBeFocused();
   // Close and the scrim close the sheet too, and the page behind it is out of reach while it is open.
   await openSheet();
   await expect(p.locator('header.hm-bar')).toHaveAttribute('inert', '');
@@ -325,11 +327,11 @@ test('the tour closes the Share sheet when it starts', async () => {
   await expect(pointsDrawer()).toHaveCount(0);
 });
 
-test('the keyboard does all of it: open Save points, open the sheet, untick, Save a copy, Done, Open a shared file, Open my last copy', async () => {
+test('the keyboard does all of it: open Version history, open the sheet, untick, Save a copy, Done, Open a shared file, Open my last copy', async () => {
   const p = page();
-  await tabTo(topBar('Save points'));
+  await tabTo(topBar('Version history'));
   await p.keyboard.press('Enter');
-  await expect(pointsDrawer().getByRole('heading', { name: 'Save points' })).toBeFocused();
+  await expect(pointsDrawer().getByRole('heading', { name: 'Version history' })).toBeFocused();
   await tabTo(section().getByRole('button', { name: 'Share my agents' }));
   await p.keyboard.press('Enter');
   await expect(sheet().getByRole('heading', { level: 2 })).toBeFocused();
@@ -423,7 +425,7 @@ for (const [w, h] of SIZES) {
 
 // ---- Screenshots.
 for (const [w, h] of SIZES) for (const look of THEMES) {
-  test(`screenshots at ${w} by ${h}, ${look}: Save points with Share, the Share sheet, after Save a copy`, async () => {
+  test(`screenshots at ${w} by ${h}, ${look}: Version history with Share, the Share sheet, after Save a copy`, async () => {
     test.skip(process.env.HOME_U0_SHOTS === undefined, 'Set HOME_U0_SHOTS to a folder to take screenshots.');
     const p = page();
     await setLook(p, look);

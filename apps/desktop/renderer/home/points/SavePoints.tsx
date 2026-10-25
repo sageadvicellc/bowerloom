@@ -1,5 +1,5 @@
 /**
- * The body of the Save points drawer: a list of the points the person has saved, newest first. Each row has its name, when it was made ("just now",
+ * The body of the Version history drawer: a list of the points the person has saved, newest first. Each row has its name, when it was made ("just now",
  * "2 saves ago", "when you began"), one short line about what changed, and "Go back to this" (the newest point says "You are here" instead). Going back
  * makes a new point equal to the old one, so nothing is lost and the list only grows. The rows come from `savePointRows`. Under the list, Share has its
  * own section: "Share my agents" and "Open a shared file" (storyboard open question 4: Share lives in this drawer, not in the main window).
@@ -24,11 +24,11 @@ export interface SavePointsProps {
 
 export function SavePoints({ rows, unsaved, onGoBack, onShare, onOpenFile }: SavePointsProps): ReactElement {
   const share = <ShareSection onShare={onShare} onOpenFile={onOpenFile} />;
-  if (rows.length === 0) return <><p className="kit-hint">{WORDS.hint.savePointsEmpty}</p>{share}</>;
+  if (rows.length === 0) return <><p className="kit-hint">{WORDS.hint.historyEmpty}</p>{share}</>;
   return (
     <>
       {unsaved ? <p className="kit-hint pt-warn" role="status">{WORDS.hint.pointsDirty}</p> : null}
-      <ol className="pt-list" aria-label={WORDS.label.savePoints}>
+      <ol className="pt-list" aria-label={WORDS.label.versionHistory}>
         {rows.map(row => (
           <li key={row.id} className="pt-row" data-point={row.id} data-current={row.current ? '' : undefined}>
             <div className="pt-text">

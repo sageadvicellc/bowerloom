@@ -1,5 +1,5 @@
 /**
- * The Share sheet: a small modal sheet, opened from the Share section of the Save points drawer. It says what a copy of the person's agents holds as counts
+ * The Share sheet: a small modal sheet, opened from the Share section of the Version history drawer. It says what a copy of the person's agents holds as counts
  * ("29 skills, 10 agents, 8 tools, 3 sets of notes"), what it leaves out ("Left out: 4 keys"), lets the person untick agents to leave them out, and "Save a
  * copy" makes the copy with the 0.7 bundle logic (shared/home/share-model.ts). The prototype writes nothing: the copy is kept in memory, the sheet says so,
  * and the Add drawer's "From a shared file" tab can open it again. Secrets never travel: a tool that needs a key arrives asking for one.

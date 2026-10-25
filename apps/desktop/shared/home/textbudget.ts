@@ -1,7 +1,9 @@
 /**
  * The text budget of the Bowerloom 0.8 home screens, as a pure check on rendered markup (React's `renderToStaticMarkup` output).
  * A label has at most 5 words and a hint at most 12. A heading or a button has at most 5 words, whatever sits inside it. Text inside an element marked
- * `data-budget="popover"` (the text behind a "?" button) may run to 25 words, and only there may it say "MCP". The banned words never appear.
+ * `data-budget="popover"` (the text behind a "?" button) may run to 25 words, and only there may it say "MCP". Text inside an element marked
+ * `data-budget="content"` is the person's own content (the full text of a skill, shown read only): it has no word limit, because it is not our wording, and it
+ * keeps the banned list, because the sample content is ours to write. The banned words never appear.
  * Every screen test of the home app calls `assertTextBudget` on what it renders. No DOM, no clock, no file.
  */
 
@@ -14,8 +16,12 @@ export const BANNED: readonly string[] = Object.freeze([
 /** The one banned word a "?" popover may use, because it is where the term is explained. */
 export const POPOVER_OK: readonly string[] = Object.freeze(['mcp']);
 
-/** A phrase that holds a banned word and is still the right screen word. It is taken out before the check. */
-export const ALLOWED_PHRASES: readonly string[] = Object.freeze(['this project only']);
+/**
+ * A phrase that holds a banned word and is still the right screen word. It is taken out before the check.
+ * "Version history" is Hanna's own name for the list of earlier copies (2026-10-25): the exact phrase passes, the single word "history" is not banned, and
+ * "version" alone (or "versions") stays banned.
+ */
+export const ALLOWED_PHRASES: readonly string[] = Object.freeze(['this project only', 'version history']);
 
 /** Limits, in words. */
 export const LIMITS = Object.freeze({ label: 5, hint: 12, popover: 25 });
@@ -40,7 +46,7 @@ export function countWords(text: string): number {
 }
 
 /** One piece of text found in markup. `kind` is `text` for a text node and `label` for an attribute that a person can hear (aria-label, title, alt, placeholder). */
-export interface TextPiece { readonly text: string; readonly kind: 'text' | 'label'; readonly popover: boolean }
+export interface TextPiece { readonly text: string; readonly kind: 'text' | 'label'; readonly popover: boolean; /** True inside `data-budget="content"`: no word limit. */ readonly content: boolean }
 
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 const SKIP = new Set(['script', 'style']);
@@ -57,8 +63,8 @@ function decode(text: string): string {
 }
 const tidy = (text: string): string => decode(text).replace(/\s+/g, ' ').trim();
 
-interface Frame { readonly name: string; readonly popover: boolean; readonly skip: boolean; text: string }
-interface Walk { readonly pieces: TextPiece[]; readonly boxes: { name: string; text: string; popover: boolean }[] }
+interface Frame { readonly name: string; readonly popover: boolean; readonly content: boolean; readonly skip: boolean; text: string }
+interface Walk { readonly pieces: TextPiece[]; readonly boxes: { name: string; text: string; popover: boolean; content: boolean }[] }
 
 const TOKEN = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>|([^<]+)|</g;
 const ATTR = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
@@ -72,7 +78,7 @@ function walk(markup: string): Walk {
     if (text === '') return;
     const top = stack[stack.length - 1];
     if (top !== undefined && stack.some(f => f.skip)) return;
-    out.pieces.push({ text, kind: 'text', popover: top?.popover ?? false });
+    out.pieces.push({ text, kind: 'text', popover: top?.popover ?? false, content: top?.content ?? false });
   };
   for (const m of markup.matchAll(TOKEN)) {
     const [whole, closing, rawName, rawAttrs, text] = m;
@@ -91,19 +97,20 @@ function walk(markup: string): Walk {
       if (at < 0) continue;
       for (let i = stack.length - 1; i >= at; i -= 1) {
         const frame = stack.pop()!;
-        if (BOXES.has(frame.name)) out.boxes.push({ name: frame.name, text: tidy(frame.text), popover: frame.popover });
+        if (BOXES.has(frame.name)) out.boxes.push({ name: frame.name, text: tidy(frame.text), popover: frame.popover, content: frame.content });
       }
       continue;
     }
     const attrs: Record<string, string> = {};
     for (const a of (rawAttrs ?? '').matchAll(ATTR)) attrs[a[1]!.toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? '';
     const popover = (stack[stack.length - 1]?.popover ?? false) || attrs['data-budget'] === 'popover';
+    const content = (stack[stack.length - 1]?.content ?? false) || attrs['data-budget'] === 'content';
     for (const key of LABEL_ATTRS) {
       const value = attrs[key];
-      if (value !== undefined && tidy(value) !== '' && name !== 'svg') out.pieces.push({ text: tidy(value), kind: 'label', popover });
+      if (value !== undefined && tidy(value) !== '' && name !== 'svg') out.pieces.push({ text: tidy(value), kind: 'label', popover, content: false });
     }
     if (VOID.has(name) || (rawAttrs ?? '').trimEnd().endsWith('/')) continue;
-    stack.push({ name, popover, skip: SKIP.has(name), text: '' });
+    stack.push({ name, popover, content, skip: SKIP.has(name), text: '' });
   }
   flush();
   return out;
@@ -117,20 +124,20 @@ const quote = (text: string): string => `"${text.length > 48 ? `${text.slice(0, 
 /**
  * Checks rendered markup against the budget and answers every problem as one plain sentence. An empty list means the markup is within budget.
  * Text nodes: at most 12 words (25 in a popover). Headings and buttons, and attribute labels: at most 5 words (25 in a popover).
- * The banned words fail anywhere; "MCP" passes inside a popover.
+ * The banned words fail anywhere; "MCP" passes inside a popover. Content (`data-budget="content"`) has no word limit and still has the banned words.
  */
 export function assertTextBudget(markup: string): string[] {
   const { pieces, boxes } = walk(markup);
   const problems: string[] = [];
   for (const p of pieces) {
     const words = countWords(p.text), limit = p.kind === 'label' ? (p.popover ? LIMITS.popover : LIMITS.label) : (p.popover ? LIMITS.popover : LIMITS.hint);
-    if (words > limit) problems.push(`${p.kind === 'label' ? 'Label' : 'Text'} ${quote(p.text)} has ${words} words, and the limit is ${limit}.`);
+    if (words > limit && !p.content) problems.push(`${p.kind === 'label' ? 'Label' : 'Text'} ${quote(p.text)} has ${words} words, and the limit is ${limit}.`);
     const banned = bannedIn(p.text, p.popover);
     if (banned !== null) problems.push(`The word "${banned}" is banned, in ${quote(p.text)}.`);
   }
   for (const b of boxes) {
     const words = countWords(b.text), limit = b.popover ? LIMITS.popover : LIMITS.label;
-    if (words > limit) problems.push(`The ${b.name === 'button' ? 'button' : 'heading'} ${quote(b.text)} has ${words} words, and the limit is ${limit}.`);
+    if (words > limit && !b.content) problems.push(`The ${b.name === 'button' ? 'button' : 'heading'} ${quote(b.text)} has ${words} words, and the limit is ${limit}.`);
   }
   return problems;
 }

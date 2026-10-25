@@ -1,5 +1,5 @@
 /**
- * The Share section at the foot of the Save points drawer: two buttons. "Share my agents" opens the Share sheet; "Open a shared file" opens the Add drawer
+ * The Share section at the foot of the Version history drawer: two buttons. "Share my agents" opens the Share sheet; "Open a shared file" opens the Add drawer
  * on its "From a shared file" tab. The section only asks; the page does the opening.
  */
 import type { ReactElement } from 'react';

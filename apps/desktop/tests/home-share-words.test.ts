@@ -90,14 +90,14 @@ test('the Share section has the heading, one hint and the two buttons, and passe
   assert.doesNotMatch(said(m), NO_PATH);
 });
 
-test('the Save points drawer body has the Share section under the list, and under an empty list too', () => {
+test('the Version history drawer body has the Share section under the list, and under an empty list too', () => {
   const row = { id: 'v1', name: 'How it started', when: 'when you began', changes: '', current: true };
   const full = html(createElement(SavePoints, { rows: [row], unsaved: false, onGoBack: none, onShare: none, onOpenFile: none }));
   within(full);
   assert.ok(full.indexOf('class="pt-list"') < full.indexOf('data-share-section'), 'the list comes first');
   const empty = html(createElement(SavePoints, { rows: [], unsaved: false, onGoBack: none, onShare: none, onOpenFile: none }));
   within(empty);
-  assert.match(empty, /No save points yet\./);
+  assert.match(empty, /No history yet\./);
   assert.match(empty, /data-share-section/);
 });
 

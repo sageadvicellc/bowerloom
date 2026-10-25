@@ -60,7 +60,7 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
       </Block>
       <Block title={L.galleryButtons}>
         <Cell caption={L.galleryPrimary}><Button variant="primary" icon="plus">{L.add}</Button></Cell>
-        <Cell caption={L.galleryQuiet}><Button icon="clock">{L.savePoints}</Button></Cell>
+        <Cell caption={L.galleryQuiet}><Button round icon="clock" aria-label={L.versionHistory} /></Cell>
         <Cell caption={L.galleryDisabled}><Button variant="primary" disabled>{L.save}</Button></Cell>
         <Cell caption={L.help}><Button round aria-label={L.help}>?</Button></Cell>
       </Block>
@@ -73,7 +73,7 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
         <Shelf title={L.galleryLongShelf} entries={LONG_SHELF} selectedId={null} onSelect={none} emptyText={WORDS.hint.emptyShelf} level={4} />
       </Block>
       <Block title={L.galleryHelp}>
-        <div className="hm-gallery-popover-room"><HelpPopover label={L.help} text={WORDS.popover.savePoint} defaultOpen /></div>
+        <div className="hm-gallery-popover-room"><HelpPopover label={L.help} text={WORDS.popover.versionHistory} defaultOpen /></div>
         <HelpPopover label={L.help} text={WORDS.popover.connection} />
       </Block>
       <Block title={L.galleryDrawer}>

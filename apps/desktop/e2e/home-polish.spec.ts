@@ -523,7 +523,7 @@ test('the copies dialog and the share sheet fade and rise in, and leave faster; 
   await expect(dialog).toHaveCount(0);
   await expect(panel().getByRole('button', { name: '2 different copies' })).toBeFocused();
   // The share sheet: the same.
-  await bar().getByRole('button', { name: 'Save points', exact: true }).click();
+  await bar().getByRole('button', { name: 'Version history', exact: true }).click();
   await p.getByRole('button', { name: 'Share my agents' }).click();
   const sheet = p.getByRole('dialog', { name: /Share/ });
   await expect(sheet).toBeVisible();

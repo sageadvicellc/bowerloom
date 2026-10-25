@@ -88,6 +88,13 @@ export const MOTION = Object.freeze({
     ring: { drawMs: 180, fadeMs: 400, holdMs: 5000, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', fadeEase: 'cubic-bezier(0.4, 0, 0.2, 1)' },
     /** Emil, on every button and tappable card: a press shrinks it to `scale` in `ms`, so a busy action feels answered at once. */
     press: { ms: 100, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', scale: 0.98 } satisfies Transition & { scale: number },
+    /** A tooltip waits this long, in milliseconds, after the pointer rests on a button before it shows. At once for the keyboard. The wait is not motion, so it stays under reduce motion. */
+    tooltip: { delayMs: 400 },
+    /**
+     * Emil: a mini accordion on an agent card opens and closes its list in `ms`, by letting the list's row take its height from 0 to its natural size, with the strong
+     * ease-out in both directions (a list that closes is not asked to leave slowly). The chevron on the chip turns in the same time. With reduce motion the list opens at once.
+     */
+    accordion: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** Jakub: the full-window Choose notes sheet fades in while it rises `distance` pixels. It leaves with the panel close time. */
     sheet: { ms: 180, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 8 } satisfies Slide,
   }),
@@ -142,6 +149,7 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   set('home-ring-fade-ms', `${ms(hm.ring.fadeMs)}ms`); set('home-ring-fade-ease', hm.ring.fadeEase); set('home-ring-fade-delay', `${ms(hm.ring.holdMs - hm.ring.fadeMs)}ms`);
   set('home-press-ms', `${ms(hm.press.ms)}ms`); set('home-press-ease', hm.press.ease); set('home-press-scale', String(prefersReducedMotion() ? 1 : hm.press.scale));
   t('home-sheet', hm.sheet); travel('home-sheet-travel', hm.sheet.distance);
+  t('home-accordion', hm.accordion);
   set('ease-out', MOTION.ease.out);
   travel('home-drawer-travel', hm.drawer.distance);
   travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);

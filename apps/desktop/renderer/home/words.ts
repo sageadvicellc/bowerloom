@@ -20,7 +20,7 @@ export const WORDS = deepFreeze({
   /** Names of things and buttons: at most 5 words each. */
   label: {
     appName: 'Bowerloom',
-    savePoints: 'Save points',
+    versionHistory: 'Version history',
     add: 'Add',
     help: 'Help',
     showTour: 'Show me around',
@@ -99,7 +99,7 @@ export const WORDS = deepFreeze({
     saved: BAR_WORDS.saved,
     tools: 'Tools let an agent reach outside services.',
     addEmpty: 'Skills, tools, and notes will show here.',
-    savePointsEmpty: 'No save points yet.',
+    historyEmpty: 'No history yet.',
     pointsDirty: 'Changes you have not saved will go away.',
     pointHere: 'You are here.',
     saveClean: CARD_WORDS.saveClean,
@@ -119,7 +119,7 @@ export const WORDS = deepFreeze({
   popover: {
     help: 'New here? The tour shows where everything is, and you can replay it.',
     preview: 'This is a preview. Nothing is written to your computer.',
-    savePoint: 'A save point is a copy of your agents that you can go back to.',
+    versionHistory: 'Version history lists the copies of your agents that you can go back to.',
     connection: 'A connection lets an agent use another program. Its technical name is MCP.',
   },
 });

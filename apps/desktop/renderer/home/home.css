@@ -13,7 +13,7 @@ html, body { height: 100%; }
 [data-home] .hm-preview { display: flex; align-items: center; gap: var(--hm-space-2); margin-left: var(--hm-space-2); }
 
 [data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
-/* A drawer (Add, Save points) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and
+/* A drawer (Add, Version history) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and
    the shelf that changes stays in view. The room is made on the drawer's own clock: the padding grows over the same 220 ms that the drawer slides in, and shrinks over
    its close time, so the map never jumps ahead of the drawer. (Padding is a layout property; it is the only way to move a grid of cards and keep it in step. It runs
    for 220 ms, once, and not at all under reduce motion.) The page marks the body `data-moving` for a moment around each open and close (HomeApp), so the

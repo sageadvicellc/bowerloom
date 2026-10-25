@@ -157,9 +157,23 @@ test('the shell has one "?" in the whole window: Help at the far right; Preview 
   within(m);
 });
 
+test('the Version history button is an icon-only clock button with a name, and a tooltip that describes it', () => {
+  const m = shell();
+  const button = /<button[^>]*aria-label="Version history"[^>]*>/.exec(m);
+  assert.ok(button !== null, 'a button named Version history');
+  assert.match(button![0], /data-round=""/); assert.match(button![0], /aria-expanded="false"/);
+  const described = /aria-describedby="([^"]+)"/.exec(button![0]);
+  assert.ok(described !== null, 'described by the tooltip');
+  assert.match(m, new RegExp(`<span class="kit-tip-text" role="tooltip" id="${described![1]!.replace(/[:]/g, '\\$&')}">Version history</span>`));
+  assert.match(m, /<span class="kit-tip"><button[^>]*aria-label="Version history"[^>]*><svg[^>]*>[\s\S]*?<\/svg><\/button>/, 'the button holds the clock and no words');
+  assert.doesNotMatch(m, /data-open=""[^>]*role="tooltip"|role="tooltip"[^>]*data-open/, 'the tooltip is closed when the page is drawn');
+  assert.doesNotMatch(m, /Save points/i);
+  within(m);
+});
+
 test('the shell: a top bar, a stage with the agents, a side panel with three shelves, a Save bar, and the six tour targets', () => {
   const m = shell();
-  assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Save points</); assert.match(m, />Add</); assert.match(m, /aria-label="Help"/);
+  assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Add</); assert.match(m, /aria-label="Help"/);
   assert.match(m, /<main id="main" class="hm-stage">/); assert.match(m, /<h1 [^>]*>Your agents<\/h1>/); assert.match(m, /10 agents/);
   assert.equal([...m.matchAll(/data-kind="agent"/g)].length, 10);
   assert.match(m, /<aside class="hm-panel" data-tour="shelves"/);

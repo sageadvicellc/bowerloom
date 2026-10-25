@@ -1,5 +1,5 @@
 /**
- * The rows of the Save points drawer, in plain words. The store keeps a list of save points ordered by a logical counter (no clock), so "when" is relative
+ * The rows of the Version history drawer, in plain words. The store keeps a list of save points ordered by a logical counter (no clock), so "when" is relative
  * to the newest point: "just now", "1 save ago", "2 saves ago", and "when you began" for the first. What changed comes from `diffVersions` between a
  * point and the one it grew from. Pure: no React, no DOM, no clock.
  */

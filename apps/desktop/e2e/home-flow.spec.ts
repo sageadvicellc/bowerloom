@@ -1,7 +1,7 @@
 /**
  * The whole storyboard, in the real window (Electron started with --prototype-v2, on the home app itself, with the Add drawer, the "two different copies"
- * dialog and the Save points drawer mounted in it): pick an agent, remove a skill, Save, see the ticks, Go back; open Add and add a skill by the picker and by a
- * real mouse drag onto an agent card; open the copies dialog from a badge and keep a copy; open Save points and go back to the first point. Also the Save bar
+ * dialog and the Version history drawer mounted in it): pick an agent, remove a skill, Save, see the ticks, Go back; open Add and add a skill by the picker and by a
+ * real mouse drag onto an agent card; open the copies dialog from a badge and keep a copy; open Version history and go back to the first point. Also the Save bar
  * sentences, the layout of the card (one column at 15 rem and wider), the tour with the Add drawer, Escape one layer at a time, less motion, the keyboard
  * alone, text size, and the text budget on the real page at every step.
  * Set HOME_U0_SHOTS to a folder to also save screenshots at 1440 by 900 and 900 by 600, light and dark.
@@ -133,10 +133,10 @@ test('the storyboard path: remove, save, ticks, go back; add by the picker and b
   expect(await barText()).toBe('3 changes');
   await expect(shelf('Skills').locator('.kit-card-main', { hasText: 'Sort mail by topic' })).toBeFocused();
 
-  // Save points: the points so far, newest first, then back to the first one.
+  // Version history: the points so far, newest first, then back to the first one.
   await saveButton().click();
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   await expect(addDrawer()).toHaveCount(0);
   await animationsDone(p);
@@ -168,7 +168,7 @@ test('the Save bar names one or two changes in plain words and says "N changes" 
   await bar().getByRole('button', { name: 'Discard changes' }).click();
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
   await saveButton().click();
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   expect(await pointsDrawer().locator('.pt-name').allTextContents()).toEqual(['Removed Write a reply', 'How it started']);
   await expect(pointsDrawer().locator('.pt-changes').first()).toHaveText('Changed Meeting assistant');
   await expect(pointsDrawer().locator('.pt-changes').last()).toHaveText('Your agents as Bowerloom found them.');
@@ -176,7 +176,7 @@ test('the Save bar names one or two changes in plain words and says "N changes" 
   await page().keyboard.press('Escape');
   await expect(pointsDrawer()).toHaveCount(0);
   await shelf('Skills').getByRole('button', { name: 'Remove List action items' }).click();
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await expect(pointsDrawer().getByText('Changes you have not saved will go away.')).toBeVisible();
   expect(await budget()).toEqual([]);
 });
@@ -250,11 +250,11 @@ test('a card 15 rem wide or more with a badge lays out in one column: name, hint
 
 // ---- Layout.
 for (const [w, h] of SIZES) {
-  test(`at ${w} by ${h} the Add drawer and the Save points drawer fit: nothing overlaps, nothing is cut off, no sideways scroll`, async () => {
+  test(`at ${w} by ${h} the Add drawer and the Version history drawer fit: nothing overlaps, nothing is cut off, no sideways scroll`, async () => {
     const p = page();
     await resize(p, w, h);
     await pick('Inbox sorter');
-    for (const [button, drawer] of [['Add', addDrawer()], ['Save points', pointsDrawer()]] as const) {
+    for (const [button, drawer] of [['Add', addDrawer()], ['Version history', pointsDrawer()]] as const) {
       await topBar(button).click();
       await expect(drawer).toBeVisible();
       await animationsDone(p);
@@ -362,14 +362,14 @@ test('with less motion: no slide, no line, nothing animates, and the new card is
   await saveButton().click();
   await framesPainted(p);
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
   expect(await budget()).toEqual([]);
 });
 
 // ---- The keyboard alone.
-test('the keyboard does all of it: open Add, add a skill by the picker, save, open Save points and go back', async () => {
+test('the keyboard does all of it: open Add, add a skill by the picker, save, open Version history and go back', async () => {
   const p = page();
   await skipTour(p);
   // Inbox sorter is the first agent, so the map picked it already: Enter puts it down, and Enter again picks it.
@@ -398,9 +398,9 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
   await tabTo(saveButton());
   await p.keyboard.press('Enter');
   await expect(bar().getByText(SAVED, { exact: true })).toBeVisible();
-  await tabTo(topBar('Save points'));
+  await tabTo(topBar('Version history'));
   await p.keyboard.press('Enter');
-  await expect(pointsDrawer().getByRole('heading', { name: 'Save points' })).toBeFocused();
+  await expect(pointsDrawer().getByRole('heading', { name: 'Version history' })).toBeFocused();
   const first = pointsDrawer().getByRole('button', { name: 'Go back to this' });
   await expect(first).toHaveCount(1);
   await tabTo(first);
@@ -409,11 +409,11 @@ test('the keyboard does all of it: open Add, add a skill by the picker, save, op
   expect(await skills()).not.toContain('Answer a common question');
   await p.keyboard.press('Escape');
   await expect(pointsDrawer()).toHaveCount(0);
-  await expect(topBar('Save points')).toBeFocused();
+  await expect(topBar('Version history')).toBeFocused();
 });
 
 // ---- Text.
-test('no text is under 14 px in the Add drawer, the dialog, the Save points drawer or the bar, and every button is 44 px tall or more', async () => {
+test('no text is under 14 px in the Add drawer, the dialog, the Version history drawer or the bar, and every button is 44 px tall or more', async () => {
   const p = page();
   await pick('Inbox sorter');
   await shelf('Skills').getByRole('button', { name: 'Remove Write a reply' }).click();
@@ -439,7 +439,7 @@ test('no text is under 14 px in the Add drawer, the dialog, the Save points draw
   await row('skill-014').getByRole('button', { name: '2 different copies' }).click();
   expect(await small()).toEqual([]);
   await p.keyboard.press('Escape');
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   expect(await small()).toEqual([]);
   expect(await tall(pointsDrawer())).toEqual([]);
@@ -484,7 +484,7 @@ for (const [w, h] of SIZES) for (const look of THEMES) {
     // Save, then two save points.
     await saveButton().click();
     await shot(p, '5-saved', w, h, look);
-    await topBar('Save points').click();
+    await topBar('Version history').click();
     await expect(pointsDrawer()).toBeVisible();
     await shot(p, '6-save-points', w, h, look);
   });
@@ -622,8 +622,8 @@ test('Escape closes one layer at a time with the Choose notes sheet: it takes a 
   await expect(notesLayer()).toHaveCount(0);
   await expect(addDrawer()).toHaveCount(0);
   await expect(chooseButton()).toBeFocused();
-  // Save points is a drawer too.
-  await topBar('Save points').click();
+  // Version history is a drawer too.
+  await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   await chooseButton().click();
   await expect(notesLayer()).toBeVisible();

@@ -1,6 +1,6 @@
 /**
- * The home app shell: a top bar (the name with the leaf, "Save points", "Add", and the "?" Help button), a stage with the map, a side panel for the shelves
- * of the agent that is picked, a Save bar at the bottom, and two right-side drawers (Add, Save points) that open over the stage. There is no left rail and no routing.
+ * The home app shell: a top bar (the name with the leaf, the clock button "Version history" with its tooltip, "Add", and the "?" Help button), a stage with the map, a side panel for the shelves
+ * of the agent that is picked, a Save bar at the bottom, and two right-side drawers (Add, Version history) that open over the stage. There is no left rail and no routing.
  * A small "Preview" badge with its own "?" sits beside the name, always: this prototype writes nothing to the computer, and the popover says so.
  * The map is a plain grid of the person's own agents, one card each, in one order at a time (by name, or by how recently each changed). Picking an agent fills the
  * three shelves of the panel: Skills, Tools and Notes, each card with a quiet "Remove". Removing stages a change in the draft; the Save bar counts the changes and
@@ -9,11 +9,11 @@
  * The Add drawer holds the Add body (plain names and hints from the plain layer; a card goes to an agent by the picker or by a drag onto an agent card). After
  * an add the agent is picked, so its shelf shows the new card, both the agent card and the new card wear the same ring for a few seconds (a line across
  * the map would cross other cards), and the Save bar says what changed. The
- * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Save points drawer lists the
- * save points with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a small modal sheet that makes a copy
+ * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Version history drawer lists the
+ * earlier copies with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a small modal sheet that makes a copy
  * of the saved agents in memory; the prototype writes nothing), and "Open a shared file" opens the Add drawer on its "From a shared file" tab, where the copy
  * can be opened again. The Notes shelf has a "Choose notes" button that opens the full-window Choose notes sheet for the agent that is picked; "Use these
- * notes" stages one change, picks the agent and rings the new card like an add does. With the Add or Save points drawer open the page keeps clear of it: the
+ * notes" stages one change, picks the agent and rings the new card like an add does. With the Add or Version history drawer open the page keeps clear of it: the
  * shelves stay beside the map in a wide window and give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the copies
  * dialog or the Share sheet, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
  * The Add picker and the drop targets leave out the agents that Find skipped, like the map.
@@ -51,6 +51,7 @@ import { HelpPopover } from './kit/HelpPopover.js';
 import { KitIcon } from './kit/icons.js';
 import { ItemCard } from './kit/ItemCard.js';
 import { Shelf } from './kit/Shelf.js';
+import { Tooltip } from './kit/Tooltip.js';
 import { SortToggle } from './map/SortToggle.js';
 import { SaveBar } from './save/SaveBar.js';
 import { MOTION } from '../motion-tokens.js';
@@ -242,7 +243,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setTouched(current => touch(current, agentId));
     setFresh(current => ({ agentId, entryId: null, notes: true, phase: flip(current) }));
   };
-  /** "Open a shared file" in the Save points drawer: the Add drawer opens on its shared-file tab. */
+  /** "Open a shared file" in the Version history drawer: the Add drawer opens on its shared-file tab. */
   const openFile = (): void => { setSharing(false); setAddTab('file'); setDrawer('add'); };
   const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); tourDo('acted'); };
   /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
@@ -305,7 +306,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           <HelpPopover pill={WORDS.label.preview} label={WORDS.label.aboutPreview} text={WORDS.popover.preview} />
         </div>
         <span className="hm-spacer" />
-        <Button icon="clock" aria-expanded={drawer === 'points'} onClick={() => toggle('points')}>{WORDS.label.savePoints}</Button>
+        <Tooltip text={WORDS.label.versionHistory}>
+          {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} onClick={() => toggle('points')} {...aria} />}
+        </Tooltip>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
         <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setPicked(null); setPickedItem(null); tourDo('replay'); } }} />
       </header>
@@ -347,7 +350,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
           <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} onShow={showAdded} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
         </Drawer>
-        <Drawer open={drawer === 'points'} title={WORDS.label.savePoints} onClose={() => setDrawer(null)} dataSlot="points">
+        <Drawer open={drawer === 'points'} title={WORDS.label.versionHistory} onClose={() => setDrawer(null)} dataSlot="points">
           <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} onShare={() => setSharing(true)} onOpenFile={openFile} />
         </Drawer>
         <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} />

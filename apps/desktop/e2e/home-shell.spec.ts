@@ -32,7 +32,7 @@ test('it opens on the agents: a top bar, a grid of ten agent cards, a side panel
   await expect(p.locator('.kit-card[data-kind="agent"]')).toHaveCount(10);
   await expect(p.locator('nav, .sidebar')).toHaveCount(0);
   const bar = p.locator('header.hm-bar');
-  for (const name of ['Save points', 'Add', 'Help']) await expect(bar.getByRole('button', { name })).toBeVisible();
+  for (const name of ['Version history', 'Add', 'Help']) await expect(bar.getByRole('button', { name })).toBeVisible();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save' })).toBeDisabled();
   await expect(p.getByText('Nothing to save yet')).toBeVisible();
   for (const id of ['bar', 'map', 'agent', 'shelves', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
@@ -102,9 +102,9 @@ test('no text on the page is under 14 px, and the base text, hint and heading si
   expect(measure).toMatchObject({ label: 16, hint: 14, heading: 20, h2: 20, h3: 20, button: 16, body: 16 });
 });
 
-test('the Add and Save points drawers take the focus, close with Escape and the Close button, return the focus, and only one is open', async () => {
+test('the Add and Version history drawers take the focus, close with Escape and the Close button, return the focus, and only one is open', async () => {
   const p = page();
-  const add = p.locator('header.hm-bar').getByRole('button', { name: 'Add' }), points = p.locator('header.hm-bar').getByRole('button', { name: 'Save points' });
+  const add = p.locator('header.hm-bar').getByRole('button', { name: 'Add' }), points = p.locator('header.hm-bar').getByRole('button', { name: 'Version history' });
   await add.focus(); await p.keyboard.press('Enter');
   const drawer = p.getByRole('dialog', { name: 'Add' });
   await expect(drawer).toBeVisible();
@@ -117,7 +117,7 @@ test('the Add and Save points drawers take the focus, close with Escape and the 
   await expect(drawer).toHaveCount(0);
   await expect(add).toBeFocused();
   await points.click();
-  await expect(p.getByRole('dialog', { name: 'Save points' })).toBeVisible();
+  await expect(p.getByRole('dialog', { name: 'Version history' })).toBeVisible();
   await add.click();
   await expect(p.getByRole('dialog')).toHaveCount(1); await expect(p.getByRole('dialog', { name: 'Add' })).toBeVisible();
   await p.getByRole('dialog', { name: 'Add' }).getByRole('button', { name: 'Close' }).click();
@@ -147,7 +147,7 @@ test('the Tab order follows the reading order: the top bar, then the agents, the
     names.push(await p.evaluate(() => { const el = document.activeElement as HTMLElement | null; return el === null ? '' : (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(); }));
   }
   const at = (n: string): number => names.indexOf(n);
-  expect(names[0]).toBe('About this preview'); expect(at('Save points')).toBe(1);   // the Preview badge's help comes first in the bar (review item 16) expect(at('Add')).toBeGreaterThan(at('Save points')); expect(at('Help')).toBeGreaterThan(at('Add'));
+  expect(names[0]).toBe('About this preview'); expect(at('Version history')).toBe(1);   // the Preview badge's help comes first in the bar (review item 16) expect(at('Add')).toBeGreaterThan(at('Version history')); expect(at('Help')).toBeGreaterThan(at('Add'));
   expect(at('Name')).toBeGreaterThan(at('Help')); expect(at('Recently changed')).toBeGreaterThan(at('Name'));
   expect(at('Inbox sorter')).toBeGreaterThan(at('Recently changed')); expect(at('Interview notetaker')).toBeGreaterThan(at('Inbox sorter'));
 });

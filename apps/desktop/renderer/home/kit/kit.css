@@ -146,6 +146,21 @@
 [data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-card-shelf-w)), 1fr)); gap: var(--hm-space-3); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
+/* ---- Tooltip: the words of an icon-only button. It sits 8 px under the button (never over it), takes no pointer, and is 14 px or more. It fades in with a 4 px rise over
+   the overlay time and out faster; with reduce motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
+[data-home] .kit-tip { position: relative; display: inline-flex; }
+[data-home] .kit-tip-text {
+  position: absolute; z-index: 35; top: calc(100% + var(--hm-space-2)); right: 0; padding: var(--hm-space-2) var(--hm-space-3);
+  background: var(--text); color: var(--bg); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift);
+  font-size: var(--hm-text-small); font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
+  opacity: 0; visibility: hidden; transform: translateY(var(--motion-home-overlay-travel, 0px));
+  transition: visibility 0s linear var(--motion-home-overlay-out-ms, 0ms), opacity var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in);
+}
+[data-home] .kit-tip-text[data-open] {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), transform var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), visibility;
+}
+
 /* ---- Help popover */
 [data-home] .kit-help { position: relative; display: inline-flex; }
 [data-home] .kit-popover {

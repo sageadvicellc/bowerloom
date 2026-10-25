@@ -127,7 +127,7 @@ test('Save makes a save point and shows "Saved" with three ticks; Go back undoes
   await expect(bar().getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
   await expect(bar().getByRole('button', { name: 'Go back' })).toBeFocused();
   expect(await shelf('Skills').locator('.kit-card-main').allTextContents()).toEqual(['Summarize a meeting']);
-  // The save point is real: the Save points drawer is a placeholder in this slice, so read the store through the page's own words instead: Save is off and the bar is calm.
+  // The save point is real: the Version history drawer is a placeholder in this slice, so read the store through the page's own words instead: Save is off and the bar is calm.
   await expect(bar().getByText('Nothing to save yet')).toHaveCount(0);
   expect(await budget()).toEqual([]);
   await bar().getByRole('button', { name: 'Go back' }).click();

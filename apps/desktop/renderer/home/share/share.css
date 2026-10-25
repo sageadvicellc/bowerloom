@@ -1,5 +1,5 @@
 /*
- * Share: the section at the foot of the Save points drawer and the small Share sheet. Everything starts at [data-home] and takes its colours from the shared
+ * Share: the section at the foot of the Version history drawer and the small Share sheet. Everything starts at [data-home] and takes its colours from the shared
  * tokens (light and dark), its sizes from home-tokens.css (text 14 px at the least) and its timing from the motion tokens, which are 0 when the person asked
  * for less motion. The sheet sits on the same scrim as the "two different copies" dialog (add.css) and is a grid: title, a summary that stays in view, the
  * agents (the only part that scrolls), and the buttons at the foot.

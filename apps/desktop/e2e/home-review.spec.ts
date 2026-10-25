@@ -63,9 +63,9 @@ test('Escape closes the copies dialog and not the Add drawer under it, even afte
   await expect(topBar('Add')).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('Escape closes the Share sheet and not the Save points drawer under it, even after a click on plain text in the sheet (review item 2)', async () => {
+test('Escape closes the Share sheet and not the Version history drawer under it, even after a click on plain text in the sheet (review item 2)', async () => {
   const p = page();
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await expect(pointsDrawer()).toBeVisible();
   await animationsDone(p);
   await pointsDrawer().getByRole('button', { name: 'Share my agents' }).click();
@@ -77,7 +77,7 @@ test('Escape closes the Share sheet and not the Save points drawer under it, eve
   await expect(sheet).toHaveCount(0);
   await animationsDone(p);
   await expect(pointsDrawer()).toBeVisible();
-  await expect(topBar('Save points')).toHaveAttribute('aria-expanded', 'true');
+  await expect(topBar('Version history')).toHaveAttribute('aria-expanded', 'true');
 });
 
 test('Escape closes an open help popover and not the drawer under it (review item 2)', async () => {
@@ -225,7 +225,7 @@ test('several files let go at once: the first is read, and the screen says so (r
 // ---- Items 6 and 9: the Share sheet.
 test('the Share sheet says what is true about keys and text (review item 9); the sample has no ready-made skill, so it names none (review item 6)', async () => {
   const p = page();
-  await topBar('Save points').click();
+  await topBar('Version history').click();
   await pointsDrawer().getByRole('button', { name: 'Share my agents' }).click();
   const sheet = p.getByRole('dialog', { name: 'Share my agents' });
   await expect(sheet).toBeVisible();
@@ -316,7 +316,7 @@ test('a "Preview" badge with its own help sits in the top bar and says nothing i
   await p.keyboard.press('Escape');
   await resize(p, 900, 600);
   const b = await rectOf(p, 'header.hm-bar [data-preview]');
-  for (const name of ['Save points', 'Add', 'Help']) expect(overlaps(b, await rectOf(p, `header.hm-bar button[aria-label="${name}"], header.hm-bar button:has-text("${name}")`)), name).toBe(false);
+  for (const name of ['Version history', 'Add', 'Help']) expect(overlaps(b, await rectOf(p, `header.hm-bar button[aria-label="${name}"], header.hm-bar button:has-text("${name}")`)), name).toBe(false);
   const header = await rectOf(p, 'header.hm-bar');
   expect(b.x + b.w).toBeLessThanOrEqual(header.w);
   expect(header.h).toBeLessThan(90);

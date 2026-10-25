@@ -54,8 +54,29 @@ test('the banned words fail as whole words, in any case, and a longer word is fi
 });
 
 test('the words the storyboard asks for are fine, including "This project only"', () => {
-  ok('<button>This project only</button><button>Everywhere</button><p>Save points, Go back, Find, Bring in, Share, Open a shared file</p><p>Draw a loop</p><p>can only read</p>');
+  ok('<button>This project only</button><button>Everywhere</button><p>Version history, Go back, Find, Bring in, Share, Open a shared file</p><p>Draw a loop</p><p>can only read</p>');
   assert.equal(problems('<p>The project folder</p>').length, 1, 'project alone is still banned');
+});
+
+test('"version history" is the one phrase that lets "version" through; the word "history" alone is fine, and bare "version" stays banned', () => {
+  ok('<button aria-label="Version history">x</button><h2>Version history</h2><p>VERSION HISTORY</p><p>version  history</p><p>Your history</p>');
+  assert.equal(problems('<p>The version</p>').length, 1); assert.equal(problems('<p>Two versions</p>').length, 1);
+  assert.equal(problems('<p>Version 2</p>').length, 1); assert.equal(problems('<p>Version histories</p>').length, 1, 'only the exact phrase');
+  assert.equal(problems('<p>Version history and a version</p>').length, 1, 'a bare version beside the phrase is still caught');
+  assert.equal(problems('<p>A version of history</p>').length, 1);
+  assert.ok(BANNED.includes('version') && !BANNED.includes('history'));
+});
+
+test('content (the full text of a skill) has no word limit, and still has the banned words', () => {
+  const long = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
+  ok(`<div data-budget="content"><p>${long}</p><p>${long}</p></div>`);
+  ok(`<div data-budget="content"><div><p>${long}</p></div></div>`);
+  assert.equal(problems(`<div data-budget="content"><p>${long}</p></div><p>${long}</p>`).length, 1, 'text after the block is outside it again');
+  assert.equal(problems('<div data-budget="content"><p>Read the plan first.</p></div>').length, 1, 'a banned word in content fails');
+  assert.equal(problems('<div data-budget="content"><p>It runs over MCP.</p></div>').length, 1, 'MCP is a popover word, not a content word');
+  assert.equal(problems('<div data-budget="content"><p>Meet the team in a version.</p></div>').length, 1);
+  ok('<div data-budget="content"><p>Read the version history.</p></div>');
+  assert.ok(extractText('<div data-budget="content"><p>One.</p></div><p>Two.</p>').map(p => p.content).join() === 'true,false');
 });
 
 test('a banned word in an attribute label also fails', () => {
