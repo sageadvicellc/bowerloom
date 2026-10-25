@@ -1,21 +1,23 @@
 /**
- * The home app shell: a top bar (the name with the leaf, the clock button "Version history" with its tooltip, "Add", and the "?" Help button), a stage with the map, a side panel for the shelves
- * of the agent that is picked, a Save bar at the bottom, and two right-side drawers (Add, Version history) that open over the stage. There is no left rail and no routing.
+ * The home app shell: a top bar (the name with the leaf, the clock button "Version history" with its tooltip, "Add", and the "?" Help button), a stage with the map, a
+ * details panel on the right, a Save bar at the bottom, and two right-side drawers (Add, Version history) that open over the stage. There is no left rail and no routing.
  * A small "Preview" badge with its own "?" sits beside the name, always: this prototype writes nothing to the computer, and the popover says so.
- * The map is a plain grid of the person's own agents, one card each, in one order at a time (by name, or by how recently each changed). Picking an agent fills the
- * three shelves of the panel: Skills, Tools and Notes, each card with a quiet "Remove". Removing stages a change in the draft; the Save bar counts the changes and
- * makes a save point, and "Go back" undoes it. The `data-tour` ids stay on the same things: map, agent, shelves, add, save, help (and `bar` on the top bar).
- * Every agent card carries `data-drop-agent` with the agent's id, so a drag can find the card it lands on.
+ * The map is a plain grid of the person's own agents, one card each, in one order at a time (by name, or by how recently each changed). An agent card says what the agent
+ * can do at a glance: its job and a count chip for each kind it holds ("3 skills", "1 tool", "1 notes set"); a chip opens a mini accordion in the card that lists the names.
+ * One thing is selected at a time (`selected`: an agent, or a skill, tool or set of notes with the agent it was opened from). A selection is only a highlight, never a
+ * check mark. The details panel shows the selection, read only (see details/DetailsPanel.tsx): an agent's own Skills, Tools and Notes keep a quiet "Remove". Removing
+ * stages a change in the draft; the Save bar counts the changes and makes a version of the history, and "Go back" undoes it. The `data-tour` ids are map, agent,
+ * details (the panel), add, save, help (and `bar` on the top bar). Every agent card carries `data-drop-agent` with the agent's id, so a drag can find the card it lands on.
  * The Add drawer holds the Add body (plain names and hints from the plain layer; a card goes to an agent by the picker or by a drag onto an agent card). After
- * an add the agent is picked, so its shelf shows the new card, both the agent card and the new card wear the same ring for a few seconds (a line across
+ * an add the agent is selected, so its panel shows the new card; both the agent card and the new card wear the same ring for a few seconds (a line across
  * the map would cross other cards), and the Save bar says what changed. The
- * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Version history drawer lists the
- * earlier copies with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a small modal sheet that makes a copy
- * of the saved agents in memory; the prototype writes nothing), and "Open a shared file" opens the Add drawer on its "From a shared file" tab, where the copy
- * can be opened again. The Notes shelf has a "Choose notes" button that opens the full-window Choose notes sheet for the agent that is picked; "Use these
- * notes" stages one change, picks the agent and rings the new card like an add does. With the Add or Version history drawer open the page keeps clear of it: the
- * shelves stay beside the map in a wide window and give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the copies
- * dialog or the Share sheet, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
+ * "2 different copies" badge on a line of an agent card, a card of the panel, the details of a skill or a drawer card opens the copies dialog, which sits at the top of the
+ * page. The Version history drawer lists the earlier copies with "Go back to this", and under them has the Share section: "Share my agents" opens the Share sheet (a
+ * small modal sheet that makes a copy of the saved agents in memory; the prototype writes nothing), and "Open a shared file" opens the Add drawer on its "From a shared
+ * file" tab, where the copy can be opened again. The Notes section of an agent has a "Choose notes" button that opens the full-window Choose notes sheet for the agent
+ * that is selected; "Use these notes" stages one change, selects the agent and rings the new card like an add does. With the Add or Version history drawer open the page
+ * keeps clear of it: the panel stays beside the map in a wide window and gives way to the drawer in a narrow one. Escape closes the top layer only: the tooltip, the tour,
+ * then the copies dialog or the Share sheet, then the Choose notes sheet, then a drawer (the sheet closes a drawer when it opens, and the tour closes both when it starts).
  * The Add picker and the drop targets leave out the agents that Find skipped, like the map.
  * The first minute (HomeFlow) sets four things from outside: the agents of places the person skipped in Find stay off the map (`skipped`), the tour starts by
  * itself once when `autoTour` is set, "Find more" reopens Find (`onFindMore`), and `closingNote` allows one short note after the first Save, once per session.
@@ -25,6 +27,8 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } fro
 import type { ReactElement } from 'react';
 import type { InterfaceId } from '../../shared/proto/types.js';
 import { agentCard, ownedAgents, shelvesOf } from '../../shared/home/cards.js';
+import { agentOfSelected, detailsOf } from '../../shared/home/details.js';
+import type { Selected } from '../../shared/home/details.js';
 import { DEFAULT_TAB } from '../../shared/home/add-model.js';
 import type { AddTab } from '../../shared/home/add-model.js';
 import type { ShelfEntry } from '../../shared/home/cards.js';
@@ -41,7 +45,7 @@ import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
 import { CopiesDialog } from './copies/CopiesDialog.js';
 import { ChooseNotes } from './notes/ChooseNotes.js';
-import { NotesShelf } from './notes/NotesShelf.js';
+import { DetailsPanel } from './details/DetailsPanel.js';
 import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
 import { Button } from './kit/Button.js';
@@ -49,8 +53,7 @@ import { Drawer } from './kit/Drawer.js';
 import { useLeaving, usePresence } from './kit/presence.js';
 import { HelpPopover } from './kit/HelpPopover.js';
 import { KitIcon } from './kit/icons.js';
-import { ItemCard } from './kit/ItemCard.js';
-import { Shelf } from './kit/Shelf.js';
+import { AgentCard } from './kit/AgentCard.js';
 import { Tooltip } from './kit/Tooltip.js';
 import { SortToggle } from './map/SortToggle.js';
 import { SaveBar } from './save/SaveBar.js';
@@ -118,8 +121,7 @@ const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (
 
 export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore, barPhase }: HomeAppProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
-  const [picked, setPicked] = useState<string | null>(null);
-  const [pickedItem, setPickedItem] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Selected | null>(null);
   const [drawer, setDrawer] = useState<DrawerId | null>(null);
   const [sort, setSort] = useState<SortMode>('name');
   const [touched, setTouched] = useState<readonly string[]>([]);
@@ -145,9 +147,11 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const world = state.draft;
   const owned = useMemo(() => ownedAgents(world).filter(a => !skipped.includes(a.id)), [world, skipped]);
   const agents = useMemo(() => sortAgents(owned, sort, touched), [owned, sort, touched]);
+  // The agent whose card is lit: the selected agent, or the owner of the selected skill, tool or set of notes.
+  const picked = agentOfSelected(selected);
   const agent = agents.find(a => a.id === picked) ?? null;
-  const card = agent === null ? null : agentCard(agent);
   const shelves = useMemo(() => (agent === null ? null : shelvesOf(world, agent)), [world, agent]);
+  const details = useMemo(() => detailsOf(world, agents, selected), [world, agents, selected]);
   const changes = changeCount(state.committed, state.draft);
   const said = useMemo(() => barSentence(listChanges(state.committed, state.draft), changes), [state.committed, state.draft, changes]);
   const bar = saveBar(changes, state.committed.versions.length, phase, said);
@@ -171,8 +175,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     if (startingTour.current || !wantFirst.current) return;
     wantFirst.current = false;
     const first = agents[0];
-    if (picked === null && first !== undefined) setPicked(first.id);
-  }, [tour.status, picked, agents]);
+    if (selected === null && first !== undefined) setSelected({ kind: 'agent', id: first.id });
+  }, [tour.status, selected, agents]);
   // The closing note goes by itself.
   useEffect(() => {
     if (!note) return undefined;
@@ -181,10 +185,16 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   }, [note]);
   // The tour dims the page, so the person cannot click an agent. When it reaches the shelves with nothing picked, it opens one that has something to show.
   useEffect(() => {
-    if (stepId !== 'shelves' || picked !== null) return;
+    if (stepId !== 'details' || selected !== null) return;
     const first = agentForTour(world, agents);
-    if (first !== null) setPicked(first.id);
-  }, [stepId, picked, world, agents]);
+    if (first !== null) setSelected({ kind: 'agent', id: first.id });
+  }, [stepId, selected, world, agents]);
+  // A selection whose thing is gone (it was removed, a change was put back, a place was skipped) falls back to its agent, else to nothing.
+  useEffect(() => {
+    if (selected === null || details !== null) return;
+    const owner = selected.kind === 'agent' ? undefined : selected.ownerAgentId;
+    setSelected(owner !== undefined && agents.some(a => a.id === owner) ? { kind: 'agent', id: owner } : null);
+  }, [selected, details, agents]);
   // The page makes room for a drawer on the drawer's own clock. The body is marked as moving in the same pass that opens or closes the drawer (before the browser
   // works out the new look), and the mark goes a moment after, so a change of the window size alone never runs the transition.
   const drawerSeen = useRef<DrawerId | null>(null);
@@ -238,43 +248,47 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   };
   /** "Use these notes" staged a change: pick that agent, move it up the recent order, and ring the new card on its Notes shelf, as an add does. */
   const chosen = (agentId: string): void => {
-    setPicked(agentId);
-    setPickedItem(null);
+    setSelected({ kind: 'agent', id: agentId });
     setTouched(current => touch(current, agentId));
     setFresh(current => ({ agentId, entryId: null, notes: true, phase: flip(current) }));
   };
   /** "Open a shared file" in the Version history drawer: the Add drawer opens on its shared-file tab. */
   const openFile = (): void => { setSharing(false); setAddTab('file'); setDrawer('add'); };
-  const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); tourDo('acted'); };
+  /** The card of an agent was pressed: it is selected, and pressed again it is put down. An agent whose item is selected is selected itself by this press. */
+  const pick = (id: string): void => { setSelected(current => (current !== null && current.kind === 'agent' && current.id === id ? null : { kind: 'agent', id })); setFresh(null); tourDo('acted'); };
+  /** A line in an agent card, or a card in the panel, was pressed: that item is selected, and the agent it was opened from keeps the highlight as its owner. */
+  const pickItem = (ownerAgentId: string, entry: ShelfEntry): void => { setSelected({ kind: entry.kind, id: entry.id, ownerAgentId }); tourDo('acted'); };
   /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
   const added = ({ agentId, entry }: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => {
-    setPicked(agentId);
-    setPickedItem(null);
+    setSelected({ kind: 'agent', id: agentId });
     setTouched(current => touch(current, agentId));
     setFresh(current => ({ agentId, entryId: entry.kind === 'agent' ? null : entry.id, phase: flip(current) }));
   };
   /** "Show" on the note after an add: the drawer closes, and the new card is brought into view and rung again (also where the drawer had hidden the shelves). */
   const showAdded = (info: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => { added(info); setDrawer(null); };
-  /** When the badge is gone (a copy was kept) the card is still there: the focus goes to its name. */
+  /** When the badge is gone (a copy was kept) the card is still there: the focus goes to its name, else (the details of that skill) to the panel heading. */
   const restoreCopiesFocus = (): HTMLElement | null => {
     // The dialog is held for its exit after it closes, so the item it was about is the held value, not the (already empty) state.
     const item = copies.value === null ? undefined : world.items.find(i => i.id === copies.value);
     const name = item === undefined ? '' : nameOf(item.name);
     const cards = [...document.querySelectorAll<HTMLElement>(`${copiesFrom.current} .kit-card-main`)];
-    return cards.find(el => el.textContent === name) ?? null;
+    return cards.find(el => el.textContent === name) ?? (copiesFrom.current === '.hm-panel' ? panel.current?.querySelector<HTMLElement>('#hm-panel-title') ?? null : null);
   };
   /** Opens the dialog for one item, and remembers whether the badge was in a drawer or on the shelves, so the focus goes back to the same place. */
   const openCopies = (id: string): void => {
     copiesFrom.current = document.activeElement?.closest('.kit-drawer') != null ? '.kit-drawer' : '.hm-panel';
     setCopiesFor(id);
   };
-  const remove = (entry: ShelfEntry): void => {
-    if (agent === null) return;
-    const list = shelves === null ? [] : entry.kind === 'skill' ? shelves.skills : entry.kind === 'tool' ? shelves.tools : shelves.notes;
-    focusAfter.current = { kind: entry.kind, index: list.findIndex(e => e.id === entry.id) };
-    dispatch(removeAction(agent.id, entry.kind, entry.id));
-    setTouched(current => touch(current, agent.id));
-    setPickedItem(null);
+  /** Takes one item off one agent: from its shelves in the panel, or from the details of the item. The agent is then the selection, and the focus lands near where the item was. */
+  const remove = (agentId: string, entry: ShelfEntry): void => {
+    const target = agents.find(a => a.id === agentId);
+    if (target === undefined) return;
+    const own = shelvesOf(world, target);
+    const list = entry.kind === 'skill' ? own.skills : entry.kind === 'tool' ? own.tools : own.notes;
+    focusAfter.current = selected !== null && selected.kind !== 'agent' ? 'heading' : { kind: entry.kind, index: list.findIndex(e => e.id === entry.id) };
+    dispatch(removeAction(agentId, entry.kind, entry.id));
+    setTouched(current => touch(current, agentId));
+    setSelected({ kind: 'agent', id: agentId });
     setFresh(null);
   };
   const save = (): void => {
@@ -310,7 +324,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           {aria => <Button round icon="clock" aria-label={WORDS.label.versionHistory} aria-expanded={drawer === 'points'} onClick={() => toggle('points')} {...aria} />}
         </Tooltip>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
-        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setPicked(null); setPickedItem(null); tourDo('replay'); } }} />
+        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => { setSelected(null); tourDo('replay'); } }} />
       </header>
 
       <div className="hm-body" ref={body} data-drawer={drawer ?? undefined}>
@@ -328,23 +342,19 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
           <ul className="hm-grid" data-tour="map" aria-label={WORDS.label.yourAgents}>
             {agents.map((a, i) => {
               const words = agentCard(a);
+              const mine = selected !== null && selected.kind !== 'agent' && selected.ownerAgentId === a.id ? selected.id : null;
               return (
                 <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id}>
-                  <ItemCard kind="agent" name={words.name} hint={words.hint} selected={a.id === picked} onSelect={() => pick(a.id)} dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
+                  <AgentCard name={words.name} hint={words.hint} shelves={shelvesOf(world, a)} selected={selected !== null && selected.kind === 'agent' && selected.id === a.id} itemId={mine} onSelect={() => pick(a.id)} onSelectItem={entry => pickItem(a.id, entry)} onBadgePress={entry => openCopies(entry.id)}
+                    dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
                 </li>
               );
             })}
           </ul>
         </main>
 
-        <aside className="hm-panel" ref={panel} data-tour="shelves" aria-labelledby="hm-panel-title">
-          <div className="hm-panel-head">
-            <h2 className="kit-heading" id="hm-panel-title" tabIndex={-1}>{card === null ? WORDS.label.pickAnAgent : card.name}</h2>
-            <p className="kit-hint">{card === null ? WORDS.hint.panel : card.hint}</p>
-          </div>
-          <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} emptyText={WORDS.hint.emptyShelf} />
-          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} emptyText={WORDS.hint.emptyShelf} hint={WORDS.hint.tools} />
-          <NotesShelf entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshNotes} freshPhase={fresh?.phase ?? 0} canChoose={agent !== null} onChoose={choose} />
+        <aside className="hm-panel" ref={panel} data-tour="details" aria-labelledby="hm-panel-title">
+          <DetailsPanel details={details} onSelect={next => { setSelected(next); tourDo('acted'); }} onRemove={remove} onBadgePress={openCopies} onChoose={choose} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} freshNotes={freshNotes} />
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">

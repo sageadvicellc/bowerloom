@@ -44,8 +44,11 @@ async function openSheet(): Promise<void> {
   await section().getByRole('button', { name: 'Share my agents' }).click();
   await expect(sheet()).toBeVisible();
 }
-/** Presses Tab until `target` has the focus. */
-async function tabTo(target: Locator, max = 80): Promise<void> {
+/**
+ * Presses Tab until `target` has the focus. The limit is 200 presses: a Tab that starts at the top of the page (the focus is lost for a moment when one layer hands over
+ * to the next) now passes the count chips and the lines of every agent card, which the 80 of the first version did not allow for.
+ */
+async function tabTo(target: Locator, max = 200): Promise<void> {
   for (let i = 0; i < max; i += 1) {
     if (await target.evaluate(el => el === document.activeElement).catch(() => false)) return;
     await page().keyboard.press('Tab');

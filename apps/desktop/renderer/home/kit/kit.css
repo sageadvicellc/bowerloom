@@ -140,25 +140,72 @@
 @keyframes kit-ring-fade { from { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px transparent, var(--hm-shadow); } }
 @keyframes kit-fill-fade { from { background-color: var(--accent-soft); border-color: var(--accent-strong); } to { background-color: var(--surface); border-color: var(--hm-border); } }
 
+/* ---- The agent card: the count chips and the mini accordions inside it. The large card has no row gap; each part keeps its own 8 px above it, so a list that is closed
+   (0 high) adds nothing to the card. Only the card that was opened grows: the grid of cards starts its rows at the top and never stretches a card. */
+[data-home] .kit-card[data-size="large"] { row-gap: 0; }
+[data-home] .kit-card[data-size="large"] .kit-card-hint { margin-top: var(--hm-space-2); }
+[data-home] .kit-card[data-kind="agent"] .kit-card-main { align-self: center; }
+[data-home] .kit-card[data-size="large"] .kit-card-badge { margin-top: var(--hm-space-2); }
+[data-home] .kit-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) 6px; margin-top: var(--hm-space-3); position: relative; z-index: 1; pointer-events: none; }
+[data-home] .kit-chip {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 2rem; padding: 0 var(--hm-space-1) 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .kit-chip:hover, [data-home] .kit-chip[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .kit-chip:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .kit-chip .kit-icon { transition: transform var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
+[data-home] .kit-chip[aria-expanded="true"] .kit-icon { transform: rotate(180deg); }
+/* On the tint of a selected card the grey edge of a chip is under 3 to 1 in the dark look, so a chip there takes the accent edge and a plain fill. */
+[data-home] .kit-card[data-selected] .kit-chip, [data-home] .kit-card[data-owner] .kit-chip { background: var(--surface); border-color: var(--accent-strong); }
+[data-home] .kit-card[data-selected] .kit-chip[aria-expanded="true"], [data-home] .kit-card[data-owner] .kit-chip[aria-expanded="true"] { background: var(--accent-soft); }
+/* The list opens by letting its grid row grow from 0 to its own height. What is inside is clipped while it grows, and cannot be reached or seen while it is closed. */
+[data-home] .kit-acc { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; position: relative; z-index: 1; pointer-events: none; transition: grid-template-rows var(--motion-home-accordion-ms, 0ms) var(--motion-home-accordion-ease, ease); }
+[data-home] .kit-acc[data-open] { grid-template-rows: 1fr; }
+[data-home] .kit-acc-inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear var(--motion-home-accordion-ms); }
+/* Opening shows the lines at once (the change takes the transition of the style it goes to, which is none); closing keeps them until the row has shrunk. */
+[data-home] .kit-acc[data-open] > .kit-acc-inner { visibility: visible; transition: none; }
+[data-home] .kit-acc-list { list-style: none; margin: var(--hm-space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+[data-home] .kit-acc-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--hm-space-2); }
+[data-home] .kit-acc-main {
+  all: unset; pointer-events: auto; box-sizing: border-box; display: flex; align-items: center; gap: var(--hm-space-2); flex: 1 1 auto; min-width: 0; min-height: 2rem; padding: 0 var(--hm-space-2);
+  font-size: var(--hm-text-small); font-weight: 500; line-height: 1.3; color: var(--text); border: 2px solid transparent; border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .kit-acc-main .kit-icon { color: var(--accent-strong); }
+[data-home] .kit-acc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .kit-acc-main:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+[data-home] .kit-acc-main:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .kit-acc-row[data-selected] .kit-acc-main { background: var(--surface); border-color: var(--accent-strong); font-weight: 650; }
+[data-home] .kit-acc-badge { pointer-events: auto; flex: 0 0 100%; padding: 0 0 var(--hm-space-1) calc(var(--hm-space-2) + 1.5rem); min-width: 0; }
+[data-home] .kit-acc-more {
+  all: unset; pointer-events: auto; box-sizing: border-box; display: inline-flex; align-items: center; min-height: 2rem; margin-top: 2px; padding: 0 var(--hm-space-2);
+  font-size: var(--hm-text-small); font-weight: 600; color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; border-radius: var(--hm-radius-small);
+}
+[data-home] .kit-acc-more:hover { color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
+[data-home] .kit-acc-more:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
+
 /* ---- Shelf */
 [data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }
 [data-home] .kit-shelf-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-1); }
 [data-home] .kit-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hm-card-shelf-w)), 1fr)); gap: var(--hm-space-3); width: 100%; }
 [data-home] .kit-shelf-list > li { min-width: 0; display: flex; }
 
-/* ---- Tooltip: the words of an icon-only button. It sits 8 px under the button (never over it), takes no pointer, and is 14 px or more. It fades in with a 4 px rise over
-   the overlay time and out faster; with reduce motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
+/* ---- Tooltip: the words of an icon-only button. It sits 8 px to the left of the button, in the free room of the top bar (never over the button, and never over what
+   the page shows under the bar), takes no pointer, and is 14 px or more. It fades in with a 4 px slide from the button over the overlay time and out faster; with reduce
+   motion the times are 0 and it simply appears. Ink on paper, so it is 4.5 to 1 in both looks. */
 [data-home] .kit-tip { position: relative; display: inline-flex; }
 [data-home] .kit-tip-text {
-  position: absolute; z-index: 35; top: calc(100% + var(--hm-space-2)); right: 0; padding: var(--hm-space-2) var(--hm-space-3);
+  position: absolute; z-index: 35; top: 50%; right: calc(100% + var(--hm-space-2)); padding: var(--hm-space-2) var(--hm-space-3);
   background: var(--text); color: var(--bg); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift);
   font-size: var(--hm-text-small); font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
-  opacity: 0; visibility: hidden; transform: translateY(var(--motion-home-overlay-travel, 0px));
+  opacity: 0; visibility: hidden; transform: translate(var(--motion-home-overlay-travel, 0px), -50%);
   transition: visibility 0s linear var(--motion-home-overlay-out-ms, 0ms), opacity var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in);
 }
 [data-home] .kit-tip-text[data-open] {
-  opacity: 1; visibility: visible; transform: none;
-  transition: opacity var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), transform var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), visibility;
+  opacity: 1; visibility: visible; transform: translate(0, -50%);
+  transition: opacity var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out), transform var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out);
 }
 
 /* ---- Help popover */

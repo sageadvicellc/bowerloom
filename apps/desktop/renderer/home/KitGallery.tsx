@@ -5,6 +5,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { CARD_WORDS } from '../../shared/home/cards.js';
 import type { CardBadge, ShelfEntry } from '../../shared/home/cards.js';
+import { AgentCard } from './kit/AgentCard.js';
 import { Badge } from './kit/Badge.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
@@ -24,6 +25,8 @@ const needsKey: CardBadge = { label: L.needsKeyBadge, tone: 'warn' };
 const fresh: CardBadge = { label: L.newBadge, tone: 'new' };
 const entry = (id: string, kind: ShelfEntry['kind'], name: string, badge?: CardBadge): ShelfEntry => ({ id, kind, name, hint: WORDS.hint.sampleSkill, ...(badge === undefined ? {} : { badge }) });
 const SHELF: ShelfEntry[] = [entry('s1', 'skill', 'Write a weekly summary', copies), entry('s2', 'skill', 'Summarize a meeting'), entry('s3', 'skill', 'Write a reply', fresh)];
+const SAMPLE_SHELVES = { skills: SHELF, tools: [entry('t1', 'tool', 'Read my calendar', needsKey)], notes: [entry('n1', 'note', 'Client list')] };
+const LONG_SKILLS = Array.from({ length: 9 }, (_, i) => entry(`k${i}`, 'skill', `Skill Number ${i + 1}`, i === 1 ? copies : undefined));
 const LONG_SHELF: ShelfEntry[] = Array.from({ length: 11 }, (_, i) => entry(`l${i}`, 'skill', `Skill Number ${i + 1}`, i === 2 ? copies : undefined));
 
 function Cell({ caption, children }: { caption: string; children: ReactNode }): ReactElement {
@@ -54,6 +57,12 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
         <Cell caption={L.galleryHover}><ItemCard kind="note" name={L.sampleNote} hint={H.sampleNote} selected={false} onSelect={none} demo="hover" /></Cell>
         <Cell caption={L.galleryFocus}><ItemCard kind="tool" name={L.sampleTool} hint={H.sampleTool} selected={false} onSelect={none} demo="focus" /></Cell>
         <Cell caption={L.galleryBadge}><ItemCard kind="skill" name={L.sampleLongName} hint={H.sampleSkill} badge={fresh} selected={false} onSelect={none} onRemove={none} /></Cell>
+      </Block>
+      <Block title={L.galleryAgentCards}>
+        <Cell caption={L.galleryChips}><AgentCard name={sample} hint={hint} shelves={SAMPLE_SHELVES} selected={false} onSelect={none} onSelectItem={none} dropAgent="demo-1" /></Cell>
+        <Cell caption={L.galleryOpen}><AgentCard name={sample} hint={hint} shelves={SAMPLE_SHELVES} selected onSelect={none} onSelectItem={none} onBadgePress={none} dropAgent="demo-2" defaultOpen={['skill', 'tool']} /></Cell>
+        <Cell caption={L.galleryLong}><AgentCard name={sample} hint={hint} shelves={{ skills: LONG_SKILLS, tools: [], notes: [] }} selected={false} onSelect={none} onSelectItem={none} onBadgePress={none} dropAgent="demo-3" defaultOpen={['skill']} /></Cell>
+        <Cell caption={L.galleryOwner}><AgentCard name={sample} hint={hint} shelves={SAMPLE_SHELVES} selected={false} itemId="s2" onSelect={none} onSelectItem={none} dropAgent="demo-4" defaultOpen={['skill']} /></Cell>
       </Block>
       <Block title={L.galleryBadges}>
         <Badge badge={copies} onPress={none} /><Badge badge={needsKey} /><Badge badge={fresh} /><Badge badge={{ label: L.galleryInfoBadge, tone: 'info' }} />

@@ -58,7 +58,7 @@ test('every agent card carries data-drop-agent with the id of its agent, and the
   const ids = await agentCards().evaluateAll(cards => cards.map(c => c.getAttribute('data-drop-agent')));
   expect(ids).toHaveLength(10); expect(new Set(ids).size).toBe(10); expect(ids.every(id => /^agent-\d\d$/.test(id ?? ''))).toBe(true);
   expect(await p.locator('.hm-panel .kit-card[data-drop-agent]').count()).toBe(0);
-  for (const id of ['bar', 'map', 'agent', 'shelves', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
+  for (const id of ['bar', 'map', 'agent', 'details', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
   await expect(agentCards().first()).toHaveAttribute('data-tour', 'agent');
 });
 

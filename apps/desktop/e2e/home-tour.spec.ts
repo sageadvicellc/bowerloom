@@ -14,7 +14,7 @@ import type { Home, Rect } from './home-page.js';
 const STEPS = [
   { target: 'map', text: 'These are your AI agents, from every tool.' },
   { target: 'agent', text: 'Click an agent to see what it can do.' },
-  { target: 'shelves', text: 'Skills are what it knows how to do.' },
+  { target: 'details', text: 'Skills are what it knows how to do.' },
   { target: 'add', text: 'Add skills, tools, and notes here.' },
   { target: 'save', text: 'Changes wait here until you press Save.' },
   { target: 'help', text: 'Replay this tour any time.' },
@@ -37,7 +37,20 @@ async function measureStep(target: string): Promise<{ hole: Rect; pop: Rect; tar
   const p = page();
   await animationsDone(p);
   const hole = await rectOf(p, '.tour-spot'), pop = await rectOf(p, '.tour-pop');
-  const t = await p.evaluate(id => { const el = document.querySelector(`[data-tour~="${id}"]`)!; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, target);
+  // The target is what a person can see of it: cut to what its scrolling parents show, as the tour cuts its hole. The cards grew taller (chips), so the grid of agents
+  // is now taller than the stage it scrolls in, and its lower part is not on the screen.
+  const t = await p.evaluate(id => {
+    const el = document.querySelector(`[data-tour~="${id}"]`)!;
+    const r = el.getBoundingClientRect();
+    let x = r.left, y = r.top, right = r.right, bottom = r.bottom;
+    for (let parent = el.parentElement; parent !== null; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (!/(auto|scroll|hidden|clip)/.test(`${style.overflowX} ${style.overflowY}`)) continue;
+      const q = parent.getBoundingClientRect();
+      x = Math.max(x, q.left); y = Math.max(y, q.top); right = Math.min(right, q.right); bottom = Math.min(bottom, q.bottom);
+    }
+    return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
+  }, target);
   return { hole, pop, target: t, ...(await p.evaluate(() => ({ vw: window.innerWidth, vh: window.innerHeight }))) };
 }
 const contains = (outer: Rect, inner: Rect, slack = 1): boolean => outer.x <= inner.x + slack && outer.y <= inner.y + slack && outer.x + outer.w >= inner.x + inner.w - slack && outer.y + outer.h >= inner.y + inner.h - slack;
@@ -69,7 +82,7 @@ test('the keyboard walks every step with Next and Back; each step lights its tar
     if (step.target === 'agent') {
       // Step two waits for the person: no Next, the focus is on the lit agent, and Enter on it is the click that moves the tour on.
       await expect(dialog().getByRole('button', { name: 'Next' })).toHaveCount(0);
-      await expect(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button')).toBeFocused();
+      await expect(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main')).toBeFocused();
       await p.keyboard.press('Enter');
     } else if (i < STEPS.length - 1) { await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused(); await p.keyboard.press('Enter'); }
   }
@@ -105,7 +118,7 @@ test('the spotlight moves in 160 ms and stops, and the dim blocks the page behin
   await p.mouse.click(5, 450);
   await expect(dialog()).toBeVisible();
   await p.locator('.kit-card[data-kind="agent"]').first().click({ force: true, position: { x: 30, y: 30 } });
-  await expect(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button')).toHaveAttribute('aria-pressed', 'false');
+  await expect(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('Tab stays inside the popover, in both directions', async () => {

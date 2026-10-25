@@ -35,14 +35,14 @@ test('it opens on the agents: a top bar, a grid of ten agent cards, a side panel
   for (const name of ['Version history', 'Add', 'Help']) await expect(bar.getByRole('button', { name })).toBeVisible();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save' })).toBeDisabled();
   await expect(p.getByText('Nothing to save yet')).toBeVisible();
-  for (const id of ['bar', 'map', 'agent', 'shelves', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
+  for (const id of ['bar', 'map', 'agent', 'details', 'add', 'save', 'help']) await expect(p.locator(`[data-tour~="${id}"]`)).toHaveCount(1);
 });
 
 test('the real page stays inside the text budget: no text node over 12 words, no heading or button over 5, no banned word', async () => {
   const p = page();
   const markup = await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML);
   expect(assertTextBudget(markup)).toEqual([]);
-  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
   await p.getByRole('button', { name: 'Add' }).first().click();
   expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
 });
@@ -51,8 +51,8 @@ test('picking an agent fills the three shelves with the same small card; picking
   const p = page();
   // The first agent in name order has no tool, so the shelves are checked on one that has all three.
   const first = p.locator('.kit-card[data-kind="agent"]').filter({ hasText: 'Meeting assistant' });
-  await first.getByRole('button').click();
-  await expect(first.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
+  await first.locator('.kit-card-main').click();
+  await expect(first.locator('.kit-card-main')).toHaveAttribute('aria-pressed', 'true');
   const panel = p.locator('aside.hm-panel');
   await expect(panel.getByRole('heading', { level: 2 })).not.toHaveText('Pick an agent');
   for (const shelf of ['Skills', 'Tools']) await expect(panel.getByRole('region', { name: shelf }).locator('.kit-card')).not.toHaveCount(0);
@@ -65,15 +65,18 @@ test('picking an agent fills the three shelves with the same small card; picking
   await p.mouse.move(2, 450); await animationsDone(p);
   const agentLook = await p.locator('.kit-card[data-kind="agent"]').nth(1).evaluate(c => { const s = getComputedStyle(c); const name = getComputedStyle(c.querySelector('.kit-card-main')!); return [s.borderRadius, s.borderTopWidth, s.borderLeftWidth, s.boxShadow, name.fontSize, name.fontWeight].join('|'); });
   expect(agentLook).toBe(look[0]);
-  await first.getByRole('button').click();
+  await first.locator('.kit-card-main').click();
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Pick an agent');
 });
 
-test('a card is 12 px round with a 1 px border on every side, an agent card is about 220 by 132 and a small card at least 176 wide that holds its hint', async () => {
+test('a card is 12 px round with a 1 px border on every side, an agent card is about 240 wide and 130 to 200 tall and a small card at least 176 wide that holds its hint', async () => {
   const p = page();
-  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
-  const agent = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
-  expect(agent.w).toBeGreaterThanOrEqual(218); expect(agent.w).toBeLessThanOrEqual(222); expect(agent.h).toBeGreaterThanOrEqual(130); expect(agent.h).toBeLessThanOrEqual(150);
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
+  // The first agent is the one that is picked, and a picked card has a 2 px edge; the card beside it is a plain one, with the 1 px edge on every side.
+  const picked = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const s = getComputedStyle(c); return [s.borderRadius, s.borderTopWidth, s.borderLeftWidth, s.borderRightWidth, s.borderBottomWidth]; });
+  expect(picked).toEqual(['12px', '2px', '2px', '2px', '2px']);
+  const agent = await p.locator('.kit-card[data-kind="agent"]').nth(1).evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
+  expect(agent.w).toBeGreaterThanOrEqual(238); expect(agent.w).toBeLessThanOrEqual(242); expect(agent.h).toBeGreaterThanOrEqual(130); expect(agent.h).toBeLessThanOrEqual(200);   // 15 rem wide since Wave A, and as tall as its chips need
   expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['12px', '1px', '1px', '1px', '1px']);
   const small = await p.locator('.kit-card[data-size="small"]').first().evaluate(c => { const r = c.getBoundingClientRect(); return { w: r.width, h: r.height }; });
   expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBeGreaterThanOrEqual(70); expect(small.h).toBeLessThanOrEqual(125);
@@ -81,7 +84,7 @@ test('a card is 12 px round with a 1 px border on every side, an agent card is a
 
 test('no text on the page is under 14 px, and the base text, hint and heading sizes are 16, 14 and 20', async () => {
   const p = page();
-  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
+  await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
   const sizes = await p.evaluate(() => {
     const out: { text: string; size: number; tag: string }[] = [];
     const walker = document.createTreeWalker(document.querySelector('[data-home]')!, NodeFilter.SHOW_TEXT);
@@ -96,7 +99,7 @@ test('no text on the page is under 14 px, and the base text, hint and heading si
   expect(sizes.filter(s => s.size < 14), JSON.stringify(sizes.filter(s => s.size < 14))).toEqual([]);
   const measure = await p.evaluate(() => {
     const px = (sel: string): number => parseFloat(getComputedStyle(document.querySelector(sel)!).fontSize);
-    return { label: px('.kit-card-main'), hint: px('.kit-hint'), heading: px('h1.kit-heading'), h2: px('h2.kit-heading'), h3: px('h3.kit-heading'), button: px('.kit-button'), body: px('.hm-savebar p') };
+    return { label: px('.kit-card-main'), hint: px('.kit-hint'), heading: px('h1.kit-heading'), h2: px('h2.kit-heading'), h3: px('h3.kit-heading'), button: px('.hm-savebar .kit-button, .kit-drawer .kit-button, .hm-stage-tools .kit-button'), body: px('.hm-savebar p') };
   });
   console.log('MEASURED font sizes (px):', JSON.stringify(measure));
   expect(measure).toMatchObject({ label: 16, hint: 14, heading: 20, h2: 20, h3: 20, button: 16, body: 16 });
@@ -159,13 +162,14 @@ test('the card kit gallery renders every part in a light and a dark look', async
   await expect(p.locator('[data-theme="light"][data-home]')).toHaveCount(1); await expect(p.locator('[data-theme="dark"][data-home]')).toHaveCount(1);
   for (const look of ['light', 'dark']) {
     const scope = p.locator(`[data-theme="${look}"][data-home]`);
-    await expect(scope.locator('.kit-card[data-size="large"]')).toHaveCount(5);
+    await expect(scope.locator('.kit-card[data-size="large"]')).toHaveCount(5 + 4);   // the four agent cards with count chips came with Wave A
     await expect(scope.locator('.kit-card[data-size="small"]')).toHaveCount(8 + 3 + 8);
     await expect(scope.locator('.kit-card[data-selected]').first()).toBeVisible();
     await expect(scope.locator('.kit-badge[data-tone="warn"]').first()).toBeVisible(); await expect(scope.locator('.kit-badge[data-tone="new"]').first()).toBeVisible();
     await expect(scope.locator('.kit-avatar')).toHaveCount(0);
     await expect(scope.locator('.hm-gallery-block:has(h3:text-is("Tiles")) .kit-tile')).toHaveCount(6);
-    await expect(scope.getByRole('button', { name: 'Show more' })).toBeVisible();
+    await expect(scope.getByRole('button', { name: 'Show more', exact: true })).toBeVisible();
+    await expect(scope.getByRole('button', { name: 'Show more skills' })).toBeVisible();   // the long list of an agent card
     await expect(scope.locator('.kit-popover')).toBeVisible();
     await expect(scope.locator('.kit-drawer')).toBeVisible();
     await expect(scope.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
@@ -223,7 +227,7 @@ for (const [w, h] of SIZES) {
     expect(stage.sideways).toBeLessThanOrEqual(0); expect(stage.inside).toBe(true); expect(stage.clipped).toBe(0);
     expect(stage.panelRight).toBeLessThanOrEqual(stage.vw + 0.5); expect(stage.barBottom).toBeLessThanOrEqual(stage.vh + 0.5);
     expect(stage.columns).toBeGreaterThanOrEqual(2);
-    await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button'));
+    await ensurePicked(p.locator('.kit-card[data-kind="agent"]').first().locator('.kit-card-main'));
     const shelfOk = await p.evaluate(() => [...document.querySelectorAll('aside.hm-panel .kit-card')].every(c => { const r = c.getBoundingClientRect(), panel = document.querySelector('aside.hm-panel')!.getBoundingClientRect(); return r.right <= panel.right + 0.5 && r.left >= panel.left; }));
     expect(shelfOk).toBe(true);
   });
@@ -237,9 +241,9 @@ if (shotsDirSet()) {
       await setLook(p, look); await resize(p, w, h);
       await skipTour(p);
       await shot(p, 'shell', w, h, look);
-      await p.locator('.kit-card[data-kind="agent"]').nth(8).getByRole('button').click();
+      await p.locator('.kit-card[data-kind="agent"]').nth(8).locator('.kit-card-main').click();
       await shot(p, 'shell-picked', w, h, look);
-      await p.locator('.kit-card[data-kind="agent"]').nth(8).getByRole('button').click();
+      await p.locator('.kit-card[data-kind="agent"]').nth(8).locator('.kit-card-main').click();
       await p.locator('header.hm-bar').getByRole('button', { name: 'Add' }).click();
       await expect(p.getByRole('dialog', { name: 'Add' })).toBeVisible();
       await shot(p, 'add-drawer', w, h, look);

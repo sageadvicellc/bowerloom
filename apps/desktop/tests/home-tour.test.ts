@@ -69,8 +69,8 @@ test('the session runs the tour on its own once, and only once', () => {
 });
 
 test('the six steps are the storyboard steps, in order, one sentence of at most 12 words each', () => {
-  assert.deepEqual(TOUR_STEPS.map(s => s.target), ['map', 'agent', 'shelves', 'add', 'save', 'help']);
-  assert.deepEqual([...TOUR_TARGETS], ['map', 'agent', 'shelves', 'add', 'save', 'help']);
+  assert.deepEqual(TOUR_STEPS.map(s => s.target), ['map', 'agent', 'details', 'add', 'save', 'help']);
+  assert.deepEqual([...TOUR_TARGETS], ['map', 'agent', 'details', 'add', 'save', 'help']);
   assert.deepEqual(TOUR_STEPS.map(s => s.text), [
     'These are your AI agents, from every tool.', 'Click an agent to see what it can do.', 'Skills are what it knows how to do.',
     'Add skills, tools, and notes here.', 'Changes wait here until you press Save.', 'Replay this tour any time.',

@@ -136,7 +136,8 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
     // While a step waits, Tab visits the lit target first and then the popover's buttons, and comes round again. The page behind the dim is not reached.
     const cycle = (e: KeyboardEvent): void => {
       const target = mode.current.targetId === null ? null : findTarget(mode.current.targetId);
-      const list = [...(target?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? []), ...(pop.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])];
+      // A button in a closed list of an agent card (the list is inert) cannot take the focus, so it is not a stop.
+      const list = [...[...(target?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])].filter(el => el.closest('[inert]') === null), ...(pop.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])];
       if (list.length === 0) return;
       e.preventDefault(); e.stopImmediatePropagation();
       const at = list.findIndex(el => el === document.activeElement);

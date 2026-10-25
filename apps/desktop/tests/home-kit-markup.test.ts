@@ -176,11 +176,11 @@ test('the shell: a top bar, a stage with the agents, a side panel with three she
   assert.match(m, /<header class="hm-bar" data-tour="bar">/); assert.match(m, />Add</); assert.match(m, /aria-label="Help"/);
   assert.match(m, /<main id="main" class="hm-stage">/); assert.match(m, /<h1 [^>]*>Your agents<\/h1>/); assert.match(m, /10 agents/);
   assert.equal([...m.matchAll(/data-kind="agent"/g)].length, 10);
-  assert.match(m, /<aside class="hm-panel" data-tour="shelves"/);
+  assert.match(m, /<aside class="hm-panel" data-tour="details"/);
   for (const t of ['Skills', 'Tools', 'Notes']) assert.match(m, new RegExp(`<h3 class="kit-heading"[^>]*>${t}</h3>`));
   assert.match(m, /<section class="hm-savebar" data-tour="save" data-mode="clean" aria-label="Save bar">/); assert.match(m, /Nothing to save yet/);
   assert.match(m, /<button disabled=""[^>]*data-variant="primary"[^>]*>Save<\/button>/);
-  for (const id of ['map', 'agent', 'shelves', 'add', 'save', 'help', 'bar']) assert.match(m, new RegExp(`data-tour="${id}"`), id);
+  for (const id of ['map', 'agent', 'details', 'add', 'save', 'help', 'bar']) assert.match(m, new RegExp(`data-tour="${id}"`), id);
   assert.equal([...m.matchAll(/data-tour="agent"/g)].length, 1, 'one agent card is the tour target');
   assert.doesNotMatch(m, /style=|<script|onclick/i);
 });

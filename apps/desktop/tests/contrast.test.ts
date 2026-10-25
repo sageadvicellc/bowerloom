@@ -90,7 +90,7 @@ test('the home tokens only reach the home app: every selector starts at [data-ho
 });
 
 test('the home type scale, card sizes, radii and drawer width are the agreed ones', () => {
-  for (const [name, value] of [['hm-text-base', '1rem'], ['hm-text-small', '0.875rem'], ['hm-text-heading', '1.25rem'], ['hm-text-display', '1.75rem'], ['hm-radius', '0.75rem'], ['hm-card-agent-w', '13.75rem'], ['hm-card-agent-h', '8.25rem'], ['hm-card-small-w', '11rem'], ['hm-card-small-h', '4.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  for (const [name, value] of [['hm-text-base', '1rem'], ['hm-text-small', '0.875rem'], ['hm-text-heading', '1.25rem'], ['hm-text-display', '1.75rem'], ['hm-radius', '0.75rem'], ['hm-card-agent-w', '15rem'], ['hm-card-agent-h', '9.5rem'], ['hm-card-small-w', '11rem'], ['hm-card-small-h', '4.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
   assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(420px, 92vw\);/);
 });
 

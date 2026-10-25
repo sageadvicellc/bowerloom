@@ -194,8 +194,8 @@ test('step two waits for a real click on an agent: no Next, a plain hint, and th
   await expect(dialog().getByText('2 of 6')).toBeVisible();
   // A real click on the lit agent is the step's action.
   const first = agentCards().first();
-  const name = (await first.getByRole('button').textContent()) ?? '';
-  await first.getByRole('button').click();
+  const name = (await first.locator('.kit-card-main').textContent()) ?? '';
+  await first.locator('.kit-card-main').click();
   await expect(dialog().getByText('Skills are what it knows how to do.')).toBeVisible();
   await expect(dialog().getByText('3 of 6')).toBeVisible();
   await expect(p.locator('.hm-panel h2')).toHaveText(name);
@@ -206,7 +206,7 @@ test('a click on any lit agent counts, and Back from step three waits again', as
   const p = page();
   await toMap();
   await dialog().getByRole('button', { name: 'Next' }).click();
-  await agentCards().first().getByRole('button').click();
+  await agentCards().first().locator('.kit-card-main').click();
   await expect(dialog().getByText('3 of 6')).toBeVisible();
   await dialog().getByRole('button', { name: 'Back' }).click();
   await expect(dialog().getByText('Click any agent.')).toBeVisible();
@@ -217,7 +217,7 @@ test('a person who skips ahead is not left with an empty panel: step three opens
   const p = page();
   await toMap();
   await dialog().getByRole('button', { name: 'Next' }).click();
-  const first = agentCards().first().getByRole('button');
+  const first = agentCards().first().locator('.kit-card-main');
   await first.click();
   await expect(dialog().getByText('3 of 6')).toBeVisible();
   await dialog().getByRole('button', { name: 'Back' }).click();
@@ -235,7 +235,7 @@ test('"Skip tour" ends the tour at the waiting step and the map is ready to use'
   await dialog().getByRole('button', { name: 'Next' }).click();
   await dialog().getByRole('button', { name: 'Skip tour' }).click();
   await expect(dialog()).toHaveCount(0);
-  await agentCards().nth(2).getByRole('button').click();
+  await agentCards().nth(2).locator('.kit-card-main').click();
   await expect(p.locator('.hm-panel [data-kind="skill"]').first()).toBeVisible();
 });
 
@@ -293,7 +293,7 @@ test('Find more keeps an unsaved change in the draft', async () => {
   const p = page();
   await toMap();
   await endTour();
-  await agentCards().nth(3).getByRole('button').click();
+  await agentCards().nth(3).locator('.kit-card-main').click();
   await p.locator('.hm-panel .kit-remove').first().click();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByText(/Removed/)).toBeVisible();
   await p.getByRole('button', { name: 'Find more' }).click();
@@ -309,7 +309,7 @@ test('the first Save of a guided session says where Help lives, once; a map open
   await endTour();
   const note = p.getByText('Saved in this preview. Help replays the tour any time.');
   await expect(note).toHaveCount(0);
-  await agentCards().nth(3).getByRole('button').click();
+  await agentCards().nth(3).locator('.kit-card-main').click();
   await p.locator('.hm-panel .kit-remove').first().click();
   await p.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(note).toBeVisible();
@@ -323,7 +323,7 @@ test('the first Save of a guided session says where Help lives, once; a map open
   await expect(note).toHaveCount(0);
   // A map opened by address has no note at all.
   await fresh(p);
-  await agentCards().nth(3).getByRole('button').click();
+  await agentCards().nth(3).locator('.kit-card-main').click();
   await p.locator('.hm-panel .kit-remove').first().click();
   await p.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(p.getByRole('region', { name: 'Save bar' }).getByText(SAVED, { exact: true })).toBeVisible();
@@ -357,15 +357,19 @@ test('the whole first minute works with the keyboard alone', async () => {
   await p.keyboard.press('Enter');
   // Step two: the focus is on the first lit agent, Tab walks the agents (any of them will do), Shift+Tab from the first reaches the popover, and Enter on an agent is the click.
   await expect(dialog().getByText('2 of 6')).toBeVisible();
-  await expect(agentCards().first().getByRole('button')).toBeFocused();
+  await expect(agentCards().first().locator('.kit-card-main')).toBeFocused();
+  // Tab goes through the card's own count chips (the first agent has two) before it reaches the next agent.
+  const chips = await agentCards().first().locator('.kit-chip').count();
+  expect(chips).toBe(2);
+  for (let i = 0; i < chips; i += 1) { await p.keyboard.press('Tab'); await expect(agentCards().first().locator('.kit-chip').nth(i)).toBeFocused(); }
   await p.keyboard.press('Tab');
-  await expect(agentCards().nth(1).getByRole('button')).toBeFocused();
-  await p.keyboard.press('Shift+Tab');
-  await expect(agentCards().first().getByRole('button')).toBeFocused();
+  await expect(agentCards().nth(1).locator('.kit-card-main')).toBeFocused();
+  for (let i = 0; i < chips + 1; i += 1) await p.keyboard.press('Shift+Tab');
+  await expect(agentCards().first().locator('.kit-card-main')).toBeFocused();
   await p.keyboard.press('Shift+Tab');
   expect(await p.evaluate(() => document.activeElement?.closest('.tour-pop') !== null)).toBe(true);
   await p.keyboard.press('Tab');
-  await expect(agentCards().first().getByRole('button')).toBeFocused();
+  await expect(agentCards().first().locator('.kit-card-main')).toBeFocused();
   await p.keyboard.press('Enter');
   await expect(dialog().getByText('3 of 6')).toBeVisible();
   await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused();

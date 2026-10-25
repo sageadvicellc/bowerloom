@@ -7,6 +7,7 @@
 import { BANNED } from '../../shared/home/textbudget.js';
 import { CARD_WORDS } from '../../shared/home/cards.js';
 import { BAR_WORDS } from '../../shared/home/savebar.js';
+import { DETAIL_WORDS } from '../../shared/home/details.js';
 
 /** The words and phrases that must not reach a screen (case-insensitive, whole words). The check itself is `assertTextBudget`. */
 export { BANNED };
@@ -36,7 +37,6 @@ export const WORDS = deepFreeze({
     save: 'Save',
     saveBar: 'Save bar',
     close: 'Close',
-    shelves: 'Shelves',
     tour: 'Tour',
     tourBack: 'Back',
     tourNext: 'Next',
@@ -56,6 +56,11 @@ export const WORDS = deepFreeze({
     galleryEmptyShelf: 'An empty shelf',
     galleryLongShelf: 'A long shelf',
     galleryTiles: 'Tiles',
+    galleryAgentCards: 'Agent cards with count chips',
+    galleryChips: 'Lists closed',
+    galleryOpen: 'Two lists open',
+    galleryLong: 'A long list',
+    galleryOwner: 'A line selected',
     galleryInfoBadge: 'Good to know',
     galleryHelp: 'A help popover',
     galleryDrawer: 'A drawer',
@@ -90,6 +95,24 @@ export const WORDS = deepFreeze({
     codex: 'Codex',
     openCode: 'OpenCode',
     startPoint: CARD_WORDS.startPoint,
+    /** The details panel: the headings of its blocks, and its buttons. */
+    whatItDoes: 'What it does',
+    whereItWorks: 'Where it works',
+    whereItCameFrom: 'Where it came from',
+    usedBy: 'Used by',
+    whatItReaches: 'What it can reach',
+    howFarItGoes: 'How far it can go',
+    whatItCovers: 'What it covers',
+    someNotes: 'Some of the notes',
+    runsCode: 'Runs code',
+    backToAgent: 'Back to agent',
+    showFullText: 'Show the full text',
+    hideFullText: 'Hide the full text',
+    fullText: 'Full text',
+    removeFromThis: 'Remove from this agent',
+    kindSkill: DETAIL_WORDS.kindSkill,
+    kindTool: DETAIL_WORDS.kindTool,
+    kindNotes: DETAIL_WORDS.kindNotes,
   },
   /** One line under a label: at most 12 words. */
   hint: {
@@ -114,6 +137,12 @@ export const WORDS = deepFreeze({
     noteFallback: CARD_WORDS.noteFallback,
     galleryIntro: 'Every part of the kit, in every state, in both looks.',
     galleryDrawerBody: 'This is where a drawer shows its content.',
+    noText: DETAIL_WORDS.noText,
+    keyReady: DETAIL_WORDS.keyReady,
+    needsKeyLine: DETAIL_WORDS.needsKeyLine,
+    noNotes: DETAIL_WORDS.noNotes,
+    noUsers: DETAIL_WORDS.noUsers,
+    noPrograms: DETAIL_WORDS.noPrograms,
   },
   /** The text behind a "?" button: at most 25 words, and the only place a technical term may appear. */
   popover: {

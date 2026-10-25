@@ -1,7 +1,7 @@
 /** The small outline icons of the card kit, drawn here as paths: no emoji, no outside icon set. They are decoration; the words beside them say the same thing. */
 import type { ReactElement } from 'react';
 
-export type KitIconName = 'agent' | 'skill' | 'tool' | 'note' | 'plus' | 'clock' | 'check' | 'warning' | 'sparkle' | 'key' | 'info' | 'close' | 'leaf' | 'chevron' | 'program' | 'share';
+export type KitIconName = 'agent' | 'skill' | 'tool' | 'note' | 'plus' | 'clock' | 'check' | 'warning' | 'sparkle' | 'key' | 'info' | 'close' | 'leaf' | 'chevron' | 'program' | 'share' | 'back';
 
 const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   // Three nodes joined to one another: something that works with others. It is not a person, so an agent does not borrow the look of a human profile.
@@ -25,6 +25,8 @@ const PATHS: Readonly<Record<KitIconName, readonly string[]>> = {
   // The sage leaf of the practice.
   leaf: ['M5 19c0-8 5-13 14-14 0 9-5 14-13 14', 'M5 19c3-5 6-8 10-10'],
   chevron: ['M7 10l5 5 5-5'],
+  // An arrow that points back to where the person came from.
+  back: ['M10 6l-6 6 6 6', 'M4 12h16'],
   // A window with a prompt in it: a program on the computer, with no letters and no brand.
   program: ['M4 5.5h16v13H4z', 'M7.5 10l2.5 2-2.5 2', 'M12.5 14.5h4'],
   // An arrow leaving a tray: send a copy to someone.

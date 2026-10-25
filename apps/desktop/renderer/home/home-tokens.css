@@ -12,7 +12,7 @@
   --hm-leading: 1.5;
   --hm-space-1: 0.25rem; --hm-space-2: 0.5rem; --hm-space-3: 0.75rem; --hm-space-4: 1rem; --hm-space-5: 1.5rem; --hm-space-6: 2rem; --hm-space-7: 3rem;
   --hm-radius: 0.75rem; --hm-radius-small: 0.5rem; --hm-radius-pill: 999px;
-  --hm-card-agent-w: 13.75rem; --hm-card-agent-h: 8.25rem;
+  --hm-card-agent-w: 15rem; --hm-card-agent-h: 9.5rem;
   --hm-card-small-w: 11rem; --hm-card-small-h: 4.5rem;
   --hm-card-shelf-w: 15rem;
   --hm-drawer-w: min(420px, 92vw);

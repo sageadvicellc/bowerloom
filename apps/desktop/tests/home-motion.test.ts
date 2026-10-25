@@ -127,3 +127,24 @@ test('the Find tile lights once: no delay between its parts, no rise, and the ba
   assert.doesNotMatch(find, /progress-value[^}]*transition/);
   assert.equal('stagger' in MOTION.home.tileLight, false); assert.equal('distance' in MOTION.home.tileLight, false);
 });
+
+// ---- The mini accordions of the agent card and the tooltip of the Version history button (Wave A).
+test('a mini accordion opens and closes in 160 ms with the strong ease-out, by the height of its row, and is at once under reduce motion', () => {
+  assert.deepEqual({ ms: MOTION.home.accordion.ms, ease: MOTION.home.accordion.ease }, { ms: 160, ease: MOTION.ease.out });
+  const on = published(false), off = published(true);
+  assert.equal(on['--motion-home-accordion-ms'], '160ms'); assert.equal(on['--motion-home-accordion-ease'], MOTION.ease.out); assert.equal(off['--motion-home-accordion-ms'], '0ms');
+  const kit = read('renderer/home/kit/kit.css');
+  assert.match(kit, /\.kit-acc\s*\{[^}]*grid-template-rows: 0fr;[^}]*transition: grid-template-rows var\(--motion-home-accordion-ms[^;]*var\(--motion-home-accordion-ease/);
+  assert.match(kit, /\.kit-acc\[data-open\]\s*\{[^}]*grid-template-rows: 1fr/);
+  assert.match(kit, /\.kit-chip \.kit-icon\s*\{[^}]*transition: transform var\(--motion-home-accordion-ms/);
+  assert.match(kit, /@media \(prefers-reduced-motion: reduce\) \{\s*\[data-home\] \*[^}]*transition: none !important/, 'the one rule that turns every transition off');
+});
+
+test('a tooltip waits 400 ms on hover, and its fade uses the overlay tokens', () => {
+  assert.equal(MOTION.home.tooltip.delayMs, 400);
+  const kit = read('renderer/home/kit/kit.css');
+  assert.match(kit, /\.kit-tip-text\[data-open\]\s*\{[^}]*transition:[^;]*opacity var\(--motion-home-overlay-in-ms/);
+  assert.match(kit, /\.kit-tip-text\s*\{[^}]*font-size: var\(--hm-text-small\)/);
+  const tip = readFileSync(join(DESKTOP, 'renderer/home/kit/Tooltip.tsx'), 'utf8');
+  assert.match(tip, /MOTION\.home\.tooltip\.delayMs/); assert.doesNotMatch(tip, /setTimeout\([^)]*,\s*\d+\)/, 'the wait is a token, not a number in the component');
+});

@@ -47,6 +47,23 @@ export function readableName(name: string): string {
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
+/** The three kinds an agent card counts, in the order its chips show them. */
+export const CHIP_KINDS: readonly ShelfEntry['kind'][] = Object.freeze(['skill', 'tool', 'note'] as const);
+
+/** The words on a count chip: "12 skills", "1 tool", "1 notes set". At most five words, built from a number. */
+export function chipLabel(kind: ShelfEntry['kind'], n: number): string {
+  return kind === 'note' ? `${n} notes ${n === 1 ? 'set' : 'sets'}` : count(n, kind);
+}
+
+/** One count chip of an agent card: what it counts and how many. */
+export interface Chip { readonly kind: ShelfEntry['kind']; readonly count: number; readonly label: string }
+
+/** The chips of an agent card, from its shelves: a kind with nothing in it is left out. */
+export function chipsOf(shelves: Shelves): Chip[] {
+  const lists: Readonly<Record<ShelfEntry['kind'], readonly ShelfEntry[]>> = { skill: shelves.skills, tool: shelves.tools, note: shelves.notes };
+  return CHIP_KINDS.filter(kind => lists[kind].length > 0).map(kind => ({ kind, count: lists[kind].length, label: chipLabel(kind, lists[kind].length) }));
+}
+
 /** One plain line for an agent card: its role and what it has. */
 export function agentHint(agent: AgentItem): string {
   const role = agent.definition.role.trim().toLowerCase() || CARD_WORDS.agentFallbackRole;
@@ -88,7 +105,7 @@ export function ownedAgents(world: World): AgentItem[] {
 const FALLBACK_HINT: Readonly<Record<ShelfEntry['kind'], string>> = Object.freeze({ skill: CARD_WORDS.skillFallback, tool: CARD_WORDS.toolFallback, note: CARD_WORDS.noteFallback });
 
 /** The name and the hint of a card: the plain ones when the sample knows the id, else the item's own name and a plain line for its kind. */
-function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: string; hint: string } {
+export function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: string; hint: string } {
   const plain = plainOf(kind, id);
   return plain === null ? { name: readableName(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
 }
