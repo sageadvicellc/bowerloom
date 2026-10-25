@@ -535,8 +535,10 @@ test('keyboard only: tabs by arrows, the list in one stop, arrows between rows, 
   await expect(p.getByRole('button', { name: 'Name', exact: true })).toBeFocused();
   await search().fill('');
   await search().focus();
-  // Tab from the search goes through the two sort buttons to the list, which is one stop
-  await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
+  // Tab from the search goes through the three sort buttons and the filter to the list, which is one stop
+  for (let i = 0; i < 4; i += 1) await p.keyboard.press('Tab');
+  await expect(p.getByRole('button', { name: /^Not used yet \d+$/ })).toBeFocused();
+  await p.keyboard.press('Tab');
   expect(await page().evaluate(() => document.activeElement?.classList.contains('kit-card-main'))).toBe(true);
   const first = await focusedText();
   await p.keyboard.press('ArrowDown');
@@ -585,11 +587,9 @@ test('Escape closes one layer at a time: the help popover, then the picker, then
   await expect(panel().getByRole('group', { name: 'Add to which agent?' })).toHaveCount(0);
   await expect(dialog('remove')).toHaveCount(0);
   await expect(title()).toHaveText('Compare two options');
-  await p.getByRole('button', { name: 'About the library' }).click();
-  await expect(p.getByText('The library holds everything you own')).toBeVisible();
-  await p.keyboard.press('Escape');
-  await expect(p.getByText('The library holds everything you own')).toHaveCount(0);
-  await expect(p.getByRole('button', { name: 'About the library' })).toBeFocused();
+  // The page has no bare "?" of its own: the tip is a line of text.
+  await expect(p.getByRole('button', { name: 'About the library' })).toHaveCount(0);
+  await expect(p.getByText('Everything you own is here, even what no agent uses.')).toBeVisible();
 });
 
 test('the copies dialog opened from a row gives the focus back to the row when its badge goes away', async () => {

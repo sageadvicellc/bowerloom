@@ -28,6 +28,8 @@ export interface AddRowProps {
   suppressClick(): boolean;
   /** Called when the person presses the "2 different copies" badge. */
   onBadgePress?(): void;
+  /** Where the card came from ("Made by you", "Open skills library"), drawn under it so no card is left blank. */
+  source?: string;
 }
 
 /** One agent in the picker. The name is the button (its ::after covers the row), so the button holds the name and nothing else. */
@@ -73,7 +75,7 @@ function AgentPicker({ entry, choices, onPick, onClose }: { entry: AddEntry; cho
   );
 }
 
-export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDragStart, suppressClick, onBadgePress }: AddRowProps): ReactElement {
+export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDragStart, suppressClick, onBadgePress, source }: AddRowProps): ReactElement {
   const row = useRef<HTMLLIElement>(null), button = useRef<HTMLButtonElement>(null);
   const nameId = useId();
   const ready = entry.kind === 'agent';
@@ -96,6 +98,7 @@ export function AddRow({ entry, choices, open, onToggle, onPick, onInstall, onDr
           <span id={`${nameId}-do`}>{ready ? L.addAgent : L.addTo}</span>
         </Button>
       </div>
+      {source === undefined ? null : <p className="kit-hint add-row-source" data-source="" data-budget="content">{source}</p>}
       {!ready && open ? <AgentPicker entry={entry} choices={choices} onPick={c => { onPick(c, row.current); button.current?.focus(); }} onClose={close} /> : null}
     </li>
   );

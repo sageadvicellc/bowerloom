@@ -14,6 +14,7 @@
 [data-home] .lb-sticky { position: sticky; top: calc(-1 * var(--hm-space-6)); z-index: 5; display: flex; flex-direction: column; gap: var(--hm-space-2); margin: 0 calc(-1 * var(--hm-space-6)); padding: var(--hm-space-3) var(--hm-space-6); background: var(--bg); }
 [data-home] .lb-title-line { display: flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .lb-find { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+[data-home] .lb-order { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
 [data-home] .lb-search {
   box-sizing: border-box; flex: 1 1 var(--hm-tile-w); min-width: var(--hm-row-min-w); max-width: calc(var(--hm-tile-w) * 1.75); padding: var(--hm-space-3);
   font: inherit; font-size: var(--hm-text-base); line-height: var(--hm-leading); color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
@@ -41,7 +42,13 @@
 [data-home] .lb-row .kit-card { width: auto; min-width: 0; }
 /* An agent is a large card in the kit; in a list it takes the width of a row, like every other card. */
 [data-home] .lb-row .kit-card[data-size="large"] { width: auto; min-height: var(--hm-row-h); padding: var(--hm-space-3); }
-[data-home] .lb-used { padding: 0 var(--hm-space-3); }
+/* The line under every card: a grey dot and the note (who uses it) at the left, where it came from at the right. It has a line of its own in every row, so every row is the same height. */
+[data-home] .lb-used { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); padding: 0 var(--hm-space-3); min-height: calc(var(--hm-text-small) * 1.4); }
+[data-home] .lb-used-note { display: inline-flex; align-items: center; gap: var(--hm-space-2); min-width: 0; }
+[data-home] .lb-used-note > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-home] .lb-used-source { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+[data-home] .lb-dot { background: currentColor; }
+[data-home] .lb-agents-note { margin: 0; }
 [data-home] .lb-empty { margin: 0; padding: var(--hm-space-5) 0; }
 
 /* ---- The details panel */
@@ -114,7 +121,6 @@
 /* In a short window the tabs and the search scroll away with the title, so the list has the room. */
 @media (max-height: 700px) {
   [data-home] .lb-sticky { position: static; margin: 0; padding: var(--hm-space-2) 0; }
-  [data-home] .lb-tip { display: none; }
 }
 @media (max-width: 760px) {
   [data-home] .lb-list { grid-template-columns: minmax(0, 1fr); }

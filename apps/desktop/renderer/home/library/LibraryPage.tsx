@@ -9,7 +9,7 @@
  */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { libraryCounts, libraryDetails, listLibrary, removePlan, agentsFor } from '../../../shared/home/library-model.js';
+import { agentSplit, agentSplitLine, libraryCounts, libraryDetails, listLibrary, notUsedCount, removePlan, agentsFor } from '../../../shared/home/library-model.js';
 import type { LibraryKind, LibrarySort, UpdateInfo } from '../../../shared/home/library-model.js';
 import type { AgentRef } from '../../../shared/home/details.js';
 import { addToAgentAction, makeOwnCopyAction, removeFromLibraryAction, useUpdateAction } from '../../../shared/home/library-actions.js';
@@ -18,9 +18,9 @@ import { reduceStore } from '../../../shared/proto/store.js';
 import { useProtoStore } from '../../proto/session.js';
 import { CopiesDialog } from '../copies/CopiesDialog.js';
 import { Button } from '../kit/Button.js';
-import { HelpPopover } from '../kit/HelpPopover.js';
 import { useLeaving } from '../kit/presence.js';
 import { LibraryDetails } from './LibraryDetails.js';
+import { LibraryFilter } from './LibraryFilter.js';
 import { LibraryList } from './LibraryList.js';
 import { LibrarySortToggle } from './LibrarySortToggle.js';
 import { LibraryTabs, tabId } from './LibraryTabs.js';
@@ -60,6 +60,7 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   const [kind, setKind] = useState<LibraryKind>('skill');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<LibrarySort>('name');
+  const [unusedOnly, setUnusedOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [removeFor, setRemoveFor] = useState<RemoveSnapshot | null>(null);
   const [updateFor, setUpdateFor] = useState<UpdateSnapshot | null>(null);
@@ -73,11 +74,15 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   const focusAfter = useRef<FocusAfter | null>(null);
 
   const counts = useMemo(() => libraryCounts(world), [world]);
-  const listed = useMemo(() => listLibrary(world, kind, query, sort), [world, kind, query, sort]);
+  // An agent is used by nothing, so on the Agents tab there is no "Most used" and no "Not used yet": the list is ordered by name then, and not filtered.
+  const usable = kind !== 'agent', order: LibrarySort = !usable && sort === 'used' ? 'name' : sort, filtering = usable && unusedOnly;
+  const listed = useMemo(() => listLibrary(world, kind, query, order, filtering), [world, kind, query, order, filtering]);
+  const unused = useMemo(() => (usable ? notUsedCount(world, kind) : 0), [world, kind, usable]);
+  const split = useMemo(() => (kind === 'agent' ? agentSplit(world) : null), [world, kind]);
   const details = useMemo(() => (selectedId === null ? null : libraryDetails(world, kind, selectedId)), [world, kind, selectedId]);
   const choices = useMemo(() => (selectedId === null ? [] : agentsFor(world, kind, selectedId)), [world, kind, selectedId]);
   const nameOf = useMemo(() => plainNameOf(world), [world]);
-  const searching = query.trim() !== '';
+  const searching = query.trim() !== '' || filtering;
 
   useEffect(() => { document.title = 'Bowerloom'; }, []);
   // A thing that is gone (removed, or put back by "Go back") leaves nothing picked.
@@ -96,7 +101,7 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   });
 
   const clearSays = (): void => { setSay(''); setNote(''); };
-  const changeKind = (next: LibraryKind): void => { if (next === kind) return; setKind(next); setQuery(''); setSelectedId(null); clearSays(); };
+  const changeKind = (next: LibraryKind): void => { if (next === kind) return; setKind(next); setQuery(''); setUnusedOnly(false); setSelectedId(null); clearSays(); };
   const pick = (id: string): void => { setSelectedId(current => (current === id ? null : id)); clearSays(); };
   const rowButton = (id: string | null): HTMLElement | null => (id === null ? null : body.current?.querySelector<HTMLElement>(`.lb-list li[data-row-id="${CSS.escape(id)}"] .kit-card-main`) ?? null);
 
@@ -109,7 +114,7 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   };
   const openAgent = (agentId: string): void => {
     if (onOpenAgent !== undefined) { onOpenAgent(agentId); return; }
-    setKind('agent'); setQuery(''); setSelectedId(agentId); clearSays();
+    setKind('agent'); setQuery(''); setUnusedOnly(false); setSelectedId(agentId); clearSays();
     focusAfter.current = 'heading';
   };
   const askRemove = (): void => {
@@ -148,7 +153,7 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
     focusAfter.current = 'heading';
   };
   const added = ({ count, firstKind }: { readonly count: number; readonly firstKind: 'skill' | 'agent' | 'tool' }): void => {
-    setKind(KIND_OF_ITEM[firstKind]); setQuery(''); setSort('added'); setSelectedId(null); setSay('');
+    setKind(KIND_OF_ITEM[firstKind]); setQuery(''); setUnusedOnly(false); setSort('added'); setSelectedId(null); setSay('');
     setNote(addedItems(count));
   };
   /** Where the focus goes when the copies dialog closes and the badge it opened from is gone: the row, else the heading of the panel. */
@@ -162,7 +167,6 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
           <div className="hm-stage-title">
             <div className="lb-title-line">
               <h1 className="kit-heading" tabIndex={-1}>{L.title}</h1>
-              <HelpPopover label={L.aboutLibrary} text={LIBRARY_WORDS.popover.library} />
             </div>
             <p className="kit-hint lb-tip">{H.pageTip}</p>
           </div>
@@ -174,11 +178,15 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
           <div className="lb-find">
             <LibraryTabs kind={kind} counts={counts} onChange={changeKind} panelId={panelId} />
             <input className="lb-search" type="search" autoComplete="off" spellCheck={false} aria-label={L.search} placeholder={L.searchPlaceholder} value={query} onChange={e => { setQuery(e.target.value); }} />
-            <LibrarySortToggle mode={sort} onChange={setSort} />
+            <div className="lb-order">
+              <LibrarySortToggle mode={order} onChange={setSort} withUsed={usable} />
+              {usable ? <LibraryFilter on={unusedOnly} count={unused} onChange={setUnusedOnly} /> : null}
+            </div>
           </div>
           <p className="kit-hint lb-count" role="status" data-count="">{note !== '' ? note : countLine(listed.rows.length, listed.total, kind, searching)}</p>
         </div>
         <div role="tabpanel" id={panelId} aria-labelledby={tabId(panelId, kind)}>
+          {split === null ? null : <p className="kit-hint lb-agents-note" data-agents-note="">{agentSplitLine(split)}. {H.agentsNote}</p>}
           <LibraryList kind={kind} rows={listed.rows} selectedId={selectedId} onSelect={pick} onBadgePress={setCopiesFor} label={L.listName} empty={searching ? H.noMatch : H.emptyKind} />
         </div>
       </main>

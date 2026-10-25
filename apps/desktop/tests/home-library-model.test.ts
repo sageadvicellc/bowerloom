@@ -7,7 +7,7 @@ import type { StoreState } from '../shared/proto/store.js';
 import type { World } from '../shared/proto/types.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import {
-  LIBRARY_KINDS, copyDraft, daysBackOf, hasLine, libraryCounts, libraryDetails, libraryRows, listLibrary, matchesSearch, mineName, removePlan, sortRows, takesOffLine, updateOf, usedByLine, agentsFor, entryOf,
+  LIBRARY_KINDS, agentSplit, agentSplitLine, copyDraft, notUsedCount, daysBackOf, hasLine, libraryCounts, libraryDetails, libraryRows, listLibrary, matchesSearch, mineName, removePlan, sortRows, takesOffLine, updateOf, usedByLine, agentsFor, entryOf,
 } from '../shared/home/library-model.js';
 import { dayText } from '../shared/home/library-sample.js';
 import { UPDATE_ITEM_ID } from '../shared/home/library-sample.js';
@@ -281,4 +281,69 @@ test('the sample sources are not in the world until someone adds them, and addin
   const clerk = libraryRows(next, 'agent').find(r => r.name === 'Mail clerk')!;
   assert.equal(clerk.hint, 'Reads your mail and drafts short replies for you to check.');
   assert.deepEqual(clerk.status, { label: 'Ready-made', tone: 'info' });
+});
+
+// ---- Wave E, group A: the filter, the third order, the words of a status, the split of the agents, the line under every card.
+test('"Not used yet" keeps only the things that no agent uses, and its count is the number of those', () => {
+  const w = world();
+  const all = libraryRows(w, 'skill');
+  const unused = all.filter(r => r.notUsed);
+  assert.equal(notUsedCount(w, 'skill'), unused.length);
+  assert.ok(unused.length >= 20 && unused.every(r => r.usedBy === 0));
+  assert.deepEqual(listLibrary(w, 'skill', '', 'name', true).rows.map(r => r.id), sortRows(unused, 'name').map(r => r.id));
+  assert.equal(listLibrary(w, 'skill', '', 'name', true).total, 53, 'the total is still every skill');
+  assert.equal(listLibrary(w, 'skill', '', 'name', false).rows.length, 53);
+  // a hook runs on its own: it is not "not used". An agent is never filtered.
+  assert.equal(libraryRows(w, 'tool').find(r => r.id === 'tool-hook-guard')!.notUsed, false);
+  assert.equal(notUsedCount(w, 'agent'), 0);
+  assert.equal(listLibrary(w, 'agent', '', 'name', true).rows.length, 16);
+  // the filter and the search work together
+  const both = listLibrary(w, 'skill', 'translate', 'name', true).rows.map(r => r.name);
+  assert.deepEqual(both, ['Translate a text']);
+});
+
+test('"Most used" puts the skills that most agents hold first and breaks a tie by name', () => {
+  const w = world();
+  const rows = listLibrary(w, 'skill', '', 'used').rows;
+  assert.equal(rows[0]!.usedBy, Math.max(...rows.map(r => r.usedBy)));
+  for (let i = 1; i < rows.length; i += 1) {
+    const a = rows[i - 1]!, b = rows[i]!;
+    assert.ok(a.usedBy > b.usedBy || (a.usedBy === b.usedBy && a.name.localeCompare(b.name) <= 0), `${a.name} then ${b.name}`);
+  }
+});
+
+test('search also matches the words of a status: "not used", "needs a key", "runs code", "copies"', () => {
+  const w = world();
+  const names = (kind: Parameters<typeof listLibrary>[1], q: string): string[] => listLibrary(w, kind, q, 'name').rows.map(r => r.id);
+  assert.ok(names('skill', 'not used').includes('skill-003') && !names('skill', 'not used').includes('skill-010'));
+  assert.deepEqual(names('tool', 'needs a key'), ['tool-mcp-missing']);
+  assert.ok(names('tool', 'runs code').includes('tool-hook-guard'));
+  assert.ok(names('skill', 'copies').includes('skill-014'));
+  assert.ok(names('agent', 'ready-made').includes('agent-starter-note-taker'));
+  assert.equal(names('skill', 'zzzz nothing').length, 0);
+});
+
+test('every row has a line under its card: who uses it at the left, where it came from at the right', () => {
+  const w = world();
+  for (const kind of LIBRARY_KINDS) for (const r of libraryRows(w, kind)) {
+    assert.ok(r.note !== '' && r.source !== '', `${kind} ${r.id} has both halves`);
+  }
+  assert.equal(row(w, 'skill', 'skill-003').note, 'Not used yet');
+  assert.equal(row(w, 'skill', 'skill-003').notUsed, true);
+  assert.equal(row(w, 'skill', 'skill-010').note, 'Used by 3 agents');
+  assert.equal(row(w, 'tool', 'tool-hook-guard').note, 'Runs on its own');
+  assert.equal(row(w, 'agent', 'agent-01').note, '4 skills and 1 tool');
+  assert.match(row(w, 'agent', 'agent-starter-note-taker').note, /^Ready-made( · \d+ skills?)?$/);
+  assert.equal(row(w, 'skill', 'skill-042').source, 'Made by you');
+  assert.equal(row(w, 'skill', 'skill-009').source, 'Open skills library');
+  // an unused row still has its hint
+  assert.notEqual(row(w, 'skill', 'skill-003').hint, '');
+});
+
+test('the agents of the library split into Yours and Ready-made, and the two add up to the tab count', () => {
+  const w = world();
+  const split = agentSplit(w);
+  assert.deepEqual(split, { yours: 10, readyMade: 6 });
+  assert.equal(split.yours + split.readyMade, libraryCounts(w).agent);
+  assert.equal(agentSplitLine(split), 'Yours 10 · Ready-made 6');
 });

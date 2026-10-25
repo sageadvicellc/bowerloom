@@ -29,6 +29,8 @@ export const LIBRARY_WORDS = deepFreeze({
     sortBy: WORDS.label.sortBy,
     byName: WORDS.label.byName,
     byAdded: 'Recently added',
+    byUsed: 'Most used',
+    filterGroup: 'Filter the list',
     addFromWeb: 'Add from the web',
     listName: 'Everything you own',
     pickSomething: 'Pick something',
@@ -78,7 +80,6 @@ export const LIBRARY_WORDS = deepFreeze({
     starterSources: 'Starter sources',
     open: 'Open',
     backToSources: 'Back to sources',
-    aboutLibrary: 'About the library',
     aboutSample: 'About sample sources',
     changedMark: 'Changed',
     // The test page.
@@ -90,6 +91,7 @@ export const LIBRARY_WORDS = deepFreeze({
   /** One line under a label: at most 12 words. */
   hint: {
     pageTip: 'Everything you own is here, even what no agent uses.',
+    agentsNote: LIBRARY_MODEL_WORDS.readyMadeNote,
     pickTip: 'Pick something to see its details.',
     noMatch: 'Nothing matches your search.',
     emptyKind: 'Nothing here yet.',
@@ -118,7 +120,6 @@ export const LIBRARY_WORDS = deepFreeze({
   },
   /** The text behind a "?" button: at most 25 words. */
   popover: {
-    library: 'The library holds everything you own, even the skills and tools that no agent uses yet.',
     sample: 'Sample sources show how adding from the web will look. Nothing leaves this computer in the preview.',
   },
 });
@@ -127,11 +128,14 @@ const KIND_NOUN: Readonly<Record<LibraryKind, readonly [one: string, many: strin
   skill: ['skill', 'skills'], agent: ['agent', 'agents'], tool: ['tool', 'tools'], note: ['note set', 'note sets'],
 });
 
-/** "53 skills", "1 note set", or, while a search is typed, "5 of 53 skills". */
+/** "53 skills", "1 note set", or, while a search is typed or the list is filtered, "5 of 53 skills". */
 export function countLine(shown: number, total: number, kind: LibraryKind, searching: boolean): string {
   const noun = KIND_NOUN[kind][total === 1 ? 0 : 1];
   return searching ? `${shown} of ${total} ${noun}` : `${total} ${noun}`;
 }
+
+/** The name of the switch that keeps only what no agent uses: "Not used yet 22". */
+export const notUsedLabel = (n: number): string => `${LIBRARY_MODEL_WORDS.notUsed} ${n}`;
 
 /** "Add 7 items" or "Add 1 item". */
 export const addItems = (n: number): string => `Add ${n} ${n === 1 ? 'item' : 'items'}`;

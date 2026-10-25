@@ -10,8 +10,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { LIBRARY_KINDS, libraryDetails, libraryRows, removePlan, updateOf, entryOf } from '../shared/home/library-model.js';
 import { SAMPLE_SOURCES } from '../shared/home/library-sources.js';
-import { LIBRARY_MODEL_WORDS, hasLine, takesOffLine, usedByLine } from '../shared/home/library-model.js';
-import { LIBRARY_WORDS, addItems, addedItems, addedTo, alreadyHere, changedLines, countLine, groupHeading, madeByLine, openSource, removedLine, sourceCounts, tabName, willBeCopies } from '../renderer/home/library/library-words.js';
+import { LIBRARY_MODEL_WORDS, agentSplitLine, hasLine, takesOffLine, usedByLine } from '../shared/home/library-model.js';
+import { LIBRARY_WORDS, addItems, addedItems, addedTo, alreadyHere, changedLines, countLine, groupHeading, madeByLine, notUsedLabel, openSource, removedLine, sourceCounts, tabName, willBeCopies } from '../renderer/home/library/library-words.js';
 import { LibraryDetails } from '../renderer/home/library/LibraryDetails.js';
 import { LibraryHarness } from '../renderer/home/library/LibraryHarness.js';
 import { LibraryPage } from '../renderer/home/library/LibraryPage.js';
@@ -81,10 +81,13 @@ test('the words built from numbers and names stay inside the budget, even with f
     addItems(0), addItems(1), addItems(250), alreadyHere(1), alreadyHere(12), willBeCopies(1), willBeCopies(3), addedTo(FIVE), removedLine(FIVE), addedItems(7), addedItems(1),
     openSource(FIVE), changedLines(1), changedLines(40), usedByLine(0), usedByLine(1), usedByLine(99), hasLine(12, 3)!, takesOffLine(0), takesOffLine(1), takesOffLine(10),
     sourceCounts({ skill: 3, agent: 1, tool: 4 }), sourceCounts({ skill: 0, agent: 0, tool: 1 }), groupHeading('skill'), groupHeading('agent'), groupHeading('tool'),
+    notUsedLabel(0), notUsedLabel(22), notUsedLabel(120), `${agentSplitLine({ yours: 10, readyMade: 6 })}. ${LIBRARY_WORDS.hint.agentsNote}`, `Ready-made · ${hasLine(12, 3)!}`,
   ];
   for (const text of built) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); }
   assert.ok(countWords(tabName(FIVE, 120)) <= 7);
   assert.ok(countWords(madeByLine('Dana Whitfield')) <= LIMITS.hint);
+  assert.equal(notUsedLabel(22), 'Not used yet 22');
+  assert.equal(`${agentSplitLine({ yours: 10, readyMade: 6 })}. ${LIBRARY_WORDS.hint.agentsNote}`, 'Yours 10 · Ready-made 6. Ready-made agents come with Bowerloom.');
   assert.equal(countLine(5, 53, 'skill', true), '5 of 53 skills');
   assert.equal(countLine(1, 1, 'note', false), '1 note set');
   assert.equal(sourceCounts({ skill: 3, agent: 1, tool: 4 }), '3 skills, 1 agent, 4 tools');

@@ -22,12 +22,13 @@ import { bodyOf, fieldsOf, makeText } from './library-text.js';
 export type LibraryKind = 'skill' | 'agent' | 'tool' | 'note';
 /** The tabs, in the order they show. */
 export const LIBRARY_KINDS: readonly LibraryKind[] = Object.freeze(['skill', 'agent', 'tool', 'note'] as const);
-export type LibrarySort = 'name' | 'added';
+export type LibrarySort = 'name' | 'added' | 'used';
 
 /** The words these helpers put on a screen. `renderer/home/library/library-words.ts` lists them, so one test holds them all to the rules. */
 export const LIBRARY_MODEL_WORDS = Object.freeze({
   needsKey: CARD_WORDS.needsKey, runsCode: 'Runs code', updateAvailable: 'Update available', notUsed: 'Not used yet', readyMade: 'Ready-made', copiesSuffix: CARD_WORDS.copiesSuffix,
   madeByYou: SOURCE_WORDS.you, addedJustNow: 'Added just now', notStated: 'Not stated',
+  runsOnItsOwn: 'Runs on its own', nothingAdded: 'Nothing added yet', yours: 'Yours', readyMadeNote: 'Ready-made agents come with Bowerloom.',
   reachNothing: 'Nothing outside. It only sends a saved prompt.', reachComputer: 'This computer only', reachUnknown: 'It does not say what it reaches.',
   noAgents: 'No agent uses it yet.', noText: 'There is no text to show.', fallbackAgent: 'An agent you can use.',
 });
@@ -160,6 +161,12 @@ export interface LibraryRow {
   readonly usedBy: number;
   /** What an agent has ("3 skills and 1 tool"), or null when the row is not an agent or the agent has nothing. */
   readonly has: string | null;
+  /** True for a skill, tool or set of notes that no agent uses. A hook is never "not used": it runs on its own. An agent is never "not used". */
+  readonly notUsed: boolean;
+  /** The line under the card, on the left: "Used by 3 agents", "Not used yet", "Ready-made", "4 skills and 1 tool". Always there, so every row has the same height. */
+  readonly note: string;
+  /** The line under the card, on the right: where the thing came from ("Made by you", "Open skills library"). */
+  readonly source: string;
   readonly days: number; readonly pos: number;
 }
 
@@ -174,35 +181,71 @@ export function hasLine(skills: number, tools: number): string | null {
 /** "Used by 3 agents" or "Used by 1 agent". */
 export const usedByLine = (n: number): string => `Used by ${count(n, 'agent')}`;
 
+/** True for a hook: it runs on its own and joins no agent. */
+const isHook = (entry: Entry): boolean => entry.kind !== 'note' && entry.item.kind === 'tool' && entry.item.toolKind === 'hook';
+
+/** The left half of the line under a card. Plain words, never a colour alone: the dot beside it is grey. */
+function noteOf(entry: Entry, usedBy: number, has: string | null): string {
+  if (entry.kind === 'agent') {
+    const ready = entry.item.library !== null;
+    return ready ? (has === null ? LIBRARY_MODEL_WORDS.readyMade : `${LIBRARY_MODEL_WORDS.readyMade} · ${has}`) : (has ?? LIBRARY_MODEL_WORDS.nothingAdded);
+  }
+  if (isHook(entry)) return LIBRARY_MODEL_WORDS.runsOnItsOwn;
+  return usedBy > 0 ? usedByLine(usedBy) : LIBRARY_MODEL_WORDS.notUsed;
+}
+
 /** Every row of one kind, in the order the world keeps them. */
 export function libraryRows(world: World, kind: LibraryKind): LibraryRow[] {
   return entriesOf(world, kind).map((entry): LibraryRow => {
     const look = lookOf(world, entry);
     const usedBy = entry.kind === 'agent' ? 0 : usedByOf(world, entry.kind, entry.id).length;
     const has = entry.kind === 'agent' ? hasLine((entry.item as AgentItem).definition.skillIds.length, (entry.item as AgentItem).definition.toolAttachments.length) : null;
-    return { id: entry.id, kind, name: look.name, hint: look.hint, status: statusOf(entry, usedBy), usedBy, has, days: daysBackOf(entry.id), pos: entry.pos };
+    const notUsed = entry.kind !== 'agent' && usedBy === 0 && !isHook(entry);
+    return { id: entry.id, kind, name: look.name, hint: look.hint, status: statusOf(entry, usedBy), usedBy, has, notUsed, note: noteOf(entry, usedBy, has), source: originOf(world, entry).source, days: daysBackOf(entry.id), pos: entry.pos };
   });
 }
 
-/** True when a row matches a search: every word typed is somewhere in its name or hint, whatever the letter case. An empty search matches every row. */
-export function matchesSearch(row: Pick<LibraryRow, 'name' | 'hint'>, query: string): boolean {
+/** How many of a kind no agent uses: the number beside the "Not used yet" switch. */
+export const notUsedCount = (world: World, kind: LibraryKind): number => libraryRows(world, kind).filter(r => r.notUsed).length;
+
+/** The agents of the library in two parts: those the person has ("Yours") and those that come with a library ("Ready-made"). */
+export function agentSplit(world: World): { readonly yours: number; readonly readyMade: number } {
+  const agents = entriesOf(world, 'agent');
+  const readyMade = agents.filter(e => e.kind === 'agent' && e.item.library !== null).length;
+  return { yours: agents.length - readyMade, readyMade };
+}
+
+/** "Yours 10 · Ready-made 6", the part of the note above the agents that explains the tab count. */
+export const agentSplitLine = (split: { readonly yours: number; readonly readyMade: number }): string =>
+  `${LIBRARY_MODEL_WORDS.yours} ${split.yours} · ${LIBRARY_MODEL_WORDS.readyMade} ${split.readyMade}`;
+
+/**
+ * True when a row matches a search: every word typed is somewhere in its name, its hint, its status or the line under it, whatever the letter case.
+ * So "not used", "needs a key", "runs code" and "copies" find the rows that wear those words. An empty search matches every row.
+ */
+export function matchesSearch(row: Pick<LibraryRow, 'name' | 'hint'> & { readonly status?: CardBadge | null; readonly note?: string; readonly source?: string }, query: string): boolean {
   const words = query.toLowerCase().split(/\s+/).filter(w => w !== '');
   if (words.length === 0) return true;
-  const hay = `${row.name} ${row.hint}`.toLowerCase();
+  const hay = `${row.name} ${row.hint} ${row.status?.label ?? ''} ${row.note ?? ''} ${row.source ?? ''}`.toLowerCase();
   return words.every(w => hay.includes(w));
 }
 
-/** The rows in one order: by name, or newest first. */
+/** The rows in one order: by name, newest first, or the most used first. */
 export function sortRows(rows: readonly LibraryRow[], sort: LibrarySort): LibraryRow[] {
   const byName = (a: LibraryRow, b: LibraryRow): number => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
   const byAdded = (a: LibraryRow, b: LibraryRow): number => a.days - b.days || b.pos - a.pos || byName(a, b);
-  return [...rows].sort(sort === 'name' ? byName : byAdded);
+  const byUsed = (a: LibraryRow, b: LibraryRow): number => b.usedBy - a.usedBy || byName(a, b);
+  return [...rows].sort(sort === 'name' ? byName : sort === 'added' ? byAdded : byUsed);
 }
 
-/** What the list shows: the rows of a kind that match the search, in the chosen order, and how many there are before and after the search. */
-export function listLibrary(world: World, kind: LibraryKind, query: string, sort: LibrarySort): { rows: LibraryRow[]; total: number } {
+/**
+ * What the list shows: the rows of a kind that match the search, in the chosen order, and how many there are before and after the search.
+ * `onlyUnused` keeps only the things that no agent uses; it has no meaning for agents, so it leaves them all.
+ */
+export function listLibrary(world: World, kind: LibraryKind, query: string, sort: LibrarySort, onlyUnused = false): { rows: LibraryRow[]; total: number } {
   const all = libraryRows(world, kind);
-  return { rows: sortRows(all.filter(r => matchesSearch(r, query)), sort), total: all.length };
+  const kept = onlyUnused && kind !== 'agent' ? all.filter(r => r.notUsed) : all;
+  return { rows: sortRows(kept.filter(r => matchesSearch(r, query)), sort), total: all.length };
 }
 
 // ---------------------------------------------------------------------------------------------------- the update that waits

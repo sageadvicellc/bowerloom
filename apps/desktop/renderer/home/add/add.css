@@ -30,6 +30,7 @@
 [data-home] .add-row-main { display: flex; align-items: center; gap: var(--hm-space-2); }
 /* A row of the drawer is the kit's row: one height, the name over one clipped line of hint, and the Add to button at the end of it. */
 [data-home] .add-row-card { flex: 1 1 0; min-width: 0; }
+[data-home] .add-row-source { margin: 0; padding: 0 var(--hm-space-3); }
 [data-home] .add-row-main > .kit-button { flex: none; }
 
 /* ---- The picker of agents under a row */

@@ -1,11 +1,11 @@
 /**
- * The list of the Library: one card of the kit for each thing, with its status, and "Used by N agents" beside it. One row is in the Tab order (the chosen one,
+ * The list of the Library: one card of the kit for each thing, and under it a line with a grey dot: "Used by N agents" or "Not used yet", and where the thing came from. One row is in the Tab order (the chosen one,
  * else the one last used, else the first), and the arrows (and Home and End) move between rows, so a list of fifty is one stop for the keyboard, not fifty.
  * Pressing a row chooses it; pressing it again puts it down. The badge of a row with different copies opens the copies dialog.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
-import { LIBRARY_MODEL_WORDS, usedByLine } from '../../../shared/home/library-model.js';
+import { LIBRARY_MODEL_WORDS } from '../../../shared/home/library-model.js';
 import type { LibraryKind, LibraryRow } from '../../../shared/home/library-model.js';
 import { ItemCard } from '../kit/ItemCard.js';
 import type { CardKind } from '../kit/ItemCard.js';
@@ -57,9 +57,13 @@ export function LibraryList({ kind, rows, selectedId, onSelect, onBadgePress, la
       {rows.map(row => (
         <li key={row.id} className="lb-row" data-row-id={row.id}>
           <ItemCard kind={CARD[kind]} name={row.name} hint={row.hint} selected={row.id === selectedId} onSelect={() => onSelect(row.id)}
-            {...(row.status === null ? {} : { badge: row.status })}
+            {...(row.status === null || row.status.tone === 'info' ? {} : { badge: row.status })}
             {...(row.status !== null && row.status.tone === 'warn' && row.status.label.endsWith(LIBRARY_MODEL_WORDS.copiesSuffix) ? { onBadgePress: () => onBadgePress(row.id) } : {})} />
-          {row.usedBy > 0 ? <p className="kit-hint lb-used">{usedByLine(row.usedBy)}</p> : row.has !== null ? <p className="kit-hint lb-used">{row.has}</p> : null}
+          {/* The line under every card: a grey dot and what uses it, and where it came from. It is always there, so every row has the same height. */}
+          <p className="kit-hint lb-used" data-used="">
+            <span className="lb-used-note"><span className="kit-dot lb-dot" aria-hidden="true" /><span>{row.note}</span></span>
+            <span className="lb-used-source" data-budget="content">{row.source}</span>
+          </p>
         </li>
       ))}
     </ul>

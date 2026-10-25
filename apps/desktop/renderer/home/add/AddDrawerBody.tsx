@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
 import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
 import type { AddEntry, AddTab, AgentChoice, HintOf, NameOf } from '../../../shared/home/add-model.js';
+import { entryOf, originOf } from '../../../shared/home/library-model.js';
 import { useProtoStore } from '../../proto/session.js';
 import { stageFile } from '../../../shared/home/add-file.js';
 import type { Bundle } from '../../../shared/proto/types.js';
@@ -60,6 +61,12 @@ export interface AddedInfo { readonly agentId: string; readonly entry: AddEntry 
 /** `show` is set on the note of a real add, so the note can offer to show where it went. `leaving` is true while the note fades out. */
 interface Note { readonly text: string; readonly key: number; readonly show?: AddedInfo; readonly leaving: boolean }
 const NO_HIDDEN: readonly string[] = Object.freeze([]);
+
+/** Where a card came from, in words ("Made by you", "Open skills library"), or undefined for a card the world does not know. */
+function sourceLine(world: Parameters<typeof entryOf>[0], entry: AddEntry): string | undefined {
+  const found = entryOf(world, entry.kind, entry.id);
+  return found === undefined ? undefined : originOf(world, found).source;
+}
 
 export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
@@ -180,7 +187,8 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
                       onInstall={row => install(entry, row)}
                       suppressClick={drag.suppressClick}
                       {...(entry.kind === 'agent' ? {} : { onDragStart: (e: Parameters<typeof drag.start>[0]) => drag.start(e, entry.id, entry.name) })}
-                      {...(onOpenCopies === undefined ? {} : { onBadgePress: () => onOpenCopies(entry.id) })} />
+                      {...(onOpenCopies === undefined ? {} : { onBadgePress: () => onOpenCopies(entry.id) })}
+                      {...(sourceLine(world, entry) === undefined ? {} : { source: sourceLine(world, entry)! })} />
                   ))}
                 </ul>
               )}
