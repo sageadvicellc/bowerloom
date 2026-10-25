@@ -142,6 +142,20 @@ export function keptCount(sel: Selection, basis: Basis): number {
 /** How many notes a topic switches on, with this selection's parts left out. */
 export const topicCount = (sel: Selection, topic: Topic): number => includedParts(sel, topic).reduce((n, p) => n + p.count, 0);
 
+/** What an agent reads now, as a person counts it: each topic that is on with how many of its notes, and how many more notes the rest of the choice picks. */
+export interface Already { readonly topics: readonly { readonly name: string; readonly count: number }[]; readonly before: number; readonly total: number }
+
+/**
+ * The notes already included by a selection (the one the sheet starts from): the topics that are on with their counts, and the notes that no topic accounts for
+ * (single notes, kinds, labels and links of an older choice). The two always add up to the number the preview shows, because the second is what is left of it.
+ */
+export function alreadyOf(sel: Selection, basis: Basis): Already {
+  const total = matchedOf(sel, basis).size;
+  const topics = basis.topics.filter(t => sel.on.includes(t.id)).map(t => ({ name: t.name, count: topicCount(sel, t) })).filter(t => t.count > 0);
+  const named = topics.reduce((n, t) => n + t.count, 0);
+  return { topics, before: Math.max(0, total - named), total };
+}
+
 /** The notes a topic adds on top of everything else the selection picks: what the person would lose by switching it off. */
 export function addsOf(sel: Selection, topic: Topic, basis: Basis): number {
   const without = sel.on.includes(topic.id) ? toggleTopic(sel, topic) : sel;

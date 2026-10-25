@@ -165,3 +165,19 @@ test('the sources of the layer use no inline style, no raw colour and no word of
   }
   assert.doesNotMatch(readFileSync(join(DESKTOP, 'renderer/home/notes/notes.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''), /#[0-9a-fA-F]{3,8}\b|rgb\((?!\s*0 0 0)/, 'colours come from the tokens');
 });
+
+// ---- Wave C
+import { alreadyLine } from '../renderer/home/notes/notes-words.js';
+
+test('the line of what is already included lists up to three topics with their counts, then "N more", then what is from before; it never passes twelve words', () => {
+  assert.equal(alreadyLine([{ name: 'Meetings', count: 114 }, { name: 'Travel', count: 52 }], 52), 'Already included: Meetings (114), Travel (52) and 52 from before.');
+  assert.equal(alreadyLine([{ name: 'Meetings', count: 114 }], 0), 'Already included: Meetings (114).');
+  assert.equal(alreadyLine([{ name: 'Clients', count: 86 }, { name: 'Company', count: 18 }], 0), 'Already included: Clients (86) and Company (18).');
+  assert.equal(alreadyLine([], 263), 'Already included: 263 from before.');
+  assert.equal(alreadyLine([{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }, { name: 'E', count: 5 }], 6), 'Already included: A (1), B (2), 3 more and 6 from before.', 'twelve words is the most, so the third topic is counted in the rest');
+  assert.equal(alreadyLine([{ name: 'A', count: 1 }, { name: 'B', count: 2 }, { name: 'C', count: 3 }, { name: 'D', count: 4 }], 0), 'Already included: A (1), B (2), C (3) and 1 more.');
+  for (const n of [0, 1, 4, 9]) for (const before of [0, 5, 999]) {
+    const text = alreadyLine(Array.from({ length: n }, (_, i) => ({ name: `Topic number ${i + 1}`, count: 100 + i })), before);
+    assert.ok(countWords(text) <= 12, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); assert.equal(bannedIn(text), null, text);
+  }
+});

@@ -1,7 +1,7 @@
 /**
  * The words for a set of notes that a person chose in "Choose notes": a name that says what it holds and a hint that says how much, instead of the name the
  * store gave it ("Report builder notes", which only says who reads it). The topics it covers are the top folders of its rule, named by the plain layer of
- * the topics (notes-topics.ts): "Meetings and Travel notes". More than two topics: the biggest and a count, "Meetings and 2 more notes". A name has at most
+ * the topics (notes-topics.ts): "Meetings and Travel notes", and up to three topics are listed ("Meetings, Travel and Clients notes"). More than that, or names too long for five words: the biggest and a count, "Meetings and 2 more notes". A name has at most
  * five words and a hint at most twelve. The set keeps its stored name; only the words on a card and on the Save bar change, and both come from here.
  * Pure: no React, no DOM, no clock.
  */
@@ -29,12 +29,16 @@ function basisOf(pages: readonly WikiPage[], slice: Slice): Basis {
   return { pages, topics, titles: new Map(), other: otherOf(slice) };
 }
 
-/** The name for a list of topic names, biggest first. */
+/**
+ * The name for a list of topic names, biggest first: up to three are listed ("Meetings, Travel and Clients notes"). When five words do not hold them, the first two and a
+ * count ("Meetings, Travel and 2 more notes"), else the first and a count ("Meetings and 3 more notes").
+ */
 function nameOf(topics: readonly string[]): string {
-  const [first = ''] = topics;
+  const [first = '', second = '', third = ''] = topics;
   const options = topics.length === 1 ? [`${first} notes`]
-    : topics.length === 2 ? [`${first} and ${topics[1]} notes`, `${first} and 1 more notes`]
-      : [`${first} and ${topics.length - 1} more notes`];
+    : topics.length === 2 ? [`${first} and ${second} notes`, `${first} and 1 more notes`]
+      : topics.length === 3 ? [`${first}, ${second} and ${third} notes`, `${first} and 2 more notes`]
+        : [`${first}, ${second} and ${topics.length - 2} more notes`, `${first} and ${topics.length - 1} more notes`];
   // A topic with a long name can still push past five words; the last resort is the first topic alone, cut to five words.
   return options.find(fits) ?? `${first.split(/\s+/).slice(0, MAX_WORDS - 1).join(' ')} notes`;
 }

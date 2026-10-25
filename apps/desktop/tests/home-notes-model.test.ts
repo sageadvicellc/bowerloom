@@ -5,7 +5,7 @@ import { generateWorld } from '../shared/proto/sample.js';
 import { describeRule, matchPages } from '../shared/proto/slicerule.js';
 import type { SliceRule } from '../shared/proto/types.js';
 import {
-  EMPTY_SELECTION, NO_OTHER, addsOf, clearHand, isEmpty, keptCount, makeBasis, matchedOf, previewOf, ruleLines, sizeOf, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic, topicCount,
+  EMPTY_SELECTION, NO_OTHER, addsOf, alreadyOf, clearHand, isEmpty, keptCount, makeBasis, matchedOf, previewOf, ruleLines, sizeOf, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic, topicCount,
 } from '../shared/home/notes-model.js';
 import type { Selection } from '../shared/home/notes-model.js';
 import { countWords } from '../shared/home/textbudget.js';
@@ -174,4 +174,39 @@ test('every line of the choice in words has at most 12 words, even with many par
   const long = makeBasis(world.wikiPages.map(p => ({ ...p, folder: p.folder.replace('tarnwick/', 'tarnwick/very-long-part-name-') })), undefined);
   const t = long.topics.find(x => x.id === 'tarnwick')!;
   for (const line of ruleLines(t.parts.slice(0, 4).reduce((s, p) => toggleLeaveOut(s, p.folder), toggleTopic(EMPTY_SELECTION, t)), long)) assert.ok(countWords(line) <= 12, line);
+});
+
+// ---- Wave C: what an agent already reads, said before any change.
+test('what is already included is the topics that are on with their counts, and the rest of the choice, and the two add up to the preview', () => {
+  const sel = on('Meetings', 'Travel');
+  const a = alreadyOf(sel, basis);
+  assert.deepEqual(a.topics, [{ name: 'Meetings', count: topic('Meetings').count }, { name: 'Travel', count: topic('Travel').count }].sort((x, y) => y.count - x.count));
+  assert.equal(a.before, 0);
+  assert.equal(a.total, previewOf(sel, basis).count);
+  assert.equal(a.topics.reduce((n, t) => n + t.count, a.before), a.total);
+});
+
+test('notes picked one by one or by kind are "from before": what no topic accounts for, so the numbers always add up', () => {
+  const note = world.wikiPages.find(p => p.folder.startsWith('tarnwick'))!;
+  const sel: Selection = { ...on('Travel'), hand: [note.id] };
+  const a = alreadyOf(sel, basis);
+  assert.equal(a.topics.length, 1);
+  assert.equal(a.before, 1);
+  assert.equal(a.topics.reduce((n, t) => n + t.count, a.before), previewOf(sel, basis).count);
+  // A choice made by kind and label only has no topic at all.
+  const slice = { id: 'slice-kinds', name: 'x', seeds: [], rule: { folders: [], pageTypesAndTags: { types: ['guide'], tags: ['fennel', 'quartz'] }, linksFromSeeds: null }, pinned: false };
+  const kept = alreadyOf(selectionFromSlice(slice, makeBasis(world.wikiPages, slice)), makeBasis(world.wikiPages, slice));
+  assert.deepEqual(kept.topics, []);
+  assert.equal(kept.before, kept.total);
+  assert.ok(kept.total > 0);
+  assert.deepEqual(alreadyOf(EMPTY_SELECTION, basis), { topics: [], before: 0, total: 0 });
+});
+
+test('a topic with parts left out counts only the parts that are in', () => {
+  const clients = topic('Clients');
+  assert.ok(clients.parts.length > 1);
+  const sel = toggleLeaveOut(on('Clients'), clients.parts[0]!.folder);
+  const a = alreadyOf(sel, basis);
+  assert.equal(a.topics[0]!.count, clients.count - clients.parts[0]!.count);
+  assert.equal(a.topics.reduce((n, t) => n + t.count, a.before), a.total);
 });

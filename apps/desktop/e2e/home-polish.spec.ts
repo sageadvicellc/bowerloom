@@ -377,11 +377,11 @@ test('after Choose notes the Notes card and the Save bar name the topics and cou
   await expect(card.locator('.kit-card-hint')).toHaveText(`${total} notes it can read.`);
   await expect(p.getByRole('region', { name: 'Save bar' }).locator('.hm-savebar-state p')).toHaveText('Added Meetings and Travel notes to Report builder');
   expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
-  // Three topics: the first and a count, never more than five words.
+  // Three topics are listed, biggest first, in no more than five words.
   await panel().getByRole('button', { name: 'Choose notes' }).click();
   await layer.getByRole('button', { name: 'Money', exact: true }).click();
   await layer.getByRole('button', { name: 'Use these notes', exact: true }).click();
-  await expect(card.locator('.kit-card-main')).toHaveText('Meetings and 2 more notes');
+  await expect(card.locator('.kit-card-main')).toHaveText('Meetings, Money and Travel notes');
 });
 
 // ---- 7. The Agents tab offers six starters that are not empty.

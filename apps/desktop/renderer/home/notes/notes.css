@@ -132,3 +132,7 @@
 @media (prefers-reduced-motion: reduce) {
   [data-home] .nt-chip, [data-home] .nt-pill, [data-home] .nt-row { animation: none !important; transition: none !important; }
 }
+
+/* ---- What the agent reads before any change, and the room kept for "Leave out": a topic with parts keeps the height of its row whether it is on or not, so switching it on moves nothing. */
+[data-home] .nt-already { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+[data-home] .nt-leave-reserved { height: var(--hm-control-h); }

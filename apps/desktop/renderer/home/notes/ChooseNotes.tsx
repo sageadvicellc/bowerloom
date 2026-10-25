@@ -10,7 +10,7 @@ import type { ReactElement } from 'react';
 import type { AgentItem } from '../../../shared/proto/types.js';
 import { agentCard } from '../../../shared/home/cards.js';
 import {
-  addsOf, clearHand, isEmpty, makeBasis, previewOf, ruleLines, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic,
+  addsOf, alreadyOf, clearHand, isEmpty, makeBasis, previewOf, ruleLines, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic,
 } from '../../../shared/home/notes-model.js';
 import type { Selection } from '../../../shared/home/notes-model.js';
 import { chooseNotesAction, notesWouldChange } from '../../../shared/home/notes-actions.js';
@@ -22,7 +22,7 @@ import { Drawer } from '../kit/Drawer.js';
 import { HandPicker } from './HandPicker.js';
 import { PreviewPanel } from './PreviewPanel.js';
 import { TopicGrid } from './TopicGrid.js';
-import { NOTES_WORDS, partBackIn, partLeftOut, topicAdded, topicRemoved } from './notes-words.js';
+import { NOTES_WORDS, alreadyLine, partBackIn, partLeftOut, topicAdded, topicRemoved } from './notes-words.js';
 import './notes.css';
 
 const L = NOTES_WORDS.label, H = NOTES_WORDS.hint;
@@ -66,6 +66,8 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
   const [say, setSay] = useState('');
   const handButton = useRef<HTMLButtonElement>(null), handHeading = useRef<HTMLHeadingElement>(null), topicsHeading = useRef<HTMLHeadingElement>(null), moved = useRef(false);
   const name = agentCard(agent).name;
+  // What the agent reads before any change is made, said first, so the total in the preview is no surprise.
+  const already = useMemo(() => alreadyOf(start, basis), [start, basis]);
 
   const preview = useMemo(() => previewOf(sel, basis), [sel, basis]);
   const lines = useMemo(() => ruleLines(sel, basis), [sel, basis]);
@@ -106,8 +108,10 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
         <p className="nt-agent">{name}</p>
         <p className="kit-hint nt-sentence">{H.intro}</p>
       </div>
+
       <div className="nt-cols">
         <div className="nt-left" data-step={step}>
+          {already.total === 0 ? null : <p className="nt-already" data-already="">{alreadyLine(already.topics, already.before)}</p>}
           {step === 'topics' ? (
             <>
               <div className="nt-left-head">

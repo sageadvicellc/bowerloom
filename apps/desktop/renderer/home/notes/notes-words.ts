@@ -5,6 +5,8 @@
  * from `WORDS`, so each stays one word in one place. No word here says "slice", "token" or "folder": a person picks notes, and notes sit in topics.
  */
 import type { SizeBand } from '../../../shared/home/notes-model.js';
+import { joinWords } from '../../../shared/proto/words.js';
+import { countWords } from '../../../shared/home/textbudget.js';
 import { WORDS } from '../words.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
@@ -63,6 +65,13 @@ const noun = (n: number): string => (n === 1 ? 'note' : 'notes');
 
 /** "86 notes" or "1 note". */
 export const notesCount = (n: number): string => `${n} ${noun(n)}`;
+/** "Already included: Meetings (114), Travel (52) and 52 from before." The topics the agent reads now with their note counts (three at most, then "2 more"), and the notes of the older choice. */
+export function alreadyLine(topics: readonly { readonly name: string; readonly count: number }[], before: number): string {
+  const tail = [...(topics.length > 3 ? [`${topics.length - 3} more`] : []), ...(before > 0 ? [`${before} from before`] : [])];
+  const line = (list: readonly { readonly name: string; readonly count: number }[], rest: readonly string[]): string => `Already included: ${joinWords([...list.map(t => `${t.name} (${t.count})`), ...rest])}.`;
+  const options = [line(topics.slice(0, 3), tail), line(topics.slice(0, 2), [`${Math.max(1, topics.length - 2)} more`, ...(before > 0 ? [`${before} from before`] : [])]), line([], [notesCount(topics.reduce((n, t) => n + t.count, before))])];
+  return options.find(text => countWords(text) <= 12) ?? options[2]!;
+}
 /** "263 notes chosen another way", the hint of the card for notes kept from before. */
 export const keptHint = (n: number): string => `${notesCount(n)} chosen another way`;
 /** "52 of 86 notes", for a topic with parts left out. */

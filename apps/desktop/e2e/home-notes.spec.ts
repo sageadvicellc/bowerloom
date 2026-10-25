@@ -228,7 +228,7 @@ test('"Use these notes" stages ONE change: the layer closes, the shelf shows the
   // Choose differently: still one change, the same set.
   await topic('Travel').click();
   await layer().getByRole('button', { name: 'Use these notes' }).click();
-  await expect(barText()).toHaveText('Added Clients and 2 more notes to Report builder');
+  await expect(barText()).toHaveText('Added Clients, Money and Travel notes to Report builder');
   await expect(shelfCards()).toHaveCount(1);
   // Save, and it is one save point; then it reads as saved.
   await bar().getByRole('button', { name: 'Save' }).click();
@@ -283,11 +283,11 @@ test('an agent that already reads notes opens on them; "Use these notes" waits f
   await topic('Money').click();
   expect(await count()).toBe(before + 69);
   await layer().getByRole('button', { name: 'Use these notes' }).click();
-  await expect(barText()).toHaveText('Added Clients and 2 more notes to Meeting assistant');
+  await expect(barText()).toHaveText('Added Clients, Money and Company notes to Meeting assistant');
   await pickAgent('Inbox sorter');
   await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Client list');
   await pickAgent('Meeting assistant');
-  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Clients and 2 more notes');
+  await expect(shelfCards().first().locator('.kit-card-main')).toHaveText('Clients, Money and Company notes');
 });
 
 test('notes that were chosen another way show as "Kept from before", and can be dropped', async () => {

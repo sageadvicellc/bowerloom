@@ -42,11 +42,13 @@ test('two topics are joined with "and", the biggest first: "Meetings and Travel 
   assert.equal(countOf(slice, s.draft), topic('Meetings').count + topic('Travel').count);
 });
 
-test('more than two topics: the first and a count, "Meetings and 2 more notes"', () => {
+test('up to three topics are listed, biggest first: "Meetings, Money and Travel notes"; more than three: the first and a count, "Meetings and 3 more notes"', () => {
   const s = choose(fresh(), 'agent-05', on('Travel', 'Meetings', 'Money'));
-  assert.equal(notesLabel(sliceOf(s.draft, 'agent-05'), s.draft.wikiPages)!.name, 'Meetings and 2 more notes');
+  assert.equal(notesLabel(sliceOf(s.draft, 'agent-05'), s.draft.wikiPages)!.name, 'Meetings, Money and Travel notes');
   const four = choose(fresh(), 'agent-05', on('Travel', 'Meetings', 'Money', 'Clients'));
   assert.equal(notesLabel(sliceOf(four.draft, 'agent-05'), four.draft.wikiPages)!.name, 'Meetings and 3 more notes');
+  const five = choose(fresh(), 'agent-05', on('Travel', 'Meetings', 'Money', 'Clients', 'Work'));
+  assert.equal(notesLabel(sliceOf(five.draft, 'agent-05'), five.draft.wikiPages)!.name, 'Work and 4 more notes');
 });
 
 test('a name is never more than five words, and a hint never more than twelve', () => {
