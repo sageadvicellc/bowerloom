@@ -25,11 +25,13 @@ export interface ShelfProps {
   onRemove?(entry: ShelfEntry): void;
   /** The id of the card that was just added, if it is on this shelf. */
   freshId?: string | null;
+  /** Flips when the same card is shown again, so it is made afresh and its arrival plays again. */
+  freshPhase?: 0 | 1;
   /** Starts with the long list open (the kit gallery shows both). */
   defaultExpanded?: boolean;
 }
 
-export function Shelf({ title, entries, selectedId, onSelect, emptyText, hint, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, freshId = null, defaultExpanded = false }: ShelfProps): ReactElement {
+export function Shelf({ title, entries, selectedId, onSelect, emptyText, hint, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, freshId = null, freshPhase = 0, defaultExpanded = false }: ShelfProps): ReactElement {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const headingId = useId();
   // A card that was just added is never hidden behind "Show more".
@@ -45,7 +47,7 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, hint, l
       {entries.length === 0 ? <p className="kit-hint">{emptyText}</p> : (
         <ul className="kit-shelf-list">
           {entries.slice(0, shown).map(entry => (
-            <li key={entry.id} data-entry={entry.id}>
+            <li key={entry.id === freshId ? `${entry.id}:${freshPhase}` : entry.id} data-entry={entry.id}>
               <ItemCard kind={entry.kind} name={entry.name} selected={entry.id === selectedId} onSelect={() => onSelect(entry.id)} fresh={entry.id === freshId}
                 {...(entry.hint === undefined ? {} : { hint: entry.hint })}
                 {...(onRemove === undefined ? {} : { onRemove: () => onRemove(entry) })}

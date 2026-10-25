@@ -46,12 +46,14 @@ import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
+import { useLeaving, usePresence } from './kit/presence.js';
 import { HelpPopover } from './kit/HelpPopover.js';
 import { KitIcon } from './kit/icons.js';
 import { ItemCard } from './kit/ItemCard.js';
 import { Shelf } from './kit/Shelf.js';
 import { SortToggle } from './map/SortToggle.js';
 import { SaveBar } from './save/SaveBar.js';
+import { MOTION } from '../motion-tokens.js';
 import { discardAction, goBackAction, removeAction, saveAction } from './store-actions.js';
 import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
 import { TOUR_STEPS } from './tour/steps.js';
@@ -65,15 +67,21 @@ import './home.css';
 type DrawerId = 'add' | 'points';
 
 /** What was just added, so the page can show where it went: an agent and the card on its shelf (or the agent card itself, for a ready-made agent). */
-interface Fresh { readonly agentId: string; readonly entryId: string | null; /** True when the new card is the agent's set of notes, whose id is not known until the choice is saved. */ readonly notes?: boolean }
-/** How long the "just added" mark stays, in milliseconds. */
-const FRESH_MS = 5000;
+interface Fresh {
+  readonly agentId: string; readonly entryId: string | null;
+  /** True when the new card is the agent's set of notes, whose id is not known until the choice is saved. */
+  readonly notes?: boolean;
+  /** Flips each time something is added or shown again, so the cards that wear the mark are made afresh and their arrival plays again. */
+  readonly phase: 0 | 1;
+}
+/** How long the "just added" mark stays, in milliseconds: the ring is drawn, held and faded inside this time (the motion tokens), and the page takes the mark off at its end. */
+const FRESH_MS = MOTION.home.ring.holdMs;
 
 /** How long the body stays marked as moving after a drawer opens or closes: longer than the slowest of the drawer's two clocks. */
 const MOVING_MS = 320;
 
-/** How long the closing note stays, in milliseconds. */
-const NOTE_MS = 9000;
+/** How long the closing note stays, in milliseconds, before it fades. */
+const NOTE_MS = 6000;
 
 export interface HomeAppProps {
   /** The ids of agents to keep off the map (their place was unticked in Find). */
@@ -103,6 +111,8 @@ const SAVE_TARGETS: readonly { id: InterfaceId; name: string }[] = Object.freeze
 type FocusAfter = { readonly kind: ShelfEntry['kind']; readonly index: number } | 'heading';
 
 /** The id of the card to mark on the shelves: the one just added, and only while its agent is the one that is picked. */
+const flip = (current: Fresh | null): 0 | 1 => (current !== null && current.phase === 0 ? 1 : 0);
+
 const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (fresh !== null && fresh.entryId !== null && fresh.agentId === picked ? fresh.entryId : null);
 
 export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore, barPhase }: HomeAppProps = {}): ReactElement {
@@ -115,10 +125,13 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [ownPhase, setOwnPhase] = useState<BarPhase | null>(null);
   const phase = barPhase === undefined ? ownPhase : barPhase.phase, setPhase = barPhase === undefined ? setOwnPhase : barPhase.set;
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
+  const copies = useLeaving(copiesFor);
   const [fresh, setFresh] = useState<Fresh | null>(null);
   const [note, setNote] = useState(false);
+  const toast = usePresence(note);
   const [choosing, setChoosing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const sheet = usePresence(sharing);
   const [addTab, setAddTab] = useState<AddTab>(DEFAULT_TAB);
   const [lastCopy, setLastCopy] = useState<string | undefined>(undefined);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
@@ -227,7 +240,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setPicked(agentId);
     setPickedItem(null);
     setTouched(current => touch(current, agentId));
-    setFresh({ agentId, entryId: null, notes: true });
+    setFresh(current => ({ agentId, entryId: null, notes: true, phase: flip(current) }));
   };
   /** "Open a shared file" in the Save points drawer: the Add drawer opens on its shared-file tab. */
   const openFile = (): void => { setSharing(false); setAddTab('file'); setDrawer('add'); };
@@ -237,13 +250,14 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setPicked(agentId);
     setPickedItem(null);
     setTouched(current => touch(current, agentId));
-    setFresh({ agentId, entryId: entry.kind === 'agent' ? null : entry.id });
+    setFresh(current => ({ agentId, entryId: entry.kind === 'agent' ? null : entry.id, phase: flip(current) }));
   };
   /** "Show" on the note after an add: the drawer closes, and the new card is brought into view and rung again (also where the drawer had hidden the shelves). */
   const showAdded = (info: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => { added(info); setDrawer(null); };
   /** When the badge is gone (a copy was kept) the card is still there: the focus goes to its name. */
   const restoreCopiesFocus = (): HTMLElement | null => {
-    const item = copiesFor === null ? undefined : world.items.find(i => i.id === copiesFor);
+    // The dialog is held for its exit after it closes, so the item it was about is the held value, not the (already empty) state.
+    const item = copies.value === null ? undefined : world.items.find(i => i.id === copies.value);
     const name = item === undefined ? '' : nameOf(item.name);
     const cards = [...document.querySelectorAll<HTMLElement>(`${copiesFrom.current} .kit-card-main`)];
     return cards.find(el => el.textContent === name) ?? null;
@@ -312,7 +326,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
             {agents.map((a, i) => {
               const words = agentCard(a);
               return (
-                <li key={a.id}>
+                <li key={fresh !== null && fresh.agentId === a.id ? `${a.id}:${fresh.phase}` : a.id}>
                   <ItemCard kind="agent" name={words.name} hint={words.hint} selected={a.id === picked} onSelect={() => pick(a.id)} dropAgent={a.id} fresh={fresh !== null && fresh.agentId === a.id} {...(i === 0 ? { dataTour: 'agent' } : {})} />
                 </li>
               );
@@ -325,9 +339,9 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
             <h2 className="kit-heading" id="hm-panel-title" tabIndex={-1}>{card === null ? WORDS.label.pickAnAgent : card.name}</h2>
             <p className="kit-hint">{card === null ? WORDS.hint.panel : card.hint}</p>
           </div>
-          <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} />
-          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} emptyText={WORDS.hint.emptyShelf} hint={WORDS.hint.tools} />
-          <NotesShelf entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshNotes} canChoose={agent !== null} onChoose={choose} />
+          <Shelf title={WORDS.label.skills} entries={shelves?.skills ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} emptyText={WORDS.hint.emptyShelf} />
+          <Shelf title={WORDS.label.tools} entries={shelves?.tools ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} onBadgePress={entry => openCopies(entry.id)} freshId={freshOf(fresh, picked)} freshPhase={fresh?.phase ?? 0} emptyText={WORDS.hint.emptyShelf} hint={WORDS.hint.tools} />
+          <NotesShelf entries={shelves?.notes ?? []} selectedId={pickedItem} onSelect={setPickedItem} onRemove={remove} freshId={freshNotes} freshPhase={fresh?.phase ?? 0} canChoose={agent !== null} onChoose={choose} />
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
@@ -339,11 +353,11 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <ChooseNotes open={choosing} agentId={picked} onClose={() => setChoosing(false)} onChosen={chosen} />
       </div>
 
-      {closingNote ? <div className="hm-toast" role="status" data-open={note ? '' : undefined}>{note ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
+      {closingNote ? <div className="hm-toast" role="status" data-open={toast.mounted && !toast.leaving ? '' : undefined} data-leaving={toast.leaving ? '' : undefined}>{toast.mounted ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
       <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} />
 
-      {sharing ? <ShareSheet world={state.committed} hidden={skipped} unsaved={changes > 0} onClose={() => setSharing(false)} onCopy={setLastCopy} onOpenFile={openFile} /> : null}
-      {copiesFor === null ? null : <CopiesDialog itemId={copiesFor} nameOf={nameOf} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}
+      {sheet.mounted ? <ShareSheet world={state.committed} hidden={skipped} unsaved={changes > 0} leaving={sheet.leaving} onClose={() => setSharing(false)} onCopy={setLastCopy} onOpenFile={openFile} /> : null}
+      {copies.value === null ? null : <CopiesDialog itemId={copies.value} nameOf={nameOf} leaving={copies.leaving} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}
 
       <TourAnnouncer state={tour} />
       {tour.status === 'running' ? <TourOverlay state={tour} onNext={() => tourDo('next')} onBack={() => tourDo('back')} onSkip={() => tourDo('skip')} /> : null}

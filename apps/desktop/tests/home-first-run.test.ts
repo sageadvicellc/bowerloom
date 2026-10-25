@@ -79,7 +79,7 @@ test('the map has a "Find more" button only when it is given a way to reopen Fin
   const draw = (props: Record<string, unknown>): string => renderToStaticMarkup(createElement(ProtoProvider, { store }, createElement(HomeApp, props)));
   assert.doesNotMatch(draw({}), /Find more/); assert.doesNotMatch(draw({}), /hm-toast/);
   const guided = draw({ onFindMore: none, closingNote: true });
-  assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /Saved\. Help replays/, 'the note is empty until the first Save');
+  assert.match(guided, />Find more</); assert.match(guided, /class="hm-toast"/); assert.doesNotMatch(guided, /Help replays the tour/, 'the note is empty until the first Save');
   assert.deepEqual(assertTextBudget(guided), []);
 });
 

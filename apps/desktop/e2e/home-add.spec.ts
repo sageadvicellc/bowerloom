@@ -351,6 +351,7 @@ test('the badge opens the copies side by side with the changed lines marked, and
   await expect(dialog).toContainText('Weekly review');
   await expect(dialog.locator('.add-copy')).toHaveCount(2);
   const a = dialog.locator('.add-copy').nth(0), b = dialog.locator('.add-copy').nth(1);
+  await animationsDone(p);   // the dialog rises 4 px as it comes in: measure it once it has landed
   const boxes = [await a.boundingBox(), await b.boundingBox()];
   expect(boxes[0]!.y).toBeCloseTo(boxes[1]!.y, 0);
   expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x + boxes[0]!.width - 1);

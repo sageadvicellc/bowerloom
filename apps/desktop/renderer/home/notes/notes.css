@@ -9,6 +9,9 @@
 [data-home] .nt-layer { display: contents; }
 /* A sheet over the whole window, so the two columns have all the room there is. The Save bar waits underneath and shows what changed when the sheet closes. */
 [data-home] .nt-layer .kit-drawer { position: fixed; inset: 0; z-index: 40; width: 100%; max-width: none; border-left: 0; box-shadow: none; }
+/* The sheet covers the whole window, so it does not slide 24 px like a side drawer: it fades in while it rises 8 px, and leaves with a fade (the keyframes are the kit's). */
+[data-home] .nt-layer .kit-drawer[data-phase="open"] { animation: kit-sheet-in var(--motion-home-sheet-ms, 0ms) var(--motion-home-sheet-ease, ease-out) both; }
+[data-home] .nt-layer .kit-drawer[data-phase="closing"] { animation: kit-sheet-out var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in) both; }
 [data-home] .nt-layer .kit-drawer-head { padding: var(--hm-space-2) var(--hm-space-5); }
 [data-home] .nt-layer .kit-drawer-body { padding: 0; gap: 0; overflow: hidden; }
 [data-home] .nt-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }

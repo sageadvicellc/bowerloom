@@ -28,6 +28,8 @@ export interface ShareSheetProps {
   hidden: readonly string[];
   /** True when changes wait for Save. They are not in the copy, and the sheet says so. */
   unsaved: boolean;
+  /** True while the sheet fades out: it ignores the pointer and a key, and Escape goes on to the next layer. */
+  leaving?: boolean;
   onClose(): void;
   /** Called with the text of the copy when "Save a copy" is pressed. */
   onCopy(text: string): void;
@@ -35,7 +37,7 @@ export interface ShareSheetProps {
   onOpenFile(): void;
 }
 
-export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile }: ShareSheetProps): ReactElement {
+export function ShareSheet({ world, hidden, unsaved, leaving = false, onClose, onCopy, onOpenFile }: ShareSheetProps): ReactElement {
   const titleId = useId(), readyId = useId(), listId = useId();
   const dialog = useRef<HTMLDivElement>(null), heading = useRef<HTMLHeadingElement>(null), ready = useRef<HTMLHeadingElement>(null);
   const [left, setLeft] = useState<readonly string[]>([]);
@@ -45,8 +47,8 @@ export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile
   const rows = useMemo(() => agents.map(a => { const shelves = shelvesOf(world, a); return { id: a.id, name: agentCard(a).name, brings: bringsLine(shelves.skills.length, shelves.tools.length) }; }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)), [world, agents]);
   const offered = useMemo(() => agents.map(a => a.id), [agents]);
   const plan = useMemo(() => planShare(world, offered, left), [world, offered, left]);
-  const latest = useRef(onClose);
-  latest.current = onClose;
+  const latest = useRef(onClose), going = useRef(leaving);
+  latest.current = onClose; going.current = leaving;
 
   // Focus goes to the title, the rest of the page goes inert, and both are undone when the sheet leaves.
   useEffect(() => {
@@ -62,7 +64,7 @@ export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile
   // Escape closes this sheet and nothing under it, wherever the focus is (see CopiesDialog): a window listener in the capture phase hears it first.
   useEffect(() => {
     const escape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || going.current) return;
       e.preventDefault(); e.stopImmediatePropagation();
       latest.current();
     };
@@ -76,7 +78,7 @@ export function ShareSheet({ world, hidden, unsaved, onClose, onCopy, onOpenFile
   const empty = !canSave(plan);
 
   return (
-    <div className="add-scrim" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="add-scrim" data-leaving={leaving ? '' : undefined} onPointerDown={e => { if (e.target === e.currentTarget && !leaving) onClose(); }}>
       <div className="sh-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} data-share="" data-made={made === null ? undefined : ''} ref={dialog} onKeyDown={key}>
         <header className="sh-head">
           <div className="sh-title">

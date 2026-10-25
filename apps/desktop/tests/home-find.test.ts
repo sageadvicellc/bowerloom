@@ -205,9 +205,10 @@ test('the app answers its own addresses and leaves the gallery and the Add page 
   for (const h of ['#prototype-v2/kit', '#prototype-v2/add', '#main', '#prototype', '']) assert.equal(isAppHash(h), false, h);
 });
 
-test('the tile light-up is short, eased out, 80 ms apart, and a few pixels of travel', () => {
+test('the tile light-up is one short eased-out change: no delay between its parts and no travel (fix list item 11)', () => {
   const t = MOTION.home.tileLight;
-  assert.deepEqual({ ms: t.ms, stagger: t.stagger, distance: t.distance, ease: t.ease }, { ms: 240, stagger: 80, distance: 6, ease: MOTION.ease.out });
+  assert.deepEqual({ ms: t.ms, ease: t.ease }, { ms: 240, ease: MOTION.ease.out });
+  assert.deepEqual(Object.keys(t).sort(), ['ease', 'ms'], 'the 80 ms stagger and the 6 px rise are gone');
   assert.ok(t.ms <= 300, 'brief');
 });
 

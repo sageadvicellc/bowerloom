@@ -1,7 +1,7 @@
 /*
  * The first minute: the Welcome screen and the Find screen. Scoped to [data-home]. Text is 14 px or more, in the light and the dark look. One screen, one
- * clear thing to do. The only new motion is a tile lighting: short, eased out, its parts 80 ms apart, never a loop. Timing comes from the motion tokens,
- * which are 0 under reduce motion, so a tile then just appears lit.
+ * clear thing to do. The only motion is a tile lighting and the reading bar filling: short, eased out, never a loop, and no part waits for another. Timing comes
+ * from the motion tokens, which are 0 under reduce motion, so a tile then just appears lit.
  */
 [data-home].fr-root { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
 [data-home] .fr-brand { display: inline-flex; align-items: center; gap: var(--hm-space-3); margin: 0; font-size: var(--hm-text-heading); font-weight: 650; line-height: 1.2; color: var(--text); }
@@ -30,19 +30,16 @@
   background: transparent; color: var(--text-muted); border: 1.5px dashed var(--hm-border); border-radius: var(--hm-radius);
   transition: background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), border-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease);
 }
-[data-home] .fr-tile .kit-avatar { opacity: 0.55; }
+[data-home] .fr-tile .kit-avatar { opacity: 0.55; transition: opacity var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
 [data-home] .fr-tile-name { font-size: var(--hm-text-base); font-weight: 650; line-height: 1.25; }
 [data-home] .fr-tile-status { margin-top: auto; font-size: var(--hm-text-base); line-height: 1.2; }
 [data-home] .fr-count { font-size: 1.75rem; font-weight: 650; line-height: 1; color: var(--text); margin-right: var(--hm-space-1); }
-/* Lit: the tile is solid and filled, its picture comes to full strength, and its parts rise into place one after the other. */
+/* Lit: the tile is solid and filled, and its picture comes to full strength. It is one change, over the tile's 240 ms, and nothing waits for anything else. */
 [data-home] .fr-tile[data-state="found"] { background: var(--surface); border: 1.5px solid var(--accent-strong); color: var(--text); box-shadow: var(--hm-shadow); }
-[data-home] .fr-tile[data-state="found"] .kit-avatar { opacity: 1; animation: fr-rise var(--motion-home-tile-ms, 0ms) 0ms var(--motion-home-tile-ease, ease-out) both; }
-[data-home] .fr-tile[data-state="found"] .fr-tile-name { animation: fr-rise var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-stagger, 0ms) var(--motion-home-tile-ease, ease-out) both; }
-[data-home] .fr-tile[data-state="found"] .fr-tile-status { animation: fr-rise var(--motion-home-tile-ms, 0ms) calc(var(--motion-home-tile-stagger, 0ms) * 2) var(--motion-home-tile-ease, ease-out) both; }
+[data-home] .fr-tile[data-state="found"] .kit-avatar { opacity: 1; }
 /* Not found: the tile is lit too (the search got there) but stays dashed and quiet, with the words doing the work. */
 [data-home] .fr-tile[data-state="missing"] { background: var(--surface-2); color: var(--text-muted); }
-[data-home] .fr-tile[data-state="missing"] .fr-tile-status { color: var(--text); font-weight: 600; animation: fr-rise var(--motion-home-tile-ms, 0ms) calc(var(--motion-home-tile-stagger, 0ms) * 2) var(--motion-home-tile-ease, ease-out) both; }
-@keyframes fr-rise { from { opacity: 0; transform: translateY(var(--motion-home-tile-travel, 0px)); } to { opacity: 1; transform: none; } }
+[data-home] .fr-tile[data-state="missing"] .fr-tile-status { color: var(--text); font-weight: 600; }
 
 [data-home] .fr-section { display: flex; flex-direction: column; gap: var(--hm-space-4); }
 [data-home] .fr-section-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
@@ -66,9 +63,9 @@
 
 [data-home] .fr-confirm { padding: var(--hm-space-5); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow); }
 [data-home] .fr-summary { margin: 0; font-size: var(--hm-text-heading); font-weight: 650; }
-[data-home] .fr-progress { width: 100%; height: 0.75rem; appearance: none; border: 0; border-radius: var(--hm-radius-pill); background: var(--surface-2); overflow: hidden; accent-color: var(--accent-strong); }
-[data-home] .fr-progress::-webkit-progress-bar { background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); }
-[data-home] .fr-progress::-webkit-progress-value { background: var(--accent-strong); border-radius: var(--hm-radius-pill); transition: width var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+/* The reading bar: a track and a fill. The fill is as wide as the whole track and grows by scaleX from its left edge, so only a transform changes (no layout). */
+[data-home] .fr-progress { position: relative; width: 100%; height: 0.75rem; box-sizing: border-box; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); background: var(--surface-2); overflow: hidden; }
+[data-home] .fr-progress-fill { position: absolute; inset: 0; background: var(--accent-strong); border-radius: var(--hm-radius-pill); transform-origin: left; transition: transform var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
 [data-home] .fr-of { margin-left: var(--hm-space-2); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 640px) {

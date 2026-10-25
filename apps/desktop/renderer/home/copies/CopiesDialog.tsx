@@ -22,6 +22,8 @@ export interface CopiesDialogProps {
   /** The id of the item that has two or more different copies. */
   itemId: string;
   nameOf?: NameOf;
+  /** True while the dialog fades out: it ignores the pointer and a key, and Escape goes on to the next layer. */
+  leaving?: boolean;
   onClose(): void;
   /** Called after a copy was kept, before the dialog closes. */
   onKept?(copy: CopyView, itemName: string): void;
@@ -52,13 +54,13 @@ function Copy({ copy, onKeep }: { copy: CopyView; onKeep(): void }): ReactElemen
   );
 }
 
-export function CopiesDialog({ itemId, nameOf = plainName, onClose, onKept, restoreFocus }: CopiesDialogProps): ReactElement | null {
+export function CopiesDialog({ itemId, nameOf = plainName, leaving = false, onClose, onKept, restoreFocus }: CopiesDialogProps): ReactElement | null {
   const { state, dispatch } = useProtoStore();
   const item = state.draft.items.find(i => i.id === itemId);
   const titleId = useId(), tipId = useId();
   const dialog = useRef<HTMLDivElement>(null), heading = useRef<HTMLHeadingElement>(null);
-  const latest = useRef({ onClose, restoreFocus });
-  latest.current = { onClose, restoreFocus };
+  const latest = useRef({ onClose, restoreFocus, leaving });
+  latest.current = { onClose, restoreFocus, leaving };
 
   // Focus goes to the title, the rest of the page goes inert, and both are undone when the dialog leaves.
   useEffect(() => {
@@ -78,7 +80,7 @@ export function CopiesDialog({ itemId, nameOf = plainName, onClose, onKept, rest
   // handler on the dialog would never hear it. A listener on the window, in the capture phase, hears it first and stops it there.
   useEffect(() => {
     const escape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || latest.current.leaving) return;
       e.preventDefault(); e.stopImmediatePropagation();
       latest.current.onClose();
     };
@@ -92,7 +94,7 @@ export function CopiesDialog({ itemId, nameOf = plainName, onClose, onKept, rest
   const keep = (copy: CopyView): void => { dispatch(keepCopyAction(item.id, copy)); onKept?.(copy, name); onClose(); };
 
   return (
-    <div className="add-scrim" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="add-scrim" data-leaving={leaving ? '' : undefined} onPointerDown={e => { if (e.target === e.currentTarget && !leaving) onClose(); }}>
       <div className="add-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={tipId} data-copies={copies.length} ref={dialog} onKeyDown={key}>
         <header className="add-dialog-head">
           <div className="add-dialog-title">

@@ -15,7 +15,11 @@
   font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; white-space: nowrap;
   border-radius: var(--hm-radius-small); border: 1px solid var(--hm-border); background: var(--surface); color: var(--text);
   cursor: pointer; touch-action: manipulation;
-  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
+}
+/* A press answers at once: the button shrinks a little for 100 ms (a button that cannot be pressed does not). Under reduce motion there is no press at all. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-home] .kit-button:not(:disabled):active { transform: scale(var(--motion-home-press-scale, 1)); }
 }
 [data-home] .kit-button:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
 [data-home] .kit-button[data-variant="primary"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); }
@@ -61,7 +65,11 @@
   display: grid; align-items: center; column-gap: var(--hm-space-3); row-gap: var(--hm-space-2);
   background: var(--surface); color: var(--text);
   border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow);
-  transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+  transition: border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), box-shadow var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), transform var(--motion-home-press-ms, 0ms) var(--motion-home-press-ease, ease-out);
+}
+/* The card is pressed when its name (the button that covers it) is pressed; the Remove button and the badge have presses of their own. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-home] .kit-card:has(> .kit-card-main:active) { transform: scale(var(--motion-home-press-scale, 1)); }
 }
 [data-home] .kit-card[data-size="large"] { width: var(--hm-card-agent-w); min-height: var(--hm-card-agent-h); padding: var(--hm-space-4); grid-template-columns: 2.75rem 1fr; align-content: start; align-items: start; }
 [data-home] .kit-card[data-size="small"] { width: 100%; min-width: var(--hm-card-small-w); min-height: var(--hm-card-small-h); padding: var(--hm-space-3); grid-template-columns: 2.25rem 1fr; }
@@ -105,8 +113,41 @@
 [data-home] .kit-remove:hover { color: var(--text); background: var(--accent-soft); }
 [data-home] .kit-remove:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; color: var(--text); }
 
-/* A card that was just added: a solid ring and a soft fill, drawn for a few seconds by the page (no motion is needed to see it). */
-[data-home] .kit-card[data-fresh] { background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); }
+/*
+ * A card that was just added. Its look (a soft fill and a ring) is there at once and stays for 5 s, which the page times; the motion only says where it came from.
+ * A new shelf card rises 6 px and settles in 220 ms with the strong ease-out. Its ring is drawn in 180 ms, held, and fades over 400 ms so it is gone by 5 s, and the
+ * fill goes with it, so nothing pops off when the mark is taken away. An agent card gets the ring and no rise: it is not new. Under reduce motion every animation here is
+ * off (the rule at the foot of this file), and the mark is simply there for 5 s.
+ */
+[data-home] .kit-card[data-fresh] {
+  background: var(--accent-soft); border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift);
+  animation:
+    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
+    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
+}
+[data-home] .kit-card[data-fresh]:not([data-selected]) {
+  animation:
+    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
+    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards,
+    kit-fill-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
+}
+[data-home] .kit-card[data-size="small"][data-fresh] {
+  animation:
+    kit-arrive var(--motion-home-arrive-ms, 0ms) var(--motion-home-arrive-ease, ease-out) both,
+    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
+    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards,
+    kit-fill-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
+}
+[data-home] .kit-card[data-size="small"][data-fresh][data-selected] {
+  animation:
+    kit-arrive var(--motion-home-arrive-ms, 0ms) var(--motion-home-arrive-ease, ease-out) both,
+    kit-ring-draw var(--motion-home-ring-draw-ms, 0ms) var(--motion-home-ring-draw-ease, ease-out) both,
+    kit-ring-fade var(--motion-home-ring-fade-ms, 0ms) var(--motion-home-ring-fade-delay, 0ms) var(--motion-home-ring-fade-ease, ease-in) forwards;
+}
+@keyframes kit-arrive { from { opacity: 0; transform: translateY(var(--motion-home-arrive-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes kit-ring-draw { from { box-shadow: 0 0 0 0 var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } }
+@keyframes kit-ring-fade { from { box-shadow: 0 0 0 3px var(--accent-strong), var(--hm-shadow-lift); } to { box-shadow: 0 0 0 3px transparent, var(--hm-shadow); } }
+@keyframes kit-fill-fade { from { background-color: var(--accent-soft); border-color: var(--accent-strong); } to { background-color: var(--surface); border-color: var(--hm-border); } }
 
 /* ---- Shelf */
 [data-home] .kit-shelf { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; }
@@ -120,7 +161,9 @@
   position: absolute; z-index: 30; top: calc(100% + var(--hm-space-2)); left: 0; width: 18rem; max-width: 80vw;
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-3); padding: var(--hm-space-4);
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+  animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
 }
+[data-home] .kit-popover[data-leaving] { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .kit-help[data-align="end"] .kit-popover { left: auto; right: 0; }
 [data-home] .kit-popover p { margin: 0; font-size: var(--hm-text-base); line-height: 1.5; }
 
@@ -143,6 +186,10 @@
 /* ---- A small layer comes in and goes out (a popover, a dialog, the note, the toast): a short fade with a rise of 4 px, and a quicker fade to leave. */
 @keyframes kit-overlay-in { from { opacity: 0; transform: translateY(var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: none; } }
 @keyframes kit-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes kit-fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* The full-window Choose notes sheet: a fade with an 8 px rise on the way in, a fade on the way out. */
+@keyframes kit-sheet-in { from { opacity: 0; transform: translateY(var(--motion-home-sheet-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes kit-sheet-out { from { opacity: 1; } to { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   [data-home] *, [data-home] *::before, [data-home] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

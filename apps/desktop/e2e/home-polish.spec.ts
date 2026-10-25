@@ -412,3 +412,228 @@ test('the Agents tab lists six hand-written starters with their jobs; adding one
   await expect(drawer()).toHaveCount(0);
   await expect(mine).toBeInViewport();
 });
+
+// ---- 9. The arrival of a new card.
+type Arrival = { names: { name: string; duration: number; delay: number; easing: string }[]; frames: { t: number; opacity: number; y: number; ring: string }[] };
+/** Waits (in the page) for the card that wears the new-card mark and records its animations and, frame by frame, its opacity, rise and ring. */
+function watchArrival(ms: number): Promise<Arrival> {
+  return page().evaluate(span => new Promise<Arrival>(resolve => {
+    const frames: Arrival['frames'] = [];
+    let t0 = -1;
+    const tick = (): void => {
+      const card = document.querySelector('aside.hm-panel .kit-card[data-size="small"][data-fresh]') as HTMLElement | null;
+      if (card === null) { requestAnimationFrame(tick); return; }
+      if (t0 < 0) t0 = performance.now();
+      const s = getComputedStyle(card), m = new DOMMatrix(s.transform === 'none' ? undefined : s.transform);
+      frames.push({ t: Math.round(performance.now() - t0), opacity: Number(s.opacity), y: Math.round(m.m42 * 100) / 100, ring: s.boxShadow.split(') ')[0]! });
+      if (performance.now() - t0 < span) { requestAnimationFrame(tick); return; }
+      const names = card.getAnimations().map(a => { const t = a.effect!.getComputedTiming(); return { name: (a as CSSAnimation).animationName, duration: Number(t.duration), delay: Number(t.delay), easing: String((a.effect as KeyframeEffect).getKeyframes()[0]!.easing) }; });
+      resolve({ names, frames });
+    };
+    requestAnimationFrame(tick);
+  }), ms);
+}
+
+test('a new shelf card rises and settles in 220 ms, its ring is drawn in 180 ms, held, and fades over 400 ms; the mark is gone by 5 s', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await p.evaluate(() => {
+    const mark: Record<string, number> = {};
+    (window as unknown as { __mark: Record<string, number> }).__mark = mark;
+    new MutationObserver(() => {
+      const on = document.querySelector('aside.hm-panel .kit-card[data-size="small"][data-fresh]') !== null, now = performance.now();
+      if (on && mark.came === undefined) mark.came = now;
+      if (!on && mark.came !== undefined && mark.gone === undefined) mark.gone = now;
+    }).observe(document.body, { subtree: true, attributes: true, childList: true });
+  });
+  const watching = watchArrival(500);
+  await addFirstSkill();
+  const seen = await watching;
+  const by = (name: string) => seen.names.find(a => a.name === name)!;
+  console.log('MEASURED arrival animations:', JSON.stringify(seen.names));
+  console.log('MEASURED arrival frames (t, opacity, rise px):', JSON.stringify(seen.frames.filter((_, i) => i % 2 === 0).map(f => [f.t, f.opacity, f.y])));
+  expect(by('kit-arrive')).toMatchObject({ duration: 220, delay: 0, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+  expect(by('kit-ring-draw')).toMatchObject({ duration: 180, delay: 0, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+  expect(by('kit-ring-fade')).toMatchObject({ duration: 400, delay: 4600 });
+  expect(seen.names.map(a => a.name).sort()).toEqual(['kit-arrive', 'kit-fill-fade', 'kit-ring-draw', 'kit-ring-fade']);
+  // The card starts invisible and a few pixels low, and has landed (full opacity, no offset) after 220 ms.
+  expect(seen.frames[0]!.opacity).toBeLessThan(0.6); expect(seen.frames[0]!.y).toBeGreaterThan(1);
+  expect(Math.max(...seen.frames.map(f => f.y))).toBeLessThanOrEqual(6.01);
+  const landed = seen.frames.find(f => f.t >= 230)!;
+  expect(landed.opacity).toBe(1); expect(landed.y).toBe(0);
+  // The mark is taken off at 5 s, and the ring has faded by then. A watcher in the page writes down when the mark came and went.
+  await p.mouse.move(2, 450);
+  await p.waitForFunction(() => (window as unknown as { __mark: Record<string, number> }).__mark.gone !== undefined, null, { timeout: 8000 });
+  const mark = await p.evaluate(() => (window as unknown as { __mark: Record<string, number> }).__mark);
+  console.log('MEASURED the mark on the new card stayed', Math.round(mark.gone! - mark.came!), 'ms');
+  expect(mark.gone! - mark.came!).toBeGreaterThan(4900); expect(mark.gone! - mark.came!).toBeLessThan(5300);
+});
+
+test('with reduce motion the new card is marked at once, with a static ring, and nothing animates', async () => {
+  const p = page();
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await fresh(p); await skipTour(p);
+  await resize(p, 1280, 800);
+  await addFirstSkill();
+  const card = panel().locator('.kit-card[data-size="small"][data-fresh]');
+  await expect(card).toHaveCount(1);
+  await framesPainted(p);
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+  expect(await card.evaluate(el => { const s = getComputedStyle(el); return [s.animationName, s.opacity, s.transform, /0px 0px 3px/.test(s.boxShadow) || /3px/.test(s.boxShadow)]; })).toEqual(['none', '1', 'none', true]);
+  await p.mouse.move(2, 450);
+  await expect(panel().locator('.kit-card[data-fresh]')).toHaveCount(0, { timeout: 7000 });
+});
+
+// ---- 10. Layers come in and go out.
+test('the "?" popover fades in over 140 ms with a 4 px rise and out over 100 ms; with reduce motion it comes and goes at once', async () => {
+  const p = page();
+  const help = bar().getByRole('button', { name: 'Help', exact: true });
+  await help.click();
+  const pop = p.locator('.kit-popover');
+  expect(await pop.evaluate(el => { const s = getComputedStyle(el); return [s.animationName, s.animationDuration, s.animationTimingFunction]; })).toEqual(['kit-overlay-in', '0.14s', 'cubic-bezier(0.23, 1, 0.32, 1)']);
+  expect(await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--motion-home-overlay-travel'))).toBe('4px');
+  await animationsDone(p);
+  await p.keyboard.press('Escape');
+  await expect(pop).toHaveAttribute('data-leaving', '');
+  expect(await pop.evaluate(el => { const s = getComputedStyle(el); return [s.animationName, s.animationDuration]; })).toEqual(['kit-overlay-out', '0.1s']);
+  await expect(pop).toHaveCount(0);
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await fresh(p); await skipTour(p);
+  await bar().getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(pop).toBeVisible();
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+  await p.keyboard.press('Escape');
+  await expect(pop).toHaveCount(0);
+  await expect(bar().getByRole('button', { name: 'Help', exact: true })).toBeFocused();
+});
+
+test('the copies dialog and the share sheet fade and rise in, and leave faster; the scrim is just a fade', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Inbox sorter', exact: true }));
+  await panel().getByRole('button', { name: '2 different copies' }).click();
+  const dialog = p.getByRole('dialog', { name: 'Two different copies' });
+  await expect(dialog).toBeVisible();
+  const enter = await p.evaluate(() => { const scrim = getComputedStyle(document.querySelector('.add-scrim')!), box = getComputedStyle(document.querySelector('.add-dialog')!); return { scrim: [scrim.animationName, scrim.animationDuration], box: [box.animationName, box.animationDuration] }; });
+  expect(enter).toEqual({ scrim: ['kit-fade-in', '0.14s'], box: ['kit-overlay-in', '0.14s'] });
+  await animationsDone(p);
+  await p.keyboard.press('Escape');
+  await expect(p.locator('.add-scrim')).toHaveAttribute('data-leaving', '');
+  expect(await p.evaluate(() => getComputedStyle(document.querySelector('.add-scrim')!).animationName)).toBe('kit-overlay-out');
+  await expect(dialog).toHaveCount(0);
+  await expect(panel().getByRole('button', { name: '2 different copies' })).toBeFocused();
+  // The share sheet: the same.
+  await bar().getByRole('button', { name: 'Save points', exact: true }).click();
+  await p.getByRole('button', { name: 'Share my agents' }).click();
+  const sheet = p.getByRole('dialog', { name: /Share/ });
+  await expect(sheet).toBeVisible();
+  expect(await sheet.evaluate(el => [getComputedStyle(el).animationName, getComputedStyle(el).animationDuration])).toEqual(['kit-overlay-in', '0.14s']);
+  await animationsDone(p);
+  await p.keyboard.press('Escape');
+  await expect(p.locator('.add-scrim')).toHaveAttribute('data-leaving', '');
+  await expect(sheet).toHaveCount(0);
+});
+
+test('the Choose notes sheet fades in with an 8 px rise (not a 24 px slide), and leaves with a fade', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await ensurePicked(p.locator('.hm-grid').getByRole('button', { name: 'Report builder', exact: true }));
+  const frames = sampling(400, () => { const el = document.querySelector('[data-slot="notes"]'); if (el === null) return null; const s = getComputedStyle(el), m = new DOMMatrix(s.transform === 'none' ? undefined : s.transform); return { o: Number(s.opacity), x: m.m41, y: m.m42, name: s.animationName }; });
+  await panel().getByRole('button', { name: 'Choose notes' }).click();
+  const rows = (await frames).filter(r => r.v !== null).map(r => r.v!);
+  console.log('MEASURED Choose notes sheet (opacity, x, y):', JSON.stringify(rows.slice(0, 6).map(r => [r.o, r.x, Math.round(r.y * 10) / 10])));
+  expect(rows[0]!.name).toBe('kit-sheet-in');
+  expect(rows.every(r => r.x === 0)).toBe(true);
+  expect(Math.max(...rows.map(r => r.y))).toBeLessThanOrEqual(8.01); expect(rows[0]!.y).toBeGreaterThan(2);
+  expect(rows[0]!.o).toBeLessThan(0.9);
+  await animationsDone(p);
+  await p.keyboard.press('Escape');
+  await expect(p.locator('[data-slot="notes"]')).toHaveCount(0);
+});
+
+// ---- 11. A press, a quiet bar, and the Find screen.
+test('a press shrinks a button and a card to 0.98 within 100 ms; a disabled button does not move; with reduce motion nothing moves', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  const add = addButton();
+  const box = (await add.boundingBox())!;
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.mouse.down();
+  await p.waitForFunction(() => new DOMMatrix(getComputedStyle(document.querySelector('header.hm-bar [data-tour="add"]')!).transform).a < 0.99, null, { timeout: 500 });
+  await animationsDone(p);
+  expect(await add.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(0.98, 0, 0, 0.98, 0, 0)');
+  expect(await add.evaluate(el => getComputedStyle(el).transitionDuration.includes('0.1s'))).toBe(true);
+  await p.mouse.move(2, 450); await p.mouse.up();
+  await expect(drawer()).toHaveCount(0);
+  // A card: pressing its name shrinks the whole card.
+  const card = p.locator('.kit-card[data-kind="agent"]').nth(2);
+  const cbox = (await card.boundingBox())!;
+  await p.mouse.move(cbox.x + 40, cbox.y + 20); await p.mouse.down();
+  await p.waitForFunction(() => { const el = document.querySelectorAll('.kit-card[data-kind="agent"]')[2]!; return new DOMMatrix(getComputedStyle(el).transform).a < 0.99; }, null, { timeout: 500 });
+  await p.mouse.move(2, 450); await p.mouse.up();
+  // Save is disabled with nothing to save: pressing it does nothing to it.
+  const save = p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true });
+  const sbox = (await save.boundingBox())!;
+  await p.mouse.move(sbox.x + sbox.width / 2, sbox.y + sbox.height / 2); await p.mouse.down();
+  await framesPainted(p); await framesPainted(p);
+  expect(await save.evaluate(el => getComputedStyle(el).transform)).toBe('none');
+  await p.mouse.up();
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await fresh(p); await skipTour(p);
+  const box2 = (await addButton().boundingBox())!;
+  await p.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2); await p.mouse.down();
+  await framesPainted(p); await framesPainted(p);
+  expect(await addButton().evaluate(el => getComputedStyle(el).transform)).toBe('none');
+  await p.mouse.move(2, 450); await p.mouse.up();
+});
+
+test('the Find screen: a tile lights with no part waiting, and the reading bar grows by scaleX from its left edge', async () => {
+  const p = page();
+  await fresh(p, undefined, { welcome: true });
+  await p.getByRole('button', { name: 'Find my agents' }).click();
+  await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
+  await p.getByRole('button', { name: 'Looks right' }).click();
+  const frames = sampling(2500, () => { const f = document.querySelector('.fr-progress-fill'); if (f === null) return null; const s = getComputedStyle(f); return { x: new DOMMatrix(s.transform === 'none' ? undefined : s.transform).a, origin: s.transformOrigin, prop: s.transitionProperty, w: (f as HTMLElement).offsetWidth }; });
+  await p.getByRole('button', { name: 'Yes, read them' }).click();
+  const rows = (await frames).filter(r => r.v !== null).map(r => r.v!);
+  console.log('MEASURED reading bar scaleX over time:', JSON.stringify([...new Set(rows.map(r => Math.round(r.x * 100) / 100))]));
+  expect(rows.length).toBeGreaterThan(5);
+  expect(rows[0]!.prop).toBe('transform'); expect(rows[0]!.origin.startsWith('0px')).toBe(true);
+  const scales = [...new Set(rows.map(r => Math.round(r.x * 100) / 100))];
+  expect(scales.some(x => x > 0 && x < 1)).toBe(true);
+  expect(Math.max(...scales)).toBeGreaterThan(0.6);
+  // The bar keeps its layout width the whole time: only a transform moves.
+  expect(new Set(rows.map(r => Math.round(r.w / 10))).size).toBe(1);
+  await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible({ timeout: 10_000 });
+});
+
+test('the closing note fades in, stays six seconds and fades out; the first Save of a guided session shows it', async () => {
+  const p = page();
+  await fresh(p, undefined, { welcome: true });
+  await p.getByRole('button', { name: 'Find my agents' }).click();
+  await p.getByRole('button', { name: 'Looks right' }).click();
+  await p.getByRole('button', { name: 'Yes, read them' }).click();
+  await expect(p.getByRole('dialog', { name: 'Tour' })).toBeVisible({ timeout: 10_000 });
+  await p.keyboard.press('Escape');
+  await p.evaluate(() => {
+    const times: Record<string, number> = {};
+    (window as unknown as { __toast: Record<string, number> }).__toast = times;
+    new MutationObserver(() => {
+      const t = document.querySelector('.hm-toast'); if (t === null) return;
+      const now = performance.now();
+      if (t.hasAttribute('data-open') && times.open === undefined) times.open = now;
+      if (t.hasAttribute('data-leaving') && times.leaving === undefined) times.leaving = now;
+      if (times.leaving !== undefined && !t.hasAttribute('data-leaving') && times.gone === undefined) times.gone = now;
+    }).observe(document.body, { subtree: true, attributes: true, childList: true });
+  });
+  await panel().locator('.kit-remove').first().click();
+  await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
+  const toast = p.locator('.hm-toast');
+  await expect(toast).toHaveText('Saved in this preview. Help replays the tour any time.');
+  expect(await toast.evaluate(el => [getComputedStyle(el).animationName, getComputedStyle(el).animationDuration])).toEqual(['hm-toast-in', '0.14s']);
+  await p.waitForFunction(() => (window as unknown as { __toast: Record<string, number> }).__toast.gone !== undefined, null, { timeout: 12_000 });
+  const t = await p.evaluate(() => (window as unknown as { __toast: Record<string, number> }).__toast);
+  console.log('MEASURED closing note: fade starts after', Math.round(t.leaving! - t.open!), 'ms, gone after', Math.round(t.gone! - t.open!), 'ms');
+  expect(t.leaving! - t.open!).toBeGreaterThan(5500); expect(t.leaving! - t.open!).toBeLessThan(7000);
+  expect(t.gone! - t.leaving!).toBeGreaterThan(80); expect(t.gone! - t.leaving!).toBeLessThan(250);
+});

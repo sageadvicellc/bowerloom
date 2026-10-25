@@ -3,11 +3,13 @@
  * Escape or a click elsewhere closes it, and the focus stays on the button. An optional action sits under the sentence, such as "Show me around".
  * The button is a round "?" by default. With `pill` it is a small pill with those words and an info mark (the "Preview" mark of the top bar), so one control
  * both says what it is and explains itself, and a window never carries two question marks for the same thing.
+ * The popover fades in with a 4 px rise and fades out faster than it came (the overlay tokens); under reduce motion it comes and goes at once.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from './Button.js';
 import { KitIcon } from './icons.js';
+import { usePresence } from './presence.js';
 
 export interface HelpPopoverProps {
   /** What the button is called, for a screen reader. At most 5 words. */
@@ -29,6 +31,8 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
+  // The popover stays in the page for the length of its exit, so it can fade out.
+  const shown = usePresence(open);
   useEffect(() => {
     if (!open) return undefined;
     // Escape closes the popover and nothing under it: it is heard first (capture phase) and marked handled, so a drawer under it stays open.
@@ -46,8 +50,8 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
       {pill === undefined
         ? <Button ref={trigger} round size={size} aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}>?</Button>
         : <button ref={trigger} type="button" className="kit-badge kit-pill" data-tone="info" data-no-drag="" aria-label={label} aria-expanded={open} aria-controls={id} data-tour={dataTour} onClick={() => setOpen(o => !o)}><KitIcon name="info" size={16} /><span>{pill}</span></button>}
-      {open ? (
-        <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover">
+      {shown.mounted ? (
+        <div className="kit-popover" id={id} role="group" aria-label={label} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
           <p>{text}</p>
           {action === undefined ? null : <Button variant="primary" onClick={() => { setOpen(false); trigger.current?.focus(); action.onAction(); }}>{action.label}</Button>}
         </div>

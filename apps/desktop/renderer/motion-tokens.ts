@@ -70,8 +70,8 @@ export const MOTION = Object.freeze({
     tourSpot: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** The tour's dim layer fades in once, when the tour starts. */
     tourDim: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
-    /** The Find screen: a tool's tile lights as the search reaches it. Short, eased out, never a loop; the parts of a tile follow each other `stagger` apart. */
-    tileLight: { ms: 240, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', stagger: 80, distance: 6 } satisfies Transition & { stagger: number; distance: number },
+    /** The Find screen: a tool's tile lights as the search reaches it, in one short change of fill, edge and colour. Eased out, never a loop, and its parts do not wait for each other. */
+    tileLight: { ms: 240, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** Emil: while a drawer is open in a window too narrow for the shelves, the shelves fade out this quickly instead of vanishing in one frame. */
     shelves: { ms: 110, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /**
@@ -79,6 +79,17 @@ export const MOTION = Object.freeze({
      * pixels, quickly, and leaves faster than it came, with a fade only. Nothing here is decoration: it shows where the layer came from.
      */
     overlay: { in: { ms: 140, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 4 } satisfies Slide, out: { ms: 100, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition },
+    /** Jhey, on a drop: the card that was just added rises `distance` pixels and settles in `ms`, with the strong ease-out. */
+    arrive: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 6 } satisfies Slide,
+    /**
+     * The ring around what was just added: drawn in `drawMs`, held, then it fades over `fadeMs` so that it is gone `holdMs` after it came. The page takes the mark off
+     * at `holdMs` too. With reduce motion the ring is simply there for `holdMs`, with no movement at all.
+     */
+    ring: { drawMs: 180, fadeMs: 400, holdMs: 5000, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', fadeEase: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+    /** Emil, on every button and tappable card: a press shrinks it to `scale` in `ms`, so a busy action feels answered at once. */
+    press: { ms: 100, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', scale: 0.98 } satisfies Transition & { scale: number },
+    /** Jakub: the full-window Choose notes sheet fades in while it rises `distance` pixels. It leaves with the panel close time. */
+    sheet: { ms: 180, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 8 } satisfies Slide,
   }),
   // Jakub: panels are polished, brief, and slide a short way.
   panel: Object.freeze({ slide: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 16 } satisfies Slide, close: { ms: 150, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition }),
@@ -123,9 +134,14 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   // One ease for the shared parts of the app (the navigation, buttons, rows, cards and tabs), which time themselves with --motion-hover-ms.
   const hm = MOTION.home;
   t('home-drawer', hm.drawer); t('home-tour-spot', hm.tourSpot); t('home-tour-dim', hm.tourDim);
-  t('home-tile', hm.tileLight); set('home-tile-stagger', `${ms(hm.tileLight.stagger)}ms`); travel('home-tile-travel', hm.tileLight.distance);
+  t('home-tile', hm.tileLight);
   t('home-shelves', hm.shelves);
   t('home-overlay-in', hm.overlay.in); travel('home-overlay-travel', hm.overlay.in.distance); t('home-overlay-out', hm.overlay.out);
+  t('home-arrive', hm.arrive); travel('home-arrive-travel', hm.arrive.distance);
+  set('home-ring-draw-ms', `${ms(hm.ring.drawMs)}ms`); set('home-ring-draw-ease', hm.ring.ease);
+  set('home-ring-fade-ms', `${ms(hm.ring.fadeMs)}ms`); set('home-ring-fade-ease', hm.ring.fadeEase); set('home-ring-fade-delay', `${ms(hm.ring.holdMs - hm.ring.fadeMs)}ms`);
+  set('home-press-ms', `${ms(hm.press.ms)}ms`); set('home-press-ease', hm.press.ease); set('home-press-scale', String(prefersReducedMotion() ? 1 : hm.press.scale));
+  t('home-sheet', hm.sheet); travel('home-sheet-travel', hm.sheet.distance);
   set('ease-out', MOTION.ease.out);
   travel('home-drawer-travel', hm.drawer.distance);
   travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);

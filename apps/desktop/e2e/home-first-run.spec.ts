@@ -166,7 +166,7 @@ test('after "Yes, read them" a brief reading shows, then the map, and the tour s
   await toConfirm();
   await p.getByRole('button', { name: 'Yes, read them' }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Reading your agents' })).toBeVisible();
-  await expect(p.locator('progress')).toBeVisible();
+  await expect(p.getByRole('progressbar', { name: 'Reading progress' })).toBeVisible();
   await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
   await expect(agentCards()).toHaveCount(10);
   await expect(dialog()).toBeVisible();
@@ -401,16 +401,20 @@ test('with reduce motion on, the tiles just appear lit and nothing animates', as
   await expect(dialog()).toBeVisible();
 });
 
-test('with motion on, a tile lights with one short eased-out animation, its parts 80 ms apart, and nothing loops', async () => {
+test('with motion on, a tile lights with one short eased-out change, its parts do not wait for each other, and nothing loops', async () => {
   const p = page();
   await toFind();
   await expect(tile(0)).toHaveAttribute('data-state', 'found');
   const facts = await p.evaluate(() => {
-    const rise = (sel: string): { name: string; duration: string; delay: string; count: string; fn: string } => { const s = getComputedStyle(document.querySelector(sel)!); return { name: s.animationName, duration: s.animationDuration, delay: s.animationDelay, count: s.animationIterationCount, fn: s.animationTimingFunction }; };
-    return [rise('.fr-tile[data-state="found"] .kit-avatar'), rise('.fr-tile[data-state="found"] .fr-tile-name'), rise('.fr-tile[data-state="found"] .fr-tile-status')];
+    const read = (sel: string): { animation: string; delay: string; duration: string; ease: string; property: string } => { const s = getComputedStyle(document.querySelector(sel)!); return { animation: s.animationName, delay: s.transitionDelay, duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; };
+    return { tile: read('.fr-tile[data-state="found"]'), avatar: read('.fr-tile[data-state="found"] .kit-avatar'), name: read('.fr-tile[data-state="found"] .fr-tile-name'), status: read('.fr-tile[data-state="found"] .fr-tile-status') };
   });
-  expect(facts.map(f => f.delay)).toEqual(['0s', '0.08s', '0.16s']);
-  for (const f of facts) { expect(f.name).toBe('fr-rise'); expect(f.duration).toBe('0.24s'); expect(f.count).toBe('1'); expect(f.fn).toBe('cubic-bezier(0.23, 1, 0.32, 1)'); }
+  // The tile itself changes fill, edge and colour over 240 ms with the strong ease-out; its picture comes to full strength over the same time.
+  expect(facts.tile.duration.split(', ').every(d => d === '0.24s')).toBe(true);
+  expect(facts.tile.ease.replaceAll('cubic-bezier(0.23, 1, 0.32, 1)', 'strong').split(', ').every(e => e === 'strong')).toBe(true);
+  expect(facts.avatar).toMatchObject({ animation: 'none', delay: '0s', duration: '0.24s', property: 'opacity' });
+  // The name and the status have no animation and no delay of their own: the old 80 ms steps and the 6 px rise are gone.
+  for (const part of [facts.name, facts.status]) expect(part).toMatchObject({ animation: 'none', delay: '0s' });
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();
   await animationsDone(p);
   expect(await p.evaluate(() => document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations === Infinity).length)).toBe(0);

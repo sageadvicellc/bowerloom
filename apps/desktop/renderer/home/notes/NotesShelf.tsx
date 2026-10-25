@@ -15,16 +15,17 @@ export interface NotesShelfProps {
   onSelect(id: string): void;
   onRemove?(entry: ShelfEntry): void;
   freshId?: string | null;
+  freshPhase?: 0 | 1;
   /** Called when the person presses "Choose notes". */
   onChoose(): void;
   /** False while there is no agent to choose for. */
   canChoose?: boolean;
 }
 
-export function NotesShelf({ entries, selectedId, onSelect, onRemove, freshId = null, onChoose, canChoose = true }: NotesShelfProps): ReactElement {
+export function NotesShelf({ entries, selectedId, onSelect, onRemove, freshId = null, freshPhase = 0, onChoose, canChoose = true }: NotesShelfProps): ReactElement {
   return (
     <div className="nt-shelf" data-notes-shelf="">
-      <Shelf title={NOTES_WORDS.label.notes} entries={entries} selectedId={selectedId} onSelect={onSelect} emptyText={NOTES_WORDS.hint.emptyShelf} freshId={freshId} {...(onRemove === undefined ? {} : { onRemove })} />
+      <Shelf title={NOTES_WORDS.label.notes} entries={entries} selectedId={selectedId} onSelect={onSelect} emptyText={NOTES_WORDS.hint.emptyShelf} freshId={freshId} freshPhase={freshPhase} {...(onRemove === undefined ? {} : { onRemove })} />
       <span className="nt-shelf-action"><Button icon="note" size="small" disabled={!canChoose} onClick={onChoose}>{NOTES_WORDS.label.choose}</Button></span>
     </div>
   );

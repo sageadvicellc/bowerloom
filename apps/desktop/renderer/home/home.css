@@ -73,6 +73,9 @@ html, body { height: 100%; }
   display: none; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5);
   background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-base); font-weight: 600;
 }
-[data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-tour-dim-ms, 0ms) var(--motion-home-drawer-ease, ease-out) both; }
+[data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+/* It leaves with a quicker fade. The note's rise is 4 px, from the overlay tokens, and the toast keeps its own centring in the keyframes. */
+[data-home] .hm-toast[data-leaving] { display: flex; animation: hm-toast-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .hm-toast .kit-icon { color: var(--accent-strong); }
-@keyframes hm-toast-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes hm-toast-in { from { opacity: 0; transform: translate(-50%, var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes hm-toast-out { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, 0); } }

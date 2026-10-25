@@ -162,7 +162,9 @@ export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: 
         ) : null}
         {state.step === 'reading' || state.step === 'done' ? (
           <section className="fr-section" aria-live="polite">
-            <progress className="fr-progress" aria-label={FIND_WORDS.label.progress} max={readTotal(state)} value={state.read} />
+            <div className="fr-progress" role="progressbar" aria-label={FIND_WORDS.label.progress} aria-valuemin={0} aria-valuemax={readTotal(state)} aria-valuenow={state.read}>
+              <span className="fr-progress-fill" style={{ transform: `scaleX(${readTotal(state) === 0 ? 0 : Math.min(1, state.read / readTotal(state))})` }} />
+            </div>
             <p className="kit-hint">{current === undefined ? '' : readingNow(current.name)} <span className="fr-of">{readProgress(Math.min(state.read + 1, readTotal(state)), readTotal(state))}</span></p>
           </section>
         ) : null}

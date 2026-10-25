@@ -98,7 +98,10 @@
 [data-home] .add-names { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); font-weight: 600; }
 
 /* ---- The "two different copies" dialog */
-[data-home] .add-scrim { position: fixed; inset: 0; z-index: 900; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: var(--hm-space-5); background: var(--hm-scrim); }
+[data-home] .add-scrim { position: fixed; inset: 0; z-index: 900; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: var(--hm-space-5); background: var(--hm-scrim); animation: kit-fade-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+/* A dialog and the share sheet come in with a fade and a 4 px rise over the scrim's fade, and leave faster with a fade; while they leave they ignore the pointer. */
+[data-home] .add-dialog, [data-home] .sh-dialog { animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both; }
+[data-home] .add-scrim[data-leaving], [data-home] .add-scrim[data-leaving] .add-dialog, [data-home] .add-scrim[data-leaving] .sh-dialog { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; pointer-events: none; }
 [data-home] .add-dialog {
   box-sizing: border-box; display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(60rem, 100%); max-height: 100%;
   background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); overflow: hidden;
