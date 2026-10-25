@@ -70,6 +70,9 @@ interface Fresh { readonly agentId: string; readonly entryId: string | null; /**
 /** How long the "just added" mark stays, in milliseconds. */
 const FRESH_MS = 5000;
 
+/** How long the body stays marked as moving after a drawer opens or closes: longer than the slowest of the drawer's two clocks. */
+const MOVING_MS = 320;
+
 /** How long the closing note stays, in milliseconds. */
 const NOTE_MS = 9000;
 
@@ -121,6 +124,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const [lastCopy, setLastCopy] = useState<string | undefined>(undefined);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
   const copiesFrom = useRef('.hm-panel');
   const chooseFrom = useRef<HTMLElement | null>(null);
@@ -157,6 +161,19 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     const first = agentForTour(world, agents);
     if (first !== null) setPicked(first.id);
   }, [stepId, picked, world, agents]);
+  // The page makes room for a drawer on the drawer's own clock. The body is marked as moving in the same pass that opens or closes the drawer (before the browser
+  // works out the new look), and the mark goes a moment after, so a change of the window size alone never runs the transition.
+  const drawerSeen = useRef<DrawerId | null>(null);
+  useLayoutEffect(() => {
+    const el = body.current;
+    // The first pass is the page being built, not a drawer moving: nothing is marked then.
+    const changed = drawerSeen.current !== drawer;
+    drawerSeen.current = drawer;
+    if (el === null || !changed) return undefined;
+    el.setAttribute('data-moving', '');
+    const timer = window.setTimeout(() => el.removeAttribute('data-moving'), MOVING_MS);
+    return () => window.clearTimeout(timer);
+  }, [drawer]);
   // After a card is removed (or a change is put back) the focus would fall to the page: put it on the card that took its place, or on the panel heading.
   useLayoutEffect(() => {
     const after = focusAfter.current;
@@ -212,6 +229,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     setTouched(current => touch(current, agentId));
     setFresh({ agentId, entryId: entry.kind === 'agent' ? null : entry.id });
   };
+  /** "Show" on the note after an add: the drawer closes, and the new card is brought into view and rung again (also where the drawer had hidden the shelves). */
+  const showAdded = (info: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => { added(info); setDrawer(null); };
   /** When the badge is gone (a copy was kept) the card is still there: the focus goes to its name. */
   const restoreCopiesFocus = (): HTMLElement | null => {
     const item = copiesFor === null ? undefined : world.items.find(i => i.id === copiesFor);
@@ -268,7 +287,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => tourDo('replay') }} />
       </header>
 
-      <div className="hm-body" data-drawer={drawer ?? undefined}>
+      <div className="hm-body" ref={body} data-drawer={drawer ?? undefined}>
         <main id="main" className="hm-stage">
           <div className="hm-stage-head">
             <div className="hm-stage-title">
@@ -303,7 +322,7 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
         </aside>
 
         <Drawer open={drawer === 'add'} title={WORDS.label.addDrawer} onClose={() => setDrawer(null)} dataSlot="add">
-          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
+          <AddDrawerBody nameOf={nameOf} hintOf={plainHintOf} onOpenCopies={openCopies} line={false} onAdded={added} onShow={showAdded} initialTab={addTab} hideAgents={skipped} {...(lastCopy === undefined ? {} : { lastCopy })} />
         </Drawer>
         <Drawer open={drawer === 'points'} title={WORDS.label.savePoints} onClose={() => setDrawer(null)} dataSlot="points">
           <SavePoints rows={pointRows} unsaved={changes > 0} onGoBack={id => goBackTo(id, false)} onShare={() => setSharing(true)} onOpenFile={openFile} />

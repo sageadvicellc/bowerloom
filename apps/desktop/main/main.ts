@@ -9,6 +9,7 @@ import type { ChannelName } from '../shared/channels.js';
 import type { Mode } from '../shared/types.js';
 import { createController } from './controller.js';
 import type { Controller } from './controller.js';
+import { windowOptions } from './window-options.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, isAllowedSender, makePrototypeDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -70,12 +71,14 @@ function startupFailed(error: unknown): void {
 
 function createWindow(): void {
   window = new BrowserWindow({
-    width: 1100, height: 760, useContentSize: true, minWidth: 900, minHeight: 600, show: false, title: 'Bowerloom Viewer',
+    ...windowOptions(prototypeV2), useContentSize: true, show: false,
     backgroundColor: '#f6f5f0',
     // The prototype page gets no bridge at all: no preload, so no `window.bowerloom`, and nothing to call even if a channel were open.
     webPreferences: webPreferences(prototypeMode ? undefined : join(root, 'preload.cjs'), app.isPackaged),
   });
   window.once('ready-to-show', () => window?.show());
+  // The home app prototype is called "Bowerloom" from the first moment: the page title it loads with ("Bowerloom Viewer") never reaches the title bar.
+  if (prototypeV2) window.on('page-title-updated', event => event.preventDefault());
   window.on('closed', () => { window = null; });
   if (prototypeV2) window.loadURL(`${indexUrl}#prototype-v2`).catch(startupFailed);
   else if (prototypeMode) window.loadURL(`${indexUrl}#prototype`).catch(startupFailed);

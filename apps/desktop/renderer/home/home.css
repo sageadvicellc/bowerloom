@@ -14,9 +14,22 @@ html, body { height: 100%; }
 
 [data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
 /* A drawer (Add, Save points) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and
-   the shelf that changes stays in view. In a window too narrow for all three, the shelves give way to the drawer until it closes. */
+   the shelf that changes stays in view. The room is made on the drawer's own clock: the padding grows over the same 220 ms that the drawer slides in, and shrinks over
+   its close time, so the map never jumps ahead of the drawer. (Padding is a layout property; it is the only way to move a grid of cards and keep it in step. It runs
+   for 220 ms, once, and not at all under reduce motion.) The page marks the body `data-moving` for a moment around each open and close (HomeApp), so the
+   transition belongs to the drawer alone: dragging the window edge never makes the columns lag behind it. */
 [data-home] .hm-body[data-drawer] { padding-right: var(--hm-drawer-w); }
-@media (max-width: 1199px) {
+[data-home] .hm-body[data-moving] { transition: padding-right var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in), grid-template-columns var(--motion-panel-close-ms, 0ms) var(--motion-panel-close-ease, ease-in); }
+[data-home] .hm-body[data-moving][data-drawer] { transition: padding-right var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out), grid-template-columns var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out); }
+/* In a window too narrow for all three, the shelves give way to the drawer until it closes. They fade out in 110 ms, and their column closes with the drawer's room,
+   while what is in them keeps its width, so nothing in them is squeezed on the way out. */
+@media (min-width: 761px) and (max-width: 1199px) {
+  [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr) 0px; }
+  [data-home] .hm-body[data-drawer] .hm-panel { opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; padding-left: 0; padding-right: 0; border-left-width: 0; }
+  [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-5)); }
+}
+/* Under 760 px (smaller than the window can be) the shelves sit under the map, and a drawer simply takes their place. */
+@media (max-width: 760px) {
   [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr); }
   [data-home] .hm-body[data-drawer] .hm-panel { display: none; }
 }
@@ -27,7 +40,10 @@ html, body { height: 100%; }
 [data-home] .hm-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, var(--hm-card-agent-w)); gap: var(--hm-space-4); justify-content: start; align-content: start; }
 [data-home] .hm-grid > li { display: flex; }
 
-[data-home] .hm-panel { overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .hm-panel {
+  overflow-y: auto; padding: var(--hm-space-5); border-left: 1px solid var(--hm-border); background: var(--surface); display: flex; flex-direction: column; gap: var(--hm-space-5);
+  transition: opacity var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), visibility var(--motion-home-shelves-ms, 0ms) var(--motion-home-shelves-ease, ease-out), padding var(--motion-home-drawer-ms, 0ms) var(--motion-home-drawer-ease, ease-out);
+}
 [data-home] .hm-panel-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
 [data-home] .hm-panel-head h2 { outline-offset: 4px; width: fit-content; max-width: 100%; border-radius: var(--hm-radius-small); }
 

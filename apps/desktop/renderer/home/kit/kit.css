@@ -137,6 +137,10 @@
 /* ---- The label that follows the pointer in a drag */
 [data-home] .kit-follow { position: fixed; left: 0; top: 0; z-index: 2000; pointer-events: none; padding: var(--hm-space-2) var(--hm-space-3); background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-small); font-weight: 600; }
 
+/* ---- A small layer comes in and goes out (a popover, a dialog, the note, the toast): a short fade with a rise of 4 px, and a quicker fade to leave. */
+@keyframes kit-overlay-in { from { opacity: 0; transform: translateY(var(--motion-home-overlay-travel, 0px)); } to { opacity: 1; transform: none; } }
+@keyframes kit-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   [data-home] *, [data-home] *::before, [data-home] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

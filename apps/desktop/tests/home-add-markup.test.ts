@@ -9,6 +9,7 @@ import { AddHarness } from '../renderer/home/add/AddHarness.js';
 import { AddRow } from '../renderer/home/add/AddRow.js';
 import { CopiesDialog } from '../renderer/home/copies/CopiesDialog.js';
 import { addDemoWorld, DEMO } from '../renderer/home/add/add-demo-world.js';
+import { ADD_WORDS, NOTE_STAY_MS } from '../renderer/home/add/add-words.js';
 import { sharedFileSample } from '../renderer/home/add/add-sample-file.js';
 import { ProtoProvider } from '../renderer/proto/session.js';
 import { ADD_TABS, agentChoices, entriesFor } from '../shared/home/add-model.js';
@@ -124,4 +125,20 @@ test('headings on the test page are in order: h1, then h2 sections', () => {
   const m = html(createElement(AddHarness));
   const levels = [...m.matchAll(/<h([1-6])[\s>]/g)].map(x => Number(x[1]));
   assert.ok(levels.every((l, i) => i === 0 ? l === 1 : l <= levels[i - 1]! + 1), levels.join(','));
+});
+
+test('the note after an add has its own foot under the part that scrolls, so it can never cover a row', () => {
+  const m = drawer('skills');
+  assert.match(m, /^<div class="add-body"[^>]*><div class="add-scroll"><div class="add-tabs"/);
+  assert.match(m, /<\/div><div class="add-foot"><div class="add-note" role="status" aria-live="polite"><\/div><\/div><\/div>$/);
+  // The tabs and the list are inside the scrolling part; the foot is after it.
+  assert.ok(m.indexOf('class="add-foot"') > m.indexOf('class="add-panel"'));
+  within(m);
+});
+
+test('the note stays six seconds, and its "Show" button has words that say what it shows', () => {
+  assert.equal(NOTE_STAY_MS, 6000);
+  assert.equal(ADD_WORDS.label.show, 'Show');
+  assert.ok(countWords(ADD_WORDS.label.showWhat) <= 5, ADD_WORDS.label.showWhat);
+  assert.match(ADD_WORDS.label.showWhat, /^Show\b/, 'the spoken name starts with the words on the button');
 });

@@ -5,7 +5,11 @@
  */
 
 /* ---- Tabs */
-[data-home] .add-body { display: flex; flex-direction: column; gap: var(--hm-space-4); min-height: 100%; }
+/* The drawer body is the Add body's own frame: the tabs and the list scroll together in .add-scroll, and the note after an add has a foot of its own under them,
+   so it never lies over a row. (The body keeps its padding in .add-scroll, so everything inside sits where it did.) */
+[data-home] .kit-drawer-body:has(> .add-body) { padding: 0; gap: 0; overflow: hidden; }
+[data-home] .add-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+[data-home] .add-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-4); }
 [data-home] .add-tabs { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
 [data-home] .add-tab {
   font: inherit; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.2; min-height: 2.75rem; padding: 0 var(--hm-space-4);
@@ -48,13 +52,16 @@
 [data-home] .add-pick[data-has] .add-pick-main { cursor: default; }
 [data-home] .add-pick-note { margin-left: auto; white-space: nowrap; }
 
-/* ---- The note after an add */
-[data-home] .add-body:has(.add-note[data-note]) { padding-bottom: 3.5rem; }
-[data-home] .add-note { position: sticky; bottom: 0; margin-top: auto; }
-[data-home] .add-note[data-note] {
-  padding: var(--hm-space-2) var(--hm-space-4); background: var(--good-bg); color: var(--good-fg); font-size: var(--hm-text-base); font-weight: 600;
+/* ---- The note after an add: a foot under the list, with the words and a "Show" button. It takes no room until a note arrives, fades in with the overlay tokens
+   and out in 100 ms, and never moves the rows above it (the list only gets a little shorter). */
+[data-home] .add-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); height: 0; overflow: hidden; margin: 0 var(--hm-space-5); }
+[data-home] .add-foot[data-open] {
+  height: auto; overflow: visible; margin-bottom: var(--hm-space-4); padding: var(--hm-space-2) var(--hm-space-3) var(--hm-space-2) var(--hm-space-4); background: var(--good-bg); color: var(--good-fg);
   border: 1px solid color-mix(in srgb, currentColor 40%, transparent); border-radius: var(--hm-radius-small); box-shadow: var(--hm-shadow);
+  animation: kit-overlay-in var(--motion-home-overlay-in-ms, 0ms) var(--motion-home-overlay-in-ease, ease-out) both;
 }
+[data-home] .add-foot[data-leaving] { animation: kit-overlay-out var(--motion-home-overlay-out-ms, 0ms) var(--motion-home-overlay-out-ease, ease-in) both; }
+[data-home] .add-note { min-width: 0; font-size: var(--hm-text-base); font-weight: 600; }
 
 /* ---- The wire from a card to its agent (the only new motion) */
 [data-home] .add-link { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 25; pointer-events: none; overflow: visible; opacity: 1; transition: opacity var(--motion-node-exit-ms, 0ms) var(--motion-node-exit-ease, ease-in); }

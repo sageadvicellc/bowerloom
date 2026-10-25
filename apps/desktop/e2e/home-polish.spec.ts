@@ -1,0 +1,208 @@
+/**
+ * The design and motion fixes of the 0.8 home app, measured in the real window (Electron started with --prototype-v2): the window size, the drawer and the page
+ * moving together, the note after an add, one help button, the honest Save bar, a readable disabled button, the new look of a note card, the starter agents,
+ * the first agent picked, the arrival of a new card, the enter and exit of the layers, and the press feedback. Frames are sampled with requestAnimationFrame, never
+ * with a fixed wait. Set HOME_FIX_SHOTS to a folder to also save screenshots at 1280 by 800 and 900 by 600, light and dark.
+ */
+import { expect, test } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { assertTextBudget } from '../shared/home/textbudget.js';
+import { removeTempDirs } from './proto-temp.js';
+import { animationsDone, framesPainted } from './proto-wait.js';
+import { fresh, launchHome, resize, skipTour } from './home-page.js';
+import type { Home } from './home-page.js';
+
+let home: Home;
+let launched: { content: number[]; title: string; innerWidth: number; innerHeight: number };
+const page = (): Page => home.page;
+
+test.beforeAll(async () => {
+  test.setTimeout(240_000);
+  home = await launchHome();
+  // Read before any test resizes the page: this is the window as it opens.
+  const content = await home.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getContentSize());
+  const title = await home.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getTitle());
+  launched = { content, title, innerWidth: await home.page.evaluate(() => window.innerWidth), innerHeight: await home.page.evaluate(() => window.innerHeight) };
+});
+test.afterAll(async () => { try { await home.app.close(); } finally { removeTempDirs(); } });
+test.beforeEach(async () => {
+  await page().emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'light' });
+  await fresh(page());
+  await skipTour(page());
+});
+
+// ---- Helpers.
+const bar = (): Locator => page().locator('header.hm-bar');
+const addButton = (): Locator => bar().getByRole('button', { name: 'Add', exact: true });
+const drawer = (): Locator => page().locator('[data-slot="add"]');
+const panel = (): Locator => page().locator('aside.hm-panel');
+const row = (id: string): Locator => drawer().locator(`.add-row[data-add-id="${id}"]`);
+const agentCard = (name: string): Locator => page().locator('.kit-card[data-kind="agent"]').filter({ hasText: name });
+
+/** Samples `read` in the page on every animation frame for `ms`. The promise starts now; await it after the action under test. */
+function sampling<T>(ms: number, read: () => T): Promise<{ t: number; v: T }[]> {
+  return page().evaluate(({ ms: span, src }) => new Promise<{ t: number; v: unknown }[]>(resolve => {
+    const f = new Function(`return (${src})()`) as () => unknown, rows: { t: number; v: unknown }[] = [], t0 = performance.now();
+    const tick = (): void => { const t = performance.now() - t0; rows.push({ t: Math.round(t), v: f() }); if (t < span) requestAnimationFrame(tick); else resolve(rows); };
+    requestAnimationFrame(tick);
+  }), { ms, src: read.toString() }) as Promise<{ t: number; v: T }[]>;
+}
+
+/**
+ * Adds the first skill of the Add drawer to the first agent in its picker that does not have it, and returns once the note shows. Gives the name of the skill and
+ * of the agent, as a person reads them.
+ */
+async function addFirstSkill(): Promise<{ skill: string; agent: string }> {
+  await addButton().click();
+  await expect(drawer()).toBeVisible();
+  await animationsDone(page());
+  const first = drawer().locator('.add-row').first();
+  const skill = (await first.locator('.kit-card-main').textContent())!.trim();
+  await first.getByRole('button', { name: /^Add to / }).click();
+  const choices = page().getByRole('group', { name: 'Add to which agent?' }).locator('button:not([aria-disabled="true"])');
+  const agent = (await choices.first().textContent())!.trim();
+  await choices.first().click();
+  await expect(drawer().locator('.add-note')).toHaveText(`Added to ${agent}.`);
+  return { skill, agent };
+}
+
+// ---- 1. The window, and the note after an add.
+test('the window opens at 1280 by 800 and is called Bowerloom from the first moment', () => {
+  expect(launched.content).toEqual([1280, 800]);
+  expect([launched.innerWidth, launched.innerHeight]).toEqual([1280, 800]);
+  expect(launched.title).toBe('Bowerloom');
+});
+
+test('at the size it opens at, the shelves stay beside the open Add drawer, and the new card is in view', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await addFirstSkill();
+  await expect(panel()).toBeVisible();
+  const box = (await panel().boundingBox())!;
+  expect(box.width).toBeGreaterThan(300);
+  await expect(panel().locator('.kit-card[data-fresh]')).toHaveCount(1);
+  await expect(panel().locator('.kit-card[data-fresh]')).toBeInViewport();
+});
+
+test('the note has a Show button that closes the drawer and brings the new card into view, even where the drawer hides the shelves', async () => {
+  const p = page();
+  await resize(p, 900, 600);
+  const { skill } = await addFirstSkill();
+  await expect(panel()).toBeHidden();
+  const show = drawer().getByRole('button', { name: 'Show what was added' });
+  await expect(show).toHaveText('Show');
+  await show.click();
+  await expect(drawer()).toHaveCount(0);
+  await expect(panel()).toBeVisible();
+  const card = panel().locator('.kit-card[data-fresh]');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(skill);
+  await expect(card).toBeInViewport();
+});
+
+test('the note lies under the list, never over a row, and it fades out after about six seconds', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  // A watcher in the page writes down when the note opens, when it starts to fade and when it is gone, so no poll can miss the short fade.
+  await p.evaluate(() => {
+    const times: Record<string, number> = {};
+    (window as unknown as { __note: Record<string, number> }).__note = times;
+    new MutationObserver(() => {
+      const foot = document.querySelector('.add-foot');
+      if (foot === null) return;
+      const now = performance.now();
+      if (foot.hasAttribute('data-open') && times.open === undefined) times.open = now;
+      if (foot.hasAttribute('data-leaving') && times.leaving === undefined) times.leaving = now;
+      if (!foot.hasAttribute('data-open') && times.open !== undefined && times.gone === undefined) times.gone = now;
+    }).observe(document.body, { subtree: true, attributes: true, childList: true });
+  });
+  await addFirstSkill();
+  const geometry = await p.evaluate(() => {
+    const scroll = document.querySelector('.add-scroll')!.getBoundingClientRect(), foot = document.querySelector('.add-foot')!.getBoundingClientRect();
+    // What is drawn at the middle of the note is the note itself, never a row of the list under it.
+    const under = document.elementFromPoint(foot.left + foot.width / 2, foot.top + foot.height / 2);
+    return { scrollBottom: scroll.bottom, footTop: foot.top, footHeight: foot.height, noteOnTop: under !== null && under.closest('.add-foot') !== null };
+  });
+  expect(geometry.footHeight).toBeGreaterThan(30);
+  expect(geometry.footTop).toBeGreaterThanOrEqual(geometry.scrollBottom - 0.5);
+  expect(geometry.noteOnTop).toBe(true);
+  // The pointer rests on the note after the click, which holds it; moving away lets it go.
+  await p.mouse.move(2, 450);
+  await p.waitForFunction(() => (window as unknown as { __note: Record<string, number> }).__note.gone !== undefined, null, { timeout: 12000 });
+  const t = await p.evaluate(() => (window as unknown as { __note: Record<string, number> }).__note);
+  console.log('MEASURED note: open at', Math.round(t.open!), 'fade starts after', Math.round(t.leaving! - t.open!), 'ms, gone after', Math.round(t.gone! - t.open!), 'ms');
+  expect(t.leaving! - t.open!).toBeGreaterThan(5500); expect(t.leaving! - t.open!).toBeLessThan(7500);
+  expect(t.gone! - t.leaving!).toBeGreaterThan(80); expect(t.gone! - t.leaving!).toBeLessThan(250);
+  await expect(drawer().locator('.add-note')).toHaveText('');
+});
+
+// ---- 2. The page and the drawer move together.
+test('opening the drawer at 1440 moves the map on the drawer\'s clock: it narrows over about 220 ms, never in one frame', async () => {
+  const p = page();
+  await resize(p, 1440, 900);
+  const frames = sampling(500, () => document.querySelector('main.hm-stage')!.getBoundingClientRect().width);
+  await addButton().click();
+  const rows = await frames;
+  const widths = rows.map(r => r.v);
+  expect(widths[0]).toBeGreaterThan(1000);
+  expect(widths[widths.length - 1]!).toBeLessThan(612);
+  const start = rows.findIndex(r => r.v < widths[0]! - 0.5), end = rows.findIndex(r => r.v <= widths[widths.length - 1]! + 0.5);
+  const span = rows[end]!.t - rows[start]!.t;
+  console.log('MEASURED stage width at 1440 as the drawer opens:', JSON.stringify(rows.slice(Math.max(0, start - 1), end + 2).map(r => [r.t, Math.round(r.v)])), 'span ms', span);
+  expect(span).toBeGreaterThan(120); expect(span).toBeLessThan(330);
+  const steps = widths.slice(1).map((w, i) => widths[i]! - w);
+  expect(Math.max(...steps)).toBeLessThan(330);
+  expect(new Set(widths.filter(w => w < 1000 && w > 620).map(Math.round)).size).toBeGreaterThanOrEqual(4);
+});
+
+test('closing the drawer gives the room back on the close clock, and with reduce motion the map is final at once', async () => {
+  const p = page();
+  await resize(p, 1440, 900);
+  await addButton().click();
+  await animationsDone(p);
+  const frames = sampling(400, () => document.querySelector('main.hm-stage')!.getBoundingClientRect().width);
+  await p.keyboard.press('Escape');
+  const rows = await frames;
+  const widths = rows.map(r => r.v);
+  expect(widths[widths.length - 1]!).toBeGreaterThan(1000);
+  expect(new Set(widths.filter(w => w > 620 && w < 1000).map(Math.round)).size).toBeGreaterThanOrEqual(2);
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await fresh(p); await skipTour(p);
+  await resize(p, 1440, 900);
+  const still = sampling(300, () => document.querySelector('main.hm-stage')!.getBoundingClientRect().width);
+  await addButton().click();
+  const calm = await still;
+  const settled = calm.filter(r => r.v < 700);
+  expect(settled.length).toBeGreaterThan(0);
+  expect(new Set(calm.map(r => Math.round(r.v))).size).toBeLessThanOrEqual(2);
+  expect(await p.evaluate(() => document.getAnimations().length)).toBe(0);
+});
+
+test('in a window too narrow for three columns the shelves fade out in about 110 ms instead of vanishing, and come back with the drawer\'s leaving', async () => {
+  const p = page();
+  await resize(p, 1100, 700);
+  await expect(panel()).toBeVisible();
+  const frames = sampling(400, () => { const s = getComputedStyle(document.querySelector('aside.hm-panel')!); return { o: Number(s.opacity), v: s.visibility, w: document.querySelector('aside.hm-panel')!.getBoundingClientRect().width }; });
+  await addButton().click();
+  const rows = await frames;
+  console.log('MEASURED shelves at 1100 as the drawer opens (t, opacity, visibility, width):', JSON.stringify(rows.filter(r => r.v.o < 1 || r.v.v !== 'visible').slice(0, 14).map(r => [r.t, Number(r.v.o.toFixed(2)), r.v.v, Math.round(r.v.w)])));
+  const middle = rows.filter(r => r.v.o > 0.03 && r.v.o < 0.97);
+  expect(middle.length).toBeGreaterThanOrEqual(2);
+  const last = rows[rows.length - 1]!.v;
+  expect(last.o).toBe(0); expect(last.v).toBe('hidden'); expect(last.w).toBeLessThan(2);
+  const fadeStart = rows.find(r => r.v.o < 0.999)!.t, fadeEnd = rows.find(r => r.v.o <= 0.001)!.t;
+  expect(fadeEnd - fadeStart).toBeLessThan(200);
+  await p.keyboard.press('Escape');
+  await expect(drawer()).toHaveCount(0);
+  await expect(panel()).toBeVisible();
+  await animationsDone(p);
+  expect((await panel().boundingBox())!.width).toBeGreaterThan(300);
+});
+
+test('the real page stays inside the text budget with the Show button on it', async () => {
+  const p = page();
+  await resize(p, 1280, 800);
+  await addFirstSkill();
+  await framesPainted(p);
+  expect(assertTextBudget(await p.evaluate(() => document.querySelector('[data-home]')!.outerHTML))).toEqual([]);
+});

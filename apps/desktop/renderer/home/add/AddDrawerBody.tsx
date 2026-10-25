@@ -26,7 +26,8 @@ import { AddRow } from './AddRow.js';
 import { FileTab } from './FileTab.js';
 import { useConnectLine } from './ConnectLine.js';
 import { DROP_ATTRIBUTE, dropAgentOf } from './dom-helpers.js';
-import { ADD_WORDS, addedTo, agentAdded, alreadyOn } from './add-words.js';
+import { MOTION, ms } from '../../motion-tokens.js';
+import { ADD_WORDS, NOTE_STAY_MS, addedTo, agentAdded, alreadyOn } from './add-words.js';
 import './add.css';
 
 const L = ADD_WORDS.label, H = ADD_WORDS.hint;
@@ -49,12 +50,18 @@ export interface AddDrawerBodyProps {
   line?: boolean;
   /** Called after a card was added to an agent, or a ready-made agent was copied in (then `agentId` is the new agent). */
   onAdded?(info: { readonly agentId: string; readonly entry: AddEntry }): void;
+  /** Called when the person presses "Show" on the note after an add: the page closes the drawer and brings the new card into view. Without it the note has no button. */
+  onShow?(info: AddedInfo): void;
 }
 
-interface Note { readonly text: string; readonly key: number }
+/** What an add did: the agent that got something, and the card that went to it. */
+export interface AddedInfo { readonly agentId: string; readonly entry: AddEntry }
+
+/** `show` is set on the note of a real add, so the note can offer to show where it went. `leaving` is true while the note fades out. */
+interface Note { readonly text: string; readonly key: number; readonly show?: AddedInfo; readonly leaving: boolean }
 const NO_HIDDEN: readonly string[] = Object.freeze([]);
 
-export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, line: withLine = true, onAdded }: AddDrawerBodyProps): ReactElement {
+export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
@@ -69,7 +76,20 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
   const entries = useMemo(() => entriesFor(world, tab, nameOf, hintOf), [world, tab, nameOf, hintOf]);
   const byId = useMemo(() => new Map(entries.map(e => [e.id, e])), [entries]);
 
-  const say = (text: string): void => { noted.current += 1; setNote({ text, key: noted.current }); };
+  const say = (text: string, show?: AddedInfo): void => { noted.current += 1; setHeld(false); setNote({ text, key: noted.current, leaving: false, ...(show === undefined ? {} : { show }) }); };
+  // The note stays six seconds and then fades. It waits while the pointer or the keyboard focus is on it, so its button never leaves under a hand.
+  const [held, setHeld] = useState(false);
+  const key = note?.key, leaving = note?.leaving === true;
+  useEffect(() => {
+    if (key === undefined || leaving || held) return undefined;
+    const timer = window.setTimeout(() => setNote(current => (current !== null && current.key === key ? { ...current, leaving: true } : current)), NOTE_STAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [key, leaving, held]);
+  useEffect(() => {
+    if (key === undefined || !leaving) return undefined;
+    const timer = window.setTimeout(() => setNote(current => (current !== null && current.key === key ? null : current)), ms(MOTION.home.overlay.out.ms));
+    return () => window.clearTimeout(timer);
+  }, [key, leaving]);
   const rowOf = (id: string): HTMLElement | null => root.current?.querySelector<HTMLElement>(`[data-add-id="${CSS.escape(id)}"]`) ?? null;
   const cardIn = (row: HTMLElement | null): Element | null => row?.querySelector('.kit-card') ?? null;
 
@@ -83,7 +103,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
     const action = addAction(agent.id, entry);
     if (action === null) { say(H.didNotWork); return; }
     dispatch(action);
-    say(addedTo(agent.name));
+    say(addedTo(agent.name), { agentId: agent.id, entry });
     drawLine(agent.id, row);
     onAdded?.({ agentId: agent.id, entry });
   };
@@ -94,7 +114,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
     if (result.status !== 'added' || action === null) { say(H.didNotWork); return; }
     const made = newAgentId(world, result.state.draft);
     dispatch(action);
-    say(agentAdded(entry.name));
+    say(agentAdded(entry.name), made === null ? undefined : { agentId: made, entry });
     if (made !== null) { drawLine(made, row); onAdded?.({ agentId: made, entry }); }
   };
 
@@ -141,33 +161,40 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
 
   return (
     <div className="add-body" ref={root}>
-      <div className="add-tabs" role="tablist" aria-label={L.tabs} onKeyDown={tabKey}>
-        {ADD_TABS.map(t => (
-          <button key={t} type="button" role="tab" className="add-tab" id={`${base}-tab-${t}`} aria-selected={t === tab} aria-controls={`${base}-panel`} tabIndex={t === tab ? 0 : -1} onClick={() => choose(t)}>{TAB_LABEL[t]}</button>
-        ))}
+      <div className="add-scroll">
+        <div className="add-tabs" role="tablist" aria-label={L.tabs} onKeyDown={tabKey}>
+          {ADD_TABS.map(t => (
+            <button key={t} type="button" role="tab" className="add-tab" id={`${base}-tab-${t}`} aria-selected={t === tab} aria-controls={`${base}-panel`} tabIndex={t === tab ? 0 : -1} onClick={() => choose(t)}>{TAB_LABEL[t]}</button>
+          ))}
+        </div>
+        <div className="add-panel" role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} data-tab={tab}>
+          {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={addFile} {...(sampleFile === undefined ? {} : { sampleFile })} {...(lastCopy === undefined ? {} : { lastCopy })} /> : (
+            <>
+              <p className="kit-hint">{tab === 'agents' ? H.agentsTip : H.dragTip}</p>
+              {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (
+                <ul className="add-list">
+                  {entries.slice(0, shown).map(entry => (
+                    <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : agentChoices(world, entry, nameOf, hideAgents)} open={openId === entry.id}
+                      onToggle={() => setOpenId(current => (current === entry.id ? null : entry.id))}
+                      onPick={(choice, row) => { setOpenId(null); addTo(entry, choice, row); }}
+                      onInstall={row => install(entry, row)}
+                      suppressClick={drag.suppressClick}
+                      {...(entry.kind === 'agent' ? {} : { onDragStart: (e: Parameters<typeof drag.start>[0]) => drag.start(e, entry.id, entry.name) })}
+                      {...(onOpenCopies === undefined ? {} : { onBadgePress: () => onOpenCopies(entry.id) })} />
+                  ))}
+                </ul>
+              )}
+              {entries.length > SHELF_LIMIT ? <Button aria-expanded={expanded} onClick={toggleMore}>{expanded ? L.showLess : L.showMore}</Button> : null}
+            </>
+          )}
+        </div>
       </div>
-      <div className="add-panel" role="tabpanel" id={`${base}-panel`} aria-labelledby={`${base}-tab-${tab}`} data-tab={tab}>
-        {tab === 'file' ? <FileTab world={world} nameOf={nameOf} onAddFile={addFile} {...(sampleFile === undefined ? {} : { sampleFile })} {...(lastCopy === undefined ? {} : { lastCopy })} /> : (
-          <>
-            <p className="kit-hint">{tab === 'agents' ? H.agentsTip : H.dragTip}</p>
-            {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (
-              <ul className="add-list">
-                {entries.slice(0, shown).map(entry => (
-                  <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : agentChoices(world, entry, nameOf, hideAgents)} open={openId === entry.id}
-                    onToggle={() => setOpenId(current => (current === entry.id ? null : entry.id))}
-                    onPick={(choice, row) => { setOpenId(null); addTo(entry, choice, row); }}
-                    onInstall={row => install(entry, row)}
-                    suppressClick={drag.suppressClick}
-                    {...(entry.kind === 'agent' ? {} : { onDragStart: (e: Parameters<typeof drag.start>[0]) => drag.start(e, entry.id, entry.name) })}
-                    {...(onOpenCopies === undefined ? {} : { onBadgePress: () => onOpenCopies(entry.id) })} />
-                ))}
-              </ul>
-            )}
-            {entries.length > SHELF_LIMIT ? <Button aria-expanded={expanded} onClick={toggleMore}>{expanded ? L.showLess : L.showMore}</Button> : null}
-          </>
-        )}
+      {/* The foot is not part of the scrolling list, so the note never lies over a row. It keeps no room of its own until a note arrives. */}
+      <div className="add-foot" data-open={note === null ? undefined : ''} data-leaving={note?.leaving === true ? '' : undefined}
+        onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
+        <div className="add-note" role="status" aria-live="polite" data-note={note === null ? undefined : ''}>{note === null ? null : <span key={note.key}>{note.text}</span>}</div>
+        {note?.show === undefined || onShow === undefined ? null : <Button size="small" aria-label={L.showWhat} onClick={() => { const info = note.show; if (info !== undefined) onShow(info); }}>{L.show}</Button>}
       </div>
-      <div className="add-note" role="status" aria-live="polite" data-note={note === null ? undefined : ''}>{note === null ? null : <span key={note.key}>{note.text}</span>}</div>
       {followerHost === null ? null : createPortal(<DragFollower drag={drag.drag} followRef={drag.followRef} />, followerHost)}
       {line.view}
     </div>

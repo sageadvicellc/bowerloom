@@ -42,3 +42,32 @@ test('the home style sheets take their timing from the tokens and never write a 
   assert.match(read('renderer/home/kit/kit.css'), /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
   assert.match(read('renderer/home/tour/tour.css'), /prefers-reduced-motion: reduce[\s\S]*transition: none !important/);
 });
+
+// ---- The drawer and the page move together (fix list items 1 and 2).
+test('the page makes room for a drawer on the drawer\'s own clock, and the shelves fade out in 110 ms', () => {
+  const h = MOTION.home;
+  assert.deepEqual({ ms: h.shelves.ms, ease: h.shelves.ease }, { ms: 110, ease: MOTION.ease.out });
+  const css = read('renderer/home/home.css');
+  // Opening: the padding grows in the drawer's 220 ms. Closing: it shrinks in the close time of the drawer, so the two never part.
+  assert.match(css, /\.hm-body\[data-moving\]\s*\{[^}]*transition:[^;]*padding-right var\(--motion-panel-close-ms[^;]*var\(--motion-panel-close-ease/);
+  assert.match(css, /\.hm-body\[data-drawer\]\s*\{ padding-right: var\(--hm-drawer-w\); \}/);
+  assert.match(css, /\.hm-body\[data-moving\]\[data-drawer\]\s*\{[^}]*transition:[^;]*padding-right var\(--motion-home-drawer-ms[^;]*var\(--motion-home-drawer-ease/);
+  // The transition belongs to the drawer alone: the plain body has none, so a resize of the window never runs it.
+  assert.doesNotMatch(css, /\.hm-body\s*\{[^}]*transition:/);
+  // The shelves give way with a fade; they are not taken out of the page in one frame.
+  assert.match(css, /\.hm-panel\s*\{[^}]*transition:[^;]*opacity var\(--motion-home-shelves-ms/);
+  const narrow = /@media \(min-width: 761px\) and \(max-width: 1199px\) \{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(narrow !== null, 'the narrow rules are there');
+  assert.doesNotMatch(narrow[1]!, /display: none/);
+  assert.match(narrow[1]!, /\.hm-panel \{[^}]*opacity: 0;[^}]*visibility: hidden/);
+});
+
+test('the shelves token and the overlay tokens are published, and are 0 with reduce motion on', () => {
+  const on = published(false);
+  assert.equal(on['--motion-home-shelves-ms'], '110ms');
+  assert.equal(on['--motion-home-overlay-in-ms'], '140ms'); assert.equal(on['--motion-home-overlay-travel'], '4px'); assert.equal(on['--motion-home-overlay-out-ms'], '100ms');
+  assert.equal(on['--motion-home-overlay-in-ease'], MOTION.ease.out); assert.equal(on['--motion-home-overlay-out-ease'], MOTION.ease.in);
+  const off = published(true);
+  for (const name of ['--motion-home-shelves-ms', '--motion-home-overlay-in-ms', '--motion-home-overlay-out-ms']) assert.equal(off[name], '0ms', name);
+  assert.equal(off['--motion-home-overlay-travel'], '0px');
+});

@@ -26,6 +26,8 @@ export const ADD_WORDS = deepFreeze({
     addAgent: 'Add agent',
     pickAgent: 'Add to which agent?',
     alreadyAdded: 'Already added',
+    show: 'Show',
+    showWhat: 'Show what was added',
     readyMade: ADD_MODEL_WORDS.readyMade,
     chooseFile: 'Choose a file',
     chooseAnother: 'Choose another file',
@@ -81,6 +83,9 @@ export const ADD_WORDS = deepFreeze({
   },
   popover: {},
 });
+
+/** How long the note after an add stays, in milliseconds, before it fades. It waits while the pointer or the focus is on it. */
+export const NOTE_STAY_MS = 6000;
 
 /** Words for a number of things, built here so the same test runs them. */
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
