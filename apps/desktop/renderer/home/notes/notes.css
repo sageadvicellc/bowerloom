@@ -1,0 +1,126 @@
+/*
+ * "Choose notes": the full-window sheet, its topics, the hand step and the preview, and the test page. Everything starts at [data-home] and takes its colours
+ * from the shared tokens (light and dark), its sizes from home-tokens.css (text 14 px at the least) and its timing from the motion tokens, which are 0
+ * when the person asked for less motion. The sheet is the kit's drawer stretched over the whole window; its body is split in two columns that scroll on
+ * their own, with the buttons fixed at the foot. Under 760 px the two columns become one that scrolls.
+ */
+
+/* ---- The layer */
+[data-home] .nt-layer { display: contents; }
+/* A sheet over the whole window, so the two columns have all the room there is. The Save bar waits underneath and shows what changed when the sheet closes. */
+[data-home] .nt-layer .kit-drawer { position: fixed; inset: 0; z-index: 40; width: 100%; max-width: none; border-left: 0; box-shadow: none; }
+[data-home] .nt-layer .kit-drawer-head { padding: var(--hm-space-2) var(--hm-space-5); }
+[data-home] .nt-layer .kit-drawer-body { padding: 0; gap: 0; overflow: hidden; }
+[data-home] .nt-root { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; }
+[data-home] .nt-intro { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-5); border-bottom: 1px solid var(--border); }
+[data-home] .nt-agent { margin: 0; font-size: var(--hm-text-base); font-weight: 650; color: var(--text); }
+[data-home] .nt-sentence { font-size: var(--hm-text-base); }
+[data-home] .nt-cols { display: grid; grid-template-columns: minmax(0, 1fr) clamp(19rem, 30%, 26rem); min-height: 0; }
+[data-home] .nt-left { overflow-y: auto; padding: var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-4); min-width: 0; }
+[data-home] .nt-right { overflow-y: auto; padding: 0; background: var(--surface-2); border-left: 1px solid var(--hm-border); min-width: 0; }
+[data-home] .nt-foot { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-5); border-top: 1px solid var(--hm-border); background: var(--surface); }
+[data-home] .nt-why { margin-right: auto; }
+[data-home] .nt-say { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[data-home] .nt-left-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); }
+[data-home] .nt-left-title { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .nt-left-title h3 { outline-offset: 4px; width: fit-content; border-radius: var(--hm-radius-small); }
+[data-home] .nt-back .kit-icon { transform: rotate(90deg); }
+
+/* ---- The topics */
+[data-home] .nt-topics { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--hm-space-4); align-items: start; }
+[data-home] .nt-topic { display: flex; flex-direction: column; gap: var(--hm-space-2); min-width: 0; }
+[data-home] .nt-topic .kit-card { min-width: 0; }
+/* The size bars: a track, and a fill that is as long as the topic is next to the biggest one. */
+[data-home] meter.nt-size, [data-home] meter.nt-share { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 0.5rem; margin: 0; border: 0; background: transparent; }
+[data-home] meter.nt-share { height: 0.75rem; }
+[data-home] meter::-webkit-meter-bar { background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); height: 100%; box-sizing: border-box; }
+[data-home] .nt-right meter::-webkit-meter-bar { background: var(--surface); }
+[data-home] meter::-webkit-meter-optimum-value, [data-home] meter::-webkit-meter-suboptimum-value, [data-home] meter::-webkit-meter-even-less-good-value { background: var(--accent-strong); border-radius: var(--hm-radius-pill); }
+[data-home] .nt-topic:not([data-on]) meter.nt-size::-webkit-meter-optimum-value { background: var(--hm-border); }
+
+/* "Leave out": a quiet button under a topic that is on, and a panel over the cards below it with one button for each part. */
+[data-home] .nt-topic { position: relative; }
+[data-home] .nt-leave { align-self: flex-start; }
+[data-home] .nt-leave-button {
+  display: inline-flex; align-items: center; gap: var(--hm-space-2); min-height: 2.25rem; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); background: transparent;
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .nt-leave-button:hover, [data-home] .nt-leave-button[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .nt-leave-button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .nt-leave-n { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding: 0 var(--hm-space-1); font-weight: 700; color: var(--accent-contrast); background: var(--accent-strong); border-radius: var(--hm-radius-pill); }
+[data-home] .nt-leave-panel {
+  position: absolute; z-index: 30; left: 0; top: calc(100% + var(--hm-space-1)); width: max(100%, 15rem); max-width: 20rem; box-sizing: border-box; padding: var(--hm-space-3);
+  background: var(--surface); color: var(--text); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift);
+}
+[data-home] .nt-chips { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .nt-chip {
+  display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 2.25rem; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2; color: var(--text); background: var(--surface);
+  border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .nt-chip:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .nt-chip:focus-visible, [data-home] .nt-pill:focus-visible, [data-home] .nt-search:focus-visible, [data-home] .nt-row:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+[data-home] .nt-chip-count { font-weight: 400; color: var(--text-muted); }
+[data-home] .nt-chip[aria-pressed="true"] { border-style: dashed; background: var(--quiet-bg); color: var(--quiet-fg); }
+[data-home] .nt-chip[aria-pressed="true"] .nt-chip-name { text-decoration: line-through; text-decoration-thickness: 2px; }
+
+/* ---- Pick by hand */
+[data-home] .nt-hand { display: flex; flex-direction: column; gap: var(--hm-space-3); min-width: 0; }
+[data-home] .nt-pills { display: flex; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .nt-pill {
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; line-height: 1.2; min-height: 2.5rem; padding: 0 var(--hm-space-4);
+  border-radius: var(--hm-radius-pill); border: 1px solid var(--hm-border); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease), border-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .nt-pill:hover { background: var(--accent-soft); border-color: var(--accent-strong); }
+[data-home] .nt-pill[aria-pressed="true"] { background: var(--accent); border-color: var(--accent-strong); color: var(--accent-contrast); font-weight: 700; }
+[data-home] .nt-search {
+  box-sizing: border-box; width: 100%; max-width: 26rem; min-height: 2.75rem; padding: 0 var(--hm-space-3); font: inherit; font-size: var(--hm-text-base);
+  color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small);
+}
+[data-home] .nt-search::placeholder { color: var(--text-muted); opacity: 1; }
+[data-home] .nt-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); overflow: hidden; }
+[data-home] .nt-rows > li + li { border-top: 1px solid var(--border); }
+[data-home] .nt-row { display: flex; align-items: center; gap: var(--hm-space-3); min-height: 2.75rem; padding: var(--hm-space-2) var(--hm-space-3); cursor: pointer; transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease); }
+[data-home] .nt-row:hover { background: var(--accent-soft); }
+[data-home] .nt-row[data-locked] { cursor: default; background: var(--surface-2); }
+[data-home] .nt-row input { flex: none; width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--accent-strong); }
+[data-home] .nt-row-text { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .nt-row-title { font-size: var(--hm-text-base); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+
+[data-home] .nt-hand-foot { display: flex; flex-wrap: wrap; gap: var(--hm-space-3); }
+
+/* ---- The preview */
+[data-home] .nt-preview { display: flex; flex-direction: column; }
+/* The number stays at the top of its column while the list under it scrolls. */
+[data-home] .nt-headline { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: var(--hm-space-2); padding: var(--hm-space-4) var(--hm-space-5) var(--hm-space-3); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+[data-home] .nt-details { display: flex; flex-direction: column; gap: var(--hm-space-3); align-items: flex-start; padding: var(--hm-space-3) var(--hm-space-5) var(--hm-space-5); }
+[data-home] .nt-details > * { max-width: 100%; }
+[data-home] .nt-big { margin: 0; display: flex; flex-direction: column; gap: 0; color: var(--text); }
+[data-home] .nt-big-lead { font-size: var(--hm-text-base); font-weight: 600; }
+[data-home] .nt-big-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--hm-space-2); }
+[data-home] .nt-num { font-size: 2.75rem; line-height: 1.1; font-weight: 750; color: var(--text); font-variant-numeric: tabular-nums; }
+[data-home] .nt-of { font-size: var(--hm-text-heading); font-weight: 600; }
+[data-home] .nt-preview meter.nt-share { width: 100%; }
+[data-home] .nt-cost { font-size: var(--hm-text-base); color: var(--text); }
+[data-home] .nt-sub { margin-top: var(--hm-space-2); }
+[data-home] .nt-lines, [data-home] .nt-titles { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--hm-space-1); width: 100%; }
+[data-home] .nt-lines li { font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+[data-home] .nt-titles li { font-size: var(--hm-text-base); color: var(--text); padding: var(--hm-space-1) 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+[data-home] .nt-titles[data-expanded] { max-height: min(26rem, 55vh); overflow-y: auto; padding-right: var(--hm-space-2); }
+
+/* ---- The Notes shelf: its button sits on the title row */
+[data-home] .nt-shelf { position: relative; width: 100%; }
+[data-home] .nt-shelf-action { position: absolute; top: calc(-1 * var(--hm-space-1)); right: 0; }
+
+@media (max-width: 760px) {
+  [data-home] .nt-cols { grid-template-columns: minmax(0, 1fr); overflow-y: auto; align-content: start; }
+  [data-home] .nt-left, [data-home] .nt-right { overflow: visible; }
+  [data-home] .nt-right { border-left: 0; border-top: 1px solid var(--hm-border); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-home] .nt-chip, [data-home] .nt-pill, [data-home] .nt-row { animation: none !important; transition: none !important; }
+}
