@@ -69,3 +69,51 @@ test('a disabled button in the prototype is an outline with dashes, at full opac
   assert.match(protoCss, /\.shell\[data-proto\] \.btn:disabled[^{]*\{[^}]*color: var\(--disabled-fg\)/);
   assert.match(protoCss, /\.shell\[data-proto\] \.btn:disabled[^{]*\{[^}]*outline: 1px dashed var\(--border-strong\)/);
 });
+
+// ---- The 0.8 home app's own tokens (renderer/home/home-tokens.css). They are scoped to [data-home], so the 0.7 screens and the old prototype do not change.
+const homeCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'home-tokens.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+function homeBlock(selector: RegExp): string { return selector.exec(homeCss)![1]!; }
+const homeVars = (block: string): Record<string, string> => { const v: Record<string, string> = {}; for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})/g)) v[m[1]!] = m[2]!; return v; };
+const homeNumber = (block: string, name: string): number => Number(new RegExp(`--${name}:\\s*([0-9.]+)`).exec(block)![1]);
+const homeLightBlock = homeBlock(/^\[data-home\] \{([\s\S]*?)\n\}/m), homeDarkBlock = homeBlock(/^\[data-theme="dark"\] \[data-home\], \[data-home\]\[data-theme="dark"\] \{([\s\S]*?)\n\}/m);
+const homeLight = { ...light, ...homeVars(homeLightBlock) }, homeDark = { ...dark, ...homeVars(homeDarkBlock) };
+const mixHex = (top: string, under: string, amount: number): string => '#' + [1, 3, 5].map(i => Math.round(parseInt(top.slice(i, i + 2), 16) * amount + parseInt(under.slice(i, i + 2), 16) * (1 - amount)).toString(16).padStart(2, '0')).join('');
+
+test('the home tokens only reach the home app: every selector starts at [data-home], with a dark variant for each look', () => {
+  const selectors = [...homeCss.matchAll(/(^|\})\s*([^{}]+)\{/g)].map(m => m[2]!.trim());
+  assert.ok(selectors.length >= 2);
+  for (const selector of selectors) for (const part of selector.split(',')) assert.match(part.trim(), /^(\[data-theme="dark"\] )?\[data-home\](\[data-theme="dark"\])?$/, part);
+  assert.doesNotMatch(homeCss, /:root/);
+  for (const name of ['hm-border', 'hm-ring', 'hm-scrim-alpha', 'hm-shadow', 'hm-avatar-mix']) assert.match(homeDarkBlock, new RegExp(`--${name}:`), `${name} has a dark variant`);
+});
+
+test('the home type scale, card sizes, radii and drawer width are the agreed ones', () => {
+  for (const [name, value] of [['hm-text-base', '1rem'], ['hm-text-small', '0.875rem'], ['hm-text-heading', '1.25rem'], ['hm-text-display', '1.75rem'], ['hm-radius', '0.75rem'], ['hm-card-agent-w', '13.75rem'], ['hm-card-agent-h', '8.25rem'], ['hm-card-small-w', '11rem'], ['hm-card-small-h', '4.5rem']] as [string, string][]) assert.match(homeLightBlock, new RegExp(`--${name}:\\s*${value.replace('.', '\\.')};`), name);
+  assert.match(homeLightBlock, /--hm-drawer-w:\s*min\(420px, 92vw\);/);
+});
+
+for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark', homeDark, homeDarkBlock]] as const) {
+  test(`${name} theme, home app: the edge of a card, bar, drawer or button is 3 to 1 against the page, a card, a quiet panel and a selected card`, () => {
+    for (const against of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['hm-border']!, vars[against]!) >= 3, `hm-border on ${against} is ${ratio(vars['hm-border']!, vars[against]!).toFixed(2)}`);
+    // A selected or hovered card, and an open "?" button, are drawn with the accent edge instead.
+    for (const against of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars['accent-strong']!, vars[against]!) >= 3, `accent-strong on ${against} is ${ratio(vars['accent-strong']!, vars[against]!).toFixed(2)}`);
+  });
+  test(`${name} theme, home app: every text pair still meets 4.5 to 1 and the focus ring 3 to 1`, () => {
+    for (const [fg, bg] of PAIRS) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg} is ${ratio(vars[fg]!, vars[bg]!).toFixed(2)}`);
+    for (const bg of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);
+  });
+  test(`${name} theme, home app: an agent's initials are 4.5 to 1 on each of the eight avatar tints, and the avatar ring is 3 to 1 on the card`, () => {
+    const amount = homeNumber(block, 'hm-avatar-mix') / 100;
+    assert.ok(amount > 0 && amount < 0.5, 'a tint, not a fill');
+    for (let i = 1; i <= 8; i++) {
+      const tint = mixHex(vars[`graph-${i}`]!, vars.surface!, amount);
+      assert.ok(ratio(vars.text!, tint) >= 4.5, `text on avatar tint ${i} is ${ratio(vars.text!, tint).toFixed(2)}`);
+      assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `avatar ring ${i}`);
+    }
+  });
+  test(`${name} theme, home app: the ring around the lit target is 3 to 1 against the dimmed page`, () => {
+    const alpha = homeNumber(block, 'hm-scrim-alpha');
+    assert.ok(alpha >= 0.4 && alpha <= 0.8, `dim ${alpha}`);
+    for (const page of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['hm-ring']!, mixHex('#000000', vars[page]!, alpha)) >= 3, `ring on dimmed ${page}`);
+  });
+}

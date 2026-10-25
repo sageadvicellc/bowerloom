@@ -34,10 +34,11 @@ test('the home tokens are published as page properties, and are 0 with reduce mo
 });
 
 test('the home style sheets take their timing from the tokens and never write a duration of their own', () => {
-  for (const file of ['renderer/home/kit/kit.css', 'renderer/home/home.css']) {
+  for (const file of ['renderer/home/kit/kit.css', 'renderer/home/home.css', 'renderer/home/tour/tour.css']) {
     const css = read(file);
     assert.doesNotMatch(css, /(?<![-\w])\d+(\.\d+)?m?s\b(?![^;{}]*var\()/, `${file} has a fixed time`);
     for (const m of css.matchAll(/(transition|animation)\s*:\s*([^;]+);/g)) assert.match(m[2]!, /var\(--motion-|none/, `${file}: ${m[0]}`);
   }
   assert.match(read('renderer/home/kit/kit.css'), /prefers-reduced-motion: reduce[\s\S]*animation: none !important; transition: none !important/);
+  assert.match(read('renderer/home/tour/tour.css'), /prefers-reduced-motion: reduce[\s\S]*transition: none !important/);
 });

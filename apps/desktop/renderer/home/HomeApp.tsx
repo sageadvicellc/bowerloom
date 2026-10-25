@@ -4,7 +4,7 @@
  * For this first slice the stage is a plain grid of the person's own agents, built from the sample world with the kit's one card; later waves replace
  * the stage and the drawers' content and keep the `data-tour` ids: map, agent, shelves, add, save, help (and `bar` on the top bar).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { ReactElement } from 'react';
 import { isDirty } from '../../shared/proto/store.js';
 import { agentHint, agentTitle, ownedAgents, saveBarModel, shelvesOf } from '../../shared/home/cards.js';
@@ -16,6 +16,9 @@ import { KitIcon } from './kit/icons.js';
 import { ItemCard } from './kit/ItemCard.js';
 import { Shelf } from './kit/Shelf.js';
 import { saveAction } from './store-actions.js';
+import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
+import { TOUR_STEPS } from './tour/steps.js';
+import { createTour, tourReduce, tourSession } from './tour/tour.js';
 import { WORDS, agentsCount } from './words.js';
 import './home-tokens.css';
 import './kit/kit.css';
@@ -28,6 +31,7 @@ export function HomeApp(): ReactElement {
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedItem, setPickedItem] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerId | null>(null);
+  const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
 
   const world = state.draft;
   const agents = useMemo(() => ownedAgents(world), [world]);
@@ -36,6 +40,8 @@ export function HomeApp(): ReactElement {
   const bar = saveBarModel(isDirty(state));
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
+  // The tour runs by itself once in a session. After that only the Help button runs it.
+  useEffect(() => { if (tourSession.claimAutoStart()) tourDo('start'); }, []);
 
   const toggle = (id: DrawerId): void => setDrawer(current => (current === id ? null : id));
   const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); };
@@ -47,7 +53,7 @@ export function HomeApp(): ReactElement {
         <span className="hm-spacer" />
         <Button icon="clock" aria-expanded={drawer === 'points'} onClick={() => toggle('points')}>{WORDS.label.savePoints}</Button>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>
-        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" />
+        <HelpPopover label={WORDS.label.help} text={WORDS.popover.help} align="end" dataTour="help" action={{ label: WORDS.label.showTour, onAction: () => tourDo('replay') }} />
       </header>
 
       <div className="hm-body">
@@ -87,6 +93,9 @@ export function HomeApp(): ReactElement {
         <p>{bar.text}</p>
         <Button variant="primary" disabled={!bar.canSave} onClick={() => dispatch(saveAction(WORDS.label.save))}>{WORDS.label.save}</Button>
       </section>
+
+      <TourAnnouncer state={tour} />
+      {tour.status === 'running' ? <TourOverlay state={tour} onNext={() => tourDo('next')} onBack={() => tourDo('back')} onSkip={() => tourDo('skip')} /> : null}
     </div>
   );
 }

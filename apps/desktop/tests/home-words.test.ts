@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BANNED, WORDS, agentsCount, stepAnnouncement } from '../renderer/home/words.js';
+import { TOUR_STEPS } from '../renderer/home/tour/steps.js';
 import { LIMITS, assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { CARD_WORDS } from '../shared/home/cards.js';
 import { DESKTOP } from './support.js';
@@ -44,7 +45,7 @@ test('the storyboard vocabulary is used as written', () => {
 });
 
 test('the words built from numbers, the card words and the tour sentences obey the same rules', () => {
-  const built = [agentsCount(0), agentsCount(1), agentsCount(10), stepAnnouncement(2, 6), ...Object.values(CARD_WORDS), '2 different copies', '12 different copies'];
+  const built = [agentsCount(0), agentsCount(1), agentsCount(10), stepAnnouncement(2, 6), ...Object.values(CARD_WORDS), ...TOUR_STEPS.map(s => s.text), '2 different copies', '12 different copies'];
   for (const text of built) { assert.ok(countWords(text) <= LIMITS.hint, text); assert.equal(bannedIn(text), null, text); assert.deepEqual(assertTextBudget(`<p>${text}</p>`), [], text); }
   assert.equal(agentsCount(1), '1 agent'); assert.equal(agentsCount(10), '10 agents'); assert.equal(stepAnnouncement(2, 6), 'Step 2 of 6');
 });

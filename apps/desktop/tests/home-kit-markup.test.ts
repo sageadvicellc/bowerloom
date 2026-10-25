@@ -15,6 +15,9 @@ import { ItemCard, isLarge } from '../renderer/home/kit/ItemCard.js';
 import { Shelf } from '../renderer/home/kit/Shelf.js';
 import { HomeApp } from '../renderer/home/HomeApp.js';
 import { KitGallery } from '../renderer/home/KitGallery.js';
+import { TourAnnouncer, TourOverlay } from '../renderer/home/tour/TourOverlay.js';
+import { TOUR_STEPS } from '../renderer/home/tour/steps.js';
+import { createTour, startTour, stepNext } from '../renderer/home/tour/tour.js';
 import { ProtoProvider } from '../renderer/proto/session.js';
 import { loadWorld } from '../renderer/proto/world.js';
 import { createStore } from '../shared/proto/store.js';
@@ -169,4 +172,31 @@ test('the kit gallery shows both looks, every card state and every part, passes 
   within(m);
   assert.ok(inOrder(levels(m)), levels(m).join());
   assert.deepEqual(levels(m).slice(0, 3), [1, 2, 3]);
+});
+
+test('the tour popover: one sentence, the step, Back and Next, Skip tour; the last step says Done; the first has no Back', () => {
+  const first = html(createElement(TourOverlay, { state: startTour(createTour(TOUR_STEPS)), onNext: none, onBack: none, onSkip: none }));
+  assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />1 of 6</);
+  assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="tour-dot"/g)].length, 6);
+  assert.match(first, /data-state="now"/);
+  within(first);
+  let t = startTour(createTour(TOUR_STEPS));
+  for (let i = 0; i < 5; i += 1) t = stepNext(t);
+  const last = html(createElement(TourOverlay, { state: t, onNext: none, onBack: none, onSkip: none }));
+  assert.match(last, />Done</); assert.doesNotMatch(last, />Next</); assert.match(last, />Back</); assert.match(last, />6 of 6</); assert.match(last, /Replay this tour any time\./);
+  within(last);
+  assert.equal(html(createElement(TourOverlay, { state: createTour(TOUR_STEPS), onNext: none, onBack: none, onSkip: none })), '', 'an idle tour draws nothing');
+});
+
+test('the tour announcer says the step and the sentence in a polite live region, and nothing when the tour is not running', () => {
+  const running = html(createElement(TourAnnouncer, { state: stepNext(startTour(createTour(TOUR_STEPS))) }));
+  assert.match(running, /role="status" aria-live="polite"/); assert.match(running, /Step 2 of 6/); assert.match(running, /Click an agent to see what it can do\./); within(running);
+  const idle = html(createElement(TourAnnouncer, { state: createTour(TOUR_STEPS) }));
+  assert.match(idle, /aria-live="polite"/); assert.doesNotMatch(idle, /Step/);
+});
+
+test('the drag follower draws the dragged name, hidden from a screen reader, and nothing when no drag is on', () => {
+  assert.equal(html(createElement(DragFollower, { drag: null, followRef: none })), '');
+  const m = html(createElement(DragFollower, { drag: { id: 's1', label: 'Weekly Review', over: null }, followRef: none }));
+  assert.match(m, /^<div class="kit-follow" data-follow="" aria-hidden="true">Weekly Review<\/div>$/); within(m);
 });
