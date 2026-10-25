@@ -407,12 +407,12 @@ test('with motion on, a tile lights with one short eased-out change, its parts d
   await expect(tile(0)).toHaveAttribute('data-state', 'found');
   const facts = await p.evaluate(() => {
     const read = (sel: string): { animation: string; delay: string; duration: string; ease: string; property: string } => { const s = getComputedStyle(document.querySelector(sel)!); return { animation: s.animationName, delay: s.transitionDelay, duration: s.transitionDuration, ease: s.transitionTimingFunction, property: s.transitionProperty }; };
-    return { tile: read('.fr-tile[data-state="found"]'), avatar: read('.fr-tile[data-state="found"] .kit-avatar'), name: read('.fr-tile[data-state="found"] .fr-tile-name'), status: read('.fr-tile[data-state="found"] .fr-tile-status') };
+    return { tile: read('.fr-tile[data-state="found"]'), glyph: read('.fr-tile[data-state="found"] .kit-tile'), name: read('.fr-tile[data-state="found"] .fr-tile-name'), status: read('.fr-tile[data-state="found"] .fr-tile-status') };
   });
   // The tile itself changes fill, edge and colour over 240 ms with the strong ease-out; its picture comes to full strength over the same time.
   expect(facts.tile.duration.split(', ').every(d => d === '0.24s')).toBe(true);
   expect(facts.tile.ease.replaceAll('cubic-bezier(0.23, 1, 0.32, 1)', 'strong').split(', ').every(e => e === 'strong')).toBe(true);
-  expect(facts.avatar).toMatchObject({ animation: 'none', delay: '0s', duration: '0.24s', property: 'opacity' });
+  expect(facts.glyph).toMatchObject({ animation: 'none', delay: '0s', duration: '0.24s', property: 'opacity' });
   // The name and the status have no animation and no delay of their own: the old 80 ms steps and the 6 px rise are gone.
   for (const part of [facts.name, facts.status]) expect(part).toMatchObject({ animation: 'none', delay: '0s' });
   await expect(p.getByRole('button', { name: 'Looks right' })).toBeVisible();

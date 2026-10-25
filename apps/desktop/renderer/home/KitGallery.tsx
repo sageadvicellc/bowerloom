@@ -5,10 +5,10 @@
 import type { ReactElement, ReactNode } from 'react';
 import { CARD_WORDS } from '../../shared/home/cards.js';
 import type { CardBadge, ShelfEntry } from '../../shared/home/cards.js';
-import { Avatar } from './kit/Avatar.js';
 import { Badge } from './kit/Badge.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
+import { Glyph } from './kit/Glyph.js';
 import { HelpPopover } from './kit/HelpPopover.js';
 import { ItemCard } from './kit/ItemCard.js';
 import { Shelf } from './kit/Shelf.js';
@@ -22,7 +22,6 @@ const none = (): void => undefined;
 const copies: CardBadge = { label: `2 ${CARD_WORDS.copiesSuffix}`, tone: 'warn' };
 const needsKey: CardBadge = { label: L.needsKeyBadge, tone: 'warn' };
 const fresh: CardBadge = { label: L.newBadge, tone: 'new' };
-const AVATAR_NAMES = ['Velvet Weaver', 'Brisk Archivist', 'Sunlit Cartographer', 'Quiet Warden', 'Humble Scribe', 'Mellow Cooper', 'Wintry Navigator', 'Ember Forager'];
 const entry = (id: string, kind: ShelfEntry['kind'], name: string, badge?: CardBadge): ShelfEntry => ({ id, kind, name, hint: WORDS.hint.sampleSkill, ...(badge === undefined ? {} : { badge }) });
 const SHELF: ShelfEntry[] = [entry('s1', 'skill', 'Write a weekly summary', copies), entry('s2', 'skill', 'Summarize a meeting'), entry('s3', 'skill', 'Write a reply', fresh)];
 const LONG_SHELF: ShelfEntry[] = Array.from({ length: 11 }, (_, i) => entry(`l${i}`, 'skill', `Skill Number ${i + 1}`, i === 2 ? copies : undefined));
@@ -57,7 +56,7 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
         <Cell caption={L.galleryBadge}><ItemCard kind="skill" name={L.sampleLongName} hint={H.sampleSkill} badge={fresh} selected={false} onSelect={none} onRemove={none} /></Cell>
       </Block>
       <Block title={L.galleryBadges}>
-        <Badge badge={copies} onPress={none} /><Badge badge={needsKey} /><Badge badge={fresh} /><Badge badge={{ label: L.selected, tone: 'info' }} />
+        <Badge badge={copies} onPress={none} /><Badge badge={needsKey} /><Badge badge={fresh} /><Badge badge={{ label: L.galleryInfoBadge, tone: 'info' }} />
       </Block>
       <Block title={L.galleryButtons}>
         <Cell caption={L.galleryPrimary}><Button variant="primary" icon="plus">{L.add}</Button></Cell>
@@ -65,9 +64,8 @@ function Look({ theme, title }: { theme: 'light' | 'dark'; title: string }): Rea
         <Cell caption={L.galleryDisabled}><Button variant="primary" disabled>{L.save}</Button></Cell>
         <Cell caption={L.help}><Button round aria-label={L.help}>?</Button></Cell>
       </Block>
-      <Block title={L.galleryAvatars}>
-        {AVATAR_NAMES.map(name => <Avatar key={name} name={name} />)}
-        <Avatar name="" /><Avatar name={AVATAR_NAMES[0]!} size="small" />
+      <Block title={L.galleryTiles}>
+        <Glyph name="agent" size="large" /><Glyph name="skill" /><Glyph name="tool" /><Glyph name="note" /><Glyph name="program" size="large" /><Glyph name="agent" size="small" />
       </Block>
       <Block title={L.galleryShelf}>
         <Shelf title={L.skills} entries={SHELF} selectedId="s2" onSelect={none} emptyText={WORDS.hint.emptyShelf} level={4} />

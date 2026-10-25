@@ -17,7 +17,7 @@ import { chooseNotesAction, notesWouldChange } from '../../../shared/home/notes-
 import type { Topic } from '../../../shared/home/notes-topics.js';
 import { useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
-import { Avatar } from '../kit/Avatar.js';
+import { Glyph } from '../kit/Glyph.js';
 import { Drawer } from '../kit/Drawer.js';
 import { HandPicker } from './HandPicker.js';
 import { PreviewPanel } from './PreviewPanel.js';
@@ -100,7 +100,7 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
   return (
     <div className="nt-root">
       <div className="nt-intro">
-        <Avatar name={name} size="small" />
+        <Glyph name="agent" size="small" />
         <p className="nt-agent">{name}</p>
         <p className="kit-hint nt-sentence">{H.intro}</p>
       </div>

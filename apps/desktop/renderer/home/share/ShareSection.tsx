@@ -22,7 +22,7 @@ export function ShareSection({ onShare, onOpenFile }: ShareSectionProps): ReactE
         <p className="kit-hint">{H.shareTip}</p>
       </div>
       <div className="sh-section-actions">
-        <Button icon="agent" onClick={onShare}>{L.shareAgents}</Button>
+        <Button icon="share" onClick={onShare}>{L.shareAgents}</Button>
         <Button icon="note" onClick={onOpenFile}>{L.openFile}</Button>
       </div>
     </section>

@@ -13,8 +13,8 @@ import type { FindPlace, ToolTile } from '../../../shared/home/find-model.js';
 import { findReduce, readTotal, startFind } from '../../../shared/home/find-flow.js';
 import type { FindState } from '../../../shared/home/find-flow.js';
 import { prefersReducedMotion } from '../../motion-tokens.js';
-import { Avatar } from '../kit/Avatar.js';
 import { Button } from '../kit/Button.js';
+import { Glyph } from '../kit/Glyph.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS, agentsCount } from '../words.js';
 import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow, unsavedHere } from './find-words.js';
@@ -39,7 +39,7 @@ function Tile({ tile, lit }: { tile: ToolTile; lit: boolean }): ReactElement {
   const state = !lit ? 'waiting' : tile.found ? 'found' : 'missing';
   return (
     <li className="fr-tile" data-state={state} data-tool={tile.id}>
-      <Avatar name={tile.name} />
+      <Glyph name="program" size="large" />
       <span className="fr-tile-name">{tile.name}</span>
       <span className="fr-tile-status">
         {state === 'waiting' ? FIND_WORDS.label.looking : state === 'missing' ? FIND_WORDS.label.notFound : <><strong className="fr-count">{tile.agents}</strong> {tile.agents === 1 ? 'agent' : 'agents'}</>}

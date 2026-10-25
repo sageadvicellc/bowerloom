@@ -77,6 +77,8 @@ const homeVars = (block: string): Record<string, string> => { const v: Record<st
 const homeNumber = (block: string, name: string): number => Number(new RegExp(`--${name}:\\s*([0-9.]+)`).exec(block)![1]);
 const homeLightBlock = homeBlock(/^\[data-home\] \{([\s\S]*?)\n\}/m), homeDarkBlock = homeBlock(/^\[data-theme="dark"\] \[data-home\], \[data-home\]\[data-theme="dark"\] \{([\s\S]*?)\n\}/m);
 const homeLight = { ...light, ...homeVars(homeLightBlock) }, homeDark = { ...dark, ...homeVars(homeDarkBlock) };
+const homeKitCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'kit', 'kit.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const homeMapCss = readFileSync(join(DESKTOP, 'renderer', 'home', 'map', 'map.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const mixHex = (top: string, under: string, amount: number): string => '#' + [1, 3, 5].map(i => Math.round(parseInt(top.slice(i, i + 2), 16) * amount + parseInt(under.slice(i, i + 2), 16) * (1 - amount)).toString(16).padStart(2, '0')).join('');
 
 test('the home tokens only reach the home app: every selector starts at [data-home], with a dark variant for each look', () => {
@@ -84,7 +86,7 @@ test('the home tokens only reach the home app: every selector starts at [data-ho
   assert.ok(selectors.length >= 2);
   for (const selector of selectors) for (const part of selector.split(',')) assert.match(part.trim(), /^(\[data-theme="dark"\] )?\[data-home\](\[data-theme="dark"\])?$/, part);
   assert.doesNotMatch(homeCss, /:root/);
-  for (const name of ['hm-border', 'hm-ring', 'hm-scrim-alpha', 'hm-shadow', 'hm-avatar-mix']) assert.match(homeDarkBlock, new RegExp(`--${name}:`), `${name} has a dark variant`);
+  for (const name of ['hm-border', 'hm-ring', 'hm-scrim-alpha', 'hm-shadow']) assert.match(homeDarkBlock, new RegExp(`--${name}:`), `${name} has a dark variant`);
 });
 
 test('the home type scale, card sizes, radii and drawer width are the agreed ones', () => {
@@ -102,14 +104,19 @@ for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark'
     for (const [fg, bg] of PAIRS) assert.ok(ratio(vars[fg]!, vars[bg]!) >= 4.5, `${fg} on ${bg} is ${ratio(vars[fg]!, vars[bg]!).toFixed(2)}`);
     for (const bg of ['bg', 'surface', 'accent-soft']) assert.ok(ratio(vars.focus!, vars[bg]!) >= 3, `focus on ${bg}`);
   });
-  test(`${name} theme, home app: an agent's initials are 4.5 to 1 on each of the eight avatar tints, and the avatar ring is 3 to 1 on the card`, () => {
-    const amount = homeNumber(block, 'hm-avatar-mix') / 100;
-    assert.ok(amount > 0 && amount < 0.5, 'a tint, not a fill');
-    for (let i = 1; i <= 8; i++) {
-      const tint = mixHex(vars[`graph-${i}`]!, vars.surface!, amount);
-      assert.ok(ratio(vars.text!, tint) >= 4.5, `text on avatar tint ${i} is ${ratio(vars.text!, tint).toFixed(2)}`);
-      assert.ok(ratio(vars[`graph-${i}`]!, vars.surface!) >= 3, `avatar ring ${i}`);
-    }
+  test(`${name} theme, home app: the 2 px edge of a selected card, row or segment is 3 to 1 against everything it sits next to`, () => {
+    // A selected card is a highlight with no check mark, so the edge and the tint are all that tell it apart. The edge touches the page (bg), a neighbouring card
+    // (surface), the tile and the chips inside the card (surface-2) and its own tint (accent-soft); a selected row sits on the tint of its owner card as well.
+    for (const against of ['bg', 'surface', 'surface-2', 'accent-soft']) assert.ok(ratio(vars['accent-strong']!, vars[against]!) >= 3, `selected edge on ${against} is ${ratio(vars['accent-strong']!, vars[against]!).toFixed(2)}`);
+    assert.match(homeKitCss, /\.kit-card\[data-selected\][^{]*\{[^}]*border-width: 2px;/, 'the selected edge is 2 px');
+    assert.match(homeMapCss, /\.hm-seg-button\[aria-pressed="true"\][^{]*\{[^}]*inset 0 0 0 2px var\(--accent-strong\)/, 'the selected segment has a 2 px edge');
+  });
+  test(`${name} theme, home app: the glyph on its tile is 4.5 to 1, and the edge of a chip or a tile is 3 to 1 on the card and (in the accent edge it takes there) on a selected card`, () => {
+    assert.ok(ratio(vars['accent-strong']!, vars['surface-2']!) >= 4.5, `glyph on tile is ${ratio(vars['accent-strong']!, vars['surface-2']!).toFixed(2)}`);
+    // On a plain card a chip has the grey edge. On the tint of a selected card the grey edge is under 3 to 1 in the dark look, so a chip there takes the accent edge instead.
+    for (const against of ['surface', 'surface-2']) assert.ok(ratio(vars['hm-border']!, vars[against]!) >= 3, `hm-border on ${against} is ${ratio(vars['hm-border']!, vars[against]!).toFixed(2)}`);
+    assert.ok(ratio(vars['accent-strong']!, vars['accent-soft']!) >= 3, 'the accent edge on the tint of a selected card');
+    for (const on of ['surface', 'accent-soft']) assert.ok(ratio(vars.text!, vars[on]!) >= 4.5 && ratio(vars['text-muted']!, vars[on]!) >= 4.5, `chip and row text on ${on}`);
   });
   test(`${name} theme, home app: the ring around the lit target is 3 to 1 against the dimmed page`, () => {
     const alpha = homeNumber(block, 'hm-scrim-alpha');

@@ -33,7 +33,7 @@ test('a card with Remove has a real button named "Remove" and then the card\'s n
 
 test('the Remove button comes after the badge and before nothing else, so the keyboard reaches the name first and Remove next', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'X', hint: 'One.', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none, onRemove: none, onBadgePress: none }));
-  const order = ['kit-card-main', 'kit-card-hint', 'kit-remove', 'kit-badge', 'kit-card-check'].map(c => m.indexOf(c));
+  const order = ['kit-card-main', 'kit-card-hint', 'kit-remove', 'kit-badge'].map(c => m.indexOf(c));
   assert.ok(order.every(i => i > -1) && order[2]! > order[1]!, order.join());
 });
 
@@ -51,12 +51,13 @@ test('a shelf gives every card its hint and its Remove button when asked to', ()
   assert.doesNotMatch(html(createElement(Shelf, { title: 'Skills', entries, selectedId: null, onSelect: none, emptyText: 'Nothing here yet.' })), /kit-remove/);
 });
 
-test('the sort toggle is one group of two buttons; the one in use is pressed and has a check', () => {
+test('the sort toggle is one group of two buttons; the one in use is pressed, and no button has an icon or a check', () => {
   const byName = html(createElement(SortToggle, { mode: 'name', onChange: none }));
   assert.match(byName, /role="group" aria-label="Order of the agents"/);
-  assert.match(byName, /aria-pressed="true" data-sort="name"[^>]*><svg[\s\S]*?<\/svg>Name</); assert.match(byName, /aria-pressed="false" data-sort="recent"[^>]*>Recently changed</);
+  assert.match(byName, /aria-pressed="true" data-sort="name"[^>]*>Name</); assert.match(byName, /aria-pressed="false" data-sort="recent"[^>]*>Recently changed</);
   const recent = html(createElement(SortToggle, { mode: 'recent', onChange: none }));
-  assert.match(recent, /aria-pressed="false" data-sort="name"/); assert.match(recent, /aria-pressed="true" data-sort="recent"[^>]*><svg/);
+  assert.match(recent, /aria-pressed="false" data-sort="name"/); assert.match(recent, /aria-pressed="true" data-sort="recent"[^>]*>Recently changed</);
+  assert.doesNotMatch(byName, /<svg/); assert.doesNotMatch(recent, /<svg/);
   within(byName); within(recent);
 });
 

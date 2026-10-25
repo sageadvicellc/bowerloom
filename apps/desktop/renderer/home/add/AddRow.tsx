@@ -6,8 +6,8 @@
 import { useEffect, useId, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
 import type { AddEntry, AgentChoice } from '../../../shared/home/add-model.js';
-import { Avatar } from '../kit/Avatar.js';
 import { Button } from '../kit/Button.js';
+import { Glyph } from '../kit/Glyph.js';
 import { ItemCard } from '../kit/ItemCard.js';
 import { ADD_WORDS } from './add-words.js';
 
@@ -34,7 +34,7 @@ function PickRow({ choice, onPick }: { choice: AgentChoice; onPick(): void }): R
   const noteId = useId();
   return (
     <li className="add-pick" data-has={choice.has ? '' : undefined}>
-      <Avatar name={choice.name} size="small" />
+      <Glyph name="agent" size="small" />
       <button type="button" className="add-pick-main" aria-disabled={choice.has ? 'true' : undefined} aria-describedby={choice.has ? noteId : undefined} data-agent={choice.id} onClick={onPick}>{choice.name}</button>
       {choice.has ? <span className="kit-hint add-pick-note" id={noteId}>{L.alreadyAdded}</span> : null}
     </li>

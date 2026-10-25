@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Avatar } from '../renderer/home/kit/Avatar.js';
 import { Badge, badgeIcon } from '../renderer/home/kit/Badge.js';
 import { Button } from '../renderer/home/kit/Button.js';
 import { DragFollower } from '../renderer/home/kit/DragFollower.js';
+import { Glyph } from '../renderer/home/kit/Glyph.js';
 import { Drawer } from '../renderer/home/kit/Drawer.js';
 import { HelpPopover } from '../renderer/home/kit/HelpPopover.js';
 import { KIT_ICON_NAMES, KitIcon } from '../renderer/home/kit/icons.js';
@@ -34,9 +34,10 @@ const levels = (markup: string): number[] => [...markup.matchAll(/<h([1-6])[\s>]
 const inOrder = (list: number[]): boolean => list.every((level, i) => i === 0 ? level === 1 || level === 2 : level <= list[i - 1]! + 1);
 const shell = (): string => html(createElement(ProtoProvider, { store: createStore(loadWorld()) }, createElement(HomeApp)));
 
-test('an agent card is large, with a round avatar, a name button, a hint, and nothing else', () => {
+test('an agent card is large, with a glyph tile (no initials, no person), a name button, a hint, and nothing else', () => {
   const m = html(createElement(ItemCard, { kind: 'agent', name: 'Velvet Weaver', hint: 'A weaver with 3 skills and 1 tool.', selected: false, onSelect: none }));
-  assert.match(m, /data-kind="agent"/); assert.match(m, /data-size="large"/); assert.match(m, /class="kit-avatar"/); assert.match(m, /data-slot="\d"/);
+  assert.match(m, /data-kind="agent"/); assert.match(m, /data-size="large"/); assert.match(m, /<span class="kit-tile" data-size="large" aria-hidden="true"><svg/);
+  assert.doesNotMatch(m, /kit-avatar|data-slot/); assert.doesNotMatch(m, /aria-hidden="true">VW</, 'no initials'); assert.doesNotMatch(m, /M6 20c0-3\.3 2\.7-6 6-6s6 2\.7 6 6/, 'not the head and shoulders of a person');
   assert.match(m, /<button[^>]*class="kit-card-main"[^>]*aria-pressed="false"[^>]*>Velvet Weaver<\/button>/);
   assert.match(m, /aria-describedby="[^"]+"/); assert.match(m, /<p class="kit-hint kit-card-hint"[^>]*>A weaver with 3 skills and 1 tool\.<\/p>/);
   assert.doesNotMatch(m, /kit-badge|kit-card-check|style=/); assert.equal(isLarge('agent'), true);
@@ -54,15 +55,16 @@ test('a skill, a tool and a note are the same card as each other: only the icon,
 });
 
 test('an agent card and a skill card share one layout: the same parts in the same order', () => {
-  const parts = (m: string): string[] => [...m.matchAll(/class="(kit-[a-z-]+)(?: [^"]*)?"/g)].map(x => x[1]!).filter(c => ['kit-avatar', 'kit-tile', 'kit-card-main', 'kit-card-hint', 'kit-card-badge', 'kit-card-check'].includes(c));
+  const parts = (m: string): string[] => [...m.matchAll(/class="(kit-[a-z-]+)(?: [^"]*)?"/g)].map(x => x[1]!).filter(c => ['kit-tile', 'kit-card-main', 'kit-card-hint', 'kit-card-badge', 'kit-card-check'].includes(c));
   const a = parts(html(createElement(ItemCard, { kind: 'agent', name: 'A B', hint: 'One.', badge: { label: 'new', tone: 'new' }, selected: true, onSelect: none })));
   const s = parts(html(createElement(ItemCard, { kind: 'skill', name: 'A B', hint: 'One.', badge: { label: 'new', tone: 'new' }, selected: true, onSelect: none })));
-  assert.deepEqual(a.map(x => x.replace('kit-avatar', 'LEAD')), s.map(x => x.replace('kit-tile', 'LEAD')));
+  assert.deepEqual(a, s); assert.deepEqual(a, ['kit-tile', 'kit-card-main', 'kit-card-badge']);
 });
 
-test('a selected card says so with a check and aria-pressed; a badge is an icon and words', () => {
+test('a selected card says so with aria-pressed and a highlight, and has no check mark; a badge is an icon and words', () => {
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'Weekly Review', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none }));
-  assert.match(m, /aria-pressed="true"/); assert.match(m, /data-selected=""/); assert.match(m, /class="kit-card-check"/);
+  assert.match(m, /aria-pressed="true"/); assert.match(m, /data-selected=""/);
+  assert.doesNotMatch(m, /kit-card-check/); assert.doesNotMatch(m, /M5 12\.5l4\.5 4\.5L19 7\.5/, 'the check path is not drawn anywhere in the card');
   assert.match(m, /<span class="kit-badge"[^>]*data-tone="warn"[^>]*><svg[\s\S]*?<\/svg><span>2 different copies<\/span><\/span>/);
   within(m);
 });
@@ -76,10 +78,10 @@ test('a badge is a plain span, or a button when it can be pressed; each tone has
   assert.match(html(createElement(KitIcon, { name: 'check' })), /aria-hidden="true"/);
 });
 
-test('the avatar shows initials, or a person when there is no name, and is hidden from a screen reader', () => {
-  assert.match(html(createElement(Avatar, { name: 'velvet-weaver' })), /aria-hidden="true">VW<\/span>/);
-  assert.match(html(createElement(Avatar, { name: '' })), /<svg/); assert.doesNotMatch(html(createElement(Avatar, { name: '' })), />[A-Z]<\/span>/);
-  assert.match(html(createElement(Avatar, { name: 'A', size: 'small' })), /data-size="small"/);
+test('a glyph tile is a hidden icon in a rounded square, in three sizes, and never holds letters', () => {
+  const m = html(createElement(Glyph, { name: 'agent' }));
+  assert.match(m, /^<span class="kit-tile" aria-hidden="true"><svg/); assert.doesNotMatch(m, />[A-Za-z]+</);
+  assert.match(html(createElement(Glyph, { name: 'agent', size: 'large' })), /data-size="large"/); assert.match(html(createElement(Glyph, { name: 'agent', size: 'small' })), /data-size="small"/);
 });
 
 test('a button is primary or quiet, round when asked, and never has a style attribute', () => {
@@ -193,7 +195,7 @@ test('the kit gallery shows both looks, every card state and every part, passes 
   assert.equal([...m.matchAll(/data-theme="(light|dark)"/g)].map(x => x[1]).join(), 'light,dark');
   for (const state of ['data-demo="hover"', 'data-demo="focus"', 'data-selected=""', 'data-size="large"', 'data-size="small"', 'data-kind="tool"', 'data-kind="note"', 'data-kind="skill"']) assert.match(m, new RegExp(state), state);
   for (const tone of ['warn', 'new', 'info']) assert.match(m, new RegExp(`kit-badge" data-tone="${tone}"`), tone);
-  assert.match(m, /disabled=""/); assert.match(m, /Show more/); assert.match(m, /kit-popover/); assert.match(m, /kit-drawer/); assert.match(m, /data-slot="8"/);
+  assert.match(m, /disabled=""/); assert.match(m, /Show more/); assert.match(m, /kit-popover/); assert.match(m, /kit-drawer/); assert.match(m, /class="kit-tile"/); assert.doesNotMatch(m, /kit-avatar/);
   within(m);
   assert.ok(inOrder(levels(m)), levels(m).join());
   assert.deepEqual(levels(m).slice(0, 3), [1, 2, 3]);

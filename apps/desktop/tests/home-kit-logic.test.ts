@@ -1,30 +1,11 @@
-// The pure parts of the card kit: the avatar's colour and letters, the drag state machine, the drawer phases and the popover id.
+// The pure parts of the card kit: the drag state machine and the drawer phases. (The avatar's colour and letters left with the avatar: agents wear a glyph tile now.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AVATAR_SLOTS, avatarSlot, initialsOf } from '../renderer/home/kit/avatar-colour.js';
 import { DRAG_START, dragCancel, dragMove, dragPress, dragRelease, idleDrag } from '../renderer/home/kit/drag.js';
 import { drawerStep } from '../renderer/home/kit/drawer-phase.js';
 import { saveAction } from '../renderer/home/store-actions.js';
 import { createStore } from '../shared/proto/store.js';
 import { makeWorld } from './proto-testworld.js';
-
-test('the avatar colour is one of the eight graph tokens, the same every time for a name, and spread over the names', () => {
-  assert.equal(AVATAR_SLOTS, 8);
-  assert.equal(avatarSlot('Velvet Weaver'), avatarSlot('Velvet Weaver'));
-  assert.equal(avatarSlot('velvet weaver'), avatarSlot('  Velvet   WEAVER '), 'case and spacing do not change it');
-  const names = ['Velvet Weaver', 'Brisk Archivist', 'Sunlit Cartographer', 'Quiet Warden', 'Humble Archivist', 'Humble Scribe', 'Mellow Cooper', 'Wintry Navigator', 'Ember Forager', 'Tidal Cartographer', 'Lunar Scribe', 'Gilded Scribe'];
-  const slots = names.map(avatarSlot);
-  for (const s of slots) { assert.ok(Number.isInteger(s) && s >= 1 && s <= 8, String(s)); }
-  assert.ok(new Set(slots).size >= 5, `${new Set(slots).size} different colours for ${names.length} names`);
-  assert.ok(avatarSlot('') >= 1 && avatarSlot('') <= AVATAR_SLOTS, 'no name still gives a colour');
-});
-
-test('initialsOf takes the first letter of up to two words, and nothing for no name', () => {
-  assert.equal(initialsOf('Velvet Weaver'), 'VW'); assert.equal(initialsOf('velvet-weaver'), 'VW'); assert.equal(initialsOf('Warden'), 'W');
-  assert.equal(initialsOf('a b c'), 'AB'); assert.equal(initialsOf('  '), ''); assert.equal(initialsOf(''), '');
-  assert.equal(initialsOf('élan vital'), 'ÉV', 'a letter with an accent is one letter');
-  assert.equal(initialsOf('42 things'), '4T');
-});
 
 test('a press is not a drag until the pointer has moved 6 pixels', () => {
   assert.equal(DRAG_START, 6);

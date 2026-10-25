@@ -30,13 +30,13 @@
   background: transparent; color: var(--text-muted); border: 1.5px dashed var(--hm-border); border-radius: var(--hm-radius);
   transition: background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), border-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease);
 }
-[data-home] .fr-tile .kit-avatar { opacity: 0.55; transition: opacity var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+[data-home] .fr-tile .kit-tile { opacity: 0.55; transition: opacity var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
 [data-home] .fr-tile-name { font-size: var(--hm-text-base); font-weight: 650; line-height: 1.25; }
 [data-home] .fr-tile-status { margin-top: auto; font-size: var(--hm-text-base); line-height: 1.2; }
 [data-home] .fr-count { font-size: 1.75rem; font-weight: 650; line-height: 1; color: var(--text); margin-right: var(--hm-space-1); }
 /* Lit: the tile is solid and filled, and its picture comes to full strength. It is one change, over the tile's 240 ms, and nothing waits for anything else. */
 [data-home] .fr-tile[data-state="found"] { background: var(--surface); border: 1.5px solid var(--accent-strong); color: var(--text); box-shadow: var(--hm-shadow); }
-[data-home] .fr-tile[data-state="found"] .kit-avatar { opacity: 1; }
+[data-home] .fr-tile[data-state="found"] .kit-tile { opacity: 1; }
 /* Not found: the tile is lit too (the search got there) but stays dashed and quiet, with the words doing the work. */
 [data-home] .fr-tile[data-state="missing"] { background: var(--surface-2); color: var(--text-muted); }
 [data-home] .fr-tile[data-state="missing"] .fr-tile-status { color: var(--text); font-weight: 600; }

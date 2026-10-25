@@ -163,7 +163,8 @@ test('the card kit gallery renders every part in a light and a dark look', async
     await expect(scope.locator('.kit-card[data-size="small"]')).toHaveCount(8 + 3 + 8);
     await expect(scope.locator('.kit-card[data-selected]').first()).toBeVisible();
     await expect(scope.locator('.kit-badge[data-tone="warn"]').first()).toBeVisible(); await expect(scope.locator('.kit-badge[data-tone="new"]').first()).toBeVisible();
-    await expect(scope.locator('.kit-avatar')).toHaveCount(5 + 8 + 2);
+    await expect(scope.locator('.kit-avatar')).toHaveCount(0);
+    await expect(scope.locator('.hm-gallery-block:has(h3:text-is("Tiles")) .kit-tile')).toHaveCount(6);
     await expect(scope.getByRole('button', { name: 'Show more' })).toBeVisible();
     await expect(scope.locator('.kit-popover')).toBeVisible();
     await expect(scope.locator('.kit-drawer')).toBeVisible();
