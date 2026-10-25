@@ -8,6 +8,7 @@
 import type { AgentItem, HarnessItem, World } from '../proto/types.js';
 import { snapshotOf } from '../proto/store.js';
 import { CARD_WORDS } from './cards.js';
+import { absorbedSlices, isAbsorbedItem } from './notes-actions.js';
 
 export type BarMode = 'clean' | 'dirty' | 'saved' | 'back';
 
@@ -42,21 +43,23 @@ function agentChanges(before: AgentItem, after: AgentItem): number {
 
 /**
  * How many changes wait: the difference between the saved world and the draft. A skill, tool or note taken off an agent or put on one is one change each;
- * an item added, removed or edited is one; so is a saved choice of pages or a project choice. A draft that differs always counts at least one.
+ * an item added, removed or edited is one; so is a saved choice of pages or a project choice. A new saved choice that an agent now reads is part of
+ * that agent's notes change (see notes-actions.ts), not a change of its own. A draft that differs always counts at least one.
  */
 export function changeCount(committed: World, draft: World): number {
   if (committed === draft || snapshotOf(committed) === snapshotOf(draft)) return 0;
   const before = new Map(committed.items.map(i => [i.id, i])), after = new Map(draft.items.map(i => [i.id, i]));
+  const absorbed = absorbedSlices(committed, draft);
   let total = 0;
   for (const [id, item] of after) {
     const old: HarnessItem | undefined = before.get(id);
-    if (old === undefined) total += 1;
+    if (old === undefined) total += isAbsorbedItem(item, absorbed) ? 0 : 1;
     else if (item.kind === 'agent' && old.kind === 'agent') total += agentChanges(old, item);
     else if (!sameJson(old, item)) total += 1;
   }
   for (const id of before.keys()) if (!after.has(id)) total += 1;
   const slices = new Map(committed.slices.map(s => [s.id, s]));
-  for (const s of draft.slices) { const old = slices.get(s.id); if (old === undefined || !sameJson(old, s)) total += 1; }
+  for (const s of draft.slices) { const old = slices.get(s.id); if (old === undefined ? !absorbed.has(s.id) : !sameJson(old, s)) total += 1; }
   total += apart(committed.overrides.map(o => JSON.stringify(o)), draft.overrides.map(o => JSON.stringify(o)));
   return Math.max(1, total);
 }

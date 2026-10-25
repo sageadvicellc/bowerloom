@@ -6,6 +6,7 @@
 import type { AgentItem, HarnessItem, World } from '../proto/types.js';
 import { distinctTexts } from '../proto/conflicts.js';
 import { agentCard, itemTitle } from './cards.js';
+import { absorbedSlices, isAbsorbedItem } from './notes-actions.js';
 import { plainOf } from './plain.js';
 import { countWords } from './textbudget.js';
 
@@ -43,10 +44,10 @@ function agentChanges(committed: World, draft: World, before: AgentItem, after: 
 export function listChanges(committed: World, draft: World): Change[] {
   if (committed === draft) return [];
   const before = new Map(committed.items.map(i => [i.id, i])), after = new Map(draft.items.map(i => [i.id, i]));
-  const out: Change[] = [];
+  const absorbed = absorbedSlices(committed, draft), out: Change[] = [];
   for (const [id, item] of after) {
     const old = before.get(id);
-    if (old === undefined) out.push({ verb: 'added', what: nameOfItem(item) });
+    if (old === undefined) { if (!isAbsorbedItem(item, absorbed)) out.push({ verb: 'added', what: nameOfItem(item) }); }
     else if (item.kind === 'agent' && old.kind === 'agent') out.push(...agentChanges(committed, draft, old, item));
     else if (!sameJson(old, item)) out.push(distinctTexts(old) >= 2 && distinctTexts(item) < distinctTexts(old) ? { verb: 'kept', what: nameOfItem(item) } : { verb: 'changed', what: nameOfItem(item) });
   }
@@ -54,7 +55,7 @@ export function listChanges(committed: World, draft: World): Change[] {
   const slices = new Map(committed.slices.map(s => [s.id, s]));
   for (const s of draft.slices) {
     const old = slices.get(s.id);
-    if (old === undefined) out.push({ verb: 'added', what: noteName(draft, s.id) });
+    if (old === undefined) { if (!absorbed.has(s.id)) out.push({ verb: 'added', what: noteName(draft, s.id) }); }
     else if (!sameJson(old, s)) out.push({ verb: 'changed', what: noteName(draft, s.id) });
   }
   const was = committed.overrides.map(o => JSON.stringify(o)), now = draft.overrides.map(o => JSON.stringify(o));
