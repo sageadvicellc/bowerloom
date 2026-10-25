@@ -5,10 +5,12 @@ import { generateWorld } from '../shared/proto/sample.js';
 import type { InterfaceId, World } from '../shared/proto/types.js';
 import { ownedAgents } from '../shared/home/cards.js';
 import { withSampleCopies } from '../shared/home/sample-copies.js';
-import { FIND_TOOLS, findPlaces, skippedAgents, toolTiles } from '../shared/home/find-model.js';
+import { FIND_TOOLS, findPlaces, skippedAgents, toolTiles, unsavedAgents } from '../shared/home/find-model.js';
+import { createStore, reduceStore } from '../shared/proto/store.js';
+import { unsavedHere } from '../renderer/home/first-run/find-words.js';
 import { findReduce, readTotal, startFind } from '../shared/home/find-flow.js';
 import type { FindAction, FindState } from '../shared/home/find-flow.js';
-import { bannedIn, countWords } from '../shared/home/textbudget.js';
+import { assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 
 const world = (): World => withSampleCopies(generateWorld(1));
 const run = (state: FindState, ...actions: FindAction[]): FindState => actions.reduce(findReduce, state);
@@ -207,4 +209,19 @@ test('the tile light-up is short, eased out, 80 ms apart, and a few pixels of tr
   const t = MOTION.home.tileLight;
   assert.deepEqual({ ms: t.ms, stagger: t.stagger, distance: t.distance, ease: t.ease }, { ms: 240, stagger: 80, distance: 6, ease: MOTION.ease.out });
   assert.ok(t.ms <= 300, 'brief');
+});
+
+// ---- Item 12: a place whose agents have changes that wait.
+test('a place counts the agents whose draft differs from the saved world, and a place without changes counts none (review item 12)', () => {
+  const world = withSampleCopies(generateWorld(1));
+  const owned = ownedAgents(world);
+  const draft = reduceStore(createStore(world).getState(), { type: 'detachSkill', agentId: owned[0]!.id, skillId: owned[0]!.definition.skillIds[0]! }).draft;
+  assert.deepEqual([...unsavedAgents(world, draft)], [owned[0]!.id]);
+  assert.equal(findPlaces(draft, world).reduce((n, p) => n + p.unsaved, 0), 1);
+  assert.equal(findPlaces(draft, world).find(p => p.agentIds.includes(owned[0]!.id))!.unsaved, 1);
+  assert.equal(findPlaces(world).reduce((n, p) => n + p.unsaved, 0), 0);
+  assert.equal(unsavedAgents(world, world).size, 0);
+  assert.deepEqual(unsavedHere(1), '1 agent here has changes you have not saved.');
+  assert.deepEqual(unsavedHere(2), '2 agents here have changes you have not saved.');
+  assert.deepEqual(assertTextBudget(`<p>${unsavedHere(12)}</p>`), []);
 });

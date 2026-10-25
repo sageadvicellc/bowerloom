@@ -17,7 +17,7 @@ import { Avatar } from '../kit/Avatar.js';
 import { Button } from '../kit/Button.js';
 import { KitIcon } from '../kit/icons.js';
 import { WORDS, agentsCount } from '../words.js';
-import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow } from './find-words.js';
+import { FIND_WORDS, foundTitle, readProgress, readSummary, readingNow, unsavedHere } from './find-words.js';
 import './find.css';
 
 /** How long the search takes to reach each tile, in milliseconds, and how long it rests on the last tile before the places show. */
@@ -25,6 +25,8 @@ const FIRST_MS = 350, STEP_MS = 560, SETTLE_MS = 420, READ_MS = 420;
 
 export interface FindScreenProps {
   world: World;
+  /** The saved world. Agents whose draft differs from it have changes that wait, and their place stays ticked until the person saves or discards. */
+  committed?: World;
   /** Where "Not now" goes back to is the page's business; this screen only says it was asked. */
   onLeave(): void;
   /** Called once, when the reading ends, with the agents of the places the person did not tick. */
@@ -65,10 +67,11 @@ function Places({ places, state, open, onTick, onDetails, onLooksRight }: Places
           return (
             <li key={p.id} className="fr-place" data-on={on ? '' : undefined}>
               <label className="fr-place-row">
-                <input type="checkbox" className="fr-check" checked={on} onChange={() => onTick(p.id)} />
+                <input type="checkbox" className="fr-check" checked={on} aria-disabled={p.unsaved > 0 ? 'true' : undefined} aria-describedby={p.unsaved > 0 ? `fr-unsaved-${p.id}` : undefined} onChange={() => { if (p.unsaved === 0) onTick(p.id); }} />
                 <span className="fr-place-name">{p.name}</span>
                 <span className="fr-place-count">{agentsCount(p.agents)}</span>
               </label>
+              {p.unsaved > 0 ? <p className="kit-hint fr-unsaved" id={`fr-unsaved-${p.id}`} data-unsaved="">{unsavedHere(p.unsaved)}</p> : null}
               {open ? <ul className="fr-paths" data-details="">{p.paths.map(path => <li key={path}><code>{path}</code></li>)}</ul> : null}
             </li>
           );
@@ -83,10 +86,11 @@ function Places({ places, state, open, onTick, onDetails, onLooksRight }: Places
   );
 }
 
-export function FindScreen({ world, onLeave, onDone, skipped = [] }: FindScreenProps): ReactElement {
+export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: FindScreenProps): ReactElement {
   const tiles = useMemo(() => toolTiles(world), [world]);
-  const places = useMemo(() => findPlaces(world), [world]);
-  const [state, send] = useReducer(findReduce, undefined, () => startFind(FIND_TOOLS.length, places.map(p => p.id), places.filter(p => !p.agentIds.some(id => skipped.includes(id))).map(p => p.id)));
+  const places = useMemo(() => findPlaces(world, committed), [world, committed]);
+  // A place whose agents have unsaved changes starts ticked, whatever was skipped before, and stays ticked: the changes must not drop off the map.
+  const [state, send] = useReducer(findReduce, undefined, () => startFind(FIND_TOOLS.length, places.map(p => p.id), places.filter(p => p.unsaved > 0 || !p.agentIds.some(id => skipped.includes(id))).map(p => p.id)));
   const [details, setDetails] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null), primary = useRef<HTMLDivElement>(null);
   const reduce = prefersReducedMotion();

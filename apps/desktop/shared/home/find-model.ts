@@ -26,8 +26,17 @@ export function toolTiles(world: World): ToolTile[] {
   });
 }
 
-/** One place: a name a person knows, how many agents were found there, which agents, and the folders behind it. */
-export interface FindPlace { readonly id: string; readonly name: string; readonly agents: number; readonly agentIds: readonly string[]; readonly paths: readonly string[] }
+/**
+ * One place: a name a person knows, how many agents were found there, which agents, and the folders behind it. `unsaved` is how many of those agents have
+ * changes that wait for Save (or are new and not saved yet): a place like that cannot be skipped, because its agents would drop off the map with the changes.
+ */
+export interface FindPlace { readonly id: string; readonly name: string; readonly agents: number; readonly agentIds: readonly string[]; readonly paths: readonly string[]; readonly unsaved: number }
+
+/** The ids of the agents whose draft differs from the saved world, or that are new in the draft. */
+export function unsavedAgents(committed: World, draft: World): ReadonlySet<string> {
+  const before = new Map(committed.items.map(i => [i.id, JSON.stringify(i)] as const));
+  return new Set(ownedAgents(draft).filter(a => before.get(a.id) !== JSON.stringify(a)).map(a => a.id));
+}
 
 const HOME_NAME = 'Your home folder';
 /** Plain names for the folders of the sample world, by the folder's own name. A folder the table does not know is named by its own name, as words. */
@@ -36,15 +45,15 @@ const FOLDER_NAMES: Readonly<Record<string, string>> = Object.freeze({ Reedmarsh
 const pathsOf = (world: World, agents: readonly AgentItem[]): string[] =>
   [...new Set(agents.flatMap(a => a.foundAt.map(f => placeIdOf(world, a, f))))].sort();
 
-/** The places that hold at least one agent of the person: the home folder first, then the others by name. */
-export function findPlaces(world: World): FindPlace[] {
-  const owned = ownedAgents(world);
+/** The places that hold at least one agent of the person: the home folder first, then the others by name. `committed` is the saved world, to tell which agents have unsaved changes. */
+export function findPlaces(world: World, committed: World = world): FindPlace[] {
+  const owned = ownedAgents(world), waiting = unsavedAgents(committed, world);
   const places: FindPlace[] = [];
   for (const scope of world.scopes) {
     const here = owned.filter(a => a.scopeId === scope.id);
     if (here.length === 0) continue;
     const name = scope.parentId === null ? HOME_NAME : (FOLDER_NAMES[scope.name] ?? itemTitle(scope.name));
-    places.push({ id: scope.id, name, agents: here.length, agentIds: here.map(a => a.id), paths: pathsOf(world, here) });
+    places.push({ id: scope.id, name, agents: here.length, agentIds: here.map(a => a.id), paths: pathsOf(world, here), unsaved: here.filter(a => waiting.has(a.id)).length });
   }
   const homeFirst = (p: FindPlace): number => (p.name === HOME_NAME ? 0 : 1);
   return places.sort((a, b) => homeFirst(a) - homeFirst(b) || a.name.localeCompare(b.name));

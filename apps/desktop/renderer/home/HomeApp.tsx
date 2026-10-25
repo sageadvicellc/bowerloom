@@ -1,6 +1,7 @@
 /**
  * The home app shell: a top bar (the name with the leaf, "Save points", "Add", and the "?" Help button), a stage with the map, a side panel for the shelves
  * of the agent that is picked, a Save bar at the bottom, and two right-side drawers (Add, Save points) that open over the stage. There is no left rail and no routing.
+ * A small "Preview" badge with its own "?" sits beside the name, always: this prototype writes nothing to the computer, and the popover says so.
  * The map is a plain grid of the person's own agents, one card each, in one order at a time (by name, or by how recently each changed). Picking an agent fills the
  * three shelves of the panel: Skills, Tools and Notes, each card with a quiet "Remove". Removing stages a change in the draft; the Save bar counts the changes and
  * makes a save point, and "Go back" undoes it. The `data-tour` ids stay on the same things: map, agent, shelves, add, save, help (and `bar` on the top bar).
@@ -34,6 +35,7 @@ import { plainHintOf, plainNameOf } from '../../shared/home/plain-names.js';
 import { savePointRows } from '../../shared/home/points.js';
 import { changeCount, saveBar } from '../../shared/home/savebar.js';
 import type { BarPhase } from '../../shared/home/savebar.js';
+import { reduceStore } from '../../shared/proto/store.js';
 import { useProtoStore } from '../proto/session.js';
 import { AddDrawerBody } from './add/AddDrawerBody.js';
 import { dropTargetFor } from './add/dom-helpers.js';
@@ -42,6 +44,7 @@ import { ChooseNotes } from './notes/ChooseNotes.js';
 import { NotesShelf } from './notes/NotesShelf.js';
 import { SavePoints } from './points/SavePoints.js';
 import { ShareSheet } from './share/ShareSheet.js';
+import { Badge } from './kit/Badge.js';
 import { Button } from './kit/Button.js';
 import { Drawer } from './kit/Drawer.js';
 import { HelpPopover } from './kit/HelpPopover.js';
@@ -79,6 +82,10 @@ export interface HomeAppProps {
   closingNote?: boolean;
   /** Reopen Find. Without it the map has no "Find more" button. */
   onFindMore?(): void;
+  /**
+   * What the Save bar last did ("Saved", "Back to how it was"), kept outside the map so it survives a visit to Find. Without it the map keeps its own.
+   */
+  barPhase?: { readonly phase: BarPhase | null; set(phase: BarPhase | null): void };
 }
 
 const NONE: readonly string[] = Object.freeze([]);
@@ -96,14 +103,15 @@ type FocusAfter = { readonly kind: ShelfEntry['kind']; readonly index: number } 
 /** The id of the card to mark on the shelves: the one just added, and only while its agent is the one that is picked. */
 const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (fresh !== null && fresh.entryId !== null && fresh.agentId === picked ? fresh.entryId : null);
 
-export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore }: HomeAppProps = {}): ReactElement {
+export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore, barPhase }: HomeAppProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedItem, setPickedItem] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerId | null>(null);
   const [sort, setSort] = useState<SortMode>('name');
   const [touched, setTouched] = useState<readonly string[]>([]);
-  const [phase, setPhase] = useState<BarPhase | null>(null);
+  const [ownPhase, setOwnPhase] = useState<BarPhase | null>(null);
+  const phase = barPhase === undefined ? ownPhase : barPhase.phase, setPhase = barPhase === undefined ? setOwnPhase : barPhase.set;
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Fresh | null>(null);
   const [note, setNote] = useState(false);
@@ -133,6 +141,8 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
   const freshNotes = fresh !== null && fresh.notes === true && fresh.agentId === picked ? (shelves?.notes[0]?.id ?? null) : null;
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
+  // A new change ends what the bar said about the last save or the last Go back: without this, discarding that change would bring the old "Saved" back.
+  useEffect(() => { if (changes > 0 && phase !== null) setPhase(null); }, [changes, phase, setPhase]);
   // The tour runs by itself once in a session, when the first minute asks for it. After that only the Help button runs it.
   useEffect(() => { if (autoTour && tourSession.claimAutoStart()) tourDo('start'); }, [autoTour]);
   // The closing note goes by itself.
@@ -231,12 +241,15 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     // The first Save of a guided session says where Help lives, once.
     if (closingNote && closingNoteSession.claimAutoStart()) setNote(true);
   };
-  const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); dispatch(discardAction()); };
+  const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); setPhase(null); dispatch(discardAction()); };
   /** Makes the world as it was at one save point. The bar says so, and the focus stays where the person pressed. */
   const goBackTo = (versionId: string, focus: boolean): void => {
+    const action = goBackAction(versionId);
+    // A save point that cannot be restored leaves everything as it is, and the bar must not say it went back.
+    if (reduceStore(state, action) === state) return;
     if (focus) focusAfter.current = 'heading';
     setFresh(null);
-    dispatch(goBackAction(versionId));
+    dispatch(action);
     setPhase({ kind: 'back', at: state.committed.versions.length + 1, backTo: null });
   };
   const goBack = (): void => { if (phase !== null && phase.backTo !== null) goBackTo(phase.backTo, true); };
@@ -245,6 +258,10 @@ export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false,
     <div className="hm-root" data-home="">
       <header className="hm-bar" data-tour="bar">
         <div className="hm-brand"><KitIcon name="leaf" size={28} /><span>{WORDS.label.appName}</span></div>
+        <div className="hm-preview" data-preview="">
+          <Badge badge={{ label: WORDS.label.preview, tone: 'info' }} />
+          <HelpPopover label={WORDS.label.aboutPreview} text={WORDS.popover.preview} size="small" />
+        </div>
         <span className="hm-spacer" />
         <Button icon="clock" aria-expanded={drawer === 'points'} onClick={() => toggle('points')}>{WORDS.label.savePoints}</Button>
         <Button variant="primary" icon="plus" data-tour="add" aria-expanded={drawer === 'add'} onClick={() => toggle('add')}>{WORDS.label.add}</Button>

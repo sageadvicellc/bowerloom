@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import type { BarPhase } from '../../shared/home/savebar.js';
 import { startOf } from '../../shared/home/route.js';
 import { useProtoStore } from '../proto/session.js';
 import { HomeApp } from './HomeApp.js';
@@ -27,6 +28,8 @@ export function HomeFlow(): ReactElement {
   /** True when the tour starts by itself on the next map, and the closing note is allowed after the first Save. */
   const [tourNow, setTourNow] = useState(start.guided);
   const [guided, setGuided] = useState(start.guided);
+  /** What the Save bar last said. It lives here, so a visit to Find more does not make the bar forget it. */
+  const [phase, setPhase] = useState<BarPhase | null>(null);
 
   useEffect(() => { if (screen !== 'map') document.title = WORDS.label.appName; }, [screen]);
 
@@ -38,6 +41,6 @@ export function HomeFlow(): ReactElement {
   }, [from]);
 
   if (screen === 'welcome') return <Welcome onFind={() => { setFrom('welcome'); setScreen('find'); }} />;
-  if (screen === 'find') return <FindScreen world={state.draft} skipped={skipped} onLeave={leave} onDone={done} />;
-  return <HomeApp skipped={skipped} autoTour={tourNow} closingNote={guided} onFindMore={() => { setFrom('map'); setTourNow(false); setScreen('find'); }} />;
+  if (screen === 'find') return <FindScreen world={state.draft} committed={state.committed} skipped={skipped} onLeave={leave} onDone={done} />;
+  return <HomeApp barPhase={{ phase, set: setPhase }} skipped={skipped} autoTour={tourNow} closingNote={guided} onFindMore={() => { setFrom('map'); setTourNow(false); setScreen('find'); }} />;
 }

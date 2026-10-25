@@ -74,12 +74,21 @@ export function CopiesDialog({ itemId, nameOf = plainName, onClose, onKept, rest
     };
   }, []);
 
+  // Escape closes this dialog and nothing under it, wherever the focus is: a click on plain text inside the dialog leaves the focus on the page, and a key
+  // handler on the dialog would never hear it. A listener on the window, in the capture phase, hears it first and stops it there.
+  useEffect(() => {
+    const escape = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      latest.current.onClose();
+    };
+    window.addEventListener('keydown', escape, true);
+    return () => window.removeEventListener('keydown', escape, true);
+  }, []);
+
   if (item === undefined || !hasCopies(item)) return null;
   const copies = copiesOf(item), name = nameOf(item.name);
-  const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
-    if (dialog.current !== null) trapTab(e, dialog.current);
-  };
+  const key = (e: ReactKeyboardEvent<HTMLDivElement>): void => { if (dialog.current !== null) trapTab(e, dialog.current); };
   const keep = (copy: CopyView): void => { dispatch(keepCopyAction(item.id, copy)); onKept?.(copy, name); onClose(); };
 
   return (

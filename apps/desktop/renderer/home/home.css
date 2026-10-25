@@ -10,6 +10,7 @@ html, body { height: 100%; }
 [data-home] .hm-brand { display: flex; align-items: center; gap: var(--hm-space-3); font-size: var(--hm-text-heading); font-weight: 650; color: var(--text); }
 [data-home] .hm-brand .kit-icon { color: var(--accent-strong); }
 [data-home] .hm-spacer { flex: 1; }
+[data-home] .hm-preview { display: flex; align-items: center; gap: var(--hm-space-2); margin-left: var(--hm-space-2); }
 
 [data-home] .hm-body { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--hm-panel-w); min-height: 0; overflow: hidden; }
 /* A drawer (Add, Save points) takes its own column at the right edge. The map and the shelves keep clear of it, so an agent card stays within reach of a drag and

@@ -26,10 +26,15 @@ export function HelpPopover({ label, text, action, defaultOpen = false, dataTour
   const wrap = useRef<HTMLSpanElement>(null), trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return undefined;
-    const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') { setOpen(false); trigger.current?.focus(); } };
+    // Escape closes the popover and nothing under it: it is heard first (capture phase) and marked handled, so a drawer under it stays open.
+    // A key that a layer above already handled is left alone.
+    const key = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault(); setOpen(false); trigger.current?.focus();
+    };
     const away = (e: PointerEvent): void => { if (wrap.current !== null && e.target instanceof Node && !wrap.current.contains(e.target)) setOpen(false); };
-    window.addEventListener('keydown', key); window.addEventListener('pointerdown', away);
-    return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', away); };
+    window.addEventListener('keydown', key, true); window.addEventListener('pointerdown', away);
+    return () => { window.removeEventListener('keydown', key, true); window.removeEventListener('pointerdown', away); };
   }, [open]);
   return (
     <span className="kit-help" ref={wrap} data-align={align}>

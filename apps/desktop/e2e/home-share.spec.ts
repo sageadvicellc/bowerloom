@@ -83,7 +83,7 @@ test.beforeEach(async () => {
 // ---- Where Share lives.
 test('Share lives in the Save points drawer, under the list, and not in the main window', async () => {
   const p = page();
-  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['Save points', 'Add', '?']);
+  expect(await p.locator('header.hm-bar').getByRole('button').allTextContents()).toEqual(['?', 'Save points', 'Add', '?']);   // the first "?" is the Preview badge's help (review item 16)
   await expect(p.getByRole('button', { name: 'Share my agents' })).toHaveCount(0);
   await openPoints();
   await expect(section().getByRole('heading', { level: 3, name: 'Share' })).toBeVisible();
@@ -119,7 +119,8 @@ test('the sheet says what goes in as counts, what is left out, and that secrets 
   await expect(counts()).toHaveText('29 skills, 10 agents, 8 tools, 3 sets of notes');
   await expect(leftOut()).toHaveText(leftOutLine(all.keys, 0));
   await expect(leftOut()).toHaveText('Left out: 3 keys');
-  await expect(sheet().getByText('Secrets are left out.')).toBeVisible();
+  await expect(sheet().getByText('Keys that Bowerloom keeps are left out.')).toBeVisible();
+  await expect(sheet().getByText('Your own text is included, so read it first.')).toBeVisible();
   await expect(sheet().getByText('Tools that need a key will ask for one.')).toBeVisible();
   await expect(sheet().getByText('Changes you have not saved')).toHaveCount(0);
   await expect(sheet().locator('.sh-row input[type="checkbox"]')).toHaveCount(10);

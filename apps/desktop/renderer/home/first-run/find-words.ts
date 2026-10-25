@@ -57,3 +57,5 @@ export const readSummary = (places: number, agents: number): string => `${places
 export const readingNow = (place: string): string => `Reading ${place}`;
 /** "2 of 3". */
 export const readProgress = (done: number, total: number): string => `${done} of ${total}`;
+/** "1 agent here has changes you have not saved." or "2 agents here have changes you have not saved." */
+export const unsavedHere = (n: number): string => `${n} ${n === 1 ? 'agent here has' : 'agents here have'} changes you have not saved.`;

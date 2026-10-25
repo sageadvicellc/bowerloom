@@ -10,7 +10,7 @@ import { barSentence, listChanges } from '../../../shared/home/changes.js';
 import { changeCount, saveBar, withStartPoint } from '../../../shared/home/savebar.js';
 import type { BarPhase } from '../../../shared/home/savebar.js';
 import { withSampleCopies } from '../../../shared/home/sample-copies.js';
-import { createStore } from '../../../shared/proto/store.js';
+import { createStore, reduceStore } from '../../../shared/proto/store.js';
 import { ProtoProvider, useProtoStore } from '../../proto/session.js';
 import { loadWorld } from '../../proto/world.js';
 import { KitIcon } from '../kit/icons.js';
@@ -46,6 +46,8 @@ function Page(): ReactElement {
   const bar = saveBar(changes, state.committed.versions.length, phase, said);
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
+  // A new change ends what the bar said about the last save or Go back.
+  useEffect(() => { if (changes > 0 && phase !== null) setPhase(null); }, [changes, phase]);
   useEffect(() => {
     if (!fresh) return undefined;
     const timer = window.setTimeout(() => setFresh(false), FRESH_MS);
@@ -61,7 +63,9 @@ function Page(): ReactElement {
   };
   const goBack = (): void => {
     if (phase === null || phase.backTo === null) return;
-    dispatch(goBackAction(phase.backTo));
+    const action = goBackAction(phase.backTo);
+    if (reduceStore(state, action) === state) return;
+    dispatch(action);
     setPhase({ kind: 'back', at: state.committed.versions.length + 1, backTo: null });
   };
   const remove = (entry: { readonly kind: 'skill' | 'tool' | 'note'; readonly id: string }): void => { if (agent !== null) { dispatch(removeAction(agent.id, entry.kind, entry.id)); setPickedItem(null); } };
@@ -95,7 +99,7 @@ function Page(): ReactElement {
         </aside>
         <ChooseNotes open={open} agentId={picked} onClose={() => setOpen(false)} onChosen={() => setFresh(true)} />
       </div>
-      <SaveBar model={bar} ticks={[]} onSave={save} onGoBack={goBack} onDiscard={() => dispatch(discardAction())} />
+      <SaveBar model={bar} ticks={[]} onSave={save} onGoBack={goBack} onDiscard={() => { setPhase(null); dispatch(discardAction()); }} />
     </div>
   );
 }
