@@ -159,7 +159,7 @@ export function LibraryPage({ onOpenAgent }: LibraryPageProps = {}): ReactElemen
               <h1 className="kit-heading" tabIndex={-1}>{L.title}</h1>
               <HelpPopover label={L.aboutLibrary} text={LIBRARY_WORDS.popover.library} />
             </div>
-            <p className="kit-hint">{H.pageTip}</p>
+            <p className="kit-hint lb-tip">{H.pageTip}</p>
           </div>
           <div className="hm-stage-tools">
             <Button variant="primary" icon="plus" ref={webButton} onClick={() => setWebOpen(true)}>{L.addFromWeb}</Button>

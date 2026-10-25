@@ -114,7 +114,7 @@ function WebBody({ onClose, onAdded }: { onClose(): void; onAdded: WebSheetProps
       </div>
       {view.kind === 'source' && plan !== null ? (
         <div className="lb-web-foot">
-          <div className="lb-plan" role="status">
+          <div className="lb-summary" role="status">
             <p className="kit-hint">{ticked.length === 0 ? H.pickOne : plan.adds.length === 0 ? H.nothingToAdd : H.tickTip}</p>
             {plan.same.length > 0 && plan.adds.length > 0 ? <p className="kit-hint">{alreadyHere(plan.same.length)}</p> : null}
             {plan.copies.length > 0 ? <p className="kit-hint">{willBeCopies(plan.copies.length)}</p> : null}

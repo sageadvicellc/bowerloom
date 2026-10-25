@@ -105,9 +105,14 @@
 [data-home] .lb-item-meta .kit-hint { color: var(--text); }
 [data-home] .lb-item .dt-full { padding-left: calc(var(--hm-space-5) + var(--hm-space-3) + var(--hm-space-3)); }
 [data-home] .lb-web-foot { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--hm-space-2) var(--hm-space-3); padding: var(--hm-space-2) var(--hm-space-5); border-top: 1px solid var(--hm-border); background: var(--surface); }
-[data-home] .lb-plan { margin-right: auto; display: flex; flex-direction: column; }
-[data-home] .lb-plan p { margin: 0; }
+[data-home] .lb-summary { margin-right: auto; display: flex; flex-direction: column; }
+[data-home] .lb-summary p { margin: 0; }
 
+/* In a short window the tabs and the search scroll away with the title, so the list has the room. */
+@media (max-height: 700px) {
+  [data-home] .lb-sticky { position: static; margin: 0; padding: var(--hm-space-2) 0; }
+  [data-home] .lb-tip { display: none; }
+}
 @media (max-width: 760px) {
   [data-home] .lb-list { grid-template-columns: minmax(0, 1fr); }
 }
