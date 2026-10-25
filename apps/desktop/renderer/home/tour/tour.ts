@@ -4,8 +4,13 @@
  * Nothing here is kept on disk: the "has run" flag lives in memory, in one session object.
  */
 
-/** One step: what it is called, the `data-tour` id of the thing it lights, and the one sentence it says. */
-export interface TourStep { readonly id: string; readonly target: string; readonly text: string }
+/**
+ * One step: what it is called, the `data-tour` id of the thing it lights, and the one sentence it says. A step with `wait` set waits for the person to do the
+ * thing it points at (a click on an agent): the screen hides its Next button, shows `hint` under the sentence, and sends the "acted" action when it happens.
+ * `area` names a larger thing (by its `data-tour` id) that is lit and open to clicks while the step waits, so "any agent" is true: the target is where the
+ * focus goes, and the area is what the hole is cut around.
+ */
+export interface TourStep { readonly id: string; readonly target: string; readonly text: string; readonly wait?: boolean; readonly hint?: string; readonly area?: string }
 
 export type TourStatus = 'idle' | 'running' | 'skipped' | 'finished';
 
@@ -38,6 +43,18 @@ export function stepBack(t: TourState): TourState {
 /** Ends a running tour early. */
 export function skipTour(t: TourState): TourState { return t.status === 'running' ? make(t.steps, t.index, 'skipped') : t; }
 
+/**
+ * The person did what a waiting step asked for: on to the next step. A tour that is not waiting stays as it was, so an agent clicked at any other step is
+ * not taken for the step's action. (The machine's own "next" still moves a waiting tour, so a caller can skip a wait; the screen only hides the button.)
+ */
+export const stepActed = (t: TourState): TourState => (isWaiting(t) ? stepNext(t) : t);
+
+/** True while the step on show is one that waits for the person. */
+export function isWaiting(t: TourState): boolean { return t.status === 'running' && t.steps[t.index]?.wait === true; }
+
+/** The short line a waiting step shows under its sentence, or null. */
+export function hintOf(t: TourState): string | null { return t.status === 'running' ? (t.steps[t.index]?.hint ?? null) : null; }
+
 /** The step on show, or null when the tour is not running. */
 export function currentStep(t: TourState): TourStep | null { return t.status === 'running' ? (t.steps[t.index] ?? null) : null; }
 
@@ -45,7 +62,7 @@ export function currentStep(t: TourState): TourStep | null { return t.status ===
 export const progressText = (t: TourState): string => `${t.steps.length === 0 ? 0 : t.index + 1} of ${t.steps.length}`;
 
 /** The things a person can do to a tour. */
-export type TourAction = 'start' | 'next' | 'back' | 'skip' | 'replay';
+export type TourAction = 'start' | 'next' | 'back' | 'skip' | 'replay' | 'acted';
 
 /** One reducer for all of them, for a React `useReducer`. */
 export function tourReduce(t: TourState, action: TourAction): TourState {
@@ -55,6 +72,7 @@ export function tourReduce(t: TourState, action: TourAction): TourState {
     case 'next': return stepNext(t);
     case 'back': return stepBack(t);
     case 'skip': return skipTour(t);
+    case 'acted': return stepActed(t);
   }
 }
 
@@ -66,6 +84,8 @@ export function createTourSession(): TourSession {
 }
 /** The session of this page. In memory only: closing or reloading the window forgets it. */
 export const tourSession: TourSession = createTourSession();
+/** The same switch for the closing note after the first Save: it shows once in a session. */
+export const closingNoteSession: TourSession = createTourSession();
 
 // ------------------------------------------------------------------------------------------------------------- where things go
 

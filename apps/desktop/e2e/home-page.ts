@@ -47,9 +47,18 @@ export async function setLook(page: Page, look: 'light' | 'dark'): Promise<void>
   await page.waitForFunction(l => document.documentElement.getAttribute('data-theme') === l, look);
 }
 
-/** Starts the app page again from nothing, as a new session: the tour runs again. */
-export async function fresh(page: Page, hash = '#prototype-v2'): Promise<void> {
-  await page.evaluate(h => { location.hash = h; location.reload(); }, hash);
+/** The map alone: no Welcome and no tour. The specs of the map, the shelves, the Save bar and the drawers start here. */
+export const MAP_PAGE = '#prototype-v2/map';
+/** The first minute: Welcome, then Find, then the map and its tour. */
+export const WELCOME_PAGE = '#prototype-v2';
+
+/**
+ * Starts the app page again from nothing, as a new session. By default it opens the map alone (no Welcome, no tour). `tour: true` opens the map with the tour
+ * starting by itself, as it does after Find; `welcome: true` opens the first minute from Welcome.
+ */
+export async function fresh(page: Page, hash = MAP_PAGE, opts: { tour?: boolean; welcome?: boolean } = {}): Promise<void> {
+  const target = opts.welcome === true ? WELCOME_PAGE : opts.tour === true ? `${MAP_PAGE}/tour` : hash;
+  await page.evaluate(h => { location.hash = h; location.reload(); }, target);
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('[data-home]');
 }

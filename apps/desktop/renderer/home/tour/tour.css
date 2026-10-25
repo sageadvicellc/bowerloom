@@ -4,6 +4,11 @@
  */
 [data-home] .tour-layer { position: fixed; inset: 0; z-index: 1000; overflow: hidden; }
 [data-home] .tour-block { position: absolute; inset: 0; }
+/* A waiting step: the layer itself lets a click through, four blocks keep the rest of the page out, and the lit hole is open to the pointer. */
+[data-home] .tour-layer[data-wait] { pointer-events: none; }
+[data-home] .tour-layer[data-wait] .tour-block { display: none; }
+[data-home] .tour-edge { position: absolute; pointer-events: auto; }
+[data-home] .tour-layer[data-wait] .tour-pop { pointer-events: auto; }
 [data-home] .tour-dim { position: absolute; inset: 0; background: var(--hm-scrim); display: none; }
 [data-home] .tour-layer[data-missing] .tour-dim { display: block; }
 [data-home] .tour-layer[data-missing] .tour-spot { display: none; }
@@ -20,6 +25,9 @@
   transition: left var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease), top var(--motion-home-tour-spot-ms, 0ms) var(--motion-home-tour-spot-ease, ease);
 }
 [data-home] .tour-text { margin: 0; text-wrap: balance; font-size: var(--hm-text-heading); line-height: 1.35; font-weight: 600; }
+/* A waiting step has one more line, so its popover is a little tighter and stays clear of the Save bar. */
+[data-home] .tour-layer[data-wait] .tour-pop { gap: var(--hm-space-3); padding: var(--hm-space-4) var(--hm-space-5); }
+[data-home] .tour-hint { margin: calc(var(--hm-space-2) * -1) 0 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--accent-strong); }
 [data-home] .tour-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }
 [data-home] .tour-dots { display: inline-flex; align-items: center; gap: var(--hm-space-2); }
 [data-home] .tour-dot { width: 0.5rem; height: 0.5rem; border-radius: var(--hm-radius-pill); border: 1.5px solid var(--hm-border); background: transparent; }

@@ -184,18 +184,19 @@ test('the sort toggle orders the map by name or by recent change; an agent chang
 
 test('the tour still works: step 3 shows the shelves with content, the six steps run, and Help replays them', async () => {
   const p = page();
-  await fresh(p);
+  await fresh(p, undefined, { tour: true });
   const dialog = p.getByRole('dialog', { name: 'Tour' });
   await expect(dialog).toBeVisible();
   await expect(panel().locator('.kit-card')).toHaveCount(0);
   await p.keyboard.press('Enter');
   await expect(dialog.getByText('Click an agent to see what it can do.')).toBeVisible();
   await expect(panel().locator('.kit-card')).toHaveCount(0);
+  // Step two waits for the person: the Enter that moves on is a press on the first agent (the focus is on it), and the panel shows that agent.
   await p.keyboard.press('Enter');
   await expect(dialog.getByText('Skills are what it knows how to do.')).toBeVisible();
   await expect(panel().locator('.kit-card').first()).toBeVisible();
   expect(await panel().locator('.kit-card').count()).toBeGreaterThanOrEqual(3);
-  await expect(panel().getByRole('heading', { level: 2, name: 'Meeting assistant' })).toBeVisible();
+  await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();
   expect(await budget()).toEqual([]);
   for (let i = 0; i < 4; i += 1) await p.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);

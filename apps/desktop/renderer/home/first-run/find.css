@@ -1,0 +1,83 @@
+/*
+ * The first minute: the Welcome screen and the Find screen. Scoped to [data-home]. Text is 14 px or more, in the light and the dark look. One screen, one
+ * clear thing to do. The only new motion is a tile lighting: short, eased out, its parts 80 ms apart, never a loop. Timing comes from the motion tokens,
+ * which are 0 under reduce motion, so a tile then just appears lit.
+ */
+[data-home].fr-root { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+[data-home] .fr-brand { display: inline-flex; align-items: center; gap: var(--hm-space-3); margin: 0; font-size: var(--hm-text-heading); font-weight: 650; line-height: 1.2; color: var(--text); }
+[data-home] .fr-brand .kit-icon { color: var(--accent-strong); }
+[data-home] .fr-brand-small { font-size: var(--hm-text-base); }
+
+/* ---- Welcome */
+/* The page's own `main` rule makes every main a scroller; these two let the page itself scroll, so the pinned buttons can stick to the window. */
+[data-home] .fr-welcome, [data-home] .fr-find { overflow: visible; }
+[data-home] .fr-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--hm-space-6); padding: var(--hm-space-6) var(--hm-space-5); text-align: center; }
+[data-home] .fr-welcome .fr-brand { font-size: var(--hm-text-heading); }
+[data-home] .fr-welcome .fr-brand .kit-icon { width: 2.5rem; height: 2.5rem; }
+[data-home] .fr-lead { margin: 0; max-width: 52rem; font-size: clamp(1.75rem, 3.4vw, 2.5rem); line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; text-wrap: balance; }
+[data-home] .fr-lead span { display: block; }
+[data-home] .fr-welcome-action { display: flex; flex-direction: column; align-items: center; gap: var(--hm-space-4); }
+[data-home] .fr-welcome-action .kit-button { min-height: 3.25rem; padding: 0 var(--hm-space-6); font-size: 1.125rem; }
+[data-home] .fr-note { margin: 0; font-size: var(--hm-text-small); color: var(--text-muted); }
+
+/* ---- Find */
+[data-home] .fr-find { width: 100%; max-width: 46rem; margin: 0 auto; box-sizing: border-box; padding: var(--hm-space-6) var(--hm-space-5); display: flex; flex-direction: column; gap: var(--hm-space-5); }
+[data-home] .fr-title { margin: 0; font-size: var(--hm-text-display); line-height: 1.15; font-weight: 650; outline-offset: 6px; border-radius: var(--hm-radius-small); width: fit-content; max-width: 100%; }
+
+[data-home] .fr-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--hm-space-4); }
+[data-home] .fr-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--hm-space-3); box-sizing: border-box; min-height: 9.5rem; padding: var(--hm-space-4);
+  background: transparent; color: var(--text-muted); border: 1.5px dashed var(--hm-border); border-radius: var(--hm-radius);
+  transition: background-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), border-color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease), color var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease);
+}
+[data-home] .fr-tile .kit-avatar { opacity: 0.55; }
+[data-home] .fr-tile-name { font-size: var(--hm-text-base); font-weight: 650; line-height: 1.25; }
+[data-home] .fr-tile-status { margin-top: auto; font-size: var(--hm-text-base); line-height: 1.2; }
+[data-home] .fr-count { font-size: 1.75rem; font-weight: 650; line-height: 1; color: var(--text); margin-right: var(--hm-space-1); }
+/* Lit: the tile is solid and filled, its picture comes to full strength, and its parts rise into place one after the other. */
+[data-home] .fr-tile[data-state="found"] { background: var(--surface); border: 1.5px solid var(--accent-strong); color: var(--text); box-shadow: var(--hm-shadow); }
+[data-home] .fr-tile[data-state="found"] .kit-avatar { opacity: 1; animation: fr-rise var(--motion-home-tile-ms, 0ms) 0ms var(--motion-home-tile-ease, ease-out) both; }
+[data-home] .fr-tile[data-state="found"] .fr-tile-name { animation: fr-rise var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-stagger, 0ms) var(--motion-home-tile-ease, ease-out) both; }
+[data-home] .fr-tile[data-state="found"] .fr-tile-status { animation: fr-rise var(--motion-home-tile-ms, 0ms) calc(var(--motion-home-tile-stagger, 0ms) * 2) var(--motion-home-tile-ease, ease-out) both; }
+/* Not found: the tile is lit too (the search got there) but stays dashed and quiet, with the words doing the work. */
+[data-home] .fr-tile[data-state="missing"] { background: var(--surface-2); color: var(--text-muted); }
+[data-home] .fr-tile[data-state="missing"] .fr-tile-status { color: var(--text); font-weight: 600; animation: fr-rise var(--motion-home-tile-ms, 0ms) calc(var(--motion-home-tile-stagger, 0ms) * 2) var(--motion-home-tile-ease, ease-out) both; }
+@keyframes fr-rise { from { opacity: 0; transform: translateY(var(--motion-home-tile-travel, 0px)); } to { opacity: 1; transform: none; } }
+
+[data-home] .fr-section { display: flex; flex-direction: column; gap: var(--hm-space-4); }
+[data-home] .fr-section-head { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .fr-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--hm-border); border-radius: var(--hm-radius); background: var(--surface); overflow: hidden; }
+[data-home] .fr-place + .fr-place { border-top: 1px solid var(--hm-border); }
+[data-home] .fr-place-row { display: flex; align-items: center; gap: var(--hm-space-4); min-height: 3.5rem; padding: var(--hm-space-2) var(--hm-space-4); cursor: pointer; touch-action: manipulation; }
+[data-home] .fr-place-row:hover { background: var(--accent-soft); }
+[data-home] .fr-place-row:has(.fr-check:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
+[data-home] .fr-check { flex: none; width: 1.375rem; height: 1.375rem; margin: 0; accent-color: var(--accent-strong); cursor: pointer; }
+[data-home] .fr-place-name { flex: 1; min-width: 0; font-size: var(--hm-text-base); font-weight: 600; }
+[data-home] .fr-place:not([data-on]) .fr-place-name { color: var(--text-muted); font-weight: 400; text-decoration: line-through; text-decoration-thickness: 1px; }
+[data-home] .fr-place-count { flex: none; font-size: var(--hm-text-base); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+[data-home] .fr-paths { list-style: none; margin: 0; padding: 0 var(--hm-space-4) var(--hm-space-3) calc(var(--hm-space-4) * 2 + 1.375rem); display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .fr-paths code { font-family: var(--font-mono); font-size: var(--hm-text-small); color: var(--text-muted); overflow-wrap: anywhere; }
+[data-home] .fr-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); }
+/* The way on stays in view even when the details are open and the list is long. */
+[data-home] .fr-actions[data-pinned] { position: sticky; bottom: 0; z-index: 2; margin-top: var(--hm-space-2); padding: var(--hm-space-3) 0; background: var(--bg); border-top: 1px solid var(--border); }
+[data-home] .fr-actions .kit-button[data-variant="primary"] { min-height: 3rem; padding: 0 var(--hm-space-5); }
+
+[data-home] .fr-confirm { padding: var(--hm-space-5); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow); }
+[data-home] .fr-summary { margin: 0; font-size: var(--hm-text-heading); font-weight: 650; }
+[data-home] .fr-progress { width: 100%; height: 0.75rem; appearance: none; border: 0; border-radius: var(--hm-radius-pill); background: var(--surface-2); overflow: hidden; accent-color: var(--accent-strong); }
+[data-home] .fr-progress::-webkit-progress-bar { background: var(--surface-2); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-pill); }
+[data-home] .fr-progress::-webkit-progress-value { background: var(--accent-strong); border-radius: var(--hm-radius-pill); transition: width var(--motion-home-tile-ms, 0ms) var(--motion-home-tile-ease, ease); }
+[data-home] .fr-of { margin-left: var(--hm-space-2); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  [data-home] .fr-tiles { grid-template-columns: minmax(0, 1fr); }
+  [data-home] .fr-tile { min-height: 0; flex-direction: row; align-items: center; flex-wrap: wrap; }
+  [data-home] .fr-tile-status { margin: 0 0 0 auto; }
+}
+@media (max-height: 700px) {
+  [data-home] .fr-find { padding-top: var(--hm-space-4); padding-bottom: 0; gap: var(--hm-space-4); }
+  [data-home] .fr-title { font-size: var(--hm-text-display); }
+  [data-home] .fr-tile { min-height: 0; gap: var(--hm-space-2); padding: var(--hm-space-3) var(--hm-space-4); }
+  [data-home] .fr-count { font-size: 1.5rem; }
+  [data-home] .fr-place-row { min-height: 3rem; }
+}

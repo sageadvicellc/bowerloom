@@ -28,7 +28,7 @@ test.beforeAll(async () => { test.setTimeout(240_000); home = await launchHome()
 test.afterAll(async () => { try { await home.app.close(); } finally { removeTempDirs(); } });
 test.beforeEach(async () => {
   await page().emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'light' });
-  await fresh(page());
+  await fresh(page(), undefined, { tour: true });
   await resize(page(), 1440, 900);
 });
 
@@ -66,7 +66,12 @@ test('the keyboard walks every step with Next and Back; each step lights its tar
     expect(overlaps(m.pop, m.target), `step ${i + 1}: the popover covers the target ${JSON.stringify(m)}`).toBe(false);
     expect(overlaps(m.pop, m.hole), `step ${i + 1}: the popover covers the lit hole`).toBe(false);
     expect(m.pop.x).toBeGreaterThanOrEqual(0); expect(m.pop.y).toBeGreaterThanOrEqual(0); expect(m.pop.x + m.pop.w).toBeLessThanOrEqual(m.vw); expect(m.pop.y + m.pop.h).toBeLessThanOrEqual(m.vh);
-    if (i < STEPS.length - 1) { await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused(); await p.keyboard.press('Enter'); }
+    if (step.target === 'agent') {
+      // Step two waits for the person: no Next, the focus is on the lit agent, and Enter on it is the click that moves the tour on.
+      await expect(dialog().getByRole('button', { name: 'Next' })).toHaveCount(0);
+      await expect(p.locator('.kit-card[data-kind="agent"]').first().getByRole('button')).toBeFocused();
+      await p.keyboard.press('Enter');
+    } else if (i < STEPS.length - 1) { await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused(); await p.keyboard.press('Enter'); }
   }
   await expect(dialog().getByRole('button', { name: 'Done' })).toBeFocused();
   // Back with the keyboard: Shift+Tab to Back, Enter.
@@ -130,7 +135,7 @@ test('the tour does not run twice in one session, and replays from Help with "Sh
   // To the kit gallery and back: the app mounts again, and the tour stays away.
   await p.evaluate(() => { location.hash = '#prototype-v2/kit'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Card kit' })).toBeVisible();
-  await p.evaluate(() => { location.hash = '#prototype-v2'; });
+  await p.evaluate(() => { location.hash = '#prototype-v2/map/tour'; });
   await expect(p.getByRole('heading', { level: 1, name: 'Your agents' })).toBeVisible();
   await framesPainted(p);
   await expect(dialog()).toHaveCount(0);
@@ -146,7 +151,7 @@ test('the tour does not run twice in one session, and replays from Help with "Sh
   await expect(dialog()).toHaveCount(0);
   await expect(help).toBeFocused();
   // A reload is a new session, and the tour runs again.
-  await fresh(p);
+  await fresh(p, undefined, { tour: true });
   await expect(dialog()).toBeVisible();
 });
 
@@ -195,7 +200,7 @@ test('the popover keeps off every target at 900 by 600 as well', async () => {
 test('with reduce motion on, the tour runs no animation and no transition at all', async () => {
   const p = page();
   await p.emulateMedia({ reducedMotion: 'reduce' });
-  await fresh(p);
+  await fresh(p, undefined, { tour: true });
   await expect(dialog()).toBeVisible();
   for (let i = 0; i < 5; i += 1) {
     await framesPainted(p);

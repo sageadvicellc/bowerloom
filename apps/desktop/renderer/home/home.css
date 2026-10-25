@@ -48,3 +48,14 @@ html, body { height: 100%; }
 [data-home] .hm-gallery-row { display: flex; flex-wrap: wrap; gap: var(--hm-space-4); align-items: flex-start; }
 [data-home] .hm-gallery-cell { display: flex; flex-direction: column; gap: var(--hm-space-2); align-items: flex-start; }
 [data-home] .hm-gallery-popover-room { min-height: 11rem; }
+
+/* ---- The tools beside the sort toggle, and the one closing note after the first Save. */
+[data-home] .hm-stage-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3) var(--hm-space-5); }
+[data-home] .hm-toast {
+  position: fixed; z-index: 40; left: 50%; bottom: calc(var(--hm-bar-h) + var(--hm-space-5)); transform: translateX(-50%); max-width: calc(100vw - 2rem); box-sizing: border-box;
+  display: none; align-items: center; gap: var(--hm-space-3); padding: var(--hm-space-3) var(--hm-space-5);
+  background: var(--surface); color: var(--text); border: 1px solid var(--accent-strong); border-radius: var(--hm-radius); box-shadow: var(--hm-shadow-lift); font-size: var(--hm-text-base); font-weight: 600;
+}
+[data-home] .hm-toast[data-open] { display: flex; animation: hm-toast-in var(--motion-home-tour-dim-ms, 0ms) var(--motion-home-drawer-ease, ease-out) both; }
+[data-home] .hm-toast .kit-icon { color: var(--accent-strong); }
+@keyframes hm-toast-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }

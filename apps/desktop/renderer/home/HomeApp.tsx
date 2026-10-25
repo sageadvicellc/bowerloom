@@ -11,6 +11,9 @@
  * "2 different copies" badge on a shelf card or a drawer card opens the copies dialog, which sits at the top of the page. The Save points drawer lists the
  * save points with "Go back to this". With the Add or Save points drawer open the page keeps clear of it: the shelves stay beside the map in a wide window and
  * give way to the drawer in a narrow one. Escape closes the top layer only: the tour, then the dialog, then a drawer.
+ * The first minute (HomeFlow) sets four things from outside: the agents of places the person skipped in Find stay off the map (`skipped`), the tour starts by
+ * itself once when `autoTour` is set, "Find more" reopens Find (`onFindMore`), and `closingNote` allows one short note after the first Save, once per session.
+ * The tour's second step waits for a real click on an agent: that click is the step's action.
  */
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -40,7 +43,8 @@ import { SaveBar } from './save/SaveBar.js';
 import { discardAction, goBackAction, removeAction, saveAction } from './store-actions.js';
 import { TourAnnouncer, TourOverlay } from './tour/TourOverlay.js';
 import { TOUR_STEPS } from './tour/steps.js';
-import { createTour, currentStep, tourReduce, tourSession } from './tour/tour.js';
+import { closingNoteSession, createTour, currentStep, tourReduce, tourSession } from './tour/tour.js';
+import { FIND_WORDS } from './first-run/find-words.js';
 import { WORDS, agentsCount, changesCount } from './words.js';
 import './home-tokens.css';
 import './kit/kit.css';
@@ -52,6 +56,22 @@ type DrawerId = 'add' | 'points';
 interface Fresh { readonly agentId: string; readonly entryId: string | null }
 /** How long the "just added" mark stays, in milliseconds. */
 const FRESH_MS = 5000;
+
+/** How long the closing note stays, in milliseconds. */
+const NOTE_MS = 9000;
+
+export interface HomeAppProps {
+  /** The ids of agents to keep off the map (their place was unticked in Find). */
+  skipped?: readonly string[];
+  /** Start the tour by itself, once in a session. */
+  autoTour?: boolean;
+  /** Allow the closing note after the first Save. */
+  closingNote?: boolean;
+  /** Reopen Find. Without it the map has no "Find more" button. */
+  onFindMore?(): void;
+}
+
+const NONE: readonly string[] = Object.freeze([]);
 
 /** The programs a save reaches, in the order the ticks show them, with the words for each. */
 const SAVE_TARGETS: readonly { id: InterfaceId; name: string }[] = Object.freeze([
@@ -66,7 +86,7 @@ type FocusAfter = { readonly kind: ShelfEntry['kind']; readonly index: number } 
 /** The id of the card to mark on the shelves: the one just added, and only while its agent is the one that is picked. */
 const freshOf = (fresh: Fresh | null, picked: string | null): string | null => (fresh !== null && fresh.entryId !== null && fresh.agentId === picked ? fresh.entryId : null);
 
-export function HomeApp(): ReactElement {
+export function HomeApp({ skipped = NONE, autoTour = false, closingNote = false, onFindMore }: HomeAppProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedItem, setPickedItem] = useState<string | null>(null);
@@ -76,13 +96,14 @@ export function HomeApp(): ReactElement {
   const [phase, setPhase] = useState<BarPhase | null>(null);
   const [copiesFor, setCopiesFor] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Fresh | null>(null);
+  const [note, setNote] = useState(false);
   const [tour, tourDo] = useReducer(tourReduce, TOUR_STEPS, createTour);
   const panel = useRef<HTMLElement>(null);
   const focusAfter = useRef<FocusAfter | null>(null);
   const copiesFrom = useRef('.hm-panel');
 
   const world = state.draft;
-  const owned = useMemo(() => ownedAgents(world), [world]);
+  const owned = useMemo(() => ownedAgents(world).filter(a => !skipped.includes(a.id)), [world, skipped]);
   const agents = useMemo(() => sortAgents(owned, sort, touched), [owned, sort, touched]);
   const agent = agents.find(a => a.id === picked) ?? null;
   const card = agent === null ? null : agentCard(agent);
@@ -96,8 +117,14 @@ export function HomeApp(): ReactElement {
   const stepId = currentStep(tour)?.id ?? null;
 
   useEffect(() => { document.title = WORDS.label.appName; }, []);
-  // The tour runs by itself once in a session. After that only the Help button runs it.
-  useEffect(() => { if (tourSession.claimAutoStart()) tourDo('start'); }, []);
+  // The tour runs by itself once in a session, when the first minute asks for it. After that only the Help button runs it.
+  useEffect(() => { if (autoTour && tourSession.claimAutoStart()) tourDo('start'); }, [autoTour]);
+  // The closing note goes by itself.
+  useEffect(() => {
+    if (!note) return undefined;
+    const timer = window.setTimeout(() => setNote(false), NOTE_MS);
+    return () => window.clearTimeout(timer);
+  }, [note]);
   // The tour dims the page, so the person cannot click an agent. When it reaches the shelves with nothing picked, it opens one that has something to show.
   useEffect(() => {
     if (stepId !== 'shelves' || picked !== null) return;
@@ -128,7 +155,7 @@ export function HomeApp(): ReactElement {
   }, [fresh, drawer]);
 
   const toggle = (id: DrawerId): void => setDrawer(current => (current === id ? null : id));
-  const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); };
+  const pick = (id: string): void => { setPicked(current => (current === id ? null : id)); setPickedItem(null); setFresh(null); tourDo('acted'); };
   /** A card went to an agent (or a ready-made agent was copied in): pick that agent, so its shelf shows the new card. */
   const added = ({ agentId, entry }: { readonly agentId: string; readonly entry: { readonly id: string; readonly kind: string } }): void => {
     setPicked(agentId);
@@ -162,6 +189,8 @@ export function HomeApp(): ReactElement {
     dispatch(saveAction(said ?? changesCount(changes)));
     setPhase({ kind: 'saved', at: savePoints + 1, backTo: state.headVersionId });
     setFresh(null);
+    // The first Save of a guided session says where Help lives, once.
+    if (closingNote && closingNoteSession.claimAutoStart()) setNote(true);
   };
   const discard = (): void => { focusAfter.current = 'heading'; setFresh(null); dispatch(discardAction()); };
   /** Makes the world as it was at one save point. The bar says so, and the focus stays where the person pressed. */
@@ -190,7 +219,10 @@ export function HomeApp(): ReactElement {
               <h1 className="kit-heading" tabIndex={-1}>{WORDS.label.yourAgents}</h1>
               <p className="kit-hint">{agentsCount(agents.length)}. {WORDS.hint.stage}</p>
             </div>
-            <SortToggle mode={sort} onChange={setSort} />
+            <div className="hm-stage-tools">
+              <SortToggle mode={sort} onChange={setSort} />
+              {onFindMore === undefined ? null : <Button onClick={onFindMore}>{FIND_WORDS.label.findMore}</Button>}
+            </div>
           </div>
           <ul className="hm-grid" data-tour="map" aria-label={WORDS.label.yourAgents}>
             {agents.map((a, i) => {
@@ -222,6 +254,7 @@ export function HomeApp(): ReactElement {
         </Drawer>
       </div>
 
+      {closingNote ? <div className="hm-toast" role="status" data-open={note ? '' : undefined}>{note ? <><KitIcon name="check" size={20} /><span>{FIND_WORDS.hint.closingNote}</span></> : null}</div> : null}
       <SaveBar model={bar} ticks={ticks} onSave={save} onGoBack={goBack} onDiscard={discard} />
 
       {copiesFor === null ? null : <CopiesDialog itemId={copiesFor} nameOf={nameOf} restoreFocus={restoreCopiesFocus} onClose={() => setCopiesFor(null)} />}

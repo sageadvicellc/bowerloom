@@ -283,10 +283,13 @@ for (const [w, h] of SIZES) {
 // ---- The tour and the layers.
 test('the tour step for the Add button lights the button, and Escape ends the tour and nothing else', async () => {
   const p = page();
-  await fresh(p);
+  await fresh(p, undefined, { tour: true });
   const tour = p.getByRole('dialog', { name: 'Tour' });
   await expect(tour).toBeVisible();
-  for (let i = 0; i < 3; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
+  // Step two has no Next: it waits for a click on an agent.
+  await tour.getByRole('button', { name: 'Next' }).click();
+  await p.locator('.hm-grid .kit-card[data-kind="agent"]').first().getByRole('button').click();
+  await tour.getByRole('button', { name: 'Next' }).click();
   await expect(tour).toContainText('Add skills, tools, and notes here.');
   await animationsDone(p);
   const spot = await rectOf(p, '.tour-spot');
@@ -303,7 +306,9 @@ test('the tour step for the Add button lights the button, and Escape ends the to
   await p.getByRole('button', { name: 'Show me around' }).click();
   await expect(tour).toBeVisible();
   await expect(addDrawer()).toHaveCount(0);
-  for (let i = 0; i < 5; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
+  await tour.getByRole('button', { name: 'Next' }).click();
+  await p.locator('.hm-grid .kit-card[data-kind="agent"]').first().getByRole('button').click();
+  for (let i = 0; i < 3; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
   await expect(tour).toContainText('Replay this tour any time.');
   await tour.getByRole('button', { name: 'Done' }).click();
   await expect(tour).toHaveCount(0);

@@ -170,3 +170,54 @@ test('a target that leaves only a narrow strip gets a narrower popover in that s
   const left = placePopover({ x: 360, y: 0, w: 540, h: 700 }, { w: 368, h: 200 }, { w: 900, h: 700 }, 12, 12, 280);
   assert.equal(left.side, 'left'); assert.ok(left.x + left.w! <= 360 - 12 + 0.5);
 });
+
+// ---- U3: a step that waits for the person to do the thing it points at.
+import { hintOf, isWaiting, stepActed } from '../renderer/home/tour/tour.js';
+
+const waitSteps: TourStep[] = [{ id: 'a', target: 'a', text: 'One.' }, { id: 'b', target: 'b', text: 'Click one.', wait: true, hint: 'Click any agent.' }, { id: 'c', target: 'c', text: 'Three.' }];
+const waiting = (): TourState => stepNext(startTour(createTour(waitSteps)));
+
+test('a wait step is flagged and carries its own hint; an ordinary step is neither', () => {
+  const t = startTour(createTour(waitSteps));
+  assert.equal(isWaiting(t), false); assert.equal(hintOf(t), null);
+  const w = waiting();
+  assert.equal(currentStep(w)?.id, 'b'); assert.equal(isWaiting(w), true); assert.equal(hintOf(w), 'Click any agent.');
+  assert.equal(isWaiting(createTour(waitSteps)), false, 'an idle tour waits for nothing');
+  assert.equal(isWaiting(skipTour(w)), false); assert.equal(hintOf(skipTour(w)), null);
+});
+
+test('the person\'s action moves a waiting tour on, and does nothing to a tour that is not waiting', () => {
+  const next = stepActed(waiting());
+  assert.equal(currentStep(next)?.id, 'c'); assert.equal(next.status, 'running');
+  const first = startTour(createTour(waitSteps));
+  assert.equal(stepActed(first), first, 'a click on an agent at step one is not the step\'s action');
+  assert.equal(stepActed(next), next);
+  assert.equal(stepActed(createTour(waitSteps)).status, 'idle');
+});
+
+test('a wait step on the last step finishes the tour when it is done', () => {
+  const t = stepNext(startTour(createTour([{ id: 'a', target: 'a', text: 'One.' }, { id: 'b', target: 'b', text: 'Two.', wait: true, hint: 'Click.' }])));
+  assert.equal(stepActed(t).status, 'finished');
+});
+
+test('Back still works from a wait step and from the step after it, and the machine\'s own Next lets a caller skip a wait', () => {
+  const w = waiting();
+  assert.equal(currentStep(stepBack(w))?.id, 'a');
+  assert.equal(currentStep(stepBack(stepActed(w)))?.id, 'b');
+  assert.equal(isWaiting(stepBack(stepActed(w))), true, 'going back waits again');
+  assert.equal(currentStep(stepNext(w))?.id, 'c');
+});
+
+test('the reducer has an "acted" action that does the same', () => {
+  assert.equal(currentStep(tourReduce(waiting(), 'acted'))?.id, 'c');
+  const first = startTour(createTour(waitSteps));
+  assert.equal(tourReduce(first, 'acted'), first);
+});
+
+test('the real tour waits at step two for a click on an agent, with the hint "Click any agent." and no other step waits', () => {
+  assert.deepEqual(TOUR_STEPS.map(s => s.wait === true), [false, true, false, false, false, false]);
+  const step = TOUR_STEPS[1]!;
+  assert.equal(step.target, 'agent'); assert.equal(step.hint, 'Click any agent.');
+  assert.ok(countWords(step.hint ?? '') <= 12); assert.deepEqual(assertTextBudget(`<p>${step.hint}</p>`), []);
+  assert.ok(TOUR_STEPS.filter(s => s.wait !== true).every(s => s.hint === undefined));
+});

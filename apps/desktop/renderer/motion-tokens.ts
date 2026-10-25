@@ -70,6 +70,8 @@ export const MOTION = Object.freeze({
     tourSpot: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
     /** The tour's dim layer fades in once, when the tour starts. */
     tourDim: { ms: 160, ease: 'cubic-bezier(0.23, 1, 0.32, 1)' } satisfies Transition,
+    /** The Find screen: a tool's tile lights as the search reaches it. Short, eased out, never a loop; the parts of a tile follow each other `stagger` apart. */
+    tileLight: { ms: 240, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', stagger: 80, distance: 6 } satisfies Transition & { stagger: number; distance: number },
   }),
   // Jakub: panels are polished, brief, and slide a short way.
   panel: Object.freeze({ slide: { ms: 220, ease: 'cubic-bezier(0.23, 1, 0.32, 1)', distance: 16 } satisfies Slide, close: { ms: 150, ease: 'cubic-bezier(0.4, 0, 1, 1)' } satisfies Transition }),
@@ -114,6 +116,7 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   // One ease for the shared parts of the app (the navigation, buttons, rows, cards and tabs), which time themselves with --motion-hover-ms.
   const hm = MOTION.home;
   t('home-drawer', hm.drawer); t('home-tour-spot', hm.tourSpot); t('home-tour-dim', hm.tourDim);
+  t('home-tile', hm.tileLight); set('home-tile-stagger', `${ms(hm.tileLight.stagger)}ms`); travel('home-tile-travel', hm.tileLight.distance);
   set('ease-out', MOTION.ease.out);
   travel('home-drawer-travel', hm.drawer.distance);
   travel('setup-reveal-travel', p.setupReveal.distance); travel('versions-travel', p.versions.distance);
