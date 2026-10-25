@@ -13,7 +13,7 @@ import {
   addsOf, clearHand, isEmpty, makeBasis, previewOf, ruleLines, sameSelection, selectionFromSlice, toChoice, toggleHand, toggleKeep, toggleLeaveOut, toggleTopic,
 } from '../../../shared/home/notes-model.js';
 import type { Selection } from '../../../shared/home/notes-model.js';
-import { chooseNotesAction } from '../../../shared/home/notes-actions.js';
+import { chooseNotesAction, notesWouldChange } from '../../../shared/home/notes-actions.js';
 import type { Topic } from '../../../shared/home/notes-topics.js';
 import { useProtoStore } from '../../proto/session.js';
 import { Button } from '../kit/Button.js';
@@ -67,8 +67,10 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
 
   const preview = useMemo(() => previewOf(sel, basis), [sel, basis]);
   const lines = useMemo(() => ruleLines(sel, basis), [sel, basis]);
-  const changed = !sameSelection(sel, start), empty = isEmpty(sel, basis);
-  const ready = changed && !empty;
+  const changed = !sameSelection(sel, start), choice = useMemo(() => toChoice(sel, basis), [sel, basis]);
+  // The button waits for a choice that would really change what the agent reads: leaving out every part of a topic picks nothing, and the store would refuse it.
+  const empty = isEmpty(sel, basis) || preview.count === 0, effective = useMemo(() => notesWouldChange(world, agent.id, name, choice), [world, agent.id, name, choice]);
+  const ready = changed && !empty && effective;
 
   // After the step changes the focus goes to the new heading, so a keyboard user is not left on a button that has gone.
   useEffect(() => {
@@ -90,7 +92,7 @@ function ChooseNotesBody({ agent, onClose, onChosen }: { agent: AgentItem; onClo
   const go = (next: Step): void => { moved.current = true; setStep(next); };
   const use = (): void => {
     if (!ready) return;
-    dispatch(chooseNotesAction(agent.id, name, toChoice(sel, basis)));
+    dispatch(chooseNotesAction(agent.id, name, choice));
     onChosen?.(agent.id);
     onClose();
   };

@@ -2,9 +2,9 @@
  * Pure helpers behind the cards of the home app: the words on a card, its one badge, the three shelves of an agent, and the Save bar. No React, no DOM.
  * The sample data names things like files ("velvet-weaver"); a card shows them as words ("Velvet Weaver").
  */
-import type { AgentItem, HarnessItem, ToolItem, World } from '../proto/types.js';
+import type { AgentItem, HarnessItem, Slice, ToolItem, World } from '../proto/types.js';
 import { joinWords } from '../proto/words.js';
-import { plainOf, skillDoes } from './plain.js';
+import { isSampleNote, plainOf, skillDoes } from './plain.js';
 
 /** A card's state badge: its words and which look it takes. */
 export interface CardBadge { readonly label: string; readonly tone: 'warn' | 'new' | 'info' }
@@ -94,6 +94,10 @@ function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: st
   return plain === null ? { name: readableName(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
 }
 
+/** The words of a set of notes. The sample's plain words stay only while the set is still the sample's choice; an edited set gets its own name and the plain line for notes. */
+const noteWords = (slice: Slice): { name: string; hint: string } =>
+  (isSampleNote(slice) ? wordsOf('note', slice.id, slice.name) : { name: readableName(slice.name), hint: FALLBACK_HINT.note });
+
 const entryOf = (item: HarnessItem, kind: ShelfEntry['kind']): ShelfEntry => {
   const badge = itemBadge(item);
   return { id: item.id, kind, ...wordsOf(kind, item.id, item.name), ...(badge === null ? {} : { badge }) };
@@ -109,7 +113,7 @@ export function shelvesOf(world: World, agent: AgentItem): Shelves {
     if (item !== undefined && item.kind === 'tool' && (item as ToolItem).toolKind !== 'hook') tools.push(entryOf(item, 'tool'));
   }
   const slice = agent.definition.sliceId === undefined ? undefined : world.slices.find(s => s.id === agent.definition.sliceId);
-  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', ...wordsOf('note', slice.id, slice.name) });
+  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', ...noteWords(slice) });
   return { skills, tools, notes };
 }
 

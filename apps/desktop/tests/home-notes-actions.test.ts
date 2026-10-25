@@ -7,7 +7,7 @@ import { generateWorld } from '../shared/proto/sample.js';
 import { validateWorld } from '../shared/proto/sample.js';
 import type { AgentItem, World } from '../shared/proto/types.js';
 import { matchPages } from '../shared/proto/slicerule.js';
-import { absorbedSlices, chooseNotesAction, notesName } from '../shared/home/notes-actions.js';
+import { absorbedSlices, chooseNotesAction, notesName, notesWouldChange } from '../shared/home/notes-actions.js';
 import { EMPTY_SELECTION, makeBasis, selectionFromSlice, toChoice, toggleHand, toggleLeaveOut, toggleTopic } from '../shared/home/notes-model.js';
 import type { Selection } from '../shared/home/notes-model.js';
 import { barSentence, listChanges } from '../shared/home/changes.js';
@@ -135,4 +135,46 @@ test('an old choice comes back as switches and goes out as the same notes', () =
 test('the name of a set is the agent and "notes", at most five words', () => {
   assert.equal(notesName('Meeting assistant'), 'Meeting assistant notes');
   assert.equal(itemTitle(notesName('One two three four five six')).split(' ').length, 5);
+});
+
+// ---- Review fixes: the count after Use, Remove, Use again; a choice that changes nothing.
+test('Use these notes, Remove, Use these notes again is one change and leaves no stray set (review item 1)', () => {
+  const first = choose(fresh(), 'agent-01', on('Clients'));
+  const strayId = sliceOf(first.draft, 'agent-01')!.id;
+  const removed = reduceStore(first, removeAction('agent-01', 'note', strayId));
+  assert.equal(changeCount(removed.committed, removed.draft), 1, 'a set nobody reads is not a change of its own');
+  const again = choose(removed, 'agent-01', on('Money'));
+  assert.equal(changeCount(again.committed, again.draft), 1);
+  assert.equal(listChanges(again.committed, again.draft).length, 1);
+  assert.equal(again.draft.slices.length, base.slices.length + 1, 'the unread set was used again, not a second one made');
+  assert.equal(again.draft.items.filter(i => i.kind === 'context-slice').length, base.items.filter(i => i.kind === 'context-slice').length + 1);
+  assert.equal(sliceOf(again.draft, 'agent-01')!.id, strayId);
+  assert.deepEqual(sliceOf(again.draft, 'agent-01')!.rule.folders, ['cinderlow']);
+  assert.deepEqual(validateWorld(again.draft), []);
+});
+
+test('a set that is already saved is never used again for another agent (review item 1)', () => {
+  const saved = reduceStore(choose(fresh(), 'agent-05', on('Clients')), saveAction('x'));
+  const savedId = sliceOf(saved.draft, 'agent-05')!.id;
+  const removed = reduceStore(saved, removeAction('agent-05', 'note', savedId));
+  const other = choose(removed, 'agent-06', on('Money'));
+  assert.notEqual(sliceOf(other.draft, 'agent-06')!.id, savedId, 'the saved set keeps its rule');
+  assert.deepEqual(other.draft.slices.find(s => s.id === savedId), saved.draft.slices.find(s => s.id === savedId));
+});
+
+test('a new set that no agent reads counts as no change of its own, but a differing draft still counts one (review item 1)', () => {
+  const first = choose(fresh(), 'agent-05', on('Clients'));
+  const removed = reduceStore(first, removeAction('agent-05', 'note', sliceOf(first.draft, 'agent-05')!.id));
+  assert.equal(listChanges(removed.committed, removed.draft).length, 0);
+  assert.equal(changeCount(removed.committed, removed.draft), 1, 'never hidden');
+});
+
+test('"would it change anything" is false for a choice that leaves every part out, and true for a real one (review item 4)', () => {
+  const t = topic('Work');
+  const leftAll = t.parts.reduce((s, p) => toggleLeaveOut(s, p.folder), on('Work'));
+  assert.equal(notesWouldChange(base, 'agent-05', 'Report builder', toChoice(leftAll, basis)), false);
+  assert.equal(notesWouldChange(base, 'agent-05', 'Report builder', toChoice(on('Work'), basis)), true);
+  const s = choose(fresh(), 'agent-05', on('Clients'));
+  assert.equal(notesWouldChange(s.draft, 'agent-05', 'Report builder', toChoice(on('Clients'), basis)), false, 'the same choice again');
+  assert.equal(notesWouldChange(base, 'nobody', 'x', toChoice(on('Work'), basis)), false);
 });

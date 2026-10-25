@@ -507,3 +507,35 @@ if (process.env.HOME_U0_SHOTS !== undefined) {
     });
   }
 }
+
+test('leaving out every part of a topic picks nothing: the button stays off, with a plain reason, and nothing is staged (review item 4)', async () => {
+  await openLayer('Report builder');
+  await topic('Work').click();
+  await openLeave('Work');
+  const parts = leavePanel('Work').getByRole('button');
+  const n = await parts.count();
+  for (let i = 0; i < n; i += 1) await parts.nth(i).click();
+  expect(await count()).toBe(0);
+  await expect(layer().getByRole('button', { name: 'Use these notes' })).toBeDisabled();
+  await expect(layer().getByText('Pick at least one note first.')).toBeVisible();
+  await layer().getByRole('button', { name: 'Cancel' }).click();
+  await expect(layer()).toHaveCount(0);
+  await expect(barText()).toHaveText('Nothing to save yet');
+  await expect(shelfCards()).toHaveCount(0);
+});
+
+test('Use, Remove, Use again on a shared set is one change on the bar (review item 1)', async () => {
+  await openLayer('Meeting assistant');
+  await topic('Clients').click();
+  await layer().getByRole('button', { name: 'Use these notes' }).click();
+  await expect(layer()).toBeHidden();
+  await expect(barText()).toHaveText(/Added Meeting assistant notes/);
+  await shelfCards().first().getByRole('button', { name: 'Remove' }).click();
+  await chooseButton().click();
+  await expect(layer()).toBeVisible();
+  await animationsDone(page());
+  await topic('Money').click();
+  await layer().getByRole('button', { name: 'Use these notes' }).click();
+  await expect(layer()).toBeHidden();
+  await expect(barText()).toHaveText('Added Meeting assistant notes to Meeting assistant');
+});

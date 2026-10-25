@@ -228,7 +228,7 @@ function editSlice(world: World, sliceId: string, change: (slice: Slice) => Slic
   return next === slice ? world : { ...world, slices: world.slices.map((s, i) => (i === index ? next : s)) };
 }
 
-function editDraft(world: World, action: StoreAction): World {
+function editDraft(world: World, action: StoreAction, committed: World): World {
   switch (action.type) {
     case 'setOverride': return setOverride(world, action);
     case 'attachSkill': return !hasKind(world, action.skillId, 'skill') ? world : editAgent(world, action.agentId, a => (a.definition.skillIds.includes(action.skillId) ? a : { ...a, definition: { ...a.definition, skillIds: [...a.definition.skillIds, action.skillId] } }));
@@ -263,7 +263,7 @@ function editDraft(world: World, action: StoreAction): World {
         return a.definition.sliceId === action.sliceId ? a : { ...a, definition: { ...a.definition, sliceId: action.sliceId } };
       });
     }
-    case 'chooseNotes': return chooseNotes(world, action);
+    case 'chooseNotes': return chooseNotes(world, action, committed);
     case 'importBundle': {
       // A bundle that cannot be read leaves the draft as it is.
       try { return commitImport(action.bundle, world); } catch { return world; }
@@ -320,7 +320,7 @@ export function reduceStore(state: StoreState, action: StoreAction): StoreState 
       return { committed, draft: committed, undoStack: [], redoStack: [], headVersionId: version.id };
     }
     default: {
-      const draft = editDraft(state.draft, action);
+      const draft = editDraft(state.draft, action, state.committed);
       if (draft === state.draft) return state;
       return { ...state, draft, undoStack: pushCapped(state.undoStack, state.draft), redoStack: [] };
     }

@@ -77,3 +77,16 @@ test('saveBarModel: nothing to save, or changes to save', () => {
   assert.deepEqual(saveBarModel(false), { text: 'Nothing to save yet', canSave: false });
   assert.deepEqual(saveBarModel(true), { text: 'You have changes to save', canSave: true });
 });
+
+test('a sample set of notes that was edited in place no longer wears the sample hint (review item 3)', () => {
+  const agentTwo = world.items.find((i): i is AgentItem => i.id === 'agent-02')!;
+  const sample = shelvesOf(world, agentTwo).notes[0]!;
+  assert.deepEqual([sample.name, sample.hint], ['Reading list', 'Articles and guides you saved to read later.']);
+  const edited: World = { ...world, slices: world.slices.map(s => (s.id === 'slice-kinds' ? { ...s, rule: { ...s.rule, folders: ['cinderlow'], pageTypesAndTags: { types: [], tags: [] } } } : s)) };
+  const after = shelvesOf(edited, agentTwo).notes[0]!;
+  assert.equal(after.id, 'slice-kinds');
+  assert.equal(after.hint, 'Notes this agent can read.');
+  assert.notEqual(after.name, 'Reading list');
+  const seeded: World = { ...world, slices: world.slices.map(s => (s.id === 'slice-kinds' ? { ...s, seeds: world.wikiPages.slice(0, 1).map(p => p.id) } : s)) };
+  assert.equal(shelvesOf(seeded, agentTwo).notes[0]!.hint, 'Notes this agent can read.');
+});

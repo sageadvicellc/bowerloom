@@ -5,6 +5,7 @@
  * so `changeCount` and `listChanges` do not count them a second time. Pure: no React, no DOM.
  */
 import type { StoreAction } from '../proto/store.js';
+import { chooseNotes, strayDraftSlices } from '../proto/store-notes.js';
 import type { HarnessItem, World } from '../proto/types.js';
 import type { Choice } from './notes-model.js';
 
@@ -20,13 +21,20 @@ export function chooseNotesAction(agentId: string, agentName: string, choice: Ch
   return { type: 'chooseNotes', agentId, name: notesName(agentName), rule: choice.rule, seeds: choice.seeds };
 }
 
+/** True when pressing "Use these notes" with this choice would change the draft. A choice that picks nothing, or that the agent already reads, would not. */
+export function notesWouldChange(world: World, agentId: string, agentName: string, choice: Choice): boolean {
+  const a = chooseNotesAction(agentId, agentName, choice);
+  return a.type === 'chooseNotes' && chooseNotes(world, a) !== world;
+}
+
 /**
  * The ids of the saved choices that are new in the draft and that an agent of the saved world now reads. Each one is part of that agent's notes change.
- * A choice that came in with a new agent (an import) is not here: that agent is a change of its own.
+ * A choice that came in with a new agent (an import) is not here. A new choice that nobody reads (taken off again before a save) is here too, so it counts
+ * as nothing: the draft still counts at least one change while it differs.
  */
 export function absorbedSlices(committed: World, draft: World): ReadonlySet<string> {
   const known = new Set(committed.slices.map(s => s.id)), before = new Map(committed.items.map(i => [i.id, i] as const));
-  const out = new Set<string>();
+  const out = new Set<string>(strayDraftSlices(committed, draft));
   for (const s of draft.slices) {
     if (known.has(s.id)) continue;
     const reader = draft.items.find(i => i.kind === 'agent' && i.definition.sliceId === s.id && before.get(i.id)?.kind === 'agent');

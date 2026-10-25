@@ -8,6 +8,9 @@
  * No brand names, no file paths, none of the banned words. `tests/home-plain.test.ts` holds every row to these rules.
  */
 
+import type { Slice } from '../proto/types.js';
+import { generateWorld } from '../proto/sample.js';
+
 /** What a card says: a name and one line under it. */
 export interface Plain { readonly name: string; readonly hint: string }
 /** A skill also says what it lets an agent do, as a short phrase that follows "it": "summarizes meetings". */
@@ -119,6 +122,21 @@ export const PLAIN_NOTES: Readonly<Record<string, Plain>> = byId(NOTE_ROWS, ([, 
 export const PLAIN_AGENTS: Readonly<Record<string, PlainAgent>> = byId(AGENT_ROWS, ([, name, hint, recency]) => ({ name, hint, recency }));
 
 export type PlainKind = 'agent' | 'skill' | 'tool' | 'note';
+
+let sampleNotes: ReadonlyMap<string, string> | undefined;
+/** The rule and the seed pages of each sample set of notes, as text, made once from the sample world. */
+function sampleNoteShapes(): ReadonlyMap<string, string> {
+  sampleNotes ??= new Map(generateWorld(1).slices.map(s => [s.id, JSON.stringify([s.rule, s.seeds, s.pinned])] as const));
+  return sampleNotes;
+}
+
+/**
+ * True when a set of notes is still the sample's own choice of pages. "Use these notes" changes a set that one agent reads in place, with the same id and
+ * name, so the plain name and hint of the sample no longer tell the truth once its rule or its seed pages differ.
+ */
+export function isSampleNote(slice: Slice): boolean {
+  return sampleNoteShapes().get(slice.id) === JSON.stringify([slice.rule, slice.seeds, slice.pinned]);
+}
 
 /** The plain name and hint of one thing by its sample id, or null when the id is not in the sample. */
 export function plainOf(kind: PlainKind, id: string): Plain | null {
