@@ -14,11 +14,12 @@ import { SAMPLE_COPY_SKILL, withSampleCopies } from '../shared/home/sample-copie
 import { entriesFor } from '../shared/home/add-model.js';
 import { plainHintOf, plainNameOf } from '../shared/home/plain-names.js';
 import { BAR_LIMIT, barSentence, listChanges } from '../shared/home/changes.js';
-import { POINT_WORDS, manyChanged, pointName, savePointRows, whenOf } from '../shared/home/points.js';
+import { POINT_WORDS, describeChanges, manyChanged, pointName, savePointRows, whenOf } from '../shared/home/points.js';
 import { WORDS } from '../renderer/home/words.js';
 import { assertTextBudget, bannedIn, countWords } from '../shared/home/textbudget.js';
 import { goBackAction, importFileAction, removeAction, saveAction } from '../renderer/home/store-actions.js';
 import { addAction } from '../shared/home/add-model.js';
+import { libraryChangeList } from '../shared/home/library-changes.js';
 
 const home = (): World => withStartPoint(withSampleCopies(generateWorld(1)));
 const start = (): StoreState => createStore(home()).getState();
@@ -202,4 +203,36 @@ test('the save point words, the drawer words and the bar sentences stay within t
   assert.equal(whenOf(1), '1 save ago');
   assert.equal(whenOf(3), '3 saves ago');
   assert.equal(pointName('Restored: Restored: How it started'), 'Went back to Went back to How it started');
+});
+
+// ---- Wave E, group J: the changes are named, never only counted.
+test('describeChanges names what changed in one line of at most twelve words, for one change, two, and a run of many', () => {
+  const removed = (what: string) => ({ verb: 'removed', what }) as const, added = (what: string, to?: string) => ({ verb: 'added', what, ...(to === undefined ? {} : { to }) }) as const;
+  assert.equal(describeChanges([]), null);
+  assert.equal(describeChanges([removed('List action items')]), 'Removed List action items');
+  assert.equal(describeChanges([removed('Write a reply'), removed('List action items')]), 'Removed Write a reply and List action items');
+  assert.equal(describeChanges([removed('A'), removed('B'), removed('C')]), 'Removed A, B and 1 more');
+  assert.equal(describeChanges([removed('A'), removed('B'), removed('C'), removed('D'), removed('E')]), 'Removed A, B and 3 more');
+  assert.equal(describeChanges([removed('A'), added('B', 'Inbox sorter'), removed('C')]), 'Removed A, added B and 1 more');
+  // A name so long that two names do not fit in twelve words leaves one name and a count, and never passes the limit.
+  const long = 'One two three four five';
+  const text = describeChanges([removed(long), removed(long), removed(long)])!;
+  assert.ok(countWords(text) <= 12, text); assert.equal(text, `Removed ${long} and 2 more`);
+  for (const n of [1, 2, 3, 4, 9, 40]) {
+    const line = describeChanges(Array.from({ length: n }, (_, i) => removed(`Thing number ${i + 1}`)));
+    if (line === null) continue;
+    assert.ok(countWords(line) <= 12, line); assert.deepEqual(assertTextBudget(`<p>${line}</p>`), [], line); assert.equal(bannedIn(line), null, line);
+  }
+});
+
+test('a save of three changes is named for them, so the history does not list "3 changes"', () => {
+  const s = start(), nameOf = plainNameOf(s.draft);
+  const meeting = agentByPlain(s.draft, 'Meeting assistant'), research = agentByPlain(s.draft, 'Research assistant'), inbox = agentByPlain(s.draft, 'Inbox sorter');
+  let next = act(s, removeAction(meeting.id, 'skill', 'skill-042'), removeAction(research.id, 'skill', 'skill-024'), removeAction(inbox.id, 'skill', 'skill-006'));
+  const label = describeChanges(libraryChangeList(next.committed, next.draft))!;
+  assert.match(label, /^Removed .+, .+ and 1 more$/);
+  next = act(next, saveAction(label, 'Today, 8:42 AM'));
+  const row = savePointRows(next.committed, nameOf)[0]!;
+  assert.equal(row.name, label);
+  assert.equal(row.madeAt, 'Today, 8:42 AM');
 });

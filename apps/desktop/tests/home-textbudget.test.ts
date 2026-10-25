@@ -113,3 +113,11 @@ test('BANNED lists the required words, and BANNED_PATTERN is built from it', () 
   assert.equal(Object.isFrozen(BANNED), true);
   assert.ok(BANNED_PATTERN.test('A Harness'));
 });
+
+test('the title of a clipped job line, marked as a tooltip, may run to twelve words; any other title keeps five', () => {
+  ok('<p data-budget="tooltip" title="Sits in on your meetings and writes them up for you.">Sits in on your...</p>');
+  assert.equal(problems('<p data-budget="tooltip" title="One two three four five six seven eight nine ten eleven twelve thirteen">x</p>').length, 1, 'thirteen words is too many for a tooltip');
+  assert.equal(problems('<p title="Sits in on your meetings and writes them up for you.">x</p>').length, 1, 'an ordinary title has five words');
+  assert.equal(problems('<p data-budget="tooltip" aria-label="One two three four five six">x</p>').length, 1, 'only the title is a tooltip, an aria-label keeps five');
+  assert.equal(problems('<p data-budget="tooltip" title="Apply this to every agent">x</p>').length, 1, 'a tooltip still has no banned word');
+});

@@ -14,6 +14,8 @@ export interface TourStep {
   readonly id: string; readonly target: string; readonly text: string; readonly wait?: boolean; readonly hint?: string; readonly area?: string;
   /** A CSS selector for things the card must not cover either (step three keeps off the agent that is picked, which is what its text describes). */
   readonly avoid?: string;
+  /** What the step says when the tour had to pick an agent for the person (they pressed Next without clicking one): it says so, never silently. */
+  readonly pickedText?: string;
 }
 
 export type TourStatus = 'idle' | 'running' | 'skipped' | 'finished';
@@ -62,8 +64,11 @@ export function hintOf(t: TourState): string | null { return t.status === 'runni
 /** The step on show, or null when the tour is not running. */
 export function currentStep(t: TourState): TourStep | null { return t.status === 'running' ? (t.steps[t.index] ?? null) : null; }
 
-/** "2 of 6". */
-export const progressText = (t: TourState): string => `${t.steps.length === 0 ? 0 : t.index + 1} of ${t.steps.length}`;
+/** "Step 2 of 6": where the person is in the tour, always in words, so a long tour never feels endless. */
+export const progressText = (t: TourState): string => `Step ${t.steps.length === 0 ? 0 : t.index + 1} of ${t.steps.length}`;
+
+/** The sentence a step says: its own, or (when the tour picked an agent because the person did not) the one that says so. */
+export const sentenceOf = (step: TourStep, picked: boolean): string => (picked && step.pickedText !== undefined ? step.pickedText : step.text);
 
 /** The things a person can do to a tour. */
 export type TourAction = 'start' | 'next' | 'back' | 'skip' | 'replay' | 'acted';
@@ -128,16 +133,31 @@ export function placePopover(target: Box | null, pop: Size, viewport: Size, gap 
     { x: target.x - gap - pop.w, y: down, side: 'left' },
   ];
   // Beside the target but higher or lower: level with its top or its bottom, or just above or below each box that is to be left uncovered.
-  if (avoid.length > 0) {
-    const heights = [target.y, target.y + target.h - pop.h, ...avoid.flatMap(a => [a.y + a.h + gap, a.y - gap - pop.h])].map(y => clamp(y, margin, maxY));
-    for (const side of ['left', 'right'] as const) for (const y of heights) candidates.push({ x: side === 'left' ? target.x - gap - pop.w : target.x + target.w + gap, y, side });
-  }
+  const heights = avoid.length === 0 ? [] : [target.y, target.y + target.h - pop.h, down, ...avoid.flatMap(a => [a.y + a.h + gap, a.y - gap - pop.h])].map(y => clamp(y, margin, maxY));
+  for (const side of ['left', 'right'] as const) for (const y of heights) candidates.push({ x: side === 'left' ? target.x - gap - pop.w : target.x + target.w + gap, y, side });
   const fits = (p: Placement): boolean => {
     const box = { x: p.x, y: p.y, w: pop.w, h: pop.h };
     return p.x >= margin && p.y >= margin && p.x <= maxX && p.y <= maxY && !intersects(box, target) && !avoid.some(a => intersects(box, a));
   };
   const free = candidates.find(fits);
   if (free !== undefined) return { ...free, x: Math.round(free.x), y: Math.round(free.y) };
+  // Beside the target, but narrower: the widest popover that still clears every box to avoid (the picked agent sits between the target and the edge of the screen).
+  if (minW !== undefined && avoid.length > 0) {
+    for (const side of ['left', 'right'] as const) for (const y of heights) {
+      const edge = side === 'left' ? target.x - gap : target.x + target.w + gap;
+      let low = margin, high = viewport.w - margin;
+      for (const a of avoid) {
+        if (!(a.y < y + pop.h && y < a.y + a.h)) continue;
+        if (a.x + a.w <= edge && side === 'left') low = Math.max(low, a.x + a.w + gap);
+        if (a.x >= edge && side === 'right') high = Math.min(high, a.x - gap);
+      }
+      const width = Math.floor(side === 'left' ? edge - low : high - edge);
+      if (width >= minW && width < pop.w) {
+        const x = side === 'left' ? edge - width : edge;
+        return { x: Math.round(x), y: Math.round(y), w: width, side };
+      }
+    }
+  }
   // A very large target (the map beside a side panel on a small window) leaves a strip that is too narrow for the full popover: use the strip.
   if (minW !== undefined) {
     const right = viewport.w - margin - (target.x + target.w + gap), left = target.x - gap - margin;

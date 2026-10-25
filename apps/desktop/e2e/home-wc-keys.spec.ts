@@ -40,7 +40,8 @@ test('Tab enters the grid once, on the picked tile; the other tiles and their co
   expect(await tiles().locator('.kit-card-main').evaluateAll(list => list.map(el => el.getAttribute('tabindex')))).toEqual(names.map((_, i) => (i === 0 ? '0' : '-1')));
   expect(await tiles().locator('.kit-count').evaluateAll(list => list.map(el => el.getAttribute('tabindex') ?? '0'))).toEqual(
     await tiles().evaluateAll(list => list.flatMap((tile, i) => [...tile.querySelectorAll('.kit-count')].map(() => (i === 0 ? '0' : '-1')))));
-  await page().getByRole('button', { name: 'Find more' }).focus();
+  // The last control before the grid is "Hide details" (it follows "Find more").
+  await page().locator('[data-details-toggle]').focus();
   await p.keyboard.press('Tab');
   await expect(picked).toBeFocused();
   // Through the counts of that tile, then out of the grid in one more press: no other tile is visited.
@@ -155,5 +156,6 @@ test('from page load to the first Remove in the details panel takes at most 12 T
   for (; plain < 40; ) { await p.keyboard.press('Tab'); plain += 1; stops.push(await focusedName()); if (await remove.evaluate(el => el === document.activeElement)) break; }
   await expect(remove).toBeFocused();
   console.log('MEASURED Tab presses to the first Remove: with the skip link', presses, '; without it', plain, '(', stops.join(' > '), ')');
-  expect(plain, stops.join(' > ')).toBeLessThanOrEqual(16);
+  // Wave E: one stop more than before (16), for "Hide details" in the tools above the grid.
+  expect(plain, stops.join(' > ')).toBeLessThanOrEqual(17);
 });

@@ -197,7 +197,7 @@ test('the tour still works: step 3 shows the shelves with content, the seven ste
   await expect(panel().locator('.kit-card')).toHaveCount(0);
   // Step two waits for the person: the Enter that moves on is a press on the first agent (the focus is on it), and the panel shows that agent.
   await p.keyboard.press('Enter');
-  await expect(dialog.getByText('Skills are what it knows how to do.')).toBeVisible();
+  await expect(dialog.getByText('Skills show what the agent you picked can do.')).toBeVisible();
   await expect(panel().locator('.kit-card').first()).toBeVisible();
   expect(await panel().locator('.kit-card').count()).toBeGreaterThanOrEqual(3);
   await expect(panel().getByRole('heading', { level: 2, name: 'Inbox sorter' })).toBeVisible();

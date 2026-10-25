@@ -60,6 +60,7 @@ export const LIBRARY_WORDS = deepFreeze({
     addToAgent: 'Add to an agent',
     pickAgent: 'Add to which agent?',
     hasIt: 'Has it',
+    selected: 'Selected',
     removeFromLibrary: 'Remove from library',
     makeCopy: 'Make my own copy',
     update: 'Update',

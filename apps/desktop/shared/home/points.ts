@@ -7,6 +7,9 @@ import type { Version, World } from '../proto/types.js';
 import { diffVersions } from '../proto/versions-diff.js';
 import type { DiffChange } from '../proto/versions-diff.js';
 import type { NameOf } from './add-model.js';
+import { BAR_NAMES, barSentence, changeSentence } from './changes.js';
+import type { Change } from './changes.js';
+import { countWords } from './textbudget.js';
 
 /** The words these rows are built from. `renderer/home/words.ts` has the table that the text-budget test reads. */
 export const POINT_WORDS = Object.freeze({
@@ -59,4 +62,25 @@ export function savePointRows(world: World, nameOf: NameOf): SavePointRow[] {
     current: v.counter === head,
     madeAt: v.madeAt ?? '',
   }));
+}
+
+/** The most words a description of changes may have (the hint limit of the text budget). */
+const DESCRIPTION_LIMIT = 12;
+
+/**
+ * The changes that wait, as one line of at most 12 words that names what they are: "Removed Write a reply and List action items" for two, "Removed A, B and 2 more" for
+ * a run of one kind, "Removed A, added B and 2 more" for a mix. A line that would run past 12 words names fewer things, and the last resort is null (the caller says how many).
+ * It is the name a save point is given when more than two things changed, and the words under "Changes you have not saved will go away", so neither says only "3 changes".
+ */
+export function describeChanges(list: readonly Change[]): string | null {
+  const [a, b] = list;
+  if (a === undefined) return null;
+  if (list.length <= BAR_NAMES) return barSentence(list, list.length);
+  const head = (c: Change): string => changeSentence({ verb: c.verb, what: c.what });
+  const rest = list.length - 2;
+  const options = [
+    `${head(a)}${b !== undefined && a.verb === b.verb ? `, ${b!.what}` : `, ${lower(head(b!))}`} and ${rest} more`,
+    `${head(a)} and ${list.length - 1} more`,
+  ];
+  return options.find(text => countWords(text) <= DESCRIPTION_LIMIT) ?? null;
 }

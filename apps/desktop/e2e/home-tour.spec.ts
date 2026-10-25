@@ -14,7 +14,7 @@ import type { Home, Rect } from './home-page.js';
 const STEPS = [
   { target: 'map', text: 'These are your AI agents, from every tool.' },
   { target: 'agent', text: 'Click an agent to see what it can do.' },
-  { target: 'details', text: 'Skills are what it knows how to do.' },
+  { target: 'details', text: 'Skills show what the agent you picked can do.' },
   { target: 'add', text: 'Add skills, tools, and notes here.' },
   { target: 'save', text: 'This bar shows your changes. Press Save to keep them.' },
   { target: 'share', text: 'Share your agents or go back in time here.' },

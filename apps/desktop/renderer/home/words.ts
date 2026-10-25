@@ -25,6 +25,8 @@ export const WORDS = deepFreeze({
     add: 'Add',
     help: 'Help',
     skipToDetails: 'Skip to details',
+    hideDetails: 'Hide details',
+    showDetails: 'Show details',
     reaches: 'Reaches',
     madeBy: 'Made by',
     release: 'Release',

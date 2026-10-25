@@ -6,7 +6,7 @@ import type { StoreState } from '../shared/proto/store.js';
 import { generateWorld } from '../shared/proto/sample.js';
 import { countWords } from '../shared/home/textbudget.js';
 import {
-  ADD_TABS, agentChoices, agentHas, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall, tabOfKey,
+  ADD_TABS, agentChoices, agentHas, clampWords, entriesFor, installAction, newAgentId, nextTab, plainName, selectedFirst, stageAdd, stageInstall, tabOfKey,
 } from '../shared/home/add-model.js';
 import type { AddEntry } from '../shared/home/add-model.js';
 import { changeCount as barCount } from '../shared/home/savebar.js';
@@ -204,4 +204,22 @@ test('Add does not offer an agent that was skipped in Find', () => {
   assert.equal(shown.length, 8);
   assert.equal(shown.some(c => hidden.includes(c.id)), false);
   assert.deepEqual(agentChoices(world, entry, undefined, []).map(c => c.id), all.map(c => c.id));
+});
+
+test('the picker lists the agent that is picked first and marks it; the others keep their order; an unknown id changes nothing', () => {
+  const world = generateWorld(1);
+  const entry = entriesFor(world, 'skills')[0]!;
+  const all = agentChoices(world, entry);
+  const last = all[all.length - 1]!;
+  const first = selectedFirst(all, last.id);
+  assert.equal(first.length, all.length);
+  assert.equal(first[0]!.id, last.id);
+  assert.equal(first[0]!.selected, true);
+  assert.deepEqual(first.slice(1).map(c => c.id), all.slice(0, -1).map(c => c.id), 'the rest keep their order');
+  assert.equal(first.filter(c => c.selected === true).length, 1);
+  assert.deepEqual(selectedFirst(all, 'agent-nobody'), all);
+  assert.deepEqual(selectedFirst(all, null), all);
+  assert.deepEqual(selectedFirst(all, undefined), all);
+  assert.equal(all.every(c => c.selected === undefined), true, 'the input is not changed');
+  assert.deepEqual(selectedFirst([], 'agent-01'), []);
 });

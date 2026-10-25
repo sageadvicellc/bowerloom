@@ -137,7 +137,7 @@ export function FindScreen({ world, committed, onLeave, onDone, skipped = [] }: 
         <h1 className="fr-title" tabIndex={-1} ref={heading}>{title}</h1>
         {state.step === 'places' && multi > 0 && places.length > 0 ? <p className="fr-multi" data-multi="">{multiAppLine(multi)}</p> : null}
         <p className="hm-sr" role="status">{state.step === 'places' && multi > 0 && places.length > 0 ? `${title}. ${multiAppLine(multi)}` : title}</p>
-        <p className="kit-hint fr-apps">{FIND_WORDS.hint.appsNote}</p>
+        {state.step === 'places' && places.length > 0 ? <p className="kit-hint fr-apps" data-apps-note="">{FIND_WORDS.hint.appsNote}</p> : null}
         <Tiles tiles={tiles} lit={state.lit} />
         {state.step === 'places' ? (
           places.length === 0 ? (

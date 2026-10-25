@@ -20,7 +20,7 @@ if (SHOTS !== null) mkdirSync(SHOTS, { recursive: true });
 const STEPS = [
   { target: 'map', text: 'These are your AI agents, from every tool.' },
   { target: 'agent', text: 'Click an agent to see what it can do.' },
-  { target: 'details', text: 'Skills are what it knows how to do.' },
+  { target: 'details', text: 'Skills show what the agent you picked can do.' },
   { target: 'add', text: 'Add skills, tools, and notes here.' },
   { target: 'save', text: 'This bar shows your changes. Press Save to keep them.' },
   { target: 'share', text: 'Share your agents or go back in time here.' },
@@ -55,7 +55,14 @@ async function visibleTarget(id: string): Promise<Rect> {
     return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
   }, id);
 }
-const stepText = async (i: number): Promise<void> => { await expect(dialog().getByText(STEPS[i]!.text, { exact: true })).toBeVisible(); await expect(dialog().getByText(`${i + 1} of 7`)).toBeVisible(); await animationsDone(page()); };
+/** The third step says one thing when the person clicked an agent and another when the tour had to pick one (Next was pressed on the step that waits for a click). */
+const PICKED = 'We picked an agent. Skills show what it can do.';
+const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const stepText = async (i: number): Promise<void> => {
+  await expect(dialog().getByText(i === 2 ? new RegExp(`^(${escape(STEPS[2].text)}|${escape(PICKED)})$`) : STEPS[i]!.text, { exact: true })).toBeVisible();
+  await expect(dialog().getByText(`Step ${i + 1} of 7`)).toBeVisible();
+  await animationsDone(page());
+};
 const next = (): ReturnType<Page['getByRole']> => dialog().getByRole('button', { name: /^(Next|Done)$/ });
 async function nextPlace(): Promise<{ right: number; bottom: number; w: number; h: number; label: string }> {
   const [n, pop] = [(await next().boundingBox())!, await rectOf(page(), '.tour-pop')];
@@ -131,6 +138,8 @@ test('a person who presses Next on the click step is not stuck: step three opens
   await next().click();
   await stepText(2);
   await expect(page().locator('aside.hm-panel').getByRole('heading', { level: 2 })).not.toHaveText('Pick an agent');
+  // ... and the card says that the tour picked it.
+  await expect(dialog().getByText(PICKED, { exact: true })).toBeVisible();
 });
 
 for (const [w, h] of SIZES) {

@@ -62,7 +62,7 @@ test('a card has a hint of at most 12 words and an "Add to" button named after i
 });
 
 test('the Skills tab shows the "2 different copies" state as a text button only when the page can open the dialog', () => {
-  assert.match(drawer('skills', { onOpenCopies: none }), /<button[^>]*class="kit-status"[^>]*>[\s\S]*?2 different copies<\/span><\/button>/);
+  assert.match(drawer('skills', { onOpenCopies: none }), /<button[^>]*class="kit-status"[^>]*>[\s\S]*?2 different copies<\/span>(?:<span class="kit-status-short" aria-hidden="true" data-short="\d+ copies"><\/span>)?<\/button>/);
   assert.doesNotMatch(drawer('skills'), /<button[^>]*class="kit-status"/);
   assert.match(drawer('skills'), /2 different copies/);
 });

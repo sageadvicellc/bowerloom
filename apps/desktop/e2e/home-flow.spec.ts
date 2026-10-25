@@ -141,7 +141,8 @@ test('the storyboard path: remove, save, ticks, go back; add by the picker and b
   await expect(addDrawer()).toHaveCount(0);
   await animationsDone(p);
   const names = await pointsDrawer().locator('.pt-name').allTextContents();
-  expect(names).toEqual(['3 changes', 'Went back to How it started', 'Removed Write a reply', 'How it started']);
+  // A save of three changes is named for them (it was "3 changes"), and a point never carries only a count.
+  expect(names).toEqual(['Kept one copy of Sort mail by topic and 2 more', 'Went back to How it started', 'Removed Write a reply', 'How it started']);
   expect(await pointsDrawer().locator('.pt-when').allTextContents()).toEqual(['just now', '1 save ago', '2 saves ago', 'when you began']);
   await expect(pointsDrawer().locator('.pt-row').first()).toContainText('You are here.');
   await expect(pointsDrawer().getByRole('button', { name: 'Go back to this' })).toHaveCount(3);
@@ -170,7 +171,8 @@ test('the Save bar names one or two changes in plain words and says "N changes" 
   await saveButton().click();
   await topBar('Version history').click();
   expect(await pointsDrawer().locator('.pt-name').allTextContents()).toEqual(['Removed Write a reply', 'How it started']);
-  await expect(pointsDrawer().locator('.pt-changes').first()).toHaveText('Changed Meeting assistant');
+  // The name of a point says what changed, so no line under it says it again; the point that started the history says what it is.
+  await expect(pointsDrawer().locator('.pt-changes')).toHaveCount(1);
   await expect(pointsDrawer().locator('.pt-changes').last()).toHaveText('Your agents as Bowerloom found them.');
   // Changes that wait say so in the drawer: going back drops them.
   await page().keyboard.press('Escape');

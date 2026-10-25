@@ -10,6 +10,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { agentSplit, agentSplitLine, libraryCounts, libraryDetails, listLibrary, notUsedCount, removePlan, agentsFor } from '../../../shared/home/library-model.js';
+import { selectedFirst } from '../../../shared/home/add-model.js';
 import type { LibraryKind, LibrarySort, UpdateInfo } from '../../../shared/home/library-model.js';
 import type { AgentRef } from '../../../shared/home/details.js';
 import { addToAgentAction, makeOwnCopyAction, removeFromLibraryAction, useUpdateAction } from '../../../shared/home/library-actions.js';
@@ -44,6 +45,8 @@ export interface LibraryPageProps {
    * body of its own, and its stage takes `mainId` as its id so the page has one main place at a time.
    */
   shell?: { readonly mainId: string | undefined };
+  /** The id of the agent that is picked on the map: the picker of "Add to an agent" lists it first and marks it "Selected". */
+  selectedAgent?: string | null;
 }
 
 const KIND_OF_ITEM: Readonly<Record<'skill' | 'agent' | 'tool', LibraryKind>> = Object.freeze({ skill: 'skill', agent: 'agent', tool: 'tool' });
@@ -55,7 +58,7 @@ interface UpdateSnapshot { readonly id: string; readonly name: string; readonly 
 /** Where the focus goes after something changed and the control that had it is gone. */
 type FocusAfter = { readonly row: number } | 'heading' | 'title';
 
-export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): ReactElement {
+export function LibraryPage({ onOpenAgent, shell, selectedAgent = null }: LibraryPageProps = {}): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [kind, setKind] = useState<LibraryKind>('skill');
@@ -83,7 +86,7 @@ export function LibraryPage({ onOpenAgent, shell }: LibraryPageProps = {}): Reac
   const unused = useMemo(() => (usable ? notUsedCount(world, kind) : 0), [world, kind, usable]);
   const split = useMemo(() => (kind === 'agent' ? agentSplit(world) : null), [world, kind]);
   const details = useMemo(() => (selectedId === null ? null : libraryDetails(world, kind, selectedId)), [world, kind, selectedId]);
-  const choices = useMemo(() => (selectedId === null ? [] : agentsFor(world, kind, selectedId)), [world, kind, selectedId]);
+  const choices = useMemo(() => (selectedId === null ? [] : selectedFirst(agentsFor(world, kind, selectedId), selectedAgent)), [world, kind, selectedId, selectedAgent]);
   const nameOf = useMemo(() => plainNameOf(world), [world]);
   const searching = query.trim() !== '' || filtering;
 

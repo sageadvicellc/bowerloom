@@ -1,10 +1,14 @@
 // The card kit and the shell, rendered to markup: structure, the one-card rule, headings in order, and the text budget on all of it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DESKTOP } from './support.js';
 import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Badge, badgeIcon } from '../renderer/home/kit/Badge.js';
+import { Badge, badgeIcon, shortLabel } from '../renderer/home/kit/Badge.js';
+import { ADD_WORDS } from '../renderer/home/add/add-words.js';
 import { Button } from '../renderer/home/kit/Button.js';
 import { DragFollower } from '../renderer/home/kit/DragFollower.js';
 import { Glyph } from '../renderer/home/kit/Glyph.js';
@@ -65,7 +69,7 @@ test('a selected card says so with aria-pressed and a highlight, and has no chec
   const m = html(createElement(ItemCard, { kind: 'skill', name: 'Weekly Review', badge: { label: '2 different copies', tone: 'warn' }, selected: true, onSelect: none }));
   assert.match(m, /aria-pressed="true"/); assert.match(m, /data-selected=""/);
   assert.doesNotMatch(m, /kit-card-check/); assert.doesNotMatch(m, /M5 12\.5l4\.5 4\.5L19 7\.5/, 'the check path is not drawn anywhere in the card');
-  assert.match(m, /<span class="kit-status"[^>]*data-tone="warn"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>2 different copies<\/span><\/span>/);
+  assert.match(m, /<span class="kit-status"[^>]*data-tone="warn"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>2 different copies<\/span>(?:<span class="kit-status-short" aria-hidden="true" data-short="\d+ copies"><\/span>)?<\/span>/);
   assert.doesNotMatch(m, /kit-badge|kit-pill/, 'no pill');
   within(m);
 });
@@ -221,19 +225,27 @@ test('the kit gallery shows both looks, every card state and every part, passes 
 
 test('the tour popover: one sentence, the step, Back and Next, Skip tour; the last step says Done; the first has no Back', () => {
   const first = html(createElement(TourOverlay, { state: startTour(createTour(TOUR_STEPS)), onNext: none, onBack: none, onSkip: none }));
-  assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />1 of 7</);
+  assert.match(first, /role="dialog" aria-label="Tour"/); assert.match(first, /These are your AI agents, from every tool\./); assert.match(first, />Step 1 of 7</);
   assert.match(first, />Next</); assert.match(first, />Skip tour</); assert.doesNotMatch(first, />Back</); assert.equal([...first.matchAll(/class="tour-dot"/g)].length, 7);
   assert.match(first, /data-state="now"/);
   within(first);
   let t = startTour(createTour(TOUR_STEPS));
   for (let i = 0; i < 6; i += 1) t = stepNext(t);
   const last = html(createElement(TourOverlay, { state: t, onNext: none, onBack: none, onSkip: none }));
-  assert.match(last, />Done</); assert.doesNotMatch(last, />Next</); assert.match(last, />Back</); assert.match(last, />7 of 7</); assert.match(last, /data-variant="text"[^>]*>Back</); assert.match(last, /Replay this tour any time\./);
+  assert.match(last, />Done</); assert.doesNotMatch(last, />Next</); assert.match(last, />Back</); assert.match(last, />Step 7 of 7</); assert.match(last, /data-variant="text"[^>]*>Back</); assert.match(last, /Replay this tour any time\./);
   within(last);
   const waits = html(createElement(TourOverlay, { state: stepNext(startTour(createTour(TOUR_STEPS))), onNext: none, onBack: none, onSkip: none }));
   assert.match(waits, /Click an agent, or select one and press Enter\./); assert.match(waits, />Next</, 'the step that waits keeps its Next button'); assert.match(waits, /data-variant="primary"[^>]*>Next</);
   assert.ok(waits.indexOf('>Back<') < waits.indexOf('>Next<'), 'Back is a quiet text button before Next, and Next stays last');
   assert.equal(html(createElement(TourOverlay, { state: createTour(TOUR_STEPS), onNext: none, onBack: none, onSkip: none })), '', 'an idle tour draws nothing');
+  // The third step names the agent as the one the person picked; when the tour had to pick one it says so.
+  let three = startTour(createTour(TOUR_STEPS));
+  three = stepNext(stepNext(three));
+  const chosen = html(createElement(TourOverlay, { state: three, onNext: none, onBack: none, onSkip: none }));
+  assert.match(chosen, /Skills show what the agent you picked can do\./); assert.match(chosen, />Step 3 of 7</); within(chosen);
+  const given = html(createElement(TourOverlay, { state: three, picked: true, onNext: none, onBack: none, onSkip: none }));
+  assert.match(given, /We picked an agent\. Skills show what it can do\./); assert.doesNotMatch(given, /the agent you picked/); within(given);
+  assert.match(html(createElement(TourOverlay, { state: stepNext(startTour(createTour(TOUR_STEPS))), picked: true, onNext: none, onBack: none, onSkip: none })), /Click an agent to see what it can do\./, 'only the details step has a second sentence');
 });
 
 test('the tour announcer says the step and the sentence in a polite live region, and nothing when the tour is not running', () => {
@@ -247,4 +259,18 @@ test('the drag follower draws the dragged name, hidden from a screen reader, and
   assert.equal(html(createElement(DragFollower, { drag: null, followRef: none })), '');
   const m = html(createElement(DragFollower, { drag: { id: 's1', label: 'Weekly Review', over: null }, followRef: none }));
   assert.match(m, /^<div class="kit-follow" data-follow="" aria-hidden="true">Weekly Review<\/div>$/); within(m);
+});
+
+test('the state of copies has a short form for a card too narrow for its words; the full words stay, and the dialog it opens still says "Two different copies"', () => {
+  assert.equal(shortLabel('2 different copies'), '2 copies');
+  assert.equal(shortLabel('12 different copies'), '12 copies');
+  for (const other of ['needs a key', 'Runs code', 'new', 'Not used yet', 'Update available']) assert.equal(shortLabel(other), null, other);
+  const m = html(createElement(Badge, { badge: { label: '2 different copies', tone: 'warn' }, onPress: none }));
+  assert.match(m, /<span>2 different copies<\/span><span class="kit-status-short" aria-hidden="true" data-short="2 copies"><\/span>/, 'the words are in the page, the short form is hidden from a screen reader');
+  assert.equal(extractText(m).map(p => p.text).join(' '), '2 different copies', 'the text of the state is the full words wherever it is read');
+  assert.doesNotMatch(html(createElement(Badge, { badge: { label: 'Runs code', tone: 'warn' } })), /kit-status-short/);
+  assert.equal(ADD_WORDS.label.differentCopies, 'Two different copies');
+  const css = readFileSync(join(DESKTOP, 'renderer', 'home', 'kit', 'kit.css'), 'utf8');
+  assert.match(css, /@container \(max-width: 15\.5rem\)/, 'a card is a container (container-type: inline-size) and the short form shows in a narrow one');
+  assert.match(css, /\.kit-card \{[^}]*container-type: inline-size;/);
 });

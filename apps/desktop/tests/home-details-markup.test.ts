@@ -62,7 +62,7 @@ test('the full text of a skill is the plain sample text in a block marked as con
 
 test('a skill with different copies shows the state as a text button', () => {
   const m = panel({ kind: 'skill', id: 'skill-triple' });
-  assert.match(m, /<button type="button" class="kit-status"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>3 different copies<\/span><\/button>/);
+  assert.match(m, /<button type="button" class="kit-status"[^>]*><span class="kit-dot" aria-hidden="true"><\/span><span>3 different copies<\/span>(?:<span class="kit-status-short" aria-hidden="true" data-short="\d+ copies"><\/span>)?<\/button>/);
   assert.doesNotMatch(m, />Back to agent<|>Remove from/, 'with no owner there is no agent to go back to or to remove it from'); within(m);
 });
 

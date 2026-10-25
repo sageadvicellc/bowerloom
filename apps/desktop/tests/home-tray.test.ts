@@ -41,7 +41,7 @@ test('a tray shows 12 rows and a "Show more" button that says what it shows more
 test('a state keeps its words, and the state of copies is a text button only when the page can open the dialog', () => {
   const entries: ShelfEntry[] = [{ id: 'sk', kind: 'skill', name: 'Write a weekly summary', badge: { label: '3 different copies', tone: 'warn' } }, { id: 'sk2', kind: 'skill', name: 'Read my calendar', badge: { label: 'needs a key', tone: 'warn' } }];
   const m = html({ open: true, entries, onBadgePress: none });
-  assert.match(m, /<button type="button" class="kit-status" data-tone="warn" data-no-drag=""><span class="kit-dot" aria-hidden="true"><\/span><span>3 different copies<\/span><\/button>/);
+  assert.match(m, /<button type="button" class="kit-status" data-tone="warn" data-no-drag=""><span class="kit-dot" aria-hidden="true"><\/span><span>3 different copies<\/span>(?:<span class="kit-status-short" aria-hidden="true" data-short="\d+ copies"><\/span>)?<\/button>/);
   assert.match(m, /<span class="kit-status" data-tone="warn" data-no-drag=""><span class="kit-dot" aria-hidden="true"><\/span><span>needs a key<\/span><\/span>/, 'a key is not a button');
   assert.doesNotMatch(html({ open: true, entries }), /<button type="button" class="kit-status"/, 'with no handler the state is only words');
 });

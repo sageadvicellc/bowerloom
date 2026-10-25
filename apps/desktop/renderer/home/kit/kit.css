@@ -46,7 +46,16 @@
 [data-home] .kit-status[data-tone="new"] { color: var(--good-fg); }
 [data-home] .kit-status[data-tone="info"] { color: var(--text-muted); }
 /* If a row is too narrow even for its state, the words end in an ellipsis, last of all (the row never grows and the state never leaves it). */
-[data-home] .kit-status > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+[data-home] .kit-status > span:not(.kit-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A card too narrow for "2 different copies" next to its Remove says "2 copies" (a card is a container, see below). The full words stay in the page for a screen reader.
+   15.5 rem is worked out on the CONTENT of the card (a size query measures the content box): the words, the dot and Remove need about 205 px, and the tile and the gap
+   in front of them another 38 px, so 243 px; below 248 px the short form shows (the panel at 900 px has 234 px, at 1280 px 269 px). */
+[data-home] .kit-status-short { display: none; }
+[data-home] .kit-status-short::before { content: attr(data-short); }
+@container (max-width: 15.5rem) {
+  [data-home] .kit-status:has(> .kit-status-short) > span:not(.kit-dot):not(.kit-status-short) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [data-home] .kit-status > .kit-status-short { display: inline; }
+}
 [data-home] .kit-dot { flex: none; width: var(--hm-dot); height: var(--hm-dot); border-radius: 50%; background: currentColor; }
 [data-home] .kit-status[data-tone="info"] .kit-dot { background: var(--accent-strong); }
 /* A button of this kind keeps the size of its words but a hit area of 24 px, taken from its own padding and balanced by a negative margin, so a row never grows. */

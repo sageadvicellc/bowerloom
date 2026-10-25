@@ -196,7 +196,7 @@ test('step two waits for a real click on an agent: a plain hint that also names 
   const first = agentCards().first();
   const name = (await first.locator('.kit-card-main').textContent()) ?? '';
   await first.locator('.kit-card-main').click();
-  await expect(dialog().getByText('Skills are what it knows how to do.')).toBeVisible();
+  await expect(dialog().getByText('Skills show what the agent you picked can do.')).toBeVisible();
   await expect(dialog().getByText('3 of 7')).toBeVisible();
   await expect(p.locator('.hm-panel h2')).toHaveText(name);
   await expect(dialog().getByRole('button', { name: 'Next' })).toBeFocused();

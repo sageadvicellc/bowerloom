@@ -26,6 +26,7 @@ export const ADD_WORDS = deepFreeze({
     addAgent: 'Add agent',
     pickAgent: 'Add to which agent?',
     alreadyAdded: 'Has it',
+    selected: 'Selected',
     onAll: 'On all agents',
     show: 'Show',
     showWhat: 'Show what was added',

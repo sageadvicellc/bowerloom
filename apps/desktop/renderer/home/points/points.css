@@ -15,3 +15,7 @@
 
 /* The time a point was made, in words, under its name; the words of how long ago are the quiet line under it. */
 [data-home] .pt-clock { margin: 0; font-size: var(--hm-text-base); font-weight: 600; color: var(--text); }
+
+/* Which changes wait: the warning is the first line, and the names of the changes are the second, in the same words as the Save bar. */
+[data-home] .pt-dirty { display: flex; flex-direction: column; gap: var(--hm-space-1); }
+[data-home] .pt-which { margin: 0; padding-left: calc(var(--hm-dot) + var(--hm-space-2)); font-size: var(--hm-text-base); font-weight: 400; color: var(--text); overflow-wrap: anywhere; }

@@ -311,7 +311,7 @@ test('the person can still put the pick down, and it stays down', async () => {
   await expect(heading()).toHaveText((await agentButtons().nth(1).textContent())!.trim());
 });
 
-test('during the tour\'s click step nothing is picked, so the click means something; skipping the tour then picks the first agent', async () => {
+test('during the tour\'s click step nothing is picked, so the click means something; skipping the tour does not pick an agent in silence', async () => {
   const p = page();
   await fresh(p, undefined, { tour: true });
   const tour = p.getByRole('dialog', { name: 'Tour' });
@@ -324,8 +324,9 @@ test('during the tour\'s click step nothing is picked, so the click means someth
   expect(await agentButtons().evaluateAll(list => list.filter(b => b.getAttribute('aria-pressed') === 'true').length)).toBe(0);
   await p.keyboard.press('Escape');
   await expect(tour).toHaveCount(0);
-  await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(heading()).toHaveText((await agentButtons().first().textContent())!.trim());
+  // Wave E: a tour that ends picks nothing for a person who picked nothing. The panel waits, and says so.
+  expect(await agentButtons().evaluateAll(list => list.filter(b => b.getAttribute('aria-pressed') === 'true').length)).toBe(0);
+  await expect(heading()).toHaveText('Pick an agent');
 });
 
 test('the click step is a real click: clicking an agent picks that agent and the tour goes on; after the tour the pick stays', async () => {
@@ -337,7 +338,7 @@ test('the click step is a real click: clicking an agent picks that agent and the
   const second = agentButtons().nth(1);
   await second.click();
   await expect(second).toHaveAttribute('aria-pressed', 'true');
-  await expect(tour.getByText('Skills are what it knows how to do.')).toBeVisible();
+  await expect(tour.getByText('Skills show what the agent you picked can do.')).toBeVisible();
   for (let i = 0; i < 4; i += 1) await tour.getByRole('button', { name: 'Next' }).click();
   await tour.getByRole('button', { name: 'Done' }).click();
   await expect(tour).toHaveCount(0);
@@ -356,7 +357,7 @@ test('replaying the tour from Help puts the pick down first, so the click step h
   await tour.getByRole('button', { name: 'Next' }).click();
   await agentButtons().first().click();
   await expect(agentButtons().first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(tour.getByText('Skills are what it knows how to do.')).toBeVisible();
+  await expect(tour.getByText('Skills show what the agent you picked can do.')).toBeVisible();
 });
 
 // ---- 6. A set of notes is named by what it holds.
@@ -629,6 +630,8 @@ test('the closing note fades in, stays six seconds and fades out; the first Save
       if (times.leaving !== undefined && !t.hasAttribute('data-leaving') && times.gone === undefined) times.gone = now;
     }).observe(document.body, { subtree: true, attributes: true, childList: true });
   });
+  // The tour was skipped without a pick, so the person picks an agent first (the tour does not pick one for them).
+  await p.locator('.hm-grid .kit-card[data-kind="agent"] .kit-card-main').first().click();
   await panel().locator('.kit-remove').first().click();
   await p.getByRole('region', { name: 'Save bar' }).getByRole('button', { name: 'Save', exact: true }).click();
   const toast = p.locator('.hm-toast');

@@ -1,7 +1,7 @@
 // The guided tour engine: the pure state machine, the once-per-session switch, the seven steps, and where the popover sits.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTour, createTourSession, currentStep, intersects, isFirst, isLast, placePopover, progressText, tourReduce, replayTour, skipTour, startTour, stepBack, stepNext, spotlightBox } from '../renderer/home/tour/tour.js';
+import { createTour, createTourSession, currentStep, intersects, isFirst, isLast, placePopover, progressText, sentenceOf, tourReduce, replayTour, skipTour, startTour, stepBack, stepNext, spotlightBox } from '../renderer/home/tour/tour.js';
 import type { Box, TourState, TourStep } from '../renderer/home/tour/tour.js';
 import { TOUR_STEPS, TOUR_TARGETS } from '../renderer/home/tour/steps.js';
 import { assertTextBudget, countWords } from '../shared/home/textbudget.js';
@@ -13,13 +13,13 @@ test('a new tour is idle on its first step and has no current step', () => {
   const t = createTour(steps);
   assert.deepEqual({ index: t.index, status: t.status }, { index: 0, status: 'idle' });
   assert.equal(currentStep(t), null);
-  assert.equal(progressText(t), '1 of 3');
+  assert.equal(progressText(t), 'Step 1 of 3');
 });
 
 test('start runs the tour from step one; next and back walk it', () => {
   let t = running();
   assert.equal(t.status, 'running'); assert.equal(currentStep(t)?.id, 'a'); assert.equal(isFirst(t), true); assert.equal(isLast(t), false);
-  t = stepNext(t); assert.equal(currentStep(t)?.id, 'b'); assert.equal(progressText(t), '2 of 3'); assert.equal(isFirst(t), false);
+  t = stepNext(t); assert.equal(currentStep(t)?.id, 'b'); assert.equal(progressText(t), 'Step 2 of 3'); assert.equal(isFirst(t), false);
   t = stepNext(t); assert.equal(currentStep(t)?.id, 'c'); assert.equal(isLast(t), true);
   t = stepBack(t); assert.equal(currentStep(t)?.id, 'b');
   t = stepBack(t); assert.equal(currentStep(t)?.id, 'a');
@@ -59,7 +59,7 @@ test('the machine never changes its input', () => {
 
 test('a tour with no steps finishes at once and never crashes', () => {
   const t = startTour(createTour([]));
-  assert.equal(currentStep(t), null); assert.equal(stepNext(t).status, 'finished'); assert.equal(progressText(t), '0 of 0');
+  assert.equal(currentStep(t), null); assert.equal(stepNext(t).status, 'finished'); assert.equal(progressText(t), 'Step 0 of 0');
 });
 
 test('the session runs the tour on its own once, and only once', () => {
@@ -73,7 +73,7 @@ test('the seven steps are the storyboard steps and "Share and history", in order
   assert.deepEqual(TOUR_STEPS.map(s => s.id), ['map', 'agent', 'details', 'add', 'save', 'share', 'help'], 'the ids of the six old steps are kept');
   assert.deepEqual([...TOUR_TARGETS], ['map', 'agent', 'details', 'add', 'save', 'share', 'help']);
   assert.deepEqual(TOUR_STEPS.map(s => s.text), [
-    'These are your AI agents, from every tool.', 'Click an agent to see what it can do.', 'Skills are what it knows how to do.',
+    'These are your AI agents, from every tool.', 'Click an agent to see what it can do.', 'Skills show what the agent you picked can do.',
     'Add skills, tools, and notes here.', 'This bar shows your changes. Press Save to keep them.', 'Share your agents or go back in time here.', 'Replay this tour any time.',
   ]);
   for (const s of TOUR_STEPS) { assert.ok(countWords(s.text) <= 12, s.text); assert.equal((s.text.match(/[.!?]/g) ?? []).length, s.id === 'save' ? 2 : 1, s.id === 'save' ? 'Hanna set the bar step as two short sentences (2026-10-25)' : 'one sentence'); assert.deepEqual(assertTextBudget(`<p>${s.text}</p>`), []); }
@@ -248,4 +248,43 @@ test('with no free place around a target, the avoid boxes never push the card of
 test('only the third step keeps its card off an agent, and it names the picked tile', () => {
   assert.deepEqual(TOUR_STEPS.filter(s => s.avoid !== undefined).map(s => s.id), ['details']);
   assert.match(TOUR_STEPS[2]!.avoid ?? '', /data-selected/);
+});
+
+// ---- Wave E, group E: a tour that is short to read, says where you are, and never picks an agent in silence.
+test('every sentence of the tour has at most ten words, the hint of the waiting step too, and the sentence that says the tour picked an agent', () => {
+  for (const s of TOUR_STEPS) {
+    assert.ok(countWords(s.text) <= 10, `${s.id}: ${s.text}`);
+    if (s.hint !== undefined) assert.ok(countWords(s.hint) <= 10, `${s.id} hint: ${s.hint}`);
+    if (s.pickedText !== undefined) { assert.ok(countWords(s.pickedText) <= 10, `${s.id} picked: ${s.pickedText}`); assert.deepEqual(assertTextBudget(`<p>${s.pickedText}</p>`), []); }
+  }
+  const details = TOUR_STEPS.find(s => s.id === 'details')!;
+  assert.match(details.text, /agent you picked/, 'a step that needs a pick says so');
+  assert.match(details.pickedText ?? '', /^We picked an agent\./);
+  assert.equal(sentenceOf(details, false), details.text);
+  assert.equal(sentenceOf(details, true), details.pickedText);
+  const plain = TOUR_STEPS.find(s => s.id === 'map')!;
+  assert.equal(sentenceOf(plain, true), plain.text, 'a step with no second sentence says its own');
+});
+
+test('where the person is reads "Step 3 of 7", in words, on every step', () => {
+  let t = startTour(createTour(TOUR_STEPS));
+  for (let i = 1; i <= 7; i += 1) { assert.equal(progressText(t), `Step ${i} of 7`); t = stepNext(t); }
+});
+
+test('beside a large target with a box to avoid, the card narrows to fit between the box and the target instead of covering either', () => {
+  const view = { w: 900, h: 600 }, pop = { w: 336, h: 190 };
+  // The details panel at the right edge, the picked agent in the first column of the map to its left.
+  const panel = { x: 612, y: 52, w: 288, h: 500 }, picked = { x: 28, y: 52, w: 250, h: 480 };
+  // The picked agent leaves no height at which the full card clears it, so the card narrows.
+  const wide = placePopover(panel, pop, view, 12, 12, 280, [picked]);
+  assert.equal(wide.side, 'left');
+  assert.ok(wide.w !== undefined && wide.w >= 280 && wide.w < pop.w, 'narrower than the full card');
+  const box = { x: wide.x, y: wide.y, w: wide.w!, h: pop.h };
+  assert.equal(intersects(box, panel), false); assert.equal(intersects(box, picked), false);
+  assert.ok(box.x + box.w <= panel.x - 12 + 1, 'beside the panel');
+  // With room for the full card it keeps its full width, still beside the panel, above or below the picked agent.
+  const roomy = placePopover({ x: 960, y: 52, w: 320, h: 700 }, pop, { w: 1280, h: 800 }, 12, 12, 280, [{ x: 28, y: 120, w: 250, h: 92 }]);
+  assert.equal(roomy.side, 'left'); assert.equal(roomy.w, undefined);
+  assert.equal(intersects({ x: roomy.x, y: roomy.y, w: pop.w, h: pop.h }, { x: 28, y: 120, w: 250, h: 92 }), false);
+  assert.ok(roomy.x + pop.w <= 960 - 12 + 1, 'beside the panel, not over it');
 });

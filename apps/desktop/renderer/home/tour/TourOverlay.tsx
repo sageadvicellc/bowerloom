@@ -13,7 +13,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { WORDS, stepAnnouncement } from '../words.js';
 import { Button } from '../kit/Button.js';
 import { currentControl, focusFirst, mainHeading } from '../kit/focus.js';
-import { currentStep, hintOf, isFirst, isLast, isWaiting, placePopover, progressText, spotlightBox } from './tour.js';
+import { currentStep, hintOf, isFirst, isLast, isWaiting, placePopover, progressText, sentenceOf, spotlightBox } from './tour.js';
 import type { Box, TourState } from './tour.js';
 import './tour.css';
 
@@ -53,18 +53,18 @@ function onScreen(b: Box, vw: number, vh: number): Box | null {
 const MIN_WIDTH = 280;
 
 /** What a screen reader hears at each step. It stays on the page, so a change is spoken. */
-export function TourAnnouncer({ state }: { state: TourState }): ReactElement {
+export function TourAnnouncer({ state, picked = false }: { state: TourState; picked?: boolean }): ReactElement {
   const step = currentStep(state);
   return (
     <div className="hm-sr" role="status" aria-live="polite">
-      {step === null ? null : <><span>{stepAnnouncement(state.index + 1, state.steps.length)}</span> <span>{step.text}</span></>}
+      {step === null ? null : <><span>{stepAnnouncement(state.index + 1, state.steps.length)}</span> <span>{sentenceOf(step, picked)}</span></>}
     </div>
   );
 }
 
-export interface TourOverlayProps { state: TourState; onNext(): void; onBack(): void; onSkip(): void }
+export interface TourOverlayProps { state: TourState; onNext(): void; onBack(): void; onSkip(): void; /** True when the tour picked an agent for the person: the step that shows it says so. */ picked?: boolean }
 
-export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps): ReactElement | null {
+export function TourOverlay({ state, onNext, onBack, onSkip, picked = false }: TourOverlayProps): ReactElement | null {
   const step = currentStep(state);
   const layer = useRef<HTMLDivElement>(null), spot = useRef<HTMLDivElement>(null), pop = useRef<HTMLDivElement>(null), next = useRef<HTMLButtonElement>(null);
   const edges = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
@@ -194,7 +194,7 @@ export function TourOverlay({ state, onNext, onBack, onSkip }: TourOverlayProps)
       <div className="tour-dim" aria-hidden="true" />
       <div className="tour-spot" ref={spot} aria-hidden="true" />
       <div className="tour-pop" ref={pop} role="dialog" aria-label={WORDS.label.tour} onKeyDown={keep}>
-        <p className="tour-text">{step.text}</p>
+        <p className="tour-text">{sentenceOf(step, picked)}</p>
         {hint === null ? null : <p className="tour-hint">{hint}</p>}
         <div className="tour-meta">
           <span className="tour-dots" aria-hidden="true">

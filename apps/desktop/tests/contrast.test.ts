@@ -117,6 +117,25 @@ test('the window width where the panel gives way to a drawer is worked out from 
   assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1266px\)/);
 });
 
+test('the columns of the map are worked out from the tokens: four columns need 1098 px of stage, so four show from 1418 px with the panel open and from 1098 px with it put away', () => {
+  const px = (name: string): number => homeNumber(homeLightBlock, name) * 16;
+  const stageFor = (columns: number): number => 2 * px('hm-space-6') + columns * px('hm-tile-w') + (columns - 1) * px('hm-space-4');
+  assert.deepEqual([1, 2, 3, 4].map(stageFor), [306, 570, 834, 1098]);
+  const panelAt = (w: number): number => Math.min(320, Math.max(288, w * 0.25));
+  const columnsOf = (stage: number): number => Math.max(1, Math.floor((stage - 2 * px('hm-space-6') + px('hm-space-4')) / (px('hm-tile-w') + px('hm-space-4'))));
+  const widths = Array.from({ length: 2400 }, (_, w) => w);
+  const open = (n: number): number => widths.find(w => columnsOf(w - panelAt(w)) >= n)!;
+  const away = (n: number): number => widths.find(w => columnsOf(w) >= n)!;
+  assert.equal(open(4), 1418, 'with the panel open the fourth column comes at 1418 px');
+  assert.equal(away(4), 1098, 'with the panel put away it comes at 1098 px');
+  assert.equal(columnsOf(1280 - panelAt(1280)), 3, 'at 1280 with the panel open the stage holds three');
+  assert.equal(columnsOf(1280), 4, 'at 1280 with the panel put away it holds four');
+  const css = readFileSync(join(DESKTOP, 'renderer', 'home', 'home.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /grid-template-columns: repeat\(auto-fill, var\(--hm-tile-w\)\)/, 'the browser adds a column whenever the stage holds one more tile');
+  assert.match(css, /\.hm-body\[data-details="closed"\] \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(css, /\.hm-body\[data-details="closed"\] \.hm-panel \{ display: none; \}/);
+});
+
 for (const [name, vars, block] of [['light', homeLight, homeLightBlock], ['dark', homeDark, homeDarkBlock]] as const) {
   test(`${name} theme, home app: the edge of a card, bar, drawer or button is 3 to 1 against the page, a card, a quiet panel and a selected card`, () => {
     for (const against of ['bg', 'surface', 'surface-2']) assert.ok(ratio(vars['hm-border']!, vars[against]!) >= 3, `hm-border on ${against} is ${ratio(vars['hm-border']!, vars[against]!).toFixed(2)}`);

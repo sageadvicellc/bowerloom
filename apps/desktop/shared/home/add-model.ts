@@ -114,8 +114,15 @@ export function agentHas(world: World, agentId: string, entry: AddEntry): boolea
   }
 }
 
-/** One agent in the picker: who it is and whether it already has the thing. */
-export interface AgentChoice { readonly id: string; readonly name: string; readonly has: boolean }
+/** One agent in the picker: who it is, whether it already has the thing, and (when the page has one picked) whether it is the agent that is picked. */
+export interface AgentChoice { readonly id: string; readonly name: string; readonly has: boolean; readonly selected?: boolean }
+
+/** The choices with the picked agent first and marked `selected`; the others keep their order. An id that is not among the choices changes nothing. */
+export function selectedFirst(choices: readonly AgentChoice[], selectedId: string | null | undefined): AgentChoice[] {
+  const at = selectedId === null || selectedId === undefined ? -1 : choices.findIndex(c => c.id === selectedId);
+  if (at < 0) return [...choices];
+  return [{ ...choices[at]!, selected: true }, ...choices.filter((_, i) => i !== at)];
+}
 
 /**
  * The agents a card can be added to: the ones the person owns, in name order. A ready-made agent is never a target. An agent in `hidden` is left out: the

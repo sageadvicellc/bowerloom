@@ -34,6 +34,9 @@ html, body { height: 100%; }
   [data-home] .hm-body[data-drawer] .hm-panel { opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; padding-left: 0; padding-right: 0; border-left-width: 0; }
   [data-home] .hm-panel > * { min-width: calc(var(--hm-panel-w) - 2 * var(--hm-space-4)); }
 }
+/* The details panel put away: the map has the whole width, so a window that holds four columns of tiles shows four. (1098 px of stage: 4 x 250 + 3 x 14 + 2 x 28.) */
+[data-home] .hm-body[data-details="closed"] { grid-template-columns: minmax(0, 1fr); }
+[data-home] .hm-body[data-details="closed"] .hm-panel { display: none; }
 /* Under 760 px (smaller than the window can be) the shelves sit under the map, and a drawer simply takes their place. */
 @media (max-width: 760px) {
   [data-home] .hm-body[data-drawer] { grid-template-columns: minmax(0, 1fr); }

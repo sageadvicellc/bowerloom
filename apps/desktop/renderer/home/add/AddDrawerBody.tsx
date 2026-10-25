@@ -14,7 +14,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { SHELF_LIMIT, visibleCount } from '../../../shared/home/cards.js';
-import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
+import { ADD_TABS, DEFAULT_TAB, addAction, agentChoices, entriesFor, installAction, newAgentId, nextTab, plainName, selectedFirst, stageAdd, stageInstall } from '../../../shared/home/add-model.js';
 import type { AddEntry, AddTab, AgentChoice, HintOf, NameOf } from '../../../shared/home/add-model.js';
 import { entryOf, originOf } from '../../../shared/home/library-model.js';
 import { useProtoStore } from '../../proto/session.js';
@@ -47,6 +47,8 @@ export interface AddDrawerBodyProps {
   hideAgents?: readonly string[];
   /** The text of the copy the person just made with Share, offered on the shared-file tab as "Open my last copy". */
   lastCopy?: string;
+  /** The id of the agent that is picked on the map: the picker lists it first and marks it "Selected". */
+  selectedAgent?: string | null;
   /** False leaves the connect line out. */
   line?: boolean;
   /** Called after a card was added to an agent, or a ready-made agent was copied in (then `agentId` is the new agent). */
@@ -68,7 +70,7 @@ function sourceLine(world: Parameters<typeof entryOf>[0], entry: AddEntry): stri
   return found === undefined ? undefined : originOf(world, found).source;
 }
 
-export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
+export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT_TAB, onOpenCopies, sampleFile, hideAgents = NO_HIDDEN, lastCopy, selectedAgent = null, line: withLine = true, onAdded, onShow }: AddDrawerBodyProps): ReactElement {
   const { state, dispatch } = useProtoStore();
   const world = state.draft;
   const [tab, setTab] = useState<AddTab>(initialTab);
@@ -181,7 +183,7 @@ export function AddDrawerBody({ nameOf = plainName, hintOf, initialTab = DEFAULT
               {entries.length === 0 ? <p className="kit-hint">{H.nothingHere}</p> : (
                 <ul className="add-list">
                   {entries.slice(0, shown).map(entry => (
-                    <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : agentChoices(world, entry, nameOf, hideAgents)} open={openId === entry.id}
+                    <AddRow key={entry.id} entry={entry} choices={entry.kind === 'agent' ? [] : selectedFirst(agentChoices(world, entry, nameOf, hideAgents), selectedAgent)} open={openId === entry.id}
                       onToggle={() => setOpenId(current => (current === entry.id ? null : entry.id))}
                       onPick={(choice, row) => { setOpenId(null); addTo(entry, choice, row); }}
                       onInstall={row => install(entry, row)}

@@ -788,7 +788,8 @@ test.describe('inside the app', () => {
     await bar().getByRole('button', { name: 'Save', exact: true }).click();
     await header().getByRole('button', { name: 'Version history', exact: true }).click();
     await expect(history().locator('.pt-row').first()).toContainText('Removed Translate a text');
-    await expect(history().locator('.pt-row').nth(0).locator('.pt-changes')).toHaveText('Removed Translate a text');
+    await expect(history().locator('.pt-row').nth(0).locator('.pt-name')).toHaveText('Removed Translate a text');
+    await expect(history().locator('.pt-row').nth(0).locator('.pt-changes')).toHaveCount(0);
     await history().locator('.pt-row').nth(1).getByRole('button', { name: 'Go back to this' }).click();
     await p.keyboard.press('Escape');
     await expect(rows()).toHaveCount(53);

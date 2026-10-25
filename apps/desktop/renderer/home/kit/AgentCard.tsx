@@ -1,6 +1,6 @@
 /**
  * The agent tile of the map. Every agent tile has the same width and the same height (--hm-tile-w, --hm-tile-h) whatever the name or the counts, so the grid is
- * even. It holds a 24 px glyph tile and the name (one line, ellipsis; the whole name is in the details panel), the job (one line, ellipsis), and ONE line of
+ * even. It holds a 24 px glyph tile and the name (one line, ellipsis; the whole name is in the details panel), the job (one line, ellipsis; the whole job is its hover text, and it is also in the details panel), and ONE line of
  * plain text buttons joined by dots: "12 skills · 2 tools · 1 note set" (a kind with nothing in it is left out, and the words are singular or plural to fit). No pills,
  * no wrapping and no list inside the tile: pressing a count opens that kind's list in a tray under the tile's row (see Tray.tsx and the map in HomeApp). The count button
  * has `aria-expanded` and `aria-controls`. Pressing the tile anywhere else (the name, the empty parts of it) selects the agent. The tiles of the map are one stop in the Tab order
@@ -50,7 +50,7 @@ export function AgentCard({ name, hint, shelves, selected, itemId = null, onSele
     <div className="kit-card" data-kind="agent" data-size="tile" data-selected={selected ? '' : undefined} data-owner={owner ? '' : undefined} data-tray={openKind !== null && !selected && !owner ? '' : undefined} data-fresh={fresh === true ? '' : undefined} data-tour={dataTour} data-drop-agent={dropAgent}>
       <Glyph name="agent" size="small" />
       <button type="button" className="kit-card-main" id={nameId} aria-pressed={selected} aria-current={owner ? 'true' : undefined} aria-describedby={hintId} tabIndex={stop} onKeyDown={space} onKeyUp={space} onClick={onSelect}>{name}</button>
-      <p className="kit-hint kit-card-hint" id={hintId}>{hint}</p>
+      <p className="kit-hint kit-card-hint" id={hintId} title={hint} data-budget="tooltip">{hint}</p>
       <div className="kit-summary" role="group" aria-labelledby={nameId}>
         {kinds.map((kind, i) => (
           <Fragment key={kind}>

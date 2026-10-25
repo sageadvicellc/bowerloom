@@ -38,8 +38,8 @@ function PickRow({ choice, onPick }: { choice: AgentChoice; onPick(): void }): R
   return (
     <li className="add-pick" data-has={choice.has ? '' : undefined}>
       <Glyph name="agent" size="small" />
-      <button type="button" className="add-pick-main" aria-disabled={choice.has ? 'true' : undefined} aria-describedby={choice.has ? noteId : undefined} data-agent={choice.id} onClick={onPick}>{choice.name}</button>
-      {choice.has ? <span className="kit-hint add-pick-note" id={noteId}>{L.alreadyAdded}</span> : null}
+      <button type="button" className="add-pick-main" aria-disabled={choice.has ? 'true' : undefined} aria-describedby={choice.has || choice.selected === true ? noteId : undefined} data-agent={choice.id} onClick={onPick}>{choice.name}</button>
+      {choice.has || choice.selected === true ? <span className="kit-hint add-pick-note" id={noteId} data-selected={choice.selected === true ? '' : undefined}>{[choice.selected === true ? L.selected : null, choice.has ? L.alreadyAdded : null].filter(x => x !== null).join(' · ')}</span> : null}
     </li>
   );
 }

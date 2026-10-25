@@ -16,8 +16,19 @@ export function badgeIcon(badge: CardBadge): KitIconName {
   return badge.tone === 'warn' ? 'warning' : badge.tone === 'new' ? 'sparkle' : 'info';
 }
 
+/**
+ * The short form of a state for a card too narrow for its full words: "2 different copies" is "2 copies" there. The dialog it opens still says "Two different copies".
+ * Only this one state has a short form; any other label has none, and is never cut.
+ */
+export function shortLabel(label: string): string | null {
+  return label.endsWith(CARD_WORDS.copiesSuffix) ? `${label.slice(0, label.length - CARD_WORDS.copiesSuffix.length)}copies`.replace(/different\s+/, '') : null;
+}
+
 export function Badge({ badge, onPress }: { badge: CardBadge; onPress?: () => void }): ReactElement {
-  const inside = <><span className="kit-dot" aria-hidden="true" /><span>{badge.label}</span></>;
+  const short = shortLabel(badge.label);
+  // The full words stay in the page for a screen reader (and are only taken out of sight when the card is too narrow, see kit.css), so the name of the state never changes.
+  // The short form is drawn by the style sheet from `data-short`, so the text of the state stays the full words wherever it is read.
+  const inside = <><span className="kit-dot" aria-hidden="true" /><span>{badge.label}</span>{short === null ? null : <span className="kit-status-short" aria-hidden="true" data-short={short} />}</>;
   return onPress === undefined
     ? <span className="kit-status" data-tone={badge.tone} data-no-drag="">{inside}</span>
     : <button type="button" className="kit-status" data-tone={badge.tone} data-no-drag="" onClick={onPress}>{inside}</button>;
