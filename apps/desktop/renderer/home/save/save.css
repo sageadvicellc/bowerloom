@@ -1,0 +1,15 @@
+/* The Save bar: what waits, the buttons, and the three ticks that show where a save went. Scoped to [data-home]. Timing comes from the motion tokens. */
+[data-home] .hm-savebar { flex-wrap: wrap; }
+[data-home] .hm-savebar-state { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-4); min-width: 0; }
+[data-home] .hm-savebar-state p { font-weight: 650; }
+[data-home] .hm-savebar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); margin-left: auto; }
+[data-home] .hm-ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--hm-space-2) var(--hm-space-3); }
+[data-home] .hm-tick {
+  display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 1.75rem; padding: 0 var(--hm-space-3) 0 var(--hm-space-2);
+  font-size: var(--hm-text-small); font-weight: 600; color: var(--good-fg); background: var(--good-bg);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent); border-radius: var(--hm-radius-pill);
+  animation: hm-tick-in var(--motion-home-tour-dim-ms, 0ms) var(--motion-home-drawer-ease, ease-out) both;
+}
+[data-home] .hm-tick:nth-child(2) { animation-delay: calc(var(--motion-home-tour-dim-ms, 0ms) * 0.4); }
+[data-home] .hm-tick:nth-child(3) { animation-delay: calc(var(--motion-home-tour-dim-ms, 0ms) * 0.8); }
+@keyframes hm-tick-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

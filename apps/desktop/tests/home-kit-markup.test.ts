@@ -140,7 +140,7 @@ test('the shell: a top bar, a stage with the agents, a side panel with three she
   assert.equal([...m.matchAll(/data-kind="agent"/g)].length, 10);
   assert.match(m, /<aside class="hm-panel" data-tour="shelves"/);
   for (const t of ['Skills', 'Tools', 'Notes']) assert.match(m, new RegExp(`<h3 class="kit-heading"[^>]*>${t}</h3>`));
-  assert.match(m, /<section class="hm-savebar" data-tour="save" aria-label="Save bar">/); assert.match(m, /Nothing to save yet/);
+  assert.match(m, /<section class="hm-savebar" data-tour="save" data-mode="clean" aria-label="Save bar">/); assert.match(m, /Nothing to save yet/);
   assert.match(m, /<button disabled=""[^>]*data-variant="primary"[^>]*>Save<\/button>/);
   for (const id of ['map', 'agent', 'shelves', 'add', 'save', 'help', 'bar']) assert.match(m, new RegExp(`data-tour="${id}"`), id);
   assert.equal([...m.matchAll(/data-tour="agent"/g)].length, 1, 'one agent card is the tour target');
@@ -156,11 +156,14 @@ test('the shell has no left rail, no paragraph, headings in order, and passes th
   assert.ok(agentCards.length >= 10 && agentCards.every(n => n.split(' ').length <= 5));
 });
 
-test('the shell shows every agent in name order, with a hint that says what it has', () => {
+test('the shell shows every agent in name order, with a plain name and a hint that says what it can do', () => {
   const m = shell();
   const names = [...m.matchAll(/data-kind="agent"[\s\S]*?class="kit-card-main"[^>]*>([^<]+)</g)].map(x => x[1]!);
   assert.equal(names.length, 10); assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
-  assert.match(m, /A [a-z]+ with \d skills?( and \d tools?)?\./);
+  assert.deepEqual(names.slice(0, 3), ['Inbox sorter', 'Interview notetaker', 'Meeting assistant']);
+  assert.match(m, />Summarizes meetings and writes replies\.</);
+  assert.doesNotMatch(m, /A [a-z]+ with \d skills?/, 'a hint is not only counts');
+  assert.doesNotMatch(m, /Velvet|Brisk|Gilded|Crisp|Weaver/);
 });
 
 test('the kit gallery shows both looks, every card state and every part, passes the text budget, and keeps its headings in order', () => {

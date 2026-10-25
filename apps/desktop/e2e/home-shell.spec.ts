@@ -49,7 +49,8 @@ test('the real page stays inside the text budget: no text node over 12 words, no
 
 test('picking an agent fills the three shelves with the same small card; picking it again empties them', async () => {
   const p = page();
-  const first = p.locator('.kit-card[data-kind="agent"]').first();
+  // The first agent in name order has no tool, so the shelves are checked on one that has all three.
+  const first = p.locator('.kit-card[data-kind="agent"]').filter({ hasText: 'Meeting assistant' });
   await first.getByRole('button').click();
   await expect(first.getByRole('button')).toHaveAttribute('aria-pressed', 'true');
   const panel = p.locator('aside.hm-panel');
@@ -68,14 +69,14 @@ test('picking an agent fills the three shelves with the same small card; picking
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Pick an agent');
 });
 
-test('a card is 12 px round with a 1 px border on every side, an agent card is about 220 by 132 and a small card about 176 by 72', async () => {
+test('a card is 12 px round with a 1 px border on every side, an agent card is about 220 by 132 and a small card at least 176 wide that holds its hint', async () => {
   const p = page();
   await p.locator('.kit-card[data-kind="agent"]').first().getByRole('button').click();
   const agent = await p.locator('.kit-card[data-kind="agent"]').first().evaluate(c => { const r = c.getBoundingClientRect(), s = getComputedStyle(c); return { w: r.width, h: r.height, radius: s.borderRadius, top: s.borderTopWidth, left: s.borderLeftWidth, right: s.borderRightWidth, bottom: s.borderBottomWidth }; });
   expect(agent.w).toBeGreaterThanOrEqual(218); expect(agent.w).toBeLessThanOrEqual(222); expect(agent.h).toBeGreaterThanOrEqual(130); expect(agent.h).toBeLessThanOrEqual(150);
   expect([agent.radius, agent.top, agent.left, agent.right, agent.bottom]).toEqual(['12px', '1px', '1px', '1px', '1px']);
   const small = await p.locator('.kit-card[data-size="small"]').first().evaluate(c => { const r = c.getBoundingClientRect(); return { w: r.width, h: r.height }; });
-  expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBeGreaterThanOrEqual(70); expect(small.h).toBeLessThanOrEqual(100);
+  expect(small.w).toBeGreaterThanOrEqual(176); expect(small.h).toBeGreaterThanOrEqual(70); expect(small.h).toBeLessThanOrEqual(125);
 });
 
 test('no text on the page is under 14 px, and the base text, hint and heading sizes are 16, 14 and 20', async () => {
@@ -147,7 +148,8 @@ test('the Tab order follows the reading order: the top bar, then the agents, the
   }
   const at = (n: string): number => names.indexOf(n);
   expect(names[0]).toBe('Save points'); expect(at('Save points')).toBeGreaterThan(-1); expect(at('Add')).toBeGreaterThan(at('Save points')); expect(at('Help')).toBeGreaterThan(at('Add'));
-  expect(at('Brisk Archivist')).toBeGreaterThan(at('Help')); expect(at('Ember Forager')).toBeGreaterThan(at('Brisk Archivist'));
+  expect(at('Name')).toBeGreaterThan(at('Help')); expect(at('Recently changed')).toBeGreaterThan(at('Name'));
+  expect(at('Inbox sorter')).toBeGreaterThan(at('Recently changed')); expect(at('Interview notetaker')).toBeGreaterThan(at('Inbox sorter'));
 });
 
 test('the card kit gallery renders every part in a light and a dark look', async () => {

@@ -22,11 +22,13 @@ export interface ShelfProps {
   level?: 2 | 3 | 4;
   onDragStart?(e: ReactPointerEvent<HTMLElement>, entry: ShelfEntry): void;
   onBadgePress?(entry: ShelfEntry): void;
+  /** Gives every card a quiet "Remove" button. */
+  onRemove?(entry: ShelfEntry): void;
   /** Starts with the long list open (the kit gallery shows both). */
   defaultExpanded?: boolean;
 }
 
-export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, defaultExpanded = false }: ShelfProps): ReactElement {
+export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, limit = SHELF_LIMIT, level = 3, onDragStart, onBadgePress, onRemove, defaultExpanded = false }: ShelfProps): ReactElement {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const headingId = useId();
   const shown = visibleCount(entries.length, expanded, limit);
@@ -42,6 +44,8 @@ export function Shelf({ title, entries, selectedId, onSelect, emptyText, help, l
           {entries.slice(0, shown).map(entry => (
             <li key={entry.id}>
               <ItemCard kind={entry.kind} name={entry.name} selected={entry.id === selectedId} onSelect={() => onSelect(entry.id)}
+                {...(entry.hint === undefined ? {} : { hint: entry.hint })}
+                {...(onRemove === undefined ? {} : { onRemove: () => onRemove(entry) })}
                 {...(entry.badge === undefined ? {} : { badge: entry.badge })}
                 {...(onDragStart === undefined ? {} : { onDragStart: (e: ReactPointerEvent<HTMLElement>) => onDragStart(e, entry) })}
                 {...(onBadgePress === undefined || entry.badge === undefined ? {} : { onBadgePress: () => onBadgePress(entry) })} />

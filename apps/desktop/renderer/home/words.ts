@@ -6,6 +6,7 @@
  */
 import { BANNED } from '../../shared/home/textbudget.js';
 import { CARD_WORDS } from '../../shared/home/cards.js';
+import { BAR_WORDS } from '../../shared/home/savebar.js';
 
 /** The words and phrases that must not reach a screen (case-insensitive, whole words). The check itself is `assertTextBudget`. */
 export { BANNED };
@@ -69,11 +70,25 @@ export const WORDS = deepFreeze({
     gallerySkill: 'Skill card',
     galleryTool: 'Tool card',
     galleryNote: 'Note card',
-    sampleAgent: 'Velvet Weaver',
-    sampleSkill: 'Weekly Review',
-    sampleTool: 'Search Notes',
-    sampleNote: 'Daily Notes',
+    sampleAgent: 'Meeting assistant',
+    sampleSkill: 'Summarize a meeting',
+    sampleTool: 'Search the web',
+    sampleNote: 'Client list',
     sampleLongName: 'The Quarterly Review Of Everything',
+    remove: 'Remove',
+    sortBy: 'Sort by',
+    sortGroup: 'Order of the agents',
+    byName: 'Name',
+    byRecent: 'Recently changed',
+    saved: BAR_WORDS.saved,
+    wentBack: BAR_WORDS.back,
+    goBack: 'Go back',
+    discard: 'Discard changes',
+    savedTo: 'Saved to',
+    claudeCode: 'Claude Code',
+    codex: 'Codex',
+    openCode: 'OpenCode',
+    startPoint: CARD_WORDS.startPoint,
   },
   /** One line under a label: at most 12 words. */
   hint: {
@@ -84,7 +99,14 @@ export const WORDS = deepFreeze({
     savePointsEmpty: 'No save points yet.',
     saveClean: CARD_WORDS.saveClean,
     saveDirty: CARD_WORDS.saveDirty,
-    sampleAgent: 'A weaver with 3 skills and 1 tool.',
+    sampleAgent: 'Summarizes meetings and writes replies.',
+    sampleSkill: 'Turns a long meeting into a few clear points.',
+    sampleTool: 'Looks things up on the web for you.',
+    sampleNote: 'Names and details of your clients.',
+    agentNoSkills: CARD_WORDS.agentNoSkills,
+    skillFallback: CARD_WORDS.skillFallback,
+    toolFallback: CARD_WORDS.toolFallback,
+    noteFallback: CARD_WORDS.noteFallback,
     galleryIntro: 'Every part of the kit, in every state, in both looks.',
     galleryDrawerBody: 'This is where a drawer shows its content.',
   },
@@ -98,5 +120,7 @@ export const WORDS = deepFreeze({
 
 /** "10 agents" or "1 agent". */
 export const agentsCount = (n: number): string => `${n} ${n === 1 ? 'agent' : 'agents'}`;
+/** "1 change" or "3 changes". */
+export const changesCount = (n: number): string => `${n} ${n === 1 ? 'change' : 'changes'}`;
 /** "Step 2 of 6", for a screen reader. */
 export const stepAnnouncement = (index: number, total: number): string => `${WORDS.label.stepWord} ${index} of ${total}`;

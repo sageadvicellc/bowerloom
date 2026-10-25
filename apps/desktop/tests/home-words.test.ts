@@ -72,13 +72,15 @@ function readable(source: string): string[] {
 }
 // words.ts is checked by the tests above. The store's own action names ("apply") are code, not screen words, and live in one file.
 // The data's own kind names ('mcp' is the kind of a tool in the sample data) are code too, and are let through whole.
+// The sample's ids for the tools of that kind ('tool-mcp-01') and for the saved choices of pages ('slice-folders') are code too: the plain layer is keyed by them.
 const DATA_KINDS = new Set(['mcp']);
+const DATA_IDS = /^(?:tool-mcp|slice)-[a-z0-9]+$/;
 const EXEMPT = new Set(['words.ts', 'store-actions.ts', 'textbudget.ts']);
 
 test('no source file under renderer/home or shared/home has a banned word in a string literal or in JSX text', () => {
   const files = [...sources('renderer/home'), ...sources('shared/home')].filter(f => !EXEMPT.has(f.slice(f.lastIndexOf('/') + 1)));
   assert.ok(files.length >= 6, `${files.length} files`);
-  for (const file of files) for (const piece of readable(strip(readFileSync(file, 'utf8'))).filter(p => !DATA_KINDS.has(p))) assert.equal(bannedIn(piece), null, `${file}: ${piece}`);
+  for (const file of files) for (const piece of readable(strip(readFileSync(file, 'utf8'))).filter(p => !DATA_KINDS.has(p) && !DATA_IDS.test(p))) assert.equal(bannedIn(piece), null, `${file}: ${piece}`);
 });
 
 test('the source scan itself catches a banned word in a literal and in JSX text', () => {

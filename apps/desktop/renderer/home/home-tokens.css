@@ -14,6 +14,7 @@
   --hm-radius: 0.75rem; --hm-radius-small: 0.5rem; --hm-radius-pill: 999px;
   --hm-card-agent-w: 13.75rem; --hm-card-agent-h: 8.25rem;
   --hm-card-small-w: 11rem; --hm-card-small-h: 4.5rem;
+  --hm-card-shelf-w: 15rem;
   --hm-drawer-w: min(420px, 92vw);
   --hm-panel-w: clamp(20rem, 30vw, 26rem);
   --hm-bar-h: 4rem;

@@ -3,12 +3,14 @@
  * The sample data names things like files ("velvet-weaver"); a card shows them as words ("Velvet Weaver").
  */
 import type { AgentItem, HarnessItem, ToolItem, World } from '../proto/types.js';
+import { joinWords } from '../proto/words.js';
+import { plainOf, skillDoes } from './plain.js';
 
 /** A card's state badge: its words and which look it takes. */
 export interface CardBadge { readonly label: string; readonly tone: 'warn' | 'new' | 'info' }
 
 /** One card on a shelf. Skills, tools and notes all take this shape. */
-export interface ShelfEntry { readonly id: string; readonly kind: 'skill' | 'tool' | 'note'; readonly name: string; readonly badge?: CardBadge }
+export interface ShelfEntry { readonly id: string; readonly kind: 'skill' | 'tool' | 'note'; readonly name: string; readonly hint?: string; readonly badge?: CardBadge }
 
 /** The three shelves of one agent. */
 export interface Shelves { readonly skills: readonly ShelfEntry[]; readonly tools: readonly ShelfEntry[]; readonly notes: readonly ShelfEntry[] }
@@ -16,11 +18,15 @@ export interface Shelves { readonly skills: readonly ShelfEntry[]; readonly tool
 /** How many cards a shelf shows before "Show more". */
 export const SHELF_LIMIT = 8;
 const MAX_NAME_WORDS = 5;
+const MAX_DOES = 2;
 
 /** The words that these helpers put on a screen. `renderer/home/words.ts` lists them in `WORDS`, so one test holds them all to the rules. */
 export const CARD_WORDS = Object.freeze({
   needsKey: 'needs a key', isNew: 'new', saveClean: 'Nothing to save yet', saveDirty: 'You have changes to save', copiesSuffix: 'different copies',
   agentFallbackRole: 'agent', agentEmpty: 'with nothing added yet',
+  agentNoSkills: 'Waits for a skill to be added.',
+  skillFallback: 'A skill this agent can use.', toolFallback: 'A tool this agent can use.', noteFallback: 'Notes this agent can read.',
+  startPoint: 'How it started',
 });
 
 /** A name as words: dashes and underscores become spaces, each word gets a capital, and at most 5 words stay. */
@@ -51,14 +57,36 @@ export function itemBadge(item: HarnessItem): CardBadge | null {
   return null;
 }
 
+/**
+ * The name and the hint of an agent's card. The hint names what the agent can do, built from its skills ("Summarizes meetings and writes replies."),
+ * so it stays true when a skill is removed. An agent that has no skill says so. An agent the sample does not know falls back to `agentHint`.
+ */
+export function agentCard(agent: AgentItem): { name: string; hint: string } {
+  const plain = plainOf('agent', agent.id);
+  if (plain === null) return { name: agentTitle(agent.name), hint: agentHint(agent) };
+  if (agent.definition.skillIds.length === 0) return { name: plain.name, hint: CARD_WORDS.agentNoSkills };
+  const does = agent.definition.skillIds.flatMap(id => skillDoes(id) ?? []).slice(0, MAX_DOES);
+  if (does.length === 0) return { name: plain.name, hint: plain.hint };
+  const text = joinWords(does);
+  return { name: plain.name, hint: `${text.charAt(0).toUpperCase()}${text.slice(1)}.` };
+}
+
 /** The agents the person owns (not those that come from a library), in name order. */
 export function ownedAgents(world: World): AgentItem[] {
   return world.items.filter((i): i is AgentItem => i.kind === 'agent' && i.library === null).sort((a, b) => agentTitle(a.name).localeCompare(agentTitle(b.name)) || a.id.localeCompare(b.id));
 }
 
+const FALLBACK_HINT: Readonly<Record<ShelfEntry['kind'], string>> = Object.freeze({ skill: CARD_WORDS.skillFallback, tool: CARD_WORDS.toolFallback, note: CARD_WORDS.noteFallback });
+
+/** The name and the hint of a card: the plain ones when the sample knows the id, else the item's own name and a plain line for its kind. */
+function wordsOf(kind: ShelfEntry['kind'], id: string, name: string): { name: string; hint: string } {
+  const plain = plainOf(kind, id);
+  return plain === null ? { name: itemTitle(name), hint: FALLBACK_HINT[kind] } : { name: plain.name, hint: plain.hint };
+}
+
 const entryOf = (item: HarnessItem, kind: ShelfEntry['kind']): ShelfEntry => {
   const badge = itemBadge(item);
-  return { id: item.id, kind, name: itemTitle(item.name), ...(badge === null ? {} : { badge }) };
+  return { id: item.id, kind, ...wordsOf(kind, item.id, item.name), ...(badge === null ? {} : { badge }) };
 };
 
 /** The skills, tools and notes of one agent. A hook stays out (it lives under Advanced), and an id that no longer exists is left out. */
@@ -71,7 +99,7 @@ export function shelvesOf(world: World, agent: AgentItem): Shelves {
     if (item !== undefined && item.kind === 'tool' && (item as ToolItem).toolKind !== 'hook') tools.push(entryOf(item, 'tool'));
   }
   const slice = agent.definition.sliceId === undefined ? undefined : world.slices.find(s => s.id === agent.definition.sliceId);
-  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', name: itemTitle(slice.name) });
+  if (slice !== undefined) notes.push({ id: slice.id, kind: 'note', ...wordsOf('note', slice.id, slice.name) });
   return { skills, tools, notes };
 }
 

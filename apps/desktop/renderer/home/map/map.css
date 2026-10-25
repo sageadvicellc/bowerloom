@@ -1,0 +1,12 @@
+/* The toggle that orders the map. Scoped to [data-home]. Text is 14 px or more, a button is 36 px tall, a pressed button has a check as well as its fill. */
+[data-home] .hm-sort { display: flex; align-items: center; gap: var(--hm-space-3); flex-wrap: wrap; }
+[data-home] .hm-seg { display: inline-flex; border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); background: var(--surface); overflow: hidden; }
+[data-home] .hm-seg-button {
+  display: inline-flex; align-items: center; gap: var(--hm-space-1); min-height: 2.25rem; padding: 0 var(--hm-space-3);
+  font: inherit; font-size: var(--hm-text-small); font-weight: 600; color: var(--text); background: transparent; border: 0; cursor: pointer; touch-action: manipulation;
+  transition: background-color var(--motion-hover-ms, 0ms) var(--motion-ease-out, ease);
+}
+[data-home] .hm-seg-button + .hm-seg-button { border-left: 1px solid var(--hm-border); }
+[data-home] .hm-seg-button:hover { background: var(--accent-soft); }
+[data-home] .hm-seg-button[aria-pressed="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-strong); color: var(--text); }
+[data-home] .hm-seg-button:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
