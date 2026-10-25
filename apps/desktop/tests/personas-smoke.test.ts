@@ -110,10 +110,13 @@ test('serve, look, goto map, click the first agent, look again, stop: the snapsh
   const map = drive('look');
   assert.equal(map.status, 0, map.stderr);
   const lines = map.stdout.split('\n');
-  const avatar = lines.findIndex(l => /^\s*[A-Z]{2}$/.test(l));
-  assert.ok(avatar > 0, `the map shows agent cards:\n${map.stdout}`);
-  const firstAgent = /^\s*\[(\d+)\] button "([^"]+)"/.exec(lines[avatar + 1]!);
-  assert.ok(firstAgent !== null, lines[avatar + 1]);
+  // The agent cards follow the "Find more" button: the first button after it is the first agent.
+  const findMore = lines.findIndex(l => /^\s*\[\d+\] button "Find more"/.test(l));
+  assert.ok(findMore > 0, `the map shows agent cards:\n${map.stdout}`);
+  const firstAgentLine = lines.slice(findMore + 1).find(l => /^\s*\[\d+\] button "/.test(l));
+  assert.ok(firstAgentLine !== undefined, `an agent card follows "Find more":\n${map.stdout}`);
+  const firstAgent = /^\s*\[(\d+)\] button "([^"]+)"/.exec(firstAgentLine!);
+  assert.ok(firstAgent !== null, firstAgentLine);
   const before = map.stdout.replace(/^SCREENSHOT: .*$/m, '');
   assert.match(before, /heading 1: Your agents/);
 
